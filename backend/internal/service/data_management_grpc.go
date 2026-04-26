@@ -41,9 +41,9 @@ type DataManagementConfig struct {
 	SQLitePath        string                       `json:"sqlite_path,omitempty"`
 	RetentionDays     int32                        `json:"retention_days"`
 	KeepLast          int32                        `json:"keep_last"`
-	ActivePostgresID  string                       `json:"active_postgres_profile_id"`
+	ActivePostgresID  string                       `json:"active_mysql_profile_id"`
 	ActiveRedisID     string                       `json:"active_redis_profile_id"`
-	Postgres          DataManagementPostgresConfig `json:"postgres"`
+	Postgres          DataManagementPostgresConfig `json:"mysql"`
 	Redis             DataManagementRedisConfig    `json:"redis"`
 	S3                DataManagementS3Config       `json:"s3"`
 	ActiveS3ProfileID string                       `json:"active_s3_profile_id"`
@@ -91,7 +91,7 @@ type DataManagementBackupJob struct {
 	IdempotencyKey string                     `json:"idempotency_key,omitempty"`
 	UploadToS3     bool                       `json:"upload_to_s3"`
 	S3ProfileID    string                     `json:"s3_profile_id,omitempty"`
-	PostgresID     string                     `json:"postgres_profile_id,omitempty"`
+	PostgresID     string                     `json:"mysql_profile_id,omitempty"`
 	RedisID        string                     `json:"redis_profile_id,omitempty"`
 	StartedAt      string                     `json:"started_at,omitempty"`
 	FinishedAt     string                     `json:"finished_at,omitempty"`

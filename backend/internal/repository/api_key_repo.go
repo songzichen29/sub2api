@@ -513,24 +513,29 @@ func (r *apiKeyRepository) IncrementQuotaUsed(ctx context.Context, id int64, amo
 // IncrementQuotaUsedAndGetState atomically increments quota_used, conditionally marks the key
 // as quota_exhausted, and returns the latest quota state in one round trip.
 func (r *apiKeyRepository) IncrementQuotaUsedAndGetState(ctx context.Context, id int64, amount float64) (*service.APIKeyQuotaUsageState, error) {
-	query := `
+	state := &service.APIKeyQuotaUsageState{}
+	res, err := r.sql.ExecContext(ctx, `
 		UPDATE api_keys
 		SET
-			quota_used = quota_used + $1,
+			quota_used = quota_used + ?,
 			status = CASE
-				WHEN quota > 0 AND quota_used + $1 >= quota THEN $2
+				WHEN quota > 0 AND quota_used + ? >= quota THEN ?
 				ELSE status
 			END,
 			updated_at = NOW()
-		WHERE id = $3 AND deleted_at IS NULL
-		RETURNING quota_used, quota, key, status
-	`
-
-	state := &service.APIKeyQuotaUsageState{}
-	if err := scanSingleRow(ctx, r.sql, query, []any{amount, service.StatusAPIKeyQuotaExhausted, id}, &state.QuotaUsed, &state.Quota, &state.Key, &state.Status); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, service.ErrAPIKeyNotFound
-		}
+		WHERE id = ? AND deleted_at IS NULL
+	`, amount, amount, service.StatusAPIKeyQuotaExhausted, id)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		return nil, service.ErrAPIKeyNotFound
+	}
+	if err := scanSingleRow(ctx, r.sql, `SELECT quota_used, quota, `+"`key`"+`, status FROM api_keys WHERE id = ? AND deleted_at IS NULL`, []any{id}, &state.QuotaUsed, &state.Quota, &state.Key, &state.Status); err != nil {
 		return nil, err
 	}
 	return state, nil
@@ -556,15 +561,15 @@ func (r *apiKeyRepository) UpdateLastUsed(ctx context.Context, id int64, usedAt 
 func (r *apiKeyRepository) IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error {
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE api_keys SET
-			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
-			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
-			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
-			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
-			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN ? ELSE usage_5h + ? END,
+			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN ? ELSE usage_1d + ? END,
+			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN ? ELSE usage_7d + ? END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN DATE(NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN DATE(NOW()) ELSE window_7d_start END,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`,
-		cost, id)
+		WHERE id = ? AND deleted_at IS NULL`,
+		cost, cost, cost, cost, cost, cost, id)
 	return err
 }
 
@@ -572,14 +577,14 @@ func (r *apiKeyRepository) IncrementRateLimitUsage(ctx context.Context, id int64
 func (r *apiKeyRepository) ResetRateLimitWindows(ctx context.Context, id int64) error {
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE api_keys SET
-			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN 0 ELSE usage_5h END,
-			window_5h_start = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
-			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN 0 ELSE usage_1d END,
-			window_1d_start = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN 0 ELSE usage_7d END,
-			window_7d_start = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN 0 ELSE usage_5h END,
+			window_5h_start = CASE WHEN window_5h_start IS NOT NULL AND DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN NOW() ELSE window_5h_start END,
+			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN 0 ELSE usage_1d END,
+			window_1d_start = CASE WHEN window_1d_start IS NOT NULL AND DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN DATE(NOW()) ELSE window_1d_start END,
+			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN 0 ELSE usage_7d END,
+			window_7d_start = CASE WHEN window_7d_start IS NOT NULL AND DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN DATE(NOW()) ELSE window_7d_start END,
 			updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL`,
+		WHERE id = ? AND deleted_at IS NULL`,
 		id)
 	return err
 }
@@ -589,7 +594,7 @@ func (r *apiKeyRepository) GetRateLimitData(ctx context.Context, id int64) (resu
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT usage_5h, usage_1d, usage_7d, window_5h_start, window_1d_start, window_7d_start
 		FROM api_keys
-		WHERE id = $1 AND deleted_at IS NULL`,
+		WHERE id = ? AND deleted_at IS NULL`,
 		id)
 	if err != nil {
 		return nil, err

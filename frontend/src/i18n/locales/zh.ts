@@ -186,7 +186,7 @@ export default {
     description: '配置您的 Sub2API 实例',
     database: {
       title: '数据库配置',
-      description: '连接到您的 PostgreSQL 数据库',
+      description: '连接到您的 MySQL 数据库',
       host: '主机',
       port: '端口',
       username: '用户名',
@@ -1507,7 +1507,7 @@ export default {
         },
         backup: {
           title: '备份操作',
-          description: '触发 PostgreSQL、Redis 与全量备份任务。'
+          description: '触发 MySQL、Redis 与全量备份任务。'
         },
         history: {
           title: '备份历史',
@@ -1517,13 +1517,13 @@ export default {
       form: {
         sourceMode: '源模式',
         backupRoot: '备份根目录',
-        activePostgresProfile: '当前激活 PostgreSQL 配置',
+        activeMySQLProfile: '当前激活 MySQL 配置',
         activeRedisProfile: '当前激活 Redis 配置',
         activeS3Profile: '当前激活 S3 账号',
         retentionDays: '保留天数',
         keepLast: '至少保留最近任务数',
         uploadToS3: '上传到 S3',
-        useActivePostgresProfile: '使用当前激活 PostgreSQL 配置',
+        useActiveMySQLProfile: '使用当前激活 MySQL 配置',
         useActiveRedisProfile: '使用当前激活 Redis 配置',
         useActiveS3Profile: '使用当前激活账号',
         idempotencyKey: '幂等键（可选）',
@@ -1533,8 +1533,8 @@ export default {
           profileName: '配置名称',
           setActive: '创建后立即设为激活配置'
         },
-        postgres: {
-          title: 'PostgreSQL',
+        mysql: {
+          title: 'MySQL',
           host: '主机',
           port: '端口',
           user: '用户名',
@@ -1602,7 +1602,7 @@ export default {
           type: '类型',
           status: '状态',
           triggeredBy: '触发人',
-          pgProfile: 'PostgreSQL 配置',
+          mySQLProfile: 'MySQL 配置',
           redisProfile: 'Redis 配置',
           s3Profile: 'S3 账号',
           finishedAt: '完成时间',

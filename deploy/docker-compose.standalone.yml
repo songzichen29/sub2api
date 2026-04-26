@@ -2,7 +2,7 @@
 # Sub2API Docker Compose - Standalone Configuration
 # =============================================================================
 # This configuration runs only the Sub2API application.
-# PostgreSQL and Redis must be provided externally.
+# MySQL and Redis must be provided externally.
 #
 # Usage:
 #   1. Copy .env.example to .env and configure database/redis connection
@@ -40,10 +40,10 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
 
       # =======================================================================
-      # Database Configuration (PostgreSQL) - Required
+      # Database Configuration (MySQL) - Required
       # =======================================================================
       - DATABASE_HOST=${DATABASE_HOST:?DATABASE_HOST is required}
-      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_PORT=${DATABASE_PORT:-3306}
       - DATABASE_USER=${DATABASE_USER:-sub2api}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       - DATABASE_DBNAME=${DATABASE_DBNAME:-sub2api}

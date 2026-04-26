@@ -18,126 +18,7 @@ func (r *opsRepository) UpsertHourlyMetrics(ctx context.Context, startTime, endT
 	start := startTime.UTC()
 	end := endTime.UTC()
 
-	// NOTE:
-	// - We aggregate usage_logs + ops_error_logs into ops_metrics_hourly.
-	// - We emit three dimension granularities via GROUPING SETS:
-	//   1) overall: (bucket_start)
-	//   2) platform: (bucket_start, platform)
-	//   3) group: (bucket_start, platform, group_id)
-	//
-	// IMPORTANT: Postgres UNIQUE treats NULLs as distinct, so the table uses a COALESCE-based
-	// unique index; our ON CONFLICT target must match that expression set.
-	q := `
-WITH usage_base AS (
-  SELECT
-    date_trunc('hour', ul.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket_start,
-    g.platform AS platform,
-    ul.group_id AS group_id,
-    ul.duration_ms AS duration_ms,
-    ul.first_token_ms AS first_token_ms,
-    (ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) AS tokens
-  FROM usage_logs ul
-  JOIN groups g ON g.id = ul.group_id
-  WHERE ul.created_at >= $1 AND ul.created_at < $2
-),
-usage_agg AS (
-  SELECT
-    bucket_start,
-    CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
-    CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
-    COUNT(*) AS success_count,
-    COALESCE(SUM(tokens), 0) AS token_consumed,
-
-    percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p50_ms,
-    percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p90_ms,
-    percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p95_ms,
-    percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p99_ms,
-    AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_avg_ms,
-    MAX(duration_ms) AS duration_max_ms,
-
-    percentile_cont(0.50) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p50_ms,
-    percentile_cont(0.90) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p90_ms,
-    percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p95_ms,
-    percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p99_ms,
-    AVG(first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_avg_ms,
-    MAX(first_token_ms) AS ttft_max_ms
-  FROM usage_base
-  GROUP BY GROUPING SETS (
-    (bucket_start),
-    (bucket_start, platform),
-    (bucket_start, platform, group_id)
-  )
-),
-error_base AS (
-  SELECT
-    date_trunc('hour', created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket_start,
-    -- platform is NULL for some early-phase errors (e.g. before routing); map to a sentinel
-    -- value so platform-level GROUPING SETS don't collide with the overall (platform=NULL) row.
-    COALESCE(platform, 'unknown') AS platform,
-    group_id AS group_id,
-    is_business_limited AS is_business_limited,
-    error_owner AS error_owner,
-    status_code AS client_status_code,
-    COALESCE(upstream_status_code, status_code, 0) AS effective_status_code
-  FROM ops_error_logs
-  -- Exclude count_tokens requests from error metrics as they are informational probes
-  WHERE created_at >= $1 AND created_at < $2
-    AND is_count_tokens = FALSE
-),
-error_agg AS (
-  SELECT
-    bucket_start,
-    CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
-    CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400) AS error_count_total,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND is_business_limited) AS business_limited_count,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND NOT is_business_limited) AS error_count_sla,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) NOT IN (429, 529)) AS upstream_error_count_excl_429_529,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 429) AS upstream_429_count,
-    COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 529) AS upstream_529_count
-  FROM error_base
-  GROUP BY GROUPING SETS (
-    (bucket_start),
-    (bucket_start, platform),
-    (bucket_start, platform, group_id)
-  )
-  HAVING GROUPING(group_id) = 1 OR group_id IS NOT NULL
-),
-combined AS (
-  SELECT
-    COALESCE(u.bucket_start, e.bucket_start) AS bucket_start,
-    COALESCE(u.platform, e.platform) AS platform,
-    COALESCE(u.group_id, e.group_id) AS group_id,
-
-    COALESCE(u.success_count, 0) AS success_count,
-    COALESCE(e.error_count_total, 0) AS error_count_total,
-    COALESCE(e.business_limited_count, 0) AS business_limited_count,
-    COALESCE(e.error_count_sla, 0) AS error_count_sla,
-    COALESCE(e.upstream_error_count_excl_429_529, 0) AS upstream_error_count_excl_429_529,
-    COALESCE(e.upstream_429_count, 0) AS upstream_429_count,
-    COALESCE(e.upstream_529_count, 0) AS upstream_529_count,
-
-    COALESCE(u.token_consumed, 0) AS token_consumed,
-
-    u.duration_p50_ms,
-    u.duration_p90_ms,
-    u.duration_p95_ms,
-    u.duration_p99_ms,
-    u.duration_avg_ms,
-    u.duration_max_ms,
-
-    u.ttft_p50_ms,
-    u.ttft_p90_ms,
-    u.ttft_p95_ms,
-    u.ttft_p99_ms,
-    u.ttft_avg_ms,
-    u.ttft_max_ms
-  FROM usage_agg u
-  FULL OUTER JOIN error_agg e
-    ON u.bucket_start = e.bucket_start
-   AND COALESCE(u.platform, '') = COALESCE(e.platform, '')
-   AND COALESCE(u.group_id, 0) = COALESCE(e.group_id, 0)
-)
+	q := fmt.Sprintf(`
 INSERT INTO ops_metrics_hourly (
   bucket_start,
   platform,
@@ -165,61 +46,185 @@ INSERT INTO ops_metrics_hourly (
   computed_at
 )
 SELECT
-  bucket_start,
-  NULLIF(platform, '') AS platform,
-  group_id,
-  success_count,
-  error_count_total,
-  business_limited_count,
-  error_count_sla,
-  upstream_error_count_excl_429_529,
-  upstream_429_count,
-  upstream_529_count,
-  token_consumed,
-  duration_p50_ms::int,
-  duration_p90_ms::int,
-  duration_p95_ms::int,
-  duration_p99_ms::int,
-  duration_avg_ms,
-  duration_max_ms::int,
-  ttft_p50_ms::int,
-  ttft_p90_ms::int,
-  ttft_p95_ms::int,
-  ttft_p99_ms::int,
-  ttft_avg_ms,
-  ttft_max_ms::int,
-  NOW()
-FROM combined
-WHERE bucket_start IS NOT NULL
-  AND (platform IS NULL OR platform <> '')
-ON CONFLICT (bucket_start, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPDATE SET
-  success_count = EXCLUDED.success_count,
-  error_count_total = EXCLUDED.error_count_total,
-  business_limited_count = EXCLUDED.business_limited_count,
-  error_count_sla = EXCLUDED.error_count_sla,
-  upstream_error_count_excl_429_529 = EXCLUDED.upstream_error_count_excl_429_529,
-  upstream_429_count = EXCLUDED.upstream_429_count,
-  upstream_529_count = EXCLUDED.upstream_529_count,
-  token_consumed = EXCLUDED.token_consumed,
+  x.bucket_start,
+  x.platform,
+  x.group_id,
+  SUM(x.success_count) AS success_count,
+  SUM(x.error_count_total) AS error_count_total,
+  SUM(x.business_limited_count) AS business_limited_count,
+  SUM(x.error_count_sla) AS error_count_sla,
+  SUM(x.upstream_error_count_excl_429_529) AS upstream_error_count_excl_429_529,
+  SUM(x.upstream_429_count) AS upstream_429_count,
+  SUM(x.upstream_529_count) AS upstream_529_count,
+  SUM(x.token_consumed) AS token_consumed,
+  NULL AS duration_p50_ms,
+  NULL AS duration_p90_ms,
+  NULL AS duration_p95_ms,
+  NULL AS duration_p99_ms,
+  CAST(AVG(NULLIF(x.duration_avg_ms, 0)) AS DECIMAL(10,2)) AS duration_avg_ms,
+  MAX(NULLIF(x.duration_max_ms, 0)) AS duration_max_ms,
+  NULL AS ttft_p50_ms,
+  NULL AS ttft_p90_ms,
+  NULL AS ttft_p95_ms,
+  NULL AS ttft_p99_ms,
+  CAST(AVG(NULLIF(x.ttft_avg_ms, 0)) AS DECIMAL(10,2)) AS ttft_avg_ms,
+  MAX(NULLIF(x.ttft_max_ms, 0)) AS ttft_max_ms,
+  NOW() AS computed_at
+FROM (
+  -- usage: overall
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 3600)) AS bucket_start,
+    NULL AS platform,
+    NULL AS group_id,
+    COUNT(*) AS success_count,
+    0 AS error_count_total,
+    0 AS business_limited_count,
+    0 AS error_count_sla,
+    0 AS upstream_error_count_excl_429_529,
+    0 AS upstream_429_count,
+    0 AS upstream_529_count,
+    COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
+    COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
+    COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
+    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+  FROM usage_logs ul
+  WHERE ul.created_at >= ? AND ul.created_at < ?
+  GROUP BY 1
 
-  duration_p50_ms = EXCLUDED.duration_p50_ms,
-  duration_p90_ms = EXCLUDED.duration_p90_ms,
-  duration_p95_ms = EXCLUDED.duration_p95_ms,
-  duration_p99_ms = EXCLUDED.duration_p99_ms,
-  duration_avg_ms = EXCLUDED.duration_avg_ms,
-  duration_max_ms = EXCLUDED.duration_max_ms,
+  UNION ALL
 
-  ttft_p50_ms = EXCLUDED.ttft_p50_ms,
-  ttft_p90_ms = EXCLUDED.ttft_p90_ms,
-  ttft_p95_ms = EXCLUDED.ttft_p95_ms,
-  ttft_p99_ms = EXCLUDED.ttft_p99_ms,
-  ttft_avg_ms = EXCLUDED.ttft_avg_ms,
-  ttft_max_ms = EXCLUDED.ttft_max_ms,
+  -- usage: platform
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 3600)) AS bucket_start,
+    g.platform AS platform,
+    NULL AS group_id,
+    COUNT(*) AS success_count,
+    0,0,0,0,0,0,
+    COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
+    COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
+    COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
+    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+  FROM usage_logs ul
+  JOIN %s g ON g.id = ul.group_id
+  WHERE ul.created_at >= ? AND ul.created_at < ?
+  GROUP BY 1,2
 
-  computed_at = NOW()
-`
+  UNION ALL
 
-	_, err := r.db.ExecContext(ctx, q, start, end)
+  -- usage: group
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 3600)) AS bucket_start,
+    g.platform AS platform,
+    ul.group_id AS group_id,
+    COUNT(*) AS success_count,
+    0,0,0,0,0,0,
+    COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
+    COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
+    COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
+    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+  FROM usage_logs ul
+  JOIN %s g ON g.id = ul.group_id
+  WHERE ul.created_at >= ? AND ul.created_at < ?
+  GROUP BY 1,2,3
+
+  UNION ALL
+
+  -- errors: overall
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(o.created_at) - MOD(UNIX_TIMESTAMP(o.created_at), 3600)) AS bucket_start,
+    NULL AS platform,
+    NULL AS group_id,
+    0 AS success_count,
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 THEN 1 ELSE 0 END) AS error_count_total,
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND o.is_business_limited THEN 1 ELSE 0 END) AS business_limited_count,
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND NOT o.is_business_limited THEN 1 ELSE 0 END) AS error_count_sla,
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) NOT IN (429,529) THEN 1 ELSE 0 END) AS upstream_error_count_excl_429_529,
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 429 THEN 1 ELSE 0 END) AS upstream_429_count,
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 529 THEN 1 ELSE 0 END) AS upstream_529_count,
+    0 AS token_consumed,
+    0 AS duration_avg_ms,
+    0 AS duration_max_ms,
+    0 AS ttft_avg_ms,
+    0 AS ttft_max_ms
+  FROM ops_error_logs o
+  WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE
+  GROUP BY 1
+
+  UNION ALL
+
+  -- errors: platform
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(o.created_at) - MOD(UNIX_TIMESTAMP(o.created_at), 3600)) AS bucket_start,
+    COALESCE(o.platform, 'unknown') AS platform,
+    NULL AS group_id,
+    0 AS success_count,
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND o.is_business_limited THEN 1 ELSE 0 END),
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND NOT o.is_business_limited THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) NOT IN (429,529) THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 429 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 529 THEN 1 ELSE 0 END),
+    0,0,0,0,0
+  FROM ops_error_logs o
+  WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE
+  GROUP BY 1,2
+
+  UNION ALL
+
+  -- errors: group
+  SELECT
+    FROM_UNIXTIME(UNIX_TIMESTAMP(o.created_at) - MOD(UNIX_TIMESTAMP(o.created_at), 3600)) AS bucket_start,
+    COALESCE(o.platform, 'unknown') AS platform,
+    o.group_id AS group_id,
+    0 AS success_count,
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND o.is_business_limited THEN 1 ELSE 0 END),
+    SUM(CASE WHEN COALESCE(o.status_code, 0) >= 400 AND NOT o.is_business_limited THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) NOT IN (429,529) THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 429 THEN 1 ELSE 0 END),
+    SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 529 THEN 1 ELSE 0 END),
+    0,0,0,0,0
+  FROM ops_error_logs o
+  WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE AND o.group_id IS NOT NULL
+  GROUP BY 1,2,3
+) x
+WHERE x.bucket_start IS NOT NULL
+GROUP BY x.bucket_start, x.platform, x.group_id
+ON DUPLICATE KEY UPDATE
+  success_count = VALUES(success_count),
+  error_count_total = VALUES(error_count_total),
+  business_limited_count = VALUES(business_limited_count),
+  error_count_sla = VALUES(error_count_sla),
+  upstream_error_count_excl_429_529 = VALUES(upstream_error_count_excl_429_529),
+  upstream_429_count = VALUES(upstream_429_count),
+  upstream_529_count = VALUES(upstream_529_count),
+  token_consumed = VALUES(token_consumed),
+  duration_p50_ms = VALUES(duration_p50_ms),
+  duration_p90_ms = VALUES(duration_p90_ms),
+  duration_p95_ms = VALUES(duration_p95_ms),
+  duration_p99_ms = VALUES(duration_p99_ms),
+  duration_avg_ms = VALUES(duration_avg_ms),
+  duration_max_ms = VALUES(duration_max_ms),
+  ttft_p50_ms = VALUES(ttft_p50_ms),
+  ttft_p90_ms = VALUES(ttft_p90_ms),
+  ttft_p95_ms = VALUES(ttft_p95_ms),
+  ttft_p99_ms = VALUES(ttft_p99_ms),
+  ttft_avg_ms = VALUES(ttft_avg_ms),
+  ttft_max_ms = VALUES(ttft_max_ms),
+  computed_at = VALUES(computed_at)
+`, quotedGroupsTable, quotedGroupsTable)
+
+	_, err := r.db.ExecContext(ctx, q,
+		start, end,
+		start, end,
+		start, end,
+		start, end,
+		start, end,
+		start, end,
+	)
 	return err
 }
 
@@ -262,69 +267,55 @@ INSERT INTO ops_metrics_daily (
   computed_at
 )
 SELECT
-  (bucket_start AT TIME ZONE 'UTC')::date AS bucket_date,
+  DATE(bucket_start) AS bucket_date,
   platform,
   group_id,
-
-  COALESCE(SUM(success_count), 0) AS success_count,
-  COALESCE(SUM(error_count_total), 0) AS error_count_total,
-  COALESCE(SUM(business_limited_count), 0) AS business_limited_count,
-  COALESCE(SUM(error_count_sla), 0) AS error_count_sla,
-  COALESCE(SUM(upstream_error_count_excl_429_529), 0) AS upstream_error_count_excl_429_529,
-  COALESCE(SUM(upstream_429_count), 0) AS upstream_429_count,
-  COALESCE(SUM(upstream_529_count), 0) AS upstream_529_count,
-  COALESCE(SUM(token_consumed), 0) AS token_consumed,
-
-  -- Approximation: weighted average for p50/p90, max for p95/p99 (conservative tail).
-  ROUND(SUM(duration_p50_ms::double precision * success_count) FILTER (WHERE duration_p50_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE duration_p50_ms IS NOT NULL), 0))::int AS duration_p50_ms,
-  ROUND(SUM(duration_p90_ms::double precision * success_count) FILTER (WHERE duration_p90_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE duration_p90_ms IS NOT NULL), 0))::int AS duration_p90_ms,
-  MAX(duration_p95_ms) AS duration_p95_ms,
-  MAX(duration_p99_ms) AS duration_p99_ms,
-  SUM(duration_avg_ms * success_count) FILTER (WHERE duration_avg_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE duration_avg_ms IS NOT NULL), 0) AS duration_avg_ms,
-  MAX(duration_max_ms) AS duration_max_ms,
-
-  ROUND(SUM(ttft_p50_ms::double precision * success_count) FILTER (WHERE ttft_p50_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE ttft_p50_ms IS NOT NULL), 0))::int AS ttft_p50_ms,
-  ROUND(SUM(ttft_p90_ms::double precision * success_count) FILTER (WHERE ttft_p90_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE ttft_p90_ms IS NOT NULL), 0))::int AS ttft_p90_ms,
-  MAX(ttft_p95_ms) AS ttft_p95_ms,
-  MAX(ttft_p99_ms) AS ttft_p99_ms,
-  SUM(ttft_avg_ms * success_count) FILTER (WHERE ttft_avg_ms IS NOT NULL)
-    / NULLIF(SUM(success_count) FILTER (WHERE ttft_avg_ms IS NOT NULL), 0) AS ttft_avg_ms,
-  MAX(ttft_max_ms) AS ttft_max_ms,
-
+  COALESCE(SUM(success_count), 0),
+  COALESCE(SUM(error_count_total), 0),
+  COALESCE(SUM(business_limited_count), 0),
+  COALESCE(SUM(error_count_sla), 0),
+  COALESCE(SUM(upstream_error_count_excl_429_529), 0),
+  COALESCE(SUM(upstream_429_count), 0),
+  COALESCE(SUM(upstream_529_count), 0),
+  COALESCE(SUM(token_consumed), 0),
+  NULL,
+  NULL,
+  MAX(duration_p95_ms),
+  MAX(duration_p99_ms),
+  CAST(AVG(NULLIF(duration_avg_ms, 0)) AS DECIMAL(10,2)),
+  MAX(duration_max_ms),
+  NULL,
+  NULL,
+  MAX(ttft_p95_ms),
+  MAX(ttft_p99_ms),
+  CAST(AVG(NULLIF(ttft_avg_ms, 0)) AS DECIMAL(10,2)),
+  MAX(ttft_max_ms),
   NOW()
 FROM ops_metrics_hourly
-WHERE bucket_start >= $1 AND bucket_start < $2
-GROUP BY 1, 2, 3
-ON CONFLICT (bucket_date, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPDATE SET
-  success_count = EXCLUDED.success_count,
-  error_count_total = EXCLUDED.error_count_total,
-  business_limited_count = EXCLUDED.business_limited_count,
-  error_count_sla = EXCLUDED.error_count_sla,
-  upstream_error_count_excl_429_529 = EXCLUDED.upstream_error_count_excl_429_529,
-  upstream_429_count = EXCLUDED.upstream_429_count,
-  upstream_529_count = EXCLUDED.upstream_529_count,
-  token_consumed = EXCLUDED.token_consumed,
-
-  duration_p50_ms = EXCLUDED.duration_p50_ms,
-  duration_p90_ms = EXCLUDED.duration_p90_ms,
-  duration_p95_ms = EXCLUDED.duration_p95_ms,
-  duration_p99_ms = EXCLUDED.duration_p99_ms,
-  duration_avg_ms = EXCLUDED.duration_avg_ms,
-  duration_max_ms = EXCLUDED.duration_max_ms,
-
-  ttft_p50_ms = EXCLUDED.ttft_p50_ms,
-  ttft_p90_ms = EXCLUDED.ttft_p90_ms,
-  ttft_p95_ms = EXCLUDED.ttft_p95_ms,
-  ttft_p99_ms = EXCLUDED.ttft_p99_ms,
-  ttft_avg_ms = EXCLUDED.ttft_avg_ms,
-  ttft_max_ms = EXCLUDED.ttft_max_ms,
-
-  computed_at = NOW()
+WHERE bucket_start >= ? AND bucket_start < ?
+GROUP BY DATE(bucket_start), platform, group_id
+ON DUPLICATE KEY UPDATE
+  success_count = VALUES(success_count),
+  error_count_total = VALUES(error_count_total),
+  business_limited_count = VALUES(business_limited_count),
+  error_count_sla = VALUES(error_count_sla),
+  upstream_error_count_excl_429_529 = VALUES(upstream_error_count_excl_429_529),
+  upstream_429_count = VALUES(upstream_429_count),
+  upstream_529_count = VALUES(upstream_529_count),
+  token_consumed = VALUES(token_consumed),
+  duration_p50_ms = VALUES(duration_p50_ms),
+  duration_p90_ms = VALUES(duration_p90_ms),
+  duration_p95_ms = VALUES(duration_p95_ms),
+  duration_p99_ms = VALUES(duration_p99_ms),
+  duration_avg_ms = VALUES(duration_avg_ms),
+  duration_max_ms = VALUES(duration_max_ms),
+  ttft_p50_ms = VALUES(ttft_p50_ms),
+  ttft_p90_ms = VALUES(ttft_p90_ms),
+  ttft_p95_ms = VALUES(ttft_p95_ms),
+  ttft_p99_ms = VALUES(ttft_p99_ms),
+  ttft_avg_ms = VALUES(ttft_avg_ms),
+  ttft_max_ms = VALUES(ttft_max_ms),
+  computed_at = VALUES(computed_at)
 `
 
 	_, err := r.db.ExecContext(ctx, q, start, end)

@@ -212,6 +212,8 @@ export const useAuthStore = defineStore('auth', () => {
       // Update state
       token.value = response.access_token
       refreshTokenValue.value = response.refresh_token
+      localStorage.setItem(AUTH_TOKEN_KEY, response.access_token)
+      localStorage.setItem(REFRESH_TOKEN_KEY, response.refresh_token)
 
       // Schedule next refresh (this also updates tokenExpiresAt and localStorage)
       scheduleTokenRefresh(response.expires_in)

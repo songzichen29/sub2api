@@ -40,15 +40,15 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("user_notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 金额信息
 		field.Float("amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
 		field.Float("pay_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
 		field.Float("fee_rate").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}).
 			Default(0),
 		field.String("recharge_code").
 			MaxLen(64),
@@ -64,15 +64,15 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("pay_url").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("qr_code").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("qr_code_img").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 订单类型 & 订阅关联
 		field.String("order_type").
@@ -97,7 +97,7 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(30),
 		field.JSON("provider_snapshot", map[string]any{}).
 			Optional().
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
 
 		// 状态
 		field.String("status").
@@ -106,26 +106,26 @@ func (PaymentOrder) Fields() []ent.Field {
 
 		// 退款信息
 		field.Float("refund_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
 			Default(0),
 		field.String("refund_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.Time("refund_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Bool("force_refund").
 			Default(false),
 		field.Time("refund_requested_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("refund_request_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("refund_requested_by").
 			Optional().
 			Nillable().
@@ -133,23 +133,23 @@ func (PaymentOrder) Fields() []ent.Field {
 
 		// 时间节点
 		field.Time("expires_at").
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("paid_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("completed_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("failed_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("failed_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 来源信息
 		field.String("client_ip").
@@ -159,17 +159,17 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("src_url").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 时间戳
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 	}
 }
 

@@ -35,13 +35,13 @@ func TestBuildOpsSystemLogsWhere_WithClientRequestIDAndUserID(t *testing.T) {
 	if where == "" {
 		t.Fatalf("where should not be empty")
 	}
-	if len(args) != 11 {
-		t.Fatalf("args len = %d, want 11", len(args))
+	if len(args) != 14 {
+		t.Fatalf("args len = %d, want 14", len(args))
 	}
-	if !contains(where, "COALESCE(l.client_request_id,'') = $") {
+	if !contains(where, "COALESCE(l.client_request_id,'') = ?") {
 		t.Fatalf("where should include client_request_id condition: %s", where)
 	}
-	if !contains(where, "l.user_id = $") {
+	if !contains(where, "l.user_id = ?") {
 		t.Fatalf("where should include user_id condition: %s", where)
 	}
 }
@@ -73,10 +73,10 @@ func TestBuildOpsSystemLogsCleanupWhere_WithClientRequestIDAndUserID(t *testing.
 	if len(args) != 2 {
 		t.Fatalf("args len = %d, want 2", len(args))
 	}
-	if !contains(where, "COALESCE(l.client_request_id,'') = $") {
+	if !contains(where, "COALESCE(l.client_request_id,'') = ?") {
 		t.Fatalf("where should include client_request_id condition: %s", where)
 	}
-	if !contains(where, "l.user_id = $") {
+	if !contains(where, "l.user_id = ?") {
 		t.Fatalf("where should include user_id condition: %s", where)
 	}
 }

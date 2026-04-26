@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -187,12 +186,12 @@ func TestIsUniqueViolation(t *testing.T) {
 	}{
 		{
 			name: "unique violation code 23505",
-			err:  &pq.Error{Code: "23505"},
+			err:  errors.New("23505 duplicate key value violates unique constraint"),
 			want: true,
 		},
 		{
-			name: "different pq error code",
-			err:  &pq.Error{Code: "23503"},
+			name: "different error code",
+			err:  errors.New("23503 foreign key violation"),
 			want: false,
 		},
 		{
@@ -201,10 +200,10 @@ func TestIsUniqueViolation(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "typed nil pq.Error",
+			name: "typed nil generic error",
 			err: func() error {
-				var pqErr *pq.Error
-				return pqErr
+				var typedErr error
+				return typedErr
 			}(),
 			want: false,
 		},
@@ -214,8 +213,8 @@ func TestIsUniqueViolation(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "wrapped pq error with 23505",
-			err:  fmt.Errorf("wrapped: %w", &pq.Error{Code: "23505"}),
+			name: "wrapped duplicate error with 23505",
+			err:  fmt.Errorf("wrapped: %w", errors.New("23505 duplicate key value violates unique constraint")),
 			want: true,
 		},
 	}

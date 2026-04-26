@@ -79,17 +79,17 @@ INSERT INTO ops_system_metrics (
   goroutine_count,
   concurrency_queue_depth
 ) VALUES (
-  $1,$2,$3,$4,
-  $5,$6,$7,$8,
-  $9,$10,$11,
-  $12,$13,$14,$15,
-  $16,$17,$18,$19,$20,$21,
-  $22,$23,$24,$25,$26,$27,
-  $28,$29,$30,$31,
-  $32,$33,
-  $34,$35,
-  $36,$37,$38,
-  $39,$40
+  ?,?,?,?,
+  ?,?,?,?,
+  ?,?,?,
+  ?,?,?,?,
+  ?,?,?,?,?,?,
+  ?,?,?,?,?,?,
+  ?,?,?,?,
+  ?,?,
+  ?,?,
+  ?,?,?,
+  ?,?
 )`
 
 	_, err := r.db.ExecContext(
@@ -182,7 +182,7 @@ SELECT
   concurrency_queue_depth,
   account_switch_count
 FROM ops_system_metrics
-WHERE window_minutes = $1
+WHERE window_minutes = ?
   AND platform IS NULL
   AND group_id IS NULL
 ORDER BY created_at DESC
@@ -308,22 +308,22 @@ INSERT INTO ops_job_heartbeats (
   last_result,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,NOW()
+  ?,?,?,?,?,?,?,NOW()
 )
-ON CONFLICT (job_name) DO UPDATE SET
-  last_run_at = COALESCE(EXCLUDED.last_run_at, ops_job_heartbeats.last_run_at),
-  last_success_at = COALESCE(EXCLUDED.last_success_at, ops_job_heartbeats.last_success_at),
+ON DUPLICATE KEY UPDATE
+  last_run_at = COALESCE(VALUES(last_run_at), ops_job_heartbeats.last_run_at),
+  last_success_at = COALESCE(VALUES(last_success_at), ops_job_heartbeats.last_success_at),
   last_error_at = CASE
-    WHEN EXCLUDED.last_success_at IS NOT NULL THEN NULL
-    ELSE COALESCE(EXCLUDED.last_error_at, ops_job_heartbeats.last_error_at)
+    WHEN VALUES(last_success_at) IS NOT NULL THEN NULL
+    ELSE COALESCE(VALUES(last_error_at), ops_job_heartbeats.last_error_at)
   END,
   last_error = CASE
-    WHEN EXCLUDED.last_success_at IS NOT NULL THEN NULL
-    ELSE COALESCE(EXCLUDED.last_error, ops_job_heartbeats.last_error)
+    WHEN VALUES(last_success_at) IS NOT NULL THEN NULL
+    ELSE COALESCE(VALUES(last_error), ops_job_heartbeats.last_error)
   END,
-  last_duration_ms = COALESCE(EXCLUDED.last_duration_ms, ops_job_heartbeats.last_duration_ms),
+  last_duration_ms = COALESCE(VALUES(last_duration_ms), ops_job_heartbeats.last_duration_ms),
   last_result = CASE
-    WHEN EXCLUDED.last_success_at IS NOT NULL THEN COALESCE(EXCLUDED.last_result, ops_job_heartbeats.last_result)
+    WHEN VALUES(last_success_at) IS NOT NULL THEN COALESCE(VALUES(last_result), ops_job_heartbeats.last_result)
     ELSE ops_job_heartbeats.last_result
   END,
   updated_at = NOW()`

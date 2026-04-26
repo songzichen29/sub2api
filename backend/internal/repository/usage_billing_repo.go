@@ -3,8 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -63,35 +68,38 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 }
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
-	var id int64
-	err := tx.QueryRowContext(ctx, `
-		INSERT INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint)
-		VALUES ($1, $2, $3)
-		ON CONFLICT (request_id, api_key_id) DO NOTHING
-		RETURNING id
-	`, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		var existingFingerprint string
-		if err := tx.QueryRowContext(ctx, `
-			SELECT request_fingerprint
-			FROM usage_billing_dedup
-			WHERE request_id = $1 AND api_key_id = $2
-		`, cmd.RequestID, cmd.APIKeyID).Scan(&existingFingerprint); err != nil {
-			return false, err
-		}
-		if strings.TrimSpace(existingFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
-			return false, service.ErrUsageBillingRequestConflict
-		}
-		return false, nil
-	}
+	res, err := tx.ExecContext(ctx, `
+		INSERT IGNORE INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint)
+		VALUES (?, ?, ?)
+	`, cmd.RequestID, cmd.APIKeyID, cmd.RequestFingerprint)
 	if err != nil {
 		return false, err
 	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		return true, nil
+	}
+
+	var existingFingerprint string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT request_fingerprint
+		FROM usage_billing_dedup
+		WHERE request_id = ? AND api_key_id = ?
+	`, cmd.RequestID, cmd.APIKeyID).Scan(&existingFingerprint); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(existingFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
+		return false, service.ErrUsageBillingRequestConflict
+	}
+
 	var archivedFingerprint string
 	err = tx.QueryRowContext(ctx, `
 		SELECT request_fingerprint
 		FROM usage_billing_dedup_archive
-		WHERE request_id = $1 AND api_key_id = $2
+		WHERE request_id = ? AND api_key_id = ?
 	`, cmd.RequestID, cmd.APIKeyID).Scan(&archivedFingerprint)
 	if err == nil {
 		if strings.TrimSpace(archivedFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
@@ -102,7 +110,7 @@ func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *s
 	if !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	return true, nil
+	return false, nil
 }
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
@@ -146,20 +154,17 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
-	const updateSQL = `
+	res, err := tx.ExecContext(ctx, `
 		UPDATE user_subscriptions us
+		JOIN `+quotedGroupsTable+` g ON us.group_id = g.id AND g.deleted_at IS NULL
 		SET
-			daily_usage_usd = us.daily_usage_usd + $1,
-			weekly_usage_usd = us.weekly_usage_usd + $1,
-			monthly_usage_usd = us.monthly_usage_usd + $1,
-			updated_at = NOW()
-		FROM groups g
-		WHERE us.id = $2
+			us.daily_usage_usd = us.daily_usage_usd + ?,
+			us.weekly_usage_usd = us.weekly_usage_usd + ?,
+			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.updated_at = NOW()
+		WHERE us.id = ?
 			AND us.deleted_at IS NULL
-			AND us.group_id = g.id
-			AND g.deleted_at IS NULL
-	`
-	res, err := tx.ExecContext(ctx, updateSQL, costUSD, subscriptionID)
+	`, costUSD, costUSD, costUSD, subscriptionID)
 	if err != nil {
 		return err
 	}
@@ -167,68 +172,85 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	if err != nil {
 		return err
 	}
-	if affected > 0 {
-		return nil
+	if affected == 0 {
+		return service.ErrSubscriptionNotFound
 	}
-	return service.ErrSubscriptionNotFound
+	return nil
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
-	var newBalance float64
-	err := tx.QueryRowContext(ctx, `
+	res, err := tx.ExecContext(ctx, `
 		UPDATE users
-		SET balance = balance - $1,
-			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING balance
-	`, amount, userID).Scan(&newBalance)
-	if errors.Is(err, sql.ErrNoRows) {
+		SET balance = balance - ?, updated_at = NOW()
+		WHERE id = ? AND deleted_at IS NULL
+	`, amount, userID)
+	if err != nil {
+		return 0, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if affected == 0 {
 		return 0, service.ErrUserNotFound
 	}
-	if err != nil {
+	var newBalance float64
+	if err := tx.QueryRowContext(ctx, `SELECT balance FROM users WHERE id = ?`, userID).Scan(&newBalance); err != nil {
 		return 0, err
 	}
 	return newBalance, nil
 }
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {
-	var exhausted bool
-	err := tx.QueryRowContext(ctx, `
+	var quota float64
+	var quotaUsed float64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT quota, quota_used
+		FROM api_keys
+		WHERE id = ? AND deleted_at IS NULL
+		FOR UPDATE
+	`, apiKeyID).Scan(&quota, &quotaUsed); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, service.ErrAPIKeyNotFound
+		}
+		return false, err
+	}
+
+	res, err := tx.ExecContext(ctx, `
 		UPDATE api_keys
-		SET quota_used = quota_used + $1,
+		SET quota_used = quota_used + ?,
 			status = CASE
-				WHEN quota > 0
-					AND status = $3
-					AND quota_used < quota
-					AND quota_used + $1 >= quota
-				THEN $4
+				WHEN quota > 0 AND status = ? AND quota_used < quota AND quota_used + ? >= quota THEN ?
 				ELSE status
 			END,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING quota > 0 AND quota_used >= quota AND quota_used - $1 < quota
-	`, amount, apiKeyID, service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).Scan(&exhausted)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, service.ErrAPIKeyNotFound
-	}
+		WHERE id = ? AND deleted_at IS NULL
+	`, amount, service.StatusAPIKeyActive, amount, service.StatusAPIKeyQuotaExhausted, apiKeyID)
 	if err != nil {
 		return false, err
 	}
-	return exhausted, nil
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, service.ErrAPIKeyNotFound
+	}
+	return quota > 0 && quotaUsed < quota && quotaUsed+amount >= quota, nil
 }
 
 func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKeyID int64, cost float64) error {
 	res, err := tx.ExecContext(ctx, `
 		UPDATE api_keys SET
-			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND window_5h_start + INTERVAL '5 hours' <= NOW() THEN $1 ELSE usage_5h + $1 END,
-			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND window_1d_start + INTERVAL '24 hours' <= NOW() THEN $1 ELSE usage_1d + $1 END,
-			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND window_7d_start + INTERVAL '7 days' <= NOW() THEN $1 ELSE usage_7d + $1 END,
-			window_5h_start = CASE WHEN window_5h_start IS NULL OR window_5h_start + INTERVAL '5 hours' <= NOW() THEN NOW() ELSE window_5h_start END,
-			window_1d_start = CASE WHEN window_1d_start IS NULL OR window_1d_start + INTERVAL '24 hours' <= NOW() THEN date_trunc('day', NOW()) ELSE window_1d_start END,
-			window_7d_start = CASE WHEN window_7d_start IS NULL OR window_7d_start + INTERVAL '7 days' <= NOW() THEN date_trunc('day', NOW()) ELSE window_7d_start END,
+			usage_5h = CASE WHEN window_5h_start IS NOT NULL AND DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN ? ELSE usage_5h + ? END,
+			usage_1d = CASE WHEN window_1d_start IS NOT NULL AND DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN ? ELSE usage_1d + ? END,
+			usage_7d = CASE WHEN window_7d_start IS NOT NULL AND DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN ? ELSE usage_7d + ? END,
+			window_5h_start = CASE WHEN window_5h_start IS NULL OR DATE_ADD(window_5h_start, INTERVAL 5 HOUR) <= NOW() THEN NOW() ELSE window_5h_start END,
+			window_1d_start = CASE WHEN window_1d_start IS NULL OR DATE_ADD(window_1d_start, INTERVAL 24 HOUR) <= NOW() THEN DATE(NOW()) ELSE window_1d_start END,
+			window_7d_start = CASE WHEN window_7d_start IS NULL OR DATE_ADD(window_7d_start, INTERVAL 7 DAY) <= NOW() THEN DATE(NOW()) ELSE window_7d_start END,
 			updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-	`, cost, apiKeyID)
+		WHERE id = ? AND deleted_at IS NULL
+	`, cost, cost, cost, cost, cost, cost, apiKeyID)
 	if err != nil {
 		return err
 	}
@@ -243,87 +265,82 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKe
 }
 
 func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) (*service.AccountQuotaState, error) {
-	rows, err := tx.QueryContext(ctx,
-		`UPDATE accounts SET extra = (
-			COALESCE(extra, '{}'::jsonb)
-			|| jsonb_build_object('quota_used', COALESCE((extra->>'quota_used')::numeric, 0) + $1)
-			|| CASE WHEN COALESCE((extra->>'quota_daily_limit')::numeric, 0) > 0 THEN
-				jsonb_build_object(
-					'quota_daily_used',
-					CASE WHEN `+dailyExpiredExpr+`
-					THEN $1
-					ELSE COALESCE((extra->>'quota_daily_used')::numeric, 0) + $1 END,
-					'quota_daily_start',
-					CASE WHEN `+dailyExpiredExpr+`
-					THEN `+nowUTC+`
-					ELSE COALESCE(extra->>'quota_daily_start', `+nowUTC+`) END
-				)
-				|| CASE WHEN `+dailyExpiredExpr+` AND `+nextDailyResetAtExpr+` IS NOT NULL
-				   THEN jsonb_build_object('quota_daily_reset_at', `+nextDailyResetAtExpr+`)
-				   ELSE '{}'::jsonb END
-			ELSE '{}'::jsonb END
-			|| CASE WHEN COALESCE((extra->>'quota_weekly_limit')::numeric, 0) > 0 THEN
-				jsonb_build_object(
-					'quota_weekly_used',
-					CASE WHEN `+weeklyExpiredExpr+`
-					THEN $1
-					ELSE COALESCE((extra->>'quota_weekly_used')::numeric, 0) + $1 END,
-					'quota_weekly_start',
-					CASE WHEN `+weeklyExpiredExpr+`
-					THEN `+nowUTC+`
-					ELSE COALESCE(extra->>'quota_weekly_start', `+nowUTC+`) END
-				)
-				|| CASE WHEN `+weeklyExpiredExpr+` AND `+nextWeeklyResetAtExpr+` IS NOT NULL
-				   THEN jsonb_build_object('quota_weekly_reset_at', `+nextWeeklyResetAtExpr+`)
-				   ELSE '{}'::jsonb END
-			ELSE '{}'::jsonb END
-		), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING
-			COALESCE((extra->>'quota_used')::numeric, 0),
-			COALESCE((extra->>'quota_limit')::numeric, 0),
-			COALESCE((extra->>'quota_daily_used')::numeric, 0),
-			COALESCE((extra->>'quota_daily_limit')::numeric, 0),
-			COALESCE((extra->>'quota_weekly_used')::numeric, 0),
-			COALESCE((extra->>'quota_weekly_limit')::numeric, 0)`,
-		amount, accountID)
-	if err != nil {
+	var extraRaw sql.NullString
+	if err := tx.QueryRowContext(ctx, `
+		SELECT extra FROM accounts
+		WHERE id = ? AND deleted_at IS NULL
+		FOR UPDATE
+	`, accountID).Scan(&extraRaw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrAccountNotFound
+		}
 		return nil, err
 	}
 
-	var state service.AccountQuotaState
-	if rows.Next() {
-		if err := rows.Scan(
-			&state.TotalUsed, &state.TotalLimit,
-			&state.DailyUsed, &state.DailyLimit,
-			&state.WeeklyUsed, &state.WeeklyLimit,
-		); err != nil {
-			_ = rows.Close()
-			return nil, err
+	extra := map[string]any{}
+	if extraRaw.Valid && strings.TrimSpace(extraRaw.String) != "" {
+		if err := json.Unmarshal([]byte(extraRaw.String), &extra); err != nil {
+			return nil, fmt.Errorf("parse account extra: %w", err)
 		}
-	} else {
-		if err := rows.Err(); err != nil {
-			_ = rows.Close()
-			return nil, err
+	}
+
+	now := time.Now().UTC()
+	state := &service.AccountQuotaState{
+		TotalUsed:   toFloat(extra["quota_used"]),
+		TotalLimit:  toFloat(extra["quota_limit"]),
+		DailyUsed:   toFloat(extra["quota_daily_used"]),
+		DailyLimit:  toFloat(extra["quota_daily_limit"]),
+		WeeklyUsed:  toFloat(extra["quota_weekly_used"]),
+		WeeklyLimit: toFloat(extra["quota_weekly_limit"]),
+	}
+
+	state.TotalUsed += amount
+	if state.DailyLimit > 0 {
+		dailyStart := parseExtraTime(extra["quota_daily_start"])
+		dailyExpired := dailyStart.IsZero() || !dailyStart.Add(24*time.Hour).After(now)
+		if dailyExpired {
+			state.DailyUsed = amount
+			extra["quota_daily_start"] = now.Format(time.RFC3339Nano)
+			extra["quota_daily_reset_at"] = now.Truncate(24 * time.Hour).Add(24 * time.Hour).Format(time.RFC3339Nano)
+		} else {
+			state.DailyUsed += amount
 		}
-		_ = rows.Close()
+	}
+	if state.WeeklyLimit > 0 {
+		weeklyStart := parseExtraTime(extra["quota_weekly_start"])
+		weeklyExpired := weeklyStart.IsZero() || !weeklyStart.Add(7*24*time.Hour).After(now)
+		if weeklyExpired {
+			state.WeeklyUsed = amount
+			extra["quota_weekly_start"] = now.Format(time.RFC3339Nano)
+			extra["quota_weekly_reset_at"] = now.Truncate(24 * time.Hour).Add(7 * 24 * time.Hour).Format(time.RFC3339Nano)
+		} else {
+			state.WeeklyUsed += amount
+		}
+	}
+
+	extra["quota_used"] = round6(state.TotalUsed)
+	extra["quota_limit"] = round6(state.TotalLimit)
+	extra["quota_daily_used"] = round6(state.DailyUsed)
+	extra["quota_daily_limit"] = round6(state.DailyLimit)
+	extra["quota_weekly_used"] = round6(state.WeeklyUsed)
+	extra["quota_weekly_limit"] = round6(state.WeeklyLimit)
+
+	extraJSON, err := json.Marshal(extra)
+	if err != nil {
+		return nil, err
+	}
+	res, err := tx.ExecContext(ctx, `UPDATE accounts SET extra = ?, updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`, string(extraJSON), accountID)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
 		return nil, service.ErrAccountNotFound
 	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	// 必须在执行下一条 SQL 前显式关闭 rows：pq 驱动在同一连接上
-	// 不允许前一条查询的结果集未耗尽时启动新查询，否则会返回
-	// "unexpected Parse response" 错误。
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	// 任意维度额度在本次递增中从"未超"跨越到"已超"时，必须刷新调度快照，
-	// 否则 Redis 中缓存的 Account 仍显示旧的 used 值，后续请求会继续选中本账号，
-	// 最终观察到 daily_used / weekly_used 大幅超过配置的 limit。
-	// 对于日/周额度，即使本次触发了周期重置（pre=0、post=amount），
-	// 判定式 (post-amount) < limit 同样成立，逻辑与总额度保持一致。
+
 	crossedTotal := state.TotalLimit > 0 && state.TotalUsed >= state.TotalLimit && (state.TotalUsed-amount) < state.TotalLimit
 	crossedDaily := state.DailyLimit > 0 && state.DailyUsed >= state.DailyLimit && (state.DailyUsed-amount) < state.DailyLimit
 	crossedWeekly := state.WeeklyLimit > 0 && state.WeeklyUsed >= state.WeeklyLimit && (state.WeeklyUsed-amount) < state.WeeklyLimit
@@ -333,5 +350,37 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 			return nil, err
 		}
 	}
-	return &state, nil
+	return state, nil
+}
+
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		return f
+	default:
+		return 0
+	}
+}
+
+func parseExtraTime(v any) time.Time {
+	s, ok := v.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t.UTC()
+}
+
+func round6(v float64) float64 {
+	return math.Round(v*1e6) / 1e6
 }

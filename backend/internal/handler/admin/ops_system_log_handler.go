@@ -13,6 +13,7 @@ import (
 )
 
 type opsSystemLogCleanupRequest struct {
+	TimeRange string `json:"time_range"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
 
@@ -135,6 +136,19 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 	if err != nil {
 		response.BadRequest(c, "Invalid end_time")
 		return
+	}
+	if start == nil && end == nil {
+		if tr := strings.TrimSpace(req.TimeRange); tr != "" {
+			dur, ok := parseOpsDuration(tr)
+			if !ok {
+				response.BadRequest(c, "Invalid time_range")
+				return
+			}
+			resolvedEnd := time.Now()
+			resolvedStart := resolvedEnd.Add(-dur)
+			start = &resolvedStart
+			end = &resolvedEnd
+		}
 	}
 
 	filter := &service.OpsSystemLogCleanupFilter{

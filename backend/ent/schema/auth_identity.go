@@ -54,21 +54,23 @@ func (AuthIdentity) Fields() []ent.Field {
 			Validate(validateAuthProviderType),
 		field.String("provider_key").
 			NotEmpty().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			MaxLen(255).
+			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
 		field.String("provider_subject").
 			NotEmpty().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			MaxLen(255).
+			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
 		field.Time("verified_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("issuer").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.JSON("metadata", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
 	}
 }
 

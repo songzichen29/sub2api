@@ -1,6 +1,6 @@
 import { apiClient } from '../client'
 
-export type BackupType = 'postgres' | 'redis' | 'full'
+export type BackupType = 'mysql' | 'redis' | 'full'
 export type BackupJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'partial_succeeded'
 
 export interface BackupAgentInfo {
@@ -16,7 +16,7 @@ export interface BackupAgentHealth {
   agent?: BackupAgentInfo
 }
 
-export interface DataManagementPostgresConfig {
+export interface DataManagementMySQLConfig {
   host: string
   port: number
   user: string
@@ -55,15 +55,15 @@ export interface DataManagementConfig {
   sqlite_path?: string
   retention_days: number
   keep_last: number
-  active_postgres_profile_id?: string
+  active_mysql_profile_id?: string
   active_redis_profile_id?: string
   active_s3_profile_id?: string
-  postgres: DataManagementPostgresConfig
+  mysql: DataManagementMySQLConfig
   redis: DataManagementRedisConfig
   s3: DataManagementS3Config
 }
 
-export type SourceType = 'postgres' | 'redis'
+export type SourceType = 'mysql' | 'redis'
 
 export interface DataManagementSourceConfig {
   host: string
@@ -109,7 +109,7 @@ export interface CreateBackupJobRequest {
   backup_type: BackupType
   upload_to_s3?: boolean
   s3_profile_id?: string
-  postgres_profile_id?: string
+  mysql_profile_id?: string
   redis_profile_id?: string
   idempotency_key?: string
 }
@@ -137,7 +137,7 @@ export interface BackupJob {
   status: BackupJobStatus
   triggered_by: string
   s3_profile_id?: string
-  postgres_profile_id?: string
+  mysql_profile_id?: string
   redis_profile_id?: string
   started_at?: string
   finished_at?: string

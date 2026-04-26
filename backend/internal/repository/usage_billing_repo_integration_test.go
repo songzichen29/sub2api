@@ -195,7 +195,7 @@ func TestUsageBillingRepositoryApply_UpdatesAccountQuota(t *testing.T) {
 	require.NoError(t, err)
 
 	var quotaUsed float64
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COALESCE((extra->>'quota_used')::numeric, 0) FROM accounts WHERE id = $1", account.ID).Scan(&quotaUsed))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COALESCE(JSON_EXTRACT(extra, '$.quota_used'), 0) FROM accounts WHERE id = ?", account.ID).Scan(&quotaUsed))
 	require.InDelta(t, 3.5, quotaUsed, 0.000001)
 }
 

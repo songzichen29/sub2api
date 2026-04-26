@@ -11,13 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*service.OpsAlertRule, error) {
-	if r == nil || r.db == nil {
-		return nil, fmt.Errorf("nil ops repository")
-	}
-
-	q := `
-SELECT
+const opsAlertRuleSelectColumns = `
   id,
   name,
   COALESCE(description, ''),
@@ -33,7 +27,42 @@ SELECT
   filters,
   last_triggered_at,
   created_at,
-  updated_at
+  updated_at`
+
+const opsAlertEventSelectColumns = `
+  id,
+  COALESCE(rule_id, 0),
+  COALESCE(severity, ''),
+  COALESCE(status, ''),
+  COALESCE(title, ''),
+  COALESCE(description, ''),
+  metric_value,
+  threshold_value,
+  dimensions,
+  fired_at,
+  resolved_at,
+  email_sent,
+  created_at`
+
+const opsAlertSilenceSelectColumns = `
+  id,
+  rule_id,
+  platform,
+  group_id,
+  region,
+  until,
+  COALESCE(reason, ''),
+  created_by,
+  created_at`
+
+func (r *opsRepository) ListAlertRules(ctx context.Context) ([]*service.OpsAlertRule, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+
+	q := `
+SELECT
+` + opsAlertRuleSelectColumns + `
 FROM ops_alert_rules
 ORDER BY id DESC`
 
@@ -45,40 +74,11 @@ ORDER BY id DESC`
 
 	out := []*service.OpsAlertRule{}
 	for rows.Next() {
-		var rule service.OpsAlertRule
-		var filtersRaw []byte
-		var lastTriggeredAt sql.NullTime
-		if err := rows.Scan(
-			&rule.ID,
-			&rule.Name,
-			&rule.Description,
-			&rule.Enabled,
-			&rule.Severity,
-			&rule.MetricType,
-			&rule.Operator,
-			&rule.Threshold,
-			&rule.WindowMinutes,
-			&rule.SustainedMinutes,
-			&rule.CooldownMinutes,
-			&rule.NotifyEmail,
-			&filtersRaw,
-			&lastTriggeredAt,
-			&rule.CreatedAt,
-			&rule.UpdatedAt,
-		); err != nil {
+		rule, err := scanOpsAlertRule(rows)
+		if err != nil {
 			return nil, err
 		}
-		if lastTriggeredAt.Valid {
-			v := lastTriggeredAt.Time
-			rule.LastTriggeredAt = &v
-		}
-		if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
-			var decoded map[string]any
-			if err := json.Unmarshal(filtersRaw, &decoded); err == nil {
-				rule.Filters = decoded
-			}
-		}
-		out = append(out, &rule)
+		out = append(out, rule)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -116,31 +116,10 @@ INSERT INTO ops_alert_rules (
   created_at,
   updated_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW()
-)
-RETURNING
-  id,
-  name,
-  COALESCE(description, ''),
-  enabled,
-  COALESCE(severity, ''),
-  metric_type,
-  operator,
-  threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  COALESCE(notify_email, true),
-  filters,
-  last_triggered_at,
-  created_at,
-  updated_at`
+  ?,?,?,?,?,?,?,?,?,?,?,?,NOW(),NOW()
+ )`
 
-	var out service.OpsAlertRule
-	var filtersRaw []byte
-	var lastTriggeredAt sql.NullTime
-
-	if err := r.db.QueryRowContext(
+	res, err := r.db.ExecContext(
 		ctx,
 		q,
 		strings.TrimSpace(input.Name),
@@ -155,38 +134,15 @@ RETURNING
 		input.CooldownMinutes,
 		input.NotifyEmail,
 		filtersArg,
-	).Scan(
-		&out.ID,
-		&out.Name,
-		&out.Description,
-		&out.Enabled,
-		&out.Severity,
-		&out.MetricType,
-		&out.Operator,
-		&out.Threshold,
-		&out.WindowMinutes,
-		&out.SustainedMinutes,
-		&out.CooldownMinutes,
-		&out.NotifyEmail,
-		&filtersRaw,
-		&lastTriggeredAt,
-		&out.CreatedAt,
-		&out.UpdatedAt,
-	); err != nil {
+	)
+	if err != nil {
 		return nil, err
 	}
-	if lastTriggeredAt.Valid {
-		v := lastTriggeredAt.Time
-		out.LastTriggeredAt = &v
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
 	}
-	if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
-		var decoded map[string]any
-		if err := json.Unmarshal(filtersRaw, &decoded); err == nil {
-			out.Filters = decoded
-		}
-	}
-
-	return &out, nil
+	return r.getAlertRuleByID(ctx, id)
 }
 
 func (r *opsRepository) UpdateAlertRule(ctx context.Context, input *service.OpsAlertRule) (*service.OpsAlertRule, error) {
@@ -208,46 +164,24 @@ func (r *opsRepository) UpdateAlertRule(ctx context.Context, input *service.OpsA
 	q := `
 UPDATE ops_alert_rules
 SET
-  name = $2,
-  description = $3,
-  enabled = $4,
-  severity = $5,
-  metric_type = $6,
-  operator = $7,
-  threshold = $8,
-  window_minutes = $9,
-  sustained_minutes = $10,
-  cooldown_minutes = $11,
-  notify_email = $12,
-  filters = $13,
+  name = ?,
+  description = ?,
+  enabled = ?,
+  severity = ?,
+  metric_type = ?,
+  operator = ?,
+  threshold = ?,
+  window_minutes = ?,
+  sustained_minutes = ?,
+  cooldown_minutes = ?,
+  notify_email = ?,
+  filters = ?,
   updated_at = NOW()
-WHERE id = $1
-RETURNING
-  id,
-  name,
-  COALESCE(description, ''),
-  enabled,
-  COALESCE(severity, ''),
-  metric_type,
-  operator,
-  threshold,
-  window_minutes,
-  sustained_minutes,
-  cooldown_minutes,
-  COALESCE(notify_email, true),
-  filters,
-  last_triggered_at,
-  created_at,
-  updated_at`
+WHERE id = ?`
 
-	var out service.OpsAlertRule
-	var filtersRaw []byte
-	var lastTriggeredAt sql.NullTime
-
-	if err := r.db.QueryRowContext(
+	res, err := r.db.ExecContext(
 		ctx,
 		q,
-		input.ID,
 		strings.TrimSpace(input.Name),
 		strings.TrimSpace(input.Description),
 		input.Enabled,
@@ -260,39 +194,19 @@ RETURNING
 		input.CooldownMinutes,
 		input.NotifyEmail,
 		filtersArg,
-	).Scan(
-		&out.ID,
-		&out.Name,
-		&out.Description,
-		&out.Enabled,
-		&out.Severity,
-		&out.MetricType,
-		&out.Operator,
-		&out.Threshold,
-		&out.WindowMinutes,
-		&out.SustainedMinutes,
-		&out.CooldownMinutes,
-		&out.NotifyEmail,
-		&filtersRaw,
-		&lastTriggeredAt,
-		&out.CreatedAt,
-		&out.UpdatedAt,
-	); err != nil {
+		input.ID,
+	)
+	if err != nil {
 		return nil, err
 	}
-
-	if lastTriggeredAt.Valid {
-		v := lastTriggeredAt.Time
-		out.LastTriggeredAt = &v
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
 	}
-	if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
-		var decoded map[string]any
-		if err := json.Unmarshal(filtersRaw, &decoded); err == nil {
-			out.Filters = decoded
-		}
+	if affected == 0 {
+		return nil, sql.ErrNoRows
 	}
-
-	return &out, nil
+	return r.getAlertRuleByID(ctx, input.ID)
 }
 
 func (r *opsRepository) DeleteAlertRule(ctx context.Context, id int64) error {
@@ -303,7 +217,7 @@ func (r *opsRepository) DeleteAlertRule(ctx context.Context, id int64) error {
 		return fmt.Errorf("invalid id")
 	}
 
-	res, err := r.db.ExecContext(ctx, "DELETE FROM ops_alert_rules WHERE id = $1", id)
+	res, err := r.db.ExecContext(ctx, "DELETE FROM ops_alert_rules WHERE id = ?", id)
 	if err != nil {
 		return err
 	}
@@ -335,23 +249,11 @@ func (r *opsRepository) ListAlertEvents(ctx context.Context, filter *service.Ops
 
 	where, args := buildOpsAlertEventsWhere(filter)
 	args = append(args, limit)
-	limitArg := "$" + itoa(len(args))
+	limitArg := "?"
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  created_at
+` + opsAlertEventSelectColumns + `
 FROM ops_alert_events
 ` + where + `
 ORDER BY fired_at DESC, id DESC
@@ -423,21 +325,9 @@ func (r *opsRepository) GetAlertEventByID(ctx context.Context, eventID int64) (*
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  created_at
+` + opsAlertEventSelectColumns + `
 FROM ops_alert_events
-WHERE id = $1`
+WHERE id = ?`
 
 	row := r.db.QueryRowContext(ctx, q, eventID)
 	ev, err := scanOpsAlertEvent(row)
@@ -460,21 +350,9 @@ func (r *opsRepository) GetActiveAlertEvent(ctx context.Context, ruleID int64) (
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  created_at
+` + opsAlertEventSelectColumns + `
 FROM ops_alert_events
-WHERE rule_id = $1 AND status = $2
+WHERE rule_id = ? AND status = ?
 ORDER BY fired_at DESC
 LIMIT 1`
 
@@ -499,21 +377,9 @@ func (r *opsRepository) GetLatestAlertEvent(ctx context.Context, ruleID int64) (
 
 	q := `
 SELECT
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  created_at
+` + opsAlertEventSelectColumns + `
 FROM ops_alert_events
-WHERE rule_id = $1
+WHERE rule_id = ?
 ORDER BY fired_at DESC
 LIMIT 1`
 
@@ -556,24 +422,10 @@ INSERT INTO ops_alert_events (
   email_sent,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW()
-)
-RETURNING
-  id,
-  COALESCE(rule_id, 0),
-  COALESCE(severity, ''),
-  COALESCE(status, ''),
-  COALESCE(title, ''),
-  COALESCE(description, ''),
-  metric_value,
-  threshold_value,
-  dimensions,
-  fired_at,
-  resolved_at,
-  email_sent,
-  created_at`
+  ?,?,?,?,?,?,?,?,?,?,?,NOW()
+)`
 
-	row := r.db.QueryRowContext(
+	res, err := r.db.ExecContext(
 		ctx,
 		q,
 		opsNullInt64(&event.RuleID),
@@ -588,7 +440,14 @@ RETURNING
 		opsNullTime(event.ResolvedAt),
 		event.EmailSent,
 	)
-	return scanOpsAlertEvent(row)
+	if err != nil {
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return r.GetAlertEventByID(ctx, id)
 }
 
 func (r *opsRepository) UpdateAlertEventStatus(ctx context.Context, eventID int64, status string, resolvedAt *time.Time) error {
@@ -604,12 +463,22 @@ func (r *opsRepository) UpdateAlertEventStatus(ctx context.Context, eventID int6
 
 	q := `
 UPDATE ops_alert_events
-SET status = $2,
-    resolved_at = $3
-WHERE id = $1`
+SET status = ?,
+    resolved_at = ?
+WHERE id = ?`
 
-	_, err := r.db.ExecContext(ctx, q, eventID, strings.TrimSpace(status), opsNullTime(resolvedAt))
-	return err
+	res, err := r.db.ExecContext(ctx, q, strings.TrimSpace(status), opsNullTime(resolvedAt), eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (r *opsRepository) UpdateAlertEventEmailSent(ctx context.Context, eventID int64, emailSent bool) error {
@@ -620,11 +489,29 @@ func (r *opsRepository) UpdateAlertEventEmailSent(ctx context.Context, eventID i
 		return fmt.Errorf("invalid event id")
 	}
 
-	_, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET email_sent = $2 WHERE id = $1", eventID, emailSent)
-	return err
+	res, err := r.db.ExecContext(ctx, "UPDATE ops_alert_events SET email_sent = ? WHERE id = ?", emailSent, eventID)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+type opsAlertRuleRow interface {
+	Scan(dest ...any) error
 }
 
 type opsAlertEventRow interface {
+	Scan(dest ...any) error
+}
+
+type opsAlertSilenceRow interface {
 	Scan(dest ...any) error
 }
 
@@ -657,11 +544,10 @@ INSERT INTO ops_alert_silences (
   created_by,
   created_at
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,NOW()
-)
-RETURNING id, rule_id, platform, group_id, region, until, COALESCE(reason,''), created_by, created_at`
+  ?,?,?,?,?,?,?,NOW()
+)`
 
-	row := r.db.QueryRowContext(
+	res, err := r.db.ExecContext(
 		ctx,
 		q,
 		input.RuleID,
@@ -672,39 +558,14 @@ RETURNING id, rule_id, platform, group_id, region, until, COALESCE(reason,''), c
 		opsNullString(input.Reason),
 		opsNullInt64(input.CreatedBy),
 	)
-
-	var out service.OpsAlertSilence
-	var groupID sql.NullInt64
-	var region sql.NullString
-	var createdBy sql.NullInt64
-	if err := row.Scan(
-		&out.ID,
-		&out.RuleID,
-		&out.Platform,
-		&groupID,
-		&region,
-		&out.Until,
-		&out.Reason,
-		&createdBy,
-		&out.CreatedAt,
-	); err != nil {
+	if err != nil {
 		return nil, err
 	}
-	if groupID.Valid {
-		v := groupID.Int64
-		out.GroupID = &v
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
 	}
-	if region.Valid {
-		v := strings.TrimSpace(region.String)
-		if v != "" {
-			out.Region = &v
-		}
-	}
-	if createdBy.Valid {
-		v := createdBy.Int64
-		out.CreatedBy = &v
-	}
-	return &out, nil
+	return r.getAlertSilenceByID(ctx, id)
 }
 
 func (r *opsRepository) IsAlertSilenced(ctx context.Context, ruleID int64, platform string, groupID *int64, region *string, now time.Time) (bool, error) {
@@ -725,11 +586,11 @@ func (r *opsRepository) IsAlertSilenced(ctx context.Context, ruleID int64, platf
 	q := `
 SELECT 1
 FROM ops_alert_silences
-WHERE rule_id = $1
-  AND platform = $2
-  AND (group_id IS NOT DISTINCT FROM $3)
-  AND (region IS NOT DISTINCT FROM $4)
-  AND until > $5
+WHERE rule_id = ?
+  AND platform = ?
+  AND (group_id <=> ?)
+  AND (region <=> ?)
+  AND until > ?
 LIMIT 1`
 
 	var dummy int
@@ -798,44 +659,126 @@ func buildOpsAlertEventsWhere(filter *service.OpsAlertEventFilter) (string, []an
 
 	if status := strings.TrimSpace(filter.Status); status != "" {
 		args = append(args, status)
-		clauses = append(clauses, "status = $"+itoa(len(args)))
+		clauses = append(clauses, "status = ?")
 	}
 	if severity := strings.TrimSpace(filter.Severity); severity != "" {
 		args = append(args, severity)
-		clauses = append(clauses, "severity = $"+itoa(len(args)))
+		clauses = append(clauses, "severity = ?")
 	}
 	if filter.EmailSent != nil {
 		args = append(args, *filter.EmailSent)
-		clauses = append(clauses, "email_sent = $"+itoa(len(args)))
+		clauses = append(clauses, "email_sent = ?")
 	}
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
 		args = append(args, *filter.StartTime)
-		clauses = append(clauses, "fired_at >= $"+itoa(len(args)))
+		clauses = append(clauses, "fired_at >= ?")
 	}
 	if filter.EndTime != nil && !filter.EndTime.IsZero() {
 		args = append(args, *filter.EndTime)
-		clauses = append(clauses, "fired_at < $"+itoa(len(args)))
+		clauses = append(clauses, "fired_at < ?")
 	}
 
 	// Cursor pagination (descending by fired_at, then id)
 	if filter.BeforeFiredAt != nil && !filter.BeforeFiredAt.IsZero() && filter.BeforeID != nil && *filter.BeforeID > 0 {
 		args = append(args, *filter.BeforeFiredAt)
-		tsArg := "$" + itoa(len(args))
+		tsArg := "?"
 		args = append(args, *filter.BeforeID)
-		idArg := "$" + itoa(len(args))
+		idArg := "?"
 		clauses = append(clauses, fmt.Sprintf("(fired_at < %s OR (fired_at = %s AND id < %s))", tsArg, tsArg, idArg))
 	}
 	// Dimensions are stored in JSONB. We filter best-effort without requiring GIN indexes.
 	if platform := strings.TrimSpace(filter.Platform); platform != "" {
 		args = append(args, platform)
-		clauses = append(clauses, "(dimensions->>'platform') = $"+itoa(len(args)))
+		clauses = append(clauses, "JSON_UNQUOTE(JSON_EXTRACT(dimensions, '$.platform')) = ?")
 	}
 	if filter.GroupID != nil && *filter.GroupID > 0 {
 		args = append(args, fmt.Sprintf("%d", *filter.GroupID))
-		clauses = append(clauses, "(dimensions->>'group_id') = $"+itoa(len(args)))
+		clauses = append(clauses, "JSON_UNQUOTE(JSON_EXTRACT(dimensions, '$.group_id')) = ?")
 	}
 
 	return "WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func (r *opsRepository) getAlertRuleByID(ctx context.Context, id int64) (*service.OpsAlertRule, error) {
+	row := r.db.QueryRowContext(ctx, "SELECT "+opsAlertRuleSelectColumns+" FROM ops_alert_rules WHERE id = ?", id)
+	return scanOpsAlertRule(row)
+}
+
+func (r *opsRepository) getAlertSilenceByID(ctx context.Context, id int64) (*service.OpsAlertSilence, error) {
+	row := r.db.QueryRowContext(ctx, "SELECT "+opsAlertSilenceSelectColumns+" FROM ops_alert_silences WHERE id = ?", id)
+	return scanOpsAlertSilence(row)
+}
+
+func scanOpsAlertRule(row opsAlertRuleRow) (*service.OpsAlertRule, error) {
+	var out service.OpsAlertRule
+	var filtersRaw []byte
+	var lastTriggeredAt sql.NullTime
+	if err := row.Scan(
+		&out.ID,
+		&out.Name,
+		&out.Description,
+		&out.Enabled,
+		&out.Severity,
+		&out.MetricType,
+		&out.Operator,
+		&out.Threshold,
+		&out.WindowMinutes,
+		&out.SustainedMinutes,
+		&out.CooldownMinutes,
+		&out.NotifyEmail,
+		&filtersRaw,
+		&lastTriggeredAt,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if lastTriggeredAt.Valid {
+		v := lastTriggeredAt.Time
+		out.LastTriggeredAt = &v
+	}
+	if len(filtersRaw) > 0 && string(filtersRaw) != "null" {
+		var decoded map[string]any
+		if err := json.Unmarshal(filtersRaw, &decoded); err == nil {
+			out.Filters = decoded
+		}
+	}
+	return &out, nil
+}
+
+func scanOpsAlertSilence(row opsAlertSilenceRow) (*service.OpsAlertSilence, error) {
+	var out service.OpsAlertSilence
+	var groupID sql.NullInt64
+	var region sql.NullString
+	var createdBy sql.NullInt64
+	if err := row.Scan(
+		&out.ID,
+		&out.RuleID,
+		&out.Platform,
+		&groupID,
+		&region,
+		&out.Until,
+		&out.Reason,
+		&createdBy,
+		&out.CreatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if groupID.Valid {
+		v := groupID.Int64
+		out.GroupID = &v
+	}
+	if region.Valid {
+		v := strings.TrimSpace(region.String)
+		if v != "" {
+			out.Region = &v
+		}
+	}
+	if createdBy.Valid {
+		v := createdBy.Int64
+		out.CreatedBy = &v
+	}
+	return &out, nil
 }
 
 func opsNullJSONMap(v map[string]any) (any, error) {

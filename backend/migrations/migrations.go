@@ -7,7 +7,23 @@
 //   - 便于版本控制和代码审查
 package migrations
 
-import "embed"
+import (
+	"embed"
+	"io/fs"
+	"log"
+)
+
+type migrationSet struct {
+	fsys fs.FS
+}
+
+func (m migrationSet) Open(name string) (fs.File, error) {
+	return m.fsys.Open(name)
+}
+
+func (m migrationSet) ReadFile(name string) ([]byte, error) {
+	return fs.ReadFile(m.fsys, name)
+}
 
 // FS 包含本目录下所有嵌入的 SQL 迁移文件。
 //
@@ -30,5 +46,19 @@ import "embed"
 //	    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 //	);
 //
-//go:embed *.sql
+// FS 包含迁移目录下的全部 SQL 文件。
+// 测试会直接读取根目录下的历史 migration；运行时再通过 MySQLFS 切分当前启用的迁移集合。
+//
+//go:embed *.sql mysql/*.sql
 var FS embed.FS
+
+// MySQLFS 指向当前启用的迁移集合（MySQL baseline + follow-up migrations）。
+var MySQLFS = migrationSet{fsys: mustSub(FS, "mysql")}
+
+func mustSub(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		log.Fatalf("init migrations fs sub(%s): %v", dir, err)
+	}
+	return sub
+}

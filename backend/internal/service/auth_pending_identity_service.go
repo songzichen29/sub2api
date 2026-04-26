@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -169,23 +170,72 @@ func authPendingIdentityAdvisoryLockHash(key string) int64 {
 	return int64(hasher.Sum64())
 }
 
+func authPendingIdentityNamedLockKey(key string) string {
+	return fmt.Sprintf("sub2api:pending-identity:%d", authPendingIdentityAdvisoryLockHash(key))
+}
+
 func lockAuthPendingIdentityKeys(ctx context.Context, client *dbent.Client, keys ...string) (func(), error) {
-	release := authPendingIdentityScopedKeyLocks.lock(keys...)
+	localRelease := authPendingIdentityScopedKeyLocks.lock(keys...)
 	normalized := normalizeAuthPendingIdentityLockKeys(keys...)
-	if len(normalized) == 0 || client == nil || client.Driver().Dialect() != dialect.Postgres {
-		return release, nil
+	if len(normalized) == 0 || client == nil || client.Driver().Dialect() != dialect.MySQL {
+		return localRelease, nil
 	}
+
+	acquiredLocks := make([]string, 0, len(normalized))
 
 	for _, key := range normalized {
 		var rows entsql.Rows
-		if err := client.Driver().Query(ctx, "SELECT pg_advisory_xact_lock($1)", []any{authPendingIdentityAdvisoryLockHash(key)}, &rows); err != nil {
-			release()
+		lockName := authPendingIdentityNamedLockKey(key)
+		if err := client.Driver().Query(ctx, "SELECT GET_LOCK(?, 0)", []any{lockName}, &rows); err != nil {
+			localRelease()
+			return nil, err
+		}
+		var acquired sql.NullInt64
+		if !rows.Next() {
+			_ = rows.Close()
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				var releaseRows entsql.Rows
+				if err := client.Driver().Query(context.Background(), "SELECT RELEASE_LOCK(?)", []any{acquiredLocks[i]}, &releaseRows); err == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
+			return nil, fmt.Errorf("acquire auth pending identity lock: no rows")
+		}
+		if err := rows.Scan(&acquired); err != nil {
+			_ = rows.Close()
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				var releaseRows entsql.Rows
+				if err := client.Driver().Query(context.Background(), "SELECT RELEASE_LOCK(?)", []any{acquiredLocks[i]}, &releaseRows); err == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
 			return nil, err
 		}
 		_ = rows.Close()
+		if !acquired.Valid || acquired.Int64 != 1 {
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				var releaseRows entsql.Rows
+				if err := client.Driver().Query(context.Background(), "SELECT RELEASE_LOCK(?)", []any{acquiredLocks[i]}, &releaseRows); err == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
+			return nil, fmt.Errorf("acquire auth pending identity lock: lock busy")
+		}
+		acquiredLocks = append(acquiredLocks, lockName)
 	}
 
-	return release, nil
+	return func() {
+		for i := len(acquiredLocks) - 1; i >= 0; i-- {
+			var rows entsql.Rows
+			if err := client.Driver().Query(context.Background(), "SELECT RELEASE_LOCK(?)", []any{acquiredLocks[i]}, &rows); err == nil {
+				_ = rows.Close()
+			}
+		}
+		localRelease()
+	}, nil
 }
 
 func pendingIdentityAdoptionLockKeys(pendingAuthSessionID int64, identityID *int64) []string {

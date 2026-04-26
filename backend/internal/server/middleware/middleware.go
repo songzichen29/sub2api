@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -73,6 +74,17 @@ func NewErrorResponse(code, message string) ErrorResponse {
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
 	c.JSON(statusCode, NewErrorResponse(code, message))
 	c.Abort()
+}
+
+func AbortForUserLookupError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	if errors.Is(err, service.ErrUserNotFound) {
+		AbortWithError(c, http.StatusUnauthorized, "USER_NOT_FOUND", "User not found")
+		return
+	}
+	AbortWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load user")
 }
 
 // ──────────────────────────────────────────────────────────

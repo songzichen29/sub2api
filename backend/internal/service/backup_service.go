@@ -88,7 +88,7 @@ type BackupScheduleConfig struct {
 type BackupRecord struct {
 	ID            string `json:"id"`
 	Status        string `json:"status"`      // pending, running, completed, failed
-	BackupType    string `json:"backup_type"` // postgres
+	BackupType    string `json:"backup_type"` // mysql
 	FileName      string `json:"file_name"`
 	S3Key         string `json:"s3_key"`
 	SizeBytes     int64  `json:"size_bytes"`
@@ -467,7 +467,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, ex
 	record := &BackupRecord{
 		ID:          backupID,
 		Status:      "running",
-		BackupType:  "postgres",
+		BackupType:  "mysql",
 		FileName:    fileName,
 		S3Key:       s3Key,
 		TriggeredBy: triggeredBy,
@@ -475,14 +475,14 @@ func (s *BackupService) CreateBackup(ctx context.Context, triggeredBy string, ex
 		ExpiresAt:   expiresAt,
 	}
 
-	// 流式执行: pg_dump -> gzip -> S3 upload
+	// 流式执行: mysqldump -> gzip -> S3 upload
 	dumpReader, err := s.dumper.Dump(ctx)
 	if err != nil {
 		record.Status = "failed"
-		record.ErrorMsg = fmt.Sprintf("pg_dump failed: %v", err)
+		record.ErrorMsg = fmt.Sprintf("mysqldump failed: %v", err)
 		record.FinishedAt = time.Now().Format(time.RFC3339)
 		_ = s.saveRecord(ctx, record)
-		return record, fmt.Errorf("pg_dump: %w", err)
+		return record, fmt.Errorf("mysqldump: %w", err)
 	}
 
 	// 使用 io.Pipe 将 gzip 压缩数据流式传递给 S3 上传
@@ -590,7 +590,7 @@ func (s *BackupService) StartBackup(ctx context.Context, triggeredBy string, exp
 	record := &BackupRecord{
 		ID:          backupID,
 		Status:      "running",
-		BackupType:  "postgres",
+		BackupType:  "mysql",
 		FileName:    fileName,
 		S3Key:       s3Key,
 		TriggeredBy: triggeredBy,
@@ -636,14 +636,14 @@ func (s *BackupService) executeBackup(record *BackupRecord, objectStore BackupOb
 	ctx, cancel := context.WithTimeout(s.bgCtx, 30*time.Minute)
 	defer cancel()
 
-	// 阶段1: pg_dump
+	// 阶段1: mysqldump
 	record.Progress = "dumping"
 	_ = s.saveRecord(ctx, record)
 
 	dumpReader, err := s.dumper.Dump(ctx)
 	if err != nil {
 		record.Status = "failed"
-		record.ErrorMsg = fmt.Sprintf("pg_dump failed: %v", err)
+		record.ErrorMsg = fmt.Sprintf("mysqldump failed: %v", err)
 		record.Progress = ""
 		record.FinishedAt = time.Now().Format(time.RFC3339)
 		_ = s.saveRecord(context.Background(), record)

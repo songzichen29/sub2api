@@ -278,6 +278,7 @@ const cleanupCurrentFilter = async () => {
   if (!ok) return
   try {
     const payload = {
+      time_range: filters.start_time || filters.end_time ? undefined : filters.time_range,
       start_time: toRFC3339(filters.start_time),
       end_time: toRFC3339(filters.end_time),
       level: filters.level.trim() || undefined,

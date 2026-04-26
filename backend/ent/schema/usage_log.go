@@ -81,31 +81,31 @@ func (UsageLog) Fields() []ent.Field {
 		// 成本字段
 		field.Float("input_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("output_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("cache_creation_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("cache_read_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("total_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("actual_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
 		field.Float("rate_multiplier").
 			Default(1).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}),
 
 		// account_rate_multiplier: 账号计费倍率快照（NULL 表示按 1.0 处理）
 		field.Float("account_rate_multiplier").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}),
 
 		// 其他字段
 		field.Int8("billing_type").
@@ -142,7 +142,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 	}
 }
 

@@ -282,9 +282,9 @@ func deleteOldRowsByID(
 		batchSize = 5000
 	}
 
-	where := fmt.Sprintf("%s < $1", timeColumn)
+	where := fmt.Sprintf("%s < ?", timeColumn)
 	if castCutoffToDate {
-		where = fmt.Sprintf("%s < $1::date", timeColumn)
+		where = fmt.Sprintf("%s < DATE(?)", timeColumn)
 	}
 
 	q := fmt.Sprintf(`
@@ -292,7 +292,7 @@ WITH batch AS (
   SELECT id FROM %s
   WHERE %s
   ORDER BY id
-  LIMIT $2
+  LIMIT ?
 )
 DELETE FROM %s
 WHERE id IN (SELECT id FROM batch)

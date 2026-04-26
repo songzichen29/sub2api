@@ -40,7 +40,7 @@ func cliValidatePort(port int) bool {
 
 func cliValidateSSLMode(mode string) bool {
 	validModes := map[string]bool{
-		"disable": true, "require": true, "verify-ca": true, "verify-full": true,
+		"disable": true, "prefer": true, "require": true, "verify-ca": true, "verify-full": true, "true": true,
 	}
 	return validModes[mode]
 }
@@ -70,7 +70,7 @@ func RunCLI() error {
 	fmt.Println("── Database Configuration ──")
 
 	for {
-		cfg.Database.Host = promptString(reader, "PostgreSQL Host", "localhost")
+		cfg.Database.Host = promptString(reader, "MySQL Host", "localhost")
 		if cliValidateHostname(cfg.Database.Host) {
 			break
 		}
@@ -78,7 +78,7 @@ func RunCLI() error {
 	}
 
 	for {
-		cfg.Database.Port = promptInt(reader, "PostgreSQL Port", 5432)
+		cfg.Database.Port = promptInt(reader, "MySQL Port", 3306)
 		if cliValidatePort(cfg.Database.Port) {
 			break
 		}
@@ -86,14 +86,14 @@ func RunCLI() error {
 	}
 
 	for {
-		cfg.Database.User = promptString(reader, "PostgreSQL User", "postgres")
+		cfg.Database.User = promptString(reader, "MySQL User", "root")
 		if cliValidateUsername(cfg.Database.User) {
 			break
 		}
 		fmt.Println("  Invalid username. Use alphanumeric and underscores only.")
 	}
 
-	cfg.Database.Password = promptPassword("PostgreSQL Password")
+	cfg.Database.Password = promptPassword("MySQL Password")
 
 	for {
 		cfg.Database.DBName = promptString(reader, "Database Name", "sub2api")
@@ -108,7 +108,7 @@ func RunCLI() error {
 		if cliValidateSSLMode(cfg.Database.SSLMode) {
 			break
 		}
-		fmt.Println("  Invalid SSL mode. Use: disable, require, verify-ca, or verify-full.")
+		fmt.Println("  Invalid SSL mode. Use: disable, prefer, require, verify-ca, verify-full, or true.")
 	}
 
 	fmt.Println()

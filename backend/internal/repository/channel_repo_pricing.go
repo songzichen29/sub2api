@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 )
 
 // --- 模型定价 ---
@@ -17,7 +16,7 @@ import (
 func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
-		 FROM channel_model_pricing WHERE channel_id = $1 ORDER BY id`, channelID,
+		 FROM channel_model_pricing WHERE channel_id = ? ORDER BY id`, channelID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list model pricing: %w", err)
@@ -57,8 +56,8 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE channel_model_pricing
-		 SET models = $1, billing_mode = $2, input_price = $3, output_price = $4, cache_write_price = $5, cache_read_price = $6, image_output_price = $7, per_request_price = $8, platform = $9, updated_at = NOW()
-		 WHERE id = $10`,
+		 SET models = ?, billing_mode = ?, input_price = ?, output_price = ?, cache_write_price = ?, cache_read_price = ?, image_output_price = ?, per_request_price = ?, platform = ?, updated_at = NOW()
+		 WHERE id = ?`,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
 		pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
 	)
@@ -73,7 +72,7 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 }
 
 func (r *channelRepository) DeleteModelPricing(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE id = $1`, id)
+	_, err := r.db.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete model pricing: %w", err)
 	}
@@ -90,10 +89,10 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 
 // batchLoadModelPricing 批量加载多个渠道的模型定价（含区间）
 func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
+	inClause, inArgs := buildChannelInt64InClause(channelIDs)
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
-		 FROM channel_model_pricing WHERE channel_id = ANY($1) ORDER BY channel_id, id`,
-		pq.Array(channelIDs),
+		fmt.Sprintf(`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at FROM channel_model_pricing WHERE channel_id IN (%s) ORDER BY channel_id, id`, inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("batch load model pricing: %w", err)
@@ -129,13 +128,10 @@ func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelID
 
 // batchLoadIntervals 批量加载多个定价条目的区间
 func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs []int64) (map[int64][]service.PricingInterval, error) {
+	inClause, inArgs := buildChannelInt64InClause(pricingIDs)
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
-		        input_price, output_price, cache_write_price, cache_read_price,
-		        per_request_price, sort_order, created_at, updated_at
-		 FROM channel_pricing_intervals
-		 WHERE pricing_id = ANY($1) ORDER BY pricing_id, sort_order, id`,
-		pq.Array(pricingIDs),
+		fmt.Sprintf(`SELECT id, pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order, created_at, updated_at FROM channel_pricing_intervals WHERE pricing_id IN (%s) ORDER BY pricing_id, sort_order, id`, inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("batch load intervals: %w", err)
@@ -198,16 +194,21 @@ type dbExec interface {
 }
 
 func setGroupIDsTx(ctx context.Context, exec dbExec, channelID int64, groupIDs []int64) error {
-	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = $1`, channelID); err != nil {
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_groups WHERE channel_id = ?`, channelID); err != nil {
 		return fmt.Errorf("delete old group associations: %w", err)
 	}
 	if len(groupIDs) == 0 {
 		return nil
 	}
+	values := make([]string, 0, len(groupIDs))
+	args := make([]any, 0, len(groupIDs)*2)
+	for _, groupID := range groupIDs {
+		values = append(values, "(?, ?)")
+		args = append(args, channelID, groupID)
+	}
 	_, err := exec.ExecContext(ctx,
-		`INSERT INTO channel_groups (channel_id, group_id)
-		 SELECT $1, unnest($2::bigint[])`,
-		channelID, pq.Array(groupIDs),
+		"INSERT INTO channel_groups (channel_id, group_id) VALUES "+strings.Join(values, ","),
+		args...,
 	)
 	if err != nil {
 		return fmt.Errorf("insert group associations: %w", err)
@@ -228,15 +229,23 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 	if platform == "" {
 		platform = "anthropic"
 	}
-	err = exec.QueryRowContext(ctx,
+	res, err := exec.ExecContext(ctx,
 		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		pricing.ChannelID, platform, modelsJSON, billingMode,
 		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
 		pricing.ImageOutputPrice, pricing.PerRequestPrice,
-	).Scan(&pricing.ID, &pricing.CreatedAt, &pricing.UpdatedAt)
+	)
 	if err != nil {
 		return fmt.Errorf("insert model pricing: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("insert model pricing last id: %w", err)
+	}
+	pricing.ID = id
+	if err := exec.QueryRowContext(ctx, `SELECT created_at, updated_at FROM channel_model_pricing WHERE id = ?`, pricing.ID).Scan(&pricing.CreatedAt, &pricing.UpdatedAt); err != nil {
+		return fmt.Errorf("load model pricing timestamps: %w", err)
 	}
 
 	for i := range pricing.Intervals {
@@ -250,18 +259,27 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 }
 
 func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
-	return exec.QueryRowContext(ctx,
+	res, err := exec.ExecContext(ctx,
 		`INSERT INTO channel_pricing_intervals
 		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel,
 		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheReadPrice,
 		iv.PerRequestPrice, iv.SortOrder,
-	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
+	)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	iv.ID = id
+	return exec.QueryRowContext(ctx, `SELECT created_at, updated_at FROM channel_pricing_intervals WHERE id = ?`, iv.ID).Scan(&iv.CreatedAt, &iv.UpdatedAt)
 }
 
 func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pricingList []service.ChannelModelPricing) error {
-	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = $1`, channelID); err != nil {
+	if _, err := exec.ExecContext(ctx, `DELETE FROM channel_model_pricing WHERE channel_id = ?`, channelID); err != nil {
 		return fmt.Errorf("delete old model pricing: %w", err)
 	}
 	for i := range pricingList {
@@ -273,16 +291,15 @@ func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pr
 	return nil
 }
 
-// isUniqueViolation 检查 pq 唯一约束违反错误
 func isUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) && pqErr != nil {
-		return pqErr.Code == "23505"
+	if err == nil {
+		return false
 	}
-	return false
+	msg := strings.ToLower(err.Error())
+	return errors.Is(err, sql.ErrNoRows) == false && (strings.Contains(msg, "23505") || strings.Contains(msg, "1062") || strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique"))
 }
 
-// escapeLike 转义 LIKE/ILIKE 模式中的特殊字符
+// escapeLike 转义 LIKE 模式中的特殊字符
 func escapeLike(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `%`, `\%`)

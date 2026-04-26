@@ -59,12 +59,13 @@ error_buckets AS (
 switch_buckets AS (
   SELECT ` + errorBucketExpr + ` AS bucket,
          COALESCE(SUM(CASE
-           WHEN split_part(ev->>'kind', ':', 1) IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
+           WHEN SUBSTRING_INDEX(ev.kind, ':', 1) IN ('failover', 'retry_exhausted_failover', 'failover_on_400') THEN 1
            ELSE 0
          END), 0) AS switch_count
   FROM ops_error_logs
-  CROSS JOIN LATERAL jsonb_array_elements(
-    COALESCE(NULLIF(upstream_errors, 'null'::jsonb), '[]'::jsonb)
+  CROSS JOIN JSON_TABLE(
+    IFNULL(upstream_errors, JSON_ARRAY()),
+    '$[*]' COLUMNS(kind VARCHAR(128) PATH '$.kind')
   ) AS ev
   ` + errorWhere + `
     AND upstream_errors IS NOT NULL
@@ -97,7 +98,10 @@ SELECT
 FROM combined
 ORDER BY bucket ASC`
 
-	args := append(usageArgs, errorArgs...)
+	args := make([]any, 0, len(usageArgs)+len(errorArgs)*2)
+	args = append(args, usageArgs...)
+	args = append(args, errorArgs...)
+	args = append(args, errorArgs...)
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -185,40 +189,44 @@ ORDER BY bucket ASC`
 }
 
 func (r *opsRepository) getThroughputBreakdownByPlatform(ctx context.Context, start, end time.Time) ([]*service.OpsThroughputPlatformBreakdownItem, error) {
-	q := `
+	q := fmt.Sprintf(`
 WITH usage_totals AS (
   SELECT COALESCE(NULLIF(g.platform,''), a.platform) AS platform,
          COUNT(*) AS success_count,
          COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
   FROM usage_logs ul
-  LEFT JOIN groups g ON g.id = ul.group_id
+  LEFT JOIN %s g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
-  WHERE ul.created_at >= $1 AND ul.created_at < $2
+  WHERE ul.created_at >= ? AND ul.created_at < ?
   GROUP BY 1
 ),
 error_totals AS (
   SELECT platform,
          COUNT(*) AS error_count
   FROM ops_error_logs
-  WHERE created_at >= $1 AND created_at < $2
+  WHERE created_at >= ? AND created_at < ?
     AND COALESCE(status_code, 0) >= 400
     AND is_count_tokens = FALSE  -- 排除 count_tokens 请求的错误
   GROUP BY 1
 ),
 combined AS (
-  SELECT COALESCE(u.platform, e.platform) AS platform,
-         COALESCE(u.success_count, 0) AS success_count,
-         COALESCE(e.error_count, 0) AS error_count,
-         COALESCE(u.token_consumed, 0) AS token_consumed
-  FROM usage_totals u
-  FULL OUTER JOIN error_totals e ON u.platform = e.platform
+  SELECT platform,
+         SUM(success_count) AS success_count,
+         SUM(error_count) AS error_count,
+         SUM(token_consumed) AS token_consumed
+  FROM (
+    SELECT platform, success_count, 0 AS error_count, token_consumed FROM usage_totals
+    UNION ALL
+    SELECT platform, 0, error_count, 0 FROM error_totals
+  ) x
+  GROUP BY platform
 )
 SELECT platform, (success_count + error_count) AS request_count, token_consumed
 FROM combined
 WHERE platform IS NOT NULL AND platform <> ''
-ORDER BY request_count DESC`
+ORDER BY request_count DESC`, quotedGroupsTable)
 
-	rows, err := r.db.QueryContext(ctx, q, start, end)
+	rows, err := r.db.QueryContext(ctx, q, start, end, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -256,46 +264,51 @@ func (r *opsRepository) getThroughputTopGroupsByPlatform(ctx context.Context, st
 		limit = 10
 	}
 
-	q := `
+	q := fmt.Sprintf(`
 WITH usage_totals AS (
   SELECT ul.group_id AS group_id,
          g.name AS group_name,
          COUNT(*) AS success_count,
          COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
   FROM usage_logs ul
-  JOIN groups g ON g.id = ul.group_id
-  WHERE ul.created_at >= $1 AND ul.created_at < $2
-    AND g.platform = $3
+  JOIN %s g ON g.id = ul.group_id
+  WHERE ul.created_at >= ? AND ul.created_at < ?
+    AND g.platform = ?
   GROUP BY 1, 2
 ),
 error_totals AS (
   SELECT group_id,
          COUNT(*) AS error_count
   FROM ops_error_logs
-  WHERE created_at >= $1 AND created_at < $2
-    AND platform = $3
+  WHERE created_at >= ? AND created_at < ?
+    AND platform = ?
     AND group_id IS NOT NULL
     AND COALESCE(status_code, 0) >= 400
     AND is_count_tokens = FALSE  -- 排除 count_tokens 请求的错误
   GROUP BY 1
 ),
 combined AS (
-  SELECT COALESCE(u.group_id, e.group_id) AS group_id,
-         COALESCE(u.group_name, g2.name, '') AS group_name,
-         COALESCE(u.success_count, 0) AS success_count,
-         COALESCE(e.error_count, 0) AS error_count,
-         COALESCE(u.token_consumed, 0) AS token_consumed
-  FROM usage_totals u
-  FULL OUTER JOIN error_totals e ON u.group_id = e.group_id
-  LEFT JOIN groups g2 ON g2.id = COALESCE(u.group_id, e.group_id)
+  SELECT
+    x.group_id,
+    COALESCE(g2.name, '') AS group_name,
+    SUM(x.success_count) AS success_count,
+    SUM(x.error_count) AS error_count,
+    SUM(x.token_consumed) AS token_consumed
+  FROM (
+    SELECT group_id, success_count, 0 AS error_count, token_consumed FROM usage_totals
+    UNION ALL
+    SELECT group_id, 0, error_count, 0 FROM error_totals
+  ) x
+  LEFT JOIN %s g2 ON g2.id = x.group_id
+  GROUP BY x.group_id, g2.name
 )
 SELECT group_id, group_name, (success_count + error_count) AS request_count, token_consumed
 FROM combined
 WHERE group_id IS NOT NULL
 ORDER BY request_count DESC
-LIMIT $4`
+LIMIT ?`, quotedGroupsTable, quotedGroupsTable)
 
-	rows, err := r.db.QueryContext(ctx, q, start, end, platform, limit)
+	rows, err := r.db.QueryContext(ctx, q, start, end, platform, start, end, platform, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -334,23 +347,22 @@ LIMIT $4`
 func opsBucketExprForUsage(bucketSeconds int) string {
 	switch bucketSeconds {
 	case 3600:
-		return "date_trunc('hour', ul.created_at)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 3600))"
 	case 300:
-		// 5-minute buckets in UTC.
-		return "to_timestamp(floor(extract(epoch from ul.created_at) / 300) * 300)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 300))"
 	default:
-		return "date_trunc('minute', ul.created_at)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(ul.created_at) - MOD(UNIX_TIMESTAMP(ul.created_at), 60))"
 	}
 }
 
 func opsBucketExprForError(bucketSeconds int) string {
 	switch bucketSeconds {
 	case 3600:
-		return "date_trunc('hour', created_at)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(created_at) - MOD(UNIX_TIMESTAMP(created_at), 3600))"
 	case 300:
-		return "to_timestamp(floor(extract(epoch from created_at) / 300) * 300)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(created_at) - MOD(UNIX_TIMESTAMP(created_at), 300))"
 	default:
-		return "date_trunc('minute', created_at)"
+		return "FROM_UNIXTIME(UNIX_TIMESTAMP(created_at) - MOD(UNIX_TIMESTAMP(created_at), 60))"
 	}
 }
 
@@ -451,12 +463,12 @@ func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDa
 	q := `
 SELECT
   ` + bucketExpr + ` AS bucket,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400) AS error_total,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited) AS business_limited,
-  COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited) AS error_sla,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)) AS upstream_excl,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429) AS upstream_429,
-  COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529) AS upstream_529
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 THEN 1 ELSE 0 END), 0) AS error_total,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited,
+  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND NOT is_business_limited THEN 1 ELSE 0 END), 0) AS error_sla,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529) THEN 1 ELSE 0 END), 0) AS upstream_excl,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
 FROM ops_error_logs
 ` + where + `
 GROUP BY 1
@@ -564,8 +576,8 @@ func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *servic
 SELECT
   COALESCE(upstream_status_code, status_code, 0) AS status_code,
   COUNT(*) AS total,
-  COUNT(*) FILTER (WHERE NOT is_business_limited) AS sla,
-  COUNT(*) FILTER (WHERE is_business_limited) AS business_limited
+  COALESCE(SUM(CASE WHEN NOT is_business_limited THEN 1 ELSE 0 END), 0) AS sla,
+  COALESCE(SUM(CASE WHEN is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited
 FROM ops_error_logs
 ` + where + `
   AND COALESCE(status_code, 0) >= 400

@@ -60,7 +60,7 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 		// 从数据库获取最新的用户信息
 		user, err := userService.GetByID(c.Request.Context(), claims.UserID)
 		if err != nil {
-			AbortWithError(c, 401, "USER_NOT_FOUND", "User not found")
+			AbortForUserLookupError(c, err)
 			return
 		}
 

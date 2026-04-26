@@ -2,6 +2,7 @@ package setup
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,5 +86,32 @@ func TestWriteConfigFileKeepsDefaultUserConcurrency(t *testing.T) {
 
 	if !strings.Contains(string(data), "user_concurrency: 5") {
 		t.Fatalf("config missing default user concurrency, got:\n%s", string(data))
+	}
+}
+
+func TestGetDataDirPrefersCurrentDirectoryWhenInstallArtifactsExist(t *testing.T) {
+	t.Setenv("DATA_DIR", "")
+
+	tempDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(oldWD)
+	}()
+
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, ConfigFileName), []byte("server:\n  port: 39001\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if got := GetDataDir(); got != "." {
+		t.Fatalf("GetDataDir()=%q, want current directory", got)
+	}
+	if got := GetConfigFilePath(); got != filepath.Join(".", ConfigFileName) {
+		t.Fatalf("GetConfigFilePath()=%q, want %q", got, filepath.Join(".", ConfigFileName))
 	}
 }

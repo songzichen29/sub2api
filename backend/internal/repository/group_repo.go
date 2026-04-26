@@ -14,7 +14,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -27,6 +26,19 @@ type sqlExecutor interface {
 type groupRepository struct {
 	client *dbent.Client
 	sql    sqlExecutor
+}
+
+func buildGroupInt64InClause(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	ph := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		ph = append(ph, "?")
+		args = append(args, id)
+	}
+	return strings.Join(ph, ","), args
 }
 
 func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
@@ -463,11 +475,12 @@ func (r *groupRepository) ExistsByIDs(ctx context.Context, ids []int64) (map[int
 		return result, nil
 	}
 
-	rows, err := r.sql.QueryContext(ctx, `
+	inClause, inArgs := buildGroupInt64InClause(uniqueIDs)
+	rows, err := r.sql.QueryContext(ctx, fmt.Sprintf(`
 		SELECT id
-		FROM groups
-		WHERE id = ANY($1) AND deleted_at IS NULL
-	`, pq.Array(uniqueIDs))
+		FROM %s
+		WHERE id IN (%s) AND deleted_at IS NULL
+	`, quotedGroupsTable, inClause), inArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -490,20 +503,20 @@ func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (t
 	var rateLimited int64
 	err = scanSingleRow(ctx, r.sql,
 		`SELECT COUNT(*),
-			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true),
-			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+			SUM(CASE WHEN a.status = 'active' AND a.schedulable = true THEN 1 ELSE 0 END),
+			SUM(CASE WHEN a.status = 'active' AND (
 				a.rate_limit_reset_at > NOW() OR
 				a.overload_until > NOW() OR
 				a.temp_unschedulable_until > NOW()
-			))
+			) THEN 1 ELSE 0 END)
 		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
-		WHERE ag.group_id = $1`,
+		WHERE ag.group_id = ?`,
 		[]any{groupID}, &total, &active, &rateLimited)
 	return
 }
 
 func (r *groupRepository) DeleteAccountGroupsByGroupID(ctx context.Context, groupID int64) (int64, error) {
-	res, err := r.sql.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", groupID)
+	res, err := r.sql.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = ?", groupID)
 	if err != nil {
 		return 0, err
 	}
@@ -538,7 +551,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 
 	// Lock the group row to avoid concurrent writes while we cascade.
 	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分"未找到"与其他错误。
-	rows, err := exec.QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 AND deleted_at IS NULL FOR UPDATE", id)
+	rows, err := exec.QueryContext(ctx, "SELECT id FROM `groups` WHERE id = ? AND deleted_at IS NULL FOR UPDATE", id)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +575,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 	var affectedUserIDs []int64
 	if groupSvc.IsSubscriptionType() {
 		// 只查询未软删除的订阅，避免通知已取消订阅的用户
-		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = $1 AND deleted_at IS NULL", id)
+		rows, err := exec.QueryContext(ctx, "SELECT user_id FROM user_subscriptions WHERE group_id = ? AND deleted_at IS NULL", id)
 		if err != nil {
 			return nil, err
 		}
@@ -582,7 +595,7 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 		}
 
 		// 软删除订阅：设置 deleted_at 而非硬删除
-		if _, err := exec.ExecContext(ctx, "UPDATE user_subscriptions SET deleted_at = NOW() WHERE group_id = $1 AND deleted_at IS NULL", id); err != nil {
+		if _, err := exec.ExecContext(ctx, "UPDATE user_subscriptions SET deleted_at = NOW() WHERE group_id = ? AND deleted_at IS NULL", id); err != nil {
 			return nil, err
 		}
 	}
@@ -599,12 +612,12 @@ func (r *groupRepository) DeleteCascade(ctx context.Context, id int64) ([]int64,
 
 	// 3. Remove the group id from user_allowed_groups join table.
 	// Legacy users.allowed_groups 列已弃用，不再同步。
-	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = $1", id); err != nil {
+	if _, err := exec.ExecContext(ctx, "DELETE FROM user_allowed_groups WHERE group_id = ?", id); err != nil {
 		return nil, err
 	}
 
 	// 4. Delete account_groups join rows.
-	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = $1", id); err != nil {
+	if _, err := exec.ExecContext(ctx, "DELETE FROM account_groups WHERE group_id = ?", id); err != nil {
 		return nil, err
 	}
 
@@ -637,21 +650,22 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 		return counts, nil
 	}
 
+	inClause, inArgs := buildGroupInt64InClause(groupIDs)
 	rows, err := r.sql.QueryContext(
 		ctx,
-		`SELECT ag.group_id,
+		fmt.Sprintf(`SELECT ag.group_id,
 			COUNT(*) AS total,
-			COUNT(*) FILTER (WHERE a.status = 'active' AND a.schedulable = true) AS active,
-			COUNT(*) FILTER (WHERE a.status = 'active' AND (
+			SUM(CASE WHEN a.status = 'active' AND a.schedulable = true THEN 1 ELSE 0 END) AS active,
+			SUM(CASE WHEN a.status = 'active' AND (
 				a.rate_limit_reset_at > NOW() OR
 				a.overload_until > NOW() OR
 				a.temp_unschedulable_until > NOW()
-			)) AS rate_limited
+			) THEN 1 ELSE 0 END) AS rate_limited
 		FROM account_groups ag
 		JOIN accounts a ON a.id = ag.account_id
-		WHERE ag.group_id = ANY($1)
-		GROUP BY ag.group_id`,
-		pq.Array(groupIDs),
+		WHERE ag.group_id IN (%s)
+		GROUP BY ag.group_id`, inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, err
@@ -684,10 +698,11 @@ func (r *groupRepository) GetAccountIDsByGroupIDs(ctx context.Context, groupIDs 
 		return nil, nil
 	}
 
+	inClause, inArgs := buildGroupInt64InClause(groupIDs)
 	rows, err := r.sql.QueryContext(
 		ctx,
-		"SELECT DISTINCT account_id FROM account_groups WHERE group_id = ANY($1) ORDER BY account_id",
-		pq.Array(groupIDs),
+		fmt.Sprintf("SELECT DISTINCT account_id FROM account_groups WHERE group_id IN (%s) ORDER BY account_id", inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, err
@@ -715,14 +730,17 @@ func (r *groupRepository) BindAccountsToGroup(ctx context.Context, groupID int64
 		return nil
 	}
 
-	// 使用 INSERT ... ON CONFLICT DO NOTHING 忽略已存在的绑定
+	values := make([]string, 0, len(accountIDs))
+	args := make([]any, 0, len(accountIDs)*4)
+	for _, accountID := range accountIDs {
+		values = append(values, "(?, ?, 50, NOW())")
+		args = append(args, accountID, groupID)
+	}
 	_, err := r.sql.ExecContext(
 		ctx,
-		`INSERT INTO account_groups (account_id, group_id, priority, created_at)
-		 SELECT unnest($1::bigint[]), $2, 50, NOW()
-		 ON CONFLICT (account_id, group_id) DO NOTHING`,
-		pq.Array(accountIDs),
-		groupID,
+		"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES "+strings.Join(values, ",")+
+			" ON DUPLICATE KEY UPDATE account_id = account_id",
+		args...,
 	)
 	if err != nil {
 		return err
@@ -760,11 +778,12 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 
 	// 与旧实现保持一致：任何不存在/已删除的分组都返回 not found，且不执行更新。
 	var existingCount int
+	inClause, inArgs := buildGroupInt64InClause(groupIDs)
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		`SELECT COUNT(*) FROM groups WHERE deleted_at IS NULL AND id = ANY($1)`,
-		[]any{pq.Array(groupIDs)},
+		fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE deleted_at IS NULL AND id IN (%s)`, quotedGroupsTable, inClause),
+		inArgs,
 		&existingCount,
 	); err != nil {
 		return err
@@ -773,24 +792,23 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		return service.ErrGroupNotFound
 	}
 
-	args := make([]any, 0, len(groupIDs)*2+1)
+	args := make([]any, 0, len(groupIDs)*3)
 	caseClauses := make([]string, 0, len(groupIDs))
-	placeholder := 1
 	for _, id := range groupIDs {
-		caseClauses = append(caseClauses, fmt.Sprintf("WHEN $%d THEN $%d", placeholder, placeholder+1))
+		caseClauses = append(caseClauses, "WHEN ? THEN ?")
 		args = append(args, id, sortOrderByID[id])
-		placeholder += 2
 	}
-	args = append(args, pq.Array(groupIDs))
+	inClause, inArgs = buildGroupInt64InClause(groupIDs)
+	args = append(args, inArgs...)
 
 	query := fmt.Sprintf(`
-		UPDATE groups
+		UPDATE %s
 		SET sort_order = CASE id
 			%s
 			ELSE sort_order
 		END
-		WHERE deleted_at IS NULL AND id = ANY($%d)
-	`, strings.Join(caseClauses, "\n\t\t\t"), placeholder)
+		WHERE deleted_at IS NULL AND id IN (%s)
+	`, quotedGroupsTable, strings.Join(caseClauses, "\n\t\t\t"), inClause)
 
 	result, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {

@@ -22,33 +22,32 @@ import (
 // - applied_at: 迁移应用时间戳
 const schemaMigrationsTableDDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (
-	filename   TEXT PRIMARY KEY,
-	checksum   TEXT NOT NULL,
-	applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	filename   VARCHAR(255) PRIMARY KEY,
+	checksum   VARCHAR(64) NOT NULL,
+	applied_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 );
 `
 
 const atlasSchemaRevisionsTableDDL = `
 CREATE TABLE IF NOT EXISTS atlas_schema_revisions (
-	version TEXT PRIMARY KEY,
-	description TEXT NOT NULL,
+	version VARCHAR(255) PRIMARY KEY,
+	description VARCHAR(255) NOT NULL,
 	type INTEGER NOT NULL,
 	applied INTEGER NOT NULL DEFAULT 0,
 	total INTEGER NOT NULL DEFAULT 0,
-	executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	executed_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
 	execution_time BIGINT NOT NULL DEFAULT 0,
 	error TEXT NULL,
 	error_stmt TEXT NULL,
-	hash TEXT NOT NULL DEFAULT '',
-	partial_hashes TEXT[] NULL,
+	hash VARCHAR(64) NOT NULL DEFAULT '',
+	partial_hashes LONGTEXT NULL,
 	operator_version TEXT NULL
 );
 `
 
-// migrationsAdvisoryLockID 是用于序列化迁移操作的 PostgreSQL Advisory Lock ID。
+// migrationsNamedLockName 是用于序列化迁移操作的 MySQL 命名锁名称。
 // 在多实例部署场景下，该锁确保同一时间只有一个实例执行迁移。
-// 任何稳定的 int64 值都可以，只要不与同一数据库中的其他锁冲突即可。
-const migrationsAdvisoryLockID int64 = 694208311321144027
+const migrationsNamedLockName = "sub2api:migrations"
 const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
@@ -94,7 +93,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return errors.New("nil sql db")
 	}
-	return applyMigrationsFS(ctx, db, migrations.FS)
+	return applyMigrationsFS(ctx, db, migrations.MySQLFS)
 }
 
 // applyMigrationsFS 是迁移执行的核心实现。
@@ -121,14 +120,13 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	}
 
 	// 获取分布式锁，确保多实例部署时只有一个实例执行迁移。
-	// 这是 PostgreSQL 特有的 Advisory Lock 机制。
-	if err := pgAdvisoryLock(ctx, db); err != nil {
+	if err := acquireMigrationsLock(ctx, db); err != nil {
 		return err
 	}
 	defer func() {
 		// 无论迁移是否成功，都要释放锁。
 		// 使用 context.Background() 确保即使原 ctx 已取消也能释放锁。
-		_ = pgAdvisoryUnlock(context.Background(), db)
+		_ = releaseMigrationsLock(context.Background(), db)
 	}()
 
 	// 创建迁移记录表（如果不存在）。
@@ -169,7 +167,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 
 		// 检查该迁移是否已经应用
 		var existing string
-		rowErr := db.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE filename = $1", name).Scan(&existing)
+		rowErr := db.QueryRowContext(ctx, "SELECT checksum FROM schema_migrations WHERE filename = ?", name).Scan(&existing)
 		if rowErr == nil {
 			// 迁移已应用，验证校验和是否匹配
 			if existing != checksum {
@@ -220,7 +218,7 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
 				}
 			}
-			if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+			if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES (?, ?)", name, checksum); err != nil {
 				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
 			}
 			continue
@@ -233,13 +231,23 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 		}
 
 		// 执行迁移 SQL
-		if _, err := tx.ExecContext(ctx, content); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("apply migration %s: %w", name, err)
+		statements := splitSQLStatements(content)
+		for i, stmt := range statements {
+			trimmed := strings.TrimSpace(stmt)
+			if trimmed == "" {
+				continue
+			}
+			if stripSQLLineComment(trimmed) == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, trimmed); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("apply migration %s (statement %d): %w", name, i+1, err)
+			}
 		}
 
 		// 记录迁移已完成，保存文件名和校验和
-		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2)", name, checksum); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES (?, ?)", name, checksum); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("record migration %s: %w", name, err)
 		}
@@ -323,19 +331,9 @@ func findDuplicatePaymentOrderOutTradeNos(ctx context.Context, db *sql.DB) ([]st
 }
 
 func indexIsInvalid(ctx context.Context, db *sql.DB, indexName string) (bool, error) {
-	var invalid bool
-	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM pg_class idx
-			JOIN pg_namespace ns ON ns.oid = idx.relnamespace
-			JOIN pg_index i ON i.indexrelid = idx.oid
-			WHERE ns.nspname = 'public'
-			  AND idx.relname = $1
-			  AND NOT i.indisvalid
-		)
-	`, indexName).Scan(&invalid)
-	return invalid, err
+	// MySQL 没有 PostgreSQL 的 invalid index 概念，索引要么存在要么不存在。
+	// 保留此函数签名以兼容调用方，始终返回 false（不存在需要清理的无效索引）。
+	return false, nil
 }
 
 func ensureAtlasBaselineAligned(ctx context.Context, db *sql.DB, fsys fs.FS) error {
@@ -372,7 +370,7 @@ func ensureAtlasBaselineAligned(ctx context.Context, db *sql.DB, fsys fs.FS) err
 
 	if _, err := db.ExecContext(ctx, `
 		INSERT INTO atlas_schema_revisions (version, description, type, applied, total, executed_at, execution_time, hash)
-		VALUES ($1, $2, $3, 0, 0, NOW(), 0, $4)
+		VALUES (?, ?, ?, 0, 0, CURRENT_TIMESTAMP(6), 0, ?)
 	`, version, description, 1, hash); err != nil {
 		return fmt.Errorf("insert atlas baseline: %w", err)
 	}
@@ -385,7 +383,7 @@ func tableExists(ctx context.Context, db *sql.DB, tableName string) (bool, error
 		SELECT EXISTS (
 			SELECT 1
 			FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = $1
+			WHERE table_schema = DATABASE() AND table_name = ?
 		)
 	`, tableName).Scan(&exists)
 	return exists, err
@@ -507,19 +505,17 @@ func stripSQLLineComment(s string) string {
 	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
-// pgAdvisoryLock 获取 PostgreSQL Advisory Lock。
-// Advisory Lock 是一种轻量级的锁机制，不与任何特定的数据库对象关联。
-// 它非常适合用于应用层面的分布式锁场景，如迁移序列化。
-func pgAdvisoryLock(ctx context.Context, db *sql.DB) error {
+// acquireMigrationsLock 获取 MySQL 命名锁。
+func acquireMigrationsLock(ctx context.Context, db *sql.DB) error {
 	ticker := time.NewTicker(migrationsLockRetryInterval)
 	defer ticker.Stop()
 
 	for {
-		var locked bool
-		if err := db.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", migrationsAdvisoryLockID).Scan(&locked); err != nil {
+		var locked sql.NullInt64
+		if err := db.QueryRowContext(ctx, "SELECT GET_LOCK(?, 0)", migrationsNamedLockName).Scan(&locked); err != nil {
 			return fmt.Errorf("acquire migrations lock: %w", err)
 		}
-		if locked {
+		if locked.Valid && locked.Int64 == 1 {
 			return nil
 		}
 		select {
@@ -530,11 +526,10 @@ func pgAdvisoryLock(ctx context.Context, db *sql.DB) error {
 	}
 }
 
-// pgAdvisoryUnlock 释放 PostgreSQL Advisory Lock。
-// 必须在获取锁后确保释放，否则会阻塞其他实例的迁移操作。
-func pgAdvisoryUnlock(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrationsAdvisoryLockID)
-	if err != nil {
+// releaseMigrationsLock 释放 MySQL 命名锁。
+func releaseMigrationsLock(ctx context.Context, db *sql.DB) error {
+	var released sql.NullInt64
+	if err := db.QueryRowContext(ctx, "SELECT RELEASE_LOCK(?)", migrationsNamedLockName).Scan(&released); err != nil {
 		return fmt.Errorf("release migrations lock: %w", err)
 	}
 	return nil

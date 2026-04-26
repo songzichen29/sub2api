@@ -164,6 +164,20 @@ func TestOpsSystemLogHandler_CleanupInvalidEndTime(t *testing.T) {
 	}
 }
 
+func TestOpsSystemLogHandler_CleanupInvalidTimeRange(t *testing.T) {
+	svc := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewOpsHandler(svc)
+	r := newOpsSystemLogTestRouter(h, true)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/logs/cleanup", bytes.NewBufferString(`{"time_range":"bad"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", w.Code)
+	}
+}
+
 func TestOpsSystemLogHandler_CleanupServiceUnavailable(t *testing.T) {
 	svc := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	h := NewOpsHandler(svc)

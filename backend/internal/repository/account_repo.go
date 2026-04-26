@@ -28,7 +28,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -49,6 +48,19 @@ type accountRepository struct {
 	// Used to proactively sync account snapshot to cache when status changes,
 	// ensuring sticky sessions can promptly detect unavailable accounts.
 	schedulerCache service.SchedulerCache
+}
+
+func buildAccountInt64InClause(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	ph := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		ph = append(ph, "?")
+		args = append(args, id)
+	}
+	return strings.Join(ph, ","), args
 }
 
 var schedulerNeutralExtraKeyPrefixes = []string{
@@ -287,11 +299,11 @@ func (r *accountRepository) GetByCRSAccountID(ctx context.Context, crsAccountID 
 
 func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, extra->>'crs_account_id'
+		SELECT id, JSON_UNQUOTE(JSON_EXTRACT(extra, '$.crs_account_id'))
 		FROM accounts
 		WHERE deleted_at IS NULL
-			AND extra->>'crs_account_id' IS NOT NULL
-			AND extra->>'crs_account_id' != ''
+			AND JSON_EXTRACT(extra, '$.crs_account_id') IS NOT NULL
+			AND JSON_UNQUOTE(JSON_EXTRACT(extra, '$.crs_account_id')) != ''
 	`)
 	if err != nil {
 		return nil, err
@@ -438,7 +450,7 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 	if _, err := txClient.AccountGroup.Delete().Where(dbaccountgroup.AccountIDEQ(id)).Exec(ctx); err != nil {
 		return err
 	}
-	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = $1", id); err != nil {
+	if _, err := txClient.ExecContext(ctx, "DELETE FROM scheduled_test_plans WHERE account_id = ?", id); err != nil {
 		return err
 	}
 	if _, err := txClient.Account.Delete().Where(dbaccount.IDEQ(id)).Exec(ctx); err != nil {
@@ -682,19 +694,16 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 	}
 
 	ids := make([]int64, 0, len(updates))
-	args := make([]any, 0, len(updates)*2+1)
+	args := make([]any, 0, len(updates)*2)
 	caseSQL := "UPDATE accounts SET last_used_at = CASE id"
-
-	idx := 1
 	for id, ts := range updates {
-		caseSQL += " WHEN $" + itoa(idx) + " THEN $" + itoa(idx+1) + "::timestamptz"
+		caseSQL += " WHEN ? THEN ?"
 		args = append(args, id, ts)
 		ids = append(ids, id)
-		idx += 2
 	}
-
-	caseSQL += " END, updated_at = NOW() WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
-	args = append(args, pq.Array(ids))
+	inClause, inArgs := buildAccountInt64InClause(ids)
+	caseSQL += " END, updated_at = NOW() WHERE id IN (" + inClause + ") AND deleted_at IS NULL"
+	args = append(args, inArgs...)
 
 	_, err := r.sql.ExecContext(ctx, caseSQL, args...)
 	if err != nil {
@@ -1079,17 +1088,9 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		`UPDATE accounts SET 
-			extra = jsonb_set(
-				jsonb_set(COALESCE(extra, '{}'::jsonb), '{model_rate_limits}'::text[], COALESCE(extra->'model_rate_limits', '{}'::jsonb), true),
-				ARRAY['model_rate_limits', $1]::text[],
-				$2::jsonb,
-				true
-			),
-			updated_at = NOW()
-		WHERE id = $3 AND deleted_at IS NULL`,
-		scope,
-		raw,
+		`UPDATE accounts SET extra = JSON_SET(COALESCE(extra, JSON_OBJECT()), ?, CAST(? AS JSON)), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
+		"$.model_rate_limits."+scope,
+		string(raw),
 		id,
 	)
 	if err != nil {
@@ -1126,13 +1127,13 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	_, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
-		SET temp_unschedulable_until = $1,
-			temp_unschedulable_reason = $2,
+		SET temp_unschedulable_until = ?,
+			temp_unschedulable_reason = ?,
 			updated_at = NOW()
-		WHERE id = $3
+		WHERE id = ?
 			AND deleted_at IS NULL
-			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < $1)
-	`, until, reason, id)
+			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until < ?)
+	`, until, reason, id, until)
 	if err != nil {
 		return err
 	}
@@ -1149,7 +1150,7 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 		SET temp_unschedulable_until = NULL,
 			temp_unschedulable_reason = NULL,
 			updated_at = NOW()
-		WHERE id = $1
+		WHERE id = ?
 			AND deleted_at IS NULL
 	`, id)
 	if err != nil {
@@ -1182,7 +1183,7 @@ func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id 
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) - 'antigravity_quota_scopes', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		"UPDATE accounts SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.antigravity_quota_scopes'), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
 		id,
 	)
 	if err != nil {
@@ -1206,7 +1207,7 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) - 'model_rate_limits', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		"UPDATE accounts SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.model_rate_limits'), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
 		id,
 	)
 	if err != nil {
@@ -1275,7 +1276,7 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 			AND schedulable = TRUE
 			AND auto_pause_on_expired = TRUE
 			AND expires_at IS NOT NULL
-			AND expires_at <= $1
+			AND expires_at <= ?
 	`, now)
 	if err != nil {
 		return 0, err
@@ -1306,7 +1307,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL",
+		"UPDATE accounts SET extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON)), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
 		string(payload), id,
 	)
 
@@ -1427,7 +1428,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		if err != nil {
 			return 0, err
 		}
-		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{}'::jsonb) || $"+itoa(idx)+"::jsonb")
+		setClauses = append(setClauses, "credentials = JSON_MERGE_PATCH(COALESCE(credentials, JSON_OBJECT()), CAST($"+itoa(idx)+" AS JSON))")
 		args = append(args, payload)
 		idx++
 	}
@@ -1436,7 +1437,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		if err != nil {
 			return 0, err
 		}
-		setClauses = append(setClauses, "extra = COALESCE(extra, '{}'::jsonb) || $"+itoa(idx)+"::jsonb")
+		setClauses = append(setClauses, "extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST($"+itoa(idx)+" AS JSON))")
 		args = append(args, payload)
 		idx++
 	}
@@ -1447,8 +1448,10 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 
 	setClauses = append(setClauses, "updated_at = NOW()")
 
-	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
-	args = append(args, pq.Array(ids))
+	inClause, inArgs := buildAccountInt64InClause(ids)
+	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + " WHERE id IN (" + inClause + ") AND deleted_at IS NULL"
+	args = append(args, inArgs...)
+	query = opsReplaceDollarPlaceholders(query)
 
 	result, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -1840,157 +1843,33 @@ func (r *accountRepository) FindByExtraField(ctx context.Context, key string, va
 	return r.accountsToService(ctx, accounts)
 }
 
-// nowUTC is a SQL expression to generate a UTC RFC3339 timestamp string.
-const nowUTC = `to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
-
-// dailyExpiredExpr is a SQL expression that evaluates to TRUE when daily quota period has expired.
-// Supports both rolling (24h from start) and fixed (pre-computed reset_at) modes.
-const dailyExpiredExpr = `(
-	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
-	THEN NOW() >= COALESCE((extra->>'quota_daily_reset_at')::timestamptz, '1970-01-01'::timestamptz)
-	ELSE COALESCE((extra->>'quota_daily_start')::timestamptz, '1970-01-01'::timestamptz)
-		+ '24 hours'::interval <= NOW()
-	END
-)`
-
-// weeklyExpiredExpr is a SQL expression that evaluates to TRUE when weekly quota period has expired.
-const weeklyExpiredExpr = `(
-	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
-	THEN NOW() >= COALESCE((extra->>'quota_weekly_reset_at')::timestamptz, '1970-01-01'::timestamptz)
-	ELSE COALESCE((extra->>'quota_weekly_start')::timestamptz, '1970-01-01'::timestamptz)
-		+ '168 hours'::interval <= NOW()
-	END
-)`
-
-// nextDailyResetAtExpr is a SQL expression to compute the next daily reset_at when a reset occurs.
-// For fixed mode: computes the next future reset time based on NOW(), timezone, and configured hour.
-// This correctly handles long-inactive accounts by jumping directly to the next valid reset point.
-const nextDailyResetAtExpr = `(
-	CASE WHEN COALESCE(extra->>'quota_daily_reset_mode', 'rolling') = 'fixed'
-	THEN to_char((
-		-- Compute today's reset point in the configured timezone, then pick next future one
-		CASE WHEN NOW() >= (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		-- NOW() is at or past today's reset point → next reset is tomorrow
-		THEN (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
-			+ '1 day'::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		-- NOW() is before today's reset point → next reset is today
-		ELSE (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_daily_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		END
-	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-	ELSE NULL END
-)`
-
-// nextWeeklyResetAtExpr is a SQL expression to compute the next weekly reset_at when a reset occurs.
-// For fixed mode: computes the next future reset time based on NOW(), timezone, configured day and hour.
-// This correctly handles long-inactive accounts by jumping directly to the next valid reset point.
-const nextWeeklyResetAtExpr = `(
-	CASE WHEN COALESCE(extra->>'quota_weekly_reset_mode', 'rolling') = 'fixed'
-	THEN to_char((
-		-- Compute this week's reset point in the configured timezone
-		-- Step 1: get today's date at reset hour in configured tz
-		-- Step 2: compute days forward to target weekday
-		-- Step 3: if same day but past reset hour, advance 7 days
-		CASE
-		WHEN (
-			-- days_forward = (target_day - current_day + 7) % 7
-			(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
-			 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
-			 + 7) % 7
-		) = 0 AND NOW() >= (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		-- Same weekday and past reset hour → next week
-		THEN (
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
-			+ '7 days'::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		ELSE (
-			-- Advance to target weekday this week (or next if days_forward > 0)
-			date_trunc('day', NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))
-			+ (COALESCE((extra->>'quota_weekly_reset_hour')::int, 0) || ' hours')::interval
-			+ ((
-				(COALESCE((extra->>'quota_weekly_reset_day')::int, 1)
-				 - EXTRACT(DOW FROM NOW() AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC'))::int
-				 + 7) % 7
-			) || ' days')::interval
-		) AT TIME ZONE COALESCE(extra->>'quota_reset_timezone', 'UTC')
-		END
-	) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
-	ELSE NULL END
-)`
-
 // IncrementQuotaUsed 原子递增账号的配额用量（总/日/周三个维度）
 // 日/周额度在周期过期时自动重置为 0 再递增。
 // 支持滚动窗口（rolling）和固定时间（fixed）两种重置模式。
 func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) error {
-	rows, err := r.sql.QueryContext(ctx,
-		`UPDATE accounts SET extra = (
-			COALESCE(extra, '{}'::jsonb)
-			-- 总额度：始终递增
-			|| jsonb_build_object('quota_used', COALESCE((extra->>'quota_used')::numeric, 0) + $1)
-			-- 日额度：仅在 quota_daily_limit > 0 时处理
-			|| CASE WHEN COALESCE((extra->>'quota_daily_limit')::numeric, 0) > 0 THEN
-				jsonb_build_object(
-					'quota_daily_used',
-					CASE WHEN `+dailyExpiredExpr+`
-					THEN $1
-					ELSE COALESCE((extra->>'quota_daily_used')::numeric, 0) + $1 END,
-					'quota_daily_start',
-					CASE WHEN `+dailyExpiredExpr+`
-					THEN `+nowUTC+`
-					ELSE COALESCE(extra->>'quota_daily_start', `+nowUTC+`) END
-				)
-				-- 固定模式重置时更新下次重置时间
-				|| CASE WHEN `+dailyExpiredExpr+` AND `+nextDailyResetAtExpr+` IS NOT NULL
-				   THEN jsonb_build_object('quota_daily_reset_at', `+nextDailyResetAtExpr+`)
-				   ELSE '{}'::jsonb END
-			ELSE '{}'::jsonb END
-			-- 周额度：仅在 quota_weekly_limit > 0 时处理
-			|| CASE WHEN COALESCE((extra->>'quota_weekly_limit')::numeric, 0) > 0 THEN
-				jsonb_build_object(
-					'quota_weekly_used',
-					CASE WHEN `+weeklyExpiredExpr+`
-					THEN $1
-					ELSE COALESCE((extra->>'quota_weekly_used')::numeric, 0) + $1 END,
-					'quota_weekly_start',
-					CASE WHEN `+weeklyExpiredExpr+`
-					THEN `+nowUTC+`
-					ELSE COALESCE(extra->>'quota_weekly_start', `+nowUTC+`) END
-				)
-				-- 固定模式重置时更新下次重置时间
-				|| CASE WHEN `+weeklyExpiredExpr+` AND `+nextWeeklyResetAtExpr+` IS NOT NULL
-				   THEN jsonb_build_object('quota_weekly_reset_at', `+nextWeeklyResetAtExpr+`)
-				   ELSE '{}'::jsonb END
-			ELSE '{}'::jsonb END
-		), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL
-		RETURNING
-			COALESCE((extra->>'quota_used')::numeric, 0),
-			COALESCE((extra->>'quota_limit')::numeric, 0)`,
-		amount, id)
-	if err != nil {
+	var extraRaw sql.NullString
+	if err := scanSingleRow(ctx, r.sql, "SELECT extra FROM accounts WHERE id = ? AND deleted_at IS NULL", []any{id}, &extraRaw); err != nil {
+		if err == sql.ErrNoRows {
+			return service.ErrAccountNotFound
+		}
 		return err
 	}
-	defer func() { _ = rows.Close() }()
-
-	var newUsed, limit float64
-	if rows.Next() {
-		if err := rows.Scan(&newUsed, &limit); err != nil {
+	extra := make(map[string]any)
+	if extraRaw.Valid && strings.TrimSpace(extraRaw.String) != "" {
+		if err := json.Unmarshal([]byte(extraRaw.String), &extra); err != nil {
 			return err
 		}
 	}
-	if err := rows.Err(); err != nil {
+	limit := accountExtraFloat(extra["quota_limit"])
+	newUsed := accountExtraFloat(extra["quota_used"]) + amount
+	extra["quota_used"] = newUsed
+	applyAccountPeriodQuota(extra, "daily", 24*time.Hour, amount, time.Now().UTC())
+	applyAccountPeriodQuota(extra, "weekly", 7*24*time.Hour, amount, time.Now().UTC())
+	payload, err := json.Marshal(extra)
+	if err != nil {
+		return err
+	}
+	if _, err := r.sql.ExecContext(ctx, "UPDATE accounts SET extra = CAST(? AS JSON), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", string(payload), id); err != nil {
 		return err
 	}
 
@@ -2006,13 +1885,31 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 // ResetQuotaUsed 重置账号所有维度的配额用量为 0
 // 保留固定重置模式的配置字段（quota_daily_reset_mode 等），仅清零用量和窗口起始时间
 func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
-	_, err := r.sql.ExecContext(ctx,
-		`UPDATE accounts SET extra = (
-			COALESCE(extra, '{}'::jsonb)
-			|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0}'::jsonb
-		) - 'quota_daily_start' - 'quota_weekly_start' - 'quota_daily_reset_at' - 'quota_weekly_reset_at', updated_at = NOW()
-		WHERE id = $1 AND deleted_at IS NULL`,
-		id)
+	var extraRaw sql.NullString
+	if err := scanSingleRow(ctx, r.sql, "SELECT extra FROM accounts WHERE id = ? AND deleted_at IS NULL", []any{id}, &extraRaw); err != nil {
+		if err == sql.ErrNoRows {
+			return service.ErrAccountNotFound
+		}
+		return err
+	}
+	extra := make(map[string]any)
+	if extraRaw.Valid && strings.TrimSpace(extraRaw.String) != "" {
+		if err := json.Unmarshal([]byte(extraRaw.String), &extra); err != nil {
+			return err
+		}
+	}
+	extra["quota_used"] = 0
+	extra["quota_daily_used"] = 0
+	extra["quota_weekly_used"] = 0
+	delete(extra, "quota_daily_start")
+	delete(extra, "quota_weekly_start")
+	delete(extra, "quota_daily_reset_at")
+	delete(extra, "quota_weekly_reset_at")
+	payload, err := json.Marshal(extra)
+	if err != nil {
+		return err
+	}
+	_, err = r.sql.ExecContext(ctx, "UPDATE accounts SET extra = CAST(? AS JSON), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", string(payload), id)
 	if err != nil {
 		return err
 	}
@@ -2021,4 +1918,53 @@ func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error 
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
 	}
 	return nil
+}
+
+func accountExtraFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case string:
+		f, _ := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		return f
+	default:
+		return 0
+	}
+}
+
+func accountExtraTime(extra map[string]any, key string) time.Time {
+	s, _ := extra[key].(string)
+	if strings.TrimSpace(s) == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t.UTC()
+}
+
+func applyAccountPeriodQuota(extra map[string]any, period string, duration time.Duration, amount float64, now time.Time) {
+	limit := accountExtraFloat(extra["quota_"+period+"_limit"])
+	if limit <= 0 {
+		return
+	}
+	usedKey := "quota_" + period + "_used"
+	startKey := "quota_" + period + "_start"
+	resetKey := "quota_" + period + "_reset_at"
+	mode, _ := extra["quota_"+period+"_reset_mode"].(string)
+	start := accountExtraTime(extra, startKey)
+	resetAt := accountExtraTime(extra, resetKey)
+	expired := false
+	if mode == "fixed" {
+		expired = !resetAt.IsZero() && !resetAt.After(now)
+	} else {
+		expired = start.IsZero() || !start.Add(duration).After(now)
+	}
+	if expired {
+		extra[usedKey] = amount
+		extra[startKey] = now.Format(time.RFC3339Nano)
+	} else {
+		extra[usedKey] = accountExtraFloat(extra[usedKey]) + amount
+	}
 }

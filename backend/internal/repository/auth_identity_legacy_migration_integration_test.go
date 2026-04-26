@@ -1,4 +1,4 @@
-//go:build integration
+//go:build integration && pglegacy
 
 package repository
 
@@ -45,7 +45,7 @@ RETURNING id`).Scan(&wechatOpenIDOnlyUserID))
 	var syntheticAuthIdentityID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
 INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
-VALUES ($1, 'wechat', 'wechat-main', 'openid-synthetic', '{"backfill_source":"synthetic_email"}'::jsonb)
+VALUES ($1, 'wechat', 'wechat-main', 'openid-synthetic', CAST('{"backfill_source":"synthetic_email"}' AS JSON))
 RETURNING id`, wechatOpenIDOnlyUserID).Scan(&syntheticAuthIdentityID))
 
 	var linuxDoLegacyID int64
@@ -286,7 +286,7 @@ RETURNING id
 
 	var linuxDoMalformedMetadataType string
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT jsonb_typeof(metadata)
+SELECT JSON_TYPE(metadata)
 FROM auth_identities
 WHERE user_id = $1
   AND provider_type = 'linuxdo'
@@ -297,7 +297,7 @@ WHERE user_id = $1
 
 	var linuxDoArrayMetadataType string
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT jsonb_typeof(metadata)
+SELECT JSON_TYPE(metadata)
 FROM auth_identities
 WHERE user_id = $1
   AND provider_type = 'linuxdo'
@@ -308,7 +308,7 @@ WHERE user_id = $1
 
 	var wechatUnionArrayMetadataType string
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT jsonb_typeof(metadata)
+SELECT JSON_TYPE(metadata)
 FROM auth_identities
 WHERE user_id = $1
   AND provider_type = 'wechat'
@@ -319,7 +319,7 @@ WHERE user_id = $1
 
 	var invalidJSONReportDetailsType string
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT jsonb_typeof(details)
+SELECT JSON_TYPE(details)
 FROM auth_identity_migration_reports
 WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
   AND report_key = $1
@@ -328,7 +328,7 @@ WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
 
 	var openIDOnlyReportDetailsType string
 	require.NoError(t, tx.QueryRowContext(ctx, `
-SELECT jsonb_typeof(details)
+SELECT JSON_TYPE(details)
 FROM auth_identity_migration_reports
 WHERE report_type = 'wechat_openid_only_requires_remediation'
   AND report_key = $1
@@ -394,18 +394,18 @@ RETURNING id`, email).Scan(&userID))
 
 	require.NoError(t, tx.QueryRowContext(ctx, `
 INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
-VALUES ($1, 'linuxdo', 'linuxdo', 'linuxdo-conflict', '{}'::jsonb)
+VALUES ($1, 'linuxdo', 'linuxdo', 'linuxdo-conflict', CAST('{}' AS JSON))
 RETURNING id`, linuxdoConflictOwnerUserID).Scan(new(int64)))
 
 	require.NoError(t, tx.QueryRowContext(ctx, `
 INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
-VALUES ($1, 'wechat', 'wechat-main', 'union-conflict', '{}'::jsonb)
+VALUES ($1, 'wechat', 'wechat-main', 'union-conflict', CAST('{}' AS JSON))
 RETURNING id`, wechatConflictOwnerUserID).Scan(new(int64)))
 
 	var wechatChannelOwnerIdentityID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
 INSERT INTO auth_identities (user_id, provider_type, provider_key, provider_subject, metadata)
-VALUES ($1, 'wechat', 'wechat-main', 'union-channel-owner', '{}'::jsonb)
+VALUES ($1, 'wechat', 'wechat-main', 'union-channel-owner', CAST('{}' AS JSON))
 RETURNING id`, wechatChannelOwnerUserID).Scan(&wechatChannelOwnerIdentityID))
 
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -418,7 +418,7 @@ INSERT INTO auth_identity_channels (
 	channel_subject,
 	metadata
 )
-VALUES ($1, 'wechat', 'wechat-main', 'oa', 'wx-app-conflict', 'openid-channel-conflict', '{}'::jsonb)
+VALUES ($1, 'wechat', 'wechat-main', 'oa', 'wx-app-conflict', 'openid-channel-conflict', CAST('{}' AS JSON))
 RETURNING id`, wechatChannelOwnerIdentityID).Scan(new(int64)))
 
 	var linuxdoConflictLegacyID int64

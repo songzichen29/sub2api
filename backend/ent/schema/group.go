@@ -41,9 +41,9 @@ func (Group) Fields() []ent.Field {
 		field.String("description").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.Float("rate_multiplier").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}).
 			Default(1.0),
 		field.Bool("is_exclusive").
 			Default(false),
@@ -61,15 +61,15 @@ func (Group) Fields() []ent.Field {
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 		field.Float("weekly_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 		field.Float("monthly_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 		field.Int("default_validity_days").
 			Default(30),
 
@@ -77,15 +77,15 @@ func (Group) Fields() []ent.Field {
 		field.Float("image_price_1k").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 		field.Float("image_price_2k").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 		field.Float("image_price_4k").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
@@ -103,7 +103,7 @@ func (Group) Fields() []ent.Field {
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).
 			Optional().
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			SchemaType(map[string]string{dialect.MySQL: "json"}).
 			Comment("模型路由配置：模型模式 -> 优先账号ID列表"),
 
 		// 模型路由开关 (added by migration 041)
@@ -119,7 +119,7 @@ func (Group) Fields() []ent.Field {
 		// 支持的模型系列 (added by migration 046)
 		field.JSON("supported_model_scopes", []string{}).
 			Default([]string{"claude", "gemini_text", "gemini_image"}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			SchemaType(map[string]string{dialect.MySQL: "json"}).
 			Comment("支持的模型系列：claude, gemini_text, gemini_image"),
 
 		// 分组排序 (added by migration 052)
@@ -143,7 +143,7 @@ func (Group) Fields() []ent.Field {
 			Comment("默认映射模型 ID，当账号级映射找不到时使用此值"),
 		field.JSON("messages_dispatch_model_config", domain.OpenAIMessagesDispatchModelConfig{}).
 			Default(domain.OpenAIMessagesDispatchModelConfig{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			SchemaType(map[string]string{dialect.MySQL: "json"}).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
 
 		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。

@@ -86,7 +86,7 @@
                 v-model.number="formData.database.port"
                 type="number"
                 class="input"
-                placeholder="5432"
+                placeholder="3306"
               />
             </div>
           </div>
@@ -110,7 +110,7 @@
                 v-model="formData.database.user"
                 type="text"
                 class="input"
-                placeholder="postgres"
+                placeholder="root"
               />
             </div>
             <div>
@@ -532,8 +532,8 @@ const getCurrentPort = (): number => {
 const formData = reactive<InstallRequest>({
   database: {
     host: 'localhost',
-    port: 5432,
-    user: 'postgres',
+    port: 3306,
+    user: 'root',
     password: '',
     dbname: 'sub2api',
     sslmode: 'disable'

@@ -54,10 +54,10 @@ type TestS3ConnectionRequest struct {
 }
 
 type CreateBackupJobRequest struct {
-	BackupType     string `json:"backup_type" binding:"required,oneof=postgres redis full"`
+	BackupType     string `json:"backup_type" binding:"required,oneof=mysql redis full"`
 	UploadToS3     bool   `json:"upload_to_s3"`
 	S3ProfileID    string `json:"s3_profile_id"`
-	PostgresID     string `json:"postgres_profile_id"`
+	PostgresID     string `json:"mysql_profile_id"`
 	RedisID        string `json:"redis_profile_id"`
 	IdempotencyKey string `json:"idempotency_key"`
 }
@@ -215,8 +215,8 @@ func (h *DataManagementHandler) ListSourceProfiles(c *gin.Context) {
 		response.BadRequest(c, "Invalid source_type")
 		return
 	}
-	if sourceType != "postgres" && sourceType != "redis" {
-		response.BadRequest(c, "source_type must be postgres or redis")
+	if sourceType != "mysql" && sourceType != "redis" {
+		response.BadRequest(c, "source_type must be mysql or redis")
 		return
 	}
 
@@ -233,8 +233,8 @@ func (h *DataManagementHandler) ListSourceProfiles(c *gin.Context) {
 
 func (h *DataManagementHandler) CreateSourceProfile(c *gin.Context) {
 	sourceType := strings.TrimSpace(c.Param("source_type"))
-	if sourceType != "postgres" && sourceType != "redis" {
-		response.BadRequest(c, "source_type must be postgres or redis")
+	if sourceType != "mysql" && sourceType != "redis" {
+		response.BadRequest(c, "source_type must be mysql or redis")
 		return
 	}
 
@@ -263,8 +263,8 @@ func (h *DataManagementHandler) CreateSourceProfile(c *gin.Context) {
 
 func (h *DataManagementHandler) UpdateSourceProfile(c *gin.Context) {
 	sourceType := strings.TrimSpace(c.Param("source_type"))
-	if sourceType != "postgres" && sourceType != "redis" {
-		response.BadRequest(c, "source_type must be postgres or redis")
+	if sourceType != "mysql" && sourceType != "redis" {
+		response.BadRequest(c, "source_type must be mysql or redis")
 		return
 	}
 	profileID := strings.TrimSpace(c.Param("profile_id"))
@@ -297,8 +297,8 @@ func (h *DataManagementHandler) UpdateSourceProfile(c *gin.Context) {
 
 func (h *DataManagementHandler) DeleteSourceProfile(c *gin.Context) {
 	sourceType := strings.TrimSpace(c.Param("source_type"))
-	if sourceType != "postgres" && sourceType != "redis" {
-		response.BadRequest(c, "source_type must be postgres or redis")
+	if sourceType != "mysql" && sourceType != "redis" {
+		response.BadRequest(c, "source_type must be mysql or redis")
 		return
 	}
 	profileID := strings.TrimSpace(c.Param("profile_id"))
@@ -319,8 +319,8 @@ func (h *DataManagementHandler) DeleteSourceProfile(c *gin.Context) {
 
 func (h *DataManagementHandler) SetActiveSourceProfile(c *gin.Context) {
 	sourceType := strings.TrimSpace(c.Param("source_type"))
-	if sourceType != "postgres" && sourceType != "redis" {
-		response.BadRequest(c, "source_type must be postgres or redis")
+	if sourceType != "mysql" && sourceType != "redis" {
+		response.BadRequest(c, "source_type must be mysql or redis")
 		return
 	}
 	profileID := strings.TrimSpace(c.Param("profile_id"))

@@ -357,14 +357,14 @@ func TestBackupService_CreateBackup_DumpFailure(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
 
-	dumper := &mockDumper{dumpErr: fmt.Errorf("pg_dump failed")}
+	dumper := &mockDumper{dumpErr: fmt.Errorf("mysqldump failed")}
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, dumper, store)
 
 	record, err := svc.CreateBackup(context.Background(), "manual", 14)
 	require.Error(t, err)
 	require.Equal(t, "failed", record.Status)
-	require.Contains(t, record.ErrorMsg, "pg_dump")
+	require.Contains(t, record.ErrorMsg, "mysqldump")
 }
 
 func TestBackupService_CreateBackup_NoS3Config(t *testing.T) {

@@ -16,7 +16,7 @@ func TestResolveEndpointColumn(t *testing.T) {
 	}{
 		{"inbound", "ul.inbound_endpoint"},
 		{"upstream", "ul.upstream_endpoint"},
-		{"path", "ul.inbound_endpoint || ' -> ' || ul.upstream_endpoint"},
+		{"path", "CONCAT(ul.inbound_endpoint, ' -> ', ul.upstream_endpoint)"},
 		{"", "ul.inbound_endpoint"},        // default
 		{"unknown", "ul.inbound_endpoint"}, // fallback
 	}
@@ -36,7 +36,7 @@ func TestResolveModelDimensionExpression(t *testing.T) {
 	}{
 		{usagestats.ModelSourceRequested, "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
 		{usagestats.ModelSourceUpstream, "COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model))"},
-		{usagestats.ModelSourceMapping, "(COALESCE(NULLIF(TRIM(requested_model), ''), model) || ' -> ' || COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model)))"},
+		{usagestats.ModelSourceMapping, "CONCAT(COALESCE(NULLIF(TRIM(requested_model), ''), model), ' -> ', COALESCE(NULLIF(TRIM(upstream_model), ''), COALESCE(NULLIF(TRIM(requested_model), ''), model)))"},
 		{"", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
 		{"invalid", "COALESCE(NULLIF(TRIM(requested_model), ''), model)"},
 	}

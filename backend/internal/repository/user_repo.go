@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -21,9 +22,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
-
-	entsql "entgo.io/ent/dialect/sql"
 )
 
 type userRepository struct {
@@ -583,14 +581,21 @@ func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs [
 		return nil, fmt.Errorf("sql executor is not configured")
 	}
 
-	const query = `
+	placeholders := make([]string, len(userIDs))
+	args := make([]any, 0, len(userIDs))
+	for i, id := range userIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
 		SELECT user_id, MAX(created_at) AS last_used_at
 		FROM usage_logs
-		WHERE user_id = ANY($1)
+		WHERE user_id IN (%s)
 		GROUP BY user_id
-	`
+	`, strings.Join(placeholders, ","))
 
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -622,21 +627,21 @@ func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int
 }
 
 func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
-	orderExpr := func(direction, nulls string, tieOrder func(string) string) func(*entsql.Selector) {
+	orderExpr := func(direction string, tieOrder func(string) string) func(*entsql.Selector) {
 		return func(s *entsql.Selector) {
 			subquery := fmt.Sprintf("(SELECT MAX(created_at) FROM usage_logs WHERE user_id = %s)", s.C(dbuser.FieldID))
-			s.OrderExpr(entsql.Expr(subquery + " " + direction + " NULLS " + nulls))
+			s.OrderExpr(entsql.Expr(subquery + " " + direction))
 			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
 		}
 	}
 
 	if sortOrder == pagination.SortOrderAsc {
 		return []func(*entsql.Selector){
-			orderExpr("ASC", "FIRST", entsql.Asc),
+			orderExpr("ASC", entsql.Asc),
 		}
 	}
 	return []func(*entsql.Selector){
-		orderExpr("DESC", "LAST", entsql.Desc),
+		orderExpr("DESC", entsql.Desc),
 	}
 }
 
@@ -652,22 +657,13 @@ func (r *userRepository) filterUsersByAttributes(ctx context.Context, attrs map[
 
 	clauses := make([]string, 0, len(attrs))
 	args := make([]any, 0, len(attrs)*2+1)
-	argIndex := 1
 	for attrID, value := range attrs {
-		clauses = append(clauses, fmt.Sprintf("(attribute_id = $%d AND value ILIKE $%d)", argIndex, argIndex+1))
+		clauses = append(clauses, "(attribute_id = ? AND LOWER(value) LIKE LOWER(?))")
 		args = append(args, attrID, "%"+value+"%")
-		argIndex += 2
 	}
 
-	query := fmt.Sprintf(
-		`SELECT user_id
-		 FROM user_attribute_values
-		 WHERE %s
-		 GROUP BY user_id
-		 HAVING COUNT(DISTINCT attribute_id) = $%d`,
-		strings.Join(clauses, " OR "),
-		argIndex,
-	)
+	query := "SELECT user_id FROM user_attribute_values WHERE " + strings.Join(clauses, " OR ") +
+		" GROUP BY user_id HAVING COUNT(DISTINCT attribute_id) = ?"
 	args = append(args, len(attrs))
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)

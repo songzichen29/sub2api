@@ -127,3 +127,37 @@ func TestMigration124BackfillsLegacyOIDCSecurityFlagsSafely(t *testing.T) {
 	require.Contains(t, sql, "oidc_connect_enabled")
 	require.Contains(t, sql, "'false'")
 }
+
+func TestMySQLFollowupMigrationRestoresAuthProfileTables(t *testing.T) {
+	content, err := MySQLFS.ReadFile("002_auth_profile_followup.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `user_provider_default_grants`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `user_avatars`")
+	require.Contains(t, sql, "INSERT IGNORE INTO `settings`")
+	require.Contains(t, sql, "auth_source_default_email_grant_on_signup")
+}
+
+func TestMySQLRuntimeSchemaParityFollowupCoversRawTablesAndColumns(t *testing.T) {
+	content, err := MySQLFS.ReadFile("003_runtime_schema_parity.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `usage_billing_dedup`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `channel_pricing_intervals`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `channel_account_stats_pricing_rules`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `auth_identity_migration_reports`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `user_group_rate_multipliers`")
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `user_affiliates`")
+	require.Contains(t, sql, "table_name = 'channels'")
+	require.Contains(t, sql, "column_name = 'features'")
+	require.Contains(t, sql, "UPDATE `channels`")
+	require.Contains(t, sql, "MODIFY COLUMN `features` longtext NOT NULL")
+	require.Contains(t, sql, "column_name = 'apply_pricing_to_account_stats'")
+	require.Contains(t, sql, "table_name = 'usage_logs'")
+	require.Contains(t, sql, "column_name = 'account_stats_cost'")
+	require.Contains(t, sql, "`resolution_note` longtext NULL")
+	require.NotContains(t, sql, "`resolution_note` longtext NOT NULL DEFAULT ''")
+	require.Contains(t, sql, "idx_payment_audit_logs_order_action_uniq")
+}

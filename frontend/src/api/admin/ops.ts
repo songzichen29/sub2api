@@ -908,6 +908,7 @@ export interface OpsSystemLogQuery {
 }
 
 export interface OpsSystemLogCleanupRequest {
+  time_range?: string
   start_time?: string
   end_time?: string
   level?: string

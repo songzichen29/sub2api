@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
-	_ "github.com/lib/pq"
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +46,13 @@ func GetDataDir() string {
 		return dir
 	}
 
+	// Prefer the current working directory when it already contains install artifacts.
+	// This avoids accidentally treating a local Windows/Linux dev run as a container
+	// deployment just because "/app/data" happens to exist.
+	if hasLocalInstallArtifacts() {
+		return "."
+	}
+
 	// Check if /app/data exists and is writable (Docker environment)
 	dockerDataDir := "/app/data"
 	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
@@ -61,14 +69,24 @@ func GetDataDir() string {
 	return "."
 }
 
+func hasLocalInstallArtifacts() bool {
+	artifacts := []string{ConfigFileName, InstallLockFile}
+	for _, name := range artifacts {
+		if _, err := os.Stat(filepath.Join(".", name)); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 // GetConfigFilePath returns the full path to config.yaml
 func GetConfigFilePath() string {
-	return GetDataDir() + "/" + ConfigFileName
+	return filepath.Join(GetDataDir(), ConfigFileName)
 }
 
 // GetInstallLockPath returns the full path to .installed lock file
 func GetInstallLockPath() string {
-	return GetDataDir() + "/" + InstallLockFile
+	return filepath.Join(GetDataDir(), InstallLockFile)
 }
 
 // SetupConfig holds the setup configuration
@@ -162,15 +180,19 @@ func NeedsSetup() bool {
 
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database
+	// 先连接 MySQL 服务，再检查/创建目标数据库。
 	defaultDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+		"%s:%s@tcp(%s:%d)/?parseTime=true&charset=utf8mb4&collation=utf8mb4_0900_ai_ci%s",
+		cfg.User,
+		cfg.Password,
+		cfg.Host,
+		cfg.Port,
+		mysqlTLSQuery(cfg.SSLMode),
 	)
 
-	db, err := sql.Open("postgres", defaultDSN)
+	db, err := sql.Open("mysql", defaultDSN)
 	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+		return fmt.Errorf("failed to connect to MySQL: %w", err)
 	}
 
 	defer func() {
@@ -178,7 +200,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 			return
 		}
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
 		}
 	}()
 
@@ -190,18 +212,20 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 
 	// Check if target database exists
-	var exists bool
-	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
-	if err := row.Scan(&exists); err != nil {
+	var dbName string
+	row := db.QueryRowContext(ctx, "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?", cfg.DBName)
+	if err := row.Scan(&dbName); err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to check database existence: %w", err)
 	}
+
+	exists := dbName != ""
 
 	// Create database if not exists
 	if !exists {
 		// 注意：数据库名不能参数化，依赖前置输入校验保障安全。
 		// Note: Database names cannot be parameterized, but we've already validated cfg.DBName
 		// in the handler using validateDBName() which only allows [a-zA-Z][a-zA-Z0-9_]*
-		_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE %s", cfg.DBName))
+		_, err := db.ExecContext(ctx, fmt.Sprintf("CREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci", cfg.DBName))
 		if err != nil {
 			return fmt.Errorf("failed to create database '%s': %w", cfg.DBName, err)
 		}
@@ -210,23 +234,28 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 
 	// Now connect to the target database to verify
 	if err := db.Close(); err != nil {
-		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+		logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
 	}
 	db = nil
 
 	targetDSN := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode,
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_0900_ai_ci%s",
+		cfg.User,
+		cfg.Password,
+		cfg.Host,
+		cfg.Port,
+		cfg.DBName,
+		mysqlTLSQuery(cfg.SSLMode),
 	)
 
-	targetDB, err := sql.Open("postgres", targetDSN)
+	targetDB, err := sql.Open("mysql", targetDSN)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
 	}
 
 	defer func() {
 		if err := targetDB.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
 		}
 	}()
 
@@ -238,6 +267,19 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 	}
 
 	return nil
+}
+
+func mysqlTLSQuery(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", "disable":
+		return "&tls=false"
+	case "prefer":
+		return "&tls=preferred"
+	case "require", "verify-ca", "verify-full", "true":
+		return "&tls=true"
+	default:
+		return "&tls=" + mode
+	}
 }
 
 // TestRedisConnection tests the Redis connection
@@ -329,19 +371,23 @@ func createInstallLock() error {
 
 func initializeDatabase(cfg *SetupConfig) error {
 	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
-		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_0900_ai_ci%s",
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.DBName,
+		mysqlTLSQuery(cfg.Database.SSLMode),
 	)
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
 		}
 	}()
 
@@ -352,19 +398,23 @@ func initializeDatabase(cfg *SetupConfig) error {
 
 func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	dsn := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		cfg.Database.Host, cfg.Database.Port, cfg.Database.User,
-		cfg.Database.Password, cfg.Database.DBName, cfg.Database.SSLMode,
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_0900_ai_ci%s",
+		cfg.Database.User,
+		cfg.Database.Password,
+		cfg.Database.Host,
+		cfg.Database.Port,
+		cfg.Database.DBName,
+		mysqlTLSQuery(cfg.Database.SSLMode),
 	)
 
-	db, err := sql.Open("postgres", dsn)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		return false, "", err
 	}
 
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close mysql connection: %v", err)
 		}
 	}()
 
@@ -377,7 +427,7 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 		return false, "", err
 	}
 	var adminUsers int64
-	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = $1", service.RoleAdmin).Scan(&adminUsers); err != nil {
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users WHERE role = ?", service.RoleAdmin).Scan(&adminUsers); err != nil {
 		return false, "", err
 	}
 	decision := decideAdminBootstrap(totalUsers, adminUsers)
@@ -411,14 +461,16 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 
 	_, err = db.ExecContext(
 		ctx,
-		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		`INSERT INTO users (email, password_hash, role, balance, concurrency, status, notes, balance_notify_extra_emails, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		admin.Email,
 		admin.PasswordHash,
 		admin.Role,
 		admin.Balance,
 		admin.Concurrency,
 		admin.Status,
+		"",
+		"[]",
 		admin.CreatedAt,
 		admin.UpdatedAt,
 	)
@@ -547,8 +599,8 @@ func AutoSetupFromEnv() error {
 	cfg := &SetupConfig{
 		Database: DatabaseConfig{
 			Host:     getEnvOrDefault("DATABASE_HOST", "localhost"),
-			Port:     getEnvIntOrDefault("DATABASE_PORT", 5432),
-			User:     getEnvOrDefault("DATABASE_USER", "postgres"),
+			Port:     getEnvIntOrDefault("DATABASE_PORT", 3306),
+			User:     getEnvOrDefault("DATABASE_USER", "root"),
 			Password: getEnvOrDefault("DATABASE_PASSWORD", ""),
 			DBName:   getEnvOrDefault("DATABASE_DBNAME", "sub2api"),
 			SSLMode:  getEnvOrDefault("DATABASE_SSLMODE", "disable"),

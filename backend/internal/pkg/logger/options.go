@@ -100,7 +100,22 @@ func resolveLogFilePath(explicit string) string {
 	if dataDir != "" {
 		return filepath.Join(dataDir, "logs", defaultLogFilename)
 	}
-	return DefaultContainerLogPath
+	if hasLocalProjectDataArtifacts() {
+		return filepath.Join("logs", defaultLogFilename)
+	}
+	if info, err := os.Stat("/app/data"); err == nil && info.IsDir() {
+		return DefaultContainerLogPath
+	}
+	return filepath.Join("logs", defaultLogFilename)
+}
+
+func hasLocalProjectDataArtifacts() bool {
+	for _, name := range []string{"config.yaml", ".installed"} {
+		if _, err := os.Stat(name); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func bootstrapOptions() InitOptions {

@@ -26,9 +26,9 @@ func (r *schedulerOutboxRepository) ListAfter(ctx context.Context, afterID int64
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, event_type, account_id, group_id, payload, created_at
 		FROM scheduler_outbox
-		WHERE id > $1
+		WHERE id > ?
 		ORDER BY id ASC
-		LIMIT $2
+		LIMIT ?
 	`, afterID, limit)
 	if err != nil {
 		return nil, err
@@ -93,23 +93,24 @@ func enqueueSchedulerOutbox(ctx context.Context, exec sqlExecutor, eventType str
 	}
 	query := `
 		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
-		VALUES ($1, $2, $3, $4)
+		VALUES (?, ?, ?, ?)
 	`
 	args := []any{eventType, accountID, groupID, payloadArg}
 	if schedulerOutboxEventSupportsDedup(eventType) {
 		query = `
 			INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
-			SELECT $1, $2, $3, $4
+			SELECT ?, ?, ?, ?
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM scheduler_outbox
-				WHERE event_type = $1
-					AND account_id IS NOT DISTINCT FROM $2
-					AND group_id IS NOT DISTINCT FROM $3
-					AND created_at >= NOW() - make_interval(secs => $5)
+				WHERE event_type = ?
+					AND account_id <=> ?
+					AND group_id <=> ?
+					AND created_at >= NOW() - INTERVAL ? SECOND
 			)
 		`
-		args = append(args, schedulerOutboxDedupWindow.Seconds())
+		// MySQL 位置参数不能复用，需要将重复引用的参数展开
+		args = append(args, eventType, accountID, groupID, schedulerOutboxDedupWindow.Seconds())
 	}
 	_, err := exec.ExecContext(ctx, query, args...)
 	return err

@@ -38,19 +38,22 @@ func (AuthIdentityChannel) Fields() []ent.Field {
 			Validate(validateAuthProviderType),
 		field.String("provider_key").
 			NotEmpty().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			MaxLen(255).
+			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
 		field.String("channel").
 			MaxLen(20).
 			NotEmpty(),
 		field.String("channel_app_id").
 			NotEmpty().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			MaxLen(128).
+			SchemaType(map[string]string{dialect.MySQL: "varchar(128)"}),
 		field.String("channel_subject").
 			NotEmpty().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			MaxLen(255).
+			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
 		field.JSON("metadata", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
 	}
 }
 

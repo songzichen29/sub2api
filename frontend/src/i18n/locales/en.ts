@@ -186,7 +186,7 @@ export default {
     description: 'Configure your Sub2API instance',
     database: {
       title: 'Database Configuration',
-      description: 'Connect to your PostgreSQL database',
+      description: 'Connect to your MySQL database',
       host: 'Host',
       port: 'Port',
       username: 'Username',
@@ -1486,7 +1486,7 @@ export default {
         },
         backup: {
           title: 'Backup Operations',
-          description: 'Trigger PostgreSQL, Redis, and full backup jobs.'
+          description: 'Trigger MySQL, Redis, and full backup jobs.'
         },
         history: {
           title: 'Backup History',
@@ -1496,13 +1496,13 @@ export default {
       form: {
         sourceMode: 'Source Mode',
         backupRoot: 'Backup Root',
-        activePostgresProfile: 'Active PostgreSQL Profile',
+        activeMySQLProfile: 'Active MySQL Profile',
         activeRedisProfile: 'Active Redis Profile',
         activeS3Profile: 'Active S3 Profile',
         retentionDays: 'Retention Days',
         keepLast: 'Keep Last Jobs',
         uploadToS3: 'Upload to S3',
-        useActivePostgresProfile: 'Use Active PostgreSQL Profile',
+        useActiveMySQLProfile: 'Use Active MySQL Profile',
         useActiveRedisProfile: 'Use Active Redis Profile',
         useActiveS3Profile: 'Use Active Profile',
         idempotencyKey: 'Idempotency Key (Optional)',
@@ -1512,8 +1512,8 @@ export default {
           profileName: 'Profile Name',
           setActive: 'Set as active after creation'
         },
-        postgres: {
-          title: 'PostgreSQL',
+        mysql: {
+          title: 'MySQL',
           host: 'Host',
           port: 'Port',
           user: 'User',
@@ -1581,7 +1581,7 @@ export default {
           type: 'Type',
           status: 'Status',
           triggeredBy: 'Triggered By',
-          pgProfile: 'PostgreSQL Profile',
+          mySQLProfile: 'MySQL Profile',
           redisProfile: 'Redis Profile',
           s3Profile: 'S3 Profile',
           finishedAt: 'Finished At',

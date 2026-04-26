@@ -26,7 +26,7 @@ type stubJWTUserRepo struct {
 func (r *stubJWTUserRepo) GetByID(_ context.Context, id int64) (*service.User, error) {
 	u, ok := r.users[id]
 	if !ok {
-		return nil, errors.New("user not found")
+		return nil, service.ErrUserNotFound
 	}
 	return u, nil
 }
@@ -256,6 +256,50 @@ func TestJWTAuth_UserNotFound(t *testing.T) {
 	var body ErrorResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Equal(t, "USER_NOT_FOUND", body.Code)
+}
+
+type errJWTUserReader struct {
+	err error
+}
+
+func (r *errJWTUserReader) GetByID(context.Context, int64) (*service.User, error) {
+	return nil, r.err
+}
+
+func TestJWTAuth_UserLookupInternalError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{}
+	cfg.JWT.Secret = "test-jwt-secret-32bytes-long!!!"
+	cfg.JWT.AccessTokenExpireMinutes = 60
+
+	authSvc := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil)
+	userSvc := &errJWTUserReader{err: errors.New("query user_avatars: Error 1146")}
+
+	r := gin.New()
+	r.Use(jwtAuth(authSvc, userSvc, nil))
+	r.GET("/protected", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	token, err := authSvc.GenerateToken(&service.User{
+		ID:           1,
+		Email:        "test@example.com",
+		Role:         "user",
+		Status:       service.StatusActive,
+		TokenVersion: 1,
+	})
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	var body ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "INTERNAL_ERROR", body.Code)
 }
 
 func TestJWTAuth_UserInactive(t *testing.T) {

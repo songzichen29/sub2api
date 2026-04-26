@@ -242,7 +242,7 @@ func (s *IdentityService) RewriteUserID(body []byte, accountID int64, accountUUI
 
 	sessionTail := parsed.SessionID // 原始session UUID
 
-	// 生成新的session hash: SHA256(accountID::sessionTail) -> UUID格式
+	// 生成新的 session hash：对 accountID 与 sessionTail 做 SHA256 后转 UUID 格式
 	seed := fmt.Sprintf("%d::%s", accountID, sessionTail)
 	newSessionHash := generateUUIDFromSeed(seed)
 

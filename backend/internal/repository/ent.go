@@ -15,14 +15,14 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/lib/pq" // PostgreSQL 驱动，通过副作用导入注册驱动
+	_ "github.com/go-sql-driver/mysql" // MySQL 驱动，通过副作用导入注册驱动
 )
 
 // InitEnt 初始化 Ent ORM 客户端并返回客户端实例和底层的 *sql.DB。
 //
 // 该函数执行以下操作：
 //  1. 初始化全局时区设置，确保时间处理一致性
-//  2. 建立 PostgreSQL 数据库连接
+//  2. 建立 MySQL 数据库连接
 //  3. 自动执行数据库迁移，确保 schema 与代码同步
 //  4. 创建并返回 Ent 客户端实例
 //
@@ -43,12 +43,12 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	}
 
 	// 构建包含时区信息的数据库连接字符串 (DSN)。
-	// 时区信息会传递给 PostgreSQL，确保数据库层面的时间处理正确。
+	// 时区信息会传递给 MySQL 驱动，确保数据库层面的时间解析正确。
 	dsn := cfg.Database.DSNWithTimezone(cfg.Timezone)
 
-	// 使用 Ent 的 SQL 驱动打开 PostgreSQL 连接。
-	// dialect.Postgres 指定使用 PostgreSQL 方言进行 SQL 生成。
-	drv, err := entsql.Open(dialect.Postgres, dsn)
+	// 使用 Ent 的 SQL 驱动打开 MySQL 连接。
+	// dialect.MySQL 指定使用 MySQL 方言进行 SQL 生成。
+	drv, err := entsql.Open(dialect.MySQL, dsn)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -59,7 +59,7 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.FS); err != nil {
+	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.MySQLFS); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
 	}

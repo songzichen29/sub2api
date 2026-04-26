@@ -12,7 +12,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 )
 
 const (
@@ -59,7 +58,7 @@ func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID
 		}
 
 		res, err := txClient.ExecContext(txCtx,
-			"UPDATE user_affiliates SET inviter_id = $1, updated_at = NOW() WHERE user_id = $2 AND inviter_id IS NULL",
+			"UPDATE user_affiliates SET inviter_id = ?, updated_at = NOW() WHERE user_id = ? AND inviter_id IS NULL",
 			inviterID, userID,
 		)
 		if err != nil {
@@ -72,7 +71,7 @@ func (r *affiliateRepository) BindInviter(ctx context.Context, userID, inviterID
 		}
 
 		if _, err = txClient.ExecContext(txCtx,
-			"UPDATE user_affiliates SET aff_count = aff_count + 1, updated_at = NOW() WHERE user_id = $1",
+			"UPDATE user_affiliates SET aff_count = aff_count + 1, updated_at = NOW() WHERE user_id = ?",
 			inviterID,
 		); err != nil {
 			return fmt.Errorf("increment inviter aff_count: %w", err)
@@ -94,8 +93,8 @@ func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, invite
 	var applied bool
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		res, err := txClient.ExecContext(txCtx,
-			"UPDATE user_affiliates SET aff_quota = aff_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2",
-			amount, inviterID,
+			"UPDATE user_affiliates SET aff_quota = aff_quota + ?, aff_history_quota = aff_history_quota + ?, updated_at = NOW() WHERE user_id = ?",
+			amount, amount, inviterID,
 		)
 		if err != nil {
 			return err
@@ -108,7 +107,7 @@ func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, invite
 
 		if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, NOW(), NOW())`, inviterID, amount, inviteeUserID); err != nil {
+VALUES (?, 'accrue', ?, ?, NOW(), NOW())`, inviterID, amount, inviteeUserID); err != nil {
 			return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 		}
 
@@ -131,23 +130,11 @@ func (r *affiliateRepository) TransferQuotaToBalance(ctx context.Context, userID
 		}
 
 		rows, err := txClient.QueryContext(txCtx, `
-WITH claimed AS (
-	SELECT aff_quota::double precision AS amount
-	FROM user_affiliates
-	WHERE user_id = $1
-	  AND aff_quota > 0
-	FOR UPDATE
-),
-cleared AS (
-	UPDATE user_affiliates ua
-	SET aff_quota = 0,
-	    updated_at = NOW()
-	FROM claimed c
-	WHERE ua.user_id = $1
-	RETURNING c.amount
-)
-SELECT amount
-FROM cleared`, userID)
+SELECT aff_quota AS amount
+FROM user_affiliates
+WHERE user_id = ?
+  AND aff_quota > 0
+FOR UPDATE`, userID)
 		if err != nil {
 			return fmt.Errorf("claim affiliate quota: %w", err)
 		}
@@ -169,6 +156,9 @@ FROM cleared`, userID)
 		if transferred <= 0 {
 			return service.ErrAffiliateQuotaEmpty
 		}
+		if _, err := txClient.ExecContext(txCtx, `UPDATE user_affiliates SET aff_quota = 0, updated_at = NOW() WHERE user_id = ?`, userID); err != nil {
+			return fmt.Errorf("clear affiliate quota: %w", err)
+		}
 
 		affected, err := txClient.User.Update().
 			Where(user.IDEQ(userID)).
@@ -189,7 +179,7 @@ FROM cleared`, userID)
 
 		if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
-VALUES ($1, 'transfer', $2, NULL, NOW(), NOW())`, userID, transferred); err != nil {
+VALUES (?, 'transfer', ?, NULL, NOW(), NOW())`, userID, transferred); err != nil {
 			return fmt.Errorf("insert affiliate transfer ledger: %w", err)
 		}
 
@@ -214,9 +204,10 @@ SELECT ua.user_id,
        ua.created_at
 FROM user_affiliates ua
 LEFT JOIN users u ON u.id = ua.user_id
-WHERE ua.inviter_id = $1
+WHERE ua.inviter_id = ?
 ORDER BY ua.created_at DESC
-LIMIT $2`, inviterID, limit)
+LIMIT ?`, inviterID, limit)
+
 	if err != nil {
 		return nil, err
 	}
@@ -276,8 +267,8 @@ func ensureUserAffiliateWithClient(ctx context.Context, client affiliateQueryExe
 		}
 		_, insertErr := client.ExecContext(ctx, `
 INSERT INTO user_affiliates (user_id, aff_code, created_at, updated_at)
-VALUES ($1, $2, NOW(), NOW())
-ON CONFLICT (user_id) DO NOTHING`, userID, code)
+VALUES (?, ?, NOW(), NOW())
+ON DUPLICATE KEY UPDATE user_id = user_id`, userID, code)
 		if insertErr == nil {
 			break
 		}
@@ -296,12 +287,12 @@ SELECT user_id,
        aff_code,
        inviter_id,
        aff_count,
-       aff_quota::double precision,
-       aff_history_quota::double precision,
+       aff_quota,
+       aff_history_quota,
        created_at,
        updated_at
 FROM user_affiliates
-WHERE user_id = $1`, userID)
+WHERE user_id = ?`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -339,12 +330,12 @@ SELECT user_id,
        aff_code,
        inviter_id,
        aff_count,
-       aff_quota::double precision,
-       aff_history_quota::double precision,
+       aff_quota,
+       aff_history_quota,
        created_at,
        updated_at
 FROM user_affiliates
-WHERE aff_code = $1
+WHERE aff_code = ?
 LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	if err != nil {
 		return nil, err
@@ -380,7 +371,7 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 
 func queryUserBalance(ctx context.Context, client affiliateQueryExecer, userID int64) (float64, error) {
 	rows, err := client.QueryContext(ctx,
-		"SELECT balance::double precision FROM users WHERE id = $1 LIMIT 1",
+		"SELECT balance FROM users WHERE id = ? LIMIT 1",
 		userID,
 	)
 	if err != nil {
@@ -412,9 +403,9 @@ func generateAffiliateCode() (string, error) {
 }
 
 func isAffiliateUniqueViolation(err error) bool {
-	var pqErr *pq.Error
-	if errors.As(err, &pqErr) {
-		return string(pqErr.Code) == "23505"
+	if err == nil {
+		return false
 	}
-	return false
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "23505") || strings.Contains(msg, "1062") || strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique")
 }

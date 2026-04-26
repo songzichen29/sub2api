@@ -15,7 +15,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
-	"github.com/lib/pq"
 )
 
 const (
@@ -249,8 +248,7 @@ func (s *OpsService) retryWithErrorLog(ctx context.Context, requestedByUserID in
 		StartedAt:         startedAt,
 	})
 	if err != nil {
-		var pqErr *pq.Error
-		if errors.As(err, &pqErr) && string(pqErr.Code) == "23505" {
+		if isDuplicateKeyErr(err) {
 			return nil, infraerrors.Conflict("OPS_RETRY_IN_PROGRESS", "A retry is already in progress for this error")
 		}
 		return nil, infraerrors.InternalServer("OPS_RETRY_CREATE_ATTEMPT_FAILED", "Failed to create retry attempt").WithCause(err)
@@ -333,6 +331,14 @@ func (s *OpsService) retryWithErrorLog(ctx context.Context, requestedByUserID in
 	}
 
 	return result, nil
+}
+
+func isDuplicateKeyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "1062") || strings.Contains(msg, "23505")
 }
 
 type opsRetryExecution struct {

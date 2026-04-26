@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -56,7 +55,7 @@ func (r *usageCleanupRepository) ListTasks(ctx context.Context, params paginatio
 			started_at, finished_at, created_at, updated_at
 		FROM usage_cleanup_tasks
 		ORDER BY created_at DESC, id DESC
-		LIMIT $1 OFFSET $2
+		LIMIT ? OFFSET ?
 	`
 	rows, err := r.sql.QueryContext(ctx, query, params.Limit(), params.Offset())
 	if err != nil {
@@ -121,45 +120,54 @@ func (r *usageCleanupRepository) ClaimNextPendingTask(ctx context.Context, stale
 		staleRunningAfterSeconds = 1800
 	}
 	query := `
-		WITH next AS (
-			SELECT id
-			FROM usage_cleanup_tasks
-			WHERE status = $1
-				OR (
-					status = $2
-					AND started_at IS NOT NULL
-					AND started_at < NOW() - ($3 * interval '1 second')
-				)
-			ORDER BY created_at ASC
-			LIMIT 1
-			FOR UPDATE SKIP LOCKED
-		)
-		UPDATE usage_cleanup_tasks AS tasks
-		SET status = $4,
+		UPDATE usage_cleanup_tasks
+		SET status = ?,
 			started_at = NOW(),
 			finished_at = NULL,
 			error_message = NULL,
 			updated_at = NOW()
-		FROM next
-		WHERE tasks.id = next.id
-		RETURNING tasks.id, tasks.status, tasks.filters, tasks.created_by, tasks.deleted_rows, tasks.error_message,
-			tasks.started_at, tasks.finished_at, tasks.created_at, tasks.updated_at
+		WHERE (
+			status = ?
+			OR (
+				status = ?
+				AND started_at IS NOT NULL
+				AND started_at < DATE_SUB(NOW(), INTERVAL ? SECOND)
+			)
+		)
+		ORDER BY created_at ASC
+		LIMIT 1
+	`
+	res, err := r.sql.ExecContext(ctx, query,
+		service.UsageCleanupStatusRunning,
+		service.UsageCleanupStatusPending,
+		service.UsageCleanupStatusRunning,
+		staleRunningAfterSeconds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		return nil, nil
+	}
+
+	selectQuery := `
+		SELECT id, status, filters, created_by, deleted_rows, error_message,
+			started_at, finished_at, created_at, updated_at
+		FROM usage_cleanup_tasks
+		WHERE status = ?
+		ORDER BY started_at DESC, id DESC
+		LIMIT 1
 	`
 	var task service.UsageCleanupTask
 	var filtersJSON []byte
 	var errMsg sql.NullString
 	var startedAt sql.NullTime
 	var finishedAt sql.NullTime
-	if err := scanSingleRow(
-		ctx,
-		r.sql,
-		query,
-		[]any{
-			service.UsageCleanupStatusPending,
-			service.UsageCleanupStatusRunning,
-			staleRunningAfterSeconds,
-			service.UsageCleanupStatusRunning,
-		},
+	if err := scanSingleRow(ctx, r.sql, selectQuery, []any{service.UsageCleanupStatusRunning},
 		&task.ID,
 		&task.Status,
 		&filtersJSON,
@@ -171,9 +179,6 @@ func (r *usageCleanupRepository) ClaimNextPendingTask(ctx context.Context, stale
 		&task.CreatedAt,
 		&task.UpdatedAt,
 	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	if err := json.Unmarshal(filtersJSON, &task.Filters); err != nil {
@@ -196,7 +201,7 @@ func (r *usageCleanupRepository) GetTaskStatus(ctx context.Context, taskID int64
 		return r.getTaskStatusWithEnt(ctx, taskID)
 	}
 	var status string
-	if err := scanSingleRow(ctx, r.sql, "SELECT status FROM usage_cleanup_tasks WHERE id = $1", []any{taskID}, &status); err != nil {
+	if err := scanSingleRow(ctx, r.sql, "SELECT status FROM usage_cleanup_tasks WHERE id = ?", []any{taskID}, &status); err != nil {
 		return "", err
 	}
 	return status, nil
@@ -208,9 +213,9 @@ func (r *usageCleanupRepository) UpdateTaskProgress(ctx context.Context, taskID 
 	}
 	query := `
 		UPDATE usage_cleanup_tasks
-		SET deleted_rows = $1,
+		SET deleted_rows = ?,
 			updated_at = NOW()
-		WHERE id = $2
+		WHERE id = ?
 	`
 	_, err := r.sql.ExecContext(ctx, query, deletedRows, taskID)
 	return err
@@ -222,31 +227,30 @@ func (r *usageCleanupRepository) CancelTask(ctx context.Context, taskID int64, c
 	}
 	query := `
 		UPDATE usage_cleanup_tasks
-		SET status = $1,
-			canceled_by = $3,
+		SET status = ?,
+			canceled_by = ?,
 			canceled_at = NOW(),
 			finished_at = NOW(),
 			error_message = NULL,
 			updated_at = NOW()
-		WHERE id = $2
-			AND status IN ($4, $5)
-		RETURNING id
+		WHERE id = ?
+			AND status IN (?, ?)
 	`
-	var id int64
-	err := scanSingleRow(ctx, r.sql, query, []any{
+	res, err := r.sql.ExecContext(ctx, query,
 		service.UsageCleanupStatusCanceled,
-		taskID,
 		canceledBy,
+		taskID,
 		service.UsageCleanupStatusPending,
 		service.UsageCleanupStatusRunning,
-	}, &id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	)
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func (r *usageCleanupRepository) MarkTaskSucceeded(ctx context.Context, taskID int64, deletedRows int64) error {
@@ -255,11 +259,11 @@ func (r *usageCleanupRepository) MarkTaskSucceeded(ctx context.Context, taskID i
 	}
 	query := `
 		UPDATE usage_cleanup_tasks
-		SET status = $1,
-			deleted_rows = $2,
+		SET status = ?,
+			deleted_rows = ?,
 			finished_at = NOW(),
 			updated_at = NOW()
-		WHERE id = $3
+		WHERE id = ?
 	`
 	_, err := r.sql.ExecContext(ctx, query, service.UsageCleanupStatusSucceeded, deletedRows, taskID)
 	return err
@@ -271,12 +275,12 @@ func (r *usageCleanupRepository) MarkTaskFailed(ctx context.Context, taskID int6
 	}
 	query := `
 		UPDATE usage_cleanup_tasks
-		SET status = $1,
-			deleted_rows = $2,
-			error_message = $3,
+		SET status = ?,
+			deleted_rows = ?,
+			error_message = ?,
 			finished_at = NOW(),
 			updated_at = NOW()
-		WHERE id = $4
+		WHERE id = ?
 	`
 	_, err := r.sql.ExecContext(ctx, query, service.UsageCleanupStatusFailed, deletedRows, errorMsg, taskID)
 	return err
@@ -297,24 +301,18 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 			FROM usage_logs
 			WHERE %s
 			ORDER BY created_at ASC, id ASC
-			LIMIT $%d
+			LIMIT ?
 		)
 		DELETE FROM usage_logs
 		WHERE id IN (SELECT id FROM target)
-		RETURNING id
-	`, whereClause, len(args))
+	`, whereClause)
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	res, err := r.sql.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = rows.Close() }()
-
-	var deleted int64
-	for rows.Next() {
-		deleted++
-	}
-	if err := rows.Err(); err != nil {
+	deleted, err := res.RowsAffected()
+	if err != nil {
 		return 0, err
 	}
 	return deleted, nil
@@ -323,57 +321,47 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any) {
 	conditions := make([]string, 0, 8)
 	args := make([]any, 0, 8)
-	idx := 1
 	if !filters.StartTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", idx))
+		conditions = append(conditions, "created_at >= ?")
 		args = append(args, filters.StartTime)
-		idx++
 	}
 	if !filters.EndTime.IsZero() {
-		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", idx))
+		conditions = append(conditions, "created_at <= ?")
 		args = append(args, filters.EndTime)
-		idx++
 	}
 	if filters.UserID != nil {
-		conditions = append(conditions, fmt.Sprintf("user_id = $%d", idx))
+		conditions = append(conditions, "user_id = ?")
 		args = append(args, *filters.UserID)
-		idx++
 	}
 	if filters.APIKeyID != nil {
-		conditions = append(conditions, fmt.Sprintf("api_key_id = $%d", idx))
+		conditions = append(conditions, "api_key_id = ?")
 		args = append(args, *filters.APIKeyID)
-		idx++
 	}
 	if filters.AccountID != nil {
-		conditions = append(conditions, fmt.Sprintf("account_id = $%d", idx))
+		conditions = append(conditions, "account_id = ?")
 		args = append(args, *filters.AccountID)
-		idx++
 	}
 	if filters.GroupID != nil {
-		conditions = append(conditions, fmt.Sprintf("group_id = $%d", idx))
+		conditions = append(conditions, "group_id = ?")
 		args = append(args, *filters.GroupID)
-		idx++
 	}
 	if filters.Model != nil {
 		model := strings.TrimSpace(*filters.Model)
 		if model != "" {
-			conditions = append(conditions, fmt.Sprintf("model = $%d", idx))
+			conditions = append(conditions, "model = ?")
 			args = append(args, model)
-			idx++
 		}
 	}
 	if filters.RequestType != nil {
-		condition, conditionArgs := buildRequestTypeFilterCondition(idx, *filters.RequestType)
+		condition, conditionArgs := buildRequestTypeFilterCondition(1, *filters.RequestType)
 		conditions = append(conditions, condition)
 		args = append(args, conditionArgs...)
-		idx += len(conditionArgs)
 	} else if filters.Stream != nil {
-		conditions = append(conditions, fmt.Sprintf("stream = $%d", idx))
+		conditions = append(conditions, "stream = ?")
 		args = append(args, *filters.Stream)
-		idx++
 	}
 	if filters.BillingType != nil {
-		conditions = append(conditions, fmt.Sprintf("billing_type = $%d", idx))
+		conditions = append(conditions, "billing_type = ?")
 		args = append(args, *filters.BillingType)
 	}
 	return strings.Join(conditions, " AND "), args
@@ -412,10 +400,16 @@ func (r *usageCleanupRepository) createTaskWithSQL(ctx context.Context, task *se
 			filters,
 			created_by,
 			deleted_rows
-		) VALUES ($1, $2, $3, $4)
-		RETURNING id, created_at, updated_at
+		) VALUES (?, ?, ?, ?)
 	`
-	if err := scanSingleRow(ctx, r.sql, query, []any{task.Status, filtersJSON, task.CreatedBy, task.DeletedRows}, &task.ID, &task.CreatedAt, &task.UpdatedAt); err != nil {
+	if _, err := r.sql.ExecContext(ctx, query, task.Status, filtersJSON, task.CreatedBy, task.DeletedRows); err != nil {
+		return err
+	}
+	if err := scanSingleRow(ctx, r.sql,
+		"SELECT id, created_at, updated_at FROM usage_cleanup_tasks WHERE created_by = ? ORDER BY id DESC LIMIT 1",
+		[]any{task.CreatedBy},
+		&task.ID, &task.CreatedAt, &task.UpdatedAt,
+	); err != nil {
 		return err
 	}
 	return nil

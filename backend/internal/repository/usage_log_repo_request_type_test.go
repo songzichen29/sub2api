@@ -39,7 +39,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 		CreatedAt:      createdAt,
 	}
 
-	mock.ExpectQuery("INSERT INTO usage_logs").
+	mock.ExpectExec("INSERT INTO usage_logs").
 		WithArgs(
 			log.UserID,
 			log.APIKeyID,
@@ -88,6 +88,9 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
 		).
+		WillReturnResult(sqlmock.NewResult(99, 1))
+	mock.ExpectQuery("SELECT id, created_at FROM usage_logs WHERE request_id = \\? AND api_key_id = \\? ORDER BY id DESC LIMIT 1").
+		WithArgs(log.RequestID, log.APIKeyID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
 
 	inserted, err := repo.Create(context.Background(), log)
@@ -118,7 +121,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 		CreatedAt:      createdAt,
 	}
 
-	mock.ExpectQuery("INSERT INTO usage_logs").
+	mock.ExpectExec("INSERT INTO usage_logs").
 		WithArgs(
 			log.UserID,
 			log.APIKeyID,
@@ -167,6 +170,9 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // account_stats_cost
 			createdAt,
 		).
+		WillReturnResult(sqlmock.NewResult(100, 1))
+	mock.ExpectQuery("SELECT id, created_at FROM usage_logs WHERE request_id = \\? AND api_key_id = \\? ORDER BY id DESC LIMIT 1").
+		WithArgs(log.RequestID, log.APIKeyID).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
 
 	inserted, err := repo.Create(context.Background(), log)
@@ -190,7 +196,7 @@ func TestBuildUsageLogBestEffortInsertQuery_IncludesRequestedModelColumn(t *test
 
 	require.Contains(t, query, "INSERT INTO usage_logs (")
 	require.Contains(t, query, "\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
-	require.Contains(t, query, "\n\t\t\trequest_id,\n\t\t\tmodel,\n\t\t\trequested_model,\n\t\t\tupstream_model,")
+	require.Contains(t, query, "ON DUPLICATE KEY UPDATE id = id")
 	require.Len(t, args, len(prepared.args))
 	require.Equal(t, prepared.args[5], args[5])
 }
@@ -256,10 +262,10 @@ func TestUsageLogRepositoryListWithFiltersRequestTypePriority(t *testing.T) {
 		ExactTotal:  true,
 	}
 
-	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM usage_logs WHERE \\(request_type = \\? OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
 		WithArgs(requestType).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
-	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\$2 OFFSET \\$3").
+	mock.ExpectQuery("SELECT .* FROM usage_logs WHERE \\(request_type = \\? OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\) ORDER BY id DESC LIMIT \\? OFFSET \\?").
 		WithArgs(requestType, 20, 0).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
@@ -280,7 +286,7 @@ func TestUsageLogRepositoryGetUsageTrendWithFiltersRequestTypePriority(t *testin
 	requestType := int16(service.RequestTypeStream)
 	stream := true
 
-	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)").
+	mock.ExpectQuery("AND \\(request_type = \\? OR \\(request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE\\)\\)").
 		WithArgs(start, end, requestType).
 		WillReturnRows(sqlmock.NewRows([]string{"date", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost"}))
 
@@ -299,7 +305,7 @@ func TestUsageLogRepositoryGetModelStatsWithFiltersRequestTypePriority(t *testin
 	requestType := int16(service.RequestTypeWSV2)
 	stream := false
 
-	mock.ExpectQuery("AND \\(request_type = \\$3 OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
+	mock.ExpectQuery("AND \\(request_type = \\? OR \\(request_type = 0 AND openai_ws_mode = TRUE\\)\\)").
 		WithArgs(start, end, requestType).
 		WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "total_tokens", "cost", "actual_cost", "account_cost"}))
 
@@ -320,7 +326,7 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 		Stream:      &stream,
 	}
 
-	mock.ExpectQuery("FROM usage_logs\\s+WHERE \\(request_type = \\$1 OR \\(request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE\\)\\)").
+	mock.ExpectQuery("FROM usage_logs\\s+WHERE \\(request_type = \\? OR \\(request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE\\)\\)").
 		WithArgs(requestType).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"total_requests",
@@ -477,25 +483,25 @@ func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 		{
 			name:      "sync_with_legacy_fallback",
 			request:   int16(service.RequestTypeSync),
-			wantWhere: "(request_type = $3 OR (request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE))",
+			wantWhere: "(request_type = ? OR (request_type = 0 AND stream = FALSE AND openai_ws_mode = FALSE))",
 			wantArg:   int16(service.RequestTypeSync),
 		},
 		{
 			name:      "stream_with_legacy_fallback",
 			request:   int16(service.RequestTypeStream),
-			wantWhere: "(request_type = $3 OR (request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE))",
+			wantWhere: "(request_type = ? OR (request_type = 0 AND stream = TRUE AND openai_ws_mode = FALSE))",
 			wantArg:   int16(service.RequestTypeStream),
 		},
 		{
 			name:      "ws_v2_with_legacy_fallback",
 			request:   int16(service.RequestTypeWSV2),
-			wantWhere: "(request_type = $3 OR (request_type = 0 AND openai_ws_mode = TRUE))",
+			wantWhere: "(request_type = ? OR (request_type = 0 AND openai_ws_mode = TRUE))",
 			wantArg:   int16(service.RequestTypeWSV2),
 		},
 		{
 			name:      "invalid_request_type_normalized_to_unknown",
 			request:   int16(99),
-			wantWhere: "request_type = $3",
+			wantWhere: "request_type = ?",
 			wantArg:   int16(service.RequestTypeUnknown),
 		},
 	}

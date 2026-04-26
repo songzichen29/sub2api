@@ -43,7 +43,7 @@ func TestSafeDateFormat(t *testing.T) {
 	}
 }
 
-func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
+func TestBuildUsageLogBatchInsertQuery_UsesOnDuplicateKeyUpdate(t *testing.T) {
 	log := &service.UsageLog{
 		UserID:       1,
 		APIKeyID:     2,
@@ -62,6 +62,6 @@ func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
 		usageLogBatchKey(log.RequestID, log.APIKeyID): prepared,
 	})
 
-	require.Contains(t, query, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
-	require.NotContains(t, strings.ToUpper(query), "DO UPDATE")
+	require.Contains(t, query, "ON DUPLICATE KEY UPDATE id = id")
+	require.NotContains(t, strings.ToUpper(query), "ON CONFLICT")
 }

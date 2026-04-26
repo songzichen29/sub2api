@@ -213,22 +213,78 @@ func advisoryLockHash(key string) int64 {
 	return int64(hasher.Sum64())
 }
 
+func repositoryNamedLockKey(key string) string {
+	return fmt.Sprintf("sub2api:repo-scoped:%d", advisoryLockHash(key))
+}
+
 func lockRepositoryScopedKeys(ctx context.Context, client *dbent.Client, exec sqlQueryExecutor, keys ...string) (func(), error) {
-	release := repositoryScopedKeyLocks.lock(keys...)
+	localRelease := repositoryScopedKeyLocks.lock(keys...)
 	normalized := normalizeLockKeys(keys...)
-	if len(normalized) == 0 || client == nil || exec == nil || client.Driver().Dialect() != dialect.Postgres {
-		return release, nil
+	if len(normalized) == 0 || client == nil || exec == nil || client.Driver().Dialect() != dialect.MySQL {
+		return localRelease, nil
 	}
 
+	acquiredLocks := make([]string, 0, len(normalized))
+
 	for _, key := range normalized {
-		rows, err := exec.QueryContext(ctx, "SELECT pg_advisory_xact_lock($1)", advisoryLockHash(key))
+		lockName := repositoryNamedLockKey(key)
+		rows, err := exec.QueryContext(ctx, "SELECT GET_LOCK(?, 0)", lockName)
 		if err != nil {
-			release()
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+				if releaseErr == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
+			return nil, err
+		}
+		var acquired sql.NullInt64
+		if !rows.Next() {
+			_ = rows.Close()
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+				if releaseErr == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
+			return nil, fmt.Errorf("acquire repository scoped lock: no rows")
+		}
+		if err := rows.Scan(&acquired); err != nil {
+			_ = rows.Close()
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+				if releaseErr == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
 			return nil, err
 		}
 		_ = rows.Close()
+		if !acquired.Valid || acquired.Int64 != 1 {
+			for i := len(acquiredLocks) - 1; i >= 0; i-- {
+				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+				if releaseErr == nil {
+					_ = releaseRows.Close()
+				}
+			}
+			localRelease()
+			return nil, fmt.Errorf("acquire repository scoped lock: lock busy")
+		}
+		acquiredLocks = append(acquiredLocks, lockName)
 	}
-	return release, nil
+
+	return func() {
+		for i := len(acquiredLocks) - 1; i >= 0; i-- {
+			releaseRows, err := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+			if err == nil {
+				_ = releaseRows.Close()
+			}
+		}
+		localRelease()
+	}, nil
 }
 
 func (r *userRepository) WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error {
@@ -621,11 +677,11 @@ func (r *userRepository) RecordProviderGrant(ctx context.Context, input Provider
 	if exec == nil {
 		return false, fmt.Errorf("sql executor is not configured")
 	}
+	insertSQL := `
+INSERT IGNORE INTO user_provider_default_grants (user_id, provider_type, grant_reason)
+VALUES (?, ?, ?)`
 
-	result, err := exec.ExecContext(ctx, `
-INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
-VALUES ($1, $2, $3)
-ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
+	result, err := exec.ExecContext(ctx, insertSQL,
 		input.UserID,
 		strings.TrimSpace(input.ProviderType),
 		string(input.GrantReason),
@@ -733,11 +789,16 @@ func (r *userRepository) GetUserAvatar(ctx context.Context, userID int64) (*serv
 		return nil, err
 	}
 
-	rows, err := exec.QueryContext(ctx, `
+	query := `
 SELECT storage_provider, storage_key, url, content_type, byte_size, sha256
 FROM user_avatars
-WHERE user_id = $1`, userID)
+WHERE user_id = ?`
+
+	rows, err := exec.QueryContext(ctx, query, userID)
 	if err != nil {
+		if isMissingTableError(err, "user_avatars") {
+			return nil, nil
+		}
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
@@ -769,17 +830,19 @@ func (r *userRepository) UpsertUserAvatar(ctx context.Context, userID int64, inp
 		return nil, err
 	}
 
-	_, err = exec.ExecContext(ctx, `
+	upsertSQL := `
 INSERT INTO user_avatars (user_id, storage_provider, storage_key, url, content_type, byte_size, sha256, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-ON CONFLICT (user_id) DO UPDATE SET
-	storage_provider = EXCLUDED.storage_provider,
-	storage_key = EXCLUDED.storage_key,
-	url = EXCLUDED.url,
-	content_type = EXCLUDED.content_type,
-	byte_size = EXCLUDED.byte_size,
-	sha256 = EXCLUDED.sha256,
-	updated_at = NOW()`,
+VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+ON DUPLICATE KEY UPDATE
+	storage_provider = VALUES(storage_provider),
+	storage_key = VALUES(storage_key),
+	url = VALUES(url),
+	content_type = VALUES(content_type),
+	byte_size = VALUES(byte_size),
+	sha256 = VALUES(sha256),
+	updated_at = NOW()`
+
+	_, err = exec.ExecContext(ctx, upsertSQL,
 		userID,
 		strings.TrimSpace(input.StorageProvider),
 		strings.TrimSpace(input.StorageKey),
@@ -807,7 +870,8 @@ func (r *userRepository) DeleteUserAvatar(ctx context.Context, userID int64) err
 	if err != nil {
 		return err
 	}
-	_, err = exec.ExecContext(ctx, `DELETE FROM user_avatars WHERE user_id = $1`, userID)
+	deleteSQL := `DELETE FROM user_avatars WHERE user_id = ?`
+	_, err = exec.ExecContext(ctx, deleteSQL, userID)
 	return err
 }
 

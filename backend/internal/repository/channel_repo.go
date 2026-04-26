@@ -9,11 +9,23 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 )
 
 type channelRepository struct {
 	db *sql.DB
+}
+
+func buildChannelInt64InClause(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	ph := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for _, id := range ids {
+		ph = append(ph, "?")
+		args = append(args, id)
+	}
+	return strings.Join(ph, ","), args
 }
 
 // NewChannelRepository 创建渠道数据访问实例
@@ -45,16 +57,24 @@ func (r *channelRepository) Create(ctx context.Context, channel *service.Channel
 		if err != nil {
 			return err
 		}
-		err = tx.QueryRowContext(ctx,
-			`INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			 RETURNING id, created_at, updated_at`,
+		query := `INSERT INTO channels (name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		res, err := tx.ExecContext(ctx,
+			query,
 			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats,
-		).Scan(&channel.ID, &channel.CreatedAt, &channel.UpdatedAt)
+		)
 		if err != nil {
 			if isUniqueViolation(err) {
 				return service.ErrChannelExists
 			}
 			return fmt.Errorf("insert channel: %w", err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("last insert id channel: %w", err)
+		}
+		channel.ID = id
+		if err := tx.QueryRowContext(ctx, "SELECT created_at, updated_at FROM channels WHERE id = ?", channel.ID).Scan(&channel.CreatedAt, &channel.UpdatedAt); err != nil {
+			return fmt.Errorf("load channel timestamps: %w", err)
 		}
 
 		// 设置分组关联
@@ -87,7 +107,7 @@ func (r *channelRepository) GetByID(ctx context.Context, id int64) (*service.Cha
 	var modelMappingJSON, featuresConfigJSON []byte
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, features_config, apply_pricing_to_account_stats, created_at, updated_at
-		 FROM channels WHERE id = $1`, id,
+		 FROM channels WHERE id = ?`, id,
 	).Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &featuresConfigJSON, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, service.ErrChannelNotFound
@@ -130,8 +150,8 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 			return err
 		}
 		result, err := tx.ExecContext(ctx,
-			`UPDATE channels SET name = $1, description = $2, status = $3, model_mapping = $4, billing_model_source = $5, restrict_models = $6, features = $7, features_config = $8, apply_pricing_to_account_stats = $9, updated_at = NOW()
-			 WHERE id = $10`,
+			`UPDATE channels SET name = ?, description = ?, status = ?, model_mapping = ?, billing_model_source = ?, restrict_models = ?, features = ?, features_config = ?, apply_pricing_to_account_stats = ?, updated_at = NOW()
+			 WHERE id = ?`,
 			channel.Name, channel.Description, channel.Status, modelMappingJSON, channel.BillingModelSource, channel.RestrictModels, channel.Features, featuresConfigJSON, channel.ApplyPricingToAccountStats, channel.ID,
 		)
 		if err != nil {
@@ -171,7 +191,7 @@ func (r *channelRepository) Update(ctx context.Context, channel *service.Channel
 }
 
 func (r *channelRepository) Delete(ctx context.Context, id int64) error {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM channels WHERE id = $1`, id)
+	result, err := r.db.ExecContext(ctx, `DELETE FROM channels WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("delete channel: %w", err)
 	}
@@ -185,17 +205,14 @@ func (r *channelRepository) Delete(ctx context.Context, id int64) error {
 func (r *channelRepository) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.Channel, *pagination.PaginationResult, error) {
 	where := []string{"1=1"}
 	args := []any{}
-	argIdx := 1
 
 	if status != "" {
-		where = append(where, fmt.Sprintf("c.status = $%d", argIdx))
+		where = append(where, "c.status = ?")
 		args = append(args, status)
-		argIdx++
 	}
 	if search != "" {
-		where = append(where, fmt.Sprintf("(c.name ILIKE $%d OR c.description ILIKE $%d)", argIdx, argIdx))
-		args = append(args, "%"+escapeLike(search)+"%")
-		argIdx++
+		where = append(where, "(LOWER(c.name) LIKE LOWER(?) OR LOWER(c.description) LIKE LOWER(?))")
+		args = append(args, "%"+escapeLike(search)+"%", "%"+escapeLike(search)+"%")
 	}
 
 	whereClause := strings.Join(where, " AND ")
@@ -217,8 +234,8 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	// 查询 channel 列表
 	dataQuery := fmt.Sprintf(
 		`SELECT c.id, c.name, c.description, c.status, c.model_mapping, c.billing_model_source, c.restrict_models, c.features, c.features_config, c.apply_pricing_to_account_stats, c.created_at, c.updated_at
-		 FROM channels c WHERE %s ORDER BY %s LIMIT $%d OFFSET $%d`,
-		whereClause, channelListOrderBy(params), argIdx, argIdx+1,
+		 FROM channels c WHERE %s ORDER BY %s LIMIT ? OFFSET ?`,
+		whereClause, channelListOrderBy(params),
 	)
 	args = append(args, pageSize, offset)
 
@@ -367,10 +384,10 @@ func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, err
 
 // batchLoadGroupIDs 批量加载多个渠道的分组 ID
 func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []int64) (map[int64][]int64, error) {
+	inClause, inArgs := buildChannelInt64InClause(channelIDs)
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT channel_id, group_id FROM channel_groups
-		 WHERE channel_id = ANY($1) ORDER BY channel_id, group_id`,
-		pq.Array(channelIDs),
+		fmt.Sprintf(`SELECT channel_id, group_id FROM channel_groups WHERE channel_id IN (%s) ORDER BY channel_id, group_id`, inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("batch load group ids: %w", err)
@@ -394,7 +411,7 @@ func (r *channelRepository) batchLoadGroupIDs(ctx context.Context, channelIDs []
 func (r *channelRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1)`, name,
+		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = ?)`, name,
 	).Scan(&exists)
 	return exists, err
 }
@@ -402,7 +419,7 @@ func (r *channelRepository) ExistsByName(ctx context.Context, name string) (bool
 func (r *channelRepository) ExistsByNameExcluding(ctx context.Context, name string, excludeID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = $1 AND id != $2)`, name, excludeID,
+		`SELECT EXISTS(SELECT 1 FROM channels WHERE name = ? AND id != ?)`, name, excludeID,
 	).Scan(&exists)
 	return exists, err
 }
@@ -411,7 +428,7 @@ func (r *channelRepository) ExistsByNameExcluding(ctx context.Context, name stri
 
 func (r *channelRepository) GetGroupIDs(ctx context.Context, channelID int64) ([]int64, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT group_id FROM channel_groups WHERE channel_id = $1 ORDER BY group_id`, channelID,
+		`SELECT group_id FROM channel_groups WHERE channel_id = ? ORDER BY group_id`, channelID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get group ids: %w", err)
@@ -439,7 +456,7 @@ func (r *channelRepository) SetGroupIDs(ctx context.Context, channelID int64, gr
 func (r *channelRepository) GetChannelIDByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	var channelID int64
 	err := r.db.QueryRowContext(ctx,
-		`SELECT channel_id FROM channel_groups WHERE group_id = $1`, groupID,
+		`SELECT channel_id FROM channel_groups WHERE group_id = ?`, groupID,
 	).Scan(&channelID)
 	if err == sql.ErrNoRows {
 		return 0, nil
@@ -451,10 +468,10 @@ func (r *channelRepository) GetGroupsInOtherChannels(ctx context.Context, channe
 	if len(groupIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT group_id FROM channel_groups WHERE group_id = ANY($1) AND channel_id != $2`,
-		pq.Array(groupIDs), channelID,
-	)
+	inClause, inArgs := buildChannelInt64InClause(groupIDs)
+	query := fmt.Sprintf(`SELECT group_id FROM channel_groups WHERE group_id IN (%s) AND channel_id != ?`, inClause)
+	queryArgs := append(inArgs, channelID)
+	rows, err := r.db.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("get groups in other channels: %w", err)
 	}
@@ -526,9 +543,10 @@ func (r *channelRepository) GetGroupPlatforms(ctx context.Context, groupIDs []in
 	if len(groupIDs) == 0 {
 		return make(map[int64]string), nil
 	}
+	inClause, inArgs := buildChannelInt64InClause(groupIDs)
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, platform FROM groups WHERE id = ANY($1)`,
-		pq.Array(groupIDs),
+		fmt.Sprintf("SELECT id, platform FROM `groups` WHERE id IN (%s)", inClause),
+		inArgs...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get group platforms: %w", err)

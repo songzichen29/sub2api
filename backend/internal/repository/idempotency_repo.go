@@ -23,25 +23,34 @@ func (r *idempotencyRepository) CreateProcessing(ctx context.Context, record *se
 		return false, nil
 	}
 	query := `
-		INSERT INTO idempotency_records (
+		INSERT IGNORE INTO idempotency_records (
 			scope, idempotency_key_hash, request_fingerprint, status, locked_until, expires_at
-		) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (scope, idempotency_key_hash) DO NOTHING
-		RETURNING id, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?)
 	`
-	var createdAt time.Time
-	var updatedAt time.Time
-	err := scanSingleRow(ctx, r.sql, query, []any{
+	res, err := r.sql.ExecContext(ctx, query,
 		record.Scope,
 		record.IdempotencyKeyHash,
 		record.RequestFingerprint,
 		record.Status,
 		record.LockedUntil,
 		record.ExpiresAt,
-	}, &record.ID, &createdAt, &updatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
 		return false, nil
 	}
+	var createdAt time.Time
+	var updatedAt time.Time
+	err = scanSingleRow(ctx, r.sql,
+		"SELECT id, created_at, updated_at FROM idempotency_records WHERE scope = ? AND idempotency_key_hash = ?",
+		[]any{record.Scope, record.IdempotencyKeyHash},
+		&record.ID, &createdAt, &updatedAt)
 	if err != nil {
 		return false, err
 	}
@@ -56,7 +65,7 @@ func (r *idempotencyRepository) GetByScopeAndKeyHash(ctx context.Context, scope,
 			id, scope, idempotency_key_hash, request_fingerprint, status, response_status,
 			response_body, error_reason, locked_until, expires_at, created_at, updated_at
 		FROM idempotency_records
-		WHERE scope = $1 AND idempotency_key_hash = $2
+		WHERE scope = ? AND idempotency_key_hash = ?
 	`
 	record := &service.IdempotencyRecord{}
 	var responseStatus sql.NullInt64
@@ -110,20 +119,20 @@ func (r *idempotencyRepository) TryReclaim(
 ) (bool, error) {
 	query := `
 		UPDATE idempotency_records
-		SET status = $2,
-			locked_until = $3,
+		SET status = ?,
+			locked_until = ?,
 			error_reason = NULL,
 			updated_at = NOW(),
-			expires_at = $4
-		WHERE id = $1
-			AND status = $5
-			AND (locked_until IS NULL OR locked_until <= $6)
+			expires_at = ?
+		WHERE id = ?
+			AND status = ?
+			AND (locked_until IS NULL OR locked_until <= ?)
 	`
 	res, err := r.sql.ExecContext(ctx, query,
-		id,
 		service.IdempotencyStatusProcessing,
 		newLockedUntil,
 		newExpiresAt,
+		id,
 		fromStatus,
 		now,
 	)
@@ -146,19 +155,19 @@ func (r *idempotencyRepository) ExtendProcessingLock(
 ) (bool, error) {
 	query := `
 		UPDATE idempotency_records
-		SET locked_until = $2,
-			expires_at = $3,
+		SET locked_until = ?,
+			expires_at = ?,
 			updated_at = NOW()
-		WHERE id = $1
-			AND status = $4
-			AND request_fingerprint = $5
+		WHERE id = ?
+			AND status = ?
+			AND request_fingerprint = ?
 	`
 	res, err := r.sql.ExecContext(
 		ctx,
 		query,
-		id,
 		newLockedUntil,
 		newExpiresAt,
+		id,
 		service.IdempotencyStatusProcessing,
 		requestFingerprint,
 	)
@@ -175,21 +184,21 @@ func (r *idempotencyRepository) ExtendProcessingLock(
 func (r *idempotencyRepository) MarkSucceeded(ctx context.Context, id int64, responseStatus int, responseBody string, expiresAt time.Time) error {
 	query := `
 		UPDATE idempotency_records
-		SET status = $2,
-			response_status = $3,
-			response_body = $4,
+		SET status = ?,
+			response_status = ?,
+			response_body = ?,
 			error_reason = NULL,
 			locked_until = NULL,
-			expires_at = $5,
+			expires_at = ?,
 			updated_at = NOW()
-		WHERE id = $1
+		WHERE id = ?
 	`
 	_, err := r.sql.ExecContext(ctx, query,
-		id,
 		service.IdempotencyStatusSucceeded,
 		responseStatus,
 		responseBody,
 		expiresAt,
+		id,
 	)
 	return err
 }
@@ -197,19 +206,19 @@ func (r *idempotencyRepository) MarkSucceeded(ctx context.Context, id int64, res
 func (r *idempotencyRepository) MarkFailedRetryable(ctx context.Context, id int64, errorReason string, lockedUntil, expiresAt time.Time) error {
 	query := `
 		UPDATE idempotency_records
-		SET status = $2,
-			error_reason = $3,
-			locked_until = $4,
-			expires_at = $5,
+		SET status = ?,
+			error_reason = ?,
+			locked_until = ?,
+			expires_at = ?,
 			updated_at = NOW()
-		WHERE id = $1
+		WHERE id = ?
 	`
 	_, err := r.sql.ExecContext(ctx, query,
-		id,
 		service.IdempotencyStatusFailedRetryable,
 		errorReason,
 		lockedUntil,
 		expiresAt,
+		id,
 	)
 	return err
 }
@@ -219,15 +228,16 @@ func (r *idempotencyRepository) DeleteExpired(ctx context.Context, now time.Time
 		limit = 500
 	}
 	query := `
-		WITH victims AS (
-			SELECT id
-			FROM idempotency_records
-			WHERE expires_at <= $1
-			ORDER BY expires_at ASC
-			LIMIT $2
-		)
 		DELETE FROM idempotency_records
-		WHERE id IN (SELECT id FROM victims)
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id
+				FROM idempotency_records
+				WHERE expires_at <= ?
+				ORDER BY expires_at ASC
+				LIMIT ?
+			) AS victims
+		)
 	`
 	res, err := r.sql.ExecContext(ctx, query, now, limit)
 	if err != nil {

@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/spf13/viper"
 )
 
@@ -958,17 +960,7 @@ type DatabaseConfig struct {
 }
 
 func (d *DatabaseConfig) DSN() string {
-	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
-	if d.Password == "" {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s dbname=%s sslmode=%s",
-			d.Host, d.Port, d.User, d.DBName, d.SSLMode,
-		)
-	}
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode,
-	)
+	return d.DSNWithTimezone("")
 }
 
 // DSNWithTimezone returns DSN with timezone setting
@@ -976,17 +968,36 @@ func (d *DatabaseConfig) DSNWithTimezone(tz string) string {
 	if tz == "" {
 		tz = "Asia/Shanghai"
 	}
-	// 当密码为空时不包含 password 参数，避免 libpq 解析错误
-	if d.Password == "" {
-		return fmt.Sprintf(
-			"host=%s port=%d user=%s dbname=%s sslmode=%s TimeZone=%s",
-			d.Host, d.Port, d.User, d.DBName, d.SSLMode, tz,
-		)
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		loc = time.Local
 	}
-	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s TimeZone=%s",
-		d.Host, d.Port, d.User, d.Password, d.DBName, d.SSLMode, tz,
-	)
+
+	cfg := mysqldriver.NewConfig()
+	cfg.Net = "tcp"
+	cfg.Addr = fmt.Sprintf("%s:%d", d.Host, d.Port)
+	cfg.User = d.User
+	cfg.Passwd = d.Password
+	cfg.DBName = d.DBName
+	cfg.ParseTime = true
+	cfg.Loc = loc
+	cfg.Params = map[string]string{
+		"charset":   "utf8mb4",
+		"collation": "utf8mb4_0900_ai_ci",
+	}
+
+	switch strings.ToLower(strings.TrimSpace(d.SSLMode)) {
+	case "", "disable":
+		cfg.TLSConfig = "false"
+	case "prefer":
+		cfg.TLSConfig = "preferred"
+	case "require", "verify-ca", "verify-full", "true":
+		cfg.TLSConfig = "true"
+	default:
+		cfg.TLSConfig = strings.TrimSpace(d.SSLMode)
+	}
+
+	return cfg.FormatDSN()
 }
 
 // RedisConfig Redis 连接配置
@@ -1206,13 +1217,19 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	if dataDir := os.Getenv("DATA_DIR"); dataDir != "" {
 		viper.AddConfigPath(dataDir)
 	}
-	// 2. Docker data directory
-	viper.AddConfigPath("/app/data")
-	// 3. Current directory
+	// 2. Current directory (prefer explicit local dev config when present)
+	if _, err := os.Stat(filepath.Join(".", "config.yaml")); err == nil {
+		viper.AddConfigPath(".")
+	}
+	// 3. Docker data directory
+	if _, err := os.Stat("/app/data/config.yaml"); err == nil {
+		viper.AddConfigPath("/app/data")
+	}
+	// 4. Current directory fallback
 	viper.AddConfigPath(".")
-	// 4. Config subdirectory
+	// 5. Config subdirectory
 	viper.AddConfigPath("./config")
-	// 5. System config directory
+	// 6. System config directory
 	viper.AddConfigPath("/etc/sub2api")
 
 	// 环境变量支持
@@ -1496,11 +1513,11 @@ func setDefaults() {
 
 	// Database
 	viper.SetDefault("database.host", "localhost")
-	viper.SetDefault("database.port", 5432)
-	viper.SetDefault("database.user", "postgres")
-	viper.SetDefault("database.password", "postgres")
+	viper.SetDefault("database.port", 3306)
+	viper.SetDefault("database.user", "root")
+	viper.SetDefault("database.password", "")
 	viper.SetDefault("database.dbname", "sub2api")
-	viper.SetDefault("database.sslmode", "prefer")
+	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("database.max_open_conns", 256)
 	viper.SetDefault("database.max_idle_conns", 128)
 	viper.SetDefault("database.conn_max_lifetime_minutes", 30)

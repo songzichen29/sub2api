@@ -35,12 +35,12 @@ func (SubscriptionPlan) Fields() []ent.Field {
 			MaxLen(100).
 			NotEmpty(),
 		field.String("description").
-			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Default(""),
 		field.Float("price").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
 		field.Float("original_price").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
 			Optional().
 			Nillable(),
 		field.Int("validity_days").
@@ -49,7 +49,7 @@ func (SubscriptionPlan) Fields() []ent.Field {
 			MaxLen(10).
 			Default("day"),
 		field.String("features").
-			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Default(""),
 		field.String("product_name").
 			MaxLen(100).
@@ -61,11 +61,11 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 	}
 }
 

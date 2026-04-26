@@ -34,6 +34,32 @@ func TestResolveLogFilePath_ExplicitPath(t *testing.T) {
 	}
 }
 
+func TestResolveLogFilePath_PrefersLocalLogsWhenProjectArtifactsExist(t *testing.T) {
+	t.Setenv("DATA_DIR", "")
+
+	tempDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(oldWD)
+	}()
+
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "config.yaml"), []byte("server:\n  port: 39001\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got := resolveLogFilePath("")
+	want := filepath.Join("logs", "sub2api.log")
+	if got != want {
+		t.Fatalf("resolveLogFilePath() = %q, want %q", got, want)
+	}
+}
+
 func TestNormalizedOptions_InvalidFallback(t *testing.T) {
 	t.Setenv("DATA_DIR", "")
 	opts := InitOptions{
@@ -65,7 +91,7 @@ func TestNormalizedOptions_InvalidFallback(t *testing.T) {
 	if !out.Output.ToStdout {
 		t.Fatalf("normalized output should fallback to stdout")
 	}
-	if out.Output.FilePath != DefaultContainerLogPath {
+	if out.Output.FilePath != DefaultContainerLogPath && out.Output.FilePath != filepath.Join("logs", "sub2api.log") {
 		t.Fatalf("normalized file path = %q", out.Output.FilePath)
 	}
 	if out.Rotation.MaxSizeMB != 100 {

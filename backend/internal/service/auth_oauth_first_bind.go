@@ -61,8 +61,8 @@ func (s *AuthService) applyProviderDefaultSettingsOnFirstBind(
 	if err := client.Driver().Exec(
 		ctx,
 		`INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
-VALUES ($1, $2, $3)
-ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`,
+VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE user_id = user_id`,
 		[]any{userID, strings.TrimSpace(providerType), "first_bind"},
 		&result,
 	); err != nil {

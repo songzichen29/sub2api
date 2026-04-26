@@ -305,7 +305,7 @@ func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string,
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", []any{proxyID}, &count); err != nil {
+	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = ? AND deleted_at IS NULL", []any{proxyID}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -315,7 +315,7 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT id, name, platform, type, notes
 		FROM accounts
-		WHERE proxy_id = $1 AND deleted_at IS NULL
+		WHERE proxy_id = ? AND deleted_at IS NULL
 		ORDER BY id DESC
 	`, proxyID)
 	if err != nil {

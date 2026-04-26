@@ -124,7 +124,7 @@ var ProviderSet = wire.NewSet(
 	NewAESEncryptor,
 
 	// Backup infrastructure
-	NewPgDumper,
+	NewMySQLDumper,
 	NewS3BackupStoreFactory,
 
 	// HTTP service ports (DI Strategy A: return interface directly)

@@ -68,11 +68,11 @@ VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 	require.InDelta(t, 17.84, balance, 1e-9)
 
 	affQuota := querySingleFloat(t, txCtx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", u.ID)
+		"SELECT aff_quota FROM user_affiliates WHERE user_id = ?", u.ID)
 	require.InDelta(t, 0.0, affQuota, 1e-9)
 
 	persistedBalance := querySingleFloat(t, txCtx, client,
-		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
+		"SELECT balance FROM users WHERE id = ?", u.ID)
 	require.InDelta(t, 17.84, persistedBalance, 1e-9)
 
 	ledgerCount := querySingleInt(t, txCtx, client,
@@ -109,6 +109,6 @@ VALUES ($1, $2, 0, 0, NOW(), NOW())`, u.ID, affCode)
 	require.InDelta(t, 0.0, balance, 1e-9)
 
 	persistedBalance := querySingleFloat(t, txCtx, client,
-		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
+		"SELECT balance FROM users WHERE id = ?", u.ID)
 	require.InDelta(t, 3.21, persistedBalance, 1e-9)
 }

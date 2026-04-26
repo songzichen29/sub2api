@@ -442,32 +442,23 @@ func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, clien
 		"baseAmount": baseAmount,
 		"status":     "reserved",
 	})
-	rows, err := client.QueryContext(ctx, `
-INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
-SELECT $1, 'AFFILIATE_REBATE_APPLIED', $2, 'system', NOW()
+	res, err := client.ExecContext(ctx, `
+INSERT IGNORE INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+SELECT ?, 'AFFILIATE_REBATE_APPLIED', ?, 'system', NOW()
 WHERE NOT EXISTS (
 	SELECT 1
 	FROM payment_audit_logs
-	WHERE order_id = $1
+	WHERE order_id = ?
 	  AND action IN ('AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')
-)
-ON CONFLICT (order_id, action) DO NOTHING
-RETURNING id`, oid, string(detail))
+)`, oid, string(detail), oid)
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = rows.Close() }()
-	if !rows.Next() {
-		if err := rows.Err(); err != nil {
-			return false, err
-		}
-		return false, nil
-	}
-	var claimID int64
-	if err := rows.Scan(&claimID); err != nil {
+	affected, err := res.RowsAffected()
+	if err != nil {
 		return false, err
 	}
-	return true, nil
+	return affected > 0, nil
 }
 
 func (s *PaymentService) updateClaimedAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, action string, detail map[string]any) error {

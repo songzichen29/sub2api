@@ -1044,7 +1044,7 @@ func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 		SELECT total_requests, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
 		       total_cost, actual_cost, total_duration_ms, active_users
 		FROM usage_dashboard_daily
-		WHERE bucket_date = $1::date
+		WHERE bucket_date = DATE(?)
 	`, []any{dayStart}, &daily.totalRequests, &daily.inputTokens, &daily.outputTokens,
 		&daily.cacheCreationTokens, &daily.cacheReadTokens, &daily.totalCost, &daily.actualCost,
 		&daily.totalDurationMs, &daily.activeUsers,

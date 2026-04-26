@@ -30,6 +30,27 @@ func TestLoadForBootstrapAllowsMissingJWTSecret(t *testing.T) {
 	}
 }
 
+func TestLoadForBootstrapPrefersCurrentDirectoryConfigWhenPresent(t *testing.T) {
+	viper.Reset()
+	t.Setenv("DATA_DIR", "")
+	t.Setenv("JWT_SECRET", strings.Repeat("x", 32))
+
+	tempDir := t.TempDir()
+	oldWD, err := os.Getwd()
+	require.NoError(t, err)
+	defer func() {
+		_ = os.Chdir(oldWD)
+		viper.Reset()
+	}()
+
+	require.NoError(t, os.Chdir(tempDir))
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "config.yaml"), []byte("server:\n  port: 39001\n"), 0o644))
+
+	cfg, err := LoadForBootstrap()
+	require.NoError(t, err)
+	require.Equal(t, 39001, cfg.Server.Port)
+}
+
 func TestNormalizeRunMode(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -362,8 +383,8 @@ func TestLoadDefaultDatabaseSSLMode(t *testing.T) {
 		t.Fatalf("Load() error: %v", err)
 	}
 
-	if cfg.Database.SSLMode != "prefer" {
-		t.Fatalf("Database.SSLMode = %q, want %q", cfg.Database.SSLMode, "prefer")
+	if cfg.Database.SSLMode != "disable" {
+		t.Fatalf("Database.SSLMode = %q, want %q", cfg.Database.SSLMode, "disable")
 	}
 }
 
@@ -712,32 +733,34 @@ func TestConfigAddressHelpers(t *testing.T) {
 
 	dbCfg := DatabaseConfig{
 		Host:     "localhost",
-		Port:     5432,
-		User:     "postgres",
+		Port:     3306,
+		User:     "root",
 		Password: "",
 		DBName:   "sub2api",
 		SSLMode:  "disable",
 	}
-	if !strings.Contains(dbCfg.DSN(), "password=") {
-	} else {
-		t.Fatalf("DatabaseConfig.DSN() should not include password when empty")
+	if !strings.Contains(dbCfg.DSN(), "parseTime=true") {
+		t.Fatalf("DatabaseConfig.DSN() should include parseTime=true")
+	}
+	if strings.Contains(dbCfg.DSN(), "postgres") {
+		t.Fatalf("DatabaseConfig.DSN() should not contain postgres syntax: %q", dbCfg.DSN())
 	}
 
 	dbCfg.Password = "secret"
-	if !strings.Contains(dbCfg.DSN(), "password=secret") {
-		t.Fatalf("DatabaseConfig.DSN() missing password")
+	if !strings.Contains(dbCfg.DSN(), "root:secret@tcp(localhost:3306)/sub2api") {
+		t.Fatalf("DatabaseConfig.DSN() missing mysql credentials: %q", dbCfg.DSN())
 	}
 
 	dbCfg.Password = ""
-	if strings.Contains(dbCfg.DSNWithTimezone("UTC"), "password=") {
-		t.Fatalf("DatabaseConfig.DSNWithTimezone() should omit password when empty")
+	if !strings.Contains(dbCfg.DSNWithTimezone("Asia/Shanghai"), "loc=Asia%2FShanghai") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should include loc=Asia%%2FShanghai: %q", dbCfg.DSNWithTimezone("Asia/Shanghai"))
 	}
 
-	if !strings.Contains(dbCfg.DSNWithTimezone(""), "TimeZone=Asia/Shanghai") {
+	if !strings.Contains(dbCfg.DSNWithTimezone(""), "loc=Asia%2FShanghai") {
 		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use default timezone")
 	}
-	if !strings.Contains(dbCfg.DSNWithTimezone("UTC"), "TimeZone=UTC") {
-		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use provided timezone")
+	if !strings.Contains(dbCfg.DSNWithTimezone("UTC"), "tls=false") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should include tls=false by default")
 	}
 
 	redis := RedisConfig{Host: "redis", Port: 6379}
@@ -943,18 +966,21 @@ func TestGenerateJWTSecretWithLength(t *testing.T) {
 func TestDatabaseDSNWithTimezone_WithPassword(t *testing.T) {
 	d := &DatabaseConfig{
 		Host:     "localhost",
-		Port:     5432,
+		Port:     3306,
 		User:     "u",
 		Password: "p",
 		DBName:   "db",
 		SSLMode:  "prefer",
 	}
-	got := d.DSNWithTimezone("UTC")
-	if !strings.Contains(got, "password=p") {
-		t.Fatalf("DSNWithTimezone should include password: %q", got)
+	got := d.DSNWithTimezone("Asia/Shanghai")
+	if !strings.Contains(got, "u:p@tcp(localhost:3306)/db") {
+		t.Fatalf("DSNWithTimezone should include mysql auth segment: %q", got)
 	}
-	if !strings.Contains(got, "TimeZone=UTC") {
-		t.Fatalf("DSNWithTimezone should include TimeZone=UTC: %q", got)
+	if !strings.Contains(got, "loc=Asia%2FShanghai") {
+		t.Fatalf("DSNWithTimezone should include loc=Asia%%2FShanghai: %q", got)
+	}
+	if !strings.Contains(got, "tls=preferred") {
+		t.Fatalf("DSNWithTimezone should include tls=preferred: %q", got)
 	}
 }
 

@@ -39,9 +39,9 @@ func (UserSubscription) Fields() []ent.Field {
 		field.Int64("group_id"),
 
 		field.Time("starts_at").
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("expires_at").
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("status").
 			MaxLen(20).
 			Default(domain.SubscriptionStatusActive),
@@ -49,24 +49,24 @@ func (UserSubscription) Fields() []ent.Field {
 		field.Time("daily_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("weekly_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("monthly_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 
 		field.Float("daily_usage_usd").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}).
 			Default(0),
 		field.Float("weekly_usage_usd").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}).
 			Default(0),
 		field.Float("monthly_usage_usd").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}).
 			Default(0),
 
 		field.Int64("assigned_by").
@@ -74,11 +74,11 @@ func (UserSubscription) Fields() []ent.Field {
 			Nillable(),
 		field.Time("assigned_at").
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 	}
 }
 
