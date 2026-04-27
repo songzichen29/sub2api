@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   sub2api:
-    image: weishaw/sub2api:latest
+    image: ${SUB2API_IMAGE_NAME:?SUB2API_IMAGE_NAME is required}
     container_name: sub2api
     restart: unless-stopped
     ulimits:
@@ -12,11 +10,14 @@ services:
     ports:
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
-      - sub2api_data:/app/data
+      - ./data:/app/data
+    env_file:
+      - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       - AUTO_SETUP=true
+      - DATA_DIR=/app/data
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=8080
       - SERVER_MODE=${SERVER_MODE:-release}
@@ -50,6 +51,10 @@ services:
       - GEMINI_QUOTA_POLICY=${GEMINI_QUOTA_POLICY:-}
       - GEMINI_CLI_OAUTH_CLIENT_SECRET=${GEMINI_CLI_OAUTH_CLIENT_SECRET:-}
       - ANTIGRAVITY_OAUTH_CLIENT_SECRET=${ANTIGRAVITY_OAUTH_CLIENT_SECRET:-}
+      - SECURITY_URL_ALLOWLIST_ENABLED=${SECURITY_URL_ALLOWLIST_ENABLED:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=${SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP:-false}
+      - SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS=${SECURITY_URL_ALLOWLIST_ALLOW_PRIVATE_HOSTS:-false}
+      - SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS=${SECURITY_URL_ALLOWLIST_UPSTREAM_HOSTS:-}
       - UPDATE_PROXY_URL=${UPDATE_PROXY_URL:-}
     healthcheck:
       test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
@@ -57,7 +62,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-
-volumes:
-  sub2api_data:
-    driver: local

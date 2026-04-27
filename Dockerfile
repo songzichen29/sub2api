@@ -9,7 +9,6 @@
 ARG NODE_IMAGE=node:24-alpine
 ARG GOLANG_IMAGE=golang:1.26.2-alpine
 ARG ALPINE_IMAGE=alpine:3.21
-ARG POSTGRES_IMAGE=postgres:18-alpine
 ARG GOPROXY=https://goproxy.cn,direct
 ARG GOSUMDB=sum.golang.google.cn
 
@@ -74,12 +73,7 @@ RUN VERSION_VALUE="${VERSION}" && \
     ./cmd/server
 
 # -----------------------------------------------------------------------------
-# Stage 3: PostgreSQL Client (version-matched with docker-compose)
-# -----------------------------------------------------------------------------
-FROM ${POSTGRES_IMAGE} AS pg-client
-
-# -----------------------------------------------------------------------------
-# Stage 4: Final Runtime Image
+# Stage 3: Final Runtime Image
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
@@ -93,19 +87,17 @@ RUN apk add --no-cache \
     ca-certificates \
     tzdata \
     su-exec \
-    libpq \
+    mariadb-client \
     zstd-libs \
     lz4-libs \
     krb5-libs \
     libldap \
     libedit \
+    && if [ -x /usr/bin/mariadb ]; then ln -sf /usr/bin/mariadb /usr/local/bin/mysql; fi \
+    && if [ -x /usr/bin/mysql ]; then ln -sf /usr/bin/mysql /usr/local/bin/mysql; fi \
+    && if [ -x /usr/bin/mariadb-dump ]; then ln -sf /usr/bin/mariadb-dump /usr/local/bin/mysqldump; fi \
+    && if [ -x /usr/bin/mysqldump ]; then ln -sf /usr/bin/mysqldump /usr/local/bin/mysqldump; fi \
     && rm -rf /var/cache/apk/*
-
-# Copy pg_dump and psql from the same postgres image used in docker-compose
-# This ensures version consistency between backup tools and the database server
-COPY --from=pg-client /usr/local/bin/pg_dump /usr/local/bin/pg_dump
-COPY --from=pg-client /usr/local/bin/psql /usr/local/bin/psql
-COPY --from=pg-client /usr/local/lib/libpq.so.5* /usr/local/lib/
 
 # Create non-root user
 RUN addgroup -g 1000 sub2api && \

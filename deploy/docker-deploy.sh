@@ -2,16 +2,20 @@
 # =============================================================================
 # Sub2API Docker Deployment Preparation Script
 # =============================================================================
-# This script prepares deployment files for Sub2API:
-#   - Downloads docker-compose.local.yml and .env.example
-#   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
+# This script prepares the local deploy directory for Sub2API:
+#   - Copies .env.example to .env
+#   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY)
 #   - Creates necessary data directories
 #
 # After running this script, you can start services with:
-#   docker-compose up -d
+#   docker compose pull
+#   docker compose up -d
 # =============================================================================
 
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,9 +23,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
-
-# GitHub raw content base URL
-GITHUB_RAW_URL="https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy"
 
 # Print colored message
 print_info() {
@@ -64,8 +65,14 @@ main() {
         exit 1
     fi
 
+    # Check required local files
+    if [ ! -f "docker-compose.yml" ] || [ ! -f ".env.example" ]; then
+        print_error "docker-compose.yml or .env.example is missing in ${SCRIPT_DIR}."
+        exit 1
+    fi
+
     # Check if deployment already exists
-    if [ -f "docker-compose.yml" ] && [ -f ".env" ]; then
+    if [ -f ".env" ]; then
         print_warning "Deployment files already exist in current directory."
         read -p "Overwrite existing files? (y/N): " -r
         echo
@@ -75,27 +82,6 @@ main() {
         fi
     fi
 
-    # Download docker-compose.local.yml and save as docker-compose.yml
-    print_info "Downloading docker-compose.yml..."
-    if command_exists curl; then
-        curl -sSL "${GITHUB_RAW_URL}/docker-compose.local.yml" -o docker-compose.yml
-    elif command_exists wget; then
-        wget -q "${GITHUB_RAW_URL}/docker-compose.local.yml" -O docker-compose.yml
-    else
-        print_error "Neither curl nor wget is installed. Please install one of them."
-        exit 1
-    fi
-    print_success "Downloaded docker-compose.yml"
-
-    # Download .env.example
-    print_info "Downloading .env.example..."
-    if command_exists curl; then
-        curl -sSL "${GITHUB_RAW_URL}/.env.example" -o .env.example
-    else
-        wget -q "${GITHUB_RAW_URL}/.env.example" -O .env.example
-    fi
-    print_success "Downloaded .env.example"
-
     # Generate .env file with auto-generated secrets
     print_info "Generating secure secrets..."
     echo ""
@@ -103,8 +89,6 @@ main() {
     # Generate secrets
     JWT_SECRET=$(generate_secret)
     TOTP_ENCRYPTION_KEY=$(generate_secret)
-    POSTGRES_PASSWORD=$(generate_secret)
-
     # Create .env from .env.example
     cp .env.example .env
 
@@ -113,17 +97,15 @@ main() {
         # GNU sed (Linux)
         sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
-        sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
     else
         # BSD sed (macOS)
         sed -i '' "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i '' "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
-        sed -i '' "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
     fi
 
     # Create data directories
     print_info "Creating data directories..."
-    mkdir -p data postgres_data redis_data
+    mkdir -p data
     print_success "Created data directories"
 
     # Set secure permissions for .env file (readable/writable only by owner)
@@ -136,7 +118,6 @@ main() {
     echo "=========================================="
     echo ""
     echo "Generated secure credentials:"
-    echo "  POSTGRES_PASSWORD:     ${POSTGRES_PASSWORD}"
     echo "  JWT_SECRET:            ${JWT_SECRET}"
     echo "  TOTP_ENCRYPTION_KEY:   ${TOTP_ENCRYPTION_KEY}"
     echo ""
@@ -148,18 +129,19 @@ main() {
     echo "  .env                      - Environment variables (generated secrets)"
     echo "  .env.example              - Example template (for reference)"
     echo "  data/                     - Application data (will be created on first run)"
-    echo "  postgres_data/            - PostgreSQL data"
-    echo "  redis_data/               - Redis data"
     echo ""
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"
-    echo "  2. Start services:"
-    echo "     docker-compose up -d"
+    echo "  2. Pull image:"
+    echo "     docker compose pull"
     echo ""
-    echo "  3. View logs:"
-    echo "     docker-compose logs -f sub2api"
+    echo "  3. Start services:"
+    echo "     docker compose up -d"
     echo ""
-    echo "  4. Access Web UI:"
+    echo "  4. View logs:"
+    echo "     docker compose logs -f sub2api"
+    echo ""
+    echo "  5. Access Web UI:"
     echo "     http://localhost:8080"
     echo ""
     print_info "If admin password is not set in .env, it will be auto-generated."
