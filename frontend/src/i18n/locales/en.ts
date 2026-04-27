@@ -352,6 +352,7 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    modelMarketplace: 'Model Marketplace',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -970,6 +971,30 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  modelMarketplace: {
+    title: 'Model Marketplace',
+    description: 'Browse accessible models, their channels, and pricing',
+    searchPlaceholder: 'Search models, channels, groups, or platforms...',
+    modelSearchPlaceholder: 'Search model names...',
+    filtersTitle: 'Filters',
+    filtersSubtitle: 'Narrow results by provider',
+    groupFiltersTitle: 'Groups',
+    allProviders: 'All providers',
+    allGroups: 'All groups',
+    groupSearchPlaceholder: 'Search group names...',
+    totalModels: '{count} models',
+    fromLabel: 'Provider',
+    moreChannels: 'Show {count} more channels',
+    collapseChannels: 'Collapse channels',
+    intervalCount: '{count} pricing tiers',
+    channelCount: '{count} channels',
+    empty: {
+      noChannels: 'No available channels',
+      noGroups: 'No matching groups',
+      noModelResults: 'No models match the current filters'
     }
   },
 

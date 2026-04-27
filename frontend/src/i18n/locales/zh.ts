@@ -352,6 +352,7 @@ export default {
     groups: '分组管理',
     channels: '渠道管理',
     availableChannels: '可用渠道',
+    modelMarketplace: '模型广场',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
@@ -974,6 +975,30 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
+    }
+  },
+
+  modelMarketplace: {
+    title: '模型广场',
+    description: '查看可访问模型、所属渠道与定价信息',
+    searchPlaceholder: '搜索模型、渠道、分组或平台...',
+    modelSearchPlaceholder: '搜索模型名称...',
+    filtersTitle: '筛选',
+    filtersSubtitle: '按供应商快速收敛结果',
+    groupFiltersTitle: '分组名称',
+    allProviders: '全部供应商',
+    allGroups: '全部分组',
+    groupSearchPlaceholder: '搜索分组名称...',
+    totalModels: '共 {count} 个模型',
+    fromLabel: '供应商',
+    moreChannels: '展开其余 {count} 个渠道',
+    collapseChannels: '收起渠道',
+    intervalCount: '{count} 档阶梯价',
+    channelCount: '{count} 个渠道',
+    empty: {
+      noChannels: '暂无可用渠道',
+      noGroups: '没有匹配的分组',
+      noModelResults: '当前筛选条件下没有匹配的模型'
     }
   },
 

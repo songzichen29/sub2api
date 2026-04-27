@@ -4,6 +4,7 @@
       <!-- Left: Mobile Menu Toggle + Page Title -->
       <div class="flex items-center gap-4">
         <button
+          v-if="showMobileSidebarToggle"
           @click="toggleMobileSidebar"
           class="btn-ghost btn-icon lg:hidden"
           aria-label="Toggle Menu"
@@ -25,6 +26,20 @@
       <div class="flex items-center gap-3">
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
+
+        <router-link
+          v-if="showMarketplaceEntry"
+          to="/model-marketplace"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+          :class="
+            route.path === '/model-marketplace'
+              ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/25 dark:text-primary-300'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white'
+          "
+        >
+          <Icon name="globe" size="sm" />
+          <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+        </router-link>
 
         <!-- Docs Link -->
         <a
@@ -222,6 +237,16 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
+
+withDefaults(
+  defineProps<{
+    showMobileSidebarToggle?: boolean
+  }>(),
+  {
+    showMobileSidebarToggle: true,
+  },
+)
 
 const router = useRouter()
 const route = useRoute()
@@ -237,6 +262,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => appStore.docUrl)
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
+const showMarketplaceEntry = computed(() => !!user.value && isFeatureFlagEnabled(FeatureFlags.availableChannels))
 
 // 只在标准模式的管理员下显示新手引导按钮
 const showOnboardingButton = computed(() => {
