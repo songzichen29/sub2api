@@ -7,6 +7,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -58,11 +59,10 @@ func (s *AuthService) applyProviderDefaultSettingsOnFirstBind(
 	}
 
 	var result entsql.Result
+	insertGrantSQL := firstBindProviderGrantInsertSQL(client)
 	if err := client.Driver().Exec(
 		ctx,
-		`INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
-VALUES (?, ?, ?)
-ON DUPLICATE KEY UPDATE user_id = user_id`,
+		insertGrantSQL,
 		[]any{userID, strings.TrimSpace(providerType), "first_bind"},
 		&result,
 	); err != nil {
@@ -101,4 +101,19 @@ ON DUPLICATE KEY UPDATE user_id = user_id`,
 	}
 
 	return nil
+}
+
+func firstBindProviderGrantInsertSQL(client *dbent.Client) string {
+	switch client.Driver().Dialect() {
+	case dialect.MySQL:
+		return `INSERT IGNORE INTO user_provider_default_grants (user_id, provider_type, grant_reason)
+VALUES (?, ?, ?)`
+	case dialect.SQLite:
+		return `INSERT OR IGNORE INTO user_provider_default_grants (user_id, provider_type, grant_reason)
+VALUES (?, ?, ?)`
+	default:
+		return `INSERT INTO user_provider_default_grants (user_id, provider_type, grant_reason)
+VALUES (?, ?, ?)
+ON CONFLICT (user_id, provider_type, grant_reason) DO NOTHING`
+	}
 }

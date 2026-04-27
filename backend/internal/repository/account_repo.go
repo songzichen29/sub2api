@@ -1439,7 +1439,6 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 		setClauses = append(setClauses, "extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST($"+itoa(idx)+" AS JSON))")
 		args = append(args, payload)
-		idx++
 	}
 
 	if len(setClauses) == 0 {

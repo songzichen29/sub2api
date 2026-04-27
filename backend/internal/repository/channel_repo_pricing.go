@@ -296,7 +296,7 @@ func isUniqueViolation(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
-	return errors.Is(err, sql.ErrNoRows) == false && (strings.Contains(msg, "23505") || strings.Contains(msg, "1062") || strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique"))
+	return !errors.Is(err, sql.ErrNoRows) && (strings.Contains(msg, "23505") || strings.Contains(msg, "1062") || strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique"))
 }
 
 // escapeLike 转义 LIKE 模式中的特殊字符

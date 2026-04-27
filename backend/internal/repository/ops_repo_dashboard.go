@@ -1058,14 +1058,6 @@ func buildErrorWhere(filter *service.OpsDashboardFilter, start, end time.Time, s
 	return where, args, idx
 }
 
-func floatToIntPtr(v sql.NullFloat64) *int {
-	if !v.Valid {
-		return nil
-	}
-	n := int(math.Round(v.Float64))
-	return &n
-}
-
 func safeDivideFloat64(numerator float64, denominator float64) float64 {
 	if denominator == 0 {
 		return 0

@@ -952,14 +952,6 @@ func (c *OpsMetricsCollector) maybeLogSkip() {
 	log.Printf("[OpsMetricsCollector] leader lock held by another instance; skipping")
 }
 
-func floatToIntPtr(v sql.NullFloat64) *int {
-	if !v.Valid {
-		return nil
-	}
-	n := int(math.Round(v.Float64))
-	return &n
-}
-
 func roundTo1DP(v float64) float64 {
 	return math.Round(v*10) / 10
 }

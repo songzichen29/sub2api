@@ -649,13 +649,13 @@ func (r *affiliateRepository) BatchSetUserRebateRate(ctx context.Context, userID
 			}
 		}
 		placeholders := make([]string, len(userIDs))
-			args := make([]any, 0, len(userIDs)+1)
-			args = append(args, nullableArg(ratePercent))
-			for i, uid := range userIDs {
-				placeholders[i] = "?"
-				args = append(args, uid)
-			}
-			_, err := txClient.ExecContext(txCtx, fmt.Sprintf(`
+		args := make([]any, 0, len(userIDs)+1)
+		args = append(args, nullableArg(ratePercent))
+		for i, uid := range userIDs {
+			placeholders[i] = "?"
+			args = append(args, uid)
+		}
+		_, err := txClient.ExecContext(txCtx, fmt.Sprintf(`
 UPDATE user_affiliates
 SET aff_rebate_rate_percent = ?,
     updated_at = NOW()

@@ -104,22 +104,6 @@ const rawUsageLogModelColumn = "model"
 // Historical rows may contain upstream/billing model values, while newer rows store requested_model.
 // Requested/upstream/mapping analytics must use resolveModelDimensionExpression instead.
 
-// dateFormatWhitelist 将 granularity 参数映射为 PostgreSQL TO_CHAR 格式字符串，防止外部输入直接拼入 SQL
-var dateFormatWhitelist = map[string]string{
-	"hour":  "YYYY-MM-DD HH24:00",
-	"day":   "YYYY-MM-DD",
-	"week":  "IYYY-IW",
-	"month": "YYYY-MM",
-}
-
-// safeDateFormat 根据白名单获取 dateFormat，未匹配时返回默认值
-func safeDateFormat(granularity string) string {
-	if f, ok := dateFormatWhitelist[granularity]; ok {
-		return f
-	}
-	return "YYYY-MM-DD"
-}
-
 func safeMySQLDateFormat(granularity string) string {
 	switch granularity {
 	case "hour":
@@ -213,14 +197,6 @@ type usageLogInsertPrepared struct {
 type usageLogBatchState struct {
 	ID        int64
 	CreatedAt time.Time
-}
-
-type usageLogBatchRow struct {
-	RequestID string    `json:"request_id"`
-	APIKeyID  int64     `json:"api_key_id"`
-	ID        int64     `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	Inserted  bool      `json:"inserted"`
 }
 
 type usageLogCreateShared struct {
@@ -716,21 +692,6 @@ func (r *usageLogRepository) batchInsertUsageLogs(db *sql.DB, keys []string, pre
 		stateMap[key] = state
 	}
 	return insertedMap, stateMap, false, nil
-}
-
-func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usageLogInsertPrepared) (string, []any) {
-	preparedList := make([]usageLogInsertPrepared, 0, len(keys))
-	for idx, key := range keys {
-		prepared, ok := preparedByKey[key]
-		if !ok {
-			continue
-		}
-		preparedList = append(preparedList, prepared)
-		if idx == len(keys)-1 {
-			break
-		}
-	}
-	return buildUsageLogMultiInsertQuery(preparedList), flattenUsageLogInsertArgs(preparedList)
 }
 
 func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (string, []any) {
