@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -492,6 +493,142 @@ func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {
 	require.Equal(t, 1, touchCalls)
 }
 
+func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("responses endpoint maps quota exhausted to billing_error", func(t *testing.T) {
+		user := &service.User{
+			ID:          10,
+			Role:        service.RoleUser,
+			Status:      service.StatusActive,
+			Balance:     10,
+			Concurrency: 3,
+		}
+		apiKey := &service.APIKey{
+			ID:     200,
+			UserID: user.ID,
+			Key:    "responses-quota",
+			Status: service.StatusAPIKeyQuotaExhausted,
+			User:   user,
+		}
+		apiKeyRepo := &stubApiKeyRepo{
+			getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+				if key != apiKey.Key {
+					return nil, service.ErrAPIKeyNotFound
+				}
+				clone := *apiKey
+				return &clone, nil
+			},
+		}
+
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+		router := gin.New()
+		router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+		router.POST("/backend-api/codex/responses", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/backend-api/codex/responses", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+		var resp responsesProtocolError
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		require.Equal(t, "billing_error", resp.Error.Code)
+		require.Equal(t, "当前 API Key 配额已用完，请充值或联系管理员。", resp.Error.Message)
+	})
+
+	t.Run("anthropic endpoint maps insufficient balance to billing_error", func(t *testing.T) {
+		user := &service.User{
+			ID:          11,
+			Role:        service.RoleUser,
+			Status:      service.StatusActive,
+			Balance:     0,
+			Concurrency: 3,
+		}
+		apiKey := &service.APIKey{
+			ID:     201,
+			UserID: user.ID,
+			Key:    "messages-balance",
+			Status: service.StatusActive,
+			User:   user,
+		}
+		apiKeyRepo := &stubApiKeyRepo{
+			getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+				if key != apiKey.Key {
+					return nil, service.ErrAPIKeyNotFound
+				}
+				clone := *apiKey
+				return &clone, nil
+			},
+		}
+
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+		router := gin.New()
+		router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+		router.POST("/v1/messages", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+		var resp anthropicProtocolError
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		require.Equal(t, "error", resp.Type)
+		require.Equal(t, "billing_error", resp.Error.Type)
+		require.Equal(t, "Insufficient account balance", resp.Error.Message)
+	})
+
+	t.Run("non gateway endpoint keeps legacy auth error shape", func(t *testing.T) {
+		user := &service.User{
+			ID:          12,
+			Role:        service.RoleUser,
+			Status:      service.StatusActive,
+			Balance:     10,
+			Concurrency: 3,
+		}
+		apiKey := &service.APIKey{
+			ID:     202,
+			UserID: user.ID,
+			Key:    "legacy-shape",
+			Status: service.StatusAPIKeyQuotaExhausted,
+			User:   user,
+		}
+		apiKeyRepo := &stubApiKeyRepo{
+			getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+				if key != apiKey.Key {
+					return nil, service.ErrAPIKeyNotFound
+				}
+				clone := *apiKey
+				return &clone, nil
+			},
+		}
+
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+		router := newAuthTestRouter(apiKeyService, nil, cfg)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
+		var resp ErrorResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		require.Equal(t, "API_KEY_QUOTA_EXHAUSTED", resp.Code)
+		require.Equal(t, "当前 API Key 配额已用完，请充值或联系管理员。", resp.Message)
+	})
+}
+
 func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
@@ -499,6 +636,21 @@ func newAuthTestRouter(apiKeyService *service.APIKeyService, subscriptionService
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 	return router
+}
+
+type responsesProtocolError struct {
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type anthropicProtocolError struct {
+	Type  string `json:"type"`
+	Error struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 type stubApiKeyRepo struct {

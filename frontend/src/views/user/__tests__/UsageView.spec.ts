@@ -33,6 +33,7 @@ const messages: Record<string, string> = {
   'usage.allApiKeys': 'All API Keys',
   'usage.apiKeyFilter': 'API Key',
   'usage.model': 'Model',
+  'usage.modelQueryPlaceholder': 'Enter full model name',
   'usage.reasoningEffort': 'Reasoning Effort',
   'usage.type': 'Type',
   'usage.tokens': 'Tokens',
@@ -273,5 +274,55 @@ describe('user UsageView tooltip', () => {
     window.URL.createObjectURL = originalCreateObjectURL
     window.URL.revokeObjectURL = originalRevokeObjectURL
     clickSpy.mockRestore()
+  })
+
+  it('passes model filter to usage list and stats queries', async () => {
+    query.mockResolvedValue({
+      items: [],
+      total: 0,
+      pages: 0,
+    })
+    getStatsByDateRange.mockResolvedValue({
+      total_requests: 0,
+      total_tokens: 0,
+      total_cost: 0,
+      avg_duration_ms: 0,
+    })
+    list.mockResolvedValue({ items: [] })
+
+    const wrapper = mount(UsageView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          TablePageLayout: TablePageLayoutStub,
+          Pagination: true,
+          EmptyState: true,
+          Select: true,
+          DateRangePicker: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    query.mockClear()
+    getStatsByDateRange.mockClear()
+
+    const setupState = (wrapper.vm as any).$?.setupState
+    setupState.filters.model = '  gpt-5.4  '
+    setupState.applyFilters()
+    await flushPromises()
+
+    expect(query).toHaveBeenCalled()
+    expect(getStatsByDateRange).toHaveBeenCalled()
+    expect(query.mock.calls.at(-1)?.[0]).toMatchObject({ model: 'gpt-5.4' })
+    expect(getStatsByDateRange.mock.calls.at(-1)).toMatchObject([
+      expect.any(String),
+      expect.any(String),
+      undefined,
+      'gpt-5.4',
+    ])
   })
 })

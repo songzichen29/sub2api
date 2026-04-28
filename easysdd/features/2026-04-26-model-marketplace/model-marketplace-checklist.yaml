@@ -1,0 +1,51 @@
+feature: 2026-04-26-model-marketplace
+source: model-marketplace-design.md
+steps:
+  - id: step-1
+    title: header 入口与 header-only 布局接入
+    status: done
+    exit_signal:
+      - 铃铛旁出现模型广场入口
+      - 进入 /model-marketplace 时不显示左侧应用菜单
+      - sidebar 中不再出现模型广场入口
+  - id: step-2
+    title: 数据归一层改造成供应商 facet + 模型主项 + 渠道实例
+    status: done
+    exit_signal:
+      - 左栏显示供应商列表和数量
+      - 同模型多个渠道实例可明确区分
+      - 管理员和普通用户都能看到非空结果（有数据前提下）
+  - id: step-3
+    title: 紧凑结果卡与渠道实例列表落地
+    status: done
+    exit_signal:
+      - 结果区不再使用宽表格或大留白卡片
+      - 单屏模型密度明显提升
+      - 卡片内能读到价格摘要和渠道来源
+  - id: step-4
+    title: 搜索 筛选 分页与每页数量联动
+    status: done
+    exit_signal:
+      - 搜索命中模型 渠道 分组 供应商
+      - 切换供应商后结果正确收敛
+      - 分页和每页条数在大量模型下正常工作
+  - id: step-5
+    title: 兼容收尾与旧双视图清理
+    status: done
+    exit_signal:
+      - /available-channels 兼容跳转到 /model-marketplace
+      - 页面上不再出现表格视图/卡片视图双切换
+      - sidebar 中不再暴露模型广场入口
+checks:
+  - title: 不新增模型广场专用后端接口
+    status: passed
+  - title: 管理员与普通用户共用 header 入口
+    status: passed
+  - title: 模型广场页面不显示 AppSidebar
+    status: passed
+  - title: 同模型多个渠道实例不可丢失来源
+    status: passed
+  - title: 大量模型场景必须支持分页
+    status: passed
+  - title: 继续复用 available_channels_enabled 开关
+    status: passed

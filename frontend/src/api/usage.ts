@@ -133,7 +133,8 @@ export async function getStats(
 export async function getStatsByDateRange(
   startDate: string,
   endDate: string,
-  apiKeyId?: number
+  apiKeyId?: number,
+  model?: string
 ): Promise<UsageStatsResponse> {
   const params: Record<string, unknown> = {
     start_date: startDate,
@@ -142,6 +143,9 @@ export async function getStatsByDateRange(
 
   if (apiKeyId !== undefined) {
     params.api_key_id = apiKeyId
+  }
+  if (model) {
+    params.model = model
   }
 
   const { data } = await apiClient.get<UsageStatsResponse>('/usage/stats', {

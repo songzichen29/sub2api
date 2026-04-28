@@ -101,6 +101,18 @@
               />
             </div>
 
+            <!-- Model Filter -->
+            <div class="min-w-[220px]">
+              <label class="input-label">{{ t('usage.model') }}</label>
+              <input
+                v-model="filters.model"
+                type="text"
+                class="input"
+                :placeholder="t('usage.modelQueryPlaceholder')"
+                @keyup.enter="applyFilters"
+              />
+            </div>
+
             <!-- Date Range Filter -->
             <div>
               <label class="input-label">{{ t('usage.timeRange') }}</label>
@@ -574,6 +586,11 @@ const apiKeyOptions = computed(() => {
   ]
 })
 
+const normalizeModelFilter = (value?: string): string | undefined => {
+  const normalized = value?.trim()
+  return normalized ? normalized : undefined
+}
+
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -679,6 +696,7 @@ const buildUsageQueryParams = (page: number, pageSize: number): UsageTableQueryP
   page,
   page_size: pageSize,
   ...filters.value,
+  model: normalizeModelFilter(filters.value.model),
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
@@ -733,7 +751,8 @@ const loadUsageStats = async () => {
     const stats = await usageAPI.getStatsByDateRange(
       filters.value.start_date || startDate.value,
       filters.value.end_date || endDate.value,
-      apiKeyId
+      apiKeyId,
+      normalizeModelFilter(filters.value.model)
     )
     usageStats.value = stats
   } catch (error) {
@@ -750,6 +769,7 @@ const applyFilters = () => {
 const resetFilters = () => {
   filters.value = {
     api_key_id: undefined,
+    model: undefined,
     start_date: undefined,
     end_date: undefined
   }

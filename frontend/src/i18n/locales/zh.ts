@@ -806,6 +806,7 @@ export default {
     perRequest: '每次请求',
     apiKeyFilter: 'API 密钥',
     allApiKeys: '全部密钥',
+    modelQueryPlaceholder: '输入完整模型名',
     timeRange: '时间范围',
     exportCsv: '导出 CSV',
     exportExcel: '导出 Excel',

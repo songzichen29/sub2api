@@ -802,6 +802,7 @@ export default {
     perRequest: 'per request',
     apiKeyFilter: 'API Key',
     allApiKeys: 'All API Keys',
+    modelQueryPlaceholder: 'Enter full model name',
     timeRange: 'Time Range',
     exportCsv: 'Export CSV',
     exportExcel: 'Export Excel',

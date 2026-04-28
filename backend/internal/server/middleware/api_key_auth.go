@@ -155,7 +155,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// Key 状态检查
 			switch apiKey.Status {
 			case service.StatusAPIKeyQuotaExhausted:
-				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "当前 API Key 配额已用完，请充值或联系管理员。")
 				return
 			case service.StatusAPIKeyExpired:
 				AbortWithError(c, 403, "API_KEY_EXPIRED", "API key 已过期")
@@ -168,7 +168,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				return
 			}
 			if apiKey.IsQuotaExhausted() {
-				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "API key 额度已用完")
+				AbortWithError(c, 429, "API_KEY_QUOTA_EXHAUSTED", "当前 API Key 配额已用完，请充值或联系管理员。")
 				return
 			}
 

@@ -7,7 +7,7 @@ import (
 )
 
 // SSRF 防护 helper：
-//   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
+//   - validateEndpoint 在 admin 提交时阻止 loopback/私网/云元数据 URL
 //   - safeDialContext 在 socket 层再次校验真实 IP，防止 DNS rebinding
 //
 // 已知 cloud metadata hostname 拒绝列表（小写比较）。

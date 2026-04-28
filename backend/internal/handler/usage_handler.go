@@ -211,6 +211,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	}
 
 	// 获取时间范围参数
+	model := strings.TrimSpace(c.Query("model"))
 	userTZ := c.Query("timezone") // Get user's timezone from request
 	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
@@ -250,13 +251,13 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		endTime = now
 	}
 
-	var stats *service.UsageStats
-	var err error
-	if apiKeyID > 0 {
-		stats, err = h.usageService.GetStatsByAPIKey(c.Request.Context(), apiKeyID, startTime, endTime)
-	} else {
-		stats, err = h.usageService.GetStatsByUser(c.Request.Context(), subject.UserID, startTime, endTime)
-	}
+	stats, err := h.usageService.GetStatsWithFilters(c.Request.Context(), usagestats.UsageLogFilters{
+		UserID:    subject.UserID,
+		APIKeyID:  apiKeyID,
+		Model:     model,
+		StartTime: &startTime,
+		EndTime:   &endTime,
+	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

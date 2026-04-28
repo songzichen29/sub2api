@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/googleapi"
@@ -72,8 +73,99 @@ func NewErrorResponse(code, message string) ErrorResponse {
 
 // AbortWithError 中断请求并返回JSON错误
 func AbortWithError(c *gin.Context, statusCode int, code, message string) {
-	c.JSON(statusCode, NewErrorResponse(code, message))
+	statusCode, payload := buildProtocolAwareErrorResponse(c, statusCode, code, message)
+	c.JSON(statusCode, payload)
 	c.Abort()
+}
+
+type protocolErrorFormat int
+
+const (
+	protocolErrorFormatDefault protocolErrorFormat = iota
+	protocolErrorFormatResponses
+	protocolErrorFormatChatCompletions
+	protocolErrorFormatAnthropic
+)
+
+func buildProtocolAwareErrorResponse(c *gin.Context, statusCode int, code, message string) (int, any) {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return statusCode, NewErrorResponse(code, message)
+	}
+
+	format := detectProtocolErrorFormat(c.Request.URL.Path)
+	if format == protocolErrorFormatDefault {
+		return statusCode, NewErrorResponse(code, message)
+	}
+
+	mappedStatus, mappedCode := mapGatewayProtocolError(statusCode, code)
+	switch format {
+	case protocolErrorFormatResponses:
+		return mappedStatus, gin.H{
+			"error": gin.H{
+				"code":    mappedCode,
+				"message": message,
+			},
+		}
+	case protocolErrorFormatChatCompletions:
+		return mappedStatus, gin.H{
+			"error": gin.H{
+				"type":    mappedCode,
+				"message": message,
+			},
+		}
+	case protocolErrorFormatAnthropic:
+		return mappedStatus, gin.H{
+			"type": "error",
+			"error": gin.H{
+				"type":    mappedCode,
+				"message": message,
+			},
+		}
+	default:
+		return statusCode, NewErrorResponse(code, message)
+	}
+}
+
+func detectProtocolErrorFormat(path string) protocolErrorFormat {
+	p := strings.ToLower(strings.TrimSpace(path))
+	switch {
+	case strings.HasPrefix(p, "/v1/messages"),
+		strings.HasPrefix(p, "/antigravity/v1/messages"):
+		return protocolErrorFormatAnthropic
+	case strings.HasPrefix(p, "/v1/chat/completions"),
+		strings.HasPrefix(p, "/chat/completions"):
+		return protocolErrorFormatChatCompletions
+	case strings.HasPrefix(p, "/v1/responses"),
+		strings.HasPrefix(p, "/responses"),
+		strings.HasPrefix(p, "/backend-api/codex/responses"):
+		return protocolErrorFormatResponses
+	default:
+		return protocolErrorFormatDefault
+	}
+}
+
+func mapGatewayProtocolError(statusCode int, code string) (int, string) {
+	switch code {
+	case "API_KEY_QUOTA_EXHAUSTED", "INSUFFICIENT_BALANCE":
+		return http.StatusForbidden, "billing_error"
+	}
+
+	switch statusCode {
+	case http.StatusBadRequest:
+		return statusCode, "invalid_request_error"
+	case http.StatusUnauthorized:
+		return statusCode, "authentication_error"
+	case http.StatusForbidden:
+		return statusCode, "permission_error"
+	case http.StatusNotFound:
+		return statusCode, "not_found_error"
+	case http.StatusTooManyRequests:
+		return statusCode, "rate_limit_error"
+	case http.StatusServiceUnavailable:
+		return statusCode, "overloaded_error"
+	default:
+		return statusCode, "api_error"
+	}
 }
 
 func AbortForUserLookupError(c *gin.Context, err error) {
