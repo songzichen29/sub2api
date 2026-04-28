@@ -2294,7 +2294,64 @@ func (r *stubUsageLogRepo) GetAccountUsageStats(ctx context.Context, accountID i
 }
 
 func (r *stubUsageLogRepo) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
-	return nil, errors.New("not implemented")
+	logs := r.userLogs[filters.UserID]
+
+	var totalRequests int64
+	var totalInputTokens int64
+	var totalOutputTokens int64
+	var totalCacheTokens int64
+	var totalCost float64
+	var totalActualCost float64
+	var totalDuration int64
+	var durationCount int64
+
+	for _, log := range logs {
+		if filters.APIKeyID > 0 && log.APIKeyID != filters.APIKeyID {
+			continue
+		}
+		if filters.Model != "" && log.Model != filters.Model {
+			continue
+		}
+		if filters.Stream != nil && log.Stream != *filters.Stream {
+			continue
+		}
+		if filters.BillingType != nil && log.BillingType != *filters.BillingType {
+			continue
+		}
+		if filters.StartTime != nil && log.CreatedAt.Before(*filters.StartTime) {
+			continue
+		}
+		if filters.EndTime != nil && !log.CreatedAt.Before(*filters.EndTime) {
+			continue
+		}
+
+		totalRequests++
+		totalInputTokens += int64(log.InputTokens)
+		totalOutputTokens += int64(log.OutputTokens)
+		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCost += log.TotalCost
+		totalActualCost += log.ActualCost
+		if log.DurationMs != nil {
+			totalDuration += int64(*log.DurationMs)
+			durationCount++
+		}
+	}
+
+	var avgDuration float64
+	if durationCount > 0 {
+		avgDuration = float64(totalDuration) / float64(durationCount)
+	}
+
+	return &usagestats.UsageStats{
+		TotalRequests:     totalRequests,
+		TotalInputTokens:  totalInputTokens,
+		TotalOutputTokens: totalOutputTokens,
+		TotalCacheTokens:  totalCacheTokens,
+		TotalTokens:       totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:         totalCost,
+		TotalActualCost:   totalActualCost,
+		AverageDurationMs: avgDuration,
+	}, nil
 }
 func (r *stubUsageLogRepo) GetAllGroupUsageSummary(ctx context.Context, todayStart time.Time) ([]usagestats.GroupUsageSummary, error) {
 	return nil, errors.New("not implemented")
