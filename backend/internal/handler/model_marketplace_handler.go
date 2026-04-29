@@ -22,6 +22,7 @@ func NewModelMarketplaceHandler(channelService *service.ChannelService) *ModelMa
 type marketplaceChannelEntry struct {
 	ChannelName        string                     `json:"channel_name"`
 	ChannelDescription string                     `json:"channel_description"`
+	ModelNote          string                     `json:"model_note,omitempty"`
 	Groups             []userAvailableGroup       `json:"groups"`
 	Pricing            *userSupportedModelPricing `json:"pricing"`
 }
@@ -130,6 +131,7 @@ func buildMarketplaceModelItems(channels []service.AvailableChannel) []marketpla
 			entry := marketplaceChannelEntry{
 				ChannelName:        ch.Name,
 				ChannelDescription: ch.Description,
+				ModelNote:          model.MappingNote,
 				Groups:             platformGroups,
 				Pricing:            toUserPricing(model.Pricing),
 			}

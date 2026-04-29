@@ -432,3 +432,27 @@ export function buildModelMappingObject(
 
   return Object.keys(mapping).length > 0 ? mapping : null
 }
+
+export interface ModelMappingRow {
+  from: string
+  to: string
+  note?: string
+}
+
+export function buildModelMappingNotesObject(
+  modelMappings: ModelMappingRow[]
+): Record<string, string> | null {
+  const notes: Record<string, string> = {}
+
+  for (const m of modelMappings) {
+    const from = m.from.trim()
+    const to = m.to.trim()
+    const note = m.note?.trim() || ''
+    if (!from || !to || !note) continue
+    if (!isValidWildcardPattern(from)) continue
+    if (to.includes('*')) continue
+    notes[from] = note
+  }
+
+  return Object.keys(notes).length > 0 ? notes : null
+}

@@ -51,6 +51,16 @@
       </div>
     </div>
 
+    <div
+      v-if="mappingNoteEntries.length > 0"
+      class="mt-3 space-y-1 pl-[3.25rem] text-xs leading-5 text-amber-700 dark:text-amber-300"
+    >
+      <div v-for="entry in mappingNoteEntries" :key="`${entry.channel_name}:${entry.note}`">
+        <span v-if="showChannelNameInNotes" class="font-medium">{{ entry.channel_name }}：</span>
+        {{ entry.note }}
+      </div>
+    </div>
+
     <div class="mt-3 flex items-center pl-[3.25rem]">
       <span
         class="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
@@ -84,6 +94,22 @@ const copied = ref(false)
 
 const primaryChannel = computed(() => props.item.channels.find((channel) => channel.pricing) ?? props.item.channels[0] ?? null)
 const primaryPricing = computed(() => primaryChannel.value?.pricing ?? null)
+const mappingNoteEntries = computed(() => {
+  const seen = new Set<string>()
+  return props.item.channels
+    .map((channel) => ({
+      channel_name: channel.channel_name,
+      note: channel.model_note?.trim() || '',
+    }))
+    .filter((entry) => {
+      if (!entry.note) return false
+      const key = `${entry.channel_name}:${entry.note}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+})
+const showChannelNameInNotes = computed(() => mappingNoteEntries.value.length > 1)
 
 const billingModeLabel = computed(() => {
   const pricing = primaryPricing.value

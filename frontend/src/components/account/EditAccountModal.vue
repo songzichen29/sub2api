@@ -170,51 +170,60 @@
               </div>
 
             <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="space-y-2"
               >
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="mapping.from"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.requestModel')"
                   />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M14 5l7 7m0 0l-7 7m7-7H3"
                     />
                   </svg>
-                </button>
+                  <input
+                    v-model="mapping.to"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.actualModel')"
+                  />
+                  <button
+                    type="button"
+                    @click="removeModelMapping(index)"
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <input
+                  :data-testid="`model-mapping-note-${index}`"
+                  v-model="mapping.note"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -471,51 +480,60 @@
               </p>
             </div>
 
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="'oauth-' + getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="space-y-2"
               >
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="mapping.from"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.requestModel')"
                   />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M14 5l7 7m0 0l-7 7m7-7H3"
                     />
                   </svg>
-                </button>
+                  <input
+                    v-model="mapping.to"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.actualModel')"
+                  />
+                  <button
+                    type="button"
+                    @click="removeModelMapping(index)"
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <input
+                  :data-testid="`model-mapping-note-${index}`"
+                  v-model="mapping.note"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -682,13 +700,22 @@
 
           <!-- Mapping Mode -->
           <div v-else class="space-y-3">
-            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
-              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
-              <span class="text-gray-400">→</span>
-              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
-                <Icon name="trash" size="sm" />
-              </button>
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+                <span class="text-gray-400">→</span>
+                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+                <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <input
+                :data-testid="`model-mapping-note-${index}`"
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
             </div>
             <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
               + {{ t('admin.accounts.addMapping') }}
@@ -772,11 +799,11 @@
             <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') }}</p>
           </div>
 
-          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
+          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-3">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
               :key="getAntigravityModelMappingKey(mapping)"
-              class="space-y-1"
+              class="space-y-2"
             >
               <div class="flex items-center gap-2">
                 <input
@@ -816,6 +843,13 @@
                   </svg>
                 </button>
               </div>
+              <input
+                :data-testid="`antigravity-model-mapping-note-${index}`"
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
               <!-- 校验错误提示 -->
               <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
                 {{ t('admin.accounts.wildcardOnlyAtEnd') }}
@@ -1334,28 +1368,37 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
-          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
+          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-3">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
               :key="getOpenAICompactModelMappingKey(mapping)"
-              class="flex items-center gap-2"
+              class="space-y-2"
             >
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.fromModel')"
+                />
+                <span class="text-gray-400">→</span>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.toModel')"
+                />
+                <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
               <input
-                v-model="mapping.from"
+                :data-testid="`openai-compact-model-mapping-note-${index}`"
+                v-model="mapping.note"
                 type="text"
-                class="input flex-1"
-                :placeholder="t('admin.accounts.fromModel')"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
               />
-              <span class="text-gray-400">→</span>
-              <input
-                v-model="mapping.to"
-                type="text"
-                class="input flex-1"
-                :placeholder="t('admin.accounts.toModel')"
-              />
-              <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
-                <Icon name="trash" size="sm" />
-              </button>
             </div>
           </div>
           <button type="button" @click="addOpenAICompactModelMapping" class="btn btn-secondary text-sm">
@@ -1932,7 +1975,9 @@ import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
-  isValidWildcardPattern
+  buildModelMappingNotesObject,
+  isValidWildcardPattern,
+  type ModelMappingRow
 } from '@/composables/useModelWhitelist'
 
 interface Props {
@@ -1963,11 +2008,7 @@ const baseUrlHint = computed(() => {
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
-// Model mapping type
-interface ModelMapping {
-  from: string
-  to: string
-}
+type ModelMapping = ModelMappingRow
 
 interface TempUnschedRuleForm {
   error_code: number | null
@@ -2167,6 +2208,49 @@ const defaultBaseUrl = computed(() => {
   return 'https://api.anthropic.com'
 })
 
+const toStringMap = (raw: unknown): Record<string, string> => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>)
+      .filter(([, value]) => typeof value === 'string')
+      .map(([key, value]) => [key, value as string])
+  )
+}
+
+const mapRowsWithNotes = (
+  rawMapping: Record<string, string> | undefined,
+  rawNotes: unknown
+): ModelMapping[] => {
+  const notes = toStringMap(rawNotes)
+  return Object.entries(rawMapping || {}).map(([from, to]) => ({
+    from,
+    to,
+    note: notes[from] || ''
+  }))
+}
+
+const applyMappingWithNotes = (
+  target: Record<string, unknown>,
+  mappingKey: 'model_mapping' | 'compact_model_mapping',
+  notesKey: 'model_mapping_notes' | 'compact_model_mapping_notes',
+  mapping: Record<string, string> | null,
+  modelRows: ModelMapping[]
+) => {
+  if (mapping) {
+    target[mappingKey] = mapping
+  } else {
+    delete target[mappingKey]
+  }
+
+  const notes = buildModelMappingNotesObject(modelRows)
+  if (notes) {
+    target[notesKey] = notes
+  } else {
+    delete target[notesKey]
+  }
+}
+
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
     return t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails.value)
@@ -2284,7 +2368,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
-      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
+      openAICompactModelMappings.value = mapRowsWithNotes(
+        compactMappings,
+        credentials?.compact_model_mapping_notes
+      )
     }
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
@@ -2341,9 +2428,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // 从 model_mapping 读取映射配置
     const rawAgMapping = credentials?.model_mapping as Record<string, string> | undefined
     if (rawAgMapping && typeof rawAgMapping === 'object') {
-      const entries = Object.entries(rawAgMapping)
       // 无论是白名单样式(key===value)还是真正的映射，都统一转换为映射列表
-      antigravityModelMappings.value = entries.map(([from, to]) => ({ from, to }))
+      antigravityModelMappings.value = mapRowsWithNotes(
+        rawAgMapping,
+        credentials?.model_mapping_notes
+      )
     } else {
       // 兼容旧数据：从 model_whitelist 读取，转换为映射格式
       const rawWhitelist = credentials?.model_whitelist
@@ -2351,7 +2440,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         antigravityModelMappings.value = rawWhitelist
           .map((v) => String(v).trim())
           .filter((v) => v.length > 0)
-          .map((m) => ({ from: m, to: m }))
+          .map((m) => ({ from: m, to: m, note: '' }))
       } else {
         antigravityModelMappings.value = []
       }
@@ -2394,7 +2483,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       } else {
         // Mapping mode: populate modelMappings
         modelRestrictionMode.value = 'mapping'
-        modelMappings.value = entries.map(([from, to]) => ({ from, to }))
+        modelMappings.value = mapRowsWithNotes(
+          existingMappings,
+          credentials.model_mapping_notes
+        )
         allowedModels.value = []
       }
     } else {
@@ -2456,7 +2548,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         modelMappings.value = []
       } else {
         modelRestrictionMode.value = 'mapping'
-        modelMappings.value = entries.map(([from, to]) => ({ from, to }))
+        modelMappings.value = mapRowsWithNotes(
+          existingMappings,
+          bedrockCreds.model_mapping_notes
+        )
         allowedModels.value = []
       }
     } else {
@@ -2489,7 +2584,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
           modelMappings.value = []
         } else {
           modelRestrictionMode.value = 'mapping'
-          modelMappings.value = entries.map(([from, to]) => ({ from, to }))
+          modelMappings.value = mapRowsWithNotes(
+            existingMappings,
+            oauthCredentials.model_mapping_notes
+          )
           allowedModels.value = []
         }
       } else {
@@ -2998,21 +3096,32 @@ const handleSubmit = async () => {
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
         const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-        if (modelMapping) {
-          newCredentials.model_mapping = modelMapping
-        } else {
-          delete newCredentials.model_mapping
-        }
+        applyMappingWithNotes(
+          newCredentials,
+          'model_mapping',
+          'model_mapping_notes',
+          modelMapping,
+          modelMappings.value
+        )
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
+        if (currentCredentials.model_mapping_notes) {
+          newCredentials.model_mapping_notes = currentCredentials.model_mapping_notes
+        } else {
+          delete newCredentials.model_mapping_notes
+        }
+      } else {
+        delete newCredentials.model_mapping_notes
       }
       if (props.account.platform === 'openai') {
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-        if (compactModelMapping) {
-          newCredentials.compact_model_mapping = compactModelMapping
-        } else {
-          delete newCredentials.compact_model_mapping
-        }
+        applyMappingWithNotes(
+          newCredentials,
+          'compact_model_mapping',
+          'compact_model_mapping_notes',
+          compactModelMapping,
+          openAICompactModelMappings.value
+        )
       }
 
       // Add pool mode if enabled
@@ -3096,11 +3205,13 @@ const handleSubmit = async () => {
 
       // Model mapping
       const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-      if (modelMapping) {
-        newCredentials.model_mapping = modelMapping
-      } else {
-        delete newCredentials.model_mapping
-      }
+      applyMappingWithNotes(
+        newCredentials,
+        'model_mapping',
+        'model_mapping_notes',
+        modelMapping,
+        modelMappings.value
+      )
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
@@ -3130,21 +3241,32 @@ const handleSubmit = async () => {
 
       if (shouldApplyModelMapping) {
         const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-        if (modelMapping) {
-          newCredentials.model_mapping = modelMapping
-        } else {
-          delete newCredentials.model_mapping
-        }
+        applyMappingWithNotes(
+          newCredentials,
+          'model_mapping',
+          'model_mapping_notes',
+          modelMapping,
+          modelMappings.value
+        )
       } else if (currentCredentials.model_mapping) {
         // 透传模式保留现有映射
         newCredentials.model_mapping = currentCredentials.model_mapping
+        if (currentCredentials.model_mapping_notes) {
+          newCredentials.model_mapping_notes = currentCredentials.model_mapping_notes
+        } else {
+          delete newCredentials.model_mapping_notes
+        }
+      } else {
+        delete newCredentials.model_mapping_notes
       }
       const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-      if (compactModelMapping) {
-        newCredentials.compact_model_mapping = compactModelMapping
-      } else {
-        delete newCredentials.compact_model_mapping
-      }
+      applyMappingWithNotes(
+        newCredentials,
+        'compact_model_mapping',
+        'compact_model_mapping_notes',
+        compactModelMapping,
+        openAICompactModelMappings.value
+      )
 
       updatePayload.credentials = newCredentials
     }
@@ -3159,6 +3281,7 @@ const handleSubmit = async () => {
       // 移除旧字段
       delete newCredentials.model_whitelist
       delete newCredentials.model_mapping
+      delete newCredentials.model_mapping_notes
 
       // 只使用映射模式
       const antigravityModelMapping = buildModelMappingObject(
@@ -3166,9 +3289,13 @@ const handleSubmit = async () => {
         [],
         antigravityModelMappings.value
       )
-      if (antigravityModelMapping) {
-        newCredentials.model_mapping = antigravityModelMapping
-      }
+      applyMappingWithNotes(
+        newCredentials,
+        'model_mapping',
+        'model_mapping_notes',
+        antigravityModelMapping,
+        antigravityModelMappings.value
+      )
 
       updatePayload.credentials = newCredentials
     }

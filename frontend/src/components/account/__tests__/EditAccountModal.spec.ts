@@ -190,15 +190,15 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('submits OpenAI compact mode and compact-only model mapping', async () => {
+  it('loads and submits per-model notes for OpenAI model mappings', async () => {
     const account = buildAccount()
-    account.extra = {
-      openai_compact_mode: 'force_on'
-    }
     account.credentials = {
       ...account.credentials,
-      compact_model_mapping: {
-        'gpt-5.4': 'gpt-5.4-openai-compact'
+      model_mapping: {
+        'gpt-5.4': 'gpt-5.4-mini'
+      },
+      model_mapping_notes: {
+        'gpt-5.4': '主路由映射'
       }
     }
     updateAccountMock.mockReset()
@@ -208,12 +208,54 @@ describe('EditAccountModal', () => {
 
     const wrapper = mountModal(account)
 
+    const noteInput = wrapper.get('[data-testid="model-mapping-note-0"]')
+    expect((noteInput.element as HTMLInputElement).value).toBe('主路由映射')
+
+    await noteInput.setValue('主路由映射-已更新')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
+      'gpt-5.4': 'gpt-5.4-mini'
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping_notes).toEqual({
+      'gpt-5.4': '主路由映射-已更新'
+    })
+  })
+
+  it('submits OpenAI compact mode and compact-only model mapping', async () => {
+    const account = buildAccount()
+    account.extra = {
+      openai_compact_mode: 'force_on'
+    }
+    account.credentials = {
+      ...account.credentials,
+      compact_model_mapping: {
+        'gpt-5.4': 'gpt-5.4-openai-compact'
+      },
+      compact_model_mapping_notes: {
+        'gpt-5.4': 'compact 通道'
+      }
+    }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    expect((wrapper.get('[data-testid="openai-compact-model-mapping-note-0"]').element as HTMLInputElement).value)
+      .toBe('compact 通道')
+
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_compact_mode).toBe('force_on')
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping).toEqual({
       'gpt-5.4': 'gpt-5.4-openai-compact'
+    })
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping_notes).toEqual({
+      'gpt-5.4': 'compact 通道'
     })
   })
 })

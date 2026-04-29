@@ -357,32 +357,41 @@
                 <div
                   v-for="(_, srcModel) in section.model_mapping"
                   :key="srcModel"
-                  class="flex items-center gap-2"
+                  class="space-y-2"
                 >
+                  <div class="flex items-center gap-2">
+                    <input
+                      :value="srcModel"
+                      type="text"
+                      class="input flex-1 text-xs"
+                      :class="platformTextClass(section.platform)"
+                      :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
+                      @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                    />
+                    <span class="text-gray-400 text-xs">→</span>
+                    <input
+                      :value="section.model_mapping[srcModel]"
+                      type="text"
+                      class="input flex-1 text-xs"
+                      :class="platformTextClass(section.platform)"
+                      :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
+                      @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+                    />
+                    <button
+                      type="button"
+                      @click="removeMappingEntry(sIdx, srcModel)"
+                      class="rounded p-0.5 text-gray-400 hover:text-red-500"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
                   <input
-                    :value="srcModel"
+                    v-model="section.model_mapping_notes[srcModel]"
                     type="text"
-                    class="input flex-1 text-xs"
+                    class="input text-xs"
                     :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
-                    @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                    :placeholder="t('admin.channels.form.mappingNotePlaceholder', 'Optional note for this mapping')"
                   />
-                  <span class="text-gray-400 text-xs">→</span>
-                  <input
-                    :value="section.model_mapping[srcModel]"
-                    type="text"
-                    class="input flex-1 text-xs"
-                    :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
-                    @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
-                  />
-                  <button
-                    type="button"
-                    @click="removeMappingEntry(sIdx, srcModel)"
-                    class="rounded p-0.5 text-gray-400 hover:text-red-500"
-                  >
-                    <Icon name="trash" size="sm" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -641,6 +650,7 @@ interface PlatformSection {
   collapsed: boolean
   group_ids: number[]
   model_mapping: Record<string, string>
+  model_mapping_notes: Record<string, string>
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   account_stats_pricing_rules: FormPricingRule[]
@@ -736,6 +746,7 @@ function addPlatformSection(platform: GroupPlatform) {
     collapsed: false,
     group_ids: [],
     model_mapping: {},
+    model_mapping_notes: {},
     model_pricing: [],
     web_search_emulation: false,
     account_stats_pricing_rules: [],
@@ -839,6 +850,7 @@ function addMappingEntry(sectionIdx: number) {
 
 function removeMappingEntry(sectionIdx: number, key: string) {
   delete form.platforms[sectionIdx].model_mapping[key]
+  delete form.platforms[sectionIdx].model_mapping_notes[key]
 }
 
 function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
@@ -847,8 +859,13 @@ function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
   const mapping = form.platforms[sectionIdx].model_mapping
   if (newKey in mapping) return
   const value = mapping[oldKey]
+  const note = form.platforms[sectionIdx].model_mapping_notes[oldKey]
   delete mapping[oldKey]
   mapping[newKey] = value
+  if (typeof note === 'string' && note.trim()) {
+    form.platforms[sectionIdx].model_mapping_notes[newKey] = note
+  }
+  delete form.platforms[sectionIdx].model_mapping_notes[oldKey]
 }
 
 // ── Account Stats Pricing helpers ──
@@ -994,6 +1011,33 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
   return rules
 }
 
+function normalizeModelMappingNotes(
+  mapping: Record<string, string>,
+  notes: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(notes)
+      .map(([source, note]) => [source.trim(), note.trim()] as const)
+      .filter(([source, note]) => source in mapping && note.length > 0)
+  )
+}
+
+function getPlatformModelMappingNotes(
+  featuresConfig: Record<string, unknown> | undefined,
+  platform: GroupPlatform
+): Record<string, string> {
+  const raw = (featuresConfig?.model_mapping_notes as Record<string, unknown> | undefined)?.[platform]
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(raw as Record<string, unknown>)
+      .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
+      .map(([source, note]) => [source, (note as string).trim()])
+  )
+}
+
 // ── Form ↔ API conversion ──
 function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> } {
   const group_ids: number[] = []
@@ -1029,6 +1073,23 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         intervals: formIntervalsToAPI(entry.intervals || [])
       })
     }
+  }
+
+  const mappingNotesByPlatform: Record<string, Record<string, string>> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    const normalizedNotes = normalizeModelMappingNotes(
+      section.model_mapping,
+      section.model_mapping_notes
+    )
+    if (Object.keys(normalizedNotes).length > 0) {
+      mappingNotesByPlatform[section.platform] = normalizedNotes
+    }
+  }
+  if (Object.keys(mappingNotesByPlatform).length > 0) {
+    featuresConfig.model_mapping_notes = mappingNotesByPlatform
+  } else {
+    delete featuresConfig.model_mapping_notes
   }
 
   // Collect web_search_emulation (only anthropic platform supports it)
@@ -1077,6 +1138,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     const groupIds = (channel.group_ids || []).filter(gid => groupPlatformMap.get(gid) === platform)
     const mapping = (channel.model_mapping || {})[platform] || {}
+    const mappingNotes = getPlatformModelMappingNotes(channel.features_config, platform)
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
       .map(p => ({
@@ -1102,6 +1164,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping },
+      model_mapping_notes: { ...mappingNotes },
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       account_stats_pricing_rules: [],

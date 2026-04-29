@@ -9,6 +9,7 @@ import type { AdminGroup } from '@/types'
 export interface ModelMarketplaceChannelEntry {
   channel_name: string
   channel_description: string
+  model_note?: string
   groups: UserAvailableGroup[]
   pricing: UserSupportedModelPricing | null
 }

@@ -742,11 +742,11 @@
             </p>
           </div>
 
-          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
+          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-3">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
               :key="getAntigravityModelMappingKey(mapping)"
-              class="space-y-1"
+              class="space-y-2"
             >
               <div class="flex items-center gap-2">
                 <input
@@ -785,6 +785,12 @@
                   </svg>
                 </button>
               </div>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
               <!-- 校验错误提示 -->
               <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
                 {{ t('admin.accounts.wildcardOnlyAtEnd') }}
@@ -994,51 +1000,59 @@
               </div>
 
             <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="space-y-2"
               >
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="mapping.from"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.requestModel')"
                   />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M14 5l7 7m0 0l-7 7m7-7H3"
                     />
                   </svg>
-                </button>
+                  <input
+                    v-model="mapping.to"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.actualModel')"
+                  />
+                  <button
+                    type="button"
+                    @click="removeModelMapping(index)"
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <input
+                  v-model="mapping.note"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -1398,13 +1412,21 @@
 
           <!-- Mapping Mode -->
           <div v-else class="space-y-3">
-            <div v-for="(mapping, index) in modelMappings" :key="index" class="flex items-center gap-2">
-              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
-              <span class="text-gray-400">→</span>
-              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
-                <Icon name="trash" size="sm" />
-              </button>
+            <div v-for="(mapping, index) in modelMappings" :key="index" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+                <span class="text-gray-400">→</span>
+                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+                <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
             </div>
             <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
               + {{ t('admin.accounts.addMapping') }}
@@ -1645,51 +1667,59 @@
               </p>
             </div>
 
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="'oauth-' + getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="space-y-2"
               >
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.requestModel')"
-                />
-                <svg
-                  class="h-4 w-4 flex-shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model="mapping.from"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.requestModel')"
                   />
-                </svg>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.actualModel')"
-                />
-                <button
-                  type="button"
-                  @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="h-4 w-4 flex-shrink-0 text-gray-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      d="M14 5l7 7m0 0l-7 7m7-7H3"
                     />
                   </svg>
-                </button>
+                  <input
+                    v-model="mapping.to"
+                    type="text"
+                    class="input flex-1"
+                    :placeholder="t('admin.accounts.actualModel')"
+                  />
+                  <button
+                    type="button"
+                    @click="removeModelMapping(index)"
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  >
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+                <input
+                  v-model="mapping.note"
+                  type="text"
+                  class="input"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -2468,18 +2498,26 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
-          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
+          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-3">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
               :key="getOpenAICompactModelMappingKey(mapping)"
-              class="flex items-center gap-2"
+              class="space-y-2"
             >
-              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
-              <span class="text-gray-400">→</span>
-              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-              <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
-                <Icon name="trash" size="sm" />
-              </button>
+              <div class="flex items-center gap-2">
+                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+                <span class="text-gray-400">→</span>
+                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+                <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
             </div>
           </div>
           <button type="button" @click="addOpenAICompactModelMapping" class="btn btn-secondary text-sm">
@@ -2937,8 +2975,10 @@ import {
   getModelsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
+  buildModelMappingNotesObject,
   fetchAntigravityDefaultMappings,
-  isValidWildcardPattern
+  isValidWildcardPattern,
+  type ModelMappingRow
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
@@ -3069,11 +3109,7 @@ const currentOAuthError = computed(() => {
 // Refs
 const oauthFlowRef = ref<OAuthFlowExposed | null>(null)
 
-// Model mapping type
-interface ModelMapping {
-  from: string
-  to: string
-}
+type ModelMapping = ModelMappingRow
 
 interface TempUnschedRuleForm {
   error_code: number | null
@@ -3174,6 +3210,27 @@ function buildAntigravityExtra(): Record<string, unknown> | undefined {
 
 const buildOpenAICompactModelMapping = () =>
   buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
+
+const applyMappingWithNotes = (
+  target: Record<string, unknown>,
+  mappingKey: 'model_mapping' | 'compact_model_mapping',
+  notesKey: 'model_mapping_notes' | 'compact_model_mapping_notes',
+  mapping: Record<string, string> | null,
+  modelRows: ModelMapping[]
+) => {
+  if (mapping) {
+    target[mappingKey] = mapping
+  } else {
+    delete target[mappingKey]
+  }
+
+  const notes = buildModelMappingNotesObject(modelRows)
+  if (notes) {
+    target[notesKey] = notes
+  } else {
+    delete target[notesKey]
+  }
+}
 
 const showMixedChannelWarning = ref(false)
 const mixedChannelWarningDetails = ref<{ groupName: string; currentPlatform: string; otherPlatform: string } | null>(
@@ -4068,9 +4125,13 @@ const handleSubmit = async () => {
     const modelMapping = buildModelMappingObject(
       modelRestrictionMode.value, allowedModels.value, modelMappings.value
     )
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    }
+    applyMappingWithNotes(
+      credentials,
+      'model_mapping',
+      'model_mapping_notes',
+      modelMapping,
+      modelMappings.value
+    )
 
     // Pool mode
     if (poolModeEnabled.value) {
@@ -4111,9 +4172,13 @@ const handleSubmit = async () => {
       [],
       antigravityModelMappings.value
     )
-    if (antigravityModelMapping) {
-      credentials.model_mapping = antigravityModelMapping
-    }
+    applyMappingWithNotes(
+      credentials,
+      'model_mapping',
+      'model_mapping_notes',
+      antigravityModelMapping,
+      antigravityModelMappings.value
+    )
 
     applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
 
@@ -4148,15 +4213,23 @@ const handleSubmit = async () => {
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
   if (!isOpenAIModelRestrictionDisabled.value) {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    }
+    applyMappingWithNotes(
+      credentials,
+      'model_mapping',
+      'model_mapping_notes',
+      modelMapping,
+      modelMappings.value
+    )
   }
   if (form.platform === 'openai') {
     const compactModelMapping = buildOpenAICompactModelMapping()
-    if (compactModelMapping) {
-      credentials.compact_model_mapping = compactModelMapping
-    }
+    applyMappingWithNotes(
+      credentials,
+      'compact_model_mapping',
+      'compact_model_mapping_notes',
+      compactModelMapping,
+      openAICompactModelMappings.value
+    )
   }
 
   // Add pool mode if enabled
@@ -4272,11 +4345,13 @@ const createAccountAndFinish = async (
   }
   if (platform === 'openai') {
     const compactModelMapping = buildOpenAICompactModelMapping()
-    if (compactModelMapping) {
-      credentials.compact_model_mapping = compactModelMapping
-    } else {
-      delete credentials.compact_model_mapping
-    }
+    applyMappingWithNotes(
+      credentials,
+      'compact_model_mapping',
+      'compact_model_mapping_notes',
+      compactModelMapping,
+      openAICompactModelMappings.value
+    )
   }
   await doCreateAccount({
     name: form.name,
@@ -4328,15 +4403,23 @@ const handleOpenAIExchange = async (authCode: string) => {
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
     if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
       const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-      if (modelMapping) {
-        credentials.model_mapping = modelMapping
-      }
+      applyMappingWithNotes(
+        credentials,
+        'model_mapping',
+        'model_mapping_notes',
+        modelMapping,
+        modelMappings.value
+      )
     }
     if (shouldCreateOpenAI) {
       const compactModelMapping = buildOpenAICompactModelMapping()
-      if (compactModelMapping) {
-        credentials.compact_model_mapping = compactModelMapping
-      }
+      applyMappingWithNotes(
+        credentials,
+        'compact_model_mapping',
+        'compact_model_mapping_notes',
+        compactModelMapping,
+        openAICompactModelMappings.value
+      )
     }
 
     // 应用临时不可调度配置
@@ -4426,15 +4509,23 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
           const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-          if (modelMapping) {
-            credentials.model_mapping = modelMapping
-          }
+          applyMappingWithNotes(
+            credentials,
+            'model_mapping',
+            'model_mapping_notes',
+            modelMapping,
+            modelMappings.value
+          )
         }
         if (shouldCreateOpenAI) {
           const compactModelMapping = buildOpenAICompactModelMapping()
-          if (compactModelMapping) {
-            credentials.compact_model_mapping = compactModelMapping
-          }
+          applyMappingWithNotes(
+            credentials,
+            'compact_model_mapping',
+            'compact_model_mapping_notes',
+            compactModelMapping,
+            openAICompactModelMappings.value
+          )
         }
 
         // Generate account name; fallback to email if name is empty (ent schema requires NotEmpty)
@@ -4658,9 +4749,13 @@ const handleAntigravityExchange = async (authCode: string) => {
 			[],
 			antigravityModelMappings.value
 		)
-		if (antigravityModelMapping) {
-			credentials.model_mapping = antigravityModelMapping
-		}
+		applyMappingWithNotes(
+			credentials,
+			'model_mapping',
+			'model_mapping_notes',
+			antigravityModelMapping,
+			antigravityModelMappings.value
+		)
 		const extra = buildAntigravityExtra()
 		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
   } catch (error: any) {

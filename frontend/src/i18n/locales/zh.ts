@@ -2313,6 +2313,7 @@ export default {
         noMappingRules: '暂无映射规则，点击"添加"创建',
         mappingSource: '源模型',
         mappingTarget: '目标模型',
+        mappingNotePlaceholder: '可选备注：记录这条模型映射的用途或限制',
         billingModelSource: '计费基准',
         billingModelSourceChannelMapped: '以渠道映射后的模型计费',
         billingModelSourceRequested: '以请求模型计费',
@@ -2659,6 +2660,7 @@ export default {
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
+      modelMappingNotePlaceholder: '可选备注：记录这个模型映射的用途、限制或别名',
       // Filter options
       allPlatforms: '全部平台',
       allTypes: '全部类型',
