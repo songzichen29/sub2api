@@ -111,6 +111,9 @@ func buildMarketplaceModelItems(channels []service.AvailableChannel) []marketpla
 	for _, ch := range channels {
 		groupsByPlatform := make(map[string][]userAvailableGroup, 4)
 		for _, g := range ch.Groups {
+			if !isMarketplaceVisibleGroup(g) {
+				continue
+			}
 			groupsByPlatform[g.Platform] = append(groupsByPlatform[g.Platform], userAvailableGroup{
 				ID:               g.ID,
 				Name:             g.Name,
@@ -178,6 +181,10 @@ func buildMarketplaceModelItems(channels []service.AvailableChannel) []marketpla
 		return strings.ToLower(out[i].Provider) < strings.ToLower(out[j].Provider)
 	})
 	return out
+}
+
+func isMarketplaceVisibleGroup(group service.AvailableGroupRef) bool {
+	return group.SubscriptionType != service.SubscriptionTypeSubscription
 }
 
 func filterMarketplaceItemsByModelName(items []marketplaceModelItem, query string) []marketplaceModelItem {
