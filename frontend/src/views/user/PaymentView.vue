@@ -215,6 +215,30 @@
         </div>
       </template>
     </div>
+    <BaseDialog
+      :show="showDesktopAlipayDialog"
+      :title="t('payment.desktopAlipayTitle')"
+      width="narrow"
+      :close-on-click-outside="true"
+      @close="showDesktopAlipayDialog = false"
+    >
+      <div class="space-y-3 text-sm text-gray-600 dark:text-gray-300">
+        <p>{{ t('payment.desktopAlipayDescription') }}</p>
+        <div v-if="desktopContinueUrl" class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800">
+          <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.desktopAlipayCurrentPage') }}</p>
+          <code class="block break-all text-xs text-gray-700 dark:text-gray-200">{{ desktopContinueUrl }}</code>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.desktopAlipayHint') }}</p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button class="btn btn-secondary" @click="showDesktopAlipayDialog = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" @click="copyDesktopContinueUrl">
+            {{ desktopContinueCopied ? t('common.copied') : t('payment.desktopAlipayCopyPageLink') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
     <!-- Renewal Plan Selection Modal -->
     <Teleport to="body">
       <Transition name="modal">
@@ -256,6 +280,7 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
@@ -303,6 +328,8 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
+const showDesktopAlipayDialog = ref(false)
+const desktopContinueCopied = ref(false)
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -337,6 +364,19 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     paymentMode: '',
     resumeToken: '',
     createdAt: 0,
+  }
+}
+
+function copyTextFallback(text: string): boolean {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  try {
+    return document.execCommand('copy')
+  } finally {
+    document.body.removeChild(textarea)
   }
 }
 
@@ -489,6 +529,27 @@ const balanceRechargeMultiplier = computed(() => {
   return multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const desktopContinueUrl = computed(() => {
+  if (typeof window === 'undefined') return ''
+
+  const params = new URLSearchParams()
+  const normalizedMethod = normalizeVisibleMethod(selectedMethod.value) || selectedMethod.value
+  if (normalizedMethod) {
+    params.set('payment_type', normalizedMethod)
+  }
+
+  if (activeTab.value === 'subscription') {
+    params.set('tab', 'subscription')
+    if (selectedPlan.value) {
+      params.set('plan_id', String(selectedPlan.value.id))
+    }
+  } else if (validAmount.value > 0) {
+    params.set('amount', validAmount.value.toFixed(2))
+  }
+
+  const query = params.toString()
+  return `${window.location.origin}${route.path}${query ? `?${query}` : ''}`
+})
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -616,6 +677,45 @@ const paymentButtonClass = computed(() => {
   return 'btn-primary'
 })
 
+function shouldPromptDesktopAlipay(paymentType: string): boolean {
+  if (!isMobileDevice()) return false
+  const normalizedMethod = normalizeVisibleMethod(paymentType) || paymentType
+  return normalizedMethod === 'alipay'
+}
+
+function promptDesktopAlipayDialog() {
+  desktopContinueCopied.value = false
+  showDesktopAlipayDialog.value = true
+}
+
+async function copyDesktopContinueUrl() {
+  const target = desktopContinueUrl.value.trim()
+  if (!target) return
+
+  let copied = false
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(target)
+      copied = true
+    } catch {
+      copied = copyTextFallback(target)
+    }
+  } else {
+    copied = copyTextFallback(target)
+  }
+
+  if (copied) {
+    desktopContinueCopied.value = true
+    appStore.showInfo(t('common.copiedToClipboard'))
+    window.setTimeout(() => {
+      desktopContinueCopied.value = false
+    }, 2000)
+    return
+  }
+
+  appStore.showError(t('common.copyFailed'))
+}
+
 // Subscription confirm: platform accent colors (clean card, no gradient)
 const planBadgeClass = computed(() => platformBadgeClass(selectedPlan.value?.group_platform || ''))
 const planTextClass = computed(() => platformTextClass(selectedPlan.value?.group_platform || ''))
@@ -655,11 +755,19 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
+  if (shouldPromptDesktopAlipay(selectedMethod.value)) {
+    promptDesktopAlipayDialog()
+    return
+  }
   await createOrder(validAmount.value, 'balance')
 }
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
+  if (shouldPromptDesktopAlipay(selectedMethod.value)) {
+    promptDesktopAlipayDialog()
+    return
+  }
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
@@ -989,6 +1097,16 @@ onMounted(async () => {
       })
       selectedMethod.value = sorted[0]
     }
+    const queryPaymentType = typeof route.query.payment_type === 'string'
+      ? normalizeVisibleMethod(route.query.payment_type) || route.query.payment_type
+      : ''
+    if (queryPaymentType && enabledMethods.value.includes(queryPaymentType)) {
+      selectedMethod.value = queryPaymentType
+    }
+    const queryAmount = typeof route.query.amount === 'string' ? Number(route.query.amount) : NaN
+    if (Number.isFinite(queryAmount) && queryAmount > 0) {
+      amount.value = queryAmount
+    }
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
         removeRecoverySnapshot()
@@ -1020,6 +1138,10 @@ onMounted(async () => {
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
+      if (typeof route.query.plan_id === 'string') {
+        const planId = Number(route.query.plan_id)
+        selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
+      }
       if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)

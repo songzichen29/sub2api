@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 
@@ -107,6 +108,25 @@ function checkoutInfoFixture() {
       help_text: '',
       help_image_url: '',
       stripe_publishable_key: '',
+    },
+  }
+}
+
+function alipayCheckoutInfoFixture() {
+  return {
+    data: {
+      ...checkoutInfoFixture().data,
+      methods: {
+        alipay: {
+          daily_limit: 0,
+          daily_used: 0,
+          daily_remaining: 0,
+          single_min: 0,
+          single_max: 0,
+          fee_rate: 0,
+          available: true,
+        },
+      },
     },
   }
 }
@@ -410,5 +430,41 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
     expect(showError).not.toHaveBeenCalled()
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
+  })
+
+  it('shows the desktop handoff dialog instead of creating a mobile Alipay order', async () => {
+    routeState.query = {
+      amount: '88',
+      payment_type: 'alipay',
+    }
+    getCheckoutInfo.mockResolvedValue(alipayCheckoutInfoFixture())
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+          BaseDialog: {
+            props: ['show', 'title'],
+            template: '<div v-if="show"><div>{{ title }}</div><slot /><slot name="footer" /></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    const payButton = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(payButton).toBeTruthy()
+
+    await payButton!.trigger('click')
+    await nextTick()
+
+    expect(createOrder).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('payment.desktopAlipayTitle')
+    expect(wrapper.text()).toContain('payment.desktopAlipayCopyPageLink')
   })
 })
