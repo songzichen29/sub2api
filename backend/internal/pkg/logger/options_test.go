@@ -12,8 +12,12 @@ import (
 func TestResolveLogFilePath_Default(t *testing.T) {
 	t.Setenv("DATA_DIR", "")
 	got := resolveLogFilePath("")
-	if got != DefaultContainerLogPath {
-		t.Fatalf("resolveLogFilePath() = %q, want %q", got, DefaultContainerLogPath)
+	want := filepath.Join("logs", "sub2api.log")
+	if info, err := os.Stat("/app/data"); err == nil && info.IsDir() {
+		want = DefaultContainerLogPath
+	}
+	if got != want {
+		t.Fatalf("resolveLogFilePath() = %q, want %q", got, want)
 	}
 }
 
