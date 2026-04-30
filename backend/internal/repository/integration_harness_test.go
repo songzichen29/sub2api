@@ -18,20 +18,21 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	redisclient "github.com/redis/go-redis/v9"
-	tcmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
 const (
-	redisImageTag = "redis:8.4-alpine"
-	mysqlImageTag = "mysql:8.4"
+	redisImageTag    = "redis:8.4-alpine"
+	postgresImageTag = "postgres:18.1-alpine3.23"
 )
 
 var (
@@ -60,19 +61,20 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
-	mysqlImage := selectDockerImage(ctx, mysqlImageTag)
-	myContainer, err := tcmysql.Run(
+	postgresImage := selectDockerImage(ctx, postgresImageTag)
+	pgContainer, err := tcpostgres.Run(
 		ctx,
-		mysqlImage,
-		tcmysql.WithDatabase("sub2api_test"),
-		tcmysql.WithUsername("root"),
-		tcmysql.WithPassword("root"),
+		postgresImage,
+		tcpostgres.WithDatabase("sub2api_test"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		tcpostgres.BasicWaitStrategies(),
 	)
 	if err != nil {
-		log.Printf("failed to start mysql container: %v", err)
+		log.Printf("failed to start postgres container: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = myContainer.Terminate(ctx) }()
+	defer func() { _ = pgContainer.Terminate(ctx) }()
 
 	redisContainer, err := tcredis.Run(
 		ctx,
@@ -84,9 +86,9 @@ func TestMain(m *testing.M) {
 	}
 	defer func() { _ = redisContainer.Terminate(ctx) }()
 
-	dsn, err := myContainer.ConnectionString(ctx, "parseTime=true", "charset=utf8mb4")
+	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable", "TimeZone=UTC")
 	if err != nil {
-		log.Printf("failed to get mysql dsn: %v", err)
+		log.Printf("failed to get postgres dsn: %v", err)
 		os.Exit(1)
 	}
 
@@ -95,13 +97,13 @@ func TestMain(m *testing.M) {
 		log.Printf("failed to open sql db: %v", err)
 		os.Exit(1)
 	}
-	if err := ApplyMigrations(ctx, integrationDB); err != nil {
+	if err := applyMigrationsFS(ctx, integrationDB, migrations.FS); err != nil {
 		log.Printf("failed to apply db migrations: %v", err)
 		os.Exit(1)
 	}
 
 	// 创建 ent client 用于集成测试
-	drv := entsql.OpenDB(dialect.MySQL, integrationDB)
+	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
 	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
 
 	redisHost, err := redisContainer.Host(ctx)
@@ -160,7 +162,7 @@ func openSQLWithRetry(ctx context.Context, dsn string, timeout time.Duration) (*
 	var lastErr error
 
 	for time.Now().Before(deadline) {
-		db, err := sql.Open("mysql", dsn)
+		db, err := sql.Open("postgres", dsn)
 		if err != nil {
 			lastErr = err
 			time.Sleep(250 * time.Millisecond)
