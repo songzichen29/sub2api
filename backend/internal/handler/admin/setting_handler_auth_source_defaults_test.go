@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -152,6 +153,92 @@ func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
 	subscriptions, ok := data["auth_source_default_email_subscriptions"].([]any)
 	require.True(t, ok)
 	require.Len(t, subscriptions, 1)
+}
+
+func TestSettingHandler_GetSettings_DefaultSubscriptionsIncludeTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyDefaultSubscriptions: `[{"group_id":11,"starts_at":"2030-01-01T00:00:00+08:00","expires_at":"2030-02-01T00:00:00+08:00"}]`,
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+
+	handler.GetSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+
+	subs, ok := data["default_subscriptions"].([]any)
+	require.True(t, ok)
+	require.Len(t, subs, 1)
+
+	first, ok := subs[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(11), first["group_id"])
+	require.Equal(t, "2029-12-31T16:00:00Z", first["starts_at"])
+	require.Equal(t, "2030-01-31T16:00:00Z", first["expires_at"])
+}
+
+func TestSettingHandler_UpdateSettings_PersistsDefaultSubscriptionTimeRange(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled: "true",
+		},
+	}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	start := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
+	end := time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
+	body := map[string]any{
+		"promo_code_enabled": true,
+		"default_subscriptions": []map[string]any{
+			{
+				"group_id":   21,
+				"starts_at":  start,
+				"expires_at": end,
+			},
+		},
+	}
+	rawBody, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	rawStored, ok := repo.values[service.SettingKeyDefaultSubscriptions]
+	require.True(t, ok)
+	require.Contains(t, rawStored, `"group_id":21`)
+	require.Contains(t, rawStored, `"starts_at":"`)
+	require.Contains(t, rawStored, `"expires_at":"`)
+
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	subs, ok := data["default_subscriptions"].([]any)
+	require.True(t, ok)
+	require.Len(t, subs, 1)
+	first, ok := subs[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(21), first["group_id"])
+	require.NotEmpty(t, first["starts_at"])
+	require.NotEmpty(t, first["expires_at"])
 }
 
 func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *testing.T) {

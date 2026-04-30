@@ -362,6 +362,43 @@ func TestDetectAssignSemanticConflictCases(t *testing.T) {
 	})
 	require.True(t, conflict)
 	require.Equal(t, "notes_mismatch", reason)
+
+	explicitStart := start.Add(24 * time.Hour)
+	explicitEnd := explicitStart.Add(48 * time.Hour)
+	reason, conflict = detectAssignSemanticConflict(base, &AssignSubscriptionInput{
+		UserID:    1,
+		GroupID:   1,
+		StartsAt:  &explicitStart,
+		ExpiresAt: &explicitEnd,
+		Notes:     "same",
+	})
+	require.True(t, conflict)
+	require.Equal(t, "starts_at_mismatch", reason)
+}
+
+func TestResolveAssignTimeRangeWithExplicitRange(t *testing.T) {
+	now := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := now.Add(12 * time.Hour)
+	end := start.Add(72 * time.Hour)
+
+	s, e, err := resolveAssignTimeRange(&AssignSubscriptionInput{
+		StartsAt:  &start,
+		ExpiresAt: &end,
+	}, now)
+	require.NoError(t, err)
+	require.True(t, s.Equal(start))
+	require.True(t, e.Equal(end))
+}
+
+func TestResolveAssignTimeRangeRejectIncompleteRange(t *testing.T) {
+	now := time.Date(2026, 2, 20, 10, 0, 0, 0, time.UTC)
+	start := now.Add(time.Hour)
+
+	_, _, err := resolveAssignTimeRange(&AssignSubscriptionInput{
+		StartsAt: &start,
+	}, now)
+	require.Error(t, err)
+	require.Equal(t, "INVALID_TIME_RANGE", infraerrorsReason(err))
 }
 
 func TestAssignSubscriptionGroupTypeValidation(t *testing.T) {

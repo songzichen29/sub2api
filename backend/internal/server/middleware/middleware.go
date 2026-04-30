@@ -146,7 +146,7 @@ func detectProtocolErrorFormat(path string) protocolErrorFormat {
 
 func mapGatewayProtocolError(statusCode int, code string) (int, string) {
 	switch code {
-	case "API_KEY_QUOTA_EXHAUSTED", "INSUFFICIENT_BALANCE":
+	case "API_KEY_QUOTA_EXHAUSTED", "INSUFFICIENT_BALANCE", "USAGE_LIMIT_EXCEEDED":
 		return http.StatusForbidden, "billing_error"
 	}
 
@@ -173,10 +173,10 @@ func AbortForUserLookupError(c *gin.Context, err error) {
 		return
 	}
 	if errors.Is(err, service.ErrUserNotFound) {
-		AbortWithError(c, http.StatusUnauthorized, "USER_NOT_FOUND", "User not found")
+		AbortWithError(c, http.StatusUnauthorized, "USER_NOT_FOUND", "用户不存在")
 		return
 	}
-	AbortWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load user")
+	AbortWithError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "加载用户信息失败")
 }
 
 // ──────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ func RequireGroupAssignment(settingService *service.SettingService, writeError G
 			c.Next()
 			return
 		}
-		writeError(c, http.StatusForbidden, "API Key is not assigned to any group and cannot be used. Please contact the administrator to assign it to a group.")
+		writeError(c, http.StatusForbidden, "该 API Key 未分配分组，当前不可使用。请联系管理员分配分组后再试。")
 		c.Abort()
 	}
 }

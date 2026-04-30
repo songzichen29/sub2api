@@ -12,13 +12,13 @@ func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, ok := GetUserRoleFromContext(c)
 		if !ok {
-			AbortWithError(c, 401, "UNAUTHORIZED", "User not found in context")
+			AbortWithError(c, 401, "UNAUTHORIZED", "上下文中未找到用户信息")
 			return
 		}
 
 		// 检查是否为管理员
 		if role != service.RoleAdmin {
-			AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
+			AbortWithError(c, 403, "FORBIDDEN", "需要管理员权限")
 			return
 		}
 

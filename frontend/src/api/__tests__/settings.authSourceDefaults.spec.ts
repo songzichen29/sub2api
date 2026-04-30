@@ -128,4 +128,54 @@ describe("admin settings auth source defaults helpers", () => {
       auth_source_default_wechat_grant_on_first_bind: false,
     });
   });
+
+  it("keeps explicit time range subscriptions when appending payload", () => {
+    const payload: UpdateSettingsRequest = {};
+
+    appendAuthSourceDefaultsToUpdateRequest(payload, {
+      email: {
+        balance: 0,
+        concurrency: 5,
+        subscriptions: [
+          {
+            group_id: 10,
+            starts_at: "2030-01-01T00:00:00Z",
+            expires_at: "2030-02-01T00:00:00Z",
+            mode: "range",
+          },
+        ],
+        grant_on_signup: true,
+        grant_on_first_bind: false,
+      },
+      linuxdo: {
+        balance: 0,
+        concurrency: 5,
+        subscriptions: [],
+        grant_on_signup: false,
+        grant_on_first_bind: false,
+      },
+      oidc: {
+        balance: 0,
+        concurrency: 5,
+        subscriptions: [],
+        grant_on_signup: false,
+        grant_on_first_bind: false,
+      },
+      wechat: {
+        balance: 0,
+        concurrency: 5,
+        subscriptions: [],
+        grant_on_signup: false,
+        grant_on_first_bind: false,
+      },
+    });
+
+    expect(payload.auth_source_default_email_subscriptions).toEqual([
+      {
+        group_id: 10,
+        starts_at: "2030-01-01T00:00:00.000Z",
+        expires_at: "2030-02-01T00:00:00.000Z",
+      },
+    ]);
+  });
 });

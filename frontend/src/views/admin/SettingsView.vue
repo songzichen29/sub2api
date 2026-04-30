@@ -2223,83 +2223,110 @@
                   <div
                     v-for="(item, index) in form.default_subscriptions"
                     :key="`default-sub-${index}`"
-                    class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                    class="space-y-3 rounded border border-gray-200 p-3 dark:border-dark-600"
                   >
-                    <div>
-                      <label
-                        class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                      >
-                        {{ t("admin.settings.defaults.subscriptionGroup") }}
-                      </label>
-                      <Select
-                        v-model="item.group_id"
-                        class="default-sub-group-select"
-                        :options="defaultSubscriptionGroupOptions"
-                        :placeholder="
-                          t('admin.settings.defaults.subscriptionGroup')
-                        "
-                      >
-                        <template #selected="{ option }">
-                          <GroupBadge
-                            v-if="option"
-                            :name="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).label
-                            "
-                            :platform="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).platform
-                            "
-                            :subscription-type="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).subscriptionType
-                            "
-                            :rate-multiplier="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).rate
-                            "
-                          />
-                          <span v-else class="text-gray-400">
-                            {{ t("admin.settings.defaults.subscriptionGroup") }}
-                          </span>
-                        </template>
-                        <template #option="{ option, selected }">
-                          <GroupOptionItem
-                            :name="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).label
-                            "
-                            :platform="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).platform
-                            "
-                            :subscription-type="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).subscriptionType
-                            "
-                            :rate-multiplier="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).rate
-                            "
-                            :description="
-                              (
-                                option as unknown as DefaultSubscriptionGroupOption
-                              ).description
-                            "
-                            :selected="selected"
-                          />
-                        </template>
-                      </Select>
+                    <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_auto]">
+                      <div>
+                        <label
+                          class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          {{ t("admin.settings.defaults.subscriptionGroup") }}
+                        </label>
+                        <Select
+                          v-model="item.group_id"
+                          class="default-sub-group-select"
+                          :options="defaultSubscriptionGroupOptions"
+                          :placeholder="
+                            t('admin.settings.defaults.subscriptionGroup')
+                          "
+                        >
+                          <template #selected="{ option }">
+                            <GroupBadge
+                              v-if="option"
+                              :name="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).label
+                              "
+                              :platform="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).platform
+                              "
+                              :subscription-type="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).subscriptionType
+                              "
+                              :rate-multiplier="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).rate
+                              "
+                            />
+                            <span v-else class="text-gray-400">
+                              {{ t("admin.settings.defaults.subscriptionGroup") }}
+                            </span>
+                          </template>
+                          <template #option="{ option, selected }">
+                            <GroupOptionItem
+                              :name="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).label
+                              "
+                              :platform="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).platform
+                              "
+                              :subscription-type="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).subscriptionType
+                              "
+                              :rate-multiplier="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).rate
+                              "
+                              :description="
+                                (
+                                  option as unknown as DefaultSubscriptionGroupOption
+                                ).description
+                              "
+                              :selected="selected"
+                            />
+                          </template>
+                        </Select>
+                      </div>
+                      <div>
+                        <label
+                          class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          {{ t("admin.settings.defaults.subscriptionAssignMode") }}
+                        </label>
+                        <Select
+                          v-model="item.mode"
+                          :options="defaultSubscriptionAssignModeOptions"
+                          @change="
+                            onDefaultSubscriptionModeChange(
+                              item as DefaultSubscriptionSetting,
+                            )
+                          "
+                        />
+                      </div>
+                      <div class="flex items-end">
+                        <button
+                          type="button"
+                          class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                          @click="removeDefaultSubscription(index)"
+                        >
+                          {{ t("common.delete") }}
+                        </button>
+                      </div>
                     </div>
-                    <div>
+                    <div v-if="item.mode !== 'range'">
                       <label
                         class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
                       >
@@ -2315,14 +2342,53 @@
                         class="input h-[42px]"
                       />
                     </div>
-                    <div class="flex items-end">
-                      <button
-                        type="button"
-                        class="btn btn-secondary default-sub-delete-btn w-full text-red-600 hover:text-red-700 dark:text-red-400"
-                        @click="removeDefaultSubscription(index)"
-                      >
-                        {{ t("common.delete") }}
-                      </button>
+                    <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label
+                          class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          {{ t("admin.settings.defaults.subscriptionStartsAt") }}
+                        </label>
+                        <input
+                          :value="
+                            toDateTimeLocal(
+                              (item as DefaultSubscriptionSetting).starts_at,
+                            )
+                          "
+                          type="datetime-local"
+                          class="input h-[42px]"
+                          @input="
+                            updateDefaultSubscriptionDateTime(
+                              item as DefaultSubscriptionSetting,
+                              'starts_at',
+                              ($event.target as HTMLInputElement).value,
+                            )
+                          "
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                        >
+                          {{ t("admin.settings.defaults.subscriptionExpiresAt") }}
+                        </label>
+                        <input
+                          :value="
+                            toDateTimeLocal(
+                              (item as DefaultSubscriptionSetting).expires_at,
+                            )
+                          "
+                          type="datetime-local"
+                          class="input h-[42px]"
+                          @input="
+                            updateDefaultSubscriptionDateTime(
+                              item as DefaultSubscriptionSetting,
+                              'expires_at',
+                              ($event.target as HTMLInputElement).value,
+                            )
+                          "
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2488,85 +2554,117 @@
                           authSource.source
                         ].subscriptions"
                         :key="`${authSource.source}-sub-${index}`"
-                        class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                        class="space-y-3 rounded border border-gray-200 p-3 dark:border-dark-600"
                       >
-                        <div>
-                          <label
-                            class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
-                          >
-                            {{ t("admin.settings.defaults.subscriptionGroup") }}
-                          </label>
-                          <Select
-                            v-model="item.group_id"
-                            class="default-sub-group-select"
-                            :options="defaultSubscriptionGroupOptions"
-                            :placeholder="
-                              t('admin.settings.defaults.subscriptionGroup')
-                            "
-                          >
-                            <template #selected="{ option }">
-                              <GroupBadge
-                                v-if="option"
-                                :name="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).label
-                                "
-                                :platform="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).platform
-                                "
-                                :subscription-type="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).subscriptionType
-                                "
-                                :rate-multiplier="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).rate
-                                "
-                              />
-                              <span v-else class="text-gray-400">
-                                {{
-                                  t("admin.settings.defaults.subscriptionGroup")
-                                }}
-                              </span>
-                            </template>
-                            <template #option="{ option, selected }">
-                              <GroupOptionItem
-                                :name="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).label
-                                "
-                                :platform="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).platform
-                                "
-                                :subscription-type="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).subscriptionType
-                                "
-                                :rate-multiplier="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).rate
-                                "
-                                :description="
-                                  (
-                                    option as unknown as DefaultSubscriptionGroupOption
-                                  ).description
-                                "
-                                :selected="selected"
-                              />
-                            </template>
-                          </Select>
+                        <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_180px_auto]">
+                          <div>
+                            <label
+                              class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                            >
+                              {{ t("admin.settings.defaults.subscriptionGroup") }}
+                            </label>
+                            <Select
+                              v-model="item.group_id"
+                              class="default-sub-group-select"
+                              :options="defaultSubscriptionGroupOptions"
+                              :placeholder="
+                                t('admin.settings.defaults.subscriptionGroup')
+                              "
+                            >
+                              <template #selected="{ option }">
+                                <GroupBadge
+                                  v-if="option"
+                                  :name="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).label
+                                  "
+                                  :platform="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).platform
+                                  "
+                                  :subscription-type="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).subscriptionType
+                                  "
+                                  :rate-multiplier="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).rate
+                                  "
+                                />
+                                <span v-else class="text-gray-400">
+                                  {{
+                                    t("admin.settings.defaults.subscriptionGroup")
+                                  }}
+                                </span>
+                              </template>
+                              <template #option="{ option, selected }">
+                                <GroupOptionItem
+                                  :name="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).label
+                                  "
+                                  :platform="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).platform
+                                  "
+                                  :subscription-type="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).subscriptionType
+                                  "
+                                  :rate-multiplier="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).rate
+                                  "
+                                  :description="
+                                    (
+                                      option as unknown as DefaultSubscriptionGroupOption
+                                    ).description
+                                  "
+                                  :selected="selected"
+                                />
+                              </template>
+                            </Select>
+                          </div>
+                          <div>
+                            <label
+                              class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                            >
+                              {{ t("admin.settings.defaults.subscriptionAssignMode") }}
+                            </label>
+                            <Select
+                              v-model="item.mode"
+                              :options="defaultSubscriptionAssignModeOptions"
+                              @change="
+                                onDefaultSubscriptionModeChange(
+                                  item as DefaultSubscriptionSetting,
+                                )
+                              "
+                            />
+                          </div>
+                          <div class="flex items-end">
+                            <button
+                              type="button"
+                              class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                              @click="
+                                removeAuthSourceDefaultSubscription(
+                                  authSource.source,
+                                  index,
+                                )
+                              "
+                            >
+                              {{ t("common.delete") }}
+                            </button>
+                          </div>
                         </div>
-                        <div>
+                        <div v-if="item.mode !== 'range'">
                           <label
                             class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
                           >
@@ -2584,19 +2682,53 @@
                             class="input h-[42px]"
                           />
                         </div>
-                        <div class="flex items-end">
-                          <button
-                            type="button"
-                            class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
-                            @click="
-                              removeAuthSourceDefaultSubscription(
-                                authSource.source,
-                                index,
-                              )
-                            "
-                          >
-                            {{ t("common.delete") }}
-                          </button>
+                        <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div>
+                            <label
+                              class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                            >
+                              {{ t("admin.settings.defaults.subscriptionStartsAt") }}
+                            </label>
+                            <input
+                              :value="
+                                toDateTimeLocal(
+                                  (item as DefaultSubscriptionSetting).starts_at,
+                                )
+                              "
+                              type="datetime-local"
+                              class="input h-[42px]"
+                              @input="
+                                updateDefaultSubscriptionDateTime(
+                                  item as DefaultSubscriptionSetting,
+                                  'starts_at',
+                                  ($event.target as HTMLInputElement).value,
+                                )
+                              "
+                            />
+                          </div>
+                          <div>
+                            <label
+                              class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                            >
+                              {{ t("admin.settings.defaults.subscriptionExpiresAt") }}
+                            </label>
+                            <input
+                              :value="
+                                toDateTimeLocal(
+                                  (item as DefaultSubscriptionSetting).expires_at,
+                                )
+                              "
+                              type="datetime-local"
+                              class="input h-[42px]"
+                              @input="
+                                updateDefaultSubscriptionDateTime(
+                                  item as DefaultSubscriptionSetting,
+                                  'expires_at',
+                                  ($event.target as HTMLInputElement).value,
+                                )
+                              "
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -5754,6 +5886,93 @@ const defaultSubscriptionGroupOptions = computed<
   })),
 );
 
+const defaultSubscriptionAssignModeOptions = computed(() => [
+  {
+    value: "days",
+    label: t("admin.settings.defaults.subscriptionAssignModeDays"),
+  },
+  {
+    value: "range",
+    label: t("admin.settings.defaults.subscriptionAssignModeRange"),
+  },
+]);
+
+function normalizeDefaultSubscriptionMode(item: DefaultSubscriptionSetting) {
+  if (item.starts_at && item.expires_at) {
+    item.mode = "range";
+    return;
+  }
+  item.mode = "days";
+  if (!item.validity_days || item.validity_days < 1) {
+    item.validity_days = 30;
+  }
+}
+
+function onDefaultSubscriptionModeChange(item: DefaultSubscriptionSetting) {
+  if (item.mode === "range") {
+    item.validity_days = undefined;
+    if (!item.starts_at) item.starts_at = "";
+    if (!item.expires_at) item.expires_at = "";
+    return;
+  }
+  item.validity_days = item.validity_days && item.validity_days > 0 ? item.validity_days : 30;
+  item.starts_at = undefined;
+  item.expires_at = undefined;
+}
+
+function toDateTimeLocal(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function updateDefaultSubscriptionDateTime(
+  item: DefaultSubscriptionSetting,
+  field: "starts_at" | "expires_at",
+  value: string,
+) {
+  if (!value) {
+    item[field] = "";
+    return;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    item[field] = "";
+    return;
+  }
+  item[field] = date.toISOString();
+}
+
+function refreshDefaultSubscriptionDisplayState(
+  defaultSubscriptions?: DefaultSubscriptionSetting[] | null,
+) {
+  if (defaultSubscriptions) {
+    form.default_subscriptions = normalizeDefaultSubscriptionSettings(
+      defaultSubscriptions,
+    );
+  } else {
+    form.default_subscriptions = normalizeDefaultSubscriptionSettings(
+      form.default_subscriptions,
+    );
+  }
+  form.default_subscriptions.forEach(normalizeDefaultSubscriptionMode);
+
+  for (const source of Object.keys(authSourceDefaults) as AuthSourceType[]) {
+    authSourceDefaults[source].subscriptions = normalizeDefaultSubscriptionSettings(
+      authSourceDefaults[source].subscriptions,
+    );
+    authSourceDefaults[source].subscriptions.forEach(
+      normalizeDefaultSubscriptionMode,
+    );
+  }
+}
+
 const registrationEmailSuffixWhitelistSeparatorKeys = new Set([
   " ",
   ",",
@@ -6042,9 +6261,7 @@ async function loadSettings() {
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.backend_mode_enabled = settings.backend_mode_enabled;
-    form.default_subscriptions = normalizeDefaultSubscriptionSettings(
-      settings.default_subscriptions,
-    );
+    refreshDefaultSubscriptionDisplayState(settings.default_subscriptions);
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         settings.registration_email_suffix_whitelist,
@@ -6156,6 +6373,7 @@ function addDefaultSubscription() {
   form.default_subscriptions.push({
     group_id: candidate.id,
     validity_days: 30,
+    mode: "days",
   });
 }
 
@@ -6172,6 +6390,7 @@ function addAuthSourceDefaultSubscription(source: AuthSourceType) {
   authSourceDefaults[source].subscriptions.push({
     group_id: candidate.id,
     validity_days: 30,
+    mode: "days",
   });
 }
 
@@ -6193,6 +6412,28 @@ function findDuplicateDefaultSubscription(
     }
     seenGroupIDs.add(item.group_id);
     return false;
+  });
+}
+
+function findInvalidDefaultSubscription(
+  subscriptions: DefaultSubscriptionSetting[],
+): DefaultSubscriptionSetting | undefined {
+  return subscriptions.find((item) => {
+    if (item.mode === "range") {
+      if (!item.starts_at || !item.expires_at) return true;
+      const startsAt = new Date(item.starts_at);
+      const expiresAt = new Date(item.expires_at);
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        Number.isNaN(expiresAt.getTime())
+      ) {
+        return true;
+      }
+      if (expiresAt.getTime() <= startsAt.getTime()) return true;
+      if (expiresAt.getTime() <= Date.now()) return true;
+      return false;
+    }
+    return !item.validity_days || item.validity_days < 1;
   });
 }
 
@@ -6235,6 +6476,15 @@ async function saveSettings() {
     const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
       form.default_subscriptions,
     );
+    const invalidDefaultSubscription = findInvalidDefaultSubscription(
+      form.default_subscriptions,
+    );
+    if (invalidDefaultSubscription) {
+      appStore.showError(
+        t("admin.settings.defaults.defaultSubscriptionsInvalid"),
+      );
+      return;
+    }
     const duplicateDefaultSubscription = findDuplicateDefaultSubscription(
       normalizedDefaultSubscriptions,
     );
@@ -6247,13 +6497,25 @@ async function saveSettings() {
       return;
     }
 
+    const normalizedAuthSourceDefaults = buildAuthSourceDefaultsState({});
     for (const authSource of authSourceDefaultsMeta.value) {
-      authSourceDefaults[authSource.source].subscriptions =
-        normalizeDefaultSubscriptionSettings(
-          authSourceDefaults[authSource.source].subscriptions,
+      const current = authSourceDefaults[authSource.source];
+      const invalid = findInvalidDefaultSubscription(
+        current.subscriptions,
+      );
+      if (invalid) {
+        appStore.showError(
+          `${authSource.title}: ${t(
+            "admin.settings.defaults.defaultSubscriptionsInvalid",
+          )}`,
         );
+        return;
+      }
+      const normalizedSubscriptions = normalizeDefaultSubscriptionSettings(
+        current.subscriptions,
+      );
       const duplicate = findDuplicateDefaultSubscription(
-        authSourceDefaults[authSource.source].subscriptions,
+        normalizedSubscriptions,
       );
       if (duplicate) {
         appStore.showError(
@@ -6266,6 +6528,10 @@ async function saveSettings() {
         );
         return;
       }
+      normalizedAuthSourceDefaults[authSource.source] = {
+        ...current,
+        subscriptions: normalizedSubscriptions,
+      };
     }
 
     if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
@@ -6460,7 +6726,7 @@ async function saveSettings() {
       affiliate_enabled: form.affiliate_enabled,
     };
 
-    appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
+    appendAuthSourceDefaultsToUpdateRequest(payload, normalizedAuthSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
     for (const [key, value] of Object.entries(updated)) {
@@ -6469,6 +6735,9 @@ async function saveSettings() {
       }
     }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
+    refreshDefaultSubscriptionDisplayState(
+      updated.default_subscriptions as DefaultSubscriptionSetting[] | undefined,
+    );
     registrationEmailSuffixWhitelistTags.value =
       normalizeRegistrationEmailSuffixDomains(
         updated.registration_email_suffix_whitelist,

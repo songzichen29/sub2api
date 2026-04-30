@@ -61,7 +61,7 @@ func adminAuth(
 			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 				token := strings.TrimSpace(parts[1])
 				if token == "" {
-					AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+					AbortWithError(c, 401, "UNAUTHORIZED", "未授权，请先登录")
 					return
 				}
 				if !validateJWTForAdmin(c, token, authService, userService) {
@@ -73,7 +73,7 @@ func adminAuth(
 		}
 
 		// 无有效认证信息
-		AbortWithError(c, 401, "UNAUTHORIZED", "Authorization required")
+		AbortWithError(c, 401, "UNAUTHORIZED", "未授权，请先登录")
 	}
 }
 
@@ -124,20 +124,20 @@ func validateAdminAPIKey(
 ) bool {
 	storedKey, err := settingService.GetAdminAPIKey(c.Request.Context())
 	if err != nil {
-		AbortWithError(c, 500, "INTERNAL_ERROR", "Internal server error")
+		AbortWithError(c, 500, "INTERNAL_ERROR", "服务器内部错误")
 		return false
 	}
 
 	// 未配置或不匹配，统一返回相同错误（避免信息泄露）
 	if storedKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(storedKey)) != 1 {
-		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
+		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "管理员 API Key 无效")
 		return false
 	}
 
 	// 获取真实的管理员用户
 	admin, err := userService.GetFirstAdmin(c.Request.Context())
 	if err != nil {
-		AbortWithError(c, 500, "INTERNAL_ERROR", "No admin user found")
+		AbortWithError(c, 500, "INTERNAL_ERROR", "未找到管理员用户")
 		return false
 	}
 
@@ -161,10 +161,10 @@ func validateJWTForAdmin(
 	claims, err := authService.ValidateToken(token)
 	if err != nil {
 		if errors.Is(err, service.ErrTokenExpired) {
-			AbortWithError(c, 401, "TOKEN_EXPIRED", "Token has expired")
+			AbortWithError(c, 401, "TOKEN_EXPIRED", "登录已过期，请重新登录")
 			return false
 		}
-		AbortWithError(c, 401, "INVALID_TOKEN", "Invalid token")
+		AbortWithError(c, 401, "INVALID_TOKEN", "登录令牌无效")
 		return false
 	}
 
@@ -177,19 +177,19 @@ func validateJWTForAdmin(
 
 	// 检查用户状态
 	if !user.IsActive() {
-		AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+		AbortWithError(c, 401, "USER_INACTIVE", "用户账号未激活")
 		return false
 	}
 
 	// 校验 TokenVersion，确保管理员改密后旧 token 失效
 	if claims.TokenVersion != user.TokenVersion {
-		AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
+		AbortWithError(c, 401, "TOKEN_REVOKED", "登录状态已失效（密码可能已变更）")
 		return false
 	}
 
 	// 检查管理员权限
 	if !user.IsAdmin() {
-		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
+		AbortWithError(c, 403, "FORBIDDEN", "需要管理员权限")
 		return false
 	}
 

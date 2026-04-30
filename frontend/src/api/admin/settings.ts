@@ -8,7 +8,10 @@ import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry } from "@/types";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
-  validity_days: number;
+  validity_days?: number;
+  starts_at?: string;
+  expires_at?: string;
+  mode?: "days" | "range";
 }
 
 export type AuthSourceType = "email" | "linuxdo" | "oidc" | "wechat";
@@ -138,16 +141,40 @@ export function normalizeDefaultSubscriptionSettings(
   subscriptions: DefaultSubscriptionSetting[] | null | undefined,
 ): DefaultSubscriptionSetting[] {
   if (!Array.isArray(subscriptions)) return [];
+  const normalized: DefaultSubscriptionSetting[] = [];
+  for (const item of subscriptions) {
+    const groupID = Math.floor(Number(item.group_id));
+    if (groupID <= 0) continue;
 
-  return subscriptions
-    .filter((item) => item.group_id > 0 && item.validity_days > 0)
-    .map((item) => ({
-      group_id: Math.floor(item.group_id),
-      validity_days: Math.min(
-        36500,
-        Math.max(1, Math.floor(item.validity_days)),
-      ),
-    }));
+    const startsAtRaw = String(item.starts_at || "").trim();
+    const expiresAtRaw = String(item.expires_at || "").trim();
+    if (startsAtRaw || expiresAtRaw) {
+      if (!startsAtRaw || !expiresAtRaw) continue;
+      const startsAt = new Date(startsAtRaw);
+      const expiresAt = new Date(expiresAtRaw);
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        Number.isNaN(expiresAt.getTime()) ||
+        expiresAt.getTime() <= startsAt.getTime()
+      ) {
+        continue;
+      }
+      normalized.push({
+        group_id: groupID,
+        starts_at: startsAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+      continue;
+    }
+
+    const validityDays = Math.floor(Number(item.validity_days));
+    if (validityDays <= 0) continue;
+    normalized.push({
+      group_id: groupID,
+      validity_days: Math.min(36500, Math.max(1, validityDays)),
+    });
+  }
+  return normalized;
 }
 
 export function buildAuthSourceDefaultsState(

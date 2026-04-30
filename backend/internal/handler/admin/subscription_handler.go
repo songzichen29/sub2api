@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -43,6 +44,8 @@ type AssignSubscriptionRequest struct {
 	UserID       int64  `json:"user_id" binding:"required"`
 	GroupID      int64  `json:"group_id" binding:"required"`
 	ValidityDays int    `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
+	StartsAt     string `json:"starts_at"`
+	ExpiresAt    string `json:"expires_at"`
 	Notes        string `json:"notes"`
 }
 
@@ -56,7 +59,9 @@ type BulkAssignSubscriptionRequest struct {
 
 // AdjustSubscriptionRequest represents adjust subscription request (extend or shorten)
 type AdjustSubscriptionRequest struct {
-	Days int `json:"days" binding:"required,min=-36500,max=36500"` // negative to shorten, positive to extend
+	Days      *int   `json:"days"`       // negative to shorten, positive to extend
+	StartsAt  string `json:"starts_at"`  // RFC3339
+	ExpiresAt string `json:"expires_at"` // RFC3339
 }
 
 // List handles listing all subscriptions with pagination and filters
@@ -141,6 +146,26 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		return
 	}
 
+	var startsAt, expiresAt *time.Time
+	if req.StartsAt != "" || req.ExpiresAt != "" {
+		if req.StartsAt == "" || req.ExpiresAt == "" {
+			response.BadRequest(c, "starts_at and expires_at must be provided together")
+			return
+		}
+		start, err := time.Parse(time.RFC3339, req.StartsAt)
+		if err != nil {
+			response.BadRequest(c, "Invalid starts_at format: "+err.Error())
+			return
+		}
+		end, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			response.BadRequest(c, "Invalid expires_at format: "+err.Error())
+			return
+		}
+		startsAt = &start
+		expiresAt = &end
+	}
+
 	// Get admin user ID from context
 	adminID := getAdminIDFromContext(c)
 
@@ -148,6 +173,8 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		UserID:       req.UserID,
 		GroupID:      req.GroupID,
 		ValidityDays: req.ValidityDays,
+		StartsAt:     startsAt,
+		ExpiresAt:    expiresAt,
 		AssignedBy:   adminID,
 		Notes:        req.Notes,
 	})
@@ -201,6 +228,40 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		return
 	}
 
+	var (
+		days      *int
+		startsAt  *time.Time
+		expiresAt *time.Time
+	)
+	if req.StartsAt != "" || req.ExpiresAt != "" {
+		if req.StartsAt == "" || req.ExpiresAt == "" {
+			response.BadRequest(c, "starts_at and expires_at must be provided together")
+			return
+		}
+		start, err := time.Parse(time.RFC3339, req.StartsAt)
+		if err != nil {
+			response.BadRequest(c, "Invalid starts_at format: "+err.Error())
+			return
+		}
+		end, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			response.BadRequest(c, "Invalid expires_at format: "+err.Error())
+			return
+		}
+		startsAt = &start
+		expiresAt = &end
+	} else {
+		if req.Days == nil {
+			response.BadRequest(c, "days is required when starts_at/expires_at are not provided")
+			return
+		}
+		if *req.Days < -service.MaxValidityDays || *req.Days > service.MaxValidityDays {
+			response.BadRequest(c, "days must be between -36500 and 36500")
+			return
+		}
+		days = req.Days
+	}
+
 	idempotencyPayload := struct {
 		SubscriptionID int64                     `json:"subscription_id"`
 		Body           AdjustSubscriptionRequest `json:"body"`
@@ -209,7 +270,15 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		Body:           req,
 	}
 	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
-		subscription, execErr := h.subscriptionService.ExtendSubscription(ctx, subscriptionID, req.Days)
+		var (
+			subscription *service.UserSubscription
+			execErr      error
+		)
+		if startsAt != nil && expiresAt != nil {
+			subscription, execErr = h.subscriptionService.AdjustSubscriptionTimeRange(ctx, subscriptionID, *startsAt, *expiresAt)
+		} else {
+			subscription, execErr = h.subscriptionService.ExtendSubscription(ctx, subscriptionID, *days)
+		}
 		if execErr != nil {
 			return nil, execErr
 		}

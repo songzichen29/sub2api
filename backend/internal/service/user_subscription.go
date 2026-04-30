@@ -32,7 +32,8 @@ type UserSubscription struct {
 }
 
 func (s *UserSubscription) IsActive() bool {
-	return s.Status == SubscriptionStatusActive && time.Now().Before(s.ExpiresAt)
+	now := time.Now()
+	return s.Status == SubscriptionStatusActive && !now.Before(s.StartsAt) && now.Before(s.ExpiresAt)
 }
 
 func (s *UserSubscription) IsExpired() bool {

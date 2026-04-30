@@ -2424,12 +2424,14 @@ export default {
       noExpiration: 'No expiration',
       status: {
         active: 'Active',
+        not_started: 'Not Started',
         expired: 'Expired',
         revoked: 'Revoked'
       },
       columns: {
         user: 'User',
         group: 'Group',
+        startsAt: 'Starts At',
         usage: 'Usage',
         expires: 'Expires',
         status: 'Status',
@@ -2439,16 +2441,29 @@ export default {
         user: 'User',
         group: 'Subscription Group',
         validityDays: 'Validity (Days)',
+        assignMode: 'Assignment Mode',
+        startsAt: 'Start Time',
+        expiresAt: 'End Time',
         adjustDays: 'Adjust by (Days)'
       },
+      assignModeDays: 'By days',
+      assignModeRange: 'By time range',
+      assignModeHint: 'Choose either validity days or an explicit start/end range',
       selectUser: 'Select a user',
       selectGroup: 'Select a subscription group',
       groupHint: 'Only groups with subscription billing type are shown',
       validityHint: 'Number of days the subscription will be valid',
+      timeRangeHint: 'Input uses your local timezone and is converted to standard time on submit',
+      timeRangeRequired: 'Please provide both start and end time',
+      timeRangeInvalid: 'End time must be later than start time',
+      timeRangeMustBeFuture: 'End time must be later than now',
       adjustingFor: 'Adjusting subscription for',
       currentExpiration: 'Current expiration',
+      currentStartTime: 'Current start time',
       adjustDaysPlaceholder: 'Positive to extend, negative to shorten',
       adjustHint: 'Enter positive number to extend, negative to shorten (remaining days must be > 0)',
+      adjustModeHint: 'Days mode only changes expiration; range mode keeps current start time and shifts end time',
+      rangeAdjustHint: 'In range mode, start time stays fixed and end time is recalculated by adjustment days',
       assign: 'Assign',
       assigning: 'Assigning...',
       adjust: 'Adjust',
@@ -4997,8 +5012,15 @@ export default {
         defaultSubscriptionsEmpty: 'No default subscriptions configured.',
         defaultSubscriptionsDuplicate:
           'Duplicate subscription group: {groupId}. Each group can only appear once.',
+        defaultSubscriptionsInvalid:
+          'Invalid default subscription: days mode requires a positive validity, range mode requires valid start/end time and end time must be in the future.',
         subscriptionGroup: 'Subscription Group',
-        subscriptionValidityDays: 'Validity (days)'
+        subscriptionAssignMode: 'Assignment mode',
+        subscriptionAssignModeDays: 'By days',
+        subscriptionAssignModeRange: 'By time range',
+        subscriptionValidityDays: 'Validity (days)',
+        subscriptionStartsAt: 'Start time',
+        subscriptionExpiresAt: 'End time'
       },
       claudeCode: {
         title: 'Claude Code Settings',

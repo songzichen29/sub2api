@@ -33,6 +33,10 @@ var (
 		"DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE",
 		"default subscription group cannot be duplicated",
 	)
+	ErrDefaultSubSettingInvalid = infraerrors.BadRequest(
+		"DEFAULT_SUBSCRIPTION_SETTING_INVALID",
+		"default subscription setting must provide either validity_days or a valid starts_at/expires_at range",
+	)
 )
 
 type SettingRepository interface {
@@ -1010,6 +1014,9 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	if err := validateDefaultSubscriptionSettings(settings.DefaultSubscriptions); err != nil {
+		return nil, err
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -1272,6 +1279,9 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		settings.OIDC.Subscriptions,
 		settings.WeChat.Subscriptions,
 	} {
+		if err := validateDefaultSubscriptionSettings(subscriptions); err != nil {
+			return nil, err
+		}
 		if err := s.validateDefaultSubscriptionGroups(ctx, subscriptions); err != nil {
 			return nil, err
 		}
@@ -2313,16 +2323,76 @@ func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 
 	normalized := make([]DefaultSubscriptionSetting, 0, len(items))
 	for _, item := range items {
-		if item.GroupID <= 0 || item.ValidityDays <= 0 {
+		normalizedItem, ok := normalizeDefaultSubscriptionSetting(item)
+		if !ok {
 			continue
 		}
-		if item.ValidityDays > MaxValidityDays {
-			item.ValidityDays = MaxValidityDays
-		}
-		normalized = append(normalized, item)
+		normalized = append(normalized, normalizedItem)
 	}
 
 	return normalized
+}
+
+func validateDefaultSubscriptionSettings(items []DefaultSubscriptionSetting) error {
+	for _, item := range items {
+		if _, ok := normalizeDefaultSubscriptionSetting(item); !ok {
+			return ErrDefaultSubSettingInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(item.GroupID, 10),
+			})
+		}
+	}
+	return nil
+}
+
+func normalizeDefaultSubscriptionSetting(item DefaultSubscriptionSetting) (DefaultSubscriptionSetting, bool) {
+	if item.GroupID <= 0 {
+		return DefaultSubscriptionSetting{}, false
+	}
+
+	startRaw := ""
+	if item.StartsAt != nil {
+		startRaw = strings.TrimSpace(*item.StartsAt)
+	}
+	endRaw := ""
+	if item.ExpiresAt != nil {
+		endRaw = strings.TrimSpace(*item.ExpiresAt)
+	}
+
+	if startRaw != "" || endRaw != "" {
+		if startRaw == "" || endRaw == "" {
+			return DefaultSubscriptionSetting{}, false
+		}
+		startAt, err := time.Parse(time.RFC3339, startRaw)
+		if err != nil {
+			return DefaultSubscriptionSetting{}, false
+		}
+		expiresAt, err := time.Parse(time.RFC3339, endRaw)
+		if err != nil {
+			return DefaultSubscriptionSetting{}, false
+		}
+		if !expiresAt.After(startAt) {
+			return DefaultSubscriptionSetting{}, false
+		}
+		startValue := startAt.UTC().Format(time.RFC3339)
+		expiresValue := expiresAt.UTC().Format(time.RFC3339)
+		return DefaultSubscriptionSetting{
+			GroupID:   item.GroupID,
+			StartsAt:  &startValue,
+			ExpiresAt: &expiresValue,
+		}, true
+	}
+
+	if item.ValidityDays <= 0 {
+		return DefaultSubscriptionSetting{}, false
+	}
+	if item.ValidityDays > MaxValidityDays {
+		item.ValidityDays = MaxValidityDays
+	}
+
+	return DefaultSubscriptionSetting{
+		GroupID:      item.GroupID,
+		ValidityDays: item.ValidityDays,
+	}, true
 }
 
 func parseProviderDefaultGrantSettings(settings map[string]string, keys authSourceDefaultKeySet) ProviderDefaultGrantSettings {

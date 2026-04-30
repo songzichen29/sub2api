@@ -29,20 +29,20 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 		// 从Authorization header中提取token
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			AbortWithError(c, 401, "UNAUTHORIZED", "Authorization header is required")
+			AbortWithError(c, 401, "UNAUTHORIZED", "缺少 Authorization 请求头")
 			return
 		}
 
 		// 验证Bearer scheme
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			AbortWithError(c, 401, "INVALID_AUTH_HEADER", "Authorization header format must be 'Bearer {token}'")
+			AbortWithError(c, 401, "INVALID_AUTH_HEADER", "Authorization 格式必须为 'Bearer {token}'")
 			return
 		}
 
 		tokenString := strings.TrimSpace(parts[1])
 		if tokenString == "" {
-			AbortWithError(c, 401, "EMPTY_TOKEN", "Token cannot be empty")
+			AbortWithError(c, 401, "EMPTY_TOKEN", "Token 不能为空")
 			return
 		}
 
@@ -50,10 +50,10 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 		claims, err := authService.ValidateToken(tokenString)
 		if err != nil {
 			if errors.Is(err, service.ErrTokenExpired) {
-				AbortWithError(c, 401, "TOKEN_EXPIRED", "Token has expired")
+				AbortWithError(c, 401, "TOKEN_EXPIRED", "登录已过期，请重新登录")
 				return
 			}
-			AbortWithError(c, 401, "INVALID_TOKEN", "Invalid token")
+			AbortWithError(c, 401, "INVALID_TOKEN", "登录令牌无效")
 			return
 		}
 
@@ -66,14 +66,14 @@ func jwtAuth(authService *service.AuthService, userService jwtUserReader, activi
 
 		// 检查用户状态
 		if !user.IsActive() {
-			AbortWithError(c, 401, "USER_INACTIVE", "User account is not active")
+			AbortWithError(c, 401, "USER_INACTIVE", "用户账号未激活")
 			return
 		}
 
 		// Security: Validate TokenVersion to ensure token hasn't been invalidated
 		// This check ensures tokens issued before a password change are rejected
 		if claims.TokenVersion != user.TokenVersion {
-			AbortWithError(c, 401, "TOKEN_REVOKED", "Token has been revoked (password changed)")
+			AbortWithError(c, 401, "TOKEN_REVOKED", "登录状态已失效（密码可能已变更）")
 			return
 		}
 

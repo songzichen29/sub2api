@@ -23,35 +23,35 @@ func APIKeyAuthGoogle(apiKeyService *service.APIKeyService, cfg *config.Config) 
 func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if v := strings.TrimSpace(c.Query("api_key")); v != "" {
-			abortWithGoogleError(c, 400, "Query parameter api_key is deprecated. Use Authorization header or key instead.")
+			abortWithGoogleError(c, 400, "不再支持 query 参数 api_key，请改用 Authorization 请求头或 key 参数。")
 			return
 		}
 		apiKeyString := extractAPIKeyForGoogle(c)
 		if apiKeyString == "" {
-			abortWithGoogleError(c, 401, "API key is required")
+			abortWithGoogleError(c, 401, "缺少 API Key")
 			return
 		}
 
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
-				abortWithGoogleError(c, 401, "Invalid API key")
+				abortWithGoogleError(c, 401, "API Key 无效")
 				return
 			}
-			abortWithGoogleError(c, 500, "Failed to validate API key")
+			abortWithGoogleError(c, 500, "API Key 校验失败")
 			return
 		}
 
 		if !apiKey.IsActive() {
-			abortWithGoogleError(c, 401, "API key is disabled")
+			abortWithGoogleError(c, 401, "API Key 已被禁用")
 			return
 		}
 		if apiKey.User == nil {
-			abortWithGoogleError(c, 401, "User associated with API key not found")
+			abortWithGoogleError(c, 401, "未找到与 API Key 关联的用户")
 			return
 		}
 		if !apiKey.User.IsActive() {
-			abortWithGoogleError(c, 401, "User account is not active")
+			abortWithGoogleError(c, 401, "用户账号未激活")
 			return
 		}
 
@@ -77,7 +77,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				apiKey.Group.ID,
 			)
 			if err != nil {
-				abortWithGoogleError(c, 403, "No active subscription found for this group")
+				abortWithGoogleError(c, 403, "该分组下未找到有效订阅")
 				return
 			}
 
@@ -87,9 +87,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				if errors.Is(err, service.ErrDailyLimitExceeded) ||
 					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
 					errors.Is(err, service.ErrMonthlyLimitExceeded) {
-					status = 429
+					status = 403
 				}
-				abortWithGoogleError(c, status, err.Error())
+				abortWithGoogleError(c, status, subscriptionValidateErrorMessageCN(err))
 				return
 			}
 
@@ -101,7 +101,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			}
 		} else {
 			if apiKey.User.Balance <= 0 {
-				abortWithGoogleError(c, 403, "Insufficient account balance")
+				abortWithGoogleError(c, 403, "账户余额不足")
 				return
 			}
 		}

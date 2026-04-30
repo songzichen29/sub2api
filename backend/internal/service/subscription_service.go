@@ -27,6 +27,7 @@ const MaxValidityDays = 36500
 var (
 	ErrSubscriptionNotFound       = infraerrors.NotFound("SUBSCRIPTION_NOT_FOUND", "subscription not found")
 	ErrSubscriptionExpired        = infraerrors.Forbidden("SUBSCRIPTION_EXPIRED", "subscription has expired")
+	ErrSubscriptionNotStarted     = infraerrors.Forbidden("SUBSCRIPTION_NOT_STARTED", "subscription has not started")
 	ErrSubscriptionSuspended      = infraerrors.Forbidden("SUBSCRIPTION_SUSPENDED", "subscription is suspended")
 	ErrSubscriptionAlreadyExists  = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
 	ErrSubscriptionAssignConflict = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
@@ -147,6 +148,8 @@ type AssignSubscriptionInput struct {
 	UserID       int64
 	GroupID      int64
 	ValidityDays int
+	StartsAt     *time.Time
+	ExpiresAt    *time.Time
 	AssignedBy   int64
 	Notes        string
 }
@@ -286,24 +289,16 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
-	validityDays := input.ValidityDays
-	if validityDays <= 0 {
-		validityDays = 30
-	}
-	if validityDays > MaxValidityDays {
-		validityDays = MaxValidityDays
-	}
-
 	now := time.Now()
-	expiresAt := now.AddDate(0, 0, validityDays)
-	if expiresAt.After(MaxExpiresAt) {
-		expiresAt = MaxExpiresAt
+	startsAt, expiresAt, err := resolveAssignTimeRange(input, now)
+	if err != nil {
+		return nil, err
 	}
 
 	sub := &UserSubscription{
 		UserID:     input.UserID,
 		GroupID:    input.GroupID,
-		StartsAt:   now,
+		StartsAt:   startsAt,
 		ExpiresAt:  expiresAt,
 		Status:     SubscriptionStatusActive,
 		AssignedAt: now,
@@ -432,14 +427,26 @@ func detectAssignSemanticConflict(existing *UserSubscription, input *AssignSubsc
 		return "", false
 	}
 
-	normalizedDays := normalizeAssignValidityDays(input.ValidityDays)
-	if !existing.StartsAt.IsZero() {
-		expectedExpiresAt := existing.StartsAt.AddDate(0, 0, normalizedDays)
-		if expectedExpiresAt.After(MaxExpiresAt) {
-			expectedExpiresAt = MaxExpiresAt
+	if input.StartsAt != nil || input.ExpiresAt != nil {
+		if input.StartsAt == nil || input.ExpiresAt == nil {
+			return "time_range_incomplete", true
 		}
-		if !existing.ExpiresAt.Equal(expectedExpiresAt) {
-			return "validity_days_mismatch", true
+		if !existing.StartsAt.Equal(*input.StartsAt) {
+			return "starts_at_mismatch", true
+		}
+		if !existing.ExpiresAt.Equal(*input.ExpiresAt) {
+			return "expires_at_mismatch", true
+		}
+	} else {
+		normalizedDays := normalizeAssignValidityDays(input.ValidityDays)
+		if !existing.StartsAt.IsZero() {
+			expectedExpiresAt := existing.StartsAt.AddDate(0, 0, normalizedDays)
+			if expectedExpiresAt.After(MaxExpiresAt) {
+				expectedExpiresAt = MaxExpiresAt
+			}
+			if !existing.ExpiresAt.Equal(expectedExpiresAt) {
+				return "validity_days_mismatch", true
+			}
 		}
 	}
 
@@ -460,6 +467,81 @@ func normalizeAssignValidityDays(days int) int {
 		days = MaxValidityDays
 	}
 	return days
+}
+
+func validateExplicitTimeRange(startsAt, expiresAt, now time.Time) error {
+	if !expiresAt.After(startsAt) {
+		return infraerrors.BadRequest("INVALID_TIME_RANGE", "expires_at must be later than starts_at")
+	}
+	if !expiresAt.After(now) {
+		return infraerrors.BadRequest("INVALID_TIME_RANGE", "expires_at must be later than now")
+	}
+	if expiresAt.After(MaxExpiresAt) {
+		return infraerrors.BadRequest("INVALID_TIME_RANGE", "expires_at exceeds supported maximum (2099-12-31T23:59:59Z)")
+	}
+	return nil
+}
+
+func resolveAssignTimeRange(input *AssignSubscriptionInput, now time.Time) (time.Time, time.Time, error) {
+	if input == nil {
+		return time.Time{}, time.Time{}, ErrSubscriptionNilInput
+	}
+	hasStart := input.StartsAt != nil
+	hasEnd := input.ExpiresAt != nil
+	if hasStart != hasEnd {
+		return time.Time{}, time.Time{}, infraerrors.BadRequest("INVALID_TIME_RANGE", "starts_at and expires_at must be provided together")
+	}
+	if hasStart && hasEnd {
+		startsAt := *input.StartsAt
+		expiresAt := *input.ExpiresAt
+		if err := validateExplicitTimeRange(startsAt, expiresAt, now); err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		return startsAt, expiresAt, nil
+	}
+
+	validityDays := normalizeAssignValidityDays(input.ValidityDays)
+	startsAt := now
+	expiresAt := now.AddDate(0, 0, validityDays)
+	if expiresAt.After(MaxExpiresAt) {
+		expiresAt = MaxExpiresAt
+	}
+	return startsAt, expiresAt, nil
+}
+
+// AdjustSubscriptionTimeRange 将订阅直接调整为显式时间段（开始/结束时间）。
+func (s *SubscriptionService) AdjustSubscriptionTimeRange(ctx context.Context, subscriptionID int64, startsAt, expiresAt time.Time) (*UserSubscription, error) {
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+
+	now := time.Now()
+	if err := validateExplicitTimeRange(startsAt, expiresAt, now); err != nil {
+		return nil, err
+	}
+
+	sub.StartsAt = startsAt
+	sub.ExpiresAt = expiresAt
+	if sub.Status == SubscriptionStatusExpired && expiresAt.After(now) {
+		sub.Status = SubscriptionStatusActive
+	}
+
+	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+		return nil, err
+	}
+
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := sub.UserID, sub.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	return s.userSubRepo.GetByID(ctx, subscriptionID)
 }
 
 // RevokeSubscription 撤销订阅
@@ -802,12 +884,17 @@ func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSub
 // 仅做内存检查，不触发 DB 写入。窗口重置的 DB 写入由 DoWindowMaintenance 异步完成。
 // 返回 needsMaintenance 表示是否需要异步执行窗口维护。
 func (s *SubscriptionService) ValidateAndCheckLimits(sub *UserSubscription, group *Group) (needsMaintenance bool, err error) {
+	now := time.Now()
+
 	// 1. 验证订阅状态
 	if sub.Status == SubscriptionStatusExpired {
 		return false, ErrSubscriptionExpired
 	}
 	if sub.Status == SubscriptionStatusSuspended {
 		return false, ErrSubscriptionSuspended
+	}
+	if now.Before(sub.StartsAt) {
+		return false, ErrSubscriptionNotStarted
 	}
 	if sub.IsExpired() {
 		return false, ErrSubscriptionExpired
@@ -1039,6 +1126,9 @@ func (s *SubscriptionService) GetUserSubscriptionsWithProgress(ctx context.Conte
 
 // ValidateSubscription 验证订阅是否有效
 func (s *SubscriptionService) ValidateSubscription(ctx context.Context, sub *UserSubscription) error {
+	if time.Now().Before(sub.StartsAt) {
+		return ErrSubscriptionNotStarted
+	}
 	if sub.Status == SubscriptionStatusExpired {
 		return ErrSubscriptionExpired
 	}

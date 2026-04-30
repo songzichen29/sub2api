@@ -1410,6 +1410,7 @@ export interface UserSubscription {
   id: number
   user_id: number
   group_id: number
+  starts_at?: string | null
   status: 'active' | 'expired' | 'revoked'
   daily_usage_usd: number
   weekly_usage_usd: number
@@ -1452,6 +1453,8 @@ export interface AssignSubscriptionRequest {
   user_id: number
   group_id: number
   validity_days?: number
+  starts_at?: string
+  expires_at?: string
 }
 
 export interface BulkAssignSubscriptionRequest {
@@ -1461,7 +1464,9 @@ export interface BulkAssignSubscriptionRequest {
 }
 
 export interface ExtendSubscriptionRequest {
-  days: number
+  days?: number
+  starts_at?: string
+  expires_at?: string
 }
 
 // ==================== Query Parameters ====================

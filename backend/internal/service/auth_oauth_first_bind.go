@@ -93,6 +93,8 @@ func (s *AuthService) applyProviderDefaultSettingsOnFirstBind(
 				UserID:       userID,
 				GroupID:      item.GroupID,
 				ValidityDays: item.ValidityDays,
+				StartsAt:     parseDefaultSubscriptionTime(item.StartsAt),
+				ExpiresAt:    parseDefaultSubscriptionTime(item.ExpiresAt),
 				Notes:        "auto assigned by first bind defaults",
 			}); err != nil {
 				return fmt.Errorf("apply first bind subscription default: %w", err)

@@ -211,6 +211,13 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
 
+          <template #cell-starts_at="{ value }">
+            <span v-if="value" class="text-sm text-gray-700 dark:text-gray-300">
+              {{ formatDateOnly(value) }}
+            </span>
+            <span v-else class="text-sm text-gray-500">-</span>
+          </template>
+
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
               <!-- Daily Usage -->
@@ -362,18 +369,20 @@
             }}</span>
           </template>
 
-          <template #cell-status="{ value }">
+          <template #cell-status="{ row, value }">
             <span
               :class="[
                 'badge',
-                value === 'active'
+                isSubscriptionNotStarted(row)
+                  ? 'badge-warning'
+                  : value === 'active'
                   ? 'badge-success'
                   : value === 'expired'
                     ? 'badge-warning'
                     : 'badge-danger'
               ]"
             >
-              {{ t(`admin.subscriptions.status.${value}`) }}
+              {{ isSubscriptionNotStarted(row) ? t('admin.subscriptions.status.not_started') : t(`admin.subscriptions.status.${value}`) }}
             </span>
           </template>
 
@@ -523,9 +532,36 @@
           <p class="input-hint">{{ t('admin.subscriptions.groupHint') }}</p>
         </div>
         <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.assignMode') }}</label>
+          <Select
+            v-model="assignForm.mode"
+            :options="assignModeOptions"
+          />
+          <p class="input-hint">{{ t('admin.subscriptions.assignModeHint') }}</p>
+        </div>
+        <div v-if="assignForm.mode === 'days'">
           <label class="input-label">{{ t('admin.subscriptions.form.validityDays') }}</label>
           <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
           <p class="input-hint">{{ t('admin.subscriptions.validityHint') }}</p>
+        </div>
+        <div v-else class="space-y-4">
+          <div>
+            <label class="input-label">{{ t('admin.subscriptions.form.startsAt') }}</label>
+            <input
+              v-model="assignForm.starts_at_local"
+              type="datetime-local"
+              class="input"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.subscriptions.form.expiresAt') }}</label>
+            <input
+              v-model="assignForm.expires_at_local"
+              type="datetime-local"
+              class="input"
+            />
+          </div>
+          <p class="input-hint">{{ t('admin.subscriptions.timeRangeHint') }}</p>
         </div>
       </form>
       <template #footer>
@@ -595,12 +631,25 @@
               }}
             </span>
           </p>
+          <p v-if="extendingSubscription.starts_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            {{ t('admin.subscriptions.currentStartTime') }}:
+            <span class="font-medium text-gray-900 dark:text-white">
+              {{ formatDateOnly(extendingSubscription.starts_at) }}
+            </span>
+          </p>
           <p v-if="extendingSubscription.expires_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {{ t('admin.subscriptions.remainingDays') }}:
             <span class="font-medium text-gray-900 dark:text-white">
               {{ getDaysRemaining(extendingSubscription.expires_at) ?? 0 }}
             </span>
           </p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.subscriptions.form.assignMode') }}</label>
+          <div class="input flex items-center bg-gray-50 text-sm text-gray-700 dark:bg-dark-700 dark:text-gray-300">
+            {{ extendModeLabel }}
+          </div>
+          <p class="input-hint">{{ t('admin.subscriptions.adjustModeHint') }}</p>
         </div>
         <div>
           <label class="input-label">{{ t('admin.subscriptions.form.adjustDays') }}</label>
@@ -614,6 +663,17 @@
             />
           </div>
           <p class="input-hint">{{ t('admin.subscriptions.adjustHint') }}</p>
+        </div>
+        <div v-if="extendForm.mode === 'range'" class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div>
+            <label class="input-label">{{ t('admin.subscriptions.form.startsAt') }}</label>
+            <input :value="extendForm.range_starts_at_local" type="datetime-local" class="input" readonly />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.subscriptions.form.expiresAt') }}</label>
+            <input :value="rangeAdjustedExpiresAtLocal" type="datetime-local" class="input" readonly />
+          </div>
+          <p class="input-hint md:col-span-2">{{ t('admin.subscriptions.rangeAdjustHint') }}</p>
         </div>
       </form>
       <template #footer>
@@ -742,7 +802,13 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
+import type {
+  UserSubscription,
+  Group,
+  GroupPlatform,
+  SubscriptionType,
+  ExtendSubscriptionRequest
+} from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
 import { formatDateOnly } from '@/utils/format'
@@ -818,6 +884,7 @@ const allColumns = computed<Column[]>(() => [
     sortable: false
   },
   { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false },
+  { key: 'starts_at', label: t('admin.subscriptions.columns.startsAt'), sortable: false },
   { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false },
   { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true },
   { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true },
@@ -949,11 +1016,28 @@ const revokingSubscription = ref<UserSubscription | null>(null)
 const assignForm = reactive({
   user_id: null as number | null,
   group_id: null as number | null,
-  validity_days: 30
+  validity_days: 30,
+  mode: 'days' as 'days' | 'range',
+  starts_at_local: '',
+  expires_at_local: ''
 })
 
+const assignModeOptions = computed(() => [
+  { value: 'days', label: t('admin.subscriptions.assignModeDays') },
+  { value: 'range', label: t('admin.subscriptions.assignModeRange') }
+])
+const extendModeLabel = computed(() =>
+  extendForm.mode === 'range'
+    ? t('admin.subscriptions.assignModeRange')
+    : t('admin.subscriptions.assignModeDays')
+)
+
 const extendForm = reactive({
-  days: 30
+  days: 30,
+  mode: 'days' as 'days' | 'range',
+  range_starts_at: '',
+  range_expires_at: '',
+  range_starts_at_local: ''
 })
 
 // Group options for filter (all groups)
@@ -1156,11 +1240,33 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadSubscriptions()
 }
 
+const localDateTimeToRFC3339 = (value: string): string | null => {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
+const rfc3339ToLocalDateTime = (value?: string | null): string => {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
 const closeAssignModal = () => {
   showAssignModal.value = false
   assignForm.user_id = null
   assignForm.group_id = null
   assignForm.validity_days = 30
+  assignForm.mode = 'days'
+  assignForm.starts_at_local = ''
+  assignForm.expires_at_local = ''
   // Clear user search state
   selectedUser.value = null
   userSearchKeyword.value = ''
@@ -1177,18 +1283,46 @@ const handleAssignSubscription = async () => {
     appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
     return
   }
-  if (!assignForm.validity_days || assignForm.validity_days < 1) {
-    appStore.showError(t('admin.subscriptions.validityDaysRequired'))
-    return
+
+  const payload: {
+    user_id: number
+    group_id: number
+    validity_days?: number
+    starts_at?: string
+    expires_at?: string
+  } = {
+    user_id: assignForm.user_id,
+    group_id: assignForm.group_id
+  }
+
+  if (assignForm.mode === 'days') {
+    if (!assignForm.validity_days || assignForm.validity_days < 1) {
+      appStore.showError(t('admin.subscriptions.validityDaysRequired'))
+      return
+    }
+    payload.validity_days = assignForm.validity_days
+  } else {
+    const startsAt = localDateTimeToRFC3339(assignForm.starts_at_local)
+    const expiresAt = localDateTimeToRFC3339(assignForm.expires_at_local)
+    if (!startsAt || !expiresAt) {
+      appStore.showError(t('admin.subscriptions.timeRangeRequired'))
+      return
+    }
+    if (new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) {
+      appStore.showError(t('admin.subscriptions.timeRangeInvalid'))
+      return
+    }
+    if (new Date(expiresAt).getTime() <= Date.now()) {
+      appStore.showError(t('admin.subscriptions.timeRangeMustBeFuture'))
+      return
+    }
+    payload.starts_at = startsAt
+    payload.expires_at = expiresAt
   }
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign({
-      user_id: assignForm.user_id,
-      group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
-    })
+    await adminAPI.subscriptions.assign(payload)
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
@@ -1203,32 +1337,98 @@ const handleAssignSubscription = async () => {
 const handleExtend = (subscription: UserSubscription) => {
   extendingSubscription.value = subscription
   extendForm.days = 30
+  const useRangeMode = shouldAdjustAsRange(subscription)
+  extendForm.mode = useRangeMode ? 'range' : 'days'
+  if (useRangeMode) {
+    extendForm.range_starts_at = subscription.starts_at || ''
+    extendForm.range_expires_at = subscription.expires_at || ''
+    extendForm.range_starts_at_local = rfc3339ToLocalDateTime(subscription.starts_at)
+  } else {
+    extendForm.range_starts_at = ''
+    extendForm.range_expires_at = ''
+    extendForm.range_starts_at_local = ''
+  }
   showExtendModal.value = true
 }
 
 const closeExtendModal = () => {
   showExtendModal.value = false
   extendingSubscription.value = null
+  extendForm.days = 30
+  extendForm.mode = 'days'
+  extendForm.range_starts_at = ''
+  extendForm.range_expires_at = ''
+  extendForm.range_starts_at_local = ''
 }
+
+const shouldAdjustAsRange = (subscription: UserSubscription): boolean => {
+  if (!subscription.starts_at || !subscription.expires_at) return false
+  const startsAtMs = new Date(subscription.starts_at).getTime()
+  const createdAtMs = new Date(subscription.created_at).getTime()
+  if (Number.isNaN(startsAtMs) || Number.isNaN(createdAtMs)) return false
+  if (startsAtMs > Date.now()) return true
+  return Math.abs(startsAtMs - createdAtMs) > 60 * 1000
+}
+
+const rangeAdjustedExpiresAtRFC3339 = computed(() => {
+  if (extendForm.mode !== 'range') return null
+  const baseExpiresAt = new Date(extendForm.range_expires_at)
+  if (Number.isNaN(baseExpiresAt.getTime())) return null
+  const adjusted = new Date(
+    baseExpiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000
+  )
+  if (Number.isNaN(adjusted.getTime())) return null
+  return adjusted.toISOString()
+})
+
+const rangeAdjustedExpiresAtLocal = computed(() =>
+  rfc3339ToLocalDateTime(rangeAdjustedExpiresAtRFC3339.value)
+)
 
 const handleExtendSubscription = async () => {
   if (!extendingSubscription.value) return
 
-  // 前端验证：调整后的过期时间必须在未来
-  if (extendingSubscription.value.expires_at) {
-    const expiresAt = new Date(extendingSubscription.value.expires_at)
-    const newExpiresAt = new Date(expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000)
-    if (newExpiresAt <= new Date()) {
-      appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
+  const payload: ExtendSubscriptionRequest = {}
+  if (extendForm.mode === 'range') {
+    const startsAt = new Date(extendForm.range_starts_at)
+    const expiresAt = new Date(rangeAdjustedExpiresAtRFC3339.value || '')
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
+      appStore.showError(t('admin.subscriptions.timeRangeRequired'))
       return
     }
+    if (expiresAt.getTime() <= startsAt.getTime()) {
+      appStore.showError(t('admin.subscriptions.timeRangeInvalid'))
+      return
+    }
+    if (expiresAt.getTime() <= Date.now()) {
+      appStore.showError(t('admin.subscriptions.timeRangeMustBeFuture'))
+      return
+    }
+    payload.starts_at = startsAt.toISOString()
+    payload.expires_at = expiresAt.toISOString()
+  } else {
+    // 前端验证：调整后的过期时间必须在未来
+    if (extendingSubscription.value.expires_at) {
+      const expiresAt = new Date(extendingSubscription.value.expires_at)
+      const newExpiresAt = new Date(
+        expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000
+      )
+      if (newExpiresAt <= new Date()) {
+        appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
+        return
+      }
+    }
+    payload.days = extendForm.days
+  }
+
+  if (payload.days === undefined && (!payload.starts_at || !payload.expires_at)) {
+    appStore.showError(t('admin.subscriptions.failedToAdjust'))
+    return
   }
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.extend(extendingSubscription.value.id, {
-      days: extendForm.days
-    })
+    await adminAPI.subscriptions.extend(extendingSubscription.value.id, payload)
     appStore.showSuccess(t('admin.subscriptions.subscriptionAdjusted'))
     closeExtendModal()
     loadSubscriptions()
@@ -1297,6 +1497,13 @@ const isExpiringSoon = (expiresAt: string): boolean => {
   return days !== null && days <= 7
 }
 
+const isSubscriptionNotStarted = (sub: UserSubscription): boolean => {
+  if (sub.status !== 'active' || !sub.starts_at) return false
+  const startsAtMs = new Date(sub.starts_at).getTime()
+  if (Number.isNaN(startsAtMs)) return false
+  return startsAtMs > Date.now()
+}
+
 const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
   if (!limit || limit === 0) return '0%'
   const usedValue = used ?? 0
@@ -1330,28 +1537,23 @@ const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'mont
       resetTime = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
       break
     case 'monthly':
-      resetTime = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000)
+      resetTime = new Date(start)
+      resetTime.setMonth(resetTime.getMonth() + 1)
       break
   }
 
-  const diffMs = resetTime.getTime() - now.getTime()
-  if (diffMs <= 0) return t('admin.subscriptions.windowNotActive')
+  if (resetTime <= now) return t('admin.subscriptions.windowNotActive')
 
-  const diffSeconds = Math.floor(diffMs / 1000)
-  const days = Math.floor(diffSeconds / 86400)
-  const hours = Math.floor((diffSeconds % 86400) / 3600)
-  const minutes = Math.floor((diffSeconds % 3600) / 60)
+  const diff = resetTime.getTime() - now.getTime()
+  const days = Math.floor(diff / (24 * 60 * 60 * 1000))
+  const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+  const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000))
 
-  if (days > 0) {
-    return t('admin.subscriptions.resetInDaysHours', { days, hours })
-  } else if (hours > 0) {
-    return t('admin.subscriptions.resetInHoursMinutes', { hours, minutes })
-  } else {
-    return t('admin.subscriptions.resetInMinutes', { minutes })
-  }
+  if (days > 0) return t('admin.subscriptions.resetInDaysHours', { days, hours })
+  if (hours > 0) return t('admin.subscriptions.resetInHoursMinutes', { hours, minutes })
+  return t('admin.subscriptions.resetInMinutes', { minutes })
 }
 
-// Handle click outside to close dropdowns
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   if (!target.closest('[data-assign-user-search]')) showUserDropdown.value = false
@@ -1364,12 +1566,16 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(() => {
   loadUserColumnMode()
   loadSavedColumns()
-  loadSubscriptions()
   loadGroups()
+  loadSubscriptions()
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
+  if (abortController) {
+    abortController.abort()
+    abortController = null
+  }
   document.removeEventListener('click', handleClickOutside)
   if (filterUserSearchTimeout) {
     clearTimeout(filterUserSearchTimeout)

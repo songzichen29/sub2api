@@ -672,6 +672,8 @@ func (s *adminServiceImpl) assignDefaultSubscriptions(ctx context.Context, userI
 			UserID:       userID,
 			GroupID:      item.GroupID,
 			ValidityDays: item.ValidityDays,
+			StartsAt:     parseDefaultSubscriptionTime(item.StartsAt),
+			ExpiresAt:    parseDefaultSubscriptionTime(item.ExpiresAt),
 			Notes:        "auto assigned by default user subscriptions setting",
 		}); err != nil {
 			logger.LegacyPrintf("service.admin", "failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
