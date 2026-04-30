@@ -273,6 +273,15 @@ func testRedis(t *testing.T) *redisclient.Client {
 }
 
 func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS schema_migrations (
+	filename VARCHAR(255) PRIMARY KEY,
+	checksum VARCHAR(64) NOT NULL DEFAULT '',
+	applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
 	files, err := fs.Glob(migrations.FS, "*.sql")
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
@@ -304,6 +313,9 @@ func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) erro
 					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
 				}
 			}
+			if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING", name, "integration"); err != nil {
+				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
+			}
 			continue
 		}
 
@@ -314,6 +326,10 @@ func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) erro
 		if _, err := tx.ExecContext(ctx, content); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply migration %s: %w", name, err)
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING", name, "integration"); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("record migration %s: %w", name, err)
 		}
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
