@@ -294,8 +294,15 @@ func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) erro
 			if err := prepareNonTransactionalMigration(ctx, db, name); err != nil {
 				return fmt.Errorf("prepare migration %s: %w", name, err)
 			}
-			if _, err := db.ExecContext(ctx, content); err != nil {
-				return fmt.Errorf("apply migration %s (non-tx): %w", name, err)
+			statements := splitSQLStatements(content)
+			for i, stmt := range statements {
+				trimmed := strings.TrimSpace(stmt)
+				if trimmed == "" || stripSQLLineComment(trimmed) == "" {
+					continue
+				}
+				if _, err := db.ExecContext(ctx, trimmed); err != nil {
+					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
+				}
 			}
 			continue
 		}
