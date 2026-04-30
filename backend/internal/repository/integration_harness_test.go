@@ -6,9 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -97,7 +99,7 @@ func TestMain(m *testing.M) {
 		log.Printf("failed to open sql db: %v", err)
 		os.Exit(1)
 	}
-	if err := applyMigrationsFS(ctx, integrationDB, migrations.FS); err != nil {
+	if err := applyPostgresMigrationsForIntegration(ctx, integrationDB); err != nil {
 		log.Printf("failed to apply db migrations: %v", err)
 		os.Exit(1)
 	}
@@ -268,6 +270,65 @@ func testRedis(t *testing.T) *redisclient.Client {
 	})
 
 	return rdb
+}
+
+func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
+	files, err := fs.Glob(migrations.FS, "*.sql")
+	if err != nil {
+		return fmt.Errorf("list migrations: %w", err)
+	}
+	sort.Strings(files)
+
+	for _, name := range files {
+		contentBytes, err := migrations.FS.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", name, err)
+		}
+		content := strings.TrimSpace(string(contentBytes))
+		if content == "" {
+			continue
+		}
+
+		nonTx := strings.HasSuffix(name, nonTransactionalMigrationSuffix)
+		if nonTx {
+			if err := prepareNonTransactionalMigration(ctx, db, name); err != nil {
+				return fmt.Errorf("prepare migration %s: %w", name, err)
+			}
+			statements := splitSQLStatements(content)
+			for i, stmt := range statements {
+				trimmed := strings.TrimSpace(stmt)
+				if trimmed == "" || stripSQLLineComment(trimmed) == "" {
+					continue
+				}
+				if _, err := db.ExecContext(ctx, trimmed); err != nil {
+					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
+				}
+			}
+			continue
+		}
+
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin migration %s: %w", name, err)
+		}
+		statements := splitSQLStatements(content)
+		for i, stmt := range statements {
+			trimmed := strings.TrimSpace(stmt)
+			if trimmed == "" || stripSQLLineComment(trimmed) == "" {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, trimmed); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("apply migration %s (statement %d): %w", name, i+1, err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("commit migration %s: %w", name, err)
+		}
+	}
+
+	return nil
 }
 
 func assertTTLWithin(t *testing.T, ttl time.Duration, min, max time.Duration) {
