@@ -173,7 +173,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		req.Header.Set("x-api-key", apiKey.Key)
 		router.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusTooManyRequests, w.Code)
+		require.Equal(t, http.StatusForbidden, w.Code)
 		require.Contains(t, w.Body.String(), "USAGE_LIMIT_EXCEEDED")
 	})
 }
@@ -584,7 +584,7 @@ func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		require.Equal(t, "error", resp.Type)
 		require.Equal(t, "billing_error", resp.Error.Type)
-		require.Equal(t, "Insufficient account balance", resp.Error.Message)
+		require.Equal(t, "账户余额不足", resp.Error.Message)
 	})
 
 	t.Run("non gateway endpoint keeps legacy auth error shape", func(t *testing.T) {
@@ -621,7 +621,7 @@ func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
 		req.Header.Set("x-api-key", apiKey.Key)
 		router.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusTooManyRequests, w.Code)
+		require.Equal(t, http.StatusForbidden, w.Code)
 		var resp ErrorResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		require.Equal(t, "API_KEY_QUOTA_EXHAUSTED", resp.Code)
