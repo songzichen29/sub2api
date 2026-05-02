@@ -360,6 +360,7 @@ func TestAPIContracts(t *testing.T) {
 						AssignedBy:      ptr(int64(999)),
 						AssignedAt:      deps.now,
 						Notes:           "admin-note",
+						Source:          "admin",
 						CreatedAt:       deps.now,
 						UpdatedAt:       deps.now,
 					},
@@ -385,6 +386,7 @@ func TestAPIContracts(t *testing.T) {
 						"daily_usage_usd": 1.23,
 						"weekly_usage_usd": 2.34,
 						"monthly_usage_usd": 3.45,
+						"source": "admin",
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
