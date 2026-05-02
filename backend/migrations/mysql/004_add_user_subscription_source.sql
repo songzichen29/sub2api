@@ -3,8 +3,23 @@
 --   admin   = 管理员手动分配（按窗口层级规则可部分重置）
 --   redeem  = 用户用兑换码兑换（同上）
 --   payment = 用户付费购买（永久禁止重置）
-ALTER TABLE `user_subscriptions`
-    ADD COLUMN IF NOT EXISTS `source` varchar(20) NOT NULL DEFAULT 'admin';
+--
+-- 使用 INFORMATION_SCHEMA + PREPARE/EXECUTE 实现幂等
+-- （MySQL 不支持 ALTER TABLE ... ADD COLUMN IF NOT EXISTS）。
+
+SET @col_exists = (
+    SELECT COUNT(1)
+    FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'user_subscriptions'
+      AND column_name = 'source'
+);
+SET @sql = IF(@col_exists = 0,
+    'ALTER TABLE `user_subscriptions` ADD COLUMN `source` varchar(20) NOT NULL DEFAULT ''admin''',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 历史数据回填：
 --   assigned_by 非空 → 视为 admin（保持原值，无需更新）
