@@ -79,6 +79,13 @@ func (UserSubscription) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+		// 订阅来源标记，决定是否允许管理员重置配额：
+		// admin   = 管理员手动分配（按窗口层级规则可部分重置）
+		// redeem  = 用户用兑换码兑换（同上）
+		// payment = 用户付费购买（永久禁止重置）
+		field.String("source").
+			MaxLen(20).
+			Default(domain.SubscriptionSourceAdmin),
 	}
 }
 

@@ -354,11 +354,39 @@ func init() {
 	// authidentityDescProviderKey is the schema descriptor for provider_key field.
 	authidentityDescProviderKey := authidentityFields[2].Descriptor()
 	// authidentity.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	authidentity.ProviderKeyValidator = authidentityDescProviderKey.Validators[0].(func(string) error)
+	authidentity.ProviderKeyValidator = func() func(string) error {
+		validators := authidentityDescProviderKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_key string) error {
+			for _, fn := range fns {
+				if err := fn(provider_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// authidentityDescProviderSubject is the schema descriptor for provider_subject field.
 	authidentityDescProviderSubject := authidentityFields[3].Descriptor()
 	// authidentity.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
-	authidentity.ProviderSubjectValidator = authidentityDescProviderSubject.Validators[0].(func(string) error)
+	authidentity.ProviderSubjectValidator = func() func(string) error {
+		validators := authidentityDescProviderSubject.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_subject string) error {
+			for _, fn := range fns {
+				if err := fn(provider_subject); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// authidentityDescMetadata is the schema descriptor for metadata field.
 	authidentityDescMetadata := authidentityFields[6].Descriptor()
 	// authidentity.DefaultMetadata holds the default value on creation for the metadata field.
@@ -400,7 +428,21 @@ func init() {
 	// authidentitychannelDescProviderKey is the schema descriptor for provider_key field.
 	authidentitychannelDescProviderKey := authidentitychannelFields[2].Descriptor()
 	// authidentitychannel.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	authidentitychannel.ProviderKeyValidator = authidentitychannelDescProviderKey.Validators[0].(func(string) error)
+	authidentitychannel.ProviderKeyValidator = func() func(string) error {
+		validators := authidentitychannelDescProviderKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_key string) error {
+			for _, fn := range fns {
+				if err := fn(provider_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// authidentitychannelDescChannel is the schema descriptor for channel field.
 	authidentitychannelDescChannel := authidentitychannelFields[3].Descriptor()
 	// authidentitychannel.ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
@@ -422,11 +464,39 @@ func init() {
 	// authidentitychannelDescChannelAppID is the schema descriptor for channel_app_id field.
 	authidentitychannelDescChannelAppID := authidentitychannelFields[4].Descriptor()
 	// authidentitychannel.ChannelAppIDValidator is a validator for the "channel_app_id" field. It is called by the builders before save.
-	authidentitychannel.ChannelAppIDValidator = authidentitychannelDescChannelAppID.Validators[0].(func(string) error)
+	authidentitychannel.ChannelAppIDValidator = func() func(string) error {
+		validators := authidentitychannelDescChannelAppID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(channel_app_id string) error {
+			for _, fn := range fns {
+				if err := fn(channel_app_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// authidentitychannelDescChannelSubject is the schema descriptor for channel_subject field.
 	authidentitychannelDescChannelSubject := authidentitychannelFields[5].Descriptor()
 	// authidentitychannel.ChannelSubjectValidator is a validator for the "channel_subject" field. It is called by the builders before save.
-	authidentitychannel.ChannelSubjectValidator = authidentitychannelDescChannelSubject.Validators[0].(func(string) error)
+	authidentitychannel.ChannelSubjectValidator = func() func(string) error {
+		validators := authidentitychannelDescChannelSubject.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(channel_subject string) error {
+			for _, fn := range fns {
+				if err := fn(channel_subject); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// authidentitychannelDescMetadata is the schema descriptor for metadata field.
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
@@ -1159,11 +1229,39 @@ func init() {
 	// pendingauthsessionDescProviderKey is the schema descriptor for provider_key field.
 	pendingauthsessionDescProviderKey := pendingauthsessionFields[3].Descriptor()
 	// pendingauthsession.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	pendingauthsession.ProviderKeyValidator = pendingauthsessionDescProviderKey.Validators[0].(func(string) error)
+	pendingauthsession.ProviderKeyValidator = func() func(string) error {
+		validators := pendingauthsessionDescProviderKey.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_key string) error {
+			for _, fn := range fns {
+				if err := fn(provider_key); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// pendingauthsessionDescProviderSubject is the schema descriptor for provider_subject field.
 	pendingauthsessionDescProviderSubject := pendingauthsessionFields[4].Descriptor()
 	// pendingauthsession.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
-	pendingauthsession.ProviderSubjectValidator = pendingauthsessionDescProviderSubject.Validators[0].(func(string) error)
+	pendingauthsession.ProviderSubjectValidator = func() func(string) error {
+		validators := pendingauthsessionDescProviderSubject.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(provider_subject string) error {
+			for _, fn := range fns {
+				if err := fn(provider_subject); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// pendingauthsessionDescRedirectTo is the schema descriptor for redirect_to field.
 	pendingauthsessionDescRedirectTo := pendingauthsessionFields[6].Descriptor()
 	// pendingauthsession.DefaultRedirectTo holds the default value on creation for the redirect_to field.
@@ -1192,6 +1290,8 @@ func init() {
 	pendingauthsessionDescCompletionCodeHash := pendingauthsessionFields[12].Descriptor()
 	// pendingauthsession.DefaultCompletionCodeHash holds the default value on creation for the completion_code_hash field.
 	pendingauthsession.DefaultCompletionCodeHash = pendingauthsessionDescCompletionCodeHash.Default.(string)
+	// pendingauthsession.CompletionCodeHashValidator is a validator for the "completion_code_hash" field. It is called by the builders before save.
+	pendingauthsession.CompletionCodeHashValidator = pendingauthsessionDescCompletionCodeHash.Validators[0].(func(string) error)
 	promocodeFields := schema.PromoCode{}.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.
@@ -2002,6 +2102,12 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	// usersubscriptionDescSource is the schema descriptor for source field.
+	usersubscriptionDescSource := usersubscriptionFields[14].Descriptor()
+	// usersubscription.DefaultSource holds the default value on creation for the source field.
+	usersubscription.DefaultSource = usersubscriptionDescSource.Default.(string)
+	// usersubscription.SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	usersubscription.SourceValidator = usersubscriptionDescSource.Validators[0].(func(string) error)
 }
 
 const (

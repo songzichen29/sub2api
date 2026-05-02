@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/dgraph-io/ristretto"
@@ -38,6 +39,10 @@ var (
 	ErrMonthlyLimitExceeded       = infraerrors.TooManyRequests("MONTHLY_LIMIT_EXCEEDED", "monthly usage limit exceeded")
 	ErrSubscriptionNilInput       = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
 	ErrAdjustWouldExpire          = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
+	// 重置配额相关错误
+	ErrPaidSubscriptionImmutable = infraerrors.Forbidden("SUBSCRIPTION_PAID_IMMUTABLE", "paid subscriptions cannot be reset")
+	ErrNoLimitsConfigured        = infraerrors.BadRequest("SUBSCRIPTION_NO_LIMITS", "subscription group has no usage limits configured, nothing to reset")
+	ErrInvalidResetTarget        = infraerrors.BadRequest("SUBSCRIPTION_INVALID_RESET_TARGET", "selected window cannot be reset (either not configured or is the upper-bound window)")
 )
 
 // SubscriptionService 订阅服务
@@ -152,6 +157,10 @@ type AssignSubscriptionInput struct {
 	ExpiresAt    *time.Time
 	AssignedBy   int64
 	Notes        string
+	// Source 标识订阅来源（admin/redeem/payment）。
+	// 留空时按 AssignedBy 推断：>0 → admin，==0 → redeem。
+	// payment 入口必须显式传 SubscriptionSourcePayment。
+	Source string
 }
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
@@ -303,6 +312,7 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 		Status:     SubscriptionStatusActive,
 		AssignedAt: now,
 		Notes:      input.Notes,
+		Source:     resolveSubscriptionSource(input.Source, input.AssignedBy),
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
@@ -326,6 +336,8 @@ type BulkAssignSubscriptionInput struct {
 	ValidityDays int
 	AssignedBy   int64
 	Notes        string
+	// Source 同 AssignSubscriptionInput.Source；批量场景默认 admin。
+	Source string
 }
 
 // BulkAssignResult 批量分配结果
@@ -354,6 +366,7 @@ func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input 
 			ValidityDays: input.ValidityDays,
 			AssignedBy:   input.AssignedBy,
 			Notes:        input.Notes,
+			Source:       input.Source,
 		})
 		if err != nil {
 			result.FailedCount++
@@ -682,6 +695,42 @@ func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID,
 	return &cp, nil
 }
 
+// ResolveSubscriptionError 在 GetActiveSubscription 返回 ErrSubscriptionNotFound 时被调用，
+// 通过宽松查询（不限状态/过期）回查该用户在该分组下的订阅记录，推断出更准确的错误原因：
+//   - 记录不存在（撤销=物理删除 或 从未订阅）→ 返回 ErrSubscriptionNotFound
+//   - 状态为 expired，或 active 但 expires_at 已过 → 返回 ErrSubscriptionExpired
+//   - 状态为 suspended → 返回 ErrSubscriptionSuspended
+//   - starts_at 在未来 → 返回 ErrSubscriptionNotStarted
+//   - 其他异常 → 返回 ErrSubscriptionNotFound 兜底
+//
+// 此方法不走 L1 缓存，仅用于错误诊断（冷路径），频次低且只在 active 查询失败后触发。
+func (s *SubscriptionService) ResolveSubscriptionError(ctx context.Context, userID, groupID int64) error {
+	sub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
+	if err != nil {
+		// 记录确实不存在（撤销=物理删除 或 从未订阅过此分组），统一为 NotFound
+		return ErrSubscriptionNotFound
+	}
+	now := time.Now()
+	switch sub.Status {
+	case SubscriptionStatusExpired:
+		return ErrSubscriptionExpired
+	case SubscriptionStatusSuspended:
+		return ErrSubscriptionSuspended
+	case SubscriptionStatusActive:
+		// 状态是 active，但 GetActiveSubscription 失败，说明 expires_at 已过或 starts_at 未到
+		if !sub.ExpiresAt.After(now) {
+			return ErrSubscriptionExpired
+		}
+		if now.Before(sub.StartsAt) {
+			return ErrSubscriptionNotStarted
+		}
+		// 理论上不会落到这里（active + 未过期 + 已开始 应能被 GetActiveSubscription 命中）
+		return ErrSubscriptionNotFound
+	default:
+		return ErrSubscriptionNotFound
+	}
+}
+
 // ListUserSubscriptions 获取用户的所有订阅
 func (s *SubscriptionService) ListUserSubscriptions(ctx context.Context, userID int64) ([]UserSubscription, error) {
 	subs, err := s.userSubRepo.ListByUserID(ctx, userID)
@@ -780,6 +829,14 @@ func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *U
 
 // AdminResetQuota manually resets the daily, weekly, and/or monthly usage windows.
 // Uses startOfDay(now) as the new window start, matching automatic resets.
+//
+// 业务规则（与前端 UI 对齐）：
+//  1. 付费订阅（source = payment）永不可重置，返回 ErrPaidSubscriptionImmutable。
+//  2. 订阅 group 必须至少配置一档限额，否则没有窗口需要重置（ErrNoLimitsConfigured）。
+//  3. 不允许重置「上限窗口」——即 group 配置中的最长窗口（monthly > weekly > daily）。
+//     因为重置上限会绕过订阅的真正约束。
+//  4. 不允许重置 group 中未配置 limit 的档位（无意义）。
+//  5. 余下「短于上限」且「已配置」的档位允许被勾选重置。
 func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionID int64, resetDaily, resetWeekly, resetMonthly bool) (*UserSubscription, error) {
 	if !resetDaily && !resetWeekly && !resetMonthly {
 		return nil, ErrInvalidInput
@@ -788,6 +845,19 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	if err != nil {
 		return nil, err
 	}
+	// 规则 1：付费订阅完全锁定
+	if sub.Source == domain.SubscriptionSourcePayment {
+		return nil, ErrPaidSubscriptionImmutable
+	}
+	// 规则 2-4：根据 group 限额配置校验请求的档位是否合法
+	if sub.Group == nil {
+		// 防御：缺关联时拒绝执行
+		return nil, ErrNoLimitsConfigured
+	}
+	if err := validateResetTargets(sub.Group, resetDaily, resetWeekly, resetMonthly); err != nil {
+		return nil, err
+	}
+
 	windowStart := startOfDay(time.Now())
 	if resetDaily {
 		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
@@ -816,6 +886,56 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	}
 	// Return the refreshed subscription from DB
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+// resolveSubscriptionSource 把入参 Source 标准化为最终落库值。
+// 显式传入合法 source 优先；否则按 AssignedBy 推断（>0=admin，==0=redeem）。
+// payment 入口必须显式传入，不会被自动推断出来。
+func resolveSubscriptionSource(explicit string, assignedBy int64) string {
+	switch explicit {
+	case domain.SubscriptionSourceAdmin,
+		domain.SubscriptionSourceRedeem,
+		domain.SubscriptionSourcePayment:
+		return explicit
+	}
+	if assignedBy > 0 {
+		return domain.SubscriptionSourceAdmin
+	}
+	return domain.SubscriptionSourceRedeem
+}
+
+// validateResetTargets 校验请求的重置档位组合是否合法。
+// 规则：
+//   - 至少配置了一档限额（否则没什么可重置的）
+//   - 不允许重置上限档（最长窗口）
+//   - 不允许重置 group 中未配置的档（无意义）
+func validateResetTargets(group *Group, resetDaily, resetWeekly, resetMonthly bool) error {
+	hasDaily := group.HasDailyLimit()
+	hasWeekly := group.HasWeeklyLimit()
+	hasMonthly := group.HasMonthlyLimit()
+	if !hasDaily && !hasWeekly && !hasMonthly {
+		return ErrNoLimitsConfigured
+	}
+	// 上限档 = 已配置的最长窗口
+	upperBound := ""
+	switch {
+	case hasMonthly:
+		upperBound = "monthly"
+	case hasWeekly:
+		upperBound = "weekly"
+	case hasDaily:
+		upperBound = "daily"
+	}
+	if resetDaily && (!hasDaily || upperBound == "daily") {
+		return ErrInvalidResetTarget
+	}
+	if resetWeekly && (!hasWeekly || upperBound == "weekly") {
+		return ErrInvalidResetTarget
+	}
+	if resetMonthly && (!hasMonthly || upperBound == "monthly") {
+		return ErrInvalidResetTarget
+	}
+	return nil
 }
 
 // CheckAndResetWindows 检查并重置过期的窗口

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
@@ -351,6 +352,7 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 				ValidityDays: validityDays,
 				AssignedBy:   0, // 系统分配
 				Notes:        fmt.Sprintf("通过兑换码 %s 兑换", redeemCode.Code),
+				Source:       domain.SubscriptionSourceRedeem,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("assign or extend subscription: %w", err)

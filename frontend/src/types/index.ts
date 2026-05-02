@@ -1421,6 +1421,8 @@ export interface UserSubscription {
   created_at: string
   updated_at: string
   expires_at: string | null
+  /** 订阅来源：admin（管理员分配）/ redeem（兑换码）/ payment（付费购买，不可重置）。 */
+  source?: 'admin' | 'redeem' | 'payment'
   user?: User
   group?: Group
 }

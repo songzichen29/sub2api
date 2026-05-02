@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -177,6 +178,7 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		ExpiresAt:    expiresAt,
 		AssignedBy:   adminID,
 		Notes:        req.Notes,
+		Source:       domain.SubscriptionSourceAdmin,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -204,6 +206,7 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 		ValidityDays: req.ValidityDays,
 		AssignedBy:   adminID,
 		Notes:        req.Notes,
+		Source:       domain.SubscriptionSourceAdmin,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

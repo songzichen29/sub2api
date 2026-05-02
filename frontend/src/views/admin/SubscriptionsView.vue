@@ -652,7 +652,7 @@
           <p class="input-hint">{{ t('admin.subscriptions.adjustModeHint') }}</p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.subscriptions.form.adjustDays') }}</label>
+          <label class="input-label">{{ adjustDaysLabel }}</label>
           <div class="flex items-center gap-2">
             <input
               v-model.number="extendForm.days"
@@ -662,7 +662,7 @@
               :placeholder="t('admin.subscriptions.adjustDaysPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ t('admin.subscriptions.adjustHint') }}</p>
+          <p class="input-hint">{{ adjustDaysHint }}</p>
         </div>
         <div v-if="extendForm.mode === 'range'" class="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
@@ -705,16 +705,86 @@
       @cancel="showRevokeDialog = false"
     />
 
-    <!-- Reset Quota Confirmation Dialog -->
-    <ConfirmDialog
+    <!-- Reset Quota Multi-Select Dialog -->
+    <BaseDialog
       :show="showResetQuotaConfirm"
       :title="t('admin.subscriptions.resetQuotaTitle')"
-      :message="t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription?.user?.email })"
-      :confirm-text="t('admin.subscriptions.resetQuota')"
-      :cancel-text="t('common.cancel')"
-      @confirm="confirmResetQuota"
-      @cancel="showResetQuotaConfirm = false"
-    />
+      width="narrow"
+      @close="closeResetQuotaDialog"
+    >
+      <div v-if="resettingSubscription" class="space-y-4">
+        <p class="text-sm text-gray-600 dark:text-gray-300">
+          {{ t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription.user?.email }) }}
+        </p>
+
+        <!-- Paid lock notice -->
+        <div
+          v-if="isPaidSubscription(resettingSubscription)"
+          class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
+        >
+          {{ t('admin.subscriptions.resetQuotaPaidLocked') }}
+        </div>
+
+        <!-- No-limits notice -->
+        <div
+          v-else-if="!hasAnyConfiguredWindow(resettingSubscription)"
+          class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300"
+        >
+          {{ t('admin.subscriptions.resetQuotaNoLimits') }}
+        </div>
+
+        <!-- Window selectors -->
+        <div v-else class="space-y-2">
+          <p class="text-xs text-gray-500 dark:text-dark-400">
+            {{ t('admin.subscriptions.resetQuotaSelectorHint') }}
+          </p>
+          <label
+            v-for="opt in resetWindowOptions"
+            :key="opt.key"
+            :class="[
+              'flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm transition-colors',
+              opt.disabled
+                ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400 dark:border-dark-600 dark:bg-dark-700/50 dark:text-dark-500'
+                : 'border-gray-200 bg-white hover:border-primary-400 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-500'
+            ]"
+          >
+            <input
+              type="checkbox"
+              class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+              :checked="resetSelection[opt.key]"
+              :disabled="opt.disabled"
+              @change="toggleResetSelection(opt.key)"
+            />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-medium" :class="opt.disabled ? '' : 'text-gray-900 dark:text-white'">
+                  {{ opt.label }}
+                </span>
+                <span v-if="opt.usageText" class="text-xs tabular-nums">{{ opt.usageText }}</span>
+              </div>
+              <p v-if="opt.disabledReason" class="mt-0.5 text-[11px] text-gray-500 dark:text-dark-400">
+                {{ opt.disabledReason }}
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+      <template #footer>
+        <div v-if="resettingSubscription" class="flex justify-end gap-3">
+          <button @click="closeResetQuotaDialog" type="button" class="btn btn-secondary">
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="!canSubmitResetQuota || resettingQuota"
+            @click="confirmResetQuota"
+          >
+            {{ resettingQuota ? t('common.processing') : t('admin.subscriptions.resetQuota') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -1030,6 +1100,17 @@ const extendModeLabel = computed(() =>
   extendForm.mode === 'range'
     ? t('admin.subscriptions.assignModeRange')
     : t('admin.subscriptions.assignModeDays')
+)
+// 时间段模式下天数字段是「结束时间偏移量」，与 days 模式语义不同，需要更明确的文案
+const adjustDaysLabel = computed(() =>
+  extendForm.mode === 'range'
+    ? t('admin.subscriptions.form.adjustDaysRange')
+    : t('admin.subscriptions.form.adjustDays')
+)
+const adjustDaysHint = computed(() =>
+  extendForm.mode === 'range'
+    ? t('admin.subscriptions.adjustRangeDaysHint')
+    : t('admin.subscriptions.adjustHint')
 )
 
 const extendForm = reactive({
@@ -1462,18 +1543,34 @@ const confirmRevoke = async () => {
 
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
+  // 默认勾选所有「合法可重置」的档（与 backend validateResetTargets 规则对齐）
+  resetSelection.daily = isResetWindowEnabled(subscription, 'daily')
+  resetSelection.weekly = isResetWindowEnabled(subscription, 'weekly')
+  resetSelection.monthly = isResetWindowEnabled(subscription, 'monthly')
   showResetQuotaConfirm.value = true
+}
+
+const closeResetQuotaDialog = () => {
+  showResetQuotaConfirm.value = false
+  resettingSubscription.value = null
+  resetSelection.daily = false
+  resetSelection.weekly = false
+  resetSelection.monthly = false
 }
 
 const confirmResetQuota = async () => {
   if (!resettingSubscription.value) return
   if (resettingQuota.value) return
+  if (!canSubmitResetQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, {
+      daily: resetSelection.daily,
+      weekly: resetSelection.weekly,
+      monthly: resetSelection.monthly
+    })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
-    showResetQuotaConfirm.value = false
-    resettingSubscription.value = null
+    closeResetQuotaDialog()
     await loadSubscriptions()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToResetQuota'))
@@ -1481,6 +1578,81 @@ const confirmResetQuota = async () => {
   } finally {
     resettingQuota.value = false
   }
+}
+
+// ===== Reset quota dialog helpers =====
+
+type ResetWindowKey = 'daily' | 'weekly' | 'monthly'
+
+const resetSelection = reactive({ daily: false, weekly: false, monthly: false })
+
+const isPaidSubscription = (sub: UserSubscription): boolean => sub.source === 'payment'
+
+const hasConfiguredLimit = (sub: UserSubscription, key: ResetWindowKey): boolean => {
+  const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
+  return typeof limit === 'number' && limit > 0
+}
+
+const hasAnyConfiguredWindow = (sub: UserSubscription): boolean =>
+  hasConfiguredLimit(sub, 'daily') ||
+  hasConfiguredLimit(sub, 'weekly') ||
+  hasConfiguredLimit(sub, 'monthly')
+
+// 上限档 = 已配置的最长窗口（monthly > weekly > daily），与后端 validateResetTargets 一致
+const upperBoundWindow = (sub: UserSubscription): ResetWindowKey | null => {
+  if (hasConfiguredLimit(sub, 'monthly')) return 'monthly'
+  if (hasConfiguredLimit(sub, 'weekly')) return 'weekly'
+  if (hasConfiguredLimit(sub, 'daily')) return 'daily'
+  return null
+}
+
+const isResetWindowEnabled = (sub: UserSubscription, key: ResetWindowKey): boolean => {
+  if (isPaidSubscription(sub)) return false
+  if (!hasConfiguredLimit(sub, key)) return false
+  return upperBoundWindow(sub) !== key
+}
+
+const formatUsageText = (sub: UserSubscription, key: ResetWindowKey): string => {
+  const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
+  if (typeof limit !== 'number') return ''
+  const used = sub[`${key}_usage_usd` as 'daily_usage_usd' | 'weekly_usage_usd' | 'monthly_usage_usd'] ?? 0
+  return `$${used.toFixed(2)} / $${limit.toFixed(2)}`
+}
+
+const resetWindowOptions = computed(() => {
+  const sub = resettingSubscription.value
+  if (!sub) return []
+  const upper = upperBoundWindow(sub)
+  const labels: Record<ResetWindowKey, string> = {
+    daily: t('admin.subscriptions.daily'),
+    weekly: t('admin.subscriptions.weekly'),
+    monthly: t('admin.subscriptions.monthly')
+  }
+  const keys: ResetWindowKey[] = ['daily', 'weekly', 'monthly']
+  return keys
+    .filter((key) => hasConfiguredLimit(sub, key))
+    .map((key) => {
+      const isUpper = upper === key
+      return {
+        key,
+        label: labels[key],
+        usageText: formatUsageText(sub, key),
+        disabled: isUpper,
+        disabledReason: isUpper ? t('admin.subscriptions.resetQuotaUpperBoundDisabled') : ''
+      }
+    })
+})
+
+const canSubmitResetQuota = computed(() => {
+  const sub = resettingSubscription.value
+  if (!sub) return false
+  if (isPaidSubscription(sub)) return false
+  if (!hasAnyConfiguredWindow(sub)) return false
+  return resetSelection.daily || resetSelection.weekly || resetSelection.monthly
+})
+
+const toggleResetSelection = (key: ResetWindowKey) => {
+  resetSelection[key] = !resetSelection[key]
 }
 
 // Helper functions

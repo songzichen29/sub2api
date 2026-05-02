@@ -140,7 +140,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			)
 			if subErr != nil {
 				if !skipBilling {
-					AbortWithError(c, 403, "SUBSCRIPTION_NOT_FOUND", "该分组下未找到有效订阅")
+					// 通过宽松查询诊断真实错误原因：撤销/到期/暂停/未生效/不存在
+					resolved := subscriptionService.ResolveSubscriptionError(
+						c.Request.Context(),
+						apiKey.User.ID,
+						apiKey.Group.ID,
+					)
+					code, msg := mapSubscriptionLookupError(resolved)
+					AbortWithError(c, 403, code, msg)
 					return
 				}
 				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据
@@ -176,15 +183,19 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			if subscription != nil {
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if validateErr != nil {
-					code := "SUBSCRIPTION_INVALID"
-					status := 403
-					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
+					var code, msg string
+					switch {
+					case errors.Is(validateErr, service.ErrDailyLimitExceeded),
+						errors.Is(validateErr, service.ErrWeeklyLimitExceeded),
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded):
 						code = "USAGE_LIMIT_EXCEEDED"
-						status = 403
+						msg = subscriptionValidateErrorMessageCN(validateErr)
+					default:
+						// 订阅状态类错误（过期/暂停/未生效）：与 GetActiveSubscription 失败时
+						// 的错误码/文案保持一致，避免缓存命中路径与 DB 直查路径返回不一致。
+						code, msg = mapSubscriptionLookupError(validateErr)
 					}
-					AbortWithError(c, status, code, subscriptionValidateErrorMessageCN(validateErr))
+					AbortWithError(c, 403, code, msg)
 					return
 				}
 
@@ -269,5 +280,23 @@ func subscriptionValidateErrorMessageCN(err error) string {
 		return "已超过每月使用限额"
 	default:
 		return "订阅状态无效"
+	}
+}
+
+// mapSubscriptionLookupError 将订阅查找/诊断阶段的错误翻译为给 API 调用方看的错误码与文案。
+// 区别于 subscriptionValidateErrorMessageCN（仅返回文案），此函数同时给出 code，
+// 用于中间件 GetActiveSubscription 失败后的兜底诊断分支。
+func mapSubscriptionLookupError(err error) (code string, msg string) {
+	switch {
+	case errors.Is(err, service.ErrSubscriptionExpired):
+		return "SUBSCRIPTION_EXPIRED", "订阅已到期，请续订或联系管理员。"
+	case errors.Is(err, service.ErrSubscriptionSuspended):
+		return "SUBSCRIPTION_SUSPENDED", "订阅已暂停，请联系管理员。"
+	case errors.Is(err, service.ErrSubscriptionNotStarted):
+		return "SUBSCRIPTION_NOT_STARTED", "订阅尚未生效，请稍后再试。"
+	case errors.Is(err, service.ErrSubscriptionNotFound):
+		return "SUBSCRIPTION_NOT_FOUND", "未找到该分组下的有效订阅，可能尚未订阅或订阅已被撤销。"
+	default:
+		return "SUBSCRIPTION_INVALID", "订阅状态无效，请联系管理员。"
 	}
 }

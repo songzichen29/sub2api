@@ -67,6 +67,14 @@ const (
 	SubscriptionStatusSuspended = "suspended"
 )
 
+// Subscription source constants 表示订阅来源，用于决定是否允许管理员重置配额。
+// payment 来源永久禁止重置，admin/redeem 受窗口层级规则约束。
+const (
+	SubscriptionSourceAdmin   = "admin"   // 管理员手动分配
+	SubscriptionSourceRedeem  = "redeem"  // 用户用兑换码兑换
+	SubscriptionSourcePayment = "payment" // 用户付费购买（不可重置）
+)
+
 // DefaultAntigravityModelMapping 是 Antigravity 平台的默认模型映射
 // 当账号未配置 model_mapping 时使用此默认值
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致

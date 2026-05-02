@@ -420,6 +420,11 @@ func (_c *PendingAuthSessionCreate) check() error {
 	if _, ok := _c.mutation.CompletionCodeHash(); !ok {
 		return &ValidationError{Name: "completion_code_hash", err: errors.New(`ent: missing required field "PendingAuthSession.completion_code_hash"`)}
 	}
+	if v, ok := _c.mutation.CompletionCodeHash(); ok {
+		if err := pendingauthsession.CompletionCodeHashValidator(v); err != nil {
+			return &ValidationError{Name: "completion_code_hash", err: fmt.Errorf(`ent: validator failed for field "PendingAuthSession.completion_code_hash": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.ExpiresAt(); !ok {
 		return &ValidationError{Name: "expires_at", err: errors.New(`ent: missing required field "PendingAuthSession.expires_at"`)}
 	}

@@ -231,6 +231,20 @@ func (_c *UserSubscriptionCreate) SetNillableNotes(v *string) *UserSubscriptionC
 	return _c
 }
 
+// SetSource sets the "source" field.
+func (_c *UserSubscriptionCreate) SetSource(v string) *UserSubscriptionCreate {
+	_c.mutation.SetSource(v)
+	return _c
+}
+
+// SetNillableSource sets the "source" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableSource(v *string) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetSource(*v)
+	}
+	return _c
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_c *UserSubscriptionCreate) SetUser(v *User) *UserSubscriptionCreate {
 	return _c.SetUserID(v.ID)
@@ -349,6 +363,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultAssignedAt()
 		_c.mutation.SetAssignedAt(v)
 	}
+	if _, ok := _c.mutation.Source(); !ok {
+		v := usersubscription.DefaultSource
+		_c.mutation.SetSource(v)
+	}
 	return nil
 }
 
@@ -391,6 +409,14 @@ func (_c *UserSubscriptionCreate) check() error {
 	}
 	if _, ok := _c.mutation.AssignedAt(); !ok {
 		return &ValidationError{Name: "assigned_at", err: errors.New(`ent: missing required field "UserSubscription.assigned_at"`)}
+	}
+	if _, ok := _c.mutation.Source(); !ok {
+		return &ValidationError{Name: "source", err: errors.New(`ent: missing required field "UserSubscription.source"`)}
+	}
+	if v, ok := _c.mutation.Source(); ok {
+		if err := usersubscription.SourceValidator(v); err != nil {
+			return &ValidationError{Name: "source", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.source": %w`, err)}
+		}
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "UserSubscription.user"`)}
@@ -480,6 +506,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.Notes(); ok {
 		_spec.SetField(usersubscription.FieldNotes, field.TypeString, value)
 		_node.Notes = &value
+	}
+	if value, ok := _c.mutation.Source(); ok {
+		_spec.SetField(usersubscription.FieldSource, field.TypeString, value)
+		_node.Source = value
 	}
 	if nodes := _c.mutation.UserIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -846,6 +876,18 @@ func (u *UserSubscriptionUpsert) ClearNotes() *UserSubscriptionUpsert {
 	return u
 }
 
+// SetSource sets the "source" field.
+func (u *UserSubscriptionUpsert) SetSource(v string) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldSource, v)
+	return u
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateSource() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldSource)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -1175,6 +1217,20 @@ func (u *UserSubscriptionUpsertOne) UpdateNotes() *UserSubscriptionUpsertOne {
 func (u *UserSubscriptionUpsertOne) ClearNotes() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.ClearNotes()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *UserSubscriptionUpsertOne) SetSource(v string) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateSource() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateSource()
 	})
 }
 
@@ -1673,6 +1729,20 @@ func (u *UserSubscriptionUpsertBulk) UpdateNotes() *UserSubscriptionUpsertBulk {
 func (u *UserSubscriptionUpsertBulk) ClearNotes() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.ClearNotes()
+	})
+}
+
+// SetSource sets the "source" field.
+func (u *UserSubscriptionUpsertBulk) SetSource(v string) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetSource(v)
+	})
+}
+
+// UpdateSource sets the "source" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateSource() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateSource()
 	})
 }
 

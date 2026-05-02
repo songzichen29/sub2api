@@ -23,6 +23,9 @@ type UserSubscription struct {
 	AssignedAt time.Time
 	Notes      string
 
+	// Source 标识订阅来源（admin/redeem/payment），决定 AdminResetQuota 是否允许重置。
+	Source string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

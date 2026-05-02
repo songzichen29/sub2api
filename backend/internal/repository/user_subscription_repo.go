@@ -50,6 +50,10 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 	}
 	// Keep compatibility with historical behavior: always store notes as a string value.
 	builder.SetNotes(sub.Notes)
+	// Source 决定订阅是否可被管理员重置；为空时由 service 层规范化为 admin/redeem。
+	if sub.Source != "" {
+		builder.SetSource(sub.Source)
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -122,6 +126,9 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	if sub.Source != "" {
+		builder.SetSource(sub.Source)
+	}
 
 	updated, err := builder.Save(ctx)
 	if err == nil {
@@ -442,6 +449,7 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		AssignedBy:         m.AssignedBy,
 		AssignedAt:         m.AssignedAt,
 		Notes:              derefString(m.Notes),
+		Source:             m.Source,
 		CreatedAt:          m.CreatedAt,
 		UpdatedAt:          m.UpdatedAt,
 	}

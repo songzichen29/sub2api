@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,10 +58,33 @@ func newResetQuotaSvc(stub *resetQuotaUserSubRepoStub) *SubscriptionService {
 	return NewSubscriptionService(groupRepoNoop{}, stub, nil, nil, nil)
 }
 
-func TestAdminResetQuota_ResetBoth(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{ID: 1, UserID: 10, GroupID: 20},
+// resetQuotaGroupAll 三档限额都配置（30/210/800），上限档 = monthly。
+// 适用于「daily/weekly 可重置；monthly 是上限不可重置」的多数测试场景。
+func resetQuotaGroupAll() *Group {
+	daily := 30.0
+	weekly := 210.0
+	monthly := 800.0
+	return &Group{
+		ID:              20,
+		DailyLimitUSD:   &daily,
+		WeeklyLimitUSD:  &weekly,
+		MonthlyLimitUSD: &monthly,
 	}
+}
+
+// newAdminSub 构造一个 AssignedBy 已设置的管理员分配订阅，默认 source=admin 可重置。
+func newAdminSub(id int64) *UserSubscription {
+	return &UserSubscription{
+		ID:      id,
+		UserID:  10,
+		GroupID: 20,
+		Source:  domain.SubscriptionSourceAdmin,
+		Group:   resetQuotaGroupAll(),
+	}
+}
+
+func TestAdminResetQuota_ResetBoth(t *testing.T) {
+	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(1)}
 	svc := newResetQuotaSvc(stub)
 
 	result, err := svc.AdminResetQuota(context.Background(), 1, true, true, false)
@@ -73,9 +97,7 @@ func TestAdminResetQuota_ResetBoth(t *testing.T) {
 }
 
 func TestAdminResetQuota_ResetDailyOnly(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{ID: 2, UserID: 10, GroupID: 20},
-	}
+	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(2)}
 	svc := newResetQuotaSvc(stub)
 
 	result, err := svc.AdminResetQuota(context.Background(), 2, true, false, false)
@@ -88,9 +110,7 @@ func TestAdminResetQuota_ResetDailyOnly(t *testing.T) {
 }
 
 func TestAdminResetQuota_ResetWeeklyOnly(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{ID: 3, UserID: 10, GroupID: 20},
-	}
+	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(3)}
 	svc := newResetQuotaSvc(stub)
 
 	result, err := svc.AdminResetQuota(context.Background(), 3, false, true, false)
@@ -103,9 +123,7 @@ func TestAdminResetQuota_ResetWeeklyOnly(t *testing.T) {
 }
 
 func TestAdminResetQuota_BothFalseReturnsError(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{ID: 7, UserID: 10, GroupID: 20},
-	}
+	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(7)}
 	svc := newResetQuotaSvc(stub)
 
 	_, err := svc.AdminResetQuota(context.Background(), 7, false, false, false)
@@ -131,7 +149,7 @@ func TestAdminResetQuota_SubscriptionNotFound(t *testing.T) {
 func TestAdminResetQuota_ResetDailyUsageError(t *testing.T) {
 	dbErr := errors.New("db error")
 	stub := &resetQuotaUserSubRepoStub{
-		sub:           &UserSubscription{ID: 4, UserID: 10, GroupID: 20},
+		sub:           newAdminSub(4),
 		resetDailyErr: dbErr,
 	}
 	svc := newResetQuotaSvc(stub)
@@ -146,7 +164,7 @@ func TestAdminResetQuota_ResetDailyUsageError(t *testing.T) {
 func TestAdminResetQuota_ResetWeeklyUsageError(t *testing.T) {
 	dbErr := errors.New("db error")
 	stub := &resetQuotaUserSubRepoStub{
-		sub:            &UserSubscription{ID: 5, UserID: 10, GroupID: 20},
+		sub:            newAdminSub(5),
 		resetWeeklyErr: dbErr,
 	}
 	svc := newResetQuotaSvc(stub)
@@ -157,44 +175,100 @@ func TestAdminResetQuota_ResetWeeklyUsageError(t *testing.T) {
 	require.True(t, stub.resetWeeklyCalled)
 }
 
-func TestAdminResetQuota_ResetMonthlyOnly(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{ID: 8, UserID: 10, GroupID: 20},
-	}
+// TestAdminResetQuota_RejectMonthlyOnUpperBound 用三档全配的订阅尝试 reset monthly，
+// monthly 是上限，必须被业务规则拒绝。
+func TestAdminResetQuota_RejectMonthlyOnUpperBound(t *testing.T) {
+	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(8)}
 	svc := newResetQuotaSvc(stub)
 
-	result, err := svc.AdminResetQuota(context.Background(), 8, false, false, true)
+	_, err := svc.AdminResetQuota(context.Background(), 8, false, false, true)
 
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.False(t, stub.resetDailyCalled, "不应调用 ResetDailyUsage")
-	require.False(t, stub.resetWeeklyCalled, "不应调用 ResetWeeklyUsage")
-	require.True(t, stub.resetMonthlyCalled, "应调用 ResetMonthlyUsage")
+	require.ErrorIs(t, err, ErrInvalidResetTarget)
+	require.False(t, stub.resetMonthlyCalled, "上限档不应实际触发 ResetMonthlyUsage")
 }
 
-func TestAdminResetQuota_ResetMonthlyUsageError(t *testing.T) {
-	dbErr := errors.New("db error")
-	stub := &resetQuotaUserSubRepoStub{
-		sub:             &UserSubscription{ID: 9, UserID: 10, GroupID: 20},
-		resetMonthlyErr: dbErr,
+// TestAdminResetQuota_OnlyDailyConfigured_RejectAll 仅配置 daily 时 daily 即上限，
+// reset daily 也应被拒。
+func TestAdminResetQuota_OnlyDailyConfigured_RejectAll(t *testing.T) {
+	daily := 30.0
+	sub := &UserSubscription{
+		ID:      11,
+		UserID:  10,
+		GroupID: 20,
+		Source:  domain.SubscriptionSourceAdmin,
+		Group: &Group{
+			ID:            20,
+			DailyLimitUSD: &daily,
+		},
 	}
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
 	svc := newResetQuotaSvc(stub)
 
-	_, err := svc.AdminResetQuota(context.Background(), 9, false, false, true)
+	_, err := svc.AdminResetQuota(context.Background(), 11, true, false, false)
 
-	require.ErrorIs(t, err, dbErr)
-	require.True(t, stub.resetMonthlyCalled)
+	require.ErrorIs(t, err, ErrInvalidResetTarget)
+	require.False(t, stub.resetDailyCalled)
+}
+
+// TestAdminResetQuota_PaymentSourceLocked 付费订阅永远不可重置，即便档位配置允许。
+func TestAdminResetQuota_PaymentSourceLocked(t *testing.T) {
+	sub := newAdminSub(12)
+	sub.Source = domain.SubscriptionSourcePayment
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	_, err := svc.AdminResetQuota(context.Background(), 12, true, false, false)
+
+	require.ErrorIs(t, err, ErrPaidSubscriptionImmutable)
+	require.False(t, stub.resetDailyCalled)
+}
+
+// TestAdminResetQuota_NoLimitsConfigured 没配置任何限额时拒绝重置。
+func TestAdminResetQuota_NoLimitsConfigured(t *testing.T) {
+	sub := &UserSubscription{
+		ID:      13,
+		UserID:  10,
+		GroupID: 20,
+		Source:  domain.SubscriptionSourceAdmin,
+		Group:   &Group{ID: 20},
+	}
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	_, err := svc.AdminResetQuota(context.Background(), 13, true, true, true)
+
+	require.ErrorIs(t, err, ErrNoLimitsConfigured)
+}
+
+// TestAdminResetQuota_RejectUnconfiguredWindow 重置 group 中未配置的档位时拒绝。
+// 例如 group 只配 daily+monthly，请求 reset weekly 应被拒。
+func TestAdminResetQuota_RejectUnconfiguredWindow(t *testing.T) {
+	daily := 30.0
+	monthly := 800.0
+	sub := &UserSubscription{
+		ID:      14,
+		UserID:  10,
+		GroupID: 20,
+		Source:  domain.SubscriptionSourceAdmin,
+		Group: &Group{
+			ID:              20,
+			DailyLimitUSD:   &daily,
+			MonthlyLimitUSD: &monthly,
+		},
+	}
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	_, err := svc.AdminResetQuota(context.Background(), 14, false, true, false)
+
+	require.ErrorIs(t, err, ErrInvalidResetTarget)
+	require.False(t, stub.resetWeeklyCalled)
 }
 
 func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
-	stub := &resetQuotaUserSubRepoStub{
-		sub: &UserSubscription{
-			ID:            6,
-			UserID:        10,
-			GroupID:       20,
-			DailyUsageUSD: 99.9,
-		},
-	}
+	sub := newAdminSub(6)
+	sub.DailyUsageUSD = 99.9
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
 
 	svc := newResetQuotaSvc(stub)
 	result, err := svc.AdminResetQuota(context.Background(), 6, true, false, false)
