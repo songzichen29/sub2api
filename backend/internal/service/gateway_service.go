@@ -8285,6 +8285,14 @@ func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
+func (s *GatewayService) CheckChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
+	return s.checkChannelPricingRestriction(ctx, groupID, requestedModel)
+}
+
+func (s *GatewayService) PeekAvailableModelsSnapshot(groupID *int64, platform string) (availableModelsSnapshot, bool) {
+	return peekAvailableModelsSnapshot(s.modelsListCache, groupID, platform)
+}
+
 // checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。
 // 供调度阶段预检查（requested / channel_mapped）。
 // upstream 需逐账号检查，此处返回 false。
@@ -8929,9 +8937,13 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
 		if cached, found := s.modelsListCache.Get(cacheKey); found {
-			if models, ok := cached.([]string); ok {
+			switch value := cached.(type) {
+			case availableModelsSnapshot:
 				modelsListCacheHitTotal.Add(1)
-				return cloneStringSlice(models)
+				return cloneStringSlice(value.Models)
+			case []string:
+				modelsListCacheHitTotal.Add(1)
+				return cloneStringSlice(value)
 			}
 		}
 	}
@@ -8961,41 +8973,16 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		accounts = filtered
 	}
 
-	// Collect unique models from all accounts
-	modelSet := make(map[string]struct{})
-	hasAnyMapping := false
-
-	for _, acc := range accounts {
-		mapping := acc.GetModelMapping()
-		if len(mapping) > 0 {
-			hasAnyMapping = true
-			for model := range mapping {
-				modelSet[model] = struct{}{}
-			}
-		}
-	}
+	snapshot := buildAvailableModelsSnapshot(accounts)
 
 	// If no account has model_mapping, return nil (use default)
-	if !hasAnyMapping {
-		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-			modelsListCacheStoreTotal.Add(1)
-		}
+	if len(snapshot.Models) == 0 {
+		storeAvailableModelsSnapshot(s.modelsListCache, s.modelsListCacheTTL, groupID, platform, snapshot)
 		return nil
 	}
 
-	// Convert to slice
-	models := make([]string, 0, len(modelSet))
-	for model := range modelSet {
-		models = append(models, model)
-	}
-	sort.Strings(models)
-
-	if s.modelsListCache != nil {
-		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
-		modelsListCacheStoreTotal.Add(1)
-	}
-	return cloneStringSlice(models)
+	storeAvailableModelsSnapshot(s.modelsListCache, s.modelsListCacheTTL, groupID, platform, snapshot)
+	return cloneStringSlice(snapshot.Models)
 }
 
 func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform string) {

@@ -1297,7 +1297,11 @@ export default {
     serverError: '服务器错误',
     networkError: '网络错误',
     timeout: '请求超时',
-    tryAgain: '请重试'
+    tryAgain: '请重试',
+    gateway: {
+      modelNotAllowed: '当前分组未开放该模型',
+      modelNotConfigured: '当前分组下没有配置支持该模型的账号'
+    }
   },
 
   // Dates
@@ -1868,6 +1872,10 @@ export default {
       balanceHistoryTip: '点击查看充值记录',
       balanceHistoryTitle: '用户充值和并发变动记录',
       noBalanceHistory: '暂无变动记录',
+      // 用户订阅信息（在余额历史 modal 内联展示）
+      subscriptionsTitle: '用户订阅',
+      noSubscriptionsForUser: '该用户暂无订阅',
+      failedToLoadSubscriptions: '加载用户订阅失败',
       allTypes: '全部类型',
       typeBalance: '余额（兑换码）',
       typeAdminBalance: '余额（管理员调整）',

@@ -30,6 +30,28 @@ import (
 	"go.uber.org/zap"
 )
 
+func gatewayModelPrecheckError(err error) (status int, errType string, message string, ok bool) {
+	switch {
+	case errors.Is(err, service.ErrModelBlockedByGroup):
+		return http.StatusBadRequest, "model_not_allowed", extractTrailingErrorMessage(err), true
+	case errors.Is(err, service.ErrModelUnsupportedByGroupAccount):
+		return http.StatusBadRequest, "model_not_configured", extractTrailingErrorMessage(err), true
+	default:
+		return 0, "", "", false
+	}
+}
+
+func extractTrailingErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if idx := strings.Index(msg, ": "); idx >= 0 && idx+2 < len(msg) {
+		return msg[idx+2:]
+	}
+	return msg
+}
+
 const gatewayCompatibilityMetricsLogInterval = 1024
 
 var gatewayCompatibilityMetricsLogCounter atomic.Uint64
@@ -1776,6 +1798,27 @@ func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger
 		zap.Float64("session_hash_legacy_read_hit_rate", metrics.SessionHashLegacyReadHitRate),
 		zap.Int64("metadata_legacy_fallback_total", metrics.MetadataLegacyFallbackTotal),
 	)
+}
+
+func (h *GatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64, platform, requestedModel string) error {
+	if h == nil || h.gatewayService == nil {
+		return nil
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return nil
+	}
+	if h.gatewayService.CheckChannelPricingRestriction(ctx, groupID, requestedModel) {
+		return fmt.Errorf("%w: %s", service.ErrModelBlockedByGroup, service.ModelBlockedByGroupMessage(requestedModel))
+	}
+	snapshot, ok := h.gatewayService.PeekAvailableModelsSnapshot(groupID, platform)
+	if !ok {
+		return nil
+	}
+	if service.SnapshotSupportsRequestedModel(snapshot, platform, requestedModel) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
 }
 
 func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {

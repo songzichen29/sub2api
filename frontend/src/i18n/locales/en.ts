@@ -1293,7 +1293,11 @@ export default {
     serverError: 'Server error',
     networkError: 'Network error',
     timeout: 'Request timeout',
-    tryAgain: 'Please try again'
+    tryAgain: 'Please try again',
+    gateway: {
+      modelNotAllowed: 'This model is not enabled for the current group',
+      modelNotConfigured: 'No account in the current group is configured to support this model'
+    }
   },
 
   // Dates
@@ -1811,6 +1815,10 @@ export default {
       balanceHistoryTip: 'Click to open recharge history',
       balanceHistoryTitle: 'User Recharge & Concurrency History',
       noBalanceHistory: 'No records found for this user',
+      // User subscriptions (rendered inline within the balance history modal)
+      subscriptionsTitle: 'User Subscriptions',
+      noSubscriptionsForUser: 'This user has no subscriptions',
+      failedToLoadSubscriptions: 'Failed to load user subscriptions',
       allTypes: 'All Types',
       typeBalance: 'Balance (Redeem)',
       typeAdminBalance: 'Balance (Admin)',

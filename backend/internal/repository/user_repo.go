@@ -553,10 +553,7 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 			return []func(*entsql.Selector){dbent.Asc(dbuser.FieldID)}
 		}
 		if nullsLastField {
-			return []func(*entsql.Selector){
-				entsql.OrderByField(field, entsql.OrderNullsLast()).ToFunc(),
-				dbent.Asc(dbuser.FieldID),
-			}
+			return userNullableFieldOrder(field, false)
 		}
 		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbuser.FieldID)}
 	}
@@ -564,12 +561,23 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 		return []func(*entsql.Selector){dbent.Desc(dbuser.FieldID)}
 	}
 	if nullsLastField {
-		return []func(*entsql.Selector){
-			entsql.OrderByField(field, entsql.OrderDesc(), entsql.OrderNullsLast()).ToFunc(),
-			dbent.Desc(dbuser.FieldID),
-		}
+		return userNullableFieldOrder(field, true)
 	}
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)}
+}
+
+func userNullableFieldOrder(field string, desc bool) []func(*entsql.Selector) {
+	return []func(*entsql.Selector){
+		func(s *entsql.Selector) {
+			col := s.C(field)
+			s.OrderExpr(entsql.Expr(col + " IS NULL"))
+			if desc {
+				s.OrderBy(entsql.Desc(col), entsql.Desc(s.C(dbuser.FieldID)))
+				return
+			}
+			s.OrderBy(entsql.Asc(col), entsql.Asc(s.C(dbuser.FieldID)))
+		},
+	}
 }
 
 func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {

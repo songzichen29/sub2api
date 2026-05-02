@@ -44,6 +44,9 @@
         </div>
       </div>
 
+      <!-- User subscriptions section: shows the user's current subscriptions and usage -->
+      <UserSubscriptionsSection :show="show" :user-id="user.id" />
+
       <!-- Type filter + Action buttons -->
       <div class="flex items-center gap-3">
         <Select
@@ -177,6 +180,7 @@ import type { AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import UserSubscriptionsSection from './UserSubscriptionsSection.vue'
 
 const props = defineProps<{ show: boolean; user: AdminUser | null; hideActions?: boolean }>()
 const emit = defineEmits(['close', 'deposit', 'withdraw'])

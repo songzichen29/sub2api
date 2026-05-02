@@ -188,6 +188,19 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName // 保存映射前的原始模型名
+
+	groupPlatform := service.PlatformGemini
+	if apiKey.Group != nil && strings.TrimSpace(apiKey.Group.Platform) != "" {
+		groupPlatform = apiKey.Group.Platform
+	}
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, groupPlatform, reqModel); err != nil {
+		if _, _, message, ok := gatewayModelPrecheckError(err); ok {
+			googleError(c, http.StatusBadRequest, message)
+			return
+		}
+		googleError(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}

@@ -54,6 +54,27 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
 }
 
+func (h *OpenAIGatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64, requestedModel string) error {
+	if h == nil || h.gatewayService == nil {
+		return nil
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return nil
+	}
+	if h.gatewayService.CheckChannelPricingRestriction(ctx, groupID, requestedModel) {
+		return fmt.Errorf("%w: %s", service.ErrModelBlockedByGroup, service.ModelBlockedByGroupMessage(requestedModel))
+	}
+	snapshot, ok := h.gatewayService.PeekAvailableModelsSnapshot(groupID)
+	if !ok {
+		return nil
+	}
+	if service.SnapshotSupportsRequestedModel(snapshot, service.PlatformOpenAI, requestedModel) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
+}
+
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
@@ -199,6 +220,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, reqModel); err != nil {
+		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {

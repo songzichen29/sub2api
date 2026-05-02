@@ -90,6 +90,15 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, parsed.Model)
 
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, parsed.Model); err != nil {
+		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}

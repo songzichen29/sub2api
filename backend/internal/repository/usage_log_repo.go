@@ -2774,7 +2774,7 @@ func (r *usageLogRepository) getModelStatsWithFiltersBySource(ctx context.Contex
 func (r *usageLogRepository) GetGroupStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) (results []usagestats.GroupStat, err error) {
 	query := "SELECT" +
 		" COALESCE(ul.group_id, 0) as group_id," +
-		" COALESCE(g.name, ) as group_name," +
+		" COALESCE(g.name, '') as group_name," +
 		" COUNT(*) as requests," +
 		" COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens," +
 		" COALESCE(SUM(ul.total_cost), 0) as cost," +

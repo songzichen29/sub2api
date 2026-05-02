@@ -29,6 +29,7 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	gocache "github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"go.uber.org/zap"
@@ -349,6 +350,8 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle *accountWriteThrottle
+	modelsListCache       *gocache.Cache
+	modelsListCacheTTL    time.Duration
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -373,6 +376,7 @@ func NewOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 ) *OpenAIGatewayService {
+	modelsListTTL := resolveModelsListCacheTTL(cfg)
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
 		usageLogRepo:        usageLogRepo,
@@ -404,6 +408,8 @@ func NewOpenAIGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:    modelsListTTL,
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
@@ -432,6 +438,10 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 		return ChannelMappingResult{MappedModel: model}, false
 	}
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+}
+
+func (s *OpenAIGatewayService) CheckChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
+	return s.checkChannelPricingRestriction(ctx, groupID, requestedModel)
 }
 
 func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
@@ -1225,6 +1235,51 @@ func noAvailableOpenAISelectionError(requestedModel string, compactBlocked bool)
 		return fmt.Errorf("no available OpenAI accounts supporting model: %s", requestedModel)
 	}
 	return errors.New("no available OpenAI accounts")
+}
+
+func (s *OpenAIGatewayService) GetAvailableModels(ctx context.Context, groupID *int64) []string {
+	cacheKey := modelsListCacheKey(groupID, PlatformOpenAI)
+	if s.modelsListCache != nil {
+		if cached, found := s.modelsListCache.Get(cacheKey); found {
+			switch value := cached.(type) {
+			case availableModelsSnapshot:
+				modelsListCacheHitTotal.Add(1)
+				return cloneStringSlice(value.Models)
+			case []string:
+				modelsListCacheHitTotal.Add(1)
+				return cloneStringSlice(value)
+			}
+		}
+	}
+	modelsListCacheMissTotal.Add(1)
+
+	accounts, err := s.listSchedulableAccounts(ctx, groupID)
+	if err != nil || len(accounts) == 0 {
+		return nil
+	}
+
+	openaiAccounts := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if accounts[i].IsOpenAI() {
+			openaiAccounts = append(openaiAccounts, accounts[i])
+		}
+	}
+	if len(openaiAccounts) == 0 {
+		return nil
+	}
+
+	snapshot := buildAvailableModelsSnapshot(openaiAccounts)
+	if len(snapshot.Models) == 0 {
+		storeAvailableModelsSnapshot(s.modelsListCache, s.modelsListCacheTTL, groupID, PlatformOpenAI, snapshot)
+		return nil
+	}
+
+	storeAvailableModelsSnapshot(s.modelsListCache, s.modelsListCacheTTL, groupID, PlatformOpenAI, snapshot)
+	return cloneStringSlice(snapshot.Models)
+}
+
+func (s *OpenAIGatewayService) PeekAvailableModelsSnapshot(groupID *int64) (availableModelsSnapshot, bool) {
+	return peekAvailableModelsSnapshot(s.modelsListCache, groupID, PlatformOpenAI)
 }
 
 // openAICompactSupportTier classifies an OpenAI account by compact capability.

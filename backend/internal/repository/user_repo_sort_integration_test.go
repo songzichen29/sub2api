@@ -116,6 +116,27 @@ func (s *UserRepoSuite) TestListWithFilters_SortByLastActiveAtAsc() {
 	s.Require().Equal("nil-active@example.com", users[2].Email)
 }
 
+func (s *UserRepoSuite) TestListWithFilters_SortByLastActiveAtDesc_NullsStillLast() {
+	older := time.Now().Add(-5 * time.Hour).UTC().Truncate(time.Microsecond)
+	newer := time.Now().Add(-20 * time.Minute).UTC().Truncate(time.Microsecond)
+
+	s.mustCreateUser(&service.User{Email: "nil-last-active-desc@example.com"})
+	s.mustCreateUser(&service.User{Email: "older-last-active-desc@example.com", LastActiveAt: &older})
+	s.mustCreateUser(&service.User{Email: "newer-last-active-desc@example.com", LastActiveAt: &newer})
+
+	users, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  10,
+		SortBy:    "last_active_at",
+		SortOrder: "desc",
+	}, service.UserListFilters{})
+	s.Require().NoError(err)
+	s.Require().Len(users, 3)
+	s.Require().Equal("newer-last-active-desc@example.com", users[0].Email)
+	s.Require().Equal("older-last-active-desc@example.com", users[1].Email)
+	s.Require().Equal("nil-last-active-desc@example.com", users[2].Email)
+}
+
 func (s *UserRepoSuite) TestGetLatestUsedAtByUserIDs_UsesUsageLogs() {
 	older := time.Now().Add(-4 * time.Hour).UTC().Truncate(time.Second)
 	newer := time.Now().Add(-90 * time.Minute).UTC().Truncate(time.Second)

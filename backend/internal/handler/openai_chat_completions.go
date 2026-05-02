@@ -83,6 +83,15 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, reqModel); err != nil {
+		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
+			h.errorResponse(c, status, code, message)
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	}

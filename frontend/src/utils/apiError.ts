@@ -5,6 +5,8 @@
  * This utility extracts the user-facing message from any error shape.
  */
 
+import { i18n } from '@/i18n'
+
 interface ApiErrorLike {
   status?: number
   code?: number | string
@@ -18,6 +20,14 @@ interface ApiErrorLike {
       message?: string
       code?: number | string
     }
+  }
+}
+
+const getCommonGatewayErrorMap = (): Record<string, string> => {
+  const t = i18n.global.t.bind(i18n.global)
+  return {
+    model_not_allowed: t('errors.gateway.modelNotAllowed'),
+    model_not_configured: t('errors.gateway.modelNotConfigured'),
   }
 }
 
@@ -128,9 +138,12 @@ export function extractApiErrorMessage(
   if (!err) return fallback
 
   // Try i18n mapping by error code first
-  if (i18nMap) {
-    const code = extractApiErrorCode(err)
-    if (code && i18nMap[code]) return i18nMap[code]
+  const code = extractApiErrorCode(err)
+  if (i18nMap && code && i18nMap[code]) return i18nMap[code]
+
+  const commonGatewayMap = getCommonGatewayErrorMap()
+  if (code && commonGatewayMap[code]) {
+    return commonGatewayMap[code]
   }
 
   // Plain object from API client interceptor (most common case)

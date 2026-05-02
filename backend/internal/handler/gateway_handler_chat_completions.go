@@ -84,6 +84,19 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
+	groupPlatform := ""
+	if apiKey.Group != nil {
+		groupPlatform = apiKey.Group.Platform
+	}
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, groupPlatform, reqModel); err != nil {
+		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
+			h.chatCompletionsErrorResponse(c, status, code, message)
+			return
+		}
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
 	// Claude Code only restriction
 	if apiKey.Group != nil && apiKey.Group.ClaudeCodeOnly {
 		h.chatCompletionsErrorResponse(c, http.StatusForbidden, "permission_error",

@@ -84,6 +84,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
+	groupPlatform := ""
+	if apiKey.Group != nil {
+		groupPlatform = apiKey.Group.Platform
+	}
+	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, groupPlatform, reqModel); err != nil {
+		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
+			h.responsesErrorResponse(c, status, code, message)
+			return
+		}
+		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
+
 	// Claude Code only restriction:
 	// /v1/responses is never a Claude Code endpoint.
 	// When claude_code_only is enabled, this endpoint is rejected.
