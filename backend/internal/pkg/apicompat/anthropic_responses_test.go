@@ -517,6 +517,7 @@ func TestResponsesEventToAnthropicEvents_ResponseDone(t *testing.T) {
 	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
 }
 
+
 func TestResponsesEventToAnthropicEvents_TopLevelTerminalUsage(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	state.Model = "gpt-4o"
@@ -543,6 +544,7 @@ func TestResponsesEventToAnthropicEvents_TopLevelTerminalUsage(t *testing.T) {
 	assert.Equal(t, 6, events[0].Usage.OutputTokens)
 	assert.Equal(t, "message_stop", events[1].Type)
 }
+
 
 func TestResponsesEventToAnthropicEvents_ResponseDoneIncomplete(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()

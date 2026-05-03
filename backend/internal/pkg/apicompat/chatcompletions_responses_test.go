@@ -846,6 +846,7 @@ func TestResponsesEventToChatChunks_ResponseDone(t *testing.T) {
 	assert.Nil(t, FinalizeResponsesChatStream(state))
 }
 
+
 func TestResponsesEventToChatChunks_TopLevelTerminalUsage(t *testing.T) {
 	state := NewResponsesEventToChatState()
 	state.Model = "gpt-4o"
@@ -872,6 +873,7 @@ func TestResponsesEventToChatChunks_TopLevelTerminalUsage(t *testing.T) {
 	require.NotNil(t, chunks[1].Usage.PromptTokensDetails)
 	assert.Equal(t, 4, chunks[1].Usage.PromptTokensDetails.CachedTokens)
 }
+
 
 func TestResponsesEventToChatChunks_ResponseDoneIncomplete(t *testing.T) {
 	state := NewResponsesEventToChatState()

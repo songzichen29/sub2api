@@ -450,10 +450,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+
 	clientOutputStarted := false
 	var streamFailoverErr error
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -506,6 +508,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		refusalDetector.ObservePayload([]byte(payload))
 
+
 		if event.Type == "response.failed" {
 			failedMessage := extractOpenAISSEErrorMessage([]byte(payload))
 			if !clientOutputStarted && openAIStreamFailedEventShouldFailover([]byte(payload), failedMessage) {
@@ -521,12 +524,15 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if event.Response != nil && event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
+
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+
 				refusalDetector.ObserveChatChunk(chunk)
+
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
 					logger.L().Warn("openai chat_completions stream: failed to marshal chunk",
@@ -535,6 +541,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
+
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)
 					continue
@@ -556,6 +563,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						break
 					}
 				}
+
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected, continuing to drain upstream for billing",
@@ -563,10 +571,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					break
 				}
+
 				clientOutputStarted = true
 			}
 		}
 		if len(chunks) > 0 && !clientDisconnected && clientOutputStarted {
+
 			c.Writer.Flush()
 		}
 		return isTerminalEvent
@@ -580,6 +590,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if err != nil {
 					continue
 				}
+
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)
 					continue
@@ -601,6 +612,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						break
 					}
 				}
+
 				if _, err := fmt.Fprint(c.Writer, sse); err != nil {
 					clientDisconnected = true
 					logger.L().Info("openai chat_completions stream: client disconnected during final flush",
@@ -608,6 +620,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					break
 				}
+
 			}
 		}
 		if !clientDisconnected && !clientOutputStarted {
@@ -627,18 +640,23 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 				pendingSSE = pendingSSE[:0]
 				clientOutputStarted = !clientDisconnected
+
 			}
 		}
 		// Send [DONE] sentinel
 		if !clientDisconnected {
+
 			writeStreamHeaders()
+
 			if _, err := fmt.Fprint(c.Writer, "data: [DONE]\n\n"); err != nil {
 				clientDisconnected = true
 				logger.L().Info("openai chat_completions stream: client disconnected during done flush",
 					zap.String("request_id", requestID),
 				)
 			}
+
 			clientOutputStarted = !clientDisconnected
+
 		}
 		if !clientDisconnected {
 			c.Writer.Flush()
@@ -657,6 +675,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
+
 	processFrame := func(frame openAICompatSSEFrame) bool {
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 		if strings.TrimSpace(payload) == "[DONE]" {
@@ -664,6 +683,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		return processDataLine(payload)
 	}
+
 
 	// Determine keepalive interval
 	keepaliveInterval := time.Duration(0)
@@ -673,6 +693,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	// No keepalive: fast synchronous path
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
+
 		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -687,6 +708,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if streamFailoverErr != nil {
 					return resultWithUsage(), streamFailoverErr
 				}
+
 				return finalizeStream()
 			}
 		}
@@ -694,6 +716,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
+
 		if frame, ok := parser.Finish(); ok {
 			if strings.TrimSpace(frame.Data) == "[DONE]" {
 				return missingTerminalErr()
@@ -702,6 +725,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return finalizeStream()
 			}
 		}
+
 		return missingTerminalErr()
 	}
 
@@ -752,6 +776,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		select {
 		case ev, ok := <-events:
 			if !ok {
+
 				if frame, ok := parser.Finish(); ok {
 					if strings.TrimSpace(frame.Data) == "[DONE]" {
 						return missingTerminalErr()
@@ -760,6 +785,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 						return finalizeStream()
 					}
 				}
+
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
@@ -768,6 +794,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 			lastDataAt = time.Now()
 			line := ev.line
+
 			frame, ok := parser.AddLine(line)
 			if !ok {
 				continue
@@ -779,6 +806,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if streamFailoverErr != nil {
 					return resultWithUsage(), streamFailoverErr
 				}
+
 				return finalizeStream()
 			}
 
@@ -801,9 +829,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
+
 			if refusalDetector.Enabled() && !clientOutputStarted {
 				continue
 			}
+
 			if time.Since(lastDataAt) < keepaliveInterval {
 				continue
 			}

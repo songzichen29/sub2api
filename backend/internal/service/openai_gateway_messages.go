@@ -561,11 +561,14 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	}()
 	defer close(done)
 
+
 	var parser openAICompatSSEFrameParser
+
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+
 				if frame, ok := parser.Finish(); ok {
 					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 					var event apicompat.ResponsesStreamEvent
@@ -585,6 +588,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						}
 					}
 				}
+
 				return nil, usage, acc, nil
 			}
 			resetTimeout()
@@ -598,6 +602,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				return nil, usage, acc, ev.err
 			}
 
+
 			if isOpenAICompatDoneSentinelLine(ev.line) {
 				return nil, usage, acc, nil
 			}
@@ -606,6 +611,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				continue
 			}
 			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
+
 
 			var event apicompat.ResponsesStreamEvent
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -619,12 +625,14 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			acc.ProcessEvent(&event)
 
 			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+
 				if event.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 					if event.Response.Usage == nil {
 						event.Response.Usage = event.Usage
 					}
 				}
+
 				if event.Response.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 				}
@@ -674,8 +682,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+
 	clientOutputStarted := false
 	var streamFailoverErr error
+
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -730,6 +740,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 
+
 		if event.Type == "response.failed" {
 			failedMessage := extractOpenAISSEErrorMessage([]byte(payload))
 			if !clientOutputStarted && openAIStreamFailedEventShouldFailover([]byte(payload), failedMessage) {
@@ -750,6 +761,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			if event.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 			}
+
 		}
 
 		// Convert to Anthropic events
@@ -771,7 +783,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					)
 					break
 				}
+
 				clientOutputStarted = true
+
 			}
 		}
 		if len(events) > 0 && !clientDisconnected {
@@ -815,10 +829,12 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
+
 	processFrame := func(frame openAICompatSSEFrame) bool {
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 		return processDataLine(payload)
 	}
+
 
 	// ── Determine keepalive interval ──
 	keepaliveInterval := time.Duration(0)
@@ -828,6 +844,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// ── No keepalive: fast synchronous path (no goroutine overhead) ──
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
+
 		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -842,6 +859,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				if streamFailoverErr != nil {
 					return resultWithUsage(), streamFailoverErr
 				}
+
 				return finalizeStream()
 			}
 		}
@@ -849,6 +867,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
+
 		if frame, ok := parser.Finish(); ok {
 			if strings.TrimSpace(frame.Data) == "[DONE]" {
 				return missingTerminalErr()
@@ -857,6 +876,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				return finalizeStream()
 			}
 		}
+
 		return missingTerminalErr()
 	}
 
@@ -908,6 +928,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		case ev, ok := <-events:
 			if !ok {
 				// Upstream closed
+
 				if frame, ok := parser.Finish(); ok {
 					if strings.TrimSpace(frame.Data) == "[DONE]" {
 						return missingTerminalErr()
@@ -916,6 +937,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 						return finalizeStream()
 					}
 				}
+
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
@@ -924,6 +946,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 			lastDataAt = time.Now()
 			line := ev.line
+
 			if isOpenAICompatDoneSentinelLine(line) {
 				return missingTerminalErr()
 			}
@@ -935,6 +958,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				if streamFailoverErr != nil {
 					return resultWithUsage(), streamFailoverErr
 				}
+
 				return finalizeStream()
 			}
 
