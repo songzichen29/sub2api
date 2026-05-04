@@ -553,7 +553,6 @@ func isKnownCodexModelSuffix(suffix string) bool {
 	}
 	return isCodexDateSuffix(suffix)
 }
-
 func isCodexDateSuffix(suffix string) bool {
 	parts := strings.Split(suffix, "-")
 	if len(parts) != 3 || len(parts[0]) != 4 || len(parts[1]) != 2 || len(parts[2]) != 2 {
