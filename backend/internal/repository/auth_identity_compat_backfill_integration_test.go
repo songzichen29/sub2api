@@ -1,4 +1,4 @@
-//go:build integration
+//go:build integration && pglegacy
 
 package repository
 
@@ -62,7 +62,7 @@ RETURNING id`).Scan(&userID))
 SELECT COUNT(*)
 FROM auth_identity_migration_reports
 WHERE report_type = 'oidc_synthetic_email_requires_manual_recovery'
-  AND report_key = $1
+  AND report_key = ?
 `, strconv.FormatInt(userID, 10)).Scan(&reportCount))
 	require.Equal(t, 1, reportCount)
 

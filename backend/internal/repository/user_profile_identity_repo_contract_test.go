@@ -340,7 +340,7 @@ func (s *UserProfileIdentityRepoSuite) TestWithUserProfileIdentityTx_RollsBackId
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT COUNT(*)
 FROM user_provider_default_grants
-WHERE user_id = $1 AND provider_type = $2 AND grant_reason = $3`,
+WHERE user_id = ? AND provider_type = ? AND grant_reason = ?`,
 		user.ID,
 		"oidc",
 		string(ProviderGrantReasonFirstBind),
@@ -379,7 +379,7 @@ func (s *UserProfileIdentityRepoSuite) TestRecordProviderGrant_IsIdempotentPerRe
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT COUNT(*)
 FROM user_provider_default_grants
-WHERE user_id = $1 AND provider_type = $2`,
+WHERE user_id = ? AND provider_type = ?`,
 		user.ID,
 		"wechat",
 	).Scan(&count))
@@ -544,7 +544,7 @@ func (s *UserProfileIdentityRepoSuite) TestUpdateUserLastLoginAndActiveAt_UsesDe
 	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, `
 SELECT last_login_at, last_active_at
 FROM users
-WHERE id = $1`,
+WHERE id = ?`,
 		user.ID,
 	).Scan(&storedLoginAt, &storedActiveAt))
 	s.Require().True(storedLoginAt.Valid)

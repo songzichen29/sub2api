@@ -21,7 +21,7 @@ func (s *UserSubscriptionRepoSuite) mustInsertUsageLogForSubscription(userID int
 	_, err := integrationDB.ExecContext(
 		s.ctx,
 		`INSERT INTO usage_logs (user_id, api_key_id, account_id, subscription_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
-		 VALUES ($1, $2, $3, $4, 'gpt-test', 1, 1, 0.01, 0.01, $5)`,
+		 VALUES (?, ?, ?, ?, 'gpt-test', 1, 1, 0.01, 0.01, ?)`,
 		userID,
 		apiKey.ID,
 		account.ID,

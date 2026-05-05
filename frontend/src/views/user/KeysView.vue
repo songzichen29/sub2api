@@ -1723,8 +1723,9 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
         endpoint = baseUrl
         break
       case 'grok':
-        // Grok 走 OpenAI 兼容协议,导入到 Codex CCS 客户端
-        app = 'codex'
+        // Grok 通过 grok2api 网关透传，对外暴露的是 Anthropic 兼容协议（/v1/messages），
+        // 应导入到 Claude CCS 客户端，而不是 Codex
+        app = 'claude'
         endpoint = baseUrl
         break
       default: // anthropic

@@ -26,15 +26,15 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/lib/pq"
+	_ "github.com/go-sql-driver/mysql"
 	redisclient "github.com/redis/go-redis/v9"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	tcmysql "github.com/testcontainers/testcontainers-go/modules/mysql"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
 )
 
 const (
-	redisImageTag    = "redis:8.4-alpine"
-	postgresImageTag = "postgres:18.1-alpine3.23"
+	redisImageTag = "redis:8.4-alpine"
+	mysqlImageTag = "mysql:8.0"
 )
 
 var (
@@ -63,20 +63,19 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
-	postgresImage := selectDockerImage(ctx, postgresImageTag)
-	pgContainer, err := tcpostgres.Run(
+	mysqlImage := selectDockerImage(ctx, mysqlImageTag)
+	mysqlContainer, err := tcmysql.Run(
 		ctx,
-		postgresImage,
-		tcpostgres.WithDatabase("sub2api_test"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		tcpostgres.BasicWaitStrategies(),
+		mysqlImage,
+		tcmysql.WithDatabase("sub2api_test"),
+		tcmysql.WithUsername("root"),
+		tcmysql.WithPassword("rootpassword"),
 	)
 	if err != nil {
-		log.Printf("failed to start postgres container: %v", err)
+		log.Printf("failed to start mysql container: %v", err)
 		os.Exit(1)
 	}
-	defer func() { _ = pgContainer.Terminate(ctx) }()
+	defer func() { _ = mysqlContainer.Terminate(ctx) }()
 
 	redisContainer, err := tcredis.Run(
 		ctx,
@@ -88,24 +87,24 @@ func TestMain(m *testing.M) {
 	}
 	defer func() { _ = redisContainer.Terminate(ctx) }()
 
-	dsn, err := pgContainer.ConnectionString(ctx, "sslmode=disable", "TimeZone=UTC")
+	dsn, err := mysqlContainer.ConnectionString(ctx, "parseTime=true", "charset=utf8mb4", "collation=utf8mb4_0900_ai_ci", "multiStatements=true")
 	if err != nil {
-		log.Printf("failed to get postgres dsn: %v", err)
+		log.Printf("failed to get mysql dsn: %v", err)
 		os.Exit(1)
 	}
 
-	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
+	integrationDB, err = openSQLWithRetry(ctx, dsn, 60*time.Second)
 	if err != nil {
 		log.Printf("failed to open sql db: %v", err)
 		os.Exit(1)
 	}
-	if err := applyPostgresMigrationsForIntegration(ctx, integrationDB); err != nil {
+	if err := applyMySQLMigrationsForIntegration(ctx, integrationDB); err != nil {
 		log.Printf("failed to apply db migrations: %v", err)
 		os.Exit(1)
 	}
 
 	// 创建 ent client 用于集成测试
-	drv := entsql.OpenDB(dialect.Postgres, integrationDB)
+	drv := entsql.OpenDB(dialect.MySQL, integrationDB)
 	integrationEntClient = dbent.NewClient(dbent.Driver(drv))
 
 	redisHost, err := redisContainer.Host(ctx)
@@ -164,7 +163,7 @@ func openSQLWithRetry(ctx context.Context, dsn string, timeout time.Duration) (*
 	var lastErr error
 
 	for time.Now().Before(deadline) {
-		db, err := sql.Open("postgres", dsn)
+		db, err := sql.Open("mysql", dsn)
 		if err != nil {
 			lastErr = err
 			time.Sleep(250 * time.Millisecond)
@@ -272,24 +271,24 @@ func testRedis(t *testing.T) *redisclient.Client {
 	return rdb
 }
 
-func applyPostgresMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
-	if _, err := db.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS schema_migrations (
-	filename VARCHAR(255) PRIMARY KEY,
-	checksum VARCHAR(64) NOT NULL DEFAULT '',
-	applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-)`); err != nil {
+func applyMySQLMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
+	if _, err := db.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS `schema_migrations` ("+
+		"`filename` VARCHAR(255) NOT NULL PRIMARY KEY,"+
+		"`checksum` VARCHAR(64) NOT NULL DEFAULT '',"+
+		"`applied_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)"+
+		") CHARSET=utf8mb4 COLLATE=utf8mb4_bin"); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	files, err := fs.Glob(migrations.FS, "*.sql")
+	// 集成测试使用 MySQLFS，与生产部署的迁移集合保持一致。
+	files, err := fs.Glob(migrations.MySQLFS, "*.sql")
 	if err != nil {
 		return fmt.Errorf("list migrations: %w", err)
 	}
 	sort.Strings(files)
 
 	for _, name := range files {
-		contentBytes, err := migrations.FS.ReadFile(name)
+		contentBytes, err := migrations.MySQLFS.ReadFile(name)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
@@ -298,42 +297,19 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 			continue
 		}
 
-		nonTx := strings.HasSuffix(name, nonTransactionalMigrationSuffix)
-		if nonTx {
-			if err := prepareNonTransactionalMigration(ctx, db, name); err != nil {
-				return fmt.Errorf("prepare migration %s: %w", name, err)
+		// MySQL 的 DDL 是隐式提交的，整体走单连接逐语句执行即可。
+		statements := splitSQLStatements(content)
+		for i, stmt := range statements {
+			trimmed := strings.TrimSpace(stmt)
+			if trimmed == "" || stripSQLLineComment(trimmed) == "" {
+				continue
 			}
-			statements := splitSQLStatements(content)
-			for i, stmt := range statements {
-				trimmed := strings.TrimSpace(stmt)
-				if trimmed == "" || stripSQLLineComment(trimmed) == "" {
-					continue
-				}
-				if _, err := db.ExecContext(ctx, trimmed); err != nil {
-					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
-				}
+			if _, err := db.ExecContext(ctx, trimmed); err != nil {
+				return fmt.Errorf("apply migration %s (statement %d): %w", name, i+1, err)
 			}
-			if _, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING", name, "integration"); err != nil {
-				return fmt.Errorf("record migration %s (non-tx): %w", name, err)
-			}
-			continue
 		}
-
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, content); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("apply migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO schema_migrations (filename, checksum) VALUES ($1, $2) ON CONFLICT (filename) DO NOTHING", name, "integration"); err != nil {
-			_ = tx.Rollback()
+		if _, err := db.ExecContext(ctx, "INSERT IGNORE INTO `schema_migrations` (`filename`, `checksum`) VALUES (?, ?)", name, "integration"); err != nil {
 			return fmt.Errorf("record migration %s: %w", name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 	}
 

@@ -306,7 +306,7 @@ func (s *ProxyRepoSuite) mustCreateProxyWithTimes(name, status string, createdAt
 		Port:     8080,
 		Status:   status,
 	})
-	_, err := s.tx.ExecContext(s.ctx, "UPDATE proxies SET created_at = $1, updated_at = $1 WHERE id = $2", createdAt, p.ID)
+	_, err := s.tx.ExecContext(s.ctx, "UPDATE proxies SET created_at = ?, updated_at = ? WHERE id = ?", createdAt, createdAt, p.ID)
 	s.Require().NoError(err, "update proxy timestamps")
 	return p
 }
@@ -319,7 +319,7 @@ func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
 	}
 	_, err := s.tx.ExecContext(
 		s.ctx,
-		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES ($1, $2, $3, $4)",
+		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES (?, ?, ?, ?)",
 		name,
 		service.PlatformAnthropic,
 		service.AccountTypeOAuth,

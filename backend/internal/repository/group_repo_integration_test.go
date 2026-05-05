@@ -475,16 +475,17 @@ func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
 	s.Require().NoError(s.repo.Create(s.ctx, g2))
 
 	var accountID int64
-	s.Require().NoError(scanSingleRow(
-		s.ctx,
-		s.tx,
-		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"acc1", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&accountID,
-	))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g1.ID, 1)
+	{
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			"acc1", service.PlatformAnthropic, service.AccountTypeOAuth)
+		s.Require().NoError(err)
+		accountID, err = res.LastInsertId()
+		s.Require().NoError(err)
+	}
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", accountID, g1.ID, 1)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g2.ID, 1)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", accountID, g2.ID, 1)
 	s.Require().NoError(err)
 
 	isExclusive := true
@@ -609,25 +610,27 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 	s.Require().NoError(s.repo.Create(s.ctx, group))
 
 	var a1 int64
-	s.Require().NoError(scanSingleRow(
-		s.ctx,
-		s.tx,
-		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"a1", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&a1,
-	))
+	{
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			"a1", service.PlatformAnthropic, service.AccountTypeOAuth)
+		s.Require().NoError(err)
+		a1, err = res.LastInsertId()
+		s.Require().NoError(err)
+	}
 	var a2 int64
-	s.Require().NoError(scanSingleRow(
-		s.ctx,
-		s.tx,
-		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"a2", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&a2,
-	))
+	{
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			"a2", service.PlatformAnthropic, service.AccountTypeOAuth)
+		s.Require().NoError(err)
+		a2, err = res.LastInsertId()
+		s.Require().NoError(err)
+	}
 
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, group.ID, 1)
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", a1, group.ID, 1)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, group.ID, 2)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", a2, group.ID, 2)
 	s.Require().NoError(err)
 
 	count, _, err := s.repo.GetAccountCount(s.ctx, group.ID)
@@ -664,14 +667,15 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, g))
 	var accountID int64
-	s.Require().NoError(scanSingleRow(
-		s.ctx,
-		s.tx,
-		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-		[]any{"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth},
-		&accountID,
-	))
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", accountID, g.ID, 1)
+	{
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth)
+		s.Require().NoError(err)
+		accountID, err = res.LastInsertId()
+		s.Require().NoError(err)
+	}
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", accountID, g.ID, 1)
 	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)
@@ -696,23 +700,22 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
 
 	insertAccount := func(name string) int64 {
 		var id int64
-		s.Require().NoError(scanSingleRow(
-			s.ctx,
-			s.tx,
-			"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
-			[]any{name, service.PlatformAnthropic, service.AccountTypeOAuth},
-			&id,
-		))
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			name, service.PlatformAnthropic, service.AccountTypeOAuth)
+		s.Require().NoError(err)
+		id, err = res.LastInsertId()
+		s.Require().NoError(err)
 		return id
 	}
 	a1 := insertAccount("a1")
 	a2 := insertAccount("a2")
 	a3 := insertAccount("a3")
-	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a1, g.ID, 1)
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", a1, g.ID, 1)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a2, g.ID, 2)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", a2, g.ID, 2)
 	s.Require().NoError(err)
-	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())", a3, g.ID, 3)
+	_, err = s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())", a3, g.ID, 3)
 	s.Require().NoError(err)
 
 	affected, err := s.repo.DeleteAccountGroupsByGroupID(s.ctx, g.ID)

@@ -59,7 +59,7 @@ func TestAffiliateRepository_TransferQuotaToBalance_UsesClaimedQuotaBeforeClear(
 	affCode := fmt.Sprintf("AFF%09d", time.Now().UnixNano()%1_000_000_000)
 	_, err := client.ExecContext(txCtx, `
 INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_history_quota, created_at, updated_at)
-VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
+VALUES (?, ?, ?, ?, NOW(), NOW())`, u.ID, affCode, 12.34, 12.34)
 	require.NoError(t, err)
 
 	transferred, balance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
@@ -76,7 +76,7 @@ VALUES ($1, $2, $3, $3, NOW(), NOW())`, u.ID, affCode, 12.34)
 	require.InDelta(t, 17.84, persistedBalance, 1e-9)
 
 	ledgerCount := querySingleInt(t, txCtx, client,
-		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = $1 AND action = 'transfer'", u.ID)
+		"SELECT COUNT(*) FROM user_affiliate_ledger WHERE user_id = ? AND action = 'transfer'", u.ID)
 	require.Equal(t, 1, ledgerCount)
 }
 
@@ -131,7 +131,7 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 
 	// Visible inside the outer tx.
 	innerQuota := querySingleFloat(t, txCtx, client,
-		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", inviter.ID)
+		"SELECT aff_quota FROM user_affiliates WHERE user_id = ?", inviter.ID)
 	require.InDelta(t, 3.5, innerQuota, 1e-9)
 
 	// Roll back the outer tx; if AccrueQuota had opened its own inner tx and
@@ -139,7 +139,7 @@ func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
 	require.NoError(t, outerTx.Rollback())
 
 	rows, err := integrationEntClient.QueryContext(ctx,
-		"SELECT COUNT(*) FROM user_affiliates WHERE user_id IN ($1, $2)",
+		"SELECT COUNT(*) FROM user_affiliates WHERE user_id IN (?, ?)",
 		inviter.ID, invitee.ID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
@@ -170,7 +170,7 @@ func TestAffiliateRepository_TransferQuotaToBalance_EmptyQuota(t *testing.T) {
 	affCode := fmt.Sprintf("AFF%09d", time.Now().UnixNano()%1_000_000_000)
 	_, err := client.ExecContext(txCtx, `
 INSERT INTO user_affiliates (user_id, aff_code, aff_quota, aff_history_quota, created_at, updated_at)
-VALUES ($1, $2, 0, 0, NOW(), NOW())`, u.ID, affCode)
+VALUES (?, ?, 0, 0, NOW(), NOW())`, u.ID, affCode)
 	require.NoError(t, err)
 
 	transferred, balance, err := repo.TransferQuotaToBalance(txCtx, u.ID)
