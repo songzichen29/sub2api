@@ -246,7 +246,7 @@
           :sort-storage-key="USER_SORT_STORAGE_KEY"
           @sort="handleSort"
         >
-          <template #cell-email="{ value }">
+          <template #cell-email="{ value, row }">
             <div class="flex items-center gap-2">
               <div
                 class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
@@ -255,7 +255,14 @@
                   {{ value.charAt(0).toUpperCase() }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <button
+                type="button"
+                class="font-medium text-primary-600 hover:underline dark:text-primary-400"
+                :title="t('admin.users.viewUsageRecords')"
+                @click="goToUserUsage(row)"
+              >
+                {{ value }}
+              </button>
             </div>
           </template>
 
@@ -467,6 +474,19 @@
             </span>
           </template>
 
+          <template #cell-activity="{ row }">
+            <span
+              :class="[
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                activityBadgeClass(row.last_used_at)
+              ]"
+              :title="row.last_used_at ? formatDateTime(row.last_used_at) : '-'"
+            >
+              <span :class="['h-1.5 w-1.5 rounded-full', activityDotClass(row.last_used_at)]" />
+              {{ activityLabel(row.last_used_at) }}
+            </span>
+          </template>
+
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <!-- Edit Button -->
@@ -621,6 +641,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
@@ -650,6 +671,60 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+const router = useRouter()
+
+// 活跃状态阈值与今日日期 helper（用于邮箱跳转和状态徽章）
+const ACTIVITY_ACTIVE_THRESHOLD_MS = 5 * 60 * 1000
+const ACTIVITY_IDLE_THRESHOLD_MS = 60 * 60 * 1000
+
+type ActivityBucket = 'active' | 'idle' | 'inactive' | 'never'
+
+const activityBucket = (lastUsedAt?: string | null): ActivityBucket => {
+  if (!lastUsedAt) return 'never'
+  const ts = new Date(lastUsedAt).getTime()
+  if (!Number.isFinite(ts)) return 'never'
+  const diff = Date.now() - ts
+  if (diff <= ACTIVITY_ACTIVE_THRESHOLD_MS) return 'active'
+  if (diff <= ACTIVITY_IDLE_THRESHOLD_MS) return 'idle'
+  return 'inactive'
+}
+const activityLabel = (lastUsedAt?: string | null) => {
+  const bucket = activityBucket(lastUsedAt)
+  if (bucket === 'active') return t('admin.users.columns.activityActive')
+  if (bucket === 'idle') return t('admin.users.columns.activityIdle')
+  if (bucket === 'inactive') return t('admin.users.columns.activityInactive')
+  return t('admin.users.columns.activityNever')
+}
+const activityBadgeClass = (lastUsedAt?: string | null) => {
+  const bucket = activityBucket(lastUsedAt)
+  if (bucket === 'active') return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+  if (bucket === 'idle') return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+  if (bucket === 'inactive') return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+  return 'bg-slate-100 text-slate-500 dark:bg-dark-800 dark:text-gray-500'
+}
+const activityDotClass = (lastUsedAt?: string | null) => {
+  const bucket = activityBucket(lastUsedAt)
+  if (bucket === 'active') return 'bg-green-500'
+  if (bucket === 'idle') return 'bg-yellow-500'
+  if (bucket === 'inactive') return 'bg-gray-400'
+  return 'bg-slate-300 dark:bg-dark-500'
+}
+
+const formatTodayDate = (): string => {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const goToUserUsage = (row: AdminUser) => {
+  const today = formatTodayDate()
+  router.push({
+    path: '/admin/usage',
+    query: { user_id: row.id, start_date: today, end_date: today }
+  })
+}
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>
@@ -712,6 +787,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
+  { key: 'activity', label: t('admin.users.columns.activityStatus'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },

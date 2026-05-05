@@ -377,6 +377,12 @@ func (_c *AccountCreate) SetNillableSessionWindowStatus(v *string) *AccountCreat
 	return _c
 }
 
+// SetTags sets the "tags" field.
+func (_c *AccountCreate) SetTags(v []string) *AccountCreate {
+	_c.mutation.SetTags(v)
+	return _c
+}
+
 // AddGroupIDs adds the "groups" edge to the Group entity by IDs.
 func (_c *AccountCreate) AddGroupIDs(ids ...int64) *AccountCreate {
 	_c.mutation.AddGroupIDs(ids...)
@@ -501,6 +507,10 @@ func (_c *AccountCreate) defaults() error {
 		v := account.DefaultSchedulable
 		_c.mutation.SetSchedulable(v)
 	}
+	if _, ok := _c.mutation.Tags(); !ok {
+		v := account.DefaultTags
+		_c.mutation.SetTags(v)
+	}
 	return nil
 }
 
@@ -569,6 +579,9 @@ func (_c *AccountCreate) check() error {
 		if err := account.SessionWindowStatusValidator(v); err != nil {
 			return &ValidationError{Name: "session_window_status", err: fmt.Errorf(`ent: validator failed for field "Account.session_window_status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.Tags(); !ok {
+		return &ValidationError{Name: "tags", err: errors.New(`ent: missing required field "Account.tags"`)}
 	}
 	return nil
 }
@@ -704,6 +717,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.SessionWindowStatus(); ok {
 		_spec.SetField(account.FieldSessionWindowStatus, field.TypeString, value)
 		_node.SessionWindowStatus = &value
+	}
+	if value, ok := _c.mutation.Tags(); ok {
+		_spec.SetField(account.FieldTags, field.TypeJSON, value)
+		_node.Tags = value
 	}
 	if nodes := _c.mutation.GroupsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1245,6 +1262,18 @@ func (u *AccountUpsert) UpdateSessionWindowStatus() *AccountUpsert {
 // ClearSessionWindowStatus clears the value of the "session_window_status" field.
 func (u *AccountUpsert) ClearSessionWindowStatus() *AccountUpsert {
 	u.SetNull(account.FieldSessionWindowStatus)
+	return u
+}
+
+// SetTags sets the "tags" field.
+func (u *AccountUpsert) SetTags(v []string) *AccountUpsert {
+	u.Set(account.FieldTags, v)
+	return u
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *AccountUpsert) UpdateTags() *AccountUpsert {
+	u.SetExcluded(account.FieldTags)
 	return u
 }
 
@@ -1801,6 +1830,20 @@ func (u *AccountUpsertOne) UpdateSessionWindowStatus() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearSessionWindowStatus() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetTags sets the "tags" field.
+func (u *AccountUpsertOne) SetTags(v []string) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTags(v)
+	})
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdateTags() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTags()
 	})
 }
 
@@ -2523,6 +2566,20 @@ func (u *AccountUpsertBulk) UpdateSessionWindowStatus() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearSessionWindowStatus() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearSessionWindowStatus()
+	})
+}
+
+// SetTags sets the "tags" field.
+func (u *AccountUpsertBulk) SetTags(v []string) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetTags(v)
+	})
+}
+
+// UpdateTags sets the "tags" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdateTags() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdateTags()
 	})
 }
 

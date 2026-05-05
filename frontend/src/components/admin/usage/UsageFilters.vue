@@ -225,6 +225,43 @@ let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 const modelOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allModels') }])
 const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allGroups') }])
 
+// 模型下拉框选项随当前查询时间范围动态刷新——历史 bug：原实现仅在 onMounted 时取一次，
+// 用户修改日期后下拉框不会重载，看到的还是首次挂载日期（默认今天）的选项；今天没数据
+// 时下拉框就只有"全部模型"。
+//
+// 用 seq 计数器避免快速连续切换日期时旧请求覆盖新结果（项目内已有同模式：admin/UsageView
+// 的 modelStatsReqSeq）。
+let modelOptionsReqSeq = 0
+
+async function reloadModelOptions(): Promise<void> {
+  if (!props.startDate || !props.endDate) {
+    return
+  }
+  const seq = ++modelOptionsReqSeq
+  try {
+    const ms = await adminAPI.dashboard.getModelStats({
+      start_date: props.startDate,
+      end_date: props.endDate,
+    })
+    if (seq !== modelOptionsReqSeq) return
+
+    const uniqueModels = new Set<string>()
+    ms.models?.forEach((s: any) => {
+      if (s.model) {
+        uniqueModels.add(s.model)
+      }
+    })
+    modelOptions.value = [
+      { value: null, label: t('admin.usage.allModels') },
+      ...Array.from(uniqueModels)
+        .sort()
+        .map((m) => ({ value: m, label: m })),
+    ]
+  } catch {
+    // 加载失败保留已有选项，页面其它筛选仍可用
+  }
+}
+
 const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') },
   { value: 'ws_v2', label: t('usage.ws') },
@@ -388,14 +425,33 @@ watch(
   { immediate: true }
 )
 
+// 当 user_id 由外部（例如从用户管理页跳转携带 query 参数）设置时，
+// 自动回填邮箱到搜索框，避免出现"筛选已生效但输入框是空的"这种误导性 UI。
+const fillUserKeywordFromId = async (userId: number) => {
+  try {
+    const user = await adminAPI.users.getById(userId)
+    // 防止异步返回时 user_id 已被切换或清除
+    if (filters.value.user_id === userId && !userKeyword.value) {
+      userKeyword.value = user.email || ''
+    }
+  } catch {
+    // 静默失败：回填失败不影响其它筛选功能
+  }
+}
+
 watch(
   () => filters.value.user_id,
   (userId) => {
     if (!userId) {
       userKeyword.value = ''
       userResults.value = []
+      return
     }
-  }
+    if (!userKeyword.value) {
+      fillUserKeywordFromId(userId)
+    }
+  },
+  { immediate: true }
 )
 
 watch(
@@ -422,28 +478,25 @@ onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
 
   try {
-    const [gs, ms] = await Promise.all([
-      adminAPI.groups.list(1, 1000),
-      adminAPI.dashboard.getModelStats({ start_date: props.startDate, end_date: props.endDate })
-    ])
-
+    const gs = await adminAPI.groups.list(1, 1000)
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
-
-    const uniqueModels = new Set<string>()
-    ms.models?.forEach((s: any) => {
-      if (s.model) {
-        uniqueModels.add(s.model)
-      }
-    })
-    modelOptions.value.push(
-      ...Array.from(uniqueModels)
-        .sort()
-        .map((m) => ({ value: m, label: m }))
-    )
   } catch {
-    // Ignore filter option loading errors (page still usable)
+    // 分组加载失败：保留默认"全部分组"选项，不阻塞模型选项加载
   }
+
+  // 模型选项独立加载（不依赖分组结果），并且后续日期变更时也由 watch 触发刷新
+  await reloadModelOptions()
 })
+
+// 时间范围变化时重新拉取模型选项，保持下拉框与当前查询区间一致。
+// 注意：watch 注册放在 onMounted 之后，挂载时的首次加载由 onMounted 显式触发，
+// 避免 immediate 与 onMounted 形成重复请求。
+watch(
+  [() => props.startDate, () => props.endDate],
+  () => {
+    void reloadModelOptions()
+  },
+)
 
 onUnmounted(() => {
   document.removeEventListener('click', onDocumentClick)

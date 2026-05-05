@@ -45,7 +45,7 @@
         @click="$emit('select', facet.provider)"
       >
         <span class="flex min-w-0 items-center gap-2">
-          <PlatformIcon :platform="facet.provider as GroupPlatform" size="sm" class="text-gray-500 dark:text-gray-300" />
+          <PlatformIcon :platform="facet.provider as GroupPlatform" size="sm" :class="platformIconClass(facet.provider)" />
           <span class="truncate">{{ platformLabel(facet.provider) }}</span>
         </span>
         <span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
@@ -127,7 +127,7 @@
 import type { GroupPlatform } from '@/types'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import type { MarketplaceGroupFacet, MarketplaceProviderFacet } from '@/utils/modelMarketplace'
-import { platformLabel } from '@/utils/platformColors'
+import { platformIconClass, platformLabel } from '@/utils/platformColors'
 defineProps<{
   facets: MarketplaceProviderFacet[]
   groupFacets: MarketplaceGroupFacet[]

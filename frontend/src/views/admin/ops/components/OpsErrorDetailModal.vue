@@ -12,6 +12,18 @@
     </div>
 
     <div v-else class="space-y-6 p-6">
+      <!-- 返回上一页按钮（由父组件控制是否显示） -->
+      <div v-if="showBackButton" class="-mt-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-200 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+          @click="goBack"
+        >
+          <Icon name="arrowLeft" size="xs" :stroke-width="2" />
+          <span>{{ t('admin.ops.errorDetail.back') }}</span>
+        </button>
+      </div>
+
       <!-- Summary -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -201,10 +213,12 @@ interface Props {
   show: boolean
   errorId: number | null
   errorType?: 'request' | 'upstream'
+  showBackButton?: boolean
 }
 
 interface Emits {
   (e: 'update:show', value: boolean): void
+  (e: 'back'): void
 }
 
 const props = defineProps<Props>()
@@ -304,6 +318,11 @@ async function fetchCorrelatedUpstreamErrors(requestErrorId: number) {
 }
 
 function close() {
+  emit('update:show', false)
+}
+
+function goBack() {
+  emit('back')
   emit('update:show', false)
 }
 

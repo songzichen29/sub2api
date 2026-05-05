@@ -246,6 +246,10 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+
+	// Tags 管理员维度的轻量标签集合（已规范化）。序列化时空数组写为 []，
+	// 不要让前端拿到 null —— mapper 层做兜底。
+	Tags []string `json:"tags"`
 }
 
 type AccountGroup struct {
@@ -509,6 +513,10 @@ type UserSubscription struct {
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// LastUsedAt 是非持久化字段：service 层从 usage_logs 聚合 MAX(created_at)
+	// 填入，未使用过的订阅返回 null。
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`

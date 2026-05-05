@@ -22,6 +22,7 @@ const (
 	PlatformOpenAI      = "openai"
 	PlatformGemini      = "gemini"
 	PlatformAntigravity = "antigravity"
+	PlatformGrok        = "grok"
 )
 
 // Account type constants
@@ -122,6 +123,18 @@ var DefaultAntigravityModelMapping = map[string]string{
 	// 其他官方模型
 	"gpt-oss-120b-medium":    "gpt-oss-120b-medium",
 	"tab_flash_lite_preview": "tab_flash_lite_preview",
+}
+
+// DefaultGrokModelMapping 是 Grok 平台的默认模型映射
+// Grok 平台通过 grok2api 网关透传(type=upstream),sub2api 仅做 Anthropic 协议直通,
+// 模型名按原样转发给 grok2api。用户可在账号 model_mapping 自行扩展或覆盖。
+var DefaultGrokModelMapping = map[string]string{
+	"grok-3":        "grok-3",
+	"grok-3-fast":   "grok-3-fast",
+	"grok-4":        "grok-4",
+	"grok-4-fast":   "grok-4-fast",
+	"grok-4-heavy":  "grok-4-heavy",
+	"grok-2-vision": "grok-2-vision",
 }
 
 // DefaultBedrockModelMapping 是 AWS Bedrock 平台的默认模型映射

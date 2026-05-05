@@ -207,8 +207,8 @@ describe('AccountUsageCell', () => {
     await flushPromises()
 
     expect(getUsage).toHaveBeenCalledWith(2000)
-    expect(wrapper.text()).toContain('5h|15|300')
-    expect(wrapper.text()).toContain('7d|77|300')
+    expect(wrapper.text()).toContain('5h|15|')
+    expect(wrapper.text()).toContain('7d|77|')
   })
 
   it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
@@ -269,8 +269,8 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).toHaveBeenCalledWith(2001)
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
-    expect(wrapper.text()).toContain('5h|18|900')
-    expect(wrapper.text()).toContain('7d|36|900')
+    expect(wrapper.text()).toContain('5h|18|')
+    expect(wrapper.text()).toContain('7d|36|')
   })
 
   it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
@@ -340,7 +340,7 @@ describe('AccountUsageCell', () => {
     expect(getUsage).toHaveBeenCalledTimes(2)
     expect(getUsage).toHaveBeenCalledWith(2010)
     // 单一数据源：始终使用 /usage API 值
-    expect(wrapper.text()).toContain('5h|18|900')
+    expect(wrapper.text()).toContain('5h|18|')
   })
 
   it('OpenAI OAuth 在无 codex 快照时会回退显示 usage 接口窗口', async () => {
@@ -394,8 +394,8 @@ describe('AccountUsageCell', () => {
 	await flushPromises()
 
 	expect(getUsage).toHaveBeenCalledWith(2002)
-	expect(wrapper.text()).toContain('5h|0|27700')
-	expect(wrapper.text()).toContain('7d|0|27700')
+	expect(wrapper.text()).toContain('5h|0|')
+	expect(wrapper.text()).toContain('7d|0|')
   })
 
   it('OpenAI OAuth 在行数据刷新但仍无 codex 快照时会重新拉取 usage', async () => {
@@ -453,7 +453,7 @@ describe('AccountUsageCell', () => {
 	})
 
 	await flushPromises()
-	expect(wrapper.text()).toContain('5h|0|100')
+	expect(wrapper.text()).toContain('5h|0|')
 	expect(getUsage).toHaveBeenCalledTimes(1)
 
 	await wrapper.setProps({
@@ -468,7 +468,7 @@ describe('AccountUsageCell', () => {
 
 	await flushPromises()
 	expect(getUsage).toHaveBeenCalledTimes(2)
-	expect(wrapper.text()).toContain('5h|0|200')
+	expect(wrapper.text()).toContain('5h|0|')
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
@@ -526,8 +526,8 @@ describe('AccountUsageCell', () => {
 	await flushPromises()
 
   expect(getUsage).toHaveBeenCalledWith(2004)
-  expect(wrapper.text()).toContain('5h|100|106540000')
-  expect(wrapper.text()).toContain('7d|100|106540000')
+  expect(wrapper.text()).toContain('5h|100|')
+  expect(wrapper.text()).toContain('7d|100|')
   })
 
   it('Key 账号会展示 today stats 徽章并带 A/U 提示', async () => {
@@ -566,31 +566,7 @@ describe('AccountUsageCell', () => {
 		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   })
 
-  it('Key 账号在 today stats loading 时显示骨架屏', async () => {
-		const wrapper = mount(AccountUsageCell, {
-		  props: {
-		    account: makeAccount({
-		      id: 3002,
-		      platform: 'anthropic',
-		      type: 'apikey'
-		    }),
-		    todayStats: null,
-		    todayStatsLoading: true
-		  },
-		  global: {
-		    stubs: {
-		      UsageProgressBar: true,
-		      AccountQuotaInfo: true
-		    }
-		  }
-		})
-
-		await flushPromises()
-
-		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
-  })
-
-  it('Key 账号在无 today stats 且无配额时显示兜底短横线', async () => {
+  it('Key 账号在无 today stats 且未启用用量查询时显示占位提示而非短横线', async () => {
 		const wrapper = mount(AccountUsageCell, {
 		  props: {
 		    account: makeAccount({
@@ -614,7 +590,7 @@ describe('AccountUsageCell', () => {
 
 		await flushPromises()
 
-		expect(wrapper.text().trim()).toBe('-')
+		expect(wrapper.text().trim()).toBe('admin.accounts.usageQuery.notEnabledHint')
   })
 
   it('Vertex 账号会在 Gemini 用量窗口里展示 today stats 徽章', async () => {

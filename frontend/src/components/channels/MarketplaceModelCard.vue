@@ -7,7 +7,7 @@
         <div
           class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-700"
         >
-          <PlatformIcon :platform="item.provider as GroupPlatform" size="md" />
+          <PlatformIcon :platform="item.provider as GroupPlatform" size="md" :class="platformIconClass(item.provider)" />
         </div>
 
         <div class="min-w-0 flex-1">
@@ -81,6 +81,7 @@ import { useAppStore } from '@/stores/app'
 import type { MarketplaceModelItem } from '@/utils/modelMarketplace'
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN } from '@/constants/channel'
 import { formatScaled } from '@/utils/pricing'
+import { platformIconClass } from '@/utils/platformColors'
 
 const props = defineProps<{
   item: MarketplaceModelItem

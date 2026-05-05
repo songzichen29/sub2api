@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -42,6 +43,7 @@ type stubAdminService struct {
 		privacyMode string
 		sortBy      string
 		sortOrder   string
+		tags        []string
 		calls       int
 	}
 	lastListUsers struct {
@@ -295,7 +297,7 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, tags []string) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
@@ -304,8 +306,29 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 	s.lastListAccounts.privacyMode = privacyMode
 	s.lastListAccounts.sortBy = sortBy
 	s.lastListAccounts.sortOrder = sortOrder
+	s.lastListAccounts.tags = tags
 	s.lastListAccounts.calls++
 	return s.accounts, int64(len(s.accounts)), nil
+}
+
+// ListAllAccountTags 默认返回 stub 中所有账号 tags 字段去重排序的并集；
+// 测试想覆盖时可直接覆写 stubAdminService.accounts 调整数据源。
+func (s *stubAdminService) ListAllAccountTags(ctx context.Context) ([]string, error) {
+	set := make(map[string]struct{})
+	for _, a := range s.accounts {
+		for _, t := range a.Tags {
+			if t == "" {
+				continue
+			}
+			set[t] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for t := range set {
+		out = append(out, t)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
@@ -343,6 +366,10 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 
 func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
 	return nil
+}
+
+func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64) (*service.Account, error) {
+	return nil, nil
 }
 
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {

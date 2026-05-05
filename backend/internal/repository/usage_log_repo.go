@@ -104,6 +104,15 @@ const rawUsageLogModelColumn = "model"
 // Historical rows may contain upstream/billing model values, while newer rows store requested_model.
 // Requested/upstream/mapping analytics must use resolveModelDimensionExpression instead.
 
+// usageLogDisplayModelExpression 与 DTO 给前端的 Model 字段（requested_model 回退到 model）
+// 以及 resolveModelDimensionExpression 默认分支保持一致，用于让用户在「使用记录」筛选时
+// 输入的字符串能够精确命中前端表格里展示的「模型」列。
+//
+// 历史问题：appendUsageLogModelWhereCondition 早先只过滤裸 `model` 列，但前端显示用的是
+// COALESCE(requested_model, model)。当某条记录的 requested_model 与 model 不一致时，
+// 用户复制粘贴显示值去筛选会漏行——典型表现是"列表只剩极少数模型，比如只有 gpt-5.4"。
+const usageLogDisplayModelExpression = "COALESCE(NULLIF(TRIM(requested_model), ''), model)"
+
 func safeMySQLDateFormat(granularity string) string {
 	switch granularity {
 	case "hour":
@@ -119,26 +128,29 @@ func safeMySQLDateFormat(granularity string) string {
 	}
 }
 
-// appendRawUsageLogModelWhereCondition keeps direct model filters on the raw model column for backward
-// compatibility with historical rows. Requested/upstream analytics must use
-// resolveModelDimensionExpression instead.
-func appendRawUsageLogModelWhereCondition(conditions []string, args []any, model string) ([]string, []any) {
+// appendUsageLogModelWhereCondition 把用户在「使用记录」筛选框输入的模型名精确匹配到
+// 显示侧的模型维度（requested_model 回退 model），而不是只匹配裸 `model` 列。这样
+// 显示和筛选维度保持一致，避免"看到 gpt-5.4 却搜不到对应行"。
+//
+// 性能：表达式无法直接命中 idx_usage_logs_model；但绝大多数调用方（usage_handler、
+// admin/usage_handler）都会同时附带 user_id / api_key_id / 时间区间过滤，会先用强选择
+// 索引收敛行集，model 过滤只是末端筛选，不会成为瓶颈。
+func appendUsageLogModelWhereCondition(conditions []string, args []any, model string) ([]string, []any) {
 	if strings.TrimSpace(model) == "" {
 		return conditions, args
 	}
-	conditions = append(conditions, fmt.Sprintf("%s = ?", rawUsageLogModelColumn))
+	conditions = append(conditions, fmt.Sprintf("%s = ?", usageLogDisplayModelExpression))
 	args = append(args, model)
 	return conditions, args
 }
 
-// appendRawUsageLogModelQueryFilter keeps direct model filters on the raw model column for backward
-// compatibility with historical rows. Requested/upstream analytics must use
-// resolveModelDimensionExpression instead.
-func appendRawUsageLogModelQueryFilter(query string, args []any, model string) (string, []any) {
+// appendUsageLogModelQueryFilter 是 appendUsageLogModelWhereCondition 的字符串拼接版，
+// 用于已经持有 query 字符串、按 AND 追加的查询路径。语义和性能特征同上。
+func appendUsageLogModelQueryFilter(query string, args []any, model string) (string, []any) {
 	if strings.TrimSpace(model) == "" {
 		return query, args
 	}
-	query += fmt.Sprintf(" AND %s = ?", rawUsageLogModelColumn)
+	query += fmt.Sprintf(" AND %s = ?", usageLogDisplayModelExpression)
 	args = append(args, model)
 	return query, args
 }
@@ -2347,7 +2359,7 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		conditions = append(conditions, "group_id = ?")
 		args = append(args, filters.GroupID)
 	}
-	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	conditions, args = appendUsageLogModelWhereCondition(conditions, args, filters.Model)
 	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
 	if filters.BillingType != nil {
 		conditions = append(conditions, "billing_type = ?")
@@ -2588,7 +2600,7 @@ func (r *usageLogRepository) GetUsageTrendWithFilters(ctx context.Context, start
 		query += " AND group_id = ?"
 		args = append(args, groupID)
 	}
-	query, args = appendRawUsageLogModelQueryFilter(query, args, model)
+	query, args = appendUsageLogModelQueryFilter(query, args, model)
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
 		query += " AND billing_type = ?"
@@ -3048,7 +3060,7 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		conditions = append(conditions, "group_id = ?")
 		args = append(args, filters.GroupID)
 	}
-	conditions, args = appendRawUsageLogModelWhereCondition(conditions, args, filters.Model)
+	conditions, args = appendUsageLogModelWhereCondition(conditions, args, filters.Model)
 	conditions, args = appendRequestTypeOrStreamWhereCondition(conditions, args, filters.RequestType, filters.Stream)
 	if filters.BillingType != nil {
 		conditions = append(conditions, "billing_type = ?")
@@ -3179,7 +3191,7 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 		query += " AND group_id = ?"
 		args = append(args, groupID)
 	}
-	query, args = appendRawUsageLogModelQueryFilter(query, args, model)
+	query, args = appendUsageLogModelQueryFilter(query, args, model)
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
 		query += " AND billing_type = ?"
@@ -3250,7 +3262,7 @@ func (r *usageLogRepository) getEndpointPathStatsWithFilters(ctx context.Context
 		query += " AND group_id = ?"
 		args = append(args, groupID)
 	}
-	query, args = appendRawUsageLogModelQueryFilter(query, args, model)
+	query, args = appendUsageLogModelQueryFilter(query, args, model)
 	query, args = appendRequestTypeOrStreamQueryFilter(query, args, requestType, stream)
 	if billingType != nil {
 		query += " AND billing_type = ?"

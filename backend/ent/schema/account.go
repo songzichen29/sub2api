@@ -193,6 +193,15 @@ func (Account) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			MaxLen(20),
+
+		// tags: 管理员维度的轻量标签集合（字符串数组，MySQL 用 JSON 列存储）。
+		// 仅用于列表筛选和视觉识别——不参与调度/权限/计费链路。
+		// 规范化由 service.NormalizeAccountTags 负责（trim/小写/去重/长度数量校验）。
+		// 列由 SQL 迁移 mysql/005_add_account_tags.sql 显式添加；MySQL 不支持
+		// PostgreSQL 的 GIN 索引，筛选走 JSON_CONTAINS 全表扫（规模可控）。
+		field.JSON("tags", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
 	}
 }
 

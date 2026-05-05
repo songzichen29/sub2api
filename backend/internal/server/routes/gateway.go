@@ -213,6 +213,23 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+	// Grok 专用路由(仅使用 grok 账户,通过 upstream 透传到 grok2api 网关)
+	// 协议形态与 antigravity upstream 一致(Anthropic 兼容 /v1/messages),复用 Gateway.Messages handler
+	grokV1 := r.Group("/grok/v1")
+	grokV1.Use(bodyLimit)
+	grokV1.Use(clientRequestID)
+	grokV1.Use(opsErrorLogger)
+	grokV1.Use(endpointNorm)
+	grokV1.Use(middleware.ForcePlatform(service.PlatformGrok))
+	grokV1.Use(gin.HandlerFunc(apiKeyAuth))
+	grokV1.Use(requireGroupAnthropic)
+	{
+		grokV1.POST("/messages", h.Gateway.Messages)
+		grokV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
+		grokV1.GET("/models", h.Gateway.Models)
+		grokV1.GET("/usage", h.Gateway.Usage)
+	}
+
 }
 
 // getGroupPlatform extracts the group platform from the API Key stored in context.

@@ -42,6 +42,12 @@
                 <p class="truncate text-sm text-gray-600 dark:text-gray-300">
                   {{ primaryEmailDisplay }}
                 </p>
+                <p
+                  v-if="user?.id"
+                  class="font-mono text-xs text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('profile.userId') }}: {{ user.id }}
+                </p>
                 <div
                   v-if="sourceHints.length"
                   class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"

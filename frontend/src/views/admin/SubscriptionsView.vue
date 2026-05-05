@@ -218,6 +218,13 @@
             <span v-else class="text-sm text-gray-500">-</span>
           </template>
 
+          <template #cell-last_used_at="{ value }">
+            <span v-if="value" class="text-sm text-gray-700 dark:text-gray-300">
+              {{ formatDateTime(value) }}
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
+
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
               <!-- Daily Usage -->
@@ -881,7 +888,7 @@ import type {
 } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
-import { formatDateOnly } from '@/utils/format'
+import { formatDateOnly, formatDateTime } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -956,6 +963,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false },
   { key: 'starts_at', label: t('admin.subscriptions.columns.startsAt'), sortable: false },
   { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false },
+  { key: 'last_used_at', label: t('admin.subscriptions.columns.lastUsed'), sortable: true },
   { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true },
   { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true },
   { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false }
@@ -1062,7 +1070,7 @@ const filters = reactive({
 
 // Sorting state
 const sortState = reactive({
-  sort_by: 'created_at',
+  sort_by: 'last_used_at',
   sort_order: 'desc' as 'asc' | 'desc'
 })
 

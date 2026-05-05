@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 )
@@ -100,6 +102,7 @@ func (r *accountRepository) Create(ctx context.Context, account *service.Account
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
 		SetExtra(normalizeJSONMap(account.Extra)).
+		SetTags(normalizeJSONStringSlice(account.Tags)).
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
@@ -337,6 +340,7 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 		SetType(account.Type).
 		SetCredentials(normalizeJSONMap(account.Credentials)).
 		SetExtra(normalizeJSONMap(account.Extra)).
+		SetTags(normalizeJSONStringSlice(account.Tags)).
 		SetConcurrency(account.Concurrency).
 		SetPriority(account.Priority).
 		SetStatus(account.Status).
@@ -469,10 +473,10 @@ func (r *accountRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *accountRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.Account, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "")
+	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "", nil)
 }
 
-func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -565,6 +569,33 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
+	// Tags：JSONB / JSON 数组包含语义。AND 语义——必须同时包含全部传入标签。
+	// PostgreSQL 用 `@>`（GIN 索引 idx_accounts_tags_gin 加速）；
+	// MySQL 8 用 `JSON_CONTAINS(target, candidate)`（无索引，全表扫但规模可控）。
+	if len(tags) > 0 {
+		payload, marshalErr := json.Marshal(tags)
+		if marshalErr != nil {
+			return nil, nil, marshalErr
+		}
+		isPostgres := r.client.Driver().Dialect() == dialect.Postgres
+		jsonPayload := string(payload)
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			s.Where(entsql.P(func(b *entsql.Builder) {
+				if isPostgres {
+					b.Ident(s.C(dbaccount.FieldTags)).
+						WriteString(" @> ").
+						Arg(jsonPayload)
+				} else {
+					b.WriteString("JSON_CONTAINS(").
+						Ident(s.C(dbaccount.FieldTags)).
+						WriteString(", ").
+						Arg(jsonPayload).
+						WriteString(")")
+				}
+			}))
+		}))
+	}
+
 	total, err := q.Count(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -587,6 +618,40 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		return nil, nil, err
 	}
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
+}
+
+// ListAllTags 返回所有未删除账号 tags 字段去重排序后的并集，用于自动补全候选。
+//
+// 实现策略：dialect-agnostic—— SQL 只查每个账号的 tags 字段，Go 层做 unnest + dedupe。
+// 不用 PG 的 jsonb_array_elements_text 是因为运行时 dialect 也可能是 MySQL（无对应函数）。
+// 规模评估：N 账号 * 平均标签数（< 20）一次拿回，~100KB 内存可容纳 5k 账号场景。
+func (r *accountRepository) ListAllTags(ctx context.Context) ([]string, error) {
+	type tagsHolder struct {
+		Tags []string `json:"tags"`
+	}
+	var holders []tagsHolder
+	if err := r.client.Account.Query().
+		Where(dbaccount.DeletedAtIsNil()).
+		Select(dbaccount.FieldTags).
+		Scan(ctx, &holders); err != nil {
+		return nil, err
+	}
+
+	set := make(map[string]struct{}, 64)
+	for _, h := range holders {
+		for _, tag := range h.Tags {
+			if tag == "" {
+				continue
+			}
+			set[tag] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for tag := range set {
+		out = append(out, tag)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
@@ -1439,6 +1504,18 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 		setClauses = append(setClauses, "extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST($"+itoa(idx)+" AS JSON))")
 		args = append(args, payload)
+		idx++
+	}
+	// Tags：替换语义。指针非 nil 即落库；空数组允许（清空所有标签）。
+	// JSONB 字段直接整体覆盖，不做 merge —— 标签的语义是"集合"，merge 会
+	// 让"清空"无法表达。前置 service 层已规范化，这里不再校验。
+	if updates.Tags != nil {
+		payload, err := json.Marshal(normalizeJSONStringSlice(*updates.Tags))
+		if err != nil {
+			return 0, err
+		}
+		setClauses = append(setClauses, "tags = CAST($"+itoa(idx)+" AS JSON)")
+		args = append(args, payload)
 	}
 
 	if len(setClauses) == 0 {
@@ -1731,6 +1808,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		Type:                    m.Type,
 		Credentials:             copyJSONMap(m.Credentials),
 		Extra:                   copyJSONMap(m.Extra),
+		Tags:                    copyStringSlice(m.Tags),
 		ProxyID:                 m.ProxyID,
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,
@@ -1762,6 +1840,15 @@ func normalizeJSONMap(in map[string]any) map[string]any {
 	return in
 }
 
+// normalizeJSONStringSlice 把可能为 nil 的字符串数组兜底成空切片，
+// 用于写入 JSONB 字段时保证落库为 [] 而不是 NULL。
+func normalizeJSONStringSlice(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
+
 func copyJSONMap(in map[string]any) map[string]any {
 	if in == nil {
 		return nil
@@ -1770,6 +1857,17 @@ func copyJSONMap(in map[string]any) map[string]any {
 	for k, v := range in {
 		out[k] = v
 	}
+	return out
+}
+
+// copyStringSlice 复制字符串切片，避免 ent 内部切片被外部修改污染缓存。
+// nil 输入返回 nil（保留 nil 语义供上层做空数组兜底）。
+func copyStringSlice(in []string) []string {
+	if in == nil {
+		return nil
+	}
+	out := make([]string, len(in))
+	copy(out, in)
 	return out
 }
 

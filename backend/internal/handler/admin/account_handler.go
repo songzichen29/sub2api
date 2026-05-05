@@ -58,6 +58,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	secretEncryptor         service.SecretEncryptor
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -75,6 +76,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	secretEncryptor service.SecretEncryptor,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -90,6 +92,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		secretEncryptor:         secretEncryptor,
 	}
 }
 
@@ -110,6 +113,7 @@ type CreateAccountRequest struct {
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Tags                    []string       `json:"tags"`                       // 管理员标签（待 service 层规范化）
 }
 
 // UpdateAccountRequest represents update account request
@@ -130,6 +134,8 @@ type UpdateAccountRequest struct {
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
+	Tags *[]string `json:"tags"`
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -148,6 +154,9 @@ type BulkUpdateAccountsRequest struct {
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空全部选中账号的标签）"。
+	// 替换语义——design 锁死，不做追加 / 移除。
+	Tags *[]string `json:"tags"`
 }
 
 type BulkUpdateAccountFilters struct {
@@ -258,7 +267,16 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	// Tags：?tags=vip&tags=prod 解析为 ["vip","prod"]，规范化（trim/小写）后透传给
+	// service 层。空字符串过滤掉。规范化失败（长度/字符集）直接返回 400。
+	rawTags := c.QueryArray("tags")
+	tagsFilter, tagsErr := normalizeTagsForListFilter(rawTags)
+	if tagsErr != nil {
+		response.ErrorFrom(c, tagsErr)
+		return
+	}
+
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, tagsFilter)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -448,6 +466,45 @@ func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
 	return false
 }
 
+// normalizeTagsForListFilter 把 ?tags=... 的多值参数规范化为 service 层期望的形式：
+// trim + 小写 + 过滤空 + 去重。和写入侧规范化保持一致（仅前两步），
+// 不校验长度/字符集——查询侧违规值视为"无匹配"由 SQL 自然返回空集。
+//
+// 返回的错误目前永远是 nil（保留 error 返回值便于将来加严格校验时不破坏调用方）。
+func normalizeTagsForListFilter(raw []string) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		tag := strings.ToLower(strings.TrimSpace(item))
+		if tag == "" {
+			continue
+		}
+		if _, dup := seen[tag]; dup {
+			continue
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
+	return out, nil
+}
+
+// ListTags 返回所有未删除账号 tags 字段去重排序后的并集，用于前端自动补全候选。
+// GET /api/v1/admin/accounts/tags
+func (h *AccountHandler) ListTags(c *gin.Context) {
+	tags, err := h.adminService.ListAllAccountTags(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	response.Success(c, gin.H{"tags": tags})
+}
+
 // GetByID handles getting an account by ID
 // GET /api/v1/admin/accounts/:id
 func (h *AccountHandler) GetByID(c *gin.Context) {
@@ -525,6 +582,12 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
+	// 加密 extra.usage_query.access_token（创建场景没有 prev）
+	if err := encryptUsageQueryToken(req.Extra, nil, h.secretEncryptor); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -544,6 +607,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			GroupIDs:              req.GroupIDs,
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
+			Tags:                  req.Tags,
 			SkipMixedChannelCheck: skipCheck,
 		})
 		if execErr != nil {
@@ -580,6 +644,26 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	response.Success(c, result.Data)
 }
 
+// Duplicate handles duplicating an existing account: copy credentials and base
+// configuration into a brand-new account, reset runtime state, do not copy
+// group bindings. Name is auto-suffixed with " - 副本".
+// POST /api/v1/admin/accounts/:id/duplicate
+func (h *AccountHandler) Duplicate(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	account, err := h.adminService.DuplicateAccount(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
 // Update handles updating an account
 // PUT /api/v1/admin/accounts/:id
 func (h *AccountHandler) Update(c *gin.Context) {
@@ -601,6 +685,16 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
+	// 加密 extra.usage_query.access_token；用户未修改时（值为掩码）从 prev 取原密文回填
+	var prevExtra map[string]any
+	if prevAcc, prevErr := h.adminService.GetAccount(c.Request.Context(), accountID); prevErr == nil && prevAcc != nil {
+		prevExtra = prevAcc.Extra
+	}
+	if err := encryptUsageQueryToken(req.Extra, prevExtra, h.secretEncryptor); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
@@ -619,6 +713,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		GroupIDs:              req.GroupIDs,
 		ExpiresAt:             req.ExpiresAt,
 		AutoPauseOnExpired:    req.AutoPauseOnExpired,
+		Tags:                  req.Tags,
 		SkipMixedChannelCheck: skipCheck,
 	})
 	if err != nil {
@@ -1420,6 +1515,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		GroupIDs:              req.GroupIDs,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
+		Tags:                  req.Tags,
 		SkipMixedChannelCheck: skipCheck,
 	})
 	if err != nil {
@@ -1913,6 +2009,32 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+	// Handle Grok accounts: 走 type=upstream 透传到 grok2api,模型列表来自 account.model_mapping
+	// 用户未配 mapping 时 fallback 到 domain.DefaultGrokModelMapping。
+	if account.Platform == service.PlatformGrok {
+		keys := make([]string, 0)
+		if mapping := account.GetModelMapping(); len(mapping) > 0 {
+			for k := range mapping {
+				keys = append(keys, k)
+			}
+		} else {
+			for k := range domain.DefaultGrokModelMapping {
+				keys = append(keys, k)
+			}
+		}
+		var models []geminicli.Model
+		for _, k := range keys {
+			models = append(models, geminicli.Model{
+				ID:          k,
+				Type:        "model",
+				DisplayName: k,
+				CreatedAt:   "",
+			})
+		}
+		response.Success(c, models)
+		return
+	}
+
 	// Handle Claude/Anthropic accounts
 	// For OAuth and Setup-Token accounts: return default models
 	if account.IsOAuth() {
@@ -2067,7 +2189,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc", nil)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

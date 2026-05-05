@@ -1092,6 +1092,7 @@ export default {
   profile: {
     title: 'Profile Settings',
     description: 'Manage your account information and settings',
+    userId: 'User ID',
     accountBalance: 'Account Balance',
     concurrencyLimit: 'Concurrency Limit',
     rpmLimit: 'RPM Limit',
@@ -1714,11 +1715,17 @@ export default {
         usage: 'Usage',
         concurrency: 'Concurrency',
         status: 'Status',
+        activityStatus: 'Activity',
+        activityActive: 'Active',
+        activityIdle: 'Recent',
+        activityInactive: 'Idle',
+        activityNever: 'Never used',
         lastActive: 'Last Active',
         lastUsed: 'Last Used',
         created: 'Created',
         actions: 'Actions'
       },
+      viewUsageRecords: "View this user's usage records for today",
       today: 'Today',
       total: 'Last 30d',
       noSubscription: 'No subscription',
@@ -2441,6 +2448,7 @@ export default {
         group: 'Group',
         startsAt: 'Starts At',
         usage: 'Usage',
+        lastUsed: 'Last Used',
         expires: 'Expires',
         status: 'Status',
         actions: 'Actions'
@@ -2607,6 +2615,12 @@ export default {
       crsBack: 'Back',
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
+      duplicate: 'Duplicate Account',
+      duplicateShort: 'Duplicate',
+      duplicateConfirm: "Duplicate account '{name}'? A new copy with the same credentials and base configuration will be created, with no group attached.",
+      duplicateConfirmButton: 'Duplicate',
+      duplicateSuccess: "Duplicated as '{name}', no groups attached",
+      duplicateFailed: 'Failed to duplicate account',
       searchAccounts: 'Search accounts...',
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
@@ -2684,6 +2698,7 @@ export default {
         proxy: 'Proxy',
         lastUsed: 'Last Used',
         expiresAt: 'Expires At',
+        tags: 'Tags',
         actions: 'Actions'
       },
       allPrivacyModes: 'All Privacy States',
@@ -3551,6 +3566,37 @@ export default {
         passiveSampled: 'Passive',
         activeQuery: 'Query'
       },
+      usageQuery: {
+        title: 'Usage Query',
+        hint: 'Query upstream remaining quota via a third-party panel (e.g. newapi). Only available for API Key accounts.',
+        enable: 'Enable third-party usage query',
+        provider: 'Provider',
+        baseUrl: 'Panel URL',
+        accessToken: 'Access Token',
+        accessTokenPlaceholder: 'Enter access token',
+        userId: 'Upstream User ID',
+        editTokenHint: 'Leave unchanged to keep the existing token; type to overwrite.',
+        incompleteFields: 'Usage query is enabled. Please fill in panel URL, access token and upstream user ID before submitting.',
+        notEnabledHint: 'Usage query not enabled'
+      },
+      tags: {
+        label: 'Tags',
+        placeholder: 'Type a tag and press Enter or Space to add',
+        hint: 'Lightweight admin-only tags for filtering and visual grouping. Not used for scheduling, permission, or billing.',
+        bulkReplaceHint: 'Submitting will fully replace the tag set on target accounts (empty means clear).',
+        remove: 'Remove tag {tag}',
+        errors: {
+          length: 'Tag "{tag}" exceeds the {max}-character limit',
+          charset: 'Tag "{tag}" contains invalid characters; only CJK, ASCII letters/digits, - and _ are allowed',
+          count: 'A single account can have at most {max} tags'
+        },
+        filterAll: 'All Tags',
+        filterSelectedLabel: '{count} tags selected',
+        filterSearchPlaceholder: 'Search tags',
+        filterEmpty: 'No tags available',
+        filterSelectedCount: '{count} selected',
+        filterClear: 'Clear'
+      },
       tier: {
         free: 'Free',
         pro: 'Pro',
@@ -4298,6 +4344,7 @@ export default {
       errorDetail: {
         title: 'Error Detail',
         titleWithId: 'Error #{id}',
+        back: 'Back',
         noErrorSelected: 'No error selected.',
         resolution: 'Resolved:',
         pinnedToOriginalAccountId: 'Pinned to original account_id',
@@ -4438,6 +4485,7 @@ export default {
           kind: 'Kind',
           platform: 'Platform',
           model: 'Model',
+          account: 'Account',
           duration: 'Duration',
           status: 'Status',
           requestId: 'Request ID',

@@ -118,10 +118,16 @@
           :group-id="groupId"
           :error-type="errorDetailsType"
           @update:show="showErrorDetails = $event"
-          @openErrorDetail="openError"
+          @openErrorDetail="openErrorFromErrorDetails"
         />
 
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" />
+        <OpsErrorDetailModal
+          v-model:show="showErrorModal"
+          :error-id="selectedErrorId"
+          :error-type="errorDetailsType"
+          :show-back-button="showErrorBackButton"
+          @back="handleErrorDetailBack"
+        />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
@@ -129,7 +135,7 @@
           :preset="requestDetailsPreset"
           :platform="platform"
           :group-id="groupId"
-          @openErrorDetail="openError"
+          @openErrorDetail="openErrorFromRequestDetails"
         />
       </template>
     </div>
@@ -366,6 +372,13 @@ const loadingErrorDistribution = ref(false)
 
 const selectedErrorId = ref<number | null>(null)
 const showErrorModal = ref(false)
+// 错误详情的来源弹窗 —— 关闭/返回时据此自动回到对应明细弹窗
+//   'requestDetails'：从请求明细弹窗（OpsRequestDetailsModal）进入
+//   'errorDetails'  ：从错误明细列表弹窗（OpsErrorDetailsModal）进入
+//   null            ：直接入口（无来源，不显示返回按钮、不回退）
+type ErrorDetailBackTarget = null | 'requestDetails' | 'errorDetails'
+const errorDetailBackTarget = ref<ErrorDetailBackTarget>(null)
+const showErrorBackButton = computed(() => errorDetailBackTarget.value !== null)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
@@ -504,13 +517,49 @@ function onQueryModeChange(v: string | number | boolean | null) {
   queryMode.value = v as QueryMode
 }
 
-function openError(id: number) {
+// 通用：根据来源打开错误详情，并记下来源用于回退
+function openErrorWith(id: number, from: ErrorDetailBackTarget) {
   selectedErrorId.value = id
+  errorDetailBackTarget.value = from
   // Ensure only one modal visible at a time.
   showErrorDetails.value = false
   showRequestDetails.value = false
   showErrorModal.value = true
 }
+
+// 从请求明细弹窗打开错误详情
+function openErrorFromRequestDetails(id: number) {
+  openErrorWith(id, 'requestDetails')
+}
+
+// 从错误明细列表弹窗打开错误详情
+function openErrorFromErrorDetails(id: number) {
+  openErrorWith(id, 'errorDetails')
+}
+
+// 根据来源恢复对应的明细弹窗
+function restoreFromErrorDetail() {
+  const target = errorDetailBackTarget.value
+  errorDetailBackTarget.value = null
+  if (target === 'requestDetails') {
+    showRequestDetails.value = true
+  } else if (target === 'errorDetails') {
+    showErrorDetails.value = true
+  }
+}
+
+// 错误详情显式点击"返回上一页"按钮
+function handleErrorDetailBack() {
+  restoreFromErrorDetail()
+}
+
+// 监听错误详情关闭（点 X / ESC / 点遮罩 / 程序化关闭），如果有来源标记则自动恢复
+watch(showErrorModal, (visible) => {
+  if (visible) return
+  if (errorDetailBackTarget.value !== null) {
+    restoreFromErrorDetail()
+  }
+})
 
 function buildApiParams() {
   const params: any = {

@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -65,12 +66,17 @@ type AdminService interface {
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
 
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, tags []string) ([]Account, int64, error)
+	// ListAllAccountTags 返回所有未删除账号 tags 字段去重排序后的并集，用于前端自动补全候选。
+	ListAllAccountTags(ctx context.Context) ([]string, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
 	DeleteAccount(ctx context.Context, id int64) error
+	// DuplicateAccount 复制单个账号：拷贝凭证与基础配置，重置运行时状态，
+	// 不复制分组绑定，自动追加 "- 副本" 后缀作为新账号名。
+	DuplicateAccount(ctx context.Context, id int64) (*Account, error)
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
@@ -265,6 +271,8 @@ type CreateAccountInput struct {
 	GroupIDs           []int64
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
+	// Tags 创建账号时附带的管理员标签（已规范化或待 service 层规范化）。
+	Tags []string
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -287,6 +295,8 @@ type UpdateAccountInput struct {
 	GroupIDs              *[]int64
 	ExpiresAt             *int64
 	AutoPauseOnExpired    *bool
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
+	Tags                  *[]string
 	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 }
 
@@ -305,6 +315,9 @@ type BulkUpdateAccountsInput struct {
 	GroupIDs       *[]int64
 	Credentials    map[string]any
 	Extra          map[string]any
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空全部选中账号的标签）"。
+	// 替换语义——design 已锁死，不做追加 / 移除。
+	Tags *[]string
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
 	// This should only be set when the caller has explicitly confirmed the risk.
 	SkipMixedChannelCheck bool
@@ -2065,13 +2078,19 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 }
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, tags []string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
+	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode, tags)
 	if err != nil {
 		return nil, 0, err
 	}
 	return accounts, result.Total, nil
+}
+
+// ListAllAccountTags 返回所有未删除账号 tags 字段去重排序后的并集，
+// 直接转调底层 accountRepo.ListAllTags，无额外业务逻辑。
+func (s *adminServiceImpl) ListAllAccountTags(ctx context.Context) ([]string, error) {
+	return s.accountRepo.ListAllTags(ctx)
 }
 
 func (s *adminServiceImpl) GetAccount(ctx context.Context, id int64) (*Account, error) {
@@ -2128,6 +2147,12 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		Status:      StatusActive,
 		Schedulable: true,
 	}
+	// 规范化标签——前端已做客户端预校验，这里是 last-resort guard。
+	tags, err := NormalizeAccountTags(input.Tags)
+	if err != nil {
+		return nil, err
+	}
+	account.Tags = tags
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
@@ -2193,6 +2218,185 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	}
 
 	return account, nil
+}
+
+// DuplicateAccount 复制单个账号：拷贝凭证与基础配置，重置运行时状态，
+// 不复制分组绑定，自动追加 "- 副本" 后缀作为新账号名。
+//
+// 拷贝范围：
+//   - 凭证 credentials 全量深拷贝（含 OAuth token / api_key / model_mapping 等）
+//   - 基础配置：platform / type / proxy / concurrency / load_factor / priority /
+//     rate_multiplier / expires_at / auto_pause_on_expired / notes
+//   - extra 深拷贝后剔除运行时累积字段（quota_*_used / quota_*_start /
+//     quota_*_reset_at / model_rate_limits / antigravity_credits_overages）
+//
+// 不拷贝：
+//   - 分组绑定（强制 SkipDefaultGroupBind=true，新副本默认不挂任何分组）
+//   - 状态字段（status / error_message / last_used_at / schedulable / 限流计数 /
+//     temp_unschedulable_* / session_window_*）由 CreateAccount 走默认初始化
+func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64) (*Account, error) {
+	src, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if src == nil {
+		return nil, ErrAccountNotFound
+	}
+
+	newName := buildDuplicateAccountName(src.Name)
+
+	// 凭证深拷贝（保持原值，连 OAuth token 一起复制——这是用户明确要求的语义）
+	credentials := deepCopyJSONMap(src.Credentials)
+
+	// extra 深拷贝后剔除运行时累积字段；保留所有配置字段（quota_limit / quota_*_reset_mode /
+	// openai_compact_mode / window_cost_limit / base_rpm 等）
+	extra := deepCopyJSONMap(src.Extra)
+	stripRuntimeExtraKeys(extra)
+
+	var expiresAtUnix *int64
+	if src.ExpiresAt != nil {
+		ts := src.ExpiresAt.Unix()
+		expiresAtUnix = &ts
+	}
+
+	autoPause := src.AutoPauseOnExpired
+
+	input := &CreateAccountInput{
+		Name:               newName,
+		Notes:              src.Notes,
+		Platform:           src.Platform,
+		Type:               src.Type,
+		Credentials:        credentials,
+		Extra:              extra,
+		ProxyID:            src.ProxyID,
+		Concurrency:        src.Concurrency,
+		Priority:           src.Priority,
+		RateMultiplier:     src.RateMultiplier,
+		LoadFactor:         src.LoadFactor,
+		GroupIDs:           nil, // 不复制分组绑定
+		ExpiresAt:          expiresAtUnix,
+		AutoPauseOnExpired: &autoPause,
+		// Tags 跟随基础配置一起复制（design 已锁口径）。
+		// src.Tags 已是落库后的规范化值，理论上无需重新规范化；这里
+		// 保持 input.Tags 直传，让 CreateAccount 内部统一走一次 NormalizeAccountTags
+		// 兜底，避免将来规则升级时漏掉副本。
+		Tags: append([]string{}, src.Tags...),
+		// 强制不绑定默认分组：复制语义就是"产生一个独立的、未挂任何分组的副本"，
+		// 避免触发混合渠道检查或意外加入 platform-default 分组。
+		SkipDefaultGroupBind:  true,
+		SkipMixedChannelCheck: true,
+	}
+
+	return s.CreateAccount(ctx, input)
+}
+
+// buildDuplicateAccountName 为账号副本生成新名称。
+//   - 原名 "X" -> "X - 副本"
+//   - 原名 "X - 副本" -> "X - 副本 (2)"
+//   - 原名 "X - 副本 (N)" -> "X - 副本 (N+1)"
+//
+// 长度超过 schema 上限（100 字符）时会从 base 头部截断后再拼接后缀，
+// 确保 schema NotEmpty + MaxLen(100) 约束不被违反。
+func buildDuplicateAccountName(srcName string) string {
+	const maxLen = 100
+	const suffix = " - 副本"
+
+	base := srcName
+	nextIndex := 0 // 0 表示首次副本，无序号
+
+	// 形如 "X - 副本 (N)" 的情况：提取 base 与 N
+	if idx := strings.LastIndex(srcName, suffix+" ("); idx >= 0 && strings.HasSuffix(srcName, ")") {
+		inner := srcName[idx+len(suffix)+2 : len(srcName)-1]
+		if n, convErr := strconv.Atoi(inner); convErr == nil && n >= 2 {
+			base = srcName[:idx]
+			nextIndex = n + 1
+		}
+	} else if strings.HasSuffix(srcName, suffix) {
+		// 形如 "X - 副本"，下一个副本从 (2) 开始
+		base = strings.TrimSuffix(srcName, suffix)
+		nextIndex = 2
+	}
+
+	var newName string
+	if nextIndex == 0 {
+		newName = base + suffix
+	} else {
+		newName = base + suffix + " (" + strconv.Itoa(nextIndex) + ")"
+	}
+
+	// MaxLen 约束：从 base 头部截断（保留尾部后缀以保持语义可读）。
+	// 此处按字符（rune）计长，避免 UTF-8 中文字符被截断到非法字节。
+	if utf8.RuneCountInString(newName) <= maxLen {
+		return newName
+	}
+	suffixPart := strings.TrimPrefix(newName, base)
+	suffixRunes := utf8.RuneCountInString(suffixPart)
+	if suffixRunes >= maxLen {
+		// 极端情况：后缀本身就超长，强制截断到 maxLen
+		runes := []rune(newName)
+		return string(runes[:maxLen])
+	}
+	keepBase := maxLen - suffixRunes
+	baseRunes := []rune(base)
+	if keepBase > len(baseRunes) {
+		keepBase = len(baseRunes)
+	}
+	return string(baseRunes[:keepBase]) + suffixPart
+}
+
+// stripRuntimeExtraKeys 从复制得到的 extra map 中剔除运行时累积字段。
+// 保留所有配置字段（quota_limit / quota_*_reset_mode / window_cost_limit 等），
+// 仅删除"用量计数 / 周期起点 / 计算缓存 / 限流计数 / 已发通知" 等会随调度变化的状态。
+func stripRuntimeExtraKeys(extra map[string]any) {
+	if len(extra) == 0 {
+		return
+	}
+	runtimeKeys := []string{
+		// UpdateAccount 中明确视为"持久化运行时用量"并予以保留的 5 个字段
+		"quota_used",
+		"quota_daily_used",
+		"quota_daily_start",
+		"quota_weekly_used",
+		"quota_weekly_start",
+		// ComputeQuotaResetAt 会在 CreateAccount 中根据 reset_mode 重新计算，无需带过来
+		"quota_daily_reset_at",
+		"quota_weekly_reset_at",
+		// 限流计数与运行时状态
+		modelRateLimitsKey,
+		"antigravity_credits_overages",
+	}
+	for _, key := range runtimeKeys {
+		delete(extra, key)
+	}
+}
+
+// deepCopyJSONMap 对 JSON 兼容的 map[string]any 做深拷贝。
+// 用于复制账号 credentials 与 extra，避免新旧账号共享底层 map / slice 后被互相修改。
+func deepCopyJSONMap(src map[string]any) map[string]any {
+	if src == nil {
+		return map[string]any{}
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = deepCopyJSONValue(v)
+	}
+	return dst
+}
+
+func deepCopyJSONValue(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		return deepCopyJSONMap(val)
+	case []any:
+		out := make([]any, len(val))
+		for i, item := range val {
+			out[i] = deepCopyJSONValue(item)
+		}
+		return out
+	default:
+		// 基础类型（string / bool / 数值 / nil 等）按值拷贝
+		return v
+	}
 }
 
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
@@ -2286,6 +2490,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if input.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
+	}
+
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"
+	if input.Tags != nil {
+		tags, err := NormalizeAccountTags(*input.Tags)
+		if err != nil {
+			return nil, err
+		}
+		account.Tags = tags
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）
@@ -2417,6 +2630,15 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	if input.Schedulable != nil {
 		repoUpdates.Schedulable = input.Schedulable
 	}
+	// Tags：替换语义。指针非 nil 即落库；先经一次规范化兜底（前端
+	// 已做客户端校验，这里 last-resort guard）。空数组允许，表示清空标签。
+	if input.Tags != nil {
+		tags, err := NormalizeAccountTags(*input.Tags)
+		if err != nil {
+			return nil, err
+		}
+		repoUpdates.Tags = &tags
+	}
 
 	// 先执行列字段与 JSON 字段的批量更新。
 	if _, err := s.accountRepo.BulkUpdate(ctx, input.AccountIDs, repoUpdates); err != nil {
@@ -2482,6 +2704,7 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.PrivacyMode,
 			"",
 			"",
+			nil, // tags：bulk 解析过滤无需按标签筛选目标 ID
 		)
 		if err != nil {
 			return nil, err

@@ -125,6 +125,9 @@ func (userSubRepoNoop) IncrementUsage(context.Context, int64, float64) error {
 func (userSubRepoNoop) BatchUpdateExpiredStatus(context.Context) (int64, error) {
 	panic("unexpected BatchUpdateExpiredStatus call")
 }
+func (userSubRepoNoop) GetLatestUsedAtBySubscriptionIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{}, nil
+}
 
 type subscriptionUserSubRepoStub struct {
 	userSubRepoNoop

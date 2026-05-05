@@ -25,7 +25,10 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      // listTags 是 step 4 引入的标签自动补全 API，组件 mount 时会拉一次。
+      // 测试不关心其结果，mock 成空数组即可。
+      listTags: vi.fn().mockResolvedValue([])
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),

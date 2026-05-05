@@ -163,6 +163,7 @@
             :data-index="virtualRow.index"
             :ref="measureElement"
             class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            :style="fixedRowHeight ? { height: (estimateRowHeight ?? 56) + 'px' } : undefined"
           >
             <td
               v-for="(column, colIndex) in columns"
@@ -171,10 +172,32 @@
                 'whitespace-nowrap py-4 text-sm text-gray-900 dark:text-gray-100',
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
-                column.class
+                column.class,
+                fixedRowHeight ? 'overflow-hidden' : ''
               ]"
+              :style="fixedRowHeight ? { height: (estimateRowHeight ?? 56) + 'px', maxHeight: (estimateRowHeight ?? 56) + 'px' } : undefined"
             >
-              <slot :name="`cell-${column.key}`"
+              <!--
+                fixedRowHeight 模式下：再用一个固定高度 + overflow:hidden 的 wrapper 锁住内容尺寸，
+                防止个别单元格内容（骨架屏切换、异步加载、配额条多行）撑开 td/tr，导致虚拟滚动重测高度，
+                进而出现滚动到底部时列表反复抖动的现象。
+                内部用 flex 居中，让短内容（如"最近使用"单行文本）和高内容在视觉上保持上下对齐。
+              -->
+              <div
+                v-if="fixedRowHeight"
+                class="flex h-full flex-col justify-center overflow-hidden"
+                :style="{ maxHeight: ((estimateRowHeight ?? 56) - 32) + 'px' }"
+              >
+                <slot :name="`cell-${column.key}`"
+                      :row="sortedData[virtualRow.index]"
+                      :value="sortedData[virtualRow.index][column.key]"
+                      :expanded="actionsExpanded">
+                  {{ column.formatter
+                     ? column.formatter(sortedData[virtualRow.index][column.key], sortedData[virtualRow.index])
+                     : sortedData[virtualRow.index][column.key] }}
+                </slot>
+              </div>
+              <slot v-else :name="`cell-${column.key}`"
                     :row="sortedData[virtualRow.index]"
                     :value="sortedData[virtualRow.index][column.key]"
                     :expanded="actionsExpanded">
@@ -361,6 +384,11 @@ interface Props {
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  /**
+   * 锁定行高：true 时跳过 virtualizer 的动态测量，所有行严格按 `estimateRowHeight` 渲染。
+   * 适用于单元格内容会从骨架屏切换到实际数据、高度抖动会导致虚拟滚动跳变的场景。
+   */
+  fixedRowHeight?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -369,7 +397,8 @@ const props = withDefaults(defineProps<Props>(), {
   stickyActionsColumn: true,
   expandableActions: true,
   defaultSortOrder: 'asc',
-  serverSideSort: false
+  serverSideSort: false,
+  fixedRowHeight: false
 })
 
 const sortKey = ref<string>('')
@@ -594,7 +623,7 @@ const virtualPaddingBottom = computed(() => {
 })
 
 const measureElement = (el: any) => {
-  if (el) {
+  if (el && !props.fixedRowHeight) {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }

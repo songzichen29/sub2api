@@ -254,9 +254,54 @@ function scheduleReload() {
   }, 250)
 }
 
-watch([searchQuery, selectedProvider, selectedGroupId], () => {
+// skipNextGroupReload 用于在「切换供应商」流程中静音 selectedGroupId 自身的 watch：
+// 切供应商时需要先把旧 group 清空（否则 group_id 过滤会落到空结果），但这次清空
+// 不应触发额外的 reload——下方 selectedProvider 的 watch 会手动 await loadChannels。
+let skipNextGroupReload = false
+
+watch(searchQuery, () => {
   page.value = 1
   scheduleReload()
+})
+
+watch(selectedGroupId, () => {
+  if (skipNextGroupReload) {
+    skipNextGroupReload = false
+    return
+  }
+  page.value = 1
+  scheduleReload()
+})
+
+// 切换供应商时：清空旧分组、拉取该供应商下的 group_facets，再自动选中第一个分组。
+// 旧 group_id 若保留会让后端 filterMarketplaceItemsByGroup 命中为空 → 页面空白；
+// 切到"全部供应商"（newProvider === ''）时保持 selectedGroupId = null，避免在
+// 跨供应商聚合视图里强行钉一个分组导致歧义。
+watch(selectedProvider, async (newProvider, oldProvider) => {
+  if (newProvider === oldProvider) return
+
+  page.value = 1
+
+  // 取消未触发的防抖请求，避免和下面 await loadChannels 抢资源
+  if (reloadTimer) {
+    clearTimeout(reloadTimer)
+    reloadTimer = null
+  }
+
+  // 重置旧分组但不触发 selectedGroupId 自身的 reload（下方手动 loadChannels）
+  if (selectedGroupId.value !== null) {
+    skipNextGroupReload = true
+    selectedGroupId.value = null
+  }
+
+  await loadChannels()
+
+  // 竞态保护：await 期间用户又切了一次供应商时，放弃后续默认选择
+  if (selectedProvider.value !== newProvider) return
+
+  if (newProvider && groupFacets.value.length > 0) {
+    selectedGroupId.value = groupFacets.value[0].id
+  }
 })
 
 watch(pageSize, () => {

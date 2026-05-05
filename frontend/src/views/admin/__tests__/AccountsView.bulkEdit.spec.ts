@@ -26,7 +26,10 @@ vi.mock('@/api/admin', () => ({
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
-      toggleSchedulable: vi.fn()
+      toggleSchedulable: vi.fn(),
+      // step 4 引入：AccountsView onMounted 会拉一次标签字典做 filter 候选。
+      // 测试不关心结果，mock 成空数组即可。
+      listTags: vi.fn().mockResolvedValue([])
     },
     proxies: {
       getAll: getAllProxies

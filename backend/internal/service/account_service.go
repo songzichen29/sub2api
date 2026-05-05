@@ -37,10 +37,12 @@ type AccountRepository interface {
 	Delete(ctx context.Context, id int64) error
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
+	// ListAllTags 返回所有未删除账号 tags 字段去重排序后的并集，用于自动补全。
+	ListAllTags(ctx context.Context) ([]string, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
 	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
@@ -89,6 +91,9 @@ type AccountBulkUpdate struct {
 	Schedulable    *bool
 	Credentials    map[string]any
 	Extra          map[string]any
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
+	// 已规范化（小写 / 去重 / 排序），调用方应先经 NormalizeAccountTags 处理。
+	Tags *[]string
 }
 
 // CreateAccountRequest 创建账号请求
@@ -105,6 +110,8 @@ type CreateAccountRequest struct {
 	GroupIDs           []int64        `json:"group_ids"`
 	ExpiresAt          *time.Time     `json:"expires_at"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	// Tags 已规范化的标签数组；nil 视为空数组。
+	Tags []string `json:"tags"`
 }
 
 // UpdateAccountRequest 更新账号请求
@@ -120,6 +127,8 @@ type UpdateAccountRequest struct {
 	GroupIDs           *[]int64        `json:"group_ids"`
 	ExpiresAt          *time.Time      `json:"expires_at"`
 	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
+	Tags *[]string `json:"tags"`
 }
 
 // AccountService 账号管理服务
@@ -149,6 +158,12 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		}
 	}
 
+	// 规范化标签（trim/小写/去重/校验长度数量字符集）
+	tags, err := NormalizeAccountTags(req.Tags)
+	if err != nil {
+		return nil, err
+	}
+
 	// 创建账号
 	account := &Account{
 		Name:        req.Name,
@@ -162,6 +177,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Priority:    req.Priority,
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
+		Tags:        tags,
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
@@ -275,6 +291,15 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
+	}
+
+	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"
+	if req.Tags != nil {
+		tags, err := NormalizeAccountTags(*req.Tags)
+		if err != nil {
+			return nil, err
+		}
+		account.Tags = tags
 	}
 
 	// 先验证分组是否存在（在任何写操作之前）

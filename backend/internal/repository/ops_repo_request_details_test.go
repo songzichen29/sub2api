@@ -46,6 +46,7 @@ func TestOpsRepositoryListRequestDetails_BindsCTETimeWindowForBothBranches(t *te
 			"user_id",
 			"api_key_id",
 			"account_id",
+			"account_name",
 			"group_id",
 			"stream",
 		}).AddRow(
@@ -63,6 +64,7 @@ func TestOpsRepositoryListRequestDetails_BindsCTETimeWindowForBothBranches(t *te
 			int64(1),
 			int64(2),
 			int64(3),
+			"claude-pro-01",
 			int64(4),
 			true,
 		))
@@ -75,6 +77,7 @@ func TestOpsRepositoryListRequestDetails_BindsCTETimeWindowForBothBranches(t *te
 	require.Equal(t, "req-1", items[0].RequestID)
 	require.NotNil(t, items[0].StatusCode)
 	require.Equal(t, 500, *items[0].StatusCode)
+	require.Equal(t, "claude-pro-01", items[0].AccountName)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

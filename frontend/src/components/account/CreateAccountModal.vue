@@ -66,6 +66,15 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
+        <AccountTagsInput
+          v-model="form.tags"
+          :suggestions="tagSuggestions"
+          :placeholder="t('admin.accounts.tags.placeholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
+      </div>
 
       <!-- Platform Selection - Segmented Control Style -->
       <div>
@@ -146,6 +155,19 @@
           >
             <Icon name="cloud" size="sm" />
             Antigravity
+          </button>
+          <button
+            type="button"
+            @click="form.platform = 'grok'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'grok'
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="cloud" size="sm" />
+            Grok
           </button>
         </div>
       </div>
@@ -797,6 +819,35 @@
             placeholder="sk-..."
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.apiKeyHint') }}</p>
+        </div>
+      </div>
+
+      <!-- Grok upstream config (透传到 grok2api 网关,Anthropic 兼容协议) -->
+      <div v-if="form.platform === 'grok'" class="space-y-4">
+        <div class="rounded-md bg-gray-50 p-3 text-sm dark:bg-dark-700">
+          Grok 平台通过 grok2api 网关透传(Anthropic 协议)。请填写 grok2api 的访问地址和网关 API Key。
+        </div>
+        <div>
+          <label class="input-label">Base URL</label>
+          <input
+            v-model="upstreamBaseUrl"
+            type="text"
+            required
+            class="input"
+            placeholder="http://grok2api:8000"
+          />
+          <p class="input-hint">grok2api 服务的访问地址(同机部署时为 http://localhost:8000,docker compose 内填服务名 http://grok2api:8000)</p>
+        </div>
+        <div>
+          <label class="input-label">grok2api 网关 API Key</label>
+          <input
+            v-model="upstreamApiKey"
+            type="password"
+            required
+            class="input font-mono"
+            placeholder="grok2api config.toml 里 [app] api_key 的值"
+          />
+          <p class="input-hint">grok2api 项目自身的网关密钥(不是 xAI Grok 平台账号),用于鉴权 sub2api 到 grok2api 的内部调用</p>
         </div>
       </div>
 
@@ -1762,6 +1813,54 @@
           @update:weeklyResetHour="editWeeklyResetHour = $event"
           @update:resetTimezone="editResetTimezone = $event"
         />
+      </div>
+
+      <!-- 第三方面板用量查询 (仅 apikey 类型) -->
+      <div
+        v-if="form.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-3"
+      >
+        <div class="mb-2">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.usageQuery.hint') }}
+          </p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
+          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
+        </label>
+        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
+            <select v-model="usageQueryProvider" class="input">
+              <option value="newapi">newapi</option>
+            </select>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+            <input
+              v-model="usageQueryBaseUrl"
+              type="text"
+              class="input"
+              placeholder="https://newapi.example.com"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+            <input
+              v-model="usageQueryAccessToken"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+            <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+          </div>
+        </div>
       </div>
 
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
@@ -3168,6 +3267,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3296,6 +3396,12 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+// 第三方面板用量查询（仅 apikey 类型；当前仅支持 newapi）
+const usageQueryEnabled = ref(false)
+const usageQueryProvider = ref<'newapi'>('newapi')
+const usageQueryBaseUrl = ref('')
+const usageQueryAccessToken = ref('')
+const usageQueryUserId = ref('')
 const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
@@ -3550,11 +3656,20 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  tags: [] as string[]
 })
+
+// 标签自动补全候选；由 watch(props.show) 在 modal 打开时拉一次。
+// 失败时静默兜底为空数组，组件仍可手输标签。
+const tagSuggestions = ref<string[]>([])
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
+  // Grok 平台只走 upstream 透传，不需要 OAuth 流程
+  if (form.platform === 'grok') {
+    return false
+  }
   // Antigravity upstream 类型不需要 OAuth 流程
   if (form.platform === 'antigravity' && antigravityAccountType.value === 'upstream') {
     return false
@@ -3600,6 +3715,10 @@ watch(
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
         .catch(() => { tlsFingerprintProfiles.value = [] })
+      // 拉一次账号标签字典作为 AccountTagsInput 的 autocomplete 候选；失败兜底为空数组。
+      adminAPI.accounts.listTags()
+        .then(tags => { tagSuggestions.value = tags })
+        .catch(() => { tagSuggestions.value = [] })
       // Modal opened - fill related models
       allowedModels.value = [...getModelsByPlatform(form.platform)]
       // Antigravity: 默认使用映射模式并填充默认映射
@@ -3624,6 +3743,11 @@ watch(
 watch(
   [accountCategory, addMethod, antigravityAccountType, () => form.platform],
   ([category, method, agType]) => {
+    // Grok 平台:仅支持 upstream 类型(透传到 grok2api 网关)
+    if (form.platform === 'grok') {
+      form.type = 'upstream' as AccountType
+      return
+    }
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
       form.type = 'apikey'
@@ -4063,6 +4187,7 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
+  form.tags = []
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
@@ -4417,6 +4542,46 @@ const handleSubmit = async () => {
     return
   }
 
+  // For Grok platform: 透传到 grok2api 网关(Anthropic 协议),仅支持 type=upstream
+  if (form.platform === 'grok') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (!upstreamBaseUrl.value.trim()) {
+      appStore.showError('请填写 Base URL')
+      return
+    }
+    if (!upstreamApiKey.value.trim()) {
+      appStore.showError('请填写 grok2api 网关 API Key')
+      return
+    }
+
+    const credentials: Record<string, unknown> = {
+      base_url: upstreamBaseUrl.value.trim(),
+      api_key: upstreamApiKey.value.trim()
+    }
+
+    // 模型映射(用户在前端可填,未填时后端使用 DefaultGrokModelMapping fallback)
+    const grokModelMapping = buildModelMappingObject(
+      modelRestrictionMode.value,
+      allowedModels.value,
+      modelMappings.value
+    )
+    applyMappingWithNotes(
+      credentials,
+      'model_mapping',
+      'model_mapping_notes',
+      grokModelMapping,
+      modelMappings.value
+    )
+
+    applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+
+    await createAccountAndFinish(form.platform, 'upstream' as AccountType, credentials)
+    return
+  }
+
   if ((form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory.value === 'service_account') {
     if (!form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
@@ -4503,7 +4668,30 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  let extra = buildAnthropicExtra(buildOpenAIExtra())
+
+  // 第三方面板用量查询（仅 apikey 类型）：
+  // 这条创建路径不经过 createAccountAndFinish，原本的校验 + 注入逻辑都不会触发，
+  // 导致用户开启用量查询后哪怕一项都不填也能提交成功，并且填完整也不会被保存。
+  if (usageQueryEnabled.value) {
+    const baseUrl = usageQueryBaseUrl.value.trim()
+    const userId = usageQueryUserId.value.trim()
+    const token = usageQueryAccessToken.value.trim()
+    if (!baseUrl || !userId || !token) {
+      appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+      return
+    }
+    extra = {
+      ...(extra || {}),
+      usage_query: {
+        enabled: true,
+        provider: usageQueryProvider.value,
+        base_url: baseUrl,
+        access_token: token,
+        user_id: userId
+      }
+    }
+  }
 
   await doCreateAccount({
     ...form,
@@ -4592,6 +4780,26 @@ const createAccountAndFinish = async (
     }
     // Quota notify config
     writeQuotaNotifyToExtra(quotaExtra, 'create')
+    // 第三方面板用量查询配置（仅 apikey）
+    if (type === 'apikey' && usageQueryEnabled.value) {
+      const baseUrl = usageQueryBaseUrl.value.trim()
+      const userId = usageQueryUserId.value.trim()
+      const token = usageQueryAccessToken.value.trim()
+      if (!baseUrl || !userId || !token) {
+        // 任一必填项空时阻止提交，避免静默丢弃整个 usage_query 配置——
+        // 老逻辑里这里仅注释"由提交流程统一处理"但并未真的拦截，导致用户开启
+        // 用量查询填一半也能提交，列表上也看不到生效结果。
+        appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+        return
+      }
+      quotaExtra.usage_query = {
+        enabled: true,
+        provider: usageQueryProvider.value,
+        base_url: baseUrl,
+        access_token: token,
+        user_id: userId
+      }
+    }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }
@@ -4620,7 +4828,8 @@ const createAccountAndFinish = async (
     rate_multiplier: form.rate_multiplier,
     group_ids: form.group_ids,
     expires_at: form.expires_at,
-    auto_pause_on_expired: autoPauseOnExpired.value
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    tags: form.tags
   })
 }
 
@@ -4695,7 +4904,8 @@ const handleOpenAIExchange = async (authCode: string) => {
         rate_multiplier: form.rate_multiplier,
         group_ids: form.group_ids,
         expires_at: form.expires_at,
-        auto_pause_on_expired: autoPauseOnExpired.value
+        auto_pause_on_expired: autoPauseOnExpired.value,
+        tags: form.tags
       })
       appStore.showSuccess(t('admin.accounts.accountCreated'))
     }
@@ -4800,7 +5010,8 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             rate_multiplier: form.rate_multiplier,
             group_ids: form.group_ids,
             expires_at: form.expires_at,
-            auto_pause_on_expired: autoPauseOnExpired.value
+            auto_pause_on_expired: autoPauseOnExpired.value,
+            tags: form.tags
           })
         }
 
@@ -4898,7 +5109,8 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          tags: form.tags
         })
         await adminAPI.accounts.create(createPayload)
         successCount++
@@ -5243,7 +5455,8 @@ const handleCookieAuth = async (sessionKey: string) => {
           rate_multiplier: form.rate_multiplier,
           group_ids: form.group_ids,
           expires_at: form.expires_at,
-          auto_pause_on_expired: autoPauseOnExpired.value
+          auto_pause_on_expired: autoPauseOnExpired.value,
+          tags: form.tags
         })
 
         successCount++

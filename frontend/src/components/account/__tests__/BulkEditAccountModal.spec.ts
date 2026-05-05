@@ -16,7 +16,10 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       bulkUpdate: vi.fn(),
-      checkMixedChannelRisk: vi.fn()
+      checkMixedChannelRisk: vi.fn(),
+      // step 4 引入：modal 打开时拉一次标签字典作为 AccountTagsInput 的候选。
+      // 测试不关心具体内容，统一 mock 成空数组。
+      listTags: vi.fn().mockResolvedValue([])
     }
   }
 }))
@@ -291,6 +294,56 @@ describe('BulkEditAccountModal', () => {
         privacy_mode: 'training_set_cf_blocked'
       },
       status: 'active'
+    })
+  })
+
+  // 覆盖 step 7 退出条件 + 测试约束 "Bulk replace tags 测试" 的前端版：
+  //   不勾 enableTags 时不带 tags 字段；勾选时带 tags（即使 tags 为空数组也带）。
+  describe('tags 批量编辑（step 7）', () => {
+    it('勾选 enableTags 并输入 ["test"] 后 bulkUpdate payload 含 tags=["test"]', async () => {
+      const wrapper = mountModal()
+
+      await wrapper.get('#bulk-edit-tags-enabled').setValue(true)
+      // AccountTagsInput 内部回车提交。直接通过 input 模拟更稳定。
+      const tagsInput = wrapper.find('#bulk-edit-tags input[type="text"]')
+      await tagsInput.setValue('test')
+      await tagsInput.trigger('keydown', { key: 'Enter' })
+
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        tags: ['test']
+      })
+    })
+
+    it('勾选 enableTags 但 tags 为空数组时 payload 含 tags=[]（清空语义）', async () => {
+      const wrapper = mountModal()
+
+      await wrapper.get('#bulk-edit-tags-enabled').setValue(true)
+      // 不输入任何标签——期望 tags=[] 表示清空目标账号的标签
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        tags: []
+      })
+    })
+
+    it('不勾选 enableTags 时 payload 不含 tags 字段（不改语义）', async () => {
+      const wrapper = mountModal()
+
+      // 仅勾选 status 触发提交（避免 noFieldsSelected 拦截），不勾 enableTags
+      await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+      const callArgs = vi.mocked(adminAPI.accounts.bulkUpdate).mock.calls[0]
+      const payload = callArgs[1] as Record<string, unknown>
+      expect(payload).not.toHaveProperty('tags')
     })
   })
 })

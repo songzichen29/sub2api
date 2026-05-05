@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -243,8 +246,24 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	// Apply sorting
 	q = q.WithUser().WithGroup().WithAssignedByUser()
+
+	// last_used_at 排序走"全集 + 聚合 + 内存排序 + 切分页"路径，因为 last_used_at
+	// 不是表字段，而是 usage_logs 上的聚合值。订阅总量通常 1k 量级以内，全量
+	// 拉取毫秒级完成；如果未来订阅量级破万再演进到 SQL 子查询版本。
+	if sortBy == "last_used_at" {
+		all, err := q.All(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		subs := userSubscriptionEntitiesToService(all)
+		if err := r.fillLastUsedAt(ctx, subs); err != nil {
+			return nil, nil, err
+		}
+		sortSubsByLastUsedAt(subs, sortOrder)
+		page := paginateSlice(subs, params)
+		return page, paginationResultFromTotal(int64(total), params), nil
+	}
 
 	// Determine sort field
 	var field string
@@ -272,7 +291,57 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	return userSubscriptionEntitiesToService(subs), paginationResultFromTotal(int64(total), params), nil
+	results := userSubscriptionEntitiesToService(subs)
+	if err := r.fillLastUsedAt(ctx, results); err != nil {
+		return nil, nil, err
+	}
+	return results, paginationResultFromTotal(int64(total), params), nil
+}
+
+// fillLastUsedAt 给一批订阅就地填充 LastUsedAt 字段。聚合失败时仅记录日志、返回 nil，
+// 不阻断列表展示——last_used_at 是辅助展示字段，缺失时降级为空即可。
+func (r *userSubscriptionRepository) fillLastUsedAt(ctx context.Context, subs []service.UserSubscription) error {
+	if len(subs) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(subs))
+	for i := range subs {
+		ids = append(ids, subs[i].ID)
+	}
+	lastUsed, err := r.GetLatestUsedAtBySubscriptionIDs(ctx, ids)
+	if err != nil {
+		// 不阻断列表，只是该页所有订阅的 last_used_at 显示为空
+		return nil
+	}
+	for i := range subs {
+		if ts, ok := lastUsed[subs[i].ID]; ok {
+			subs[i].LastUsedAt = ts
+		}
+	}
+	return nil
+}
+
+// sortSubsByLastUsedAt 按 LastUsedAt 排序订阅。
+// nil（从未使用过）永远排在末尾；其余按 sortOrder 决定升降序。
+func sortSubsByLastUsedAt(subs []service.UserSubscription, sortOrder string) {
+	asc := sortOrder == "asc"
+	sort.SliceStable(subs, func(i, j int) bool {
+		li, lj := subs[i].LastUsedAt, subs[j].LastUsedAt
+		// nil 始终排在末尾（无论升降序）
+		if li == nil && lj == nil {
+			return false
+		}
+		if li == nil {
+			return false
+		}
+		if lj == nil {
+			return true
+		}
+		if asc {
+			return li.Before(*lj)
+		}
+		return li.After(*lj)
+	})
 }
 
 func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
@@ -387,6 +456,53 @@ func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Contex
 		SetStatus(service.SubscriptionStatusExpired).
 		Save(ctx)
 	return int64(n), err
+}
+
+// GetLatestUsedAtBySubscriptionIDs 批量返回订阅在 usage_logs 上聚合的最近使用时间，
+// 与 userRepository.GetLatestUsedAtByUserIDs 同范式：MAX(created_at) GROUP BY subscription_id。
+// 此实现不依赖 user_subscriptions 表上的字段，避免 schema 漂移。
+func (r *userSubscriptionRepository) GetLatestUsedAtBySubscriptionIDs(ctx context.Context, subscriptionIDs []int64) (map[int64]*time.Time, error) {
+	result := make(map[int64]*time.Time, len(subscriptionIDs))
+	if len(subscriptionIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(subscriptionIDs))
+	args := make([]any, 0, len(subscriptionIDs))
+	for i, id := range subscriptionIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`
+		SELECT subscription_id, MAX(created_at) AS last_used_at
+		FROM usage_logs
+		WHERE subscription_id IN (%s)
+		GROUP BY subscription_id
+	`, strings.Join(placeholders, ","))
+
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var (
+			subID      int64
+			lastUsedAt time.Time
+		)
+		if scanErr := rows.Scan(&subID, &lastUsedAt); scanErr != nil {
+			return nil, scanErr
+		}
+		ts := lastUsedAt.UTC()
+		result[subID] = &ts
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // Extra repository helpers (currently used only by integration tests).

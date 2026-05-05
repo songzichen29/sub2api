@@ -19,6 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -103,6 +104,14 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// thirdPartyUsageCache 缓存第三方面板（如 newapi）查询结果。
+// 同时支持负缓存（业务/网络错误），避免重试风暴。
+type thirdPartyUsageCache struct {
+	quota     *usage_provider.QuotaInfo
+	err       error
+	timestamp time.Time
+}
+
 const (
 	apiCacheTTL             = 3 * time.Minute
 	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
@@ -111,6 +120,9 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.125.0"
+	// 第三方面板（newapi 等）成功响应缓存 5 分钟，错误响应 1 分钟
+	thirdPartyCacheTTL      = 5 * time.Minute
+	thirdPartyErrorCacheTTL = 1 * time.Minute
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -118,8 +130,10 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	thirdPartyCache   sync.Map           // accountID -> *thirdPartyUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	thirdPartyFlight  singleflight.Group // 防止同一第三方面板查询的并发击穿
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 }
 
@@ -200,6 +214,10 @@ type UsageInfo struct {
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
+	// 第三方面板（如 newapi）查询返回的额度信息
+	// 仅当 apikey 类型账号开启了 extra.usage_query 时填充
+	ThirdPartyQuota *usage_provider.QuotaInfo `json:"third_party_quota,omitempty"`
+
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
 
@@ -266,6 +284,10 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	// 第三方面板（newapi 等）Provider 工厂；nil 时走默认实现
+	thirdPartyFactory func(usage_provider.ProviderType) (usage_provider.Provider, error)
+	// 凭据加密器，用于解密 account.extra.usage_query.access_token
+	secretEncryptor SecretEncryptor
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -278,6 +300,7 @@ func NewAccountUsageService(
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	secretEncryptor SecretEncryptor,
 ) *AccountUsageService {
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
@@ -288,17 +311,30 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
+		thirdPartyFactory:       usage_provider.New,
+		secretEncryptor:         secretEncryptor,
 	}
 }
 
 // GetUsage 获取账号使用量
 // OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
-// API Key账号: 不支持usage查询
+// API Key账号: 默认不支持；若 extra.usage_query.enabled 为 true，则走第三方面板（newapi 等）查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64) (*UsageInfo, error) {
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("get account failed: %w", err)
+	}
+
+	// API Key 类型账号：若开启第三方面板查询则走该路径，优先于其它平台分支
+	if account.Type == AccountTypeAPIKey {
+		if cfg, ok := extractUsageQueryConfig(account); ok {
+			usage, fetchErr := s.getThirdPartyUsage(ctx, accountID, cfg)
+			if fetchErr == nil {
+				s.tryClearRecoverableAccountError(ctx, account)
+			}
+			return usage, fetchErr
+		}
 	}
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {

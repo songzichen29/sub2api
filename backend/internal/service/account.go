@@ -57,6 +57,11 @@ type Account struct {
 	GroupIDs      []int64
 	Groups        []*Group
 
+	// Tags 管理员维度的轻量标签集合，仅用于列表筛选和视觉识别。
+	// 不参与调度 / 权限 / 计费——见 feature 2026-05-04-account-tags。
+	// 写入路径必须先经 NormalizeAccountTags 规范化。
+	Tags []string
+
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
 	modelMappingCacheReady          bool
@@ -192,7 +197,33 @@ func (a *Account) IsGeminiCodeAssist() bool {
 }
 
 func (a *Account) CanGetUsage() bool {
-	return a.Type == AccountTypeOAuth
+	if a.Type == AccountTypeOAuth {
+		return true
+	}
+	// API Key 类型且开启了第三方面板用量查询时也可拉取
+	if a.Type == AccountTypeAPIKey && a.IsThirdPartyUsageQueryEnabled() {
+		return true
+	}
+	return false
+}
+
+// IsThirdPartyUsageQueryEnabled 判断 account.extra.usage_query.enabled 是否为 true。
+//
+// 该开关用于让 API Key 类型账号通过第三方面板（newapi 等）暴露用量信息。
+func (a *Account) IsThirdPartyUsageQueryEnabled() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	raw, ok := a.Extra["usage_query"]
+	if !ok {
+		return false
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return false
+	}
+	v, _ := m["enabled"].(bool)
+	return v
 }
 
 func (a *Account) GetCredential(key string) string {

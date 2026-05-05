@@ -202,7 +202,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Platform:                a.Platform,
 		Type:                    a.Type,
 		Credentials:             a.Credentials,
-		Extra:                   a.Extra,
+		Extra:                   sanitizeAccountExtraForDTO(a.Extra),
 		ProxyID:                 a.ProxyID,
 		Concurrency:             a.Concurrency,
 		LoadFactor:              a.LoadFactor,
@@ -225,6 +225,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		SessionWindowEnd:        a.SessionWindowEnd,
 		SessionWindowStatus:     a.SessionWindowStatus,
 		GroupIDs:                a.GroupIDs,
+		// Tags 兜底为空切片——确保前端 TypeScript `tags: string[]` 永远不会拿到 null。
+		Tags: safeAccountTagsForDTO(a.Tags),
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
@@ -729,6 +731,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		Source:             sub.Source,
 		CreatedAt:          sub.CreatedAt,
 		UpdatedAt:          sub.UpdatedAt,
+		LastUsedAt:         sub.LastUsedAt,
 		User:               UserFromServiceShallow(sub.User),
 		Group:              GroupFromServiceShallow(sub.Group),
 	}
@@ -787,4 +790,58 @@ func PromoCodeUsageFromService(u *service.PromoCodeUsage) *PromoCodeUsage {
 		UsedAt:      u.UsedAt,
 		User:        UserFromServiceShallow(u.User),
 	}
+}
+
+// safeAccountTagsForDTO 把 nil 标签数组兜底成空切片。
+// 这是 design 第 3.3 节"DTO 序列化"风险的对策——避免前端
+// TypeScript 的 `tags: string[]` 类型在反序列化 null 时崩溃。
+func safeAccountTagsForDTO(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
+}
+
+// UsageQueryAccessTokenMask 返回给前端的 access_token 占位符。
+// 前端编辑表单未修改此字段时仍会原样回传，handler 据此判断"保留原值"。
+const UsageQueryAccessTokenMask = "••••••••"
+
+// sanitizeAccountExtraForDTO 浅拷贝 account.Extra，并把
+// extra.usage_query.access_token（DB 里是 AES 密文）替换成掩码，避免
+// 把密文/明文回传到前端。其它字段保持不变。
+//
+// 仅当 access_token 非空时才填充掩码；若字段缺失则保持缺失。
+func sanitizeAccountExtraForDTO(extra map[string]any) map[string]any {
+	if extra == nil {
+		return nil
+	}
+	rawUQ, ok := extra["usage_query"]
+	if !ok {
+		return extra
+	}
+	uq, ok := rawUQ.(map[string]any)
+	if !ok {
+		return extra
+	}
+	tokenVal, hasToken := uq["access_token"]
+	if !hasToken {
+		return extra
+	}
+	tokenStr, _ := tokenVal.(string)
+	if tokenStr == "" {
+		return extra
+	}
+
+	// 浅拷贝外层 + usage_query，避免污染原 service.Account 内存
+	cloned := make(map[string]any, len(extra))
+	for k, v := range extra {
+		cloned[k] = v
+	}
+	clonedUQ := make(map[string]any, len(uq))
+	for k, v := range uq {
+		clonedUQ[k] = v
+	}
+	clonedUQ["access_token"] = UsageQueryAccessTokenMask
+	cloned["usage_query"] = clonedUQ
+	return cloned
 }

@@ -25,6 +25,15 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
+        <AccountTagsInput
+          v-model="form.tags"
+          :suggestions="tagSuggestions"
+          :placeholder="t('admin.accounts.tags.placeholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
+      </div>
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -416,6 +425,55 @@
 
       </div>
 
+      <!-- 第三方面板用量查询 (仅 apikey 类型) -->
+      <div
+        v-if="account.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-3"
+      >
+        <div class="mb-2">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.usageQuery.hint') }}
+          </p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
+          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
+        </label>
+        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
+            <select v-model="usageQueryProvider" class="input">
+              <option value="newapi">newapi</option>
+            </select>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+            <input
+              v-model="usageQueryBaseUrl"
+              type="text"
+              class="input"
+              placeholder="https://newapi.example.com"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+            <input
+              v-model="usageQueryAccessToken"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.usageQuery.editTokenHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+            <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
         v-if="account.platform === 'openai' && account.type === 'oauth'"
@@ -569,17 +627,20 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            placeholder="https://cloudcode-pa.googleapis.com"
+            :placeholder="account.platform === 'grok' ? 'http://grok2api:8000' : 'https://cloudcode-pa.googleapis.com'"
           />
-          <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
+          <p class="input-hint">
+            <template v-if="account.platform === 'grok'">grok2api 服务的访问地址(同机部署填 http://localhost:8000,docker compose 内填服务名)</template>
+            <template v-else>{{ t('admin.accounts.upstream.baseUrlHint') }}</template>
+          </p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
+          <label class="input-label">{{ account.platform === 'grok' ? 'grok2api 网关 API Key' : t('admin.accounts.upstream.apiKey') }}</label>
           <input
             v-model="editApiKey"
             type="password"
             class="input font-mono"
-            placeholder="sk-..."
+            :placeholder="account.platform === 'grok' ? '留空保持原值,grok2api config.toml 里 [app] api_key' : 'sk-...'"
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
@@ -2173,6 +2234,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -2343,6 +2405,12 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
+// 第三方面板用量查询（仅 apikey 类型）
+const usageQueryEnabled = ref(false)
+const usageQueryProvider = ref<'newapi'>('newapi')
+const usageQueryBaseUrl = ref('')
+const usageQueryAccessToken = ref('')
+const usageQueryUserId = ref('')
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
@@ -2487,8 +2555,12 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  tags: [] as string[]
 })
+
+// 标签自动补全候选；watch(props.show) 中拉一次。失败兜底空数组，不阻塞编辑。
+const tagSuggestions = ref<string[]>([])
 
 const statusOptions = computed(() => {
   const options = [
@@ -2532,6 +2604,21 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedChannelWarningDetails.value = null
   mixedChannelWarningRawMessage.value = ''
   mixedChannelWarningAction.value = null
+  // 第三方面板用量查询：从 extra.usage_query 还原（access_token 是后端下发的占位符 ••••••••）
+  const uq = (newAccount.extra as any)?.usage_query
+  if (uq && typeof uq === 'object') {
+    usageQueryEnabled.value = !!uq.enabled
+    usageQueryProvider.value = uq.provider === 'newapi' ? 'newapi' : 'newapi'
+    usageQueryBaseUrl.value = String(uq.base_url || '')
+    usageQueryAccessToken.value = String(uq.access_token || '')
+    usageQueryUserId.value = String(uq.user_id || '')
+  } else {
+    usageQueryEnabled.value = false
+    usageQueryProvider.value = 'newapi'
+    usageQueryBaseUrl.value = ''
+    usageQueryAccessToken.value = ''
+    usageQueryUserId.value = ''
+  }
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
@@ -2544,6 +2631,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
+  form.tags = Array.isArray(newAccount.tags) ? [...newAccount.tags] : []
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -2873,6 +2961,10 @@ watch(
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+      // 拉账号标签字典作为 AccountTagsInput 的 autocomplete 候选；失败兜底为空。
+      adminAPI.accounts.listTags()
+        .then(tags => { tagSuggestions.value = tags })
+        .catch(() => { tagSuggestions.value = [] })
     }
   },
   { immediate: true }
@@ -3802,6 +3894,35 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      // 第三方面板用量查询（仅 apikey）
+      if (props.account?.type === 'apikey') {
+        if (usageQueryEnabled.value) {
+          const baseUrl = usageQueryBaseUrl.value.trim()
+          const userId = usageQueryUserId.value.trim()
+          const token = usageQueryAccessToken.value.trim()
+          if (!baseUrl || !userId || !token) {
+            // 任一必填项空时阻止提交。编辑场景下 token 默认是后端占位符 ••••••••，
+            // 用户保留原值不动也算"已填"——所以这里只校验空字符串。
+            appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+            return
+          }
+          newExtra.usage_query = {
+            enabled: true,
+            provider: usageQueryProvider.value,
+            base_url: baseUrl,
+            access_token: token,
+            user_id: userId
+          }
+        } else {
+          // 关闭开关：保留其它字段但 enabled=false，便于回退恢复
+          const prev = (props.account.extra as any)?.usage_query
+          if (prev) {
+            newExtra.usage_query = { ...prev, enabled: false }
+          } else {
+            delete newExtra.usage_query
+          }
+        }
+      }
       updatePayload.extra = newExtra
     }
 

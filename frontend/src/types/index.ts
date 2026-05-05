@@ -468,7 +468,7 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -642,7 +642,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -776,6 +776,7 @@ export interface Account {
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
+    usage_query?: AccountUsageQueryConfig
   } & Record<string, unknown>)
   proxy_id: number | null
   concurrency: number
@@ -859,6 +860,10 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+
+  // 管理员维度标签（自由打的字符串数组）。仅用于列表筛选和视觉识别，
+  // 不参与调度 / 权限 / 计费。后端规范化后返回（小写、去重、字典序）。
+  tags?: string[]
 }
 
 // Account Usage types
@@ -885,6 +890,29 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
+// 第三方面板（newapi 等）用量查询配置
+// 仅 apikey 类型账号支持；access_token 在后端以密文形式存储，
+// GET 响应里以 "••••••••" 占位符返回。
+export interface AccountUsageQueryConfig {
+  enabled: boolean
+  provider: 'newapi' | string
+  base_url: string
+  // 后端返回时是占位符；前端编辑表单未修改时原样回传
+  access_token: string
+  user_id: string
+}
+
+// 第三方面板返回的额度信息（已规整化为统一单位）
+export interface AccountThirdPartyQuotaInfo {
+  plan_name: string
+  remaining: number
+  used: number
+  total: number
+  unit: string
+  utilization: number  // 0~1
+  updated_at?: number
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
@@ -898,6 +926,8 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  // 第三方面板查询返回的额度信息（仅 apikey + 启用 usage_query 时）
+  third_party_quota?: AccountThirdPartyQuotaInfo | null
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
@@ -971,6 +1001,7 @@ export interface CreateAccountRequest {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
+  tags?: string[] // 管理员维度标签，提交前需经 normalizeAccountTags 规范化
 }
 
 export interface UpdateAccountRequest {
@@ -990,6 +1021,7 @@ export interface UpdateAccountRequest {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   confirm_mixed_channel_risk?: boolean
+  tags?: string[] // 管理员维度标签；undefined=不改，[]=清空
 }
 
 export interface CheckMixedChannelRequest {
@@ -1423,6 +1455,8 @@ export interface UserSubscription {
   expires_at: string | null
   /** 订阅来源：admin（管理员分配）/ redeem（兑换码）/ payment（付费购买，不可重置）。 */
   source?: 'admin' | 'redeem' | 'payment'
+  /** 最近使用时间：服务端从 usage_logs 聚合 MAX(created_at) 填入；从未使用过的订阅返回 null。 */
+  last_used_at?: string | null
   user?: User
   group?: Group
 }

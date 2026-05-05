@@ -183,8 +183,20 @@ func buildMarketplaceModelItems(channels []service.AvailableChannel) []marketpla
 	return out
 }
 
+// isMarketplaceVisibleGroup 决定一个分组是否能进入模型广场聚合视图。
+//
+// 模型广场是面向所有访问者的公共探索页，不做 per-user 过滤，因此必须排除两类
+// 不属于"公开可申请"语义的分组：
+//   - 订阅类型分组：通过订阅入口分发，不在通用模型展示口中暴露；
+//   - 专属分组（IsExclusive）：定义上仅授权用户可见，不应在公共聚合中泄露。
 func isMarketplaceVisibleGroup(group service.AvailableGroupRef) bool {
-	return group.SubscriptionType != service.SubscriptionTypeSubscription
+	if group.SubscriptionType == service.SubscriptionTypeSubscription {
+		return false
+	}
+	if group.IsExclusive {
+		return false
+	}
+	return true
 }
 
 func filterMarketplaceItemsByModelName(items []marketplaceModelItem, query string) []marketplaceModelItem {

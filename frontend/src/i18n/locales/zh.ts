@@ -1096,6 +1096,7 @@ export default {
   profile: {
     title: '个人设置',
     description: '管理您的账户信息和设置',
+    userId: '用户 ID',
     accountBalance: '账户余额',
     concurrencyLimit: '并发限制',
     rpmLimit: 'RPM 限制',
@@ -1735,11 +1736,17 @@ export default {
         usage: '用量',
         concurrency: '并发数',
         status: '状态',
+        activityStatus: '活跃度',
+        activityActive: '使用中',
+        activityIdle: '活跃',
+        activityInactive: '闲置',
+        activityNever: '从未使用',
         lastActive: '最后活跃时间',
         lastUsed: '最后使用时间',
         created: '创建时间',
         actions: '操作'
       },
+      viewUsageRecords: '查看该用户今日使用记录',
       today: '今日',
       total: '近30天',
       noSubscription: '暂无订阅',
@@ -2518,6 +2525,7 @@ export default {
         group: '分组',
         startsAt: '开始时间',
         usage: '用量',
+        lastUsed: '最近使用',
         expires: '到期时间',
         status: '状态',
         actions: '操作'
@@ -2683,6 +2691,12 @@ export default {
       editAccount: '编辑账号',
       deleteAccount: '删除账号',
       deleteConfirmMessage: "确定要删除账号 '{name}' 吗？",
+      duplicate: '复制账号',
+      duplicateShort: '复制',
+      duplicateConfirm: "确定复制账号 '{name}' 吗？将以原账号的凭证和基础配置创建一个新副本，不绑定任何分组。",
+      duplicateConfirmButton: '复制',
+      duplicateSuccess: "已复制为账号 '{name}'，未绑定任何分组",
+      duplicateFailed: '复制账号失败',
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',
@@ -2722,6 +2736,7 @@ export default {
         proxy: '代理',
         lastUsed: '最近使用',
         expiresAt: '过期时间',
+        tags: '标签',
         actions: '操作'
       },
       allPrivacyModes: '全部Privacy状态',
@@ -2907,6 +2922,37 @@ export default {
         claude: 'Claude',
         passiveSampled: '被动采样',
         activeQuery: '查询'
+      },
+      usageQuery: {
+        title: '用量查询',
+        hint: '通过第三方面板（如 newapi）查询该账号在上游的剩余额度。仅 API Key 类型账号支持。',
+        enable: '启用第三方用量查询',
+        provider: '提供商',
+        baseUrl: '面板地址',
+        accessToken: '访问令牌',
+        accessTokenPlaceholder: '输入访问令牌',
+        userId: '上游用户 ID',
+        editTokenHint: '保留原值请勿修改；如需更换请直接覆盖。',
+        incompleteFields: '已开启用量查询，请填写面板地址、访问令牌和上游用户 ID 后再提交',
+        notEnabledHint: '未开启用量查询'
+      },
+      tags: {
+        label: '标签',
+        placeholder: '输入标签后回车或空格提交',
+        hint: '管理员维度的轻量标签，仅用于列表筛选和视觉识别；不参与调度 / 权限 / 计费。',
+        bulkReplaceHint: '提交后将整体替换目标账号的标签集合（留空表示清空）。',
+        remove: '移除标签 {tag}',
+        errors: {
+          length: '标签 "{tag}" 超出 {max} 字符长度限制',
+          charset: '标签 "{tag}" 包含非法字符，仅允许中文、英文字母数字及 - _',
+          count: '标签数量不能超过 {max} 个'
+        },
+        filterAll: '所有标签',
+        filterSelectedLabel: '已选 {count} 个标签',
+        filterSearchPlaceholder: '搜索标签',
+        filterEmpty: '暂无可用标签',
+        filterSelectedCount: '已选 {count}',
+        filterClear: '清空'
       },
       tier: {
         free: 'Free',
@@ -4460,6 +4506,7 @@ export default {
       errorDetail: {
         title: '错误详情',
         titleWithId: '错误 #{id}',
+        back: '返回上一页',
         noErrorSelected: '未选择错误。',
         resolution: '已解决：',
         pinnedToOriginalAccountId: '固定到原 account_id',
@@ -4600,6 +4647,7 @@ export default {
           kind: '类型',
           platform: '平台',
           model: '模型',
+          account: '账号',
           duration: '耗时',
           status: '状态码',
           requestId: '请求ID',

@@ -33,7 +33,7 @@ describe('UsageProgressBar', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('现在')
+    expect(wrapper.text()).toContain('common.now')
     expect(wrapper.text()).not.toContain('2h 30m')
   })
 
@@ -49,7 +49,7 @@ describe('UsageProgressBar', () => {
     })
 
     expect(wrapper.text()).toContain('2h 30m')
-    expect(wrapper.text()).not.toContain('现在')
+    expect(wrapper.text()).not.toContain('common.now')
   })
 
   it('showNowWhenIdle=false 时保持原有倒计时行为', () => {
@@ -64,6 +64,6 @@ describe('UsageProgressBar', () => {
     })
 
     expect(wrapper.text()).toContain('2h 30m')
-    expect(wrapper.text()).not.toContain('现在')
+    expect(wrapper.text()).not.toContain('common.now')
   })
 })

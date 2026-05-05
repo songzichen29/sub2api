@@ -46,7 +46,6 @@
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
           color="indigo"
         />
 
@@ -72,13 +71,13 @@
         <div class="flex items-center gap-1.5 mt-0.5">
           <span
             v-if="usageInfo.source === 'passive'"
-            class="text-[9px] text-gray-400 dark:text-gray-500 italic"
+            class="text-[10px] text-gray-400 dark:text-gray-500 italic"
           >
             {{ t('admin.accounts.usageWindow.passiveSampled') }}
           </span>
           <button
             type="button"
-            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
+            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
             :disabled="activeQueryLoading"
             @click="loadActiveUsage"
           >
@@ -113,7 +112,6 @@
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
           :show-now-when-idle="true"
           color="indigo"
         />
@@ -122,7 +120,6 @@
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
-          :window-stats="usageInfo.seven_day.window_stats"
           :show-now-when-idle="true"
           color="emerald"
         />
@@ -148,7 +145,7 @@
       <div v-if="antigravityTierLabel" class="mb-1 flex items-center gap-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-[11px] font-medium',
             antigravityTierClass
           ]"
         >
@@ -182,7 +179,7 @@
       <div v-if="isForbidden" class="space-y-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-[11px] font-medium',
             forbiddenBadgeClass
           ]"
         >
@@ -193,14 +190,14 @@
             :href="validationURL"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-[10px] text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+            class="text-[11px] text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
             :title="t('admin.accounts.openVerification')"
           >
             {{ t('admin.accounts.openVerification') }}
           </a>
           <button
             type="button"
-            class="text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            class="text-[11px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             :title="t('admin.accounts.copyLink')"
             @click="copyValidationURL"
           >
@@ -211,14 +208,14 @@
 
       <!-- Needs reauth (401) -->
       <div v-else-if="needsReauth" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
           {{ t('admin.accounts.needsReauth') }}
         </span>
       </div>
 
       <!-- Degraded error (non-403, non-401) -->
       <div v-else-if="usageInfo?.error" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-[11px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
           {{ usageErrorLabel }}
         </span>
       </div>
@@ -275,11 +272,11 @@
           color="amber"
         />
 
-        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+        <div v-if="aiCreditsDisplay" class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
-      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
+      <div v-else-if="aiCreditsDisplay" class="text-[11px] text-gray-500 dark:text-gray-400">
         💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
@@ -291,7 +288,7 @@
       <div v-if="geminiAuthTypeLabel" class="mb-1 flex items-center gap-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-[11px] font-medium',
             geminiTierClass
           ]"
         >
@@ -336,7 +333,7 @@
           v-if="showGeminiTodayStats && todayStats"
           class="mb-0.5 flex items-center"
         >
-          <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+          <div class="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
               {{ formatKeyRequests }} req
             </span>
@@ -381,10 +378,9 @@
             :label="bar.label"
             :utilization="bar.utilization"
             :resets-at="bar.resetsAt"
-            :window-stats="bar.windowStats"
             :color="bar.color"
           />
-          <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
+          <p class="mt-1 text-[10px] leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' }}
           </p>
         </div>
@@ -403,16 +399,82 @@
 
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else>
+    <!-- 第三方面板（newapi 等）用量查询：apikey + extra.usage_query.enabled，优先于平台原生展示 -->
+    <template v-if="showThirdPartyUsage">
+        <div v-if="loading" class="space-y-1">
+          <div class="h-2 w-full animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div v-else-if="usageInfo?.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
+          {{ usageInfo.error }}
+        </div>
+        <div v-else-if="usageInfo?.third_party_quota" class="flex items-center gap-2">
+          <div class="min-w-0 flex-1 space-y-1">
+            <div class="flex items-center gap-2">
+              <div class="relative h-2 flex-1 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/80">
+                <div
+                  class="h-full rounded-full transition-all duration-300"
+                  :class="thirdPartyBarClass"
+                  :style="{ width: thirdPartyBarWidth }"
+                ></div>
+              </div>
+              <span
+                class="shrink-0 text-[11px] font-semibold tabular-nums"
+                :class="thirdPartyTextClass"
+              >
+                {{ thirdPartyDisplayPercent }}
+              </span>
+            </div>
+            <div class="text-[11px] tabular-nums">
+              <span :class="['font-semibold', thirdPartyAmountClass]">${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}</span>
+              <span class="text-gray-400 dark:text-gray-500"> / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+            :title="t('admin.accounts.usageWindow.activeQuery')"
+            :aria-label="t('admin.accounts.usageWindow.activeQuery')"
+            :disabled="activeQueryLoading"
+            @click="loadActiveUsage"
+          >
+            <svg
+              class="h-3 w-3"
+              :class="{ 'animate-spin': activeQueryLoading }"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+        <div v-else class="text-xs text-gray-400">-</div>
+    </template>
     <!-- Gemini API Key accounts: show quota info -->
-    <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <div v-else-if="account.platform === 'gemini'">
+      <AccountQuotaInfo :account="account" />
+      <div
+        v-if="showUsageQueryPlaceholder"
+        class="mt-1 text-[11px] italic text-gray-400 dark:text-gray-500"
+      >
+        {{ t('admin.accounts.usageQuery.notEnabledHint') }}
+      </div>
+    </div>
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
-      <!-- Today stats row (requests, tokens, cost, user_cost) -->
+      <!--
+        Today stats row。
+        在"未开启用量查询"占位下方再画一行 0 req / 0 / A $0.00 / U $0.00 没意义；
+        因此当 showUsageQueryPlaceholder=true 且 today stats 全为 0 时整行不渲染。
+        有真实使用量时仍正常展示，避免误伤还在工作的 apikey 账号。
+      -->
       <div
-        v-if="todayStats"
+        v-if="todayStats && !(showUsageQueryPlaceholder && isZeroTodayStats)"
         class="mb-0.5 flex items-center"
       >
-        <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+        <div class="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
             {{ formatKeyRequests }} req
           </span>
@@ -431,9 +493,9 @@
           </span>
         </div>
       </div>
-      <!-- Loading skeleton for today stats -->
+      <!-- Loading skeleton：placeholder 模式下不画骨架屏，避免数据加载完是 0 时先闪一下再消失。-->
       <div
-        v-else-if="todayStatsLoading"
+        v-else-if="todayStatsLoading && !showUsageQueryPlaceholder"
         class="mb-0.5 flex items-center gap-1"
       >
         <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -463,8 +525,19 @@
         color="purple"
       />
 
+      <!-- 占位：apikey 未启用第三方用量查询时给一条提示 -->
+      <div
+        v-if="showUsageQueryPlaceholder"
+        class="text-[11px] italic text-gray-400 dark:text-gray-500"
+      >
+        {{ t('admin.accounts.usageQuery.notEnabledHint') }}
+      </div>
+
       <!-- No data at all -->
-      <div v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota" class="text-xs text-gray-400">-</div>
+      <div
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !showUsageQueryPlaceholder"
+        class="text-xs text-gray-400"
+      >-</div>
     </div>
   </div>
 </template>
@@ -527,9 +600,78 @@ const showUsageWindows = computed(() => {
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
+// 第三方面板用量查询：apikey 类型 + extra.usage_query.enabled
+const showThirdPartyUsage = computed(() => {
+  return props.account.type === 'apikey' && !!props.account.extra?.usage_query?.enabled
+})
+
+// apikey 但未启用第三方用量查询时，列表里给一条占位提示，引导用户去配置。
+const showUsageQueryPlaceholder = computed(() => {
+  return props.account.type === 'apikey' && !showThirdPartyUsage.value
+})
+
+// today stats 是否全为 0：req / tokens / cost / user_cost 都为 0 时认为没有可展示的真实使用量，
+// 配合 placeholder 一起把"0 req / 0 / A $0.00 / U $0.00"这种空壳数据藏掉。
+const isZeroTodayStats = computed(() => {
+  const s = props.todayStats
+  if (!s) return true
+  const req = s.requests ?? 0
+  const tok = s.tokens ?? 0
+  const cost = s.cost ?? 0
+  const userCost = s.user_cost ?? 0
+  return req === 0 && tok === 0 && cost === 0 && userCost === 0
+})
+
+// 第三方用量进度条样式：后端返回的 utilization 是 0~1 小数（used/total），
+// 这里归一成百分比再驱动宽度 / 颜色 / 文案，避免 0.46 显示成 0%。
+const thirdPartyPercentRaw = computed(() => {
+  const u = usageInfo.value?.third_party_quota?.utilization
+  if (typeof u !== 'number' || !isFinite(u)) return 0
+  return u * 100
+})
+
+const thirdPartyBarWidth = computed(() => {
+  const p = Math.max(0, Math.min(thirdPartyPercentRaw.value, 100))
+  return `${p}%`
+})
+
+const thirdPartyDisplayPercent = computed(() => {
+  const p = Math.round(thirdPartyPercentRaw.value)
+  if (p > 999) return '>999%'
+  if (p < 0) return '0%'
+  return `${p}%`
+})
+
+const thirdPartyBarClass = computed(() => {
+  const p = thirdPartyPercentRaw.value
+  if (p >= 100) return 'bg-red-500'
+  if (p >= 80) return 'bg-amber-500'
+  if (p >= 50) return 'bg-yellow-400'
+  return 'bg-emerald-500'
+})
+
+const thirdPartyTextClass = computed(() => {
+  const p = thirdPartyPercentRaw.value
+  if (p >= 100) return 'text-red-600 dark:text-red-400'
+  if (p >= 80) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-600 dark:text-gray-300'
+})
+
+const thirdPartyAmountClass = computed(() => {
+  const remaining = usageInfo.value?.third_party_quota?.remaining
+  if (typeof remaining === 'number' && remaining <= 0) {
+    return 'text-red-600 dark:text-red-400'
+  }
+  const p = thirdPartyPercentRaw.value
+  if (p >= 80) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-800 dark:text-gray-100'
+})
+
 const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'anthropic') {
-    return props.account.type === 'oauth' || props.account.type === 'setup-token'
+    if (props.account.type === 'oauth' || props.account.type === 'setup-token') return true
+    if (showThirdPartyUsage.value) return true
+    return false
   }
   if (props.account.platform === 'gemini') {
     return true
@@ -538,8 +680,12 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   if (props.account.platform === 'openai') {
-    return props.account.type === 'oauth'
+    if (props.account.type === 'oauth') return true
+    if (showThirdPartyUsage.value) return true
+    return false
   }
+  // 其它平台 + apikey + 启用第三方查询：也支持
+  if (showThirdPartyUsage.value) return true
   return false
 })
 
@@ -1164,6 +1310,15 @@ const formatKeyUserCost = computed(() => {
   if (!props.todayStats || props.todayStats.user_cost == null) return '0.00'
   return props.todayStats.user_cost.toFixed(2)
 })
+
+// 第三方面板数额格式化：保留 2 位小数；当数值很大时降级为整数+单位（如 1.2k）
+function formatThirdPartyAmount(n: number | null | undefined): string {
+  if (typeof n !== 'number' || !isFinite(n)) return '-'
+  if (Math.abs(n) >= 10000) {
+    return formatCompactNumber(n)
+  }
+  return n.toFixed(2)
+}
 
 onMounted(() => {
   if (typeof window !== 'undefined') {

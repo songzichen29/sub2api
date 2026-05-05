@@ -40,6 +40,8 @@ export async function list(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    /** 标签 AND 筛选；多个标签会序列化为 ?tags=a&tags=b（repeat 格式，与后端 c.QueryArray 兼容）。 */
+    tags?: string[]
   },
   options?: {
     signal?: AbortSignal
@@ -51,6 +53,10 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
+    // tags 是 string[]，axios 默认会序列化为 tags[]=a&tags[]=b（带方括号），
+    // 但后端 Gin 的 c.QueryArray("tags") 期望的是 tags=a&tags=b（repeat 无括号）。
+    // indexes: null 显式禁用方括号，让 axios 用 repeat 格式。
+    paramsSerializer: { indexes: null },
     signal: options?.signal
   })
   return data
@@ -75,6 +81,8 @@ export async function listWithEtag(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    /** 标签 AND 筛选；序列化规则同 list()。 */
+    tags?: string[]
   },
   options?: {
     signal?: AbortSignal
@@ -92,6 +100,8 @@ export async function listWithEtag(
       page_size: pageSize,
       ...filters
     },
+    // 与 list() 同样需要 repeat 格式（tags=a&tags=b）以匹配后端 c.QueryArray。
+    paramsSerializer: { indexes: null },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
@@ -161,6 +171,18 @@ export async function checkMixedChannelRisk(
  */
 export async function deleteAccount(id: number): Promise<{ message: string }> {
   const { data } = await apiClient.delete<{ message: string }>(`/admin/accounts/${id}`)
+  return data
+}
+
+/**
+ * Duplicate an existing account: copy credentials and base configuration into
+ * a brand-new account. Group bindings and runtime state are NOT copied; the
+ * new name is auto-suffixed (e.g. "X - 副本").
+ * @param id - Source account ID
+ * @returns Newly created account
+ */
+export async function duplicate(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`)
   return data
 }
 
@@ -630,6 +652,20 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
+/**
+ * 拉取所有未删除账号的标签字典（去重 + 字典序），用于 AccountTagsInput 的自动补全候选。
+ *
+ * 后端 GET /admin/accounts/tags 返回 { tags: string[] }，此处剥壳直接返回数组。
+ * 前端组件应在打开输入或聚焦时按需调用，结果可缓存到 store 但 TTL 不要太长——
+ * 新增账号会改变字典内容，建议每次打开 modal 重新拉取。
+ */
+export async function listTags(options?: { signal?: AbortSignal }): Promise<string[]> {
+  const { data } = await apiClient.get<{ tags?: string[] }>('/admin/accounts/tags', {
+    signal: options?.signal
+  })
+  return Array.isArray(data?.tags) ? data.tags : []
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -638,6 +674,7 @@ export const accountsAPI = {
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,
+  duplicate,
   toggleStatus,
   testAccount,
   refreshCredentials,
@@ -666,7 +703,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  setPrivacy
+  setPrivacy,
+  listTags
 }
 
 export default accountsAPI

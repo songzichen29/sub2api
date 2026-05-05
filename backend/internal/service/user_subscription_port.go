@@ -31,5 +31,10 @@ type UserSubscriptionRepository interface {
 	ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
 	IncrementUsage(ctx context.Context, id int64, costUSD float64) error
 
+	// GetLatestUsedAtBySubscriptionIDs 批量返回每个订阅在 usage_logs 上聚合得到的
+	// 最近一次使用时间（MAX(created_at) GROUP BY subscription_id）。
+	// 与 UserRepository.GetLatestUsedAtByUserIDs 同范式，不依赖 schema 上的字段。
+	GetLatestUsedAtBySubscriptionIDs(ctx context.Context, subscriptionIDs []int64) (map[int64]*time.Time, error)
+
 	BatchUpdateExpiredStatus(ctx context.Context) (int64, error)
 }

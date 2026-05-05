@@ -1,0 +1,139 @@
+feature: 2026-05-04-account-tags
+created: 2026-05-04
+
+steps:
+  - action: "后端 schema + 迁移：写 134_add_account_tags.sql、改 ent/schema/account.go 加 tags JSONB 字段、go generate ./ent"
+    exit_signal: "psql 查 SELECT tags FROM accounts LIMIT 1 返回 []；pg_indexes 中存在 idx_accounts_tags_gin"
+    status: done
+    note: "代码层面已完成（migration SQL 对齐历史风格 + ent 生成代码含 Tags + go build 通过）。本地无 PG 也无 Docker，实跑 PG 验证推到 step 8 一起做。"
+
+  - action: "后端 service + repo 写入读取：Account struct 加 Tags []string、新增 NormalizeAccountTags 函数、Create/Update 处理 tags、DTO mapper 透传并兜底空数组"
+    exit_signal: "account_service_tags_test.go 中创建后再读取附带 tags 的账号用例通过；go test -tags=unit ./backend/internal/service/... 全绿"
+    status: done
+    note: "service 包全部 unit 测试 100s 通过。规范化测试 14 例（六条规则正反例 + 边界）+ Create/Update/Read 闭环 5 例。NormalizeAccountTags 放新文件 account_tags.go（避免追加到已 2200 行的 account.go）。前置仓库本身存在 stubUserSubscriptionRepo 缺 GetLatestUsedAtBySubscriptionIDs 方法导致 internal/server 包 build 失败——和本 feature 无关，不动。"
+
+  - action: "后端 List 加 tags 筛选 + ListTags 接口：ListWithFilters 加 tags 入参拼 JSONB @> 谓词、handler 解析 c.QueryArray、新增 ListTags handler 和 GET /admin/accounts/tags 路由"
+    exit_signal: "curl ?tags=vip&tags=prod 仅返回同时含两个标签的账号；curl /admin/accounts/tags 返回去重排序数组；handler 单元/集成测试通过"
+    status: done
+    note: "代码层：AdminService 加 ListAllAccountTags 接口+实现（转调 accountRepo.ListAllTags）、路由 /tags 注册在 /:id 前避免 gin 参数解析冲突。go build 通过、go vet 全绿、service 包 + admin handler 包单测全绿。新增 account_handler_tags_test.go 共 3 个测试 7 例全通过：ListTags 字典序去重、空集返回 []、5 种 query 入参解析（含大写规范化、去重、空值不过滤）。修了 9 处旧 stub 跟接口签名脱钩（缺 tags 参数或 ListAllTags 方法）：sessionWindowMockRepo、stubAdminService、openAICodexExtraListRepo、mockAccountRepoForPlatform、mockAccountRepoForGemini、accountRepoStub、inMemoryAccountRepo、accountRepoStubForBulkUpdate、accountRepoStubForAdminList。AND 筛选 SQL 行为依赖 PG 真实环境，留到 step 8 一起做。"
+
+  - action: "前端 类型 + API + AccountTagsInput：types/index.ts 加 tags 字段、api/admin/accounts.ts 加 listTags 函数、新建 AccountTagsInput.vue 组件"
+    exit_signal: "pnpm vitest run AccountTagsInput.spec 通过；输入 'VIP ' 回车 emit ['vip']；超长输入 emit invalid"
+    status: done
+    note: "新增前端规范化工具 utils/accountTags.ts（前后端规则镜像：trim/小写/长度<=30 按 rune/数量<=20/字符集 CJK+a-z+0-9+-_）+ 19 例 spec。AccountTagsInput.vue 组件支持回车/空格/逗号提交、Backspace 删尾 chip、点 chip × 删除、autocomplete dropdown（suggestions 由父组件 listTags() 拉取后透传）、内联错误提示。types/index.ts 给 Account/CreateAccountRequest/UpdateAccountRequest 加 tags?: string[]；api/admin/accounts.ts 加 listTags() 函数。AccountTagsInput.spec 11 例全通过含 design 三个退出条件。pnpm vue-tsc --noEmit 全绿。i18n 词条 admin.accounts.tags.* 按 checklist 留到 step 8 收尾。list filters 加 tags 留到 step 6 列表筛选器一起做。"
+
+  - action: "前端 Create / Edit Modal 嵌入 tags：两个 Modal 加 form.tags state、template 一行 AccountTagsInput、提交 payload 带 tags"
+    exit_signal: "浏览器新建账号填 ['vip'] 提交后编辑能看到 ['vip']；列表行 tags 字段也是 ['vip']"
+    status: done
+    note: "两个 Modal 都加了：import AccountTagsInput；form.tags 字段；resetForm/syncFormFromAccount 同步；watch(props.show) 时 listTags() 拉 tagSuggestions 兜底空数组；template 在 notes 之后插入 AccountTagsInput 区块（label/placeholder/hint 用 admin.accounts.tags.* i18n key）。CreateAccountModal 5 处显式 payload 加 tags: form.tags（doCreateAccount 主流程 + OpenAI/Anthropic/Antigravity 各 OAuth exchange 子路径），1 处 ...form 展开自动带；EditAccountModal 通过 ...form 自动带不需要手动加。EditAccountModal.spec mock 加 listTags: vi.fn().mockResolvedValue([])。pnpm vue-tsc 全绿；改动相关的 4 个 spec（AccountTagsInput 11 + accountTags 19 + EditAccountModal 3 + BulkEditAccountModal 11）共 44 例全通过。AccountUsageCell.spec 6 例失败是 baseline（spy 断言与 codex usage API 相关，与本 feature 无关，AccountUsageCell.vue 本身被其他改动修改过）。浏览器端到端验证留到 step 8 一起做。"
+
+  - action: "前端 列表筛选器 + 列表展示：新建 AccountTagsFilter.vue、AccountTableFilters 接入、AccountsView 接入 params.tags、列表行展示 chip"
+    exit_signal: "浏览器筛选器选 vip+prod 两个标签后列表只剩同时具备这两个标签的账号"
+    status: done
+    note: "新建 components/admin/account/AccountTagsFilter.vue（仿 Select 风格 trigger + dropdown 多选 checkbox + 搜索框 + 清空按钮，onClickOutside 关闭）。AccountTableFilters 加 :availableTags prop + AccountTagsFilter 占位 + updateTags emit。AccountsView：useTableLoader.initialParams 加 tags: [] as string[]、新增 availableTags ref、onMounted 拉 listTags() 兜底空数组、:available-tags 透传给 AccountTableFilters；新增 cell-tags slot（chip 列表 max-w 16rem、空值显示 -）和 columns 配置（在 expires_at 与 notes 之间）。list/listWithEtag 加 tags?: string[] 入参 + paramsSerializer:{indexes:null} 让 axios 用 repeat 格式（tags=a&tags=b）匹配后端 c.QueryArray。新增 AccountTagsFilter.spec.ts 5 例（dropdown 展开、累积选择含测试约束 vip+prod 用例、取消选中、清空、搜索框过滤）。AccountsView.bulkEdit.spec mock 加 listTags 防回归。pnpm vue-tsc 全绿；46 个相关测试全通过。DashboardView.spec 1 个 unhandled rejection 是 baseline（toFixed undefined，与本 feature 无关）。浏览器端到端验证留到 step 8。"
+
+  - action: "前端 BulkEdit 批量替换标签：BulkEditAccountModal 加同时编辑标签复选框 + AccountTagsInput、提交逻辑用 *[]string 语义"
+    exit_signal: "浏览器选 3 条账号勾选同时编辑标签输入 ['test'] 提交后这 3 条的 tags 全部变成 ['test']；不勾选复选框时不影响 tags 字段"
+    status: done
+    note: "BulkEditAccountModal.vue 加：enableTags ref + tags ref + tagSuggestions ref + import AccountTagsInput；template 在 Groups 区块后插入 Tags 区块（复选框 + AccountTagsInput + bulk replace hint）；buildUpdatePayload 加 tags 分支（仅在 enableTags=true 时把 tags.value 加进 payload，对应后端 *[]string 语义：不传=不改 / []=清空 / [...]=替换）；handleSubmit.hasAnyFieldEnabled 加 enableTags；watch(props.show) 加打开时 listTags() 拉候选 + 关闭时 reset enableTags=false 和 tags=[]。BulkEdit API/类型层面无改动（bulkUpdate 入参是 Record<string, unknown> 已经能透传任意字段）。BulkEditAccountModal.spec mock 加 listTags + 新增 3 例测试覆盖 step 7 退出条件：勾选+输入 ['test'] 提交含 tags=['test']；勾选但空数组提交含 tags=[]（清空语义）；不勾选时 payload 不含 tags 字段（不改语义）。原 11 例 + 新 3 例共 14 例全通过；pnpm vue-tsc 全绿。"
+
+  - action: "i18n 词条收尾 + 端到端联调：en.ts/zh.ts 加 admin.accounts.tags.* 词条、跑全部测试、复制账号验证 tags 一起复制"
+    exit_signal: "pnpm vitest run + go test -tags=unit ./... + go test -tags=integration ./... + golangci-lint run ./... 全绿；浏览器复制账号后副本 tags = 原账号 tags"
+    status: done
+    note: "i18n 词条已补：zh.ts/en.ts 的 admin.accounts 下加 tags.{label/placeholder/hint/bulkReplaceHint/remove/errors.{length/charset/count}/filterAll/filterSelectedLabel/filterSearchPlaceholder/filterEmpty/filterSelectedCount/filterClear} + columns.tags + usageQuery.incompleteFields。同步顺手修了用户报的 3 个问题：(1) CreateAccountModal/EditAccountModal 在开启 usageQueryEnabled 但 baseUrl/userId/token 任一空时静默丢弃整个 usage_query 配置——改为 appStore.showError + return 阻止提交；(2) 因为问题 1 直接连带——原本静默丢弃所以列表不显示；(3) 'admin.accounts.tags.filterAll' 这种 i18n key 直显在 trigger 按钮上把 AccountTableFilters 行挤变形——补完 i18n 后正确显示中英文。Duplicate 复制 tags 在 admin_service.go:2283 已实现（src.Tags 透传给 CreateAccountInput），service 层 unit 测试 mock 链太长性价比低，按 design 留 e2e 验证。go test -tags=unit ./... 全绿（顺手修了 baseline 阻塞 step 8 的两个 stub：stubAccountRepo 缺 ListAllTags 是本 feature step 3 引入接口后我漏补的；stubUserSubscriptionRepo 缺 GetLatestUsedAtBySubscriptionIDs 是 feature 外别人遗留代码，但不修 build 就过不去）。本 feature 自身相关 6 个前端 spec 共 53 例全绿；前端 14 例 baseline 失败与 feature 无关（AccountUsageCell codex spy 断言 / apiError vitest 环境 i18n 编译 / useOpenAIOAuth / usePersistedPageSize）。golangci-lint 本地未装（CI 跑），integration 测试需真实 PG/MySQL（本地无环境）——这两项+浏览器 E2E（duplicate/列表行 chip/筛选 AND 语义）留给用户在 CI/部署环境执行。"
+
+checks:
+  # 范围守护：来自第 1.1 节"明确不做"
+  - item: "不抽 tags / account_tags 关联表，存储就是 accounts.tags JSONB"
+    source: 范围守护
+    status: pending
+
+  - item: "不建标签字典 / 标签管理页 / 标签 CRUD 接口，标签字典由已有账号实时聚合"
+    source: 范围守护
+    status: pending
+
+  - item: "标签不参与调度：internal/scheduler/、scheduler*.go、account_repo.go 的 ListSchedulable* 方法签名都不出现 tags"
+    source: 范围守护
+    status: pending
+
+  - item: "标签不参与权限：auth_identity / user_allowed_group / api_key 相关链路不出现 tags"
+    source: 范围守护
+    status: pending
+
+  - item: "标签不参与计费：usage_logs / account_stats_pricing_rules / channel.go 定价模型不出现 tags"
+    source: 范围守护
+    status: pending
+
+  - item: "不做按标签的使用统计 / 报表"
+    source: 范围守护
+    status: pending
+
+  - item: "批量编辑只做替换语义，不做追加 / 移除语义"
+    source: 范围守护
+    status: pending
+
+  - item: "不做标签重命名传播接口，批量改名只用一次性 SQL 处理"
+    source: 范围守护
+    status: pending
+
+  - item: "不把这套标签机制扩展到 user / api_key / channel，本 feature 范围只限 account"
+    source: 范围守护
+    status: pending
+
+  - item: "不在普通用户可见的 GET /api/v1/channels/available 等接口暴露 tags 字段"
+    source: 范围守护
+    status: pending
+
+  # 接口契约：来自第 2 节
+  - item: "POST /admin/accounts 与 PUT /admin/accounts/:id 接受 tags 字段；后端规范化后返回；超长返回 INVALID_ACCOUNT_TAG_LENGTH 等错误码"
+    source: 接口契约
+    status: pending
+
+  - item: "GET /admin/accounts?tags=a&tags=b 实现 AND 语义（tags @> '[\"a\",\"b\"]'）；空字符串和未传都视为不过滤；查询前小写规范化"
+    source: 接口契约
+    status: pending
+
+  - item: "GET /admin/accounts/tags 返回字典序、去重、全小写的标签数组；软删除账号的标签不出现"
+    source: 接口契约
+    status: pending
+
+  - item: "POST /admin/accounts/bulk-update 的 tags 用 *[]string 区分未提供（不改）和空数组（清空）"
+    source: 接口契约
+    status: pending
+
+  - item: "POST /admin/accounts/:id/duplicate 副本 tags 与原账号一致；group_ids 仍不复制"
+    source: 接口契约
+    status: pending
+
+  # 测试约束：来自第 3.5 节
+  - item: "标签规范化六条规则（trim/小写/去重/长度/数量/字符集）各覆盖一例正例和一例反例"
+    source: 测试约束
+    status: pending
+
+  - item: "AND 筛选 SQL 正确性集成测试：3 个账号 tags=[vip,prod]/[vip]/[prod]，查询 [vip,prod] 仅返回第一个，查询 [] 返回全部"
+    source: 测试约束
+    status: pending
+
+  - item: "ListAllTags 测试：软删除账号标签不出现、不同账号相同标签去重、返回字典序"
+    source: 测试约束
+    status: pending
+
+  - item: "Duplicate 复制 tags 测试：副本 tags 与原账号一致；修改副本 tags 不影响原账号"
+    source: 测试约束
+    status: pending
+
+  - item: "Bulk replace tags 测试：不传 tags 不改；传 tags=[] 清空；传 tags=[test] 替换"
+    source: 测试约束
+    status: pending
+
+  - item: "Handler 解析 query 参数测试：?tags=vip&tags=prod、?tags=、?tags=VIP（大写兼容）三种入参各一例"
+    source: 测试约束
+    status: pending
+
+  - item: "前端 AccountTagsInput 组件交互测试：输入 'VIP ' Enter 后 emit ['vip',...]；超长触发 @invalid；点 chip × 后 emit 移除"
+    source: 测试约束
+    status: pending
+
+  - item: "前端 AccountsView 标签筛选透传测试：选 [vip,prod] 后 list API 调用 filters 含 tags=['vip','prod']"
+    source: 测试约束
+    status: pending
