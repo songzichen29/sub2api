@@ -3,7 +3,7 @@
     <!-- QR Code + Polling State -->
     <div v-if="!success" class="flex flex-col items-center space-y-4">
       <!-- QR Code mode -->
-      <template v-if="qrUrl">
+      <template v-if="qrUrl && !expired">
         <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
           <canvas ref="qrCanvas" class="mx-auto"></canvas>
         </div>
@@ -12,7 +12,7 @@
         </p>
       </template>
       <!-- Popup window waiting mode (no QR code) -->
-      <template v-else>
+      <template v-else-if="!expired">
         <div class="flex flex-col items-center py-4">
           <div class="h-10 w-10 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
           <p class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.qr.payInNewWindowHint') }}</p>
@@ -22,8 +22,9 @@
         </div>
       </template>
       <!-- Countdown -->
-      <div v-if="expired" class="text-center">
-        <p class="text-lg font-medium text-red-500">{{ t('payment.qr.expired') }}</p>
+      <div v-if="expired" class="text-center space-y-2">
+        <p class="text-lg font-medium text-red-500">{{ terminationLabel }}</p>
+        <p v-if="terminationDesc" class="text-sm text-gray-500 dark:text-gray-400">{{ terminationDesc }}</p>
       </div>
       <div v-else class="text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ qrUrl ? t('payment.qr.expiresIn') : '' }}</p>
@@ -108,6 +109,7 @@ const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
 const remainingSeconds = ref(0)
 const expired = ref(false)
+const terminationReason = ref<'expired' | 'cancelled' | 'failed'>('expired')
 const cancelling = ref(false)
 const success = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
@@ -129,6 +131,16 @@ const dialogTitle = computed(() => {
 const scanHint = computed(() => {
   if (isAlipay.value) return t('payment.qr.scanAlipayHint')
   if (isWxpay.value) return t('payment.qr.scanWxpayHint')
+  return ''
+})
+
+const terminationLabel = computed(() => {
+  if (terminationReason.value === 'cancelled') return t('payment.qr.cancelled')
+  return t('payment.qr.expired')
+})
+const terminationDesc = computed(() => {
+  if (terminationReason.value === 'cancelled') return t('payment.qr.cancelledDesc')
+  if (terminationReason.value === 'expired') return t('payment.qr.expiredDesc')
   return ''
 })
 
@@ -188,28 +200,35 @@ async function pollStatus() {
   if (!props.orderId) return
   const order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  const status = String(order.status || '').trim().toUpperCase()
+  if (status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING') {
     cleanup()
     paidOrder.value = order
     success.value = true
     emit('success')
-  } else if (order.status === 'EXPIRED' || order.status === 'CANCELLED' || order.status === 'FAILED') {
-    cleanup()
-    expired.value = true
+    return
   }
+  if (status === 'EXPIRED') enterTerminalState('expired')
+  else if (status === 'CANCELLED') enterTerminalState('cancelled')
+  else if (status === 'FAILED') enterTerminalState('failed')
+}
+
+function enterTerminalState(reason: 'expired' | 'cancelled' | 'failed') {
+  cleanup()
+  terminationReason.value = reason
+  expired.value = true
 }
 
 function startCountdown(seconds: number) {
   remainingSeconds.value = Math.max(0, seconds)
   if (remainingSeconds.value <= 0) {
-    expired.value = true
+    enterTerminalState('expired')
     return
   }
   countdownTimer = setInterval(() => {
     remainingSeconds.value--
     if (remainingSeconds.value <= 0) {
-      expired.value = true
-      cleanup()
+      enterTerminalState('expired')
     }
   }, 1000)
 }
@@ -248,6 +267,7 @@ function init() {
   success.value = false
   paidOrder.value = null
   expired.value = false
+  terminationReason.value = 'expired'
   cancelling.value = false
   qrUrl.value = props.qrCode
 
