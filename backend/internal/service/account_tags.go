@@ -114,4 +114,3 @@ func isValidAccountTagCharset(s string) bool {
 	}
 	return true
 }
-
