@@ -753,8 +753,8 @@
           </div>
         </div>
 
-        <!-- 支持的模型系列（仅 antigravity 平台） -->
-        <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- 支持的模型系列（所有平台都可编辑；仅 antigravity 走调度时实际生效，其它平台仅作为元数据透出给支付页等只读消费方） -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.supportedScopes.title") }}
@@ -798,27 +798,34 @@
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                :checked="
-                  createForm.supported_model_scopes.includes('gemini_text')
-                "
-                @change="toggleCreateScope('gemini_text')"
+                :checked="createForm.supported_model_scopes.includes('chatgpt')"
+                @change="toggleCreateScope('chatgpt')"
                 class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{
-                t("admin.groups.supportedScopes.geminiText")
+                t("admin.groups.supportedScopes.chatgpt")
               }}</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                :checked="
-                  createForm.supported_model_scopes.includes('gemini_image')
-                "
-                @change="toggleCreateScope('gemini_image')"
+                :checked="createForm.supported_model_scopes.includes('gemini')"
+                @change="toggleCreateScope('gemini')"
                 class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{
-                t("admin.groups.supportedScopes.geminiImage")
+                t("admin.groups.supportedScopes.gemini")
+              }}</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="createForm.supported_model_scopes.includes('grok')"
+                @change="toggleCreateScope('grok')"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{
+                t("admin.groups.supportedScopes.grok")
               }}</span>
             </label>
           </div>
@@ -1938,8 +1945,8 @@
           </div>
         </div>
 
-        <!-- 支持的模型系列（仅 antigravity 平台） -->
-        <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
+        <!-- 支持的模型系列（所有平台都可编辑；仅 antigravity 走调度时实际生效，其它平台仅作为元数据透出给支付页等只读消费方） -->
+        <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.supportedScopes.title") }}
@@ -1983,27 +1990,34 @@
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                :checked="
-                  editForm.supported_model_scopes.includes('gemini_text')
-                "
-                @change="toggleEditScope('gemini_text')"
+                :checked="editForm.supported_model_scopes.includes('chatgpt')"
+                @change="toggleEditScope('chatgpt')"
                 class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{
-                t("admin.groups.supportedScopes.geminiText")
+                t("admin.groups.supportedScopes.chatgpt")
               }}</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                :checked="
-                  editForm.supported_model_scopes.includes('gemini_image')
-                "
-                @change="toggleEditScope('gemini_image')"
+                :checked="editForm.supported_model_scopes.includes('gemini')"
+                @change="toggleEditScope('gemini')"
                 class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">{{
-                t("admin.groups.supportedScopes.geminiImage")
+                t("admin.groups.supportedScopes.gemini")
+              }}</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                :checked="editForm.supported_model_scopes.includes('grok')"
+                @change="toggleEditScope('grok')"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-700"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{
+                t("admin.groups.supportedScopes.grok")
               }}</span>
             </label>
           </div>
@@ -3134,7 +3148,7 @@ const createForm = reactive({
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
-  supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
+  supported_model_scopes: ["claude", "chatgpt", "gemini", "grok"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
   // 从分组复制账号
@@ -3420,7 +3434,7 @@ const editForm = reactive({
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
-  supported_model_scopes: ["claude", "gemini_text", "gemini_image"] as string[],
+  supported_model_scopes: ["claude", "chatgpt", "gemini", "grok"] as string[],
   // MCP XML 协议注入开关（仅 antigravity 平台）
   mcp_xml_inject: true,
   // 从分组复制账号
@@ -3655,7 +3669,7 @@ const closeCreateModal = () => {
   resetMessagesDispatchFormState(createForm);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
-  createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
+  createForm.supported_model_scopes = ["claude", "chatgpt", "gemini", "grok"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
   createModelRoutingRules.value = [];
@@ -3786,11 +3800,21 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
   editForm.model_routing_enabled = group.model_routing_enabled || false;
-  editForm.supported_model_scopes = group.supported_model_scopes || [
+  // 兼容旧字面值：库里历史值是 ["claude","gemini_text","gemini_image"]，
+  // 现已收敛为 ["claude","chatgpt","gemini","grok"]。读到老值时把 gemini_text/gemini_image 合并为 gemini。
+  const rawScopes = group.supported_model_scopes || [
     "claude",
-    "gemini_text",
-    "gemini_image",
+    "chatgpt",
+    "gemini",
+    "grok",
   ];
+  editForm.supported_model_scopes = Array.from(
+    new Set(
+      rawScopes.map((s: string) =>
+        s === "gemini_text" || s === "gemini_image" ? "gemini" : s,
+      ),
+    ),
+  );
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
