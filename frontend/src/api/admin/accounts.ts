@@ -581,6 +581,19 @@ export async function getAntigravityDefaultModelMapping(): Promise<Record<string
 }
 
 /**
+ * Probe Grok upstream (grok2api gateway) available models.
+ * Used by account create/edit forms before the account is saved — backend
+ * directly calls GET <base_url>/v1/models with Bearer <api_key>.
+ */
+export async function probeGrokUpstreamModels(baseUrl: string, apiKey: string): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>(
+    '/admin/accounts/grok/probe-models',
+    { base_url: baseUrl, api_key: apiKey }
+  )
+  return data
+}
+
+/**
  * Refresh OpenAI token using refresh token
  * @param refreshToken - The refresh token
  * @param proxyId - Optional proxy ID
@@ -701,6 +714,7 @@ export const accountsAPI = {
   exportData,
   importData,
   getAntigravityDefaultModelMapping,
+  probeGrokUpstreamModels,
   batchClearError,
   batchRefresh,
   setPrivacy,

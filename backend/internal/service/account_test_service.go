@@ -66,6 +66,7 @@ type AccountTestService struct {
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
+	grokGatewayService        *GrokGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
 	tlsFPProfileService       *TLSFingerprintProfileService
@@ -77,6 +78,7 @@ func NewAccountTestService(
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
+	grokGatewayService *GrokGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -86,6 +88,7 @@ func NewAccountTestService(
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
+		grokGatewayService:        grokGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -189,6 +192,10 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
+	}
+
+	if account.Platform == PlatformGrok {
+		return s.testGrokAccountConnection(c, account, modelID)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
@@ -898,6 +905,50 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+// testGrokAccountConnection 测试 grok 平台账号连接（仅支持 type=upstream）。
+// 与 antigravity 同形：SSE 通信壳子 + 委托给 GrokGatewayService.TestConnection。
+func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	if s.grokGatewayService == nil {
+		return s.sendErrorAndEnd(c, "Grok gateway service not configured")
+	}
+
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "grok-4-fast"
+	}
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	result, err := s.grokGatewayService.TestConnection(ctx, account, testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	if result.Text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: result.Text})
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// ListGrokUpstreamModels 委托给 GrokGatewayService 拉 grok2api 网关上当前账号可用模型 ID 列表。
+// 包一层是为了避免 admin handler 再额外注入 *GrokGatewayService。
+func (s *AccountTestService) ListGrokUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	if s.grokGatewayService == nil {
+		return nil, errors.New("grok gateway service not configured")
+	}
+	return s.grokGatewayService.ListUpstreamModels(ctx, account)
 }
 
 // buildGeminiAPIKeyRequest builds request for Gemini API Key accounts

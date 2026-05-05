@@ -2012,16 +2012,32 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 	// Handle Grok accounts: 走 type=upstream 透传到 grok2api,模型列表来自 account.model_mapping
 	// 用户未配 mapping 时 fallback 到 domain.DefaultGrokModelMapping。
 	if account.Platform == service.PlatformGrok {
-		keys := make([]string, 0)
-		if mapping := account.GetModelMapping(); len(mapping) > 0 {
-			for k := range mapping {
-				keys = append(keys, k)
-			}
-		} else {
-			for k := range domain.DefaultGrokModelMapping {
-				keys = append(keys, k)
+		// 优先调 grok2api 网关 GET /v1/models 拉真实模型列表（限时 5s，失败回退本地）。
+		// 远端可用模型才是用户真实的可选范围；本地 DefaultGrokModelMapping 仅作 fallback。
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+		defer cancel()
+
+		var keys []string
+		if h.accountTestService != nil {
+			if remote, err := h.accountTestService.ListGrokUpstreamModels(ctx, account); err == nil && len(remote) > 0 {
+				keys = remote
+			} else if err != nil {
+				log.Printf("[AccountHandler.GetAvailableModels] grok list-upstream failed account=%d err=%v", account.ID, err)
 			}
 		}
+
+		if len(keys) == 0 {
+			if mapping := account.GetModelMapping(); len(mapping) > 0 {
+				for k := range mapping {
+					keys = append(keys, k)
+				}
+			} else {
+				for k := range domain.DefaultGrokModelMapping {
+					keys = append(keys, k)
+				}
+			}
+		}
+
 		var models []geminicli.Model
 		for _, k := range keys {
 			models = append(models, geminicli.Model{
@@ -2286,6 +2302,38 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 // GET /api/v1/admin/accounts/antigravity/default-model-mapping
 func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {
 	response.Success(c, domain.DefaultAntigravityModelMapping)
+}
+
+// ProbeGrokUpstreamModelsRequest grok 网关模型探测请求体。
+// 用于账号新增/编辑时在未保存前用用户填写的 base_url + api_key 试探 grok2api 的 /v1/models。
+type ProbeGrokUpstreamModelsRequest struct {
+	BaseURL string `json:"base_url" binding:"required"`
+	APIKey  string `json:"api_key" binding:"required"`
+}
+
+// ProbeGrokUpstreamModels 直连 grok2api 网关的 GET /v1/models 返回模型 ID 列表。
+// POST /api/v1/admin/accounts/grok/probe-models
+// 请求体：{ "base_url": "http://localhost:8000", "api_key": "..." }
+// 返回：["grok-4-fast", "grok-imagine-image-lite", ...]
+//
+// 与 GET /accounts/:id/models 的 grok 分支行为一致，区别是不需要账号已入库。
+func (h *AccountHandler) ProbeGrokUpstreamModels(c *gin.Context) {
+	var req ProbeGrokUpstreamModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	ids, err := service.FetchGrokUpstreamModels(ctx, req.BaseURL, req.APIKey)
+	if err != nil {
+		log.Printf("[AccountHandler.ProbeGrokUpstreamModels] probe failed base_url=%s err=%v", req.BaseURL, err)
+		response.ErrorFrom(c, infraerrors.BadRequest("GROK_PROBE_FAILED", err.Error()))
+		return
+	}
+	response.Success(c, ids)
 }
 
 // sanitizeExtraBaseRPM 对 extra map 中的 base_rpm 值进行范围校验和归一化。

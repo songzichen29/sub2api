@@ -1722,6 +1722,11 @@ const executeCcsImport = (row: ApiKey, clientType: 'claude' | 'gemini') => {
         app = 'gemini'
         endpoint = baseUrl
         break
+      case 'grok':
+        // Grok 走 OpenAI 兼容协议,导入到 Codex CCS 客户端
+        app = 'codex'
+        endpoint = baseUrl
+        break
       default: // anthropic
         app = 'claude'
         endpoint = baseUrl

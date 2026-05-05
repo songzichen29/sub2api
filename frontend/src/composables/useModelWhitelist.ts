@@ -132,6 +132,17 @@ const xaiModels = [
   'grok-beta', 'grok-vision-beta'
 ]
 
+// Grok (通过 grok2api 网关透传) 默认候选模型 — 与后端 domain.DefaultGrokModelMapping 同源。
+// 运行时前端会用账号的 base_url+api_key 调 /v1/models 动态覆盖,本列表仅作空值兜底。
+const grokGatewayModels = [
+  'grok-2-vision',
+  'grok-3',
+  'grok-3-fast',
+  'grok-4',
+  'grok-4-fast',
+  'grok-4-heavy'
+]
+
 // Cohere
 const cohereModels = [
   'command-a-03-2025',
@@ -206,6 +217,7 @@ const allModelsList: string[] = [
   ...openaiModels,
   ...claudeModels,
   ...geminiModels,
+  ...grokGatewayModels,
   ...zhipuModels,
   ...qwenModels,
   ...deepseekModels,
@@ -298,6 +310,17 @@ const antigravityPresetMappings = [
   { label: 'Opus 4.7', from: 'claude-opus-4-7', to: 'claude-opus-4-7', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' }
 ]
 
+// Grok 网关预设映射（透传场景，模型名按原样转发给 grok2api）
+const grokPresetMappings = [
+  { label: 'Grok 4', from: 'grok-4', to: 'grok-4', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
+  { label: 'Grok 4 Fast', from: 'grok-4-fast', to: 'grok-4-fast', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Grok 4 Heavy', from: 'grok-4-heavy', to: 'grok-4-heavy', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Grok 3', from: 'grok-3', to: 'grok-3', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Claude→Grok 4 Fast', from: 'claude-*', to: 'grok-4-fast', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
+  { label: 'Sonnet→Grok 4', from: 'claude-sonnet-*', to: 'grok-4', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
+  { label: 'Opus→Grok 4 Heavy', from: 'claude-opus-*', to: 'grok-4-heavy', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' }
+]
+
 // Bedrock 预设映射（与后端 DefaultBedrockModelMapping 保持一致）
 const bedrockPresetMappings = [
   { label: 'Opus 4.6', from: 'claude-opus-4-6', to: 'us.anthropic.claude-opus-4-6-v1', color: 'bg-pink-100 text-pink-700 hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-400' },
@@ -354,6 +377,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'claude': return claudeModels
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
+    case 'grok': return grokGatewayModels
     case 'zhipu': return zhipuModels
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
@@ -379,6 +403,7 @@ export function getPresetMappingsByPlatform(platform: string) {
   if (platform === 'gemini') return geminiPresetMappings
   if (platform === 'antigravity') return antigravityPresetMappings
   if (platform === 'bedrock') return bedrockPresetMappings
+  if (platform === 'grok') return grokPresetMappings
   return anthropicPresetMappings
 }
 

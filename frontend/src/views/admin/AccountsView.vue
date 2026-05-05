@@ -497,7 +497,7 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'expires_at'
 ])
 const loadInitialAccountSortState = (): AccountSortState => {
-  const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
+  const fallback: AccountSortState = { sort_by: 'last_used_at', sort_order: 'desc' }
   try {
     const raw = localStorage.getItem(ACCOUNT_SORT_STORAGE_KEY)
     if (!raw) return fallback
@@ -1435,6 +1435,9 @@ const patchAccountInList = (updatedAccount: Account) => {
 }
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
+  // 用量查询开关等 extra 配置变化后，强制 AccountUsageCell 重拉 /usage，
+  // 避免新启用第三方查询的账号还显示空占位。
+  usageManualRefreshToken.value += 1
   enterAutoRefreshSilentWindow()
 }
 const formatExportTimestamp = () => {

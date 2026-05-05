@@ -299,6 +299,9 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
+		// Grok 上游模型探测（账号新增/编辑时用用户填写的 base_url+api_key 拉 /v1/models）
+		accounts.POST("/grok/probe-models", h.Admin.Account.ProbeGrokUpstreamModels)
+
 		// Claude OAuth routes
 		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)
 		accounts.POST("/generate-setup-token-url", h.Admin.OAuth.GenerateSetupTokenURL)

@@ -395,3 +395,146 @@ func (s *GrokGatewayService) handleUpstreamError(
 		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, headers, body)
 	}
 }
+
+// TestConnection 测试 grok upstream 账号到 grok2api 网关的连通性。
+// 用最小 payload 调一次非流式 /v1/messages，鉴权方式与 ForwardUpstream 一致（双 header）。
+// 返回响应中提取的首条 text，供管理后台 SSE 测试输出展示。
+func (s *GrokGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
+	if account.Type != AccountTypeUpstream {
+		return nil, fmt.Errorf("grok platform only supports type=upstream account, got type=%s", account.Type)
+	}
+
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 应用账号 model_mapping（与 Forward 路径行为一致）
+	mappedModel := modelID
+	if resolved, matched := account.ResolveMappedModel(modelID); matched {
+		mappedModel = resolved
+	}
+	if strings.TrimSpace(mappedModel) == "" {
+		return nil, fmt.Errorf("missing model")
+	}
+
+	payload := map[string]any{
+		"model": mappedModel,
+		"messages": []map[string]any{
+			{"role": "user", "content": "hi"},
+		},
+		"max_tokens": 16,
+		"stream":     false,
+	}
+	body, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create test request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("API returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	text := ""
+	var parsed struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(respBody, &parsed) == nil {
+		for _, blk := range parsed.Content {
+			if blk.Type == "text" && blk.Text != "" {
+				text = blk.Text
+				break
+			}
+		}
+	}
+	return &TestConnectionResult{Text: text, MappedModel: mappedModel}, nil
+}
+
+// ListUpstreamModels 调 grok2api 网关的 GET /v1/models 拉当前账号可用模型列表。
+// grok2api 暴露的是 OpenAI 兼容格式：{"object":"list","data":[{"id":"...", ...}]}。
+// 仅返回模型 ID 字符串数组；调用方负责 fallback 到本地默认映射。
+//
+// 注意：用独立 http.Client 而非 httpUpstream，因为 grok2api 通常部署在本机（localhost:8000），
+// httpUpstream 在 Security.URLAllowlist.Enabled=true 下会校验解析 IP 拒绝 loopback / 私有段。
+// 模型列表接口非热点路径，独立客户端 15s 超时足够。
+func (s *GrokGatewayService) ListUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
+	if account.Type != AccountTypeUpstream {
+		return nil, fmt.Errorf("grok platform only supports type=upstream account, got type=%s", account.Type)
+	}
+
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+	}
+
+	return FetchGrokUpstreamModels(ctx, baseURL, apiKey)
+}
+
+// FetchGrokUpstreamModels 以原始 base_url + api_key 直连 grok2api 的 GET /v1/models。
+// 独立导出供 probe 接口（管理后台填写中的新账号）复用，不依赖已入库的 Account。
+func FetchGrokUpstreamModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	apiKey = strings.TrimSpace(apiKey)
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("base_url and api_key are required")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create list-models request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey)
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("upstream list-models failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("list-models returned %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, fmt.Errorf("parse list-models response: %w", err)
+	}
+	ids := make([]string, 0, len(parsed.Data))
+	for _, m := range parsed.Data {
+		if id := strings.TrimSpace(m.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}

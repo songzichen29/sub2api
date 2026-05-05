@@ -133,6 +133,8 @@ const props = defineProps<{
   modelValue: string[]
   platform?: string
   platforms?: string[]
+  // 动态模型列表（如 grok 上游探测结果）。提供时优先于按 platform 推导的硬编码集合。
+  dynamicModels?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -163,6 +165,11 @@ const normalizedPlatforms = computed(() => {
 })
 
 const availableOptions = computed(() => {
+  // dynamicModels 优先：调用方主动提供的运行时模型列表（如 grok2api /v1/models 返回值）
+  if (props.dynamicModels && props.dynamicModels.length > 0) {
+    return props.dynamicModels.map(m => ({ value: m, label: m }))
+  }
+
   if (normalizedPlatforms.value.length === 0) {
     return allModels
   }
@@ -219,10 +226,17 @@ const handleEnter = () => {
 
 const fillRelated = () => {
   const newModels = [...props.modelValue]
-  for (const platform of normalizedPlatforms.value) {
-    for (const model of getModelsByPlatform(platform)) {
-      if (!newModels.includes(model)) {
-        newModels.push(model)
+  // dynamicModels 优先：一键填充时也用上游探测结果而非平台硬编码
+  if (props.dynamicModels && props.dynamicModels.length > 0) {
+    for (const model of props.dynamicModels) {
+      if (!newModels.includes(model)) newModels.push(model)
+    }
+  } else {
+    for (const platform of normalizedPlatforms.value) {
+      for (const model of getModelsByPlatform(platform)) {
+        if (!newModels.includes(model)) {
+          newModels.push(model)
+        }
       }
     }
   }

@@ -644,6 +644,108 @@
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
+
+        <!-- Grok 模型限制(可选): 白名单/映射 -->
+        <div v-if="account.platform === 'grok'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div class="mb-2 flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
+            <div class="flex items-center gap-3">
+              <button
+                v-if="modelRestrictionMode === 'whitelist' && grokUpstreamModels.length > 0"
+                type="button"
+                class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                @click="applyGrokUpstreamToWhitelist"
+              >
+                应用拉取结果到白名单（{{ grokUpstreamModels.length }}）
+              </button>
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+                :disabled="grokProbing"
+                @click="probeGrokModels"
+              >
+                <span v-if="grokProbing">拉取中…</span>
+                <span v-else>{{ grokUpstreamModels.length > 0 ? `已拉取 ${grokUpstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+              </button>
+            </div>
+          </div>
+          <p v-if="grokProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ grokProbeError }}</p>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelWhitelist') }}
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              {{ t('admin.accounts.modelMapping') }}
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              platform="grok"
+              :dynamic-models="grokUpstreamModels"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else class="space-y-3">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="space-y-2">
+              <div class="flex items-center gap-2">
+                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+                <span class="text-gray-400">→</span>
+                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+                <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
+            </div>
+            <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
+              + {{ t('admin.accounts.addMapping') }}
+            </button>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in getPresetMappingsByPlatform('grok')"
+                :key="`${preset.from}->${preset.to}`"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Vertex Service Account -->
@@ -2317,6 +2419,54 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+
+// Grok 上游模型探测：编辑时优先用账号已存的 base_url+api_key 重新拉
+// （账号已入库,可直接走 GET /admin/accounts/:id/models,后端会调上游 /v1/models）
+// 也支持手动用当前表单输入的 base_url+api_key 重新探测（覆盖账号原值）
+const grokUpstreamModels = ref<string[]>([])
+const grokProbing = ref(false)
+const grokProbeError = ref('')
+const probeGrokModels = async () => {
+  grokProbeError.value = ''
+  // 优先：表单当前编辑值若都填了,直接 probe（让用户能预览改 url/key 后的效果）
+  const baseURL = (editBaseUrl.value || '').trim()
+  const apiKey = (editApiKey.value || '').trim()
+  grokProbing.value = true
+  try {
+    if (baseURL && apiKey) {
+      grokUpstreamModels.value = await adminAPI.accounts.probeGrokUpstreamModels(baseURL, apiKey)
+    } else if (props.account?.id) {
+      // 表单 api_key 为空（保持原值场景）→ 走账号 ID 让后端用已存凭据拉
+      const remote = await adminAPI.accounts.getAvailableModels(props.account.id)
+      grokUpstreamModels.value = (remote || []).map((m: any) => m.id).filter(Boolean)
+    } else {
+      grokProbeError.value = '请填写 Base URL 和 API Key'
+    }
+    if (grokUpstreamModels.value.length === 0 && !grokProbeError.value) {
+      grokProbeError.value = '上游返回空模型列表'
+    }
+    // 拉取成功后自动同步白名单：仅当白名单模式且当前为空时填充,
+    // 已配置过的账号保留用户既有选择,改用下方"应用拉取结果到白名单"按钮主动覆盖。
+    if (
+      grokUpstreamModels.value.length > 0 &&
+      modelRestrictionMode.value === 'whitelist' &&
+      allowedModels.value.length === 0
+    ) {
+      allowedModels.value = [...grokUpstreamModels.value]
+    }
+  } catch (e: any) {
+    grokUpstreamModels.value = []
+    grokProbeError.value = e?.response?.data?.error?.message || e?.message || '拉取失败'
+  } finally {
+    grokProbing.value = false
+  }
+}
+
+// 把拉取结果一键应用到白名单（覆盖当前选择）
+const applyGrokUpstreamToWhitelist = () => {
+  if (grokUpstreamModels.value.length === 0) return
+  allowedModels.value = [...grokUpstreamModels.value]
+}
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const poolModeEnabled = ref(false)
@@ -2872,6 +3022,39 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
+
+    // Grok 平台：回填模型限制（白名单/映射）
+    if (newAccount.platform === 'grok') {
+      const existingMappings = credentials.model_mapping as Record<string, string> | undefined
+      const existingNotes = credentials.model_mapping_notes as Record<string, string> | undefined
+      if (existingMappings && typeof existingMappings === 'object') {
+        const entries = Object.entries(existingMappings)
+        // 全部 from===to 视为白名单模式（与 buildModelMappingObject 写入约定一致）
+        const isWhitelist = entries.length > 0 && entries.every(([k, v]) => k === v)
+        if (isWhitelist) {
+          modelRestrictionMode.value = 'whitelist'
+          allowedModels.value = entries.map(([k]) => k)
+          modelMappings.value = []
+        } else {
+          modelRestrictionMode.value = 'mapping'
+          modelMappings.value = entries.map(([from, to]) => ({
+            from,
+            to,
+            note: existingNotes?.[from] || ''
+          }))
+          allowedModels.value = []
+        }
+      } else {
+        modelRestrictionMode.value = 'whitelist'
+        allowedModels.value = []
+        modelMappings.value = []
+      }
+
+      // 自动尝试拉一次上游模型列表（不阻塞 UI,失败静默）
+      grokUpstreamModels.value = []
+      grokProbeError.value = ''
+      void probeGrokModels()
+    }
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editVertexProjectId.value = (credentials.project_id as string) || ''
@@ -3496,6 +3679,27 @@ const handleSubmit = async () => {
 
       if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
+      }
+
+      // Grok 平台支持模型限制（白名单/映射）。其它 upstream 平台暂不支持。
+      if (props.account.platform === 'grok') {
+        const modelMapping = buildModelMappingObject(
+          modelRestrictionMode.value,
+          allowedModels.value,
+          modelMappings.value
+        )
+        if (modelMapping) {
+          newCredentials.model_mapping = modelMapping
+          const notes = buildModelMappingNotesObject(modelMappings.value)
+          if (notes) {
+            newCredentials.model_mapping_notes = notes
+          } else {
+            delete newCredentials.model_mapping_notes
+          }
+        } else {
+          delete newCredentials.model_mapping
+          delete newCredentials.model_mapping_notes
+        }
       }
 
       // Add intercept warmup requests setting
