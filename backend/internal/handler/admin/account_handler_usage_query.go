@@ -41,8 +41,8 @@ func encryptUsageQueryToken(extra map[string]any, prevExtra map[string]any, enc 
 	}
 	tokenStr, _ := tokenRaw.(string)
 
-	switch {
-	case tokenStr == "":
+	switch tokenStr {
+	case "":
 		// 用户清空 token：保留原密文，避免误删
 		if cipher := prevTokenCipher(prevExtra); cipher != "" {
 			uq["access_token"] = cipher
@@ -55,7 +55,7 @@ func encryptUsageQueryToken(extra map[string]any, prevExtra map[string]any, enc 
 		}
 		return nil
 
-	case tokenStr == dto.UsageQueryAccessTokenMask:
+	case dto.UsageQueryAccessTokenMask:
 		// 用户未修改：回填原密文
 		cipher := prevTokenCipher(prevExtra)
 		if cipher == "" {

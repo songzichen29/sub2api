@@ -115,11 +115,3 @@ func isValidAccountTagCharset(s string) bool {
 	return true
 }
 
-// safeAccountTags 把可能为 nil 的标签数组兜底成空数组，方便 DTO/JSON 序列化。
-// 调用场景：从 ent 实体读出 service.Account 后、序列化到 dto.Account 前。
-func safeAccountTags(in []string) []string {
-	if in == nil {
-		return []string{}
-	}
-	return in
-}

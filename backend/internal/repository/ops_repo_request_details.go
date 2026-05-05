@@ -225,11 +225,11 @@ LIMIT ? OFFSET ?
 			severity sql.NullString
 			message  sql.NullString
 
-			userID    sql.NullInt64
-			apiKeyID  sql.NullInt64
-			accountID sql.NullInt64
+			userID      sql.NullInt64
+			apiKeyID    sql.NullInt64
+			accountID   sql.NullInt64
 			accountName sql.NullString
-			groupID   sql.NullInt64
+			groupID     sql.NullInt64
 
 			stream bool
 		)

@@ -35,3 +35,31 @@ exceptions:
     mitigation: "Proxy configuration not user-controlled; upgrade when axios releases fix"
     expires_on: "2026-07-10"
     owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-pmwg-cvhr-8vh7"
+    severity: high
+    reason: "Incomplete fix for CVE-2025-62718 (NO_PROXY 127.0.0.0/8 bypass); all axios callers target known same-origin or server-side endpoints, no user-controlled NO_PROXY"
+    mitigation: "Upgrade axios once patched release stabilises"
+    expires_on: "2026-07-10"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-q8qp-cvcw-x6jj"
+    severity: high
+    reason: "Prototype pollution in HTTP adapter requires attacker-controlled response/header gadgets; sub2api consumes typed structured DTOs, no merging of arbitrary objects"
+    mitigation: "Upgrade axios once patched release stabilises"
+    expires_on: "2026-07-10"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-pf86-5x62-jrwf"
+    severity: high
+    reason: "Prototype pollution gadgets (response tampering / data exfil / request hijacking); axios is used only for known REST endpoints with typed handlers, no eval of arbitrary keys"
+    mitigation: "Upgrade axios once patched release stabilises"
+    expires_on: "2026-07-10"
+    owner: "security@your-domain"
+  - package: axios
+    advisory: "GHSA-6chq-wfr3-2hj9"
+    severity: high
+    reason: "Header injection via prototype pollution; axios callers never merge attacker-controlled objects into request headers"
+    mitigation: "Upgrade axios once patched release stabilises"
+    expires_on: "2026-07-10"
+    owner: "security@your-domain"
