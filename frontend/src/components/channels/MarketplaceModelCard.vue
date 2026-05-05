@@ -166,29 +166,34 @@ function buildPricingLines(pricing: UserSupportedModelPricing | null): Array<{ l
     ].filter((line): line is { label: string; value: string } => !!line)
   }
 
-  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) {
-    return pricing.per_request_price != null
-      ? [
-          {
-            label: `${t('availableChannels.pricing.perRequestPrice')}`,
-            value: formatScaled(pricing.per_request_price, 1),
-          },
-        ]
-      : []
-  }
-
-  if (pricing.billing_mode === BILLING_MODE_IMAGE) {
-    return pricing.image_output_price != null
-      ? [
-          {
-            label: `${t('availableChannels.pricing.imageOutputPrice')}`,
-            value: formatScaled(pricing.image_output_price, 1),
-          },
-        ]
-      : []
+  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST || pricing.billing_mode === BILLING_MODE_IMAGE) {
+    const lines: Array<{ label: string; value: string }> = []
+    // 默认按次价格：image 计费在 admin 表单里写入 per_request_price，
+    // image_output_price 是 token 模式下"图片输出 token 单价"的另一语义，
+    // image 模式下不会被回填，因此两种 per-request 类计费统一读 per_request_price。
+    if (pricing.per_request_price != null) {
+      lines.push({
+        label: `${t('availableChannels.pricing.perRequestPrice')}`,
+        value: formatScaled(pricing.per_request_price, 1),
+      })
+    }
+    for (const interval of pricing.intervals) {
+      if (interval.per_request_price == null) continue
+      const label = interval.tier_label?.trim() || formatRange(interval.min_tokens, interval.max_tokens)
+      lines.push({
+        label,
+        value: formatScaled(interval.per_request_price, 1),
+      })
+    }
+    return lines
   }
 
   return []
+}
+
+function formatRange(min: number, max: number | null): string {
+  const maxLabel = max == null ? '∞' : String(max)
+  return `(${min}, ${maxLabel}]`
 }
 
 const pricingLines = computed(() => buildPricingLines(primaryPricing.value))
