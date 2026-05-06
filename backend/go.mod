@@ -21,7 +21,7 @@ require (
 	github.com/google/wire v0.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/imroc/req/v3 v3.57.0
-	github.com/lib/pq v1.10.9
+	github.com/klauspost/compress v1.18.2
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pquerna/otp v1.5.0
 	github.com/redis/go-redis/v9 v9.17.2
@@ -33,7 +33,7 @@ require (
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.11.1
 	github.com/stripe/stripe-go/v85 v85.0.0
-	github.com/testcontainers/testcontainers-go/modules/postgres v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.40.0
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
@@ -111,7 +111,6 @@ require (
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
 	github.com/icholy/digest v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.4 // indirect
 	github.com/leodido/go-urn v1.2.4 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -154,7 +153,6 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
-	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
