@@ -1110,14 +1110,13 @@ func (s *adminServiceImpl) listAffiliateBalanceHistory(ctx context.Context, user
 
 	rows, err := s.entClient.QueryContext(ctx, `
 SELECT id,
-       amount::double precision,
+       amount,
        created_at
 FROM user_affiliate_ledger
-WHERE user_id = $1
+WHERE user_id = ?
   AND action = 'transfer'
 ORDER BY created_at DESC, id DESC
-OFFSET $2
-LIMIT $3`, userID, params.Offset(), params.Limit())
+LIMIT ? OFFSET ?`, userID, params.Limit(), params.Offset())
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1159,7 +1158,7 @@ func countAffiliateBalanceHistory(ctx context.Context, client *dbent.Client, use
 	rows, err := client.QueryContext(ctx, `
 SELECT COUNT(*)
 FROM user_affiliate_ledger
-WHERE user_id = $1
+WHERE user_id = ?
   AND action = 'transfer'`, userID)
 	if err != nil {
 		return 0, err

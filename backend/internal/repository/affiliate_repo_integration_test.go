@@ -80,13 +80,13 @@ VALUES (?, ?, ?, ?, NOW(), NOW())`, u.ID, affCode, 12.34, 12.34)
 	require.Equal(t, 1, ledgerCount)
 
 	rows, err := client.QueryContext(txCtx, `
-SELECT amount::double precision,
-       balance_after::double precision,
-       aff_quota_after::double precision,
-       aff_frozen_quota_after::double precision,
-       aff_history_quota_after::double precision
+SELECT amount,
+       balance_after,
+       aff_quota_after,
+       aff_frozen_quota_after,
+       aff_history_quota_after
 FROM user_affiliate_ledger
-WHERE user_id = $1 AND action = 'transfer'
+WHERE user_id = ? AND action = 'transfer'
 LIMIT 1`, u.ID)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
