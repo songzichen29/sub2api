@@ -569,28 +569,40 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	// Tags：JSONB / JSON 数组包含语义。AND 语义——必须同时包含全部传入标签。
-	// PostgreSQL 用 `@>`（GIN 索引 idx_accounts_tags_gin 加速）；
-	// MySQL 8 用 `JSON_CONTAINS(target, candidate)`（无索引，全表扫但规模可控）。
+	// Tags：JSONB / JSON 数组包含语义。OR 语义——只要包含任意一个传入标签即命中。
+	// PostgreSQL 用 `tags @> '["x"]'`（GIN 索引 idx_accounts_tags_gin 加速）；
+	// MySQL 8 用 `JSON_CONTAINS(tags, '"x"')`（无索引，全表扫但规模可控）。
+	// 多个标签时按标签拆成多条单标签谓词，再用 OR 连接——dialect 兼容且各 driver 都能命中索引/复用 plan。
 	if len(tags) > 0 {
-		payload, marshalErr := json.Marshal(tags)
-		if marshalErr != nil {
-			return nil, nil, marshalErr
-		}
 		isPostgres := r.client.Driver().Dialect() == dialect.Postgres
-		jsonPayload := string(payload)
+		// 预先把每个标签序列化为 candidate payload，PG 需要 JSON 数组形式 ["x"]，
+		// MySQL 也接受同样形式（JSON_CONTAINS 的第二参数是 JSON 文档），
+		// 因此两侧统一用 ["x"] 单元素数组，避免 dialect 分支差异。
+		perTagPayloads := make([]string, 0, len(tags))
+		for _, tag := range tags {
+			payload, marshalErr := json.Marshal([]string{tag})
+			if marshalErr != nil {
+				return nil, nil, marshalErr
+			}
+			perTagPayloads = append(perTagPayloads, string(payload))
+		}
 		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
 			s.Where(entsql.P(func(b *entsql.Builder) {
-				if isPostgres {
-					b.Ident(s.C(dbaccount.FieldTags)).
-						WriteString(" @> ").
-						Arg(jsonPayload)
-				} else {
-					b.WriteString("JSON_CONTAINS(").
-						Ident(s.C(dbaccount.FieldTags)).
-						WriteString(", ").
-						Arg(jsonPayload).
-						WriteString(")")
+				for i, payload := range perTagPayloads {
+					if i > 0 {
+						b.WriteString(" OR ")
+					}
+					if isPostgres {
+						b.Ident(s.C(dbaccount.FieldTags)).
+							WriteString(" @> ").
+							Arg(payload)
+					} else {
+						b.WriteString("JSON_CONTAINS(").
+							Ident(s.C(dbaccount.FieldTags)).
+							WriteString(", ").
+							Arg(payload).
+							WriteString(")")
+					}
 				}
 			}))
 		}))

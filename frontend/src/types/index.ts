@@ -1104,6 +1104,28 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  // 管理员标签（feature 2026-05-04-account-tags 引入）。导出时填、导入时透传。
+  tags?: string[]
+  // 分组 ID 列表（feature 2026-05-06-account-import-apply 引入）。导出/导入对称。
+  group_ids?: number[]
+}
+
+// AdminDataImportApply 是账号导入时由 admin 在弹窗里勾选并填值的"应用块"。
+//
+// 每个字段三态语义（feature 2026-05-06-account-import-apply）：
+//   - 字段缺省（payload 里没有这个 key）→ 未启用应用，保留文件原值
+//   - 字段值为空数组 / 空对象 / 0 → 启用应用且显式清空 / 清除
+//   - 字段值非空 → 启用应用且覆盖文件原值
+//
+// 前端 buildApplyPayload 必须严格跳过 enable=false 的字段（从 payload 整体省略，
+// 而不是发 null 或默认值）。
+export interface AdminDataImportApply {
+  tags?: string[]
+  group_ids?: number[]
+  proxy_id?: number
+  concurrency?: number
+  priority?: number
+  model_mapping?: Record<string, string>
 }
 
 export interface AdminDataImportError {

@@ -1,0 +1,127 @@
+feature: 2026-05-06-account-import-apply
+created: 2026-05-06
+
+steps:
+  - action: "后端 DataAccount 扩展 + ExportData 同步：DataAccount 加 Tags / GroupIDs（omitempty）；新增 collectGroupIDs helper；ExportData 构造时填两字段；如发现 ExportData 路径没预加载 Groups，补预加载"
+    exit_signal: "TestExportData_IncludesTagsAndGroupIDs 通过；旧版导入文件（不带这两字段）解析为零值，importData 既有用例继续过"
+    status: done
+
+  - action: "后端 DataImportApply struct + helper + importData 接入：新增 DataImportApply / DataImportRequest.Apply / applyImportApplyToAccount helper；importData 循环里在 validateDataAccount 之前调用 helper；helper 单测 + 整链路用例"
+    exit_signal: "go test ./backend/internal/handler/admin/... 全绿；helper 单测 6 字段 case 覆盖；TestImportData_NilApply_BehavesLikeBefore 通过；TestImportData_LegacyFileWithoutTags_ApplyTagsWorks 通过"
+    status: done
+
+  - action: "AccountsView 给 ImportDataModal 传 props：第 331 行 <ImportDataModal> 加 :proxies :groups :available-tags 三个新 props（这三个 ref 已存在）"
+    exit_signal: "pnpm vitest run AccountsView 既有用例不退；浏览器打开导入弹窗，开发者工具检查弹窗 props 含三个新字段"
+    status: done
+
+  - action: "ImportDataModal UI 加折叠面板 + 6 字段控件：template 加 <details> + 6 行（每行 enable + 控件）；script 加 ref + buildApplyPayload；watch reset；i18n 词条"
+    exit_signal: "浏览器：勾选 tags 输入 vip 提交；开发者工具 Network 面板 POST 请求 body 含 apply.tags=[vip]；不勾选时 body 不含 apply 字段"
+    status: done
+
+  - action: "测试补全 + 端到端联调：data-import.spec.ts 加新用例（折叠 / reset / buildApplyPayload / 6 字段提交）；端到端浏览器跑 6 字段全启用一次"
+    exit_signal: "pnpm vitest run + go test ./backend/... 全绿；浏览器场景：上传含 3 条账号的 JSON，启用 tags=[t1] / proxy_id=42 / priority=1 / groups=[5,7]，导入完成后这 3 条账号字段值符合 design 第 1.1 节成功标准 1-6"
+    status: done
+
+checks:
+  # ===== 范围守护（来源：design 第 1.1 节"明确不做"）=====
+  - item: "未引入逐行差异化设置 UI——Apply 块对所有导入账号统一应用"
+    source: 范围守护
+    status: done
+
+  - item: "未引入导入预览页面（先解析展示再确认）"
+    source: 范围守护
+    status: done
+
+  - item: "未引入'仅当文件为空时填默认值'语义——只有'勾选即覆盖'和'未勾选保留原值'两种状态"
+    source: 范围守护
+    status: done
+
+  - item: "未引入 Apply 块的'追加 / 移除'语义——勾选 tags 永远是全量替换"
+    source: 范围守护
+    status: done
+
+  - item: "未改动 service.CreateAccountInput / service.CreateAccount 函数签名"
+    source: 范围守护
+    status: done
+
+  - item: "未改动 account_groups / accounts.tags / proxies 任何 schema"
+    source: 范围守护
+    status: done
+
+  - item: "未改动 ExportData 的 query 参数和路由（仅扩展返回字段）"
+    source: 范围守护
+    status: done
+
+  - item: "未引入导入历史 / 导入审计日志"
+    source: 范围守护
+    status: done
+
+  - item: "未在普通用户可见接口暴露 Apply / tags / group_ids 字段"
+    source: 范围守护
+    status: done
+
+  # ===== 接口一致性（来源：design 第 2 节）=====
+  - item: "DataAccount 新增 Tags / GroupIDs 字段使用 omitempty，旧版导出文件不带不报错"
+    source: 接口契约
+    status: done
+
+  - item: "DataImportApply 6 个字段（Tags / GroupIDs / ProxyID / Concurrency / Priority / ModelMapping）全部为指针或可选类型"
+    source: 接口契约
+    status: done
+
+  - item: "DataImportRequest.Apply 是 *DataImportApply 可选字段；nil / 空对象 / 全字段 nil 三种状态行为等价"
+    source: 接口契约
+    status: done
+
+  - item: "ExportData 构造 DataAccount 时 Tags / GroupIDs 已填入；空账号 tags 序列化为 [] 不是 null"
+    source: 接口契约
+    status: done
+
+  - item: "ImportDataModal 新增 3 个 Props（proxies / groups / availableTags），由 AccountsView 传入"
+    source: 接口契约
+    status: done
+
+  - item: "前端 buildApplyPayload 严格跳过 enable=false 字段（从 payload 整体省略，不发送默认值）"
+    source: 接口契约
+    status: done
+
+  - item: "Apply.ProxyID 启用时优先级高于文件 ProxyKey（同条 account 同时存在两者时以 Apply 为准）"
+    source: 接口契约
+    status: done
+
+  - item: "Apply.ModelMapping 写入 credentials.model_mapping 时保留 credentials 其他键（access_token 等）"
+    source: 接口契约
+    status: done
+
+  - item: "Apply.GroupIDs 显式空数组 [] 等价'不绑任何分组'，不退化到默认分组逻辑"
+    source: 接口契约
+    status: done
+
+  # ===== 测试验证（来源：design 第 3.4 节）=====
+  - item: "applyImportApplyToAccount helper 单测：7 个 case 覆盖 nil/Apply / Tags / GroupIDs / ProxyID / Concurrency+Priority / ModelMapping / NilCredentials"
+    source: 测试约束
+    status: done
+
+  - item: "importData 整链路单测：5 个 case 覆盖 ApplyTags / ApplyProxyID / ApplyGroupIDs / LegacyFile+ApplyTags / NilApply"
+    source: 测试约束
+    status: done
+
+  - item: "ExportData 单测：2 个 case 覆盖 IncludesTagsAndGroupIDs / EmptyTagsSerializesAsEmptyArray"
+    source: 测试约束
+    status: done
+
+  - item: "ImportDataModal 折叠面板交互测试：3 个 case（默认折叠 / 展开后 6 行 / 关弹窗后 enable reset）"
+    source: 测试约束
+    status: done
+
+  - item: "buildApplyPayload 单测：3 个 case（未勾选不含 apply / 勾 tags+priority 仅含两字段 / 勾 proxy 但未选代理时 apply 不含 proxy_id）"
+    source: 测试约束
+    status: done
+
+  - item: "6 字段提交链路单测：6 个 case 各自验证 payload.apply 内容（tags / groups / proxy_id / concurrency / priority / model_mapping）"
+    source: 测试约束
+    status: done
+
+  - item: "浏览器端到端验收：上传含 3 条账号的 JSON，启用 4 字段后导入，3 条账号字段值与 design 第 1.1 节成功标准 1-6 完全一致"
+    source: 测试约束
+    status: pending

@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.dataImportTitle')"
-    width="normal"
+    width="wide"
     close-on-click-outside
     @close="handleClose"
   >
@@ -39,6 +39,277 @@
           @change="handleFileChange"
         />
       </div>
+
+      <!-- 应用到所有账号（可选）：勾选即覆盖文件原值，未勾保留文件原值。
+           参考 BulkEditAccountModal 的"启用 checkbox + 字段值"模式，不抽子组件以
+           避免和 BulkEdit 现有内嵌结构强行共用。 -->
+      <details class="rounded-xl border border-gray-200 dark:border-dark-700">
+        <summary
+          class="flex cursor-pointer items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-dark-800"
+        >
+          <span>{{ t('admin.accounts.dataImportApplyTitle') }}</span>
+          <span class="text-xs font-normal text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.dataImportApplyHint') }}
+          </span>
+        </summary>
+        <div class="space-y-4 border-t border-gray-200 p-4 dark:border-dark-700">
+          <!-- Tags -->
+          <div>
+            <div class="mb-2 flex items-center justify-between">
+              <label
+                id="import-apply-tags-label"
+                class="input-label mb-0"
+                for="import-apply-tags-enabled"
+              >
+                {{ t('admin.accounts.dataImportApplyTags') }}
+              </label>
+              <input
+                v-model="enableTags"
+                id="import-apply-tags-enabled"
+                type="checkbox"
+                aria-controls="import-apply-tags-body"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="import-apply-tags-body"
+              :class="!enableTags && 'pointer-events-none opacity-50'"
+            >
+              <AccountTagsInput
+                v-model="applyTags"
+                :suggestions="availableTags"
+                :disabled="!enableTags"
+                :placeholder="t('admin.accounts.dataImportApplyTagsPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.dataImportApplyTagsHint') }}</p>
+            </div>
+          </div>
+
+          <!-- Groups -->
+          <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+            <div class="mb-2 flex items-center justify-between">
+              <label
+                id="import-apply-groups-label"
+                class="input-label mb-0"
+                for="import-apply-groups-enabled"
+              >
+                {{ t('admin.accounts.dataImportApplyGroups') }}
+              </label>
+              <input
+                v-model="enableGroups"
+                id="import-apply-groups-enabled"
+                type="checkbox"
+                aria-controls="import-apply-groups-body"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="import-apply-groups-body"
+              :class="!enableGroups && 'pointer-events-none opacity-50'"
+            >
+              <GroupSelector
+                v-model="applyGroupIds"
+                :groups="groups"
+                aria-labelledby="import-apply-groups-label"
+              />
+              <p class="input-hint">{{ t('admin.accounts.dataImportApplyGroupsHint') }}</p>
+            </div>
+          </div>
+
+          <!-- Proxy -->
+          <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+            <div class="mb-2 flex items-center justify-between">
+              <label
+                id="import-apply-proxy-label"
+                class="input-label mb-0"
+                for="import-apply-proxy-enabled"
+              >
+                {{ t('admin.accounts.dataImportApplyProxy') }}
+              </label>
+              <input
+                v-model="enableProxy"
+                id="import-apply-proxy-enabled"
+                type="checkbox"
+                aria-controls="import-apply-proxy-body"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="import-apply-proxy-body"
+              :class="!enableProxy && 'pointer-events-none opacity-50'"
+            >
+              <ProxySelector
+                v-model="applyProxyId"
+                :proxies="proxies"
+                :disabled="!enableProxy"
+              />
+              <p class="input-hint">{{ t('admin.accounts.dataImportApplyProxyHint') }}</p>
+            </div>
+          </div>
+
+          <!-- Concurrency + Priority（共一行）-->
+          <div class="grid grid-cols-1 gap-4 border-t border-gray-200 pt-4 dark:border-dark-700 sm:grid-cols-2">
+            <div>
+              <div class="mb-2 flex items-center justify-between">
+                <label
+                  id="import-apply-concurrency-label"
+                  class="input-label mb-0"
+                  for="import-apply-concurrency-enabled"
+                >
+                  {{ t('admin.accounts.dataImportApplyConcurrency') }}
+                </label>
+                <input
+                  v-model="enableConcurrency"
+                  id="import-apply-concurrency-enabled"
+                  type="checkbox"
+                  aria-controls="import-apply-concurrency"
+                  class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+              </div>
+              <input
+                v-model.number="applyConcurrency"
+                id="import-apply-concurrency"
+                type="number"
+                min="1"
+                :disabled="!enableConcurrency"
+                class="input"
+                :class="!enableConcurrency && 'cursor-not-allowed opacity-50'"
+                aria-labelledby="import-apply-concurrency-label"
+              />
+            </div>
+            <div>
+              <div class="mb-2 flex items-center justify-between">
+                <label
+                  id="import-apply-priority-label"
+                  class="input-label mb-0"
+                  for="import-apply-priority-enabled"
+                >
+                  {{ t('admin.accounts.dataImportApplyPriority') }}
+                </label>
+                <input
+                  v-model="enablePriority"
+                  id="import-apply-priority-enabled"
+                  type="checkbox"
+                  aria-controls="import-apply-priority"
+                  class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+              </div>
+              <input
+                v-model.number="applyPriority"
+                id="import-apply-priority"
+                type="number"
+                min="1"
+                :disabled="!enablePriority"
+                class="input"
+                :class="!enablePriority && 'cursor-not-allowed opacity-50'"
+                aria-labelledby="import-apply-priority-label"
+              />
+            </div>
+          </div>
+
+          <!-- Model restriction -->
+          <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+            <div class="mb-2 flex items-center justify-between">
+              <label
+                id="import-apply-model-label"
+                class="input-label mb-0"
+                for="import-apply-model-enabled"
+              >
+                {{ t('admin.accounts.dataImportApplyModelRestriction') }}
+              </label>
+              <input
+                v-model="enableModelRestriction"
+                id="import-apply-model-enabled"
+                type="checkbox"
+                aria-controls="import-apply-model-body"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+            </div>
+            <div
+              id="import-apply-model-body"
+              :class="!enableModelRestriction && 'pointer-events-none opacity-50'"
+            >
+              <div class="mb-3 flex gap-2">
+                <button
+                  type="button"
+                  :disabled="!enableModelRestriction"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+                    modelRestrictionMode === 'whitelist'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                  @click="modelRestrictionMode = 'whitelist'"
+                >
+                  {{ t('admin.accounts.modelWhitelist') }}
+                </button>
+                <button
+                  type="button"
+                  :disabled="!enableModelRestriction"
+                  :class="[
+                    'flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-all',
+                    modelRestrictionMode === 'mapping'
+                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400'
+                  ]"
+                  @click="modelRestrictionMode = 'mapping'"
+                >
+                  {{ t('admin.accounts.modelMapping') }}
+                </button>
+              </div>
+
+              <div v-if="modelRestrictionMode === 'whitelist'">
+                <ModelWhitelistSelector v-model="allowedModels" />
+                <p class="input-hint">
+                  {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
+                </p>
+              </div>
+
+              <div v-else>
+                <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+                  <div
+                    v-for="(mapping, index) in modelMappings"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <input
+                      v-model="mapping.from"
+                      type="text"
+                      class="input flex-1"
+                      :placeholder="t('admin.accounts.requestModel')"
+                      :disabled="!enableModelRestriction"
+                    />
+                    <span class="text-gray-400">→</span>
+                    <input
+                      v-model="mapping.to"
+                      type="text"
+                      class="input flex-1"
+                      :placeholder="t('admin.accounts.actualModel')"
+                      :disabled="!enableModelRestriction"
+                    />
+                    <button
+                      type="button"
+                      class="rounded-lg p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      :disabled="!enableModelRestriction"
+                      @click="removeModelMapping(index)"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 hover:border-gray-400 dark:border-dark-500 dark:text-gray-400"
+                  :disabled="!enableModelRestriction"
+                  @click="addModelMapping"
+                >
+                  + {{ t('admin.accounts.addMapping') }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
 
       <div
         v-if="result"
@@ -88,12 +359,28 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ProxySelector from '@/components/common/ProxySelector.vue'
+import GroupSelector from '@/components/common/GroupSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
+import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
-import type { AdminDataImportResult } from '@/types'
+import { buildModelMappingObject } from '@/composables/useModelWhitelist'
+import type {
+  AdminDataImportApply,
+  AdminDataImportResult,
+  AdminGroup,
+  Proxy as ProxyConfig
+} from '@/types'
 
 interface Props {
   show: boolean
+  // 用于"应用到所有账号"折叠面板里的代理 / 分组 / 标签候选数据。
+  // 由 AccountsView 通过 props 透传，避免在此弹窗里重复请求。
+  proxies?: ProxyConfig[]
+  groups?: AdminGroup[]
+  availableTags?: string[]
 }
 
 interface Emits {
@@ -101,7 +388,11 @@ interface Emits {
   (e: 'imported'): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  proxies: () => [],
+  groups: () => [],
+  availableTags: () => []
+})
 const emit = defineEmits<Emits>()
 
 const { t } = useI18n()
@@ -116,6 +407,32 @@ const fileName = computed(() => file.value?.name || '')
 
 const errorItems = computed(() => result.value?.errors || [])
 
+// ===== Apply 块状态：6 个 enable + 字段值 =====
+// 启用语义：勾选某字段 → 该字段值会作为 apply 块的一部分发到后端，覆盖文件原值；
+// 未勾选 → 该字段从 payload 整体省略，后端按指针 nil 判定为"不应用"。
+const enableTags = ref(false)
+const enableGroups = ref(false)
+const enableProxy = ref(false)
+const enableConcurrency = ref(false)
+const enablePriority = ref(false)
+const enableModelRestriction = ref(false)
+
+const applyTags = ref<string[]>([])
+const applyGroupIds = ref<number[]>([])
+const applyProxyId = ref<number | null>(null)
+const applyConcurrency = ref<number>(1)
+const applyPriority = ref<number>(1)
+const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
+const allowedModels = ref<string[]>([])
+const modelMappings = ref<{ from: string; to: string }[]>([])
+
+const addModelMapping = () => {
+  modelMappings.value.push({ from: '', to: '' })
+}
+const removeModelMapping = (index: number) => {
+  modelMappings.value.splice(index, 1)
+}
+
 watch(
   () => props.show,
   (open) => {
@@ -125,6 +442,21 @@ watch(
       if (fileInput.value) {
         fileInput.value.value = ''
       }
+      // 重置 Apply 块所有状态——避免上次打开时的残留勾选误覆盖本次导入
+      enableTags.value = false
+      enableGroups.value = false
+      enableProxy.value = false
+      enableConcurrency.value = false
+      enablePriority.value = false
+      enableModelRestriction.value = false
+      applyTags.value = []
+      applyGroupIds.value = []
+      applyProxyId.value = null
+      applyConcurrency.value = 1
+      applyPriority.value = 1
+      modelRestrictionMode.value = 'whitelist'
+      allowedModels.value = []
+      modelMappings.value = []
     }
   }
 )
@@ -161,6 +493,62 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
+/**
+ * 构造导入应用块（Apply）的 payload。
+ *
+ * 关键约束（design 第 3.2 节约束 5/7）：未勾选的字段必须从对象里整体省略，而不是
+ * 发 null/0/[] 默认值——后端按指针非 nil 判定是否应用，发默认值会误触发"显式
+ * 清空"语义。proxy_id 特殊：勾选了但用户没在 selector 里选实际代理时，apply
+ * 里也不放 proxy_id（避免误传 0 触发"显式不绑代理"）。
+ *
+ * 返回 undefined 时上层会让 axios 不发 apply 字段，POST body 里完全没有 apply 键。
+ */
+const buildApplyPayload = (): AdminDataImportApply | undefined => {
+  const apply: AdminDataImportApply = {}
+
+  if (enableTags.value) {
+    // 显式 [] 也是合法的"清空"语义——后端会清空所有导入账号的 tags
+    apply.tags = [...applyTags.value]
+  }
+
+  if (enableGroups.value) {
+    apply.group_ids = [...applyGroupIds.value]
+  }
+
+  if (enableProxy.value && applyProxyId.value !== null) {
+    apply.proxy_id = applyProxyId.value
+  }
+
+  if (enableConcurrency.value && Number.isFinite(applyConcurrency.value)) {
+    apply.concurrency = applyConcurrency.value
+  }
+
+  if (enablePriority.value && Number.isFinite(applyPriority.value)) {
+    apply.priority = applyPriority.value
+  }
+
+  if (enableModelRestriction.value) {
+    if (modelRestrictionMode.value === 'whitelist') {
+      // 白名单：转换为 model_mapping 格式（key === value）
+      const mapping: Record<string, string> = {}
+      for (const m of allowedModels.value) {
+        if (!m.includes('*')) {
+          mapping[m] = m
+        }
+      }
+      apply.model_mapping = mapping
+    } else {
+      apply.model_mapping = buildModelMappingObject(
+        'mapping',
+        [],
+        modelMappings.value
+      ) ?? {}
+    }
+  }
+
+  return Object.keys(apply).length > 0 ? apply : undefined
+}
+
 const handleImport = async () => {
   if (!file.value) {
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
@@ -172,9 +560,12 @@ const handleImport = async () => {
     const text = await readFileAsText(file.value)
     const dataPayload = JSON.parse(text)
 
+    const apply = buildApplyPayload()
+
     const res = await adminAPI.accounts.importData({
       data: dataPayload,
-      skip_default_group_bind: true
+      skip_default_group_bind: true,
+      apply
     })
 
     result.value = res

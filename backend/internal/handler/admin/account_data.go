@@ -56,11 +56,45 @@ type DataAccount struct {
 	RateMultiplier     *float64       `json:"rate_multiplier,omitempty"`
 	ExpiresAt          *int64         `json:"expires_at,omitempty"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired,omitempty"`
+
+	// Tags 管理员标签集合（feature 2026-05-04-account-tags 引入），导出时序列化、
+	// 导入时按 NormalizeAccountTags 规范化后写入 accounts.tags。omitempty 保证旧版导出
+	// 文件不带此字段时解析为 nil，与"未提供"语义一致。
+	Tags []string `json:"tags,omitempty"`
+
+	// GroupIDs 账号绑定的分组 ID 列表（feature 2026-05-06-account-import-apply 引入）。
+	// 导出时把账号当前绑定的分组 ID 写出，导入时透传给 CreateAccountInput.GroupIDs；
+	// omitempty 保证旧版导出文件不带此字段时解析为 nil，等价"未提供"。
+	GroupIDs []int64 `json:"group_ids,omitempty"`
 }
 
 type DataImportRequest struct {
 	Data                 DataPayload `json:"data"`
 	SkipDefaultGroupBind *bool       `json:"skip_default_group_bind"`
+
+	// Apply 导入时统一应用到所有 account 的字段集合（feature 2026-05-06-account-import-apply）。
+	// nil 或全字段 nil → 行为等价旧版本（不覆盖任何字段，沿用文件原值）。
+	// 任一字段非 nil → 该字段值在循环里覆盖每条 account 对应字段；具体语义由
+	// applyImportApplyToAccount 实现。
+	Apply *DataImportApply `json:"apply,omitempty"`
+}
+
+// DataImportApply 是导入时由 admin 在弹窗 UI 里勾选并填值的"应用块"。
+//
+// 每个字段都是指针/可选，三态语义：
+//   - 字段在 JSON 里整体省略（指针 nil）→ "未启用应用"，保留文件原值
+//   - 字段为 null / [] / {} / 0 → "启用应用且显式清空 / 清除"
+//   - 字段为非空具体值 → "启用应用且覆盖文件原值"
+//
+// 与 service.BulkUpdateAccountsInput 的 *[]string / *int 语义口径一致；前端通过
+// enable checkbox 控制构造 payload，未勾选的字段从 JSON 里整体省略。
+type DataImportApply struct {
+	Tags         *[]string          `json:"tags,omitempty"`          // nil 不应用；[] 显式清空；非空 全量替换
+	GroupIDs     *[]int64           `json:"group_ids,omitempty"`     // nil 不应用；[] 显式不绑任何分组
+	ProxyID      *int64             `json:"proxy_id,omitempty"`      // nil 不应用；0 显式清除代理；>0 设代理
+	Concurrency  *int               `json:"concurrency,omitempty"`   // nil 不应用
+	Priority     *int               `json:"priority,omitempty"`      // nil 不应用
+	ModelMapping *map[string]string `json:"model_mapping,omitempty"` // nil 不应用；{} 显式清空白名单/映射
 }
 
 type DataImportResult struct {
@@ -160,6 +194,8 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			RateMultiplier:     acc.RateMultiplier,
 			ExpiresAt:          expiresAt,
 			AutoPauseOnExpired: &acc.AutoPauseOnExpired,
+			Tags:               acc.Tags,
+			GroupIDs:           collectGroupIDs(acc.Groups),
 		})
 	}
 
@@ -273,6 +309,12 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 
 	for i := range dataPayload.Accounts {
 		item := dataPayload.Accounts[i]
+
+		// 应用 Apply 块（feature 2026-05-06-account-import-apply）：把 admin 在导入弹窗
+		// 里勾选并填值的字段统一覆盖到本条 account 上；未勾选的字段保留文件原值。
+		// resolvedProxyID 用于绕开文件 proxy_key 流程，直接按 UI 选的代理 ID 入库。
+		resolvedProxyID := applyImportApplyToAccount(&item, req.Apply)
+
 		if err := validateDataAccount(item); err != nil {
 			result.AccountFailed++
 			result.Errors = append(result.Errors, DataImportError{
@@ -284,7 +326,14 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		var proxyID *int64
-		if item.ProxyKey != nil && *item.ProxyKey != "" {
+		if resolvedProxyID != nil {
+			// Apply 启用了 ProxyID：0 表示"不绑代理"，>0 表示绑该 ID 代理。
+			if *resolvedProxyID > 0 {
+				id := *resolvedProxyID
+				proxyID = &id
+			}
+		} else if item.ProxyKey != nil && *item.ProxyKey != "" {
+			// 沿用旧逻辑：按文件 proxy_key 反查代理 ID。
 			if id, ok := proxyKeyToID[*item.ProxyKey]; ok {
 				proxyID = &id
 			} else {
@@ -312,7 +361,8 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			Concurrency:          item.Concurrency,
 			Priority:             item.Priority,
 			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
+			GroupIDs:             item.GroupIDs,
+			Tags:                 item.Tags,
 			ExpiresAt:            item.ExpiresAt,
 			AutoPauseOnExpired:   item.AutoPauseOnExpired,
 			SkipDefaultGroupBind: skipDefaultGroupBind,
@@ -506,6 +556,52 @@ func parseIncludeProxies(c *gin.Context) (bool, error) {
 	}
 }
 
+// applyImportApplyToAccount 把 Apply 块覆盖到一条 DataAccount 上。
+//
+// 语义：
+//   - apply == nil → 直接返回 nil，item 不变（等价旧版本行为）
+//   - apply.Tags / GroupIDs / Concurrency / Priority / ModelMapping 任一非 nil →
+//     该字段值覆盖 item 对应字段；为 nil 则保留 item 原值
+//   - apply.ProxyID 非 nil → 显式置空 item.ProxyKey（绕开文件 proxy_key 反查），
+//     并通过返回值 resolvedProxyID 把 ID 透出给上层 handler。返回值 0 表示"显式
+//     不绑代理"，>0 表示"绑指定代理"，nil 表示"按文件 ProxyKey 流程查"
+//
+// ModelMapping 写到 item.Credentials["model_mapping"] 时保留 credentials 其他键
+// （access_token / api_key 等核心字段不能被破坏）；item.Credentials 为 nil 时先
+// 初始化为空 map 再赋值，避免下游访问 nil map panic。
+func applyImportApplyToAccount(item *DataAccount, apply *DataImportApply) (resolvedProxyID *int64) {
+	if apply == nil {
+		return nil
+	}
+	if apply.Tags != nil {
+		item.Tags = *apply.Tags
+	}
+	if apply.GroupIDs != nil {
+		item.GroupIDs = *apply.GroupIDs
+	}
+	if apply.Concurrency != nil {
+		item.Concurrency = *apply.Concurrency
+	}
+	if apply.Priority != nil {
+		item.Priority = *apply.Priority
+	}
+	if apply.ModelMapping != nil {
+		if item.Credentials == nil {
+			item.Credentials = map[string]any{}
+		}
+		// 注意：是给 model_mapping 单 key 赋值，不要整体替换 credentials map。
+		item.Credentials["model_mapping"] = *apply.ModelMapping
+	}
+	if apply.ProxyID != nil {
+		// 绕开文件 ProxyKey 流程：上层 handler 看到 resolvedProxyID 非 nil 时
+		// 不再查 proxyKeyToID，避免文件 proxy_key 与 UI 选择冲突时行为不确定。
+		item.ProxyKey = nil
+		proxyID := *apply.ProxyID
+		return &proxyID
+	}
+	return nil
+}
+
 func validateDataHeader(payload DataPayload) error {
 	if payload.Type != "" && payload.Type != dataType && payload.Type != legacyDataType {
 		return fmt.Errorf("unsupported data type: %s", payload.Type)
@@ -581,6 +677,26 @@ func defaultProxyName(name string) string {
 		return "imported-proxy"
 	}
 	return name
+}
+
+// collectGroupIDs 从预加载的 Groups slice 中抽取 ID 列表用于导出。
+// nil / 空 slice 都返回 nil（让上层 omitempty 把字段从 JSON 里整体省略）；
+// 跳过 nil 元素和无效 ID（<= 0），保持顺序与原 slice 一致。
+func collectGroupIDs(groups []*service.Group) []int64 {
+	if len(groups) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(groups))
+	for _, g := range groups {
+		if g == nil || g.ID <= 0 {
+			continue
+		}
+		ids = append(ids, g.ID)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
 }
 
 // enrichCredentialsFromIDToken performs best-effort extraction of user info fields

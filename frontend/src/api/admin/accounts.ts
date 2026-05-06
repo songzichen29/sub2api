@@ -15,6 +15,7 @@ import type {
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
+  AdminDataImportApply,
   AdminDataImportResult,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
@@ -40,7 +41,7 @@ export async function list(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    /** 标签 AND 筛选；多个标签会序列化为 ?tags=a&tags=b（repeat 格式，与后端 c.QueryArray 兼容）。 */
+    /** 标签 OR 筛选；多个标签会序列化为 ?tags=a&tags=b（repeat 格式，与后端 c.QueryArray 兼容），后端命中任一标签即返回。 */
     tags?: string[]
   },
   options?: {
@@ -81,7 +82,7 @@ export async function listWithEtag(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    /** 标签 AND 筛选；序列化规则同 list()。 */
+    /** 标签 OR 筛选；序列化规则同 list()。 */
     tags?: string[]
   },
   options?: {
@@ -561,11 +562,21 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
+  // 导入应用块（feature 2026-05-06-account-import-apply）：admin 在弹窗里勾选并
+  // 填值的字段。后端按指针非 nil 判定是否应用，所以前端必须严格跳过未勾选的字段
+  // （从 payload 整体省略，不要发 null 或默认值）。
+  apply?: AdminDataImportApply
 }): Promise<AdminDataImportResult> {
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
+  const body: Record<string, unknown> = {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
-  })
+  }
+  // 仅在 apply 非 undefined 时把它放进 body；这样不勾选任何字段时
+  // POST body 里完全不出现 apply 键，等价旧版本行为。
+  if (payload.apply !== undefined) {
+    body.apply = payload.apply
+  }
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', body)
   return data
 }
 

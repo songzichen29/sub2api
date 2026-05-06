@@ -73,7 +73,7 @@ import { onClickOutside } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 
 interface Props {
-  /** 当前选中的标签数组（AND 语义）。 */
+  /** 当前选中的标签数组（OR 语义——命中任意一个标签即返回）。 */
   modelValue: string[]
   /** 候选标签字典——通常由父组件通过 listTags() 拉取后传入。 */
   availableTags?: string[]

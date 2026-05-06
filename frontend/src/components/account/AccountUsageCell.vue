@@ -46,6 +46,7 @@
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
+          :window-stats="usageInfo.five_hour.window_stats"
           color="indigo"
         />
 
@@ -112,6 +113,7 @@
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
+          :window-stats="usageInfo.five_hour.window_stats"
           :show-now-when-idle="true"
           color="indigo"
         />
@@ -120,6 +122,7 @@
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
+          :window-stats="usageInfo.seven_day.window_stats"
           :show-now-when-idle="true"
           color="emerald"
         />

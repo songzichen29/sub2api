@@ -82,7 +82,7 @@ func TestAccountHandler_List_TagsQueryParsing(t *testing.T) {
 		wantTags []string // nil 或空切片均表示不过滤
 	}{
 		{
-			name:     "multi value AND",
+			name:     "multi value OR",
 			query:    "?tags=vip&tags=prod",
 			wantTags: []string{"vip", "prod"},
 		},

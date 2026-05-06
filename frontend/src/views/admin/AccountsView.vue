@@ -165,7 +165,7 @@
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :estimate-row-height="110"
+          :estimate-row-height="140"
           :overscan="5"
           :fixed-row-height="true"
         >
@@ -328,7 +328,14 @@
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
     <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
-    <ImportDataModal :show="showImportData" @close="showImportData = false" @imported="handleDataImported" />
+    <ImportDataModal
+      :show="showImportData"
+      :proxies="proxies"
+      :groups="groups"
+      :available-tags="availableTags"
+      @close="showImportData = false"
+      @imported="handleDataImported"
+    />
     <BulkEditAccountModal
       :show="showBulkEdit"
       :account-ids="selIds"
@@ -1055,7 +1062,7 @@ function getAntigravityTierClass(row: any): string {
 }
 
 // All available columns
-// 行高被 :fixed-row-height 锁成 72px，单元格内容由 DataTable 内部 wrapper 居中渲染。
+// 行高被 :fixed-row-height + :estimate-row-height 锁定，单元格内容由 DataTable 内部 wrapper 居中渲染；改用量列内容时记得同步 estimate-row-height。
 const allColumns = computed(() => {
   const c = [
     { key: 'select', label: '', sortable: false },
