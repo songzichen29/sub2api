@@ -274,6 +274,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 			return err
 		}
 		// Code already created and redeemed — just mark completed
+		s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
@@ -289,6 +290,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
+	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 }
 
@@ -362,6 +364,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
+	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 }
 
@@ -499,6 +502,37 @@ func (s *PaymentService) updateClaimedAffiliateRebateAudit(ctx context.Context, 
 		return errors.New("affiliate rebate claim log not found")
 	}
 	return nil
+}
+
+// clearUserRPMLimitOnPaid 把指定用户的 rpm_limit 写为 0（=无上限）。
+//
+// 触发时机：付费订单（充值 / 订阅）成功完成后，紧挨 markCompleted 之前调用。
+// 语义为"无脑覆盖"——不读旧值不比较，付费即解除限速。
+//
+// 失败处理：只记 slog + 一条 RPM_RESET_FAILED audit log，不向上抛错——
+// rpm 限速解除属于"锦上添花"，不应让 user 表更新失败回滚整笔订单状态机。
+func (s *PaymentService) clearUserRPMLimitOnPaid(ctx context.Context, orderID, userID int64, reason string) {
+	if userID <= 0 {
+		return
+	}
+	if _, err := s.entClient.User.UpdateOneID(userID).SetRpmLimit(0).Save(ctx); err != nil {
+		slog.Warn("clear user rpm_limit on paid failed",
+			"orderID", orderID,
+			"userID", userID,
+			"reason", reason,
+			"error", err,
+		)
+		s.writeAuditLog(ctx, orderID, "RPM_RESET_FAILED", "system", map[string]any{
+			"userID": userID,
+			"reason": reason,
+			"error":  err.Error(),
+		})
+		return
+	}
+	s.writeAuditLog(ctx, orderID, "RPM_RESET_TO_UNLIMITED", "system", map[string]any{
+		"userID": userID,
+		"reason": reason,
+	})
 }
 
 func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error) {

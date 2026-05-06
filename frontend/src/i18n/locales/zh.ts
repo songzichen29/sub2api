@@ -5320,7 +5320,7 @@ export default {
         defaultConcurrency: '默认并发数',
         defaultConcurrencyHint: '新用户的最大并发请求数',
         defaultUserRpmLimit: '默认用户 RPM 限制',
-        defaultUserRpmLimitHint: '新用户默认每分钟最大请求数，0 = 不限制；仅作用于新用户创建时初始化',
+        defaultUserRpmLimitHint: '新用户默认每分钟最大请求数，0 = 不限制。新用户创建时初始化为该值；用户完成付费（余额充值或订阅开通/续费）后，会自动重置为 0（无上限），不可关闭。',
         defaultSubscriptions: '默认订阅列表',
         defaultSubscriptionsHint: '新用户创建或注册时自动分配这些订阅',
         addDefaultSubscription: '添加默认订阅',
