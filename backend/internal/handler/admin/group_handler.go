@@ -20,6 +20,8 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+	gatewayService       *service.GatewayService
+	openAIGatewayService *service.OpenAIGatewayService
 }
 
 type optionalLimitField struct {
@@ -72,11 +74,19 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
+func NewGroupHandler(
+	adminService service.AdminService,
+	dashboardService *service.DashboardService,
+	groupCapacityService *service.GroupCapacityService,
+	gatewayService *service.GatewayService,
+	openAIGatewayService *service.OpenAIGatewayService,
+) *GroupHandler {
 	return &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
+		gatewayService:       gatewayService,
+		openAIGatewayService: openAIGatewayService,
 	}
 }
 
@@ -236,6 +246,39 @@ func (h *GroupHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, dto.GroupFromServiceAdmin(group))
+}
+
+// GetAvailableModels handles getting currently available models for a group.
+// GET /api/v1/admin/groups/:id/available-models
+func (h *GroupHandler) GetAvailableModels(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	group, err := h.adminService.GetGroup(c.Request.Context(), groupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	models := []string{}
+	switch group.Platform {
+	case service.PlatformOpenAI:
+		if h.openAIGatewayService != nil {
+			models = h.openAIGatewayService.GetAvailableModels(c.Request.Context(), &groupID)
+		}
+	default:
+		if h.gatewayService != nil {
+			models = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, group.Platform)
+		}
+	}
+
+	if models == nil {
+		models = []string{}
+	}
+	response.Success(c, models)
 }
 
 // Create handles creating a new group

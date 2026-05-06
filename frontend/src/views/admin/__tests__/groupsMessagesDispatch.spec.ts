@@ -4,6 +4,7 @@ import {
   createDefaultMessagesDispatchFormState,
   messagesDispatchConfigToFormState,
   messagesDispatchFormStateToConfig,
+  pickMessagesDispatchDefaultModel,
   resetMessagesDispatchFormState,
 } from "../groupsMessagesDispatch";
 
@@ -16,6 +17,17 @@ describe("groupsMessagesDispatch", () => {
       haiku_mapped_model: "gpt-5.4-mini",
       exact_model_mappings: [],
     });
+  });
+
+  it("prefers available models when computing defaults", () => {
+    expect(createDefaultMessagesDispatchFormState(["gpt-5.4", "gpt-5.2"])).toEqual({
+      allow_messages_dispatch: false,
+      opus_mapped_model: "gpt-5.4",
+      sonnet_mapped_model: "gpt-5.4",
+      haiku_mapped_model: "gpt-5.4",
+      exact_model_mappings: [],
+    });
+    expect(pickMessagesDispatchDefaultModel(["gpt-5.3-codex"], "sonnet")).toBe("gpt-5.3-codex");
   });
 
   it("sanitizes exact model mapping rows when converting to config", () => {
@@ -54,7 +66,7 @@ describe("groupsMessagesDispatch", () => {
           "claude-opus-4-6": "gpt-5.4",
           "claude-haiku-4-5-20251001": "gpt-5.4-mini",
         },
-      }),
+      }, ["gpt-5.4", "gpt-5.2"]),
     ).toEqual({
       allow_messages_dispatch: false,
       opus_mapped_model: "gpt-5.4",
@@ -81,13 +93,13 @@ describe("groupsMessagesDispatch", () => {
       ],
     };
 
-    resetMessagesDispatchFormState(state);
+    resetMessagesDispatchFormState(state, ["gpt-5.4"]);
 
     expect(state).toEqual({
       allow_messages_dispatch: false,
       opus_mapped_model: "gpt-5.4",
-      sonnet_mapped_model: "gpt-5.3-codex",
-      haiku_mapped_model: "gpt-5.4-mini",
+      sonnet_mapped_model: "gpt-5.4",
+      haiku_mapped_model: "gpt-5.4",
       exact_model_mappings: [],
     });
   });

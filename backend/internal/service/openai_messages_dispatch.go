@@ -1,6 +1,9 @@
 package service
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 const (
 	defaultOpenAIMessagesDispatchOpusMappedModel   = "gpt-5.4"
@@ -55,39 +58,127 @@ func claudeMessagesDispatchFamily(model string) string {
 	}
 }
 
-func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
+func appendUniqueMessagesDispatchCandidate(candidates []string, seen map[string]struct{}, model string) []string {
+	model = normalizeOpenAIMessagesDispatchMappedModel(model)
+	if model == "" {
+		return candidates
+	}
+	if _, exists := seen[model]; exists {
+		return candidates
+	}
+	seen[model] = struct{}{}
+	return append(candidates, model)
+}
+
+func messagesDispatchFallbackCandidatesByFamily(family string) []string {
+	switch strings.TrimSpace(family) {
+	case "opus":
+		return []string{"gpt-5.4", "gpt-5.5", "gpt-5.3-codex", "gpt-5.2", "gpt-5.4-mini"}
+	case "sonnet":
+		return []string{"gpt-5.3-codex", "gpt-5.4", "gpt-5.5", "gpt-5.2", "gpt-5.4-mini"}
+	case "haiku":
+		return []string{"gpt-5.4-mini", "gpt-5.4", "gpt-5.3-codex", "gpt-5.2", "gpt-5.5"}
+	default:
+		return nil
+	}
+}
+
+func isOpenAIMessagesDispatchEligibleModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if model == "" {
+		return false
+	}
+	return !strings.HasPrefix(model, "gpt-image")
+}
+
+func buildMessagesDispatchModelCandidates(g *Group, requestedModel string) []string {
 	if g == nil {
-		return ""
+		return nil
 	}
 	requestedModel = strings.TrimSpace(requestedModel)
 	if requestedModel == "" {
-		return ""
+		return nil
 	}
 
 	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
-	if mappedModel := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mappedModel != "" {
-		return mappedModel
+	family := claudeMessagesDispatchFamily(requestedModel)
+	if family == "" {
+		return nil
 	}
 
-	switch claudeMessagesDispatchFamily(requestedModel) {
+	candidates := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 8)
+	candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, cfg.ExactModelMappings[requestedModel])
+
+	switch family {
 	case "opus":
-		if mappedModel := strings.TrimSpace(cfg.OpusMappedModel); mappedModel != "" {
-			return mappedModel
-		}
-		return defaultOpenAIMessagesDispatchOpusMappedModel
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, cfg.OpusMappedModel)
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, defaultOpenAIMessagesDispatchOpusMappedModel)
 	case "sonnet":
-		if mappedModel := strings.TrimSpace(cfg.SonnetMappedModel); mappedModel != "" {
-			return mappedModel
-		}
-		return defaultOpenAIMessagesDispatchSonnetMappedModel
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, cfg.SonnetMappedModel)
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, defaultOpenAIMessagesDispatchSonnetMappedModel)
 	case "haiku":
-		if mappedModel := strings.TrimSpace(cfg.HaikuMappedModel); mappedModel != "" {
-			return mappedModel
-		}
-		return defaultOpenAIMessagesDispatchHaikuMappedModel
-	default:
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, cfg.HaikuMappedModel)
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, defaultOpenAIMessagesDispatchHaikuMappedModel)
+	}
+
+	for _, candidate := range messagesDispatchFallbackCandidatesByFamily(family) {
+		candidates = appendUniqueMessagesDispatchCandidate(candidates, seen, candidate)
+	}
+	return candidates
+}
+
+func (g *Group) ResolveMessagesDispatchModel(requestedModel string) string {
+	candidates := buildMessagesDispatchModelCandidates(g, requestedModel)
+	if len(candidates) == 0 {
 		return ""
 	}
+	return candidates[0]
+}
+
+func (s *OpenAIGatewayService) ResolveMessagesDispatchMappedModel(ctx context.Context, groupID *int64, group *Group, requestedModel string) string {
+	candidates := buildMessagesDispatchModelCandidates(group, requestedModel)
+	if len(candidates) == 0 {
+		return ""
+	}
+	if s == nil || groupID == nil {
+		return candidates[0]
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	snapshot, found := s.PeekAvailableModelsSnapshot(groupID)
+	if !found {
+		s.GetAvailableModels(ctx, groupID)
+		snapshot, _ = s.PeekAvailableModelsSnapshot(groupID)
+	}
+
+	isAllowedCandidate := func(candidate string) bool {
+		candidate = normalizeOpenAIMessagesDispatchMappedModel(candidate)
+		if !isOpenAIMessagesDispatchEligibleModel(candidate) {
+			return false
+		}
+		if s.checkChannelPricingRestriction(ctx, groupID, candidate) {
+			return false
+		}
+		if snapshot.Restrictive && len(snapshot.Models) > 0 {
+			return SnapshotSupportsRequestedModel(snapshot, PlatformOpenAI, candidate)
+		}
+		return true
+	}
+
+	for _, candidate := range candidates {
+		if isAllowedCandidate(candidate) {
+			return candidate
+		}
+	}
+	for _, candidate := range snapshot.Models {
+		if isAllowedCandidate(candidate) {
+			return normalizeOpenAIMessagesDispatchMappedModel(candidate)
+		}
+	}
+	return candidates[0]
 }
 
 func sanitizeGroupMessagesDispatchFields(g *Group) {

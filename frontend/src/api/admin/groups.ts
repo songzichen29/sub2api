@@ -77,6 +77,16 @@ export async function getById(id: number): Promise<AdminGroup> {
 }
 
 /**
+ * Get currently available models for a group.
+ * @param id - Group ID
+ * @returns Model ID list inferred from schedulable accounts and platform rules
+ */
+export async function getAvailableModels(id: number): Promise<string[]> {
+  const { data } = await apiClient.get<string[]>(`/admin/groups/${id}/available-models`)
+  return data
+}
+
+/**
  * Create new group
  * @param groupData - Group data
  * @returns Created group
@@ -306,6 +316,7 @@ export const groupsAPI = {
   getAll,
   getByPlatform,
   getById,
+  getAvailableModels,
   create,
   update,
   delete: deleteGroup,

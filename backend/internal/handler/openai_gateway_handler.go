@@ -38,11 +38,14 @@ type OpenAIGatewayHandler struct {
 	cfg                     *config.Config
 }
 
-func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedModel string) string {
+func resolveOpenAIMessagesDispatchMappedModel(ctx context.Context, gatewayService *service.OpenAIGatewayService, apiKey *service.APIKey, requestedModel string) string {
 	if apiKey == nil || apiKey.Group == nil {
 		return ""
 	}
-	return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
+	if gatewayService == nil {
+		return strings.TrimSpace(apiKey.Group.ResolveMessagesDispatchModel(requestedModel))
+	}
+	return strings.TrimSpace(gatewayService.ResolveMessagesDispatchMappedModel(ctx, apiKey.GroupID, apiKey.Group, requestedModel))
 }
 
 func (h *OpenAIGatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64, requestedModel string) error {
@@ -621,7 +624,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
-	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(c.Request.Context(), h.gatewayService, apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))

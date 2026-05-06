@@ -2877,6 +2877,7 @@ import {
   messagesDispatchConfigToFormState,
   messagesDispatchFormStateToConfig,
   resetMessagesDispatchFormState,
+  type MessagesDispatchFormState,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 
@@ -3112,8 +3113,14 @@ const rateMultipliersGroup = ref<AdminGroup | null>(null);
 const showRPMOverridesModal = ref(false);
 const rpmOverridesGroup = ref<AdminGroup | null>(null);
 const sortableGroups = ref<AdminGroup[]>([]);
-const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
-const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
+const createOpenAIAvailableModels = ref<string[]>([]);
+const editOpenAIAvailableModels = ref<string[]>([]);
+const createMessagesDispatchDefaults = computed(() =>
+  createDefaultMessagesDispatchFormState(createOpenAIAvailableModels.value),
+);
+const editMessagesDispatchDefaults = computed(() =>
+  createDefaultMessagesDispatchFormState(editOpenAIAvailableModels.value),
+);
 
 const createForm = reactive({
   name: "",
@@ -3138,9 +3145,9 @@ const createForm = reactive({
   fallback_group_id_on_invalid_request: null as number | null,
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
-  opus_mapped_model: createMessagesDispatchDefaults.opus_mapped_model,
-  sonnet_mapped_model: createMessagesDispatchDefaults.sonnet_mapped_model,
-  haiku_mapped_model: createMessagesDispatchDefaults.haiku_mapped_model,
+  opus_mapped_model: createMessagesDispatchDefaults.value.opus_mapped_model,
+  sonnet_mapped_model: createMessagesDispatchDefaults.value.sonnet_mapped_model,
+  haiku_mapped_model: createMessagesDispatchDefaults.value.haiku_mapped_model,
   exact_model_mappings: [] as MessagesDispatchMappingRow[],
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
@@ -3424,9 +3431,9 @@ const editForm = reactive({
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   allow_messages_dispatch: false,
   default_mapped_model: '',
-  opus_mapped_model: editMessagesDispatchDefaults.opus_mapped_model,
-  sonnet_mapped_model: editMessagesDispatchDefaults.sonnet_mapped_model,
-  haiku_mapped_model: editMessagesDispatchDefaults.haiku_mapped_model,
+  opus_mapped_model: editMessagesDispatchDefaults.value.opus_mapped_model,
+  sonnet_mapped_model: editMessagesDispatchDefaults.value.sonnet_mapped_model,
+  haiku_mapped_model: editMessagesDispatchDefaults.value.haiku_mapped_model,
   exact_model_mappings: [] as MessagesDispatchMappingRow[],
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
@@ -3615,6 +3622,46 @@ const loadCapacitySummary = async () => {
   }
 };
 
+const applyMessagesDispatchDefaults = (
+  target: MessagesDispatchFormState,
+  availableModels: string[],
+) => {
+  resetMessagesDispatchFormState(target, availableModels);
+};
+
+const syncCreateOpenAIAvailableModels = async () => {
+  if (!showCreateModal.value || createForm.platform !== "openai") {
+    createOpenAIAvailableModels.value = [];
+    applyMessagesDispatchDefaults(createForm, []);
+    return;
+  }
+  const sourceGroupID = createForm.copy_accounts_from_group_ids[0];
+  if (!sourceGroupID) {
+    createOpenAIAvailableModels.value = [];
+    applyMessagesDispatchDefaults(createForm, []);
+    return;
+  }
+  try {
+    const models = await adminAPI.groups.getAvailableModels(sourceGroupID);
+    createOpenAIAvailableModels.value = models;
+    applyMessagesDispatchDefaults(createForm, models);
+  } catch (error) {
+    console.error("Failed to load create-group available models:", error);
+    createOpenAIAvailableModels.value = [];
+    applyMessagesDispatchDefaults(createForm, []);
+  }
+};
+
+const syncEditOpenAIAvailableModels = async (groupID: number) => {
+  try {
+    const models = await adminAPI.groups.getAvailableModels(groupID);
+    editOpenAIAvailableModels.value = models;
+  } catch (error) {
+    console.error("Failed to load edit-group available models:", error);
+    editOpenAIAvailableModels.value = [];
+  }
+};
+
 let searchTimeout: ReturnType<typeof setTimeout>;
 const handleSearch = () => {
   clearTimeout(searchTimeout);
@@ -3644,6 +3691,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const closeCreateModal = () => {
   showCreateModal.value = false;
+  createOpenAIAvailableModels.value = [];
   createModelRoutingRules.value.forEach((rule) => {
     accountSearchRunner.clearKey(getCreateRuleSearchKey(rule));
   });
@@ -3666,7 +3714,7 @@ const closeCreateModal = () => {
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
-  resetMessagesDispatchFormState(createForm);
+  resetMessagesDispatchFormState(createForm, createOpenAIAvailableModels.value);
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
   createForm.supported_model_scopes = ["claude", "chatgpt", "gemini", "grok"];
@@ -3766,6 +3814,11 @@ const handleCreateGroup = async () => {
 
 const handleEdit = async (group: AdminGroup) => {
   editingGroup.value = group;
+  if (group.platform === "openai") {
+    await syncEditOpenAIAvailableModels(group.id);
+  } else {
+    editOpenAIAvailableModels.value = [];
+  }
   editForm.name = group.name;
   editForm.description = group.description || "";
   editForm.platform = group.platform;
@@ -3788,6 +3841,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.fallback_group_id_on_invalid_request;
   const messagesDispatchFormState = messagesDispatchConfigToFormState(
     group.messages_dispatch_model_config,
+    editOpenAIAvailableModels.value,
   );
   editForm.allow_messages_dispatch =
     group.allow_messages_dispatch ||
@@ -3834,7 +3888,8 @@ const closeEditModal = () => {
   editingGroup.value = null;
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];
-  resetMessagesDispatchFormState(editForm);
+  editOpenAIAvailableModels.value = [];
+  resetMessagesDispatchFormState(editForm, editOpenAIAvailableModels.value);
 };
 
 const handleUpdateGroup = async () => {
@@ -3974,7 +4029,10 @@ watch(
       createForm.fallback_group_id_on_invalid_request = null;
     }
     if (newVal !== "openai") {
-      resetMessagesDispatchFormState(createForm);
+      createOpenAIAvailableModels.value = [];
+      resetMessagesDispatchFormState(createForm, createOpenAIAvailableModels.value);
+    } else {
+      void syncCreateOpenAIAvailableModels();
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       createForm.require_oauth_only = false;
@@ -3984,13 +4042,24 @@ watch(
 );
 
 watch(
+  () => createForm.copy_accounts_from_group_ids.slice(),
+  () => {
+    if (createForm.platform === "openai") {
+      void syncCreateOpenAIAvailableModels();
+    }
+  },
+  { deep: true },
+);
+
+watch(
   () => editForm.platform,
   (newVal) => {
     if (!["anthropic", "antigravity"].includes(newVal)) {
       editForm.fallback_group_id_on_invalid_request = null;
     }
     if (newVal !== "openai") {
-      resetMessagesDispatchFormState(editForm);
+      editOpenAIAvailableModels.value = [];
+      resetMessagesDispatchFormState(editForm, editOpenAIAvailableModels.value);
     }
     if (!["openai", "antigravity", "anthropic", "gemini"].includes(newVal)) {
       editForm.require_oauth_only = false;

@@ -1,8 +1,12 @@
 package service
 
-import "testing"
+import (
+	"testing"
+	"time"
 
-import "github.com/stretchr/testify/require"
+	gocache "github.com/patrickmn/go-cache"
+	"github.com/stretchr/testify/require"
+)
 
 func TestNormalizeOpenAIMessagesDispatchModelConfig(t *testing.T) {
 	t.Parallel()
@@ -24,4 +28,89 @@ func TestNormalizeOpenAIMessagesDispatchModelConfig(t *testing.T) {
 	require.Equal(t, map[string]string{
 		"claude-sonnet-4-5-20250929": "gpt-5.2",
 	}, cfg.ExactModelMappings)
+}
+
+func TestBuildMessagesDispatchModelCandidates(t *testing.T) {
+	t.Parallel()
+
+	group := &Group{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			HaikuMappedModel: " gpt-5.4-mini-high ",
+			ExactModelMappings: map[string]string{
+				"claude-haiku-4-5-20251001": " gpt-5.2-high ",
+			},
+		},
+	}
+
+	candidates := buildMessagesDispatchModelCandidates(group, "claude-haiku-4-5-20251001")
+	require.Equal(t,
+		[]string{"gpt-5.2", "gpt-5.4-mini", "gpt-5.4", "gpt-5.3-codex", "gpt-5.5"},
+		candidates,
+	)
+}
+
+func TestResolveMessagesDispatchMappedModel_FallsBackToAllowedModelFromCandidates(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpenAIGatewayService{
+		modelsListCache: gocache.New(time.Minute, time.Minute),
+	}
+	groupID := int64(9)
+	storeAvailableModelsSnapshot(svc.modelsListCache, 0, &groupID, PlatformOpenAI, availableModelsSnapshot{
+		Models:      []string{"gpt-5.4", "gpt-5.3-codex"},
+		Restrictive: true,
+	})
+
+	group := &Group{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			HaikuMappedModel: "gpt-5.4-mini",
+		},
+	}
+
+	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	require.Equal(t, "gpt-5.4", got)
+}
+
+func TestResolveMessagesDispatchMappedModel_PrefersConfiguredAllowedModel(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpenAIGatewayService{
+		modelsListCache: gocache.New(time.Minute, time.Minute),
+	}
+	groupID := int64(10)
+	storeAvailableModelsSnapshot(svc.modelsListCache, 0, &groupID, PlatformOpenAI, availableModelsSnapshot{
+		Models:      []string{"gpt-5.4", "gpt-5.4-mini"},
+		Restrictive: true,
+	})
+
+	group := &Group{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			HaikuMappedModel: "gpt-5.4-mini",
+		},
+	}
+
+	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	require.Equal(t, "gpt-5.4-mini", got)
+}
+
+func TestResolveMessagesDispatchMappedModel_SkipsImageModels(t *testing.T) {
+	t.Parallel()
+
+	svc := &OpenAIGatewayService{
+		modelsListCache: gocache.New(time.Minute, time.Minute),
+	}
+	groupID := int64(11)
+	storeAvailableModelsSnapshot(svc.modelsListCache, 0, &groupID, PlatformOpenAI, availableModelsSnapshot{
+		Models:      []string{"gpt-image-2", "gpt-5.3-codex"},
+		Restrictive: true,
+	})
+
+	group := &Group{
+		MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+			HaikuMappedModel: "gpt-image-2",
+		},
+	}
+
+	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	require.Equal(t, "gpt-5.3-codex", got)
 }
