@@ -192,9 +192,11 @@ func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64)
 // thawFrozenQuotaTx moves matured frozen quota to available quota within an existing tx.
 //
 // MySQL 不支持 PG 的 `WITH ... AS (UPDATE ... RETURNING)` 写法，因此拆为：
+//
 //  1. 在 ledger 上加锁汇总待解冻金额（SELECT ... FOR UPDATE）；
 //  2. 把这些行的 frozen_until 置为 NULL；
 //  3. 把汇总金额从 aff_frozen_quota 搬到 aff_quota。
+//
 // 三步都在同一事务内、且都用 user_id + frozen_until 范围匹配，幂等性等价于原 CTE 写法。
 func thawFrozenQuotaTx(txCtx context.Context, txClient *dbent.Client, userID int64) (float64, error) {
 	rows, err := txClient.QueryContext(txCtx, `
