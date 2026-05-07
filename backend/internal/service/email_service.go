@@ -96,6 +96,7 @@ type SMTPConfig struct {
 type EmailService struct {
 	settingRepo SettingRepository
 	cache       EmailCache
+	sendFunc    func(ctx context.Context, to, subject, body string) error
 }
 
 // NewEmailService 创建邮件服务实例
@@ -150,6 +151,9 @@ func (s *EmailService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
 
 // SendEmail 发送邮件（使用数据库中保存的配置）
 func (s *EmailService) SendEmail(ctx context.Context, to, subject, body string) error {
+	if s.sendFunc != nil {
+		return s.sendFunc(ctx, to, subject, body)
+	}
 	config, err := s.GetSMTPConfig(ctx)
 	if err != nil {
 		return err

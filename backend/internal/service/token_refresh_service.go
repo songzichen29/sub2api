@@ -31,6 +31,7 @@ type TokenRefreshService struct {
 	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
+	errorAlertService    *OpenAIOAuthErrorAlertService
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -98,6 +99,11 @@ func (s *TokenRefreshService) SetRefreshAPI(api *OAuthRefreshAPI) {
 // SetRefreshPolicy 注入后台刷新调用侧策略（用于显式化平台/场景差异行为）。
 func (s *TokenRefreshService) SetRefreshPolicy(policy BackgroundRefreshPolicy) {
 	s.refreshPolicy = policy
+}
+
+// SetOpenAIOAuthErrorAlertService 注入 OpenAI OAuth 账号错误告警邮件服务
+func (s *TokenRefreshService) SetOpenAIOAuthErrorAlertService(alertService *OpenAIOAuthErrorAlertService) {
+	s.errorAlertService = alertService
 }
 
 // Start 启动后台刷新服务
@@ -289,6 +295,8 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 					"account_id", account.ID,
 					"error", setErr,
 				)
+			} else if s.errorAlertService != nil {
+				s.errorAlertService.NotifyAccountError(ctx, account, "token_refresh.non_retryable", errorMsg)
 			}
 			// 刷新失败但 access_token 可能仍有效，尝试设置隐私
 			s.ensureOpenAIPrivacy(ctx, account)

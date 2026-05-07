@@ -58,6 +58,7 @@ func ProvideTokenRefreshService(
 	privacyClientFactory PrivacyClientFactory,
 	proxyRepo ProxyRepository,
 	refreshAPI *OAuthRefreshAPI,
+	openAIOAuthErrorAlertService *OpenAIOAuthErrorAlertService,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache)
 	// 注入 OpenAI privacy opt-out 依赖
@@ -66,6 +67,7 @@ func ProvideTokenRefreshService(
 	svc.SetRefreshAPI(refreshAPI)
 	// 调用侧显式注入后台刷新策略，避免策略漂移
 	svc.SetRefreshPolicy(DefaultBackgroundRefreshPolicy())
+	svc.SetOpenAIOAuthErrorAlertService(openAIOAuthErrorAlertService)
 	svc.Start()
 	return svc
 }
@@ -218,13 +220,19 @@ func ProvideRateLimitService(
 	openAI403CounterCache OpenAI403CounterCache,
 	settingService *SettingService,
 	tokenCacheInvalidator TokenCacheInvalidator,
+	openAIOAuthErrorAlertService *OpenAIOAuthErrorAlertService,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
+	svc.SetOpenAIOAuthErrorAlertService(openAIOAuthErrorAlertService)
 	return svc
+}
+
+func ProvideOpenAIOAuthErrorAlertService(settingRepo SettingRepository, emailService *EmailService, accountRepo AccountRepository, usageRepo UsageLogRepository) *OpenAIOAuthErrorAlertService {
+	return NewOpenAIOAuthErrorAlertService(settingRepo, emailService, accountRepo, usageRepo)
 }
 
 // ProvideOpsMetricsCollector creates and starts OpsMetricsCollector.
@@ -477,6 +485,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsCleanupService,
 	ProvideOpsScheduledReportService,
 	NewEmailService,
+	ProvideOpenAIOAuthErrorAlertService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
 	NewSubscriptionService,

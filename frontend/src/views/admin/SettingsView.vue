@@ -5645,6 +5645,97 @@
               </div>
             </div>
           </div>
+
+          <!-- OpenAI OAuth Alert Notification -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ localText("OpenAI OAuth 告警邮箱", "OpenAI OAuth Alert Emails") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{
+                  localText(
+                    "用于 OpenAI OAuth 账号进入错误或限流状态时发送告警邮件。该配置复用 Ops 邮件通知中的告警收件人。",
+                    "Used to send alert emails when an OpenAI OAuth account enters an error or rate-limited state. This reuses the alert recipients from Ops email notifications.",
+                  )
+                }}
+              </p>
+            </div>
+            <div class="px-6 py-6 space-y-4">
+              <div
+                v-if="opsEmailConfigLoading"
+                class="text-sm text-gray-500 dark:text-gray-400"
+              >
+                {{ t("common.loading") }}
+              </div>
+              <div
+                v-else-if="!opsEmailConfig"
+                class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                {{
+                  localText(
+                    "未能加载 Ops 邮件通知配置，保存本页时不会更新 OpenAI OAuth 告警邮箱。",
+                    "Failed to load Ops email notification config. Saving this page will not update OpenAI OAuth alert emails.",
+                  )
+                }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between">
+                  <label
+                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ localText("启用告警邮件", "Enable Alert Emails") }}
+                  </label>
+                  <Toggle v-model="opsEmailConfig.alert.enabled" />
+                </div>
+                <div v-if="opsEmailConfig.alert.enabled">
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ localText("收件人邮箱", "Recipient Emails") }}
+                  </label>
+                  <div class="space-y-2">
+                    <div
+                      v-for="(email, index) in opsEmailConfig.alert.recipients"
+                      :key="`${email}-${index}`"
+                      class="flex items-center gap-2"
+                    >
+                      <input
+                        v-model="opsEmailConfig.alert.recipients[index]"
+                        type="email"
+                        class="input flex-1"
+                        :placeholder="localText('输入邮箱地址', 'Enter email address')"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary px-2"
+                        @click="removeOpenAIOAuthAlertRecipient(index)"
+                      >
+                        <Icon name="x" size="xs" class="h-4 w-4" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      @click="addOpenAIOAuthAlertRecipient"
+                    >
+                      + {{ t("common.add") }}
+                    </button>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      localText(
+                        "这里配置的邮箱会同时作为 Ops 告警邮件收件人；OpenAI OAuth 异常邮件会使用这一组地址。",
+                        "These addresses are also used as Ops alert recipients; OpenAI OAuth alert emails will use the same list.",
+                      )
+                    }}
+                  </p>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -5728,6 +5819,7 @@
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
+import { opsAPI, type EmailNotificationConfig } from "@/api/admin/ops";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
@@ -5827,6 +5919,8 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+const opsEmailConfigLoading = ref(false);
+const opsEmailConfig = ref<EmailNotificationConfig | null>(null);
 
 // Admin API Key 状态
 const adminApiKeyLoading = ref(true);
@@ -6680,6 +6774,7 @@ async function loadSettings() {
   loadFailed.value = false;
   try {
     const settings = await adminAPI.settings.getSettings();
+    await loadOpsEmailConfig();
     settings.payment_load_balance_strategy =
       settings.payment_load_balance_strategy || "round-robin";
     // Only assign non-null values from backend (null means unconfigured, keep defaults)
@@ -6808,6 +6903,28 @@ function findNextAvailableSubscriptionGroup(
 ): AdminGroup | undefined {
   const existing = new Set(existingGroupIDs);
   return subscriptionGroups.value.find((group) => !existing.has(group.id));
+}
+
+async function loadOpsEmailConfig() {
+  opsEmailConfigLoading.value = true;
+  try {
+    const config = await opsAPI.getEmailNotificationConfig();
+    opsEmailConfig.value = JSON.parse(JSON.stringify(config));
+  } catch (_error: unknown) {
+    opsEmailConfig.value = null;
+  } finally {
+    opsEmailConfigLoading.value = false;
+  }
+}
+
+function addOpenAIOAuthAlertRecipient() {
+  if (!opsEmailConfig.value) return;
+  opsEmailConfig.value.alert.recipients.push("");
+}
+
+function removeOpenAIOAuthAlertRecipient(index: number) {
+  if (!opsEmailConfig.value) return;
+  opsEmailConfig.value.alert.recipients.splice(index, 1);
 }
 
 function addDefaultSubscription() {
@@ -7205,6 +7322,36 @@ async function saveSettings() {
     appendAuthSourceDefaultsToUpdateRequest(payload, normalizedAuthSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
+    if (opsEmailConfig.value) {
+      const normalizedOpsEmailConfig: EmailNotificationConfig = {
+        alert: {
+          ...opsEmailConfig.value.alert,
+          recipients: (opsEmailConfig.value.alert.recipients || [])
+            .map((email) => email.trim())
+            .filter((email) => email !== ""),
+        },
+        report: {
+          ...opsEmailConfig.value.report,
+          recipients: (opsEmailConfig.value.report.recipients || [])
+            .map((email) => email.trim())
+            .filter((email) => email !== ""),
+        },
+      };
+      if (
+        normalizedOpsEmailConfig.alert.enabled &&
+        normalizedOpsEmailConfig.alert.recipients.length === 0
+      ) {
+        normalizedOpsEmailConfig.alert.enabled = false;
+      }
+      if (
+        normalizedOpsEmailConfig.report.enabled &&
+        normalizedOpsEmailConfig.report.recipients.length === 0
+      ) {
+        normalizedOpsEmailConfig.report.enabled = false;
+      }
+      opsEmailConfig.value =
+        await opsAPI.updateEmailNotificationConfig(normalizedOpsEmailConfig);
+    }
     for (const [key, value] of Object.entries(updated)) {
       if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {

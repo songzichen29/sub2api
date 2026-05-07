@@ -28,6 +28,7 @@ type RateLimitService struct {
 	openAI403CounterCache OpenAI403CounterCache
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
+	errorAlertService     *OpenAIOAuthErrorAlertService
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
 }
@@ -96,6 +97,11 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
 func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvalidator) {
 	s.tokenCacheInvalidator = invalidator
+}
+
+// SetOpenAIOAuthErrorAlertService 设置 OpenAI OAuth 账号错误告警邮件服务（可选依赖）
+func (s *RateLimitService) SetOpenAIOAuthErrorAlertService(alertService *OpenAIOAuthErrorAlertService) {
+	s.errorAlertService = alertService
 }
 
 // ErrorPolicyResult 表示错误策略检查的结果
@@ -671,6 +677,9 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		slog.Warn("account_set_error_failed", "account_id", account.ID, "error", err)
 		return
 	}
+	if s.errorAlertService != nil {
+		s.errorAlertService.NotifyAccountError(ctx, account, "ratelimit.handleAuthError", errorMsg)
+	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
 }
 
@@ -830,6 +839,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 				return
 			}
+			if s.errorAlertService != nil {
+				s.errorAlertService.NotifyAccountRateLimited(ctx, account, "ratelimit.handle429", "OpenAI 429 限流")
+			}
 			slog.Info("openai_account_rate_limited", "account_id", account.ID, "reset_at", *resetAt)
 			return
 		}
@@ -869,6 +881,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
 					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 					return
+				}
+				if s.errorAlertService != nil {
+					s.errorAlertService.NotifyAccountRateLimited(ctx, account, "ratelimit.handle429", "OpenAI usage_limit_reached")
 				}
 				slog.Info("account_rate_limited", "account_id", account.ID, "platform", account.Platform, "reset_at", resetTime, "reset_in", time.Until(resetTime).Truncate(time.Second))
 				return
@@ -915,6 +930,9 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 		return
+	}
+	if s.errorAlertService != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
+		s.errorAlertService.NotifyAccountRateLimited(ctx, account, "ratelimit.handle429", "OpenAI 429 限流")
 	}
 
 	// 根据重置时间反推5h窗口
@@ -1766,6 +1784,9 @@ func (s *RateLimitService) triggerStreamTimeoutError(ctx context.Context, accoun
 	if err := s.accountRepo.SetError(ctx, account.ID, errorMsg); err != nil {
 		slog.Warn("stream_timeout_set_error_failed", "account_id", account.ID, "error", err)
 		return false
+	}
+	if s.errorAlertService != nil {
+		s.errorAlertService.NotifyAccountError(ctx, account, "ratelimit.stream_timeout", errorMsg)
 	}
 
 	// 重置超时计数
