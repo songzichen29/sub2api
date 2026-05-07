@@ -220,8 +220,20 @@ func TestIsOpenAITransientProcessingError(t *testing.T) {
 
 	require.True(t, isOpenAITransientProcessingError(
 		http.StatusBadRequest,
+		"Selected model is at capacity. Please try a different model.",
+		nil,
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusBadRequest,
 		"",
 		[]byte(`{"error":{"message":"An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID req_123 in your message."}}`),
+	))
+
+	require.True(t, isOpenAITransientProcessingError(
+		http.StatusBadRequest,
+		"",
+		[]byte(`{"error":{"message":"Selected model is at capacity. Please try a different model."}}`),
 	))
 
 	require.False(t, isOpenAITransientProcessingError(
