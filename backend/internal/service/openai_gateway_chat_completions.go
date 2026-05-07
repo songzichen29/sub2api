@@ -411,6 +411,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -429,6 +430,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
+	clientOutputStarted := false
+	var streamFailoverErr error
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -480,6 +483,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 
+		if event.Type == "response.failed" {
+			failedMessage := extractOpenAISSEErrorMessage([]byte(payload))
+			if !clientOutputStarted && openAIStreamFailedEventShouldFailover([]byte(payload), failedMessage) {
+				streamFailoverErr = s.newOpenAIStreamFailoverError(c, nil, false, upstreamRequestID, []byte(payload), failedMessage)
+				return true
+			}
+		}
+
 		// 仅按兼容转换器支持的终止事件提取 usage，避免无意扩大事件语义。
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent && event.Response != nil && event.Response.Usage != nil {
@@ -504,6 +515,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					break
 				}
+				clientOutputStarted = true
 			}
 		}
 		if len(chunks) > 0 && !clientDisconnected {
@@ -573,6 +585,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return missingTerminalErr()
 			}
 			if processDataLine(payload) {
+				if streamFailoverErr != nil {
+					return resultWithUsage(), streamFailoverErr
+				}
 				return finalizeStream()
 			}
 		}
@@ -645,6 +660,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return missingTerminalErr()
 			}
 			if processDataLine(payload) {
+				if streamFailoverErr != nil {
+					return resultWithUsage(), streamFailoverErr
+				}
 				return finalizeStream()
 			}
 
