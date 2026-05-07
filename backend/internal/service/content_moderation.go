@@ -32,6 +32,7 @@ const (
 	contentModerationAPIKeysModeAppend  = "append"
 	contentModerationAPIKeysModeReplace = "replace"
 
+
 	ContentModerationActionAllow        = "allow"
 	ContentModerationActionBlock        = "block"
 	ContentModerationActionHashBlock    = "hash_block"
@@ -43,6 +44,7 @@ const (
 	ContentModerationKeywordModeKeywordOnly   = "keyword_only"
 	ContentModerationKeywordModeKeywordAndAPI = "keyword_and_api"
 	ContentModerationKeywordModeAPIOnly       = "api_only"
+
 
 	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
 	ContentModerationProtocolOpenAIResponses   = "openai_responses"

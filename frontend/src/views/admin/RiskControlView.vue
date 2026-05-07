@@ -926,7 +926,9 @@ type ModerationScoreRow = {
 
 const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
+
 const blockedKeywordMax = 10000
+
 const maxVisibleApiKeyRows: number = 3
 
 const { t } = useI18n()
@@ -1130,9 +1132,11 @@ const filteredGroups = computed(() => {
 
 const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).length)
 
+
 const blockedKeywordList = computed(() => parseBlockedKeywords(configForm.blocked_keywords_text))
 
 const blockedKeywordCount = computed(() => blockedKeywordList.value.length)
+
 const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
 
 const effectiveStoredApiKeyCount = computed(() => Math.max(0, configForm.api_key_count - pendingDeletedApiKeyCount.value))

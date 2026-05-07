@@ -84,7 +84,9 @@ export interface UpdateContentModerationConfig {
   model?: string
   api_key?: string
   api_keys?: string[]
+
   api_keys_mode?: ContentModerationAPIKeysMode
+
   delete_api_key_hashes?: string[]
   clear_api_key?: boolean
   timeout_ms?: number
