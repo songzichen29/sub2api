@@ -159,6 +159,7 @@
           :columns="cols"
           :data="accounts"
           :loading="loading"
+          :row-class="getAccountRowClass"
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
@@ -365,6 +366,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, toRaw, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
@@ -403,6 +405,8 @@ import type { Account, AccountPlatform, AccountType, Proxy as AccountProxy, Admi
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const route = useRoute()
+const router = useRouter()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
@@ -410,6 +414,9 @@ const groups = ref<AdminGroup[]>([])
 const availableTags = ref<string[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
+const pendingHighlightAccountId = ref<number | null>(null)
+const activeHighlightAccountId = ref<number | null>(null)
+let highlightClearTimer: ReturnType<typeof setTimeout> | null = null
 type AccountBulkEditTarget =
   | {
       mode: 'selected'
@@ -806,6 +813,69 @@ const handlePageSizeChange = (size: number) => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = true
   baseHandlePageSizeChange(size)
+}
+
+const applyRouteSearchFilter = () => {
+  const search = typeof route.query.search === 'string' ? route.query.search.trim() : ''
+  if (!search || params.search === search) return
+  params.search = search
+  pagination.page = 1
+}
+
+const applyRouteHighlightTarget = () => {
+  const raw = typeof route.query.highlight_account_id === 'string' ? route.query.highlight_account_id.trim() : ''
+  if (!raw) return
+  const id = Number(raw)
+  if (Number.isFinite(id) && id > 0) {
+    pendingHighlightAccountId.value = id
+  }
+}
+
+const getAccountRowClass = (row: Account) => {
+  if (activeHighlightAccountId.value === row.id) {
+    return 'bg-amber-50 ring-2 ring-inset ring-amber-300 dark:bg-amber-900/20 dark:ring-amber-500/40 transition-colors duration-700'
+  }
+  return ''
+}
+
+const clearHighlightTimer = () => {
+  if (highlightClearTimer) {
+    clearTimeout(highlightClearTimer)
+    highlightClearTimer = null
+  }
+}
+
+const activateHighlight = (accountId: number) => {
+  activeHighlightAccountId.value = accountId
+  clearHighlightTimer()
+  highlightClearTimer = setTimeout(() => {
+    if (activeHighlightAccountId.value === accountId) {
+      activeHighlightAccountId.value = null
+    }
+  }, 5000)
+}
+
+const tryHighlightAccountRow = async () => {
+  const accountId = pendingHighlightAccountId.value
+  if (!accountId || loading.value) return
+
+  const rowIndex = accounts.value.findIndex((row) => row.id === accountId)
+  if (rowIndex < 0) return
+
+  const table = dataTableRef.value
+  table?.virtualizer?.scrollToIndex?.(rowIndex, { align: 'center' })
+
+  requestAnimationFrame(() => {
+    const wrapper = table?.tableWrapperEl as HTMLElement | null | undefined
+    const rowEl = wrapper?.querySelector?.(`[data-row-id="${accountId}"]`) as HTMLElement | null
+    rowEl?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+    activateHighlight(accountId)
+  })
+
+  pendingHighlightAccountId.value = null
+  const nextQuery = { ...route.query }
+  delete nextQuery.highlight_account_id
+  router.replace({ query: nextQuery }).catch(() => {})
 }
 
 const handleSort = (key: string, order: AccountSortOrder) => {
@@ -1629,6 +1699,8 @@ const handleClickOutside = (event: MouseEvent) => {
 }
 
 onMounted(async () => {
+  applyRouteSearchFilter()
+  applyRouteHighlightTarget()
   load()
   try {
     const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
@@ -1652,7 +1724,40 @@ onMounted(async () => {
   }
 })
 
+watch(
+  () => route.query.search,
+  (value) => {
+    const search = typeof value === 'string' ? value.trim() : ''
+    const current = typeof params.search === 'string' ? params.search.trim() : ''
+    if (search === current) return
+    params.search = search
+    pagination.page = 1
+    void load()
+  }
+)
+
+watch(
+  () => route.query.highlight_account_id,
+  (value) => {
+    const raw = typeof value === 'string' ? value.trim() : ''
+    if (!raw) return
+    const id = Number(raw)
+    if (!Number.isFinite(id) || id <= 0) return
+    pendingHighlightAccountId.value = id
+    void tryHighlightAccountRow()
+  }
+)
+
+watch(
+  [accounts, loading],
+  () => {
+    void tryHighlightAccountRow()
+  },
+  { deep: false }
+)
+
 onUnmounted(() => {
+  clearHighlightTimer()
   window.removeEventListener('scroll', handleScroll, true)
   document.removeEventListener('click', handleClickOutside)
 })

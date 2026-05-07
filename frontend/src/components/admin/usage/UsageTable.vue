@@ -30,27 +30,55 @@
         </template>
 
         <template #cell-account="{ row }">
-          <span class="text-sm text-gray-900 dark:text-white">{{ row.account?.name || '-' }}</span>
+          <button
+            v-if="row.account?.name && row.account?.id"
+            type="button"
+            class="text-sm font-medium text-primary-600 underline decoration-dashed underline-offset-2 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            @click="$emit('accountClick', row.account.id, row.account.name)"
+            :title="t('admin.usage.clickToViewAccount')"
+          >
+            {{ row.account.name }}
+          </button>
+          <span v-else class="text-sm text-gray-900 dark:text-white">-</span>
         </template>
 
         <template #cell-model="{ row }">
-          <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5 text-xs">
-            <div v-for="(step, i) in row.model_mapping_chain.split('→')" :key="i"
-                 class="break-all"
-                 :class="i === 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'"
-                 :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''">
-              <span v-if="i > 0" class="mr-0.5">↳</span>{{ step }}
+          <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-1 text-xs">
+            <div
+              v-for="(step, i) in row.model_mapping_chain.split('→')"
+              :key="i"
+              class="flex items-center gap-1.5 break-all"
+              :style="i > 0 ? `padding-left: ${i * 0.75}rem` : ''"
+            >
+              <span v-if="i > 0" class="text-gray-400 dark:text-gray-500">↳</span>
+              <span
+                class="inline-flex items-center rounded px-2 py-0.5 font-medium ring-1 ring-inset"
+                :class="i === 0
+                  ? 'bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-500/15 dark:text-primary-300 dark:ring-primary-500/30'
+                  : 'bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:ring-gray-600'"
+              >
+                {{ step }}
+              </span>
             </div>
           </div>
-          <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-0.5 text-xs">
-            <div class="break-all font-medium text-gray-900 dark:text-white">
+          <div v-else-if="row.upstream_model && row.upstream_model !== row.model" class="space-y-1 text-xs">
+            <div class="flex flex-wrap items-center gap-1.5 break-all">
+              <span class="inline-flex items-center rounded px-2 py-0.5 font-medium ring-1 ring-inset bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-500/15 dark:text-primary-300 dark:ring-primary-500/30">
+                {{ row.model }}
+              </span>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5 break-all text-gray-500 dark:text-gray-400">
+              <span>↳</span>
+              <span class="inline-flex items-center rounded px-2 py-0.5 font-medium ring-1 ring-inset bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-700/60 dark:text-gray-200 dark:ring-gray-600">
+                {{ row.upstream_model }}
+              </span>
+            </div>
+          </div>
+          <div v-else class="flex flex-wrap items-center gap-1.5">
+            <span class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-primary-50 text-primary-700 ring-primary-200 dark:bg-primary-500/15 dark:text-primary-300 dark:ring-primary-500/30">
               {{ row.model }}
-            </div>
-            <div class="break-all text-gray-500 dark:text-gray-400">
-              <span class="mr-0.5">↳</span>{{ row.upstream_model }}
-            </div>
+            </span>
           </div>
-          <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
         </template>
 
         <template #cell-reasoning_effort="{ row }">
@@ -404,6 +432,7 @@ withDefaults(defineProps<Props>(), {
 })
 defineEmits<{
   userClick: [userID: number, email?: string]
+  accountClick: [accountID: number, accountName?: string]
   sort: [key: string, order: 'asc' | 'desc']
 }>()
 const { t } = useI18n()

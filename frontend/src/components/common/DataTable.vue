@@ -35,7 +35,10 @@
       <div
         v-for="(row, index) in sortedData"
         :key="resolveRowKey(row, index)"
-        class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900"
+        :class="[
+          'rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900',
+          resolveRowClass(row, index)
+        ]"
       >
         <div class="space-y-3">
           <div
@@ -162,7 +165,10 @@
             :data-row-id="resolveRowKey(sortedData[virtualRow.index], virtualRow.index)"
             :data-index="virtualRow.index"
             :ref="measureElement"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
+            :class="[
+              'hover:bg-gray-50 dark:hover:bg-dark-800',
+              resolveRowClass(sortedData[virtualRow.index], virtualRow.index)
+            ]"
             :style="fixedRowHeight ? { height: (estimateRowHeight ?? 56) + 'px' } : undefined"
           >
             <td
@@ -384,6 +390,7 @@ interface Props {
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
   overscan?: number
+  rowClass?: string | ((row: any, index: number) => string | string[] | Record<string, boolean> | undefined)
   /**
    * 锁定行高：true 时跳过 virtualizer 的动态测量，所有行严格按 `estimateRowHeight` 渲染。
    * 适用于单元格内容会从骨架屏切换到实际数据、高度抖动会导致虚拟滚动跳变的场景。
@@ -398,6 +405,7 @@ const props = withDefaults(defineProps<Props>(), {
   expandableActions: true,
   defaultSortOrder: 'asc',
   serverSideSort: false,
+  rowClass: '',
   fixedRowHeight: false
 })
 
@@ -529,6 +537,13 @@ const resolveRowKey = (row: any, index: number) => {
   }
   const key = row?.id
   return key ?? index
+}
+
+const resolveRowClass = (row: any, index: number) => {
+  if (typeof props.rowClass === 'function') {
+    return props.rowClass(row, index)
+  }
+  return props.rowClass
 }
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))

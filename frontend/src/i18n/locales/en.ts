@@ -4131,7 +4131,9 @@ export default {
       allBillingModes: 'All Billing Modes',
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
+      clickToViewAccount: 'Click to jump to account management for this account',
       failedToLoadUser: 'Failed to load user info',
+      failedToLoadAccount: 'Failed to load account info',
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',

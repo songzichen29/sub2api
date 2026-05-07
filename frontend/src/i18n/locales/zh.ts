@@ -4287,7 +4287,9 @@ export default {
       allBillingModes: '全部计费模式',
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
+      clickToViewAccount: '点击跳转到账号管理查看该账号',
       failedToLoadUser: '加载用户信息失败',
+      failedToLoadAccount: '加载账号信息失败',
       cleanup: {
         button: '清理',
         title: '清理使用记录',
