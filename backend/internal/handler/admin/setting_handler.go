@@ -230,6 +230,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		AffiliateEnabled:                       settings.AffiliateEnabled,
+		RiskControlEnabled:                     settings.RiskControlEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
 		AffiliateRechargeEnabled:               settings.AffiliateRechargeEnabled,
 		AffiliateSubscriptionEnabled:           settings.AffiliateSubscriptionEnabled,
@@ -604,6 +605,9 @@ type UpdateSettingsRequest struct {
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
+
+	// 风控中心功能开关
+	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -1544,6 +1548,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.AffiliateEnabled
 		}(),
+		RiskControlEnabled: func() bool {
+			if req.RiskControlEnabled != nil {
+				return *req.RiskControlEnabled
+			}
+			return previousSettings.RiskControlEnabled
+		}(),
 	}
 
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
@@ -1811,6 +1821,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+		AffiliateEnabled:         updatedSettings.AffiliateEnabled,
+		RiskControlEnabled:       updatedSettings.RiskControlEnabled,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -2223,6 +2235,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateEnabled != after.AffiliateEnabled {
 		changed = append(changed, "affiliate_enabled")
+	}
+	if before.RiskControlEnabled != after.RiskControlEnabled {
+		changed = append(changed, "risk_control_enabled")
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed

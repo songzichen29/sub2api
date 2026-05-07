@@ -547,6 +547,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyAffiliateRechargeEnabled,
 		SettingKeyAffiliateSubscriptionEnabled,
+		SettingKeyRiskControlEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -640,6 +641,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		AffiliateEnabled:             settings[SettingKeyAffiliateEnabled] == "true",
 		AffiliateRechargeEnabled:     settings[SettingKeyAffiliateRechargeEnabled] == "true",
 		AffiliateSubscriptionEnabled: settings[SettingKeyAffiliateSubscriptionEnabled] == "true",
+		RiskControlEnabled:           settings[SettingKeyRiskControlEnabled] == "true",
 	}, nil
 }
 
@@ -840,6 +842,7 @@ type PublicSettingsInjectionPayload struct {
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
 	AffiliateRechargeEnabled             bool `json:"affiliate_recharge_enabled"`
 	AffiliateSubscriptionEnabled         bool `json:"affiliate_subscription_enabled"`
+	RiskControlEnabled                   bool `json:"risk_control_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -897,6 +900,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AffiliateEnabled:                     settings.AffiliateEnabled,
 		AffiliateRechargeEnabled:             settings.AffiliateRechargeEnabled,
 		AffiliateSubscriptionEnabled:         settings.AffiliateSubscriptionEnabled,
+		RiskControlEnabled:                   settings.RiskControlEnabled,
 	}, nil
 }
 
@@ -1397,6 +1401,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
+
+	// 风控中心功能开关
+	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
@@ -2159,6 +2166,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled: "false",
 
+		// 风控中心功能（默认关闭，显式启用）
+		SettingKeyRiskControlEnabled: "false",
+
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
 		SettingKeyMaxClaudeCodeVersion: "",
@@ -2527,6 +2537,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
+
+	// 风控中心功能（默认关闭，严格 true 才启用）
+	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
