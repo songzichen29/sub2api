@@ -71,9 +71,11 @@ const (
 	defaultContentModerationNonHitRetentionDays  = 3
 	maxContentModerationRetentionDays            = 3650
 	maxContentModerationNonHitRetentionDays      = 3
-	contentModerationKeyFailureFreezeThreshold   = 3
-	contentModerationKeyFreezeDuration           = time.Minute
-	maxContentModerationTestImages               = 4
+	contentModerationKeyRateLimitFreezeDuration  = time.Minute
+	contentModerationKeyAuthFreezeDuration       = 10 * time.Minute
+	contentModerationKeyHTTPErrorFreezeDuration  = 10 * time.Second
+	maxContentModerationInputImages              = 1
+	maxContentModerationTestImages               = maxContentModerationInputImages
 	maxContentModerationTestImageBytes           = 8 * 1024 * 1024
 	maxContentModerationTestImageDataURLBytes    = 12 * 1024 * 1024
 	maxContentModerationBlockedKeywords          = 10000
@@ -280,7 +282,7 @@ func (in *ContentModerationInput) Normalize() {
 		return
 	}
 	in.Text = trimRunes(normalizeContentModerationText(in.Text), maxModerationInputRunes)
-	in.Images = normalizeModerationImages(in.Images)
+	in.Images = limitContentModerationImages(normalizeModerationImages(in.Images))
 }
 
 func (in ContentModerationInput) IsEmpty() bool {
@@ -288,14 +290,15 @@ func (in ContentModerationInput) IsEmpty() bool {
 }
 
 func (in ContentModerationInput) ModerationInput() any {
-	if len(in.Images) == 0 {
+	images := limitContentModerationImages(in.Images)
+	if len(images) == 0 {
 		return in.Text
 	}
-	parts := make([]moderationAPIInputPart, 0, len(in.Images)+1)
+	parts := make([]moderationAPIInputPart, 0, len(images)+1)
 	if strings.TrimSpace(in.Text) != "" {
 		parts = append(parts, moderationAPIInputPart{Type: "text", Text: in.Text})
 	}
-	for _, image := range in.Images {
+	for _, image := range images {
 		parts = append(parts, moderationAPIInputPart{
 			Type:     "image_url",
 			ImageURL: &moderationAPIImageURLRef{URL: image},
@@ -671,7 +674,7 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 		latency := int(time.Since(start).Milliseconds())
 		keyHash := moderationAPIKeyHash(key)
 		if err != nil {
-			s.markAPIKeyFailure(key, err.Error(), latency, httpStatus)
+			s.markAPIKeyError(key, err.Error(), latency, httpStatus)
 		} else {
 			s.markAPIKeySuccess(key, latency, httpStatus)
 			if auditResult == nil {
@@ -1300,8 +1303,11 @@ func (s *ContentModerationService) callModeration(ctx context.Context, cfg *Cont
 			s.markAPIKeySuccess(key, latency, httpStatus)
 			return result, nil
 		}
-		s.markAPIKeyFailure(key, err.Error(), latency, httpStatus)
+		s.markAPIKeyError(key, err.Error(), latency, httpStatus)
 		lastErr = err
+		if httpStatus == http.StatusBadRequest {
+			break
+		}
 		if attempt == attempts-1 {
 			break
 		}
@@ -1676,7 +1682,7 @@ func (s *ContentModerationService) markAPIKeySuccess(key string, latencyMS int, 
 	state.LastTested = true
 }
 
-func (s *ContentModerationService) markAPIKeyFailure(key string, errText string, latencyMS int, httpStatus int) {
+func (s *ContentModerationService) markAPIKeyError(key string, errText string, latencyMS int, httpStatus int) {
 	hash := moderationAPIKeyHash(key)
 	if hash == "" || s == nil {
 		return
@@ -1684,14 +1690,29 @@ func (s *ContentModerationService) markAPIKeyFailure(key string, errText string,
 	s.keyHealthMu.Lock()
 	defer s.keyHealthMu.Unlock()
 	state := s.ensureAPIKeyHealthLocked(hash, maskSecretTail(key))
-	state.FailureCount++
+	if contentModerationFreezeDurationForHTTPStatus(httpStatus) > 0 {
+		state.FailureCount++
+	}
 	state.LastError = trimRunes(errText, 180)
 	state.LastCheckedAt = time.Now()
 	state.LastLatencyMS = latencyMS
 	state.LastHTTPStatus = httpStatus
 	state.LastTested = true
-	if state.FailureCount >= contentModerationKeyFailureFreezeThreshold {
-		state.FrozenUntil = time.Now().Add(contentModerationKeyFreezeDuration)
+	if freezeDuration := contentModerationFreezeDurationForHTTPStatus(httpStatus); freezeDuration > 0 {
+		state.FrozenUntil = time.Now().Add(freezeDuration)
+	}
+}
+
+func contentModerationFreezeDurationForHTTPStatus(httpStatus int) time.Duration {
+	switch httpStatus {
+	case 0, http.StatusBadRequest:
+		return 0
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return contentModerationKeyAuthFreezeDuration
+	case http.StatusTooManyRequests, 529:
+		return contentModerationKeyRateLimitFreezeDuration
+	default:
+		return contentModerationKeyHTTPErrorFreezeDuration
 	}
 }
 
