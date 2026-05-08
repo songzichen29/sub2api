@@ -1,4 +1,4 @@
-﻿-- 135_add_daily_limit_reset_payment.sql
+-- 135_add_daily_limit_reset_payment.sql
 -- 用户自助付费重置订阅当日额度。
 
 ALTER TABLE groups

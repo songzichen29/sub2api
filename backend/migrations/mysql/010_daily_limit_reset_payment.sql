@@ -1,4 +1,4 @@
-﻿-- 010_daily_limit_reset_payment.sql
+-- 010_daily_limit_reset_payment.sql
 -- 用户自助付费重置订阅当日额度，对齐 PostgreSQL 端 135_add_daily_limit_reset_payment.sql。
 
 -- groups.daily_limit_reset_price
