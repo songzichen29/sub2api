@@ -460,6 +460,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeyAffiliateEnabled,
+		SettingKeyAffiliateRechargeEnabled,
+		SettingKeyAffiliateSubscriptionEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -1183,6 +1185,12 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
+	updates[SettingKeyAffiliateRechargeEnabled] = strconv.FormatBool(settings.AffiliateRechargeEnabled)
+	updates[SettingKeyAffiliateSubscriptionEnabled] = strconv.FormatBool(settings.AffiliateSubscriptionEnabled)
+	settings.AffiliateRechargeRebateRate = clampAffiliateRebateRate(settings.AffiliateRechargeRebateRate)
+	updates[SettingKeyAffiliateRechargeRebateRate] = strconv.FormatFloat(settings.AffiliateRechargeRebateRate, 'f', 8, 64)
+	settings.AffiliateSubscriptionRebateRate = clampAffiliateRebateRate(settings.AffiliateSubscriptionRebateRate)
+	updates[SettingKeyAffiliateSubscriptionRebateRate] = strconv.FormatFloat(settings.AffiliateSubscriptionRebateRate, 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
 		settings.AffiliateRebateFreezeHours = AffiliateRebateFreezeHoursDefault
 	}
@@ -1553,6 +1561,22 @@ func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+func (s *SettingService) IsAffiliateRechargeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRechargeEnabled)
+	if err != nil || strings.TrimSpace(value) == "" {
+		return AffiliateRechargeEnabledDefault
+	}
+	return value == "true"
+}
+
+func (s *SettingService) IsAffiliateSubscriptionEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateSubscriptionEnabled)
+	if err != nil || strings.TrimSpace(value) == "" {
+		return AffiliateSubscriptionEnabledDefault
+	}
+	return value == "true"
+}
+
 // GetAffiliateRebateRatePercent 读取并 clamp 全局返利比例。
 // 解析失败、缺失或越界都回退到 AffiliateRebateRateDefault — 该比例从不抛错，
 // 调用方只关心一个可用的数值。
@@ -1564,6 +1588,30 @@ func (s *SettingService) GetAffiliateRebateRatePercent(ctx context.Context) floa
 	rate, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	if err != nil || math.IsNaN(rate) || math.IsInf(rate, 0) {
 		return AffiliateRebateRateDefault
+	}
+	return clampAffiliateRebateRate(rate)
+}
+
+func (s *SettingService) GetAffiliateRechargeRebateRatePercent(ctx context.Context) float64 {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateRechargeRebateRate)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return s.GetAffiliateRebateRatePercent(ctx)
+	}
+	rate, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return s.GetAffiliateRebateRatePercent(ctx)
+	}
+	return clampAffiliateRebateRate(rate)
+}
+
+func (s *SettingService) GetAffiliateSubscriptionRebateRatePercent(ctx context.Context) float64 {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateSubscriptionRebateRate)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return s.GetAffiliateRebateRatePercent(ctx)
+	}
+	rate, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		return s.GetAffiliateRebateRatePercent(ctx)
 	}
 	return clampAffiliateRebateRate(rate)
 }
@@ -1859,6 +1907,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                      strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyAffiliateRechargeEnabled:                 strconv.FormatBool(AffiliateRechargeEnabledDefault),
+		SettingKeyAffiliateSubscriptionEnabled:             strconv.FormatBool(AffiliateSubscriptionEnabledDefault),
+		SettingKeyAffiliateRechargeRebateRate:              strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyAffiliateSubscriptionRebateRate:          strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:               strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:              strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:             strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
@@ -1997,6 +2049,24 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
 		result.AffiliateRebateRate = AffiliateRebateRateDefault
+	}
+	result.AffiliateRechargeEnabled = AffiliateRechargeEnabledDefault
+	if raw, ok := settings[SettingKeyAffiliateRechargeEnabled]; ok {
+		result.AffiliateRechargeEnabled = raw == "true"
+	}
+	result.AffiliateSubscriptionEnabled = AffiliateSubscriptionEnabledDefault
+	if raw, ok := settings[SettingKeyAffiliateSubscriptionEnabled]; ok {
+		result.AffiliateSubscriptionEnabled = raw == "true"
+	}
+	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRechargeRebateRate], 64); err == nil {
+		result.AffiliateRechargeRebateRate = clampAffiliateRebateRate(rebateRate)
+	} else {
+		result.AffiliateRechargeRebateRate = result.AffiliateRebateRate
+	}
+	if rebateRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateSubscriptionRebateRate], 64); err == nil {
+		result.AffiliateSubscriptionRebateRate = clampAffiliateRebateRate(rebateRate)
+	} else {
+		result.AffiliateSubscriptionRebateRate = result.AffiliateRebateRate
 	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {

@@ -14,6 +14,8 @@ export interface AffiliateAdminEntry {
   aff_code: string
   aff_code_custom: boolean
   aff_rebate_rate_percent?: number | null
+  aff_recharge_rebate_rate_percent?: number | null
+  aff_subscription_rebate_rate_percent?: number | null
   aff_count: number
 }
 
@@ -83,6 +85,8 @@ export interface AffiliateUserOverview {
   username: string
   aff_code: string
   rebate_rate_percent: number
+  recharge_rebate_rate_percent: number
+  subscription_rebate_rate_percent: number
   invited_count: number
   rebated_invitee_count: number
   available_quota: number
@@ -92,13 +96,19 @@ export interface AffiliateUserOverview {
 export interface UpdateAffiliateUserRequest {
   aff_code?: string
   aff_rebate_rate_percent?: number | null
+  aff_recharge_rebate_rate_percent?: number | null
+  aff_subscription_rebate_rate_percent?: number | null
   /** Set true to explicitly clear the per-user rate (sets it to NULL). */
   clear_rebate_rate?: boolean
+  clear_recharge_rebate_rate?: boolean
+  clear_subscription_rebate_rate?: boolean
 }
 
 export interface BatchSetRateRequest {
   user_ids: number[]
   aff_rebate_rate_percent?: number | null
+  aff_recharge_rebate_rate_percent?: number | null
+  aff_subscription_rebate_rate_percent?: number | null
   /** Set true to clear rates instead of setting. */
   clear?: boolean
 }

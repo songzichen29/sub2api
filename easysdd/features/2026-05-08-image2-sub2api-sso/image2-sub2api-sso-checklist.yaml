@@ -1,0 +1,69 @@
+﻿feature: 2026-05-08-image2-sub2api-sso
+created: 2026-05-08
+
+steps:
+  - action: "认证基础模块：新增 gpt-image server auth helper 和单元测试，能用伪 sub2api /auth/me 响应完成 token 校验与 cookie 签名校验"
+    exit_signal: "auth helper 测试覆盖成功、401、502、cookie 篡改"
+    status: done
+  - action: "会话交换闭环：新增 exchange API 和前端 bootstrap hook，访问带 ?token= 的 image2 能换到 cookie 并清理 URL"
+    exit_signal: "手工或测试验证 URL token 被移除，/api/auth-status 显示 authenticated"
+    status: done
+  - action: "页面未登录跳转：无 token/无 cookie 访问 image2 时跳 sub2api 登录；登录后通过 sub2api image2 入口回到 image2"
+    exit_signal: "无登录态访问会进入 /login?redirect=...，已登录态入口能直达工作台"
+    status: done
+  - action: "API 保护与 fs 用户目录：图片生成、读取、删除、模型列表都接入 requireImage2Session；fs 保存到用户目录"
+    exit_signal: "用户 A 的 /api/image/{filename} 在用户 B session 下返回 404/403，删除也只删 B 自己目录"
+    status: done
+  - action: "客户端数据隔离：history key 与 Dexie 图片表按 userId 分区，页面所有读写使用当前 userId"
+    exit_signal: "同浏览器切换 A/B 账号，history 列表和 IndexedDB 缓存互不可见"
+    status: done
+  - action: "入口和文档收尾：补 README/docker-compose，明确不同二级域名部署时的环境变量、Cookie SameSite/Secure 和 sub2api custom menu 配置"
+    exit_signal: "文档中能按 env + custom menu 配出完整链路"
+    status: done
+
+checks:
+  - item: "不把 sub2api JWT 长期持久化到 gpt-image localStorage，只在交换阶段短暂使用 URL/query token"
+    source: 范围守护
+    status: pending
+  - item: "不在 gpt-image 中实现独立注册、密码登录、用户表或权限后台"
+    source: 范围守护
+    status: pending
+  - item: "不改 sub2api 用户注册、OAuth、2FA、refresh token 签发逻辑"
+    source: 范围守护
+    status: pending
+  - item: "不把 image2 生成历史同步回 sub2api 数据库"
+    source: 范围守护
+    status: pending
+  - item: "旧未隔离历史/图片不自动归属迁移"
+    source: 范围守护
+    status: pending
+  - item: "POST /api/sub2api-session/exchange 成功时设置 Image2 Session Cookie，token 无效返回 401，sub2api 不可达返回 502"
+    source: 接口契约
+    status: pending
+  - item: "GET /api/auth-status 在 SSO 模式返回 authMode、authenticated、user/loginUrl，并兼容非 SSO APP_PASSWORD 模式"
+    source: 接口契约
+    status: pending
+  - item: "/api/images、/api/models、/api/image/{filename}、/api/image-delete 在 SSO 模式统一要求 Image2 Session"
+    source: 接口契约
+    status: pending
+  - item: "fs 模式图片保存和读取路径按 generated-images/{userId}/{filename} 分区"
+    source: 接口契约
+    status: pending
+  - item: "history localStorage key 和 Dexie 图片表按 sub2api user.id 分区"
+    source: 接口契约
+    status: pending
+  - item: "exchange 测试覆盖成功、401、502、cookie 篡改"
+    source: 测试约束
+    status: pending
+  - item: "无 session 访问 image2 生成的 loginUrl 带 redirect=SUB2API_IMAGE2_ENTRY_URL"
+    source: 测试约束
+    status: pending
+  - item: "带 ?token= 打开 image2，交换成功后地址栏不再包含 token"
+    source: 测试约束
+    status: pending
+  - item: "SSO 模式缺 cookie 调受保护 API 时不进入 OpenAI/文件逻辑"
+    source: 测试约束
+    status: pending
+  - item: "A/B 用户在 fs、IndexedDB、history、delete 路径互不可见"
+    source: 测试约束
+    status: pending

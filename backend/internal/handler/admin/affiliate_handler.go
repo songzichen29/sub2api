@@ -51,11 +51,15 @@ func (h *AffiliateHandler) ListUsers(c *gin.Context) {
 //
 // Both fields are optional and applied independently.
 type UpdateAffiliateUserRequest struct {
-	AffCode              *string  `json:"aff_code"`
-	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
+	AffCode                          *string  `json:"aff_code"`
+	AffRebateRatePercent             *float64 `json:"aff_rebate_rate_percent"`
+	AffRechargeRebateRatePercent     *float64 `json:"aff_recharge_rebate_rate_percent"`
+	AffSubscriptionRebateRatePercent *float64 `json:"aff_subscription_rebate_rate_percent"`
 	// ClearRebateRate explicitly clears the per-user rate (sets it to NULL).
 	// Used to disambiguate from "field not provided".
-	ClearRebateRate bool `json:"clear_rebate_rate"`
+	ClearRebateRate             bool `json:"clear_rebate_rate"`
+	ClearRechargeRebateRate     bool `json:"clear_recharge_rebate_rate"`
+	ClearSubscriptionRebateRate bool `json:"clear_subscription_rebate_rate"`
 }
 
 func (h *AffiliateHandler) UpdateUserSettings(c *gin.Context) {
@@ -78,13 +82,34 @@ func (h *AffiliateHandler) UpdateUserSettings(c *gin.Context) {
 		}
 	}
 
+	generalSpecified := req.ClearRebateRate || req.AffRebateRatePercent != nil
+	var generalRate *float64
 	if req.ClearRebateRate {
-		if err := h.affiliateService.AdminSetUserRebateRate(c.Request.Context(), userID, nil); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
+		generalRate = nil
 	} else if req.AffRebateRatePercent != nil {
-		if err := h.affiliateService.AdminSetUserRebateRate(c.Request.Context(), userID, req.AffRebateRatePercent); err != nil {
+		generalRate = req.AffRebateRatePercent
+	}
+	rechargeSpecified := req.ClearRechargeRebateRate || req.AffRechargeRebateRatePercent != nil
+	var rechargeRate *float64
+	if req.ClearRechargeRebateRate {
+		rechargeRate = nil
+	} else if req.AffRechargeRebateRatePercent != nil {
+		rechargeRate = req.AffRechargeRebateRatePercent
+	}
+	subscriptionSpecified := req.ClearSubscriptionRebateRate || req.AffSubscriptionRebateRatePercent != nil
+	var subscriptionRate *float64
+	if req.ClearSubscriptionRebateRate {
+		subscriptionRate = nil
+	} else if req.AffSubscriptionRebateRatePercent != nil {
+		subscriptionRate = req.AffSubscriptionRebateRatePercent
+	}
+	if generalSpecified || rechargeSpecified || subscriptionSpecified {
+		if err := h.affiliateService.AdminSetUserRebateRates(
+			c.Request.Context(), userID,
+			generalSpecified, generalRate,
+			rechargeSpecified, rechargeRate,
+			subscriptionSpecified, subscriptionRate,
+		); err != nil {
 			response.ErrorFrom(c, err)
 			return
 		}
@@ -106,7 +131,7 @@ func (h *AffiliateHandler) ClearUserSettings(c *gin.Context) {
 		response.BadRequest(c, "Invalid user_id")
 		return
 	}
-	if err := h.affiliateService.AdminSetUserRebateRate(c.Request.Context(), userID, nil); err != nil {
+	if err := h.affiliateService.AdminSetUserRebateRates(c.Request.Context(), userID, true, nil, true, nil, true, nil); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -127,9 +152,11 @@ func (h *AffiliateHandler) ClearUserSettings(c *gin.Context) {
 //
 // POST /api/v1/admin/affiliates/users/batch-rate
 type BatchSetRateRequest struct {
-	UserIDs              []int64  `json:"user_ids" binding:"required"`
-	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent"`
-	Clear                bool     `json:"clear"`
+	UserIDs                          []int64  `json:"user_ids" binding:"required"`
+	AffRebateRatePercent             *float64 `json:"aff_rebate_rate_percent"`
+	AffRechargeRebateRatePercent     *float64 `json:"aff_recharge_rebate_rate_percent"`
+	AffSubscriptionRebateRatePercent *float64 `json:"aff_subscription_rebate_rate_percent"`
+	Clear                            bool     `json:"clear"`
 }
 
 func (h *AffiliateHandler) BatchSetRate(c *gin.Context) {
@@ -142,15 +169,25 @@ func (h *AffiliateHandler) BatchSetRate(c *gin.Context) {
 		response.BadRequest(c, "user_ids cannot be empty")
 		return
 	}
-	if !req.Clear && req.AffRebateRatePercent == nil {
-		response.BadRequest(c, "aff_rebate_rate_percent is required unless clear=true")
+	if !req.Clear && req.AffRebateRatePercent == nil && req.AffRechargeRebateRatePercent == nil && req.AffSubscriptionRebateRatePercent == nil {
+		response.BadRequest(c, "at least one rebate rate is required unless clear=true")
 		return
 	}
-	rate := req.AffRebateRatePercent
+	generalRate := req.AffRebateRatePercent
+	rechargeRate := req.AffRechargeRebateRatePercent
+	subscriptionRate := req.AffSubscriptionRebateRatePercent
 	if req.Clear {
-		rate = nil
+		generalRate = nil
+		rechargeRate = nil
+		subscriptionRate = nil
 	}
-	if err := h.affiliateService.AdminBatchSetUserRebateRate(c.Request.Context(), req.UserIDs, rate); err != nil {
+	if err := h.affiliateService.AdminBatchSetUserRebateRates(
+		c.Request.Context(),
+		req.UserIDs,
+		req.Clear || req.AffRebateRatePercent != nil, generalRate,
+		req.Clear || req.AffRechargeRebateRatePercent != nil, rechargeRate,
+		req.Clear || req.AffSubscriptionRebateRatePercent != nil, subscriptionRate,
+	); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

@@ -188,7 +188,12 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		AffiliateEnabled:                       settings.AffiliateEnabled,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
+		AffiliateRechargeEnabled:               settings.AffiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:           settings.AffiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            settings.AffiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        settings.AffiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
@@ -249,8 +254,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
-
-		AffiliateEnabled: settings.AffiliateEnabled,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -391,6 +394,10 @@ type UpdateSettingsRequest struct {
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
 	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
+	AffiliateRechargeEnabled                 *bool                             `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled             *bool                             `json:"affiliate_subscription_enabled"`
+	AffiliateRechargeRebateRate              *float64                          `json:"affiliate_recharge_rebate_rate"`
+	AffiliateSubscriptionRebateRate          *float64                          `json:"affiliate_subscription_rebate_rate"`
 	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap             *float64                          `json:"affiliate_rebate_per_invitee_cap"`
@@ -540,6 +547,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebateRate > service.AffiliateRebateRateMax {
 		affiliateRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateRechargeRebateRate := previousSettings.AffiliateRechargeRebateRate
+	if req.AffiliateRechargeRebateRate != nil {
+		affiliateRechargeRebateRate = *req.AffiliateRechargeRebateRate
+	}
+	if affiliateRechargeRebateRate < service.AffiliateRebateRateMin {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateRechargeRebateRate > service.AffiliateRebateRateMax {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateSubscriptionRebateRate := previousSettings.AffiliateSubscriptionRebateRate
+	if req.AffiliateSubscriptionRebateRate != nil {
+		affiliateSubscriptionRebateRate = *req.AffiliateSubscriptionRebateRate
+	}
+	if affiliateSubscriptionRebateRate < service.AffiliateRebateRateMin {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateSubscriptionRebateRate > service.AffiliateRebateRateMax {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMax
 	}
 	affiliateRebateFreezeHours := previousSettings.AffiliateRebateFreezeHours
 	if req.AffiliateRebateFreezeHours != nil {
@@ -1222,22 +1249,36 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		AffiliateRebateRate:              affiliateRebateRate,
-		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
-		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
-		AffiliateRebatePerInviteeCap:     affiliateRebatePerInviteeCap,
-		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
-		DefaultSubscriptions:             defaultSubscriptions,
-		EnableModelFallback:              req.EnableModelFallback,
-		FallbackModelAnthropic:           req.FallbackModelAnthropic,
-		FallbackModelOpenAI:              req.FallbackModelOpenAI,
-		FallbackModelGemini:              req.FallbackModelGemini,
-		FallbackModelAntigravity:         req.FallbackModelAntigravity,
-		EnableIdentityPatch:              req.EnableIdentityPatch,
-		IdentityPatchPrompt:              req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:               req.BackendModeEnabled,
+		AffiliateRechargeEnabled: func() bool {
+			if req.AffiliateRechargeEnabled != nil {
+				return *req.AffiliateRechargeEnabled
+			}
+			return previousSettings.AffiliateRechargeEnabled
+		}(),
+		AffiliateSubscriptionEnabled: func() bool {
+			if req.AffiliateSubscriptionEnabled != nil {
+				return *req.AffiliateSubscriptionEnabled
+			}
+			return previousSettings.AffiliateSubscriptionEnabled
+		}(),
+		AffiliateRechargeRebateRate:     affiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate: affiliateSubscriptionRebateRate,
+		AffiliateRebateFreezeHours:      affiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:     affiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:    affiliateRebatePerInviteeCap,
+		DefaultUserRPMLimit:             req.DefaultUserRPMLimit,
+		DefaultSubscriptions:            defaultSubscriptions,
+		EnableModelFallback:             req.EnableModelFallback,
+		FallbackModelAnthropic:          req.FallbackModelAnthropic,
+		FallbackModelOpenAI:             req.FallbackModelOpenAI,
+		FallbackModelGemini:             req.FallbackModelGemini,
+		FallbackModelAntigravity:        req.FallbackModelAntigravity,
+		EnableIdentityPatch:             req.EnableIdentityPatch,
+		IdentityPatchPrompt:             req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:            req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:            req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:     req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:              req.BackendModeEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1561,7 +1602,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		AffiliateEnabled:                       updatedSettings.AffiliateEnabled,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
+		AffiliateRechargeEnabled:               updatedSettings.AffiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:           updatedSettings.AffiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            updatedSettings.AffiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        updatedSettings.AffiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
@@ -1621,8 +1667,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
-
-		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
@@ -1880,6 +1924,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
+	}
+	if before.AffiliateRechargeEnabled != after.AffiliateRechargeEnabled {
+		changed = append(changed, "affiliate_recharge_enabled")
+	}
+	if before.AffiliateSubscriptionEnabled != after.AffiliateSubscriptionEnabled {
+		changed = append(changed, "affiliate_subscription_enabled")
+	}
+	if before.AffiliateRechargeRebateRate != after.AffiliateRechargeRebateRate {
+		changed = append(changed, "affiliate_recharge_rebate_rate")
+	}
+	if before.AffiliateSubscriptionRebateRate != after.AffiliateSubscriptionRebateRate {
+		changed = append(changed, "affiliate_subscription_rebate_rate")
 	}
 	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
 		changed = append(changed, "affiliate_rebate_freeze_hours")

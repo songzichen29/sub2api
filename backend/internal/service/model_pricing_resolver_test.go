@@ -215,9 +215,9 @@ func TestResolve_WithChannelOverride_TokenFlat(t *testing.T) {
 	require.Equal(t, "channel", resolved.Source)
 	require.NotNil(t, resolved.BasePricing)
 	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
-	require.InDelta(t, 10e-6, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.0, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
-	require.InDelta(t, 50e-6, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.0, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
@@ -240,8 +240,10 @@ func TestResolve_WithChannelOverride_TokenPartialOverride(t *testing.T) {
 	require.NotNil(t, resolved.BasePricing)
 	// InputPrice overridden by channel
 	require.InDelta(t, 20e-6, resolved.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, 0.0, resolved.BasePricing.InputPricePerTokenPriority, 1e-12)
 	// OutputPrice kept from base (fallback: 15e-6)
 	require.InDelta(t, 15e-6, resolved.BasePricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.0, resolved.BasePricing.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
@@ -269,11 +271,15 @@ func TestResolve_WithChannelOverride_TokenWithIntervals(t *testing.T) {
 	require.NotNil(t, iv)
 	require.InDelta(t, 2e-6, iv.InputPricePerToken, 1e-12)
 	require.InDelta(t, 8e-6, iv.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.0, iv.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.0, iv.OutputPricePerTokenPriority, 1e-12)
 
 	iv2 := r.GetIntervalPricing(resolved, 200000)
 	require.NotNil(t, iv2)
 	require.InDelta(t, 4e-6, iv2.InputPricePerToken, 1e-12)
 	require.InDelta(t, 16e-6, iv2.OutputPricePerToken, 1e-12)
+	require.InDelta(t, 0.0, iv2.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, 0.0, iv2.OutputPricePerTokenPriority, 1e-12)
 }
 
 func TestResolve_WithChannelOverride_TokenNilBasePricing(t *testing.T) {

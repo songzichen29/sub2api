@@ -336,6 +336,10 @@ export interface SystemSettings {
   // Default settings
   default_balance: number;
   affiliate_rebate_rate: number;
+  affiliate_recharge_enabled: boolean;
+  affiliate_subscription_enabled: boolean;
+  affiliate_recharge_rebate_rate: number;
+  affiliate_subscription_rebate_rate: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
@@ -528,6 +532,10 @@ export interface UpdateSettingsRequest {
   totp_enabled?: boolean; // TOTP 双因素认证
   default_balance?: number;
   affiliate_rebate_rate?: number;
+  affiliate_recharge_enabled?: boolean;
+  affiliate_subscription_enabled?: boolean;
+  affiliate_recharge_rebate_rate?: number;
+  affiliate_subscription_rebate_rate?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
   affiliate_rebate_per_invitee_cap?: number;

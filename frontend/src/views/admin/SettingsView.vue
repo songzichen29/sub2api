@@ -4419,7 +4419,71 @@
               <Toggle v-model="form.affiliate_enabled" />
             </div>
 
-            <div v-if="form.affiliate_enabled" class="space-y-6">
+          <div v-if="form.affiliate_enabled" class="space-y-6">
+              <div class="grid gap-4 md:grid-cols-2">
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t('admin.settings.features.affiliate.rechargeEnabled') }}
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.features.affiliate.rechargeEnabledHint') }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.affiliate_recharge_enabled" />
+                  </div>
+                  <div class="mt-4">
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.rechargeRebateRate') }}
+                    </label>
+                    <div class="relative">
+                      <input
+                        v-model.number="form.affiliate_recharge_rebate_rate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        class="input pr-8"
+                        placeholder="20"
+                      />
+                      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {{ t('admin.settings.features.affiliate.subscriptionEnabled') }}
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.settings.features.affiliate.subscriptionEnabledHint') }}
+                      </p>
+                    </div>
+                    <Toggle v-model="form.affiliate_subscription_enabled" />
+                  </div>
+                  <div class="mt-4">
+                    <label class="input-label">
+                      {{ t('admin.settings.features.affiliate.subscriptionRebateRate') }}
+                    </label>
+                    <div class="relative">
+                      <input
+                        v-model.number="form.affiliate_subscription_rebate_rate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        class="input pr-8"
+                        placeholder="20"
+                      />
+                      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label class="input-label">
                   {{ t('admin.settings.features.affiliate.rebateRate') }}
@@ -4576,8 +4640,23 @@
                           >{{ t('admin.settings.features.affiliate.customUsers.customBadge') }}</span>
                         </td>
                         <td class="px-3 py-2 text-sm">
-                          <span v-if="entry.aff_rebate_rate_percent != null">{{ entry.aff_rebate_rate_percent }}%</span>
-                          <span v-else class="text-gray-400">{{ t('admin.settings.features.affiliate.customUsers.useGlobal') }}</span>
+                          <div class="space-y-0.5">
+                            <div>
+                              <span class="text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.generalRate') }}：</span>
+                              <span v-if="entry.aff_rebate_rate_percent != null">{{ entry.aff_rebate_rate_percent }}%</span>
+                              <span v-else class="text-gray-400">{{ t('admin.settings.features.affiliate.customUsers.useGlobal') }}</span>
+                            </div>
+                            <div>
+                              <span class="text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.rechargeRate') }}：</span>
+                              <span v-if="entry.aff_recharge_rebate_rate_percent != null">{{ entry.aff_recharge_rebate_rate_percent }}%</span>
+                              <span v-else class="text-gray-400">{{ t('admin.settings.features.affiliate.customUsers.useGlobal') }}</span>
+                            </div>
+                            <div>
+                              <span class="text-gray-500">{{ t('admin.settings.features.affiliate.customUsers.subscriptionRate') }}：</span>
+                              <span v-if="entry.aff_subscription_rebate_rate_percent != null">{{ entry.aff_subscription_rebate_rate_percent }}%</span>
+                              <span v-else class="text-gray-400">{{ t('admin.settings.features.affiliate.customUsers.useGlobal') }}</span>
+                            </div>
+                          </div>
                         </td>
                         <td class="px-3 py-2 text-sm">
                           <div class="flex items-center gap-2">
@@ -4725,6 +4804,42 @@
                   {{ t('admin.settings.features.affiliate.modal.rateHint') }}
                 </p>
               </div>
+              <div>
+                <label class="input-label">{{ t('admin.settings.features.affiliate.modal.rechargeRateLabel') }}</label>
+                <div class="relative">
+                  <input
+                    v-model="affiliateModal.rechargeRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    class="input pr-8"
+                    :placeholder="t('admin.settings.features.affiliate.modal.rechargeRatePlaceholder')"
+                  />
+                  <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.modal.rechargeRateHint') }}
+                </p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.settings.features.affiliate.modal.subscriptionRateLabel') }}</label>
+                <div class="relative">
+                  <input
+                    v-model="affiliateModal.subscriptionRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    class="input pr-8"
+                    :placeholder="t('admin.settings.features.affiliate.modal.subscriptionRatePlaceholder')"
+                  />
+                  <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.modal.subscriptionRateHint') }}
+                </p>
+              </div>
             </div>
 
             <div class="mt-6 flex items-center justify-between gap-3">
@@ -4780,6 +4895,30 @@
             <p class="mt-2 text-xs text-gray-400">
               {{ t('admin.settings.features.affiliate.batchModal.clearHint') }}
             </p>
+            <div class="relative mt-3">
+              <input
+                v-model="affiliateBatchModal.rechargeRate"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                class="input pr-8"
+                :placeholder="t('admin.settings.features.affiliate.modal.rechargeRatePlaceholder')"
+              />
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+            </div>
+            <div class="relative mt-3">
+              <input
+                v-model="affiliateBatchModal.subscriptionRate"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                class="input pr-8"
+                :placeholder="t('admin.settings.features.affiliate.modal.subscriptionRatePlaceholder')"
+              />
+              <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+            </div>
             <div class="mt-6 flex justify-end gap-2">
               <button type="button" class="btn btn-secondary" @click="affiliateBatchModal.open = false">
                 {{ t('common.cancel') }}
@@ -6037,6 +6176,10 @@ const form = reactive<SettingsForm>({
   totp_encryption_key_configured: false,
   default_balance: 0,
   affiliate_rebate_rate: 20,
+  affiliate_recharge_enabled: true,
+  affiliate_subscription_enabled: false,
+  affiliate_recharge_rebate_rate: 20,
+  affiliate_subscription_rebate_rate: 20,
   affiliate_rebate_freeze_hours: 0,
   affiliate_rebate_duration_days: 0,
   affiliate_rebate_per_invitee_cap: 0,
@@ -7142,6 +7285,16 @@ async function saveSettings() {
       affiliate_rebate_rate: Math.min(
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),
+      ),
+      affiliate_recharge_enabled: form.affiliate_recharge_enabled,
+      affiliate_subscription_enabled: form.affiliate_subscription_enabled,
+      affiliate_recharge_rebate_rate: Math.min(
+        100,
+        Math.max(0, Number(form.affiliate_recharge_rebate_rate) || 0),
+      ),
+      affiliate_subscription_rebate_rate: Math.min(
+        100,
+        Math.max(0, Number(form.affiliate_subscription_rebate_rate) || 0),
       ),
       affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
       affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
@@ -8276,6 +8429,8 @@ interface AffiliateModalState {
   editingEntry: AffiliateAdminEntry | null;
   code: string;
   rate: string | number;
+  rechargeRate: string | number;
+  subscriptionRate: string | number;
   searchTimer: number | null;
 }
 
@@ -8289,6 +8444,8 @@ const affiliateModal = reactive<AffiliateModalState>({
   editingEntry: null,
   code: "",
   rate: "",
+  rechargeRate: "",
+  subscriptionRate: "",
   searchTimer: null,
 });
 
@@ -8296,10 +8453,14 @@ const affiliateBatchModal = reactive<{
   open: boolean;
   saving: boolean;
   rate: string | number;
+  rechargeRate: string | number;
+  subscriptionRate: string | number;
 }>({
   open: false,
   saving: false,
   rate: "",
+  rechargeRate: "",
+  subscriptionRate: "",
 });
 
 // affiliateConfirmDialog drives the project-standard <ConfirmDialog>. We can't
@@ -8434,6 +8595,10 @@ function openAffiliateModal(entry: AffiliateAdminEntry | null) {
   affiliateModal.code = entry?.aff_code_custom ? entry.aff_code : "";
   affiliateModal.rate =
     entry?.aff_rebate_rate_percent != null ? String(entry.aff_rebate_rate_percent) : "";
+  affiliateModal.rechargeRate =
+    entry?.aff_recharge_rebate_rate_percent != null ? String(entry.aff_recharge_rebate_rate_percent) : "";
+  affiliateModal.subscriptionRate =
+    entry?.aff_subscription_rebate_rate_percent != null ? String(entry.aff_subscription_rebate_rate_percent) : "";
 }
 
 function closeAffiliateModal() {
@@ -8483,12 +8648,18 @@ const affiliateModalCanSubmit = computed(() => {
   }
   const codeFilled = affiliateModal.code.trim() !== "";
   const rateFilled = String(affiliateModal.rate ?? "").trim() !== "";
-  if (codeFilled || rateFilled) return true;
+  const rechargeRateFilled = String(affiliateModal.rechargeRate ?? "").trim() !== "";
+  const subscriptionRateFilled = String(affiliateModal.subscriptionRate ?? "").trim() !== "";
+  if (codeFilled || rateFilled || rechargeRateFilled || subscriptionRateFilled) return true;
   // Edit mode + empty rate input is a meaningful "clear" only if the user
   // currently has an exclusive rate to clear.
   return (
     affiliateModal.mode === "edit" &&
-    affiliateModal.editingEntry?.aff_rebate_rate_percent != null
+    (
+      affiliateModal.editingEntry?.aff_rebate_rate_percent != null ||
+      affiliateModal.editingEntry?.aff_recharge_rebate_rate_percent != null ||
+      affiliateModal.editingEntry?.aff_subscription_rebate_rate_percent != null
+    )
   );
 });
 
@@ -8512,12 +8683,30 @@ async function submitAffiliateModal() {
 
   const rateInput = parseRebateRate(affiliateModal.rate);
   if (rateInput === undefined) return; // toast already shown
+  const rechargeRateInput = parseRebateRate(affiliateModal.rechargeRate);
+  if (rechargeRateInput === undefined) return;
+  const subscriptionRateInput = parseRebateRate(affiliateModal.subscriptionRate);
+  if (subscriptionRateInput === undefined) return;
   if (rateInput === null) {
     if (affiliateModal.mode === "edit" && affiliateModal.editingEntry?.aff_rebate_rate_percent != null) {
       payload.clear_rebate_rate = true;
     }
   } else {
     payload.aff_rebate_rate_percent = rateInput;
+  }
+  if (rechargeRateInput === null) {
+    if (affiliateModal.mode === "edit" && affiliateModal.editingEntry?.aff_recharge_rebate_rate_percent != null) {
+      payload.clear_recharge_rebate_rate = true;
+    }
+  } else {
+    payload.aff_recharge_rebate_rate_percent = rechargeRateInput;
+  }
+  if (subscriptionRateInput === null) {
+    if (affiliateModal.mode === "edit" && affiliateModal.editingEntry?.aff_subscription_rebate_rate_percent != null) {
+      payload.clear_subscription_rebate_rate = true;
+    }
+  } else {
+    payload.aff_subscription_rebate_rate_percent = subscriptionRateInput;
   }
 
   affiliateModal.saving = true;
@@ -8552,16 +8741,27 @@ function openAffiliateBatchModal() {
   if (affiliateState.selected.length === 0) return;
   affiliateBatchModal.open = true;
   affiliateBatchModal.rate = "";
+  affiliateBatchModal.rechargeRate = "";
+  affiliateBatchModal.subscriptionRate = "";
 }
 
 async function submitAffiliateBatchModal() {
   const rateInput = parseRebateRate(affiliateBatchModal.rate);
   if (rateInput === undefined) return;
+  const rechargeRateInput = parseRebateRate(affiliateBatchModal.rechargeRate);
+  if (rechargeRateInput === undefined) return;
+  const subscriptionRateInput = parseRebateRate(affiliateBatchModal.subscriptionRate);
+  if (subscriptionRateInput === undefined) return;
   const userIDs = [...affiliateState.selected];
   const payload: Parameters<typeof affiliatesAPI.batchSetRate>[0] =
-    rateInput === null
+    rateInput === null && rechargeRateInput === null && subscriptionRateInput === null
       ? { user_ids: userIDs, clear: true }
-      : { user_ids: userIDs, aff_rebate_rate_percent: rateInput };
+      : {
+          user_ids: userIDs,
+          aff_rebate_rate_percent: rateInput ?? undefined,
+          aff_recharge_rebate_rate_percent: rechargeRateInput ?? undefined,
+          aff_subscription_rebate_rate_percent: subscriptionRateInput ?? undefined,
+        };
 
   affiliateBatchModal.saving = true;
   try {

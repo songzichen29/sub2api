@@ -28,6 +28,10 @@ SELECT ua.user_id,
        ua.aff_code,
        COALESCE(ua.aff_rebate_rate_percent, 0),
        (ua.aff_rebate_rate_percent IS NOT NULL) AS has_custom_rate,
+       COALESCE(ua.aff_recharge_rebate_rate_percent, 0),
+       (ua.aff_recharge_rebate_rate_percent IS NOT NULL) AS has_custom_recharge_rate,
+       COALESCE(ua.aff_subscription_rebate_rate_percent, 0),
+       (ua.aff_subscription_rebate_rate_percent IS NOT NULL) AS has_custom_subscription_rate,
        ua.aff_count,
        COALESCE(rebated.rebated_invitee_count, 0),
        (ua.aff_quota + COALESCE(matured.matured_frozen_quota, 0)),
@@ -662,6 +666,10 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 	var overview service.AffiliateUserOverview
 	var customRate float64
 	var hasCustomRate bool
+	var customRechargeRate float64
+	var hasCustomRechargeRate bool
+	var customSubscriptionRate float64
+	var hasCustomSubscriptionRate bool
 	if err := rows.Scan(
 		&overview.UserID,
 		&overview.Email,
@@ -669,6 +677,10 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 		&overview.AffCode,
 		&customRate,
 		&hasCustomRate,
+		&customRechargeRate,
+		&hasCustomRechargeRate,
+		&customSubscriptionRate,
+		&hasCustomSubscriptionRate,
 		&overview.InvitedCount,
 		&overview.RebatedInviteeCount,
 		&overview.AvailableQuota,
@@ -679,6 +691,14 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 	if hasCustomRate {
 		overview.RebateRatePercent = customRate
 		overview.RebateRateCustom = true
+	}
+	if hasCustomRechargeRate {
+		overview.RechargeRebateRatePercent = customRechargeRate
+		overview.RechargeRebateRateCustom = true
+	}
+	if hasCustomSubscriptionRate {
+		overview.SubscriptionRebateRatePercent = customSubscriptionRate
+		overview.SubscriptionRebateRateCustom = true
 	}
 	return &overview, rows.Err()
 }
@@ -807,6 +827,8 @@ SELECT user_id,
        aff_code,
        aff_code_custom,
        aff_rebate_rate_percent,
+       aff_recharge_rebate_rate_percent,
+       aff_subscription_rebate_rate_percent,
        inviter_id,
        aff_count,
        aff_quota,
@@ -830,11 +852,15 @@ WHERE user_id = ?`, userID)
 	var out service.AffiliateSummary
 	var inviterID sql.NullInt64
 	var rebateRate sql.NullFloat64
+	var rechargeRebateRate sql.NullFloat64
+	var subscriptionRebateRate sql.NullFloat64
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
 		&out.AffCodeCustom,
 		&rebateRate,
+		&rechargeRebateRate,
+		&subscriptionRebateRate,
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
@@ -852,6 +878,14 @@ WHERE user_id = ?`, userID)
 		v := rebateRate.Float64
 		out.AffRebateRatePercent = &v
 	}
+	if rechargeRebateRate.Valid {
+		v := rechargeRebateRate.Float64
+		out.AffRechargeRebateRatePercent = &v
+	}
+	if subscriptionRebateRate.Valid {
+		v := subscriptionRebateRate.Float64
+		out.AffSubscriptionRebateRatePercent = &v
+	}
 	return &out, nil
 }
 
@@ -861,6 +895,8 @@ SELECT user_id,
        aff_code,
        aff_code_custom,
        aff_rebate_rate_percent,
+       aff_recharge_rebate_rate_percent,
+       aff_subscription_rebate_rate_percent,
        inviter_id,
        aff_count,
        aff_quota,
@@ -886,11 +922,15 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	var out service.AffiliateSummary
 	var inviterID sql.NullInt64
 	var rebateRate sql.NullFloat64
+	var rechargeRebateRate sql.NullFloat64
+	var subscriptionRebateRate sql.NullFloat64
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
 		&out.AffCodeCustom,
 		&rebateRate,
+		&rechargeRebateRate,
+		&subscriptionRebateRate,
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
@@ -907,6 +947,14 @@ LIMIT 1`, strings.ToUpper(strings.TrimSpace(code)))
 	if rebateRate.Valid {
 		v := rebateRate.Float64
 		out.AffRebateRatePercent = &v
+	}
+	if rechargeRebateRate.Valid {
+		v := rechargeRebateRate.Float64
+		out.AffRechargeRebateRatePercent = &v
+	}
+	if subscriptionRebateRate.Valid {
+		v := subscriptionRebateRate.Float64
+		out.AffSubscriptionRebateRatePercent = &v
 	}
 	return &out, nil
 }
@@ -1075,24 +1123,48 @@ WHERE user_id = ?`, candidate, userID)
 	return newCode, nil
 }
 
-// SetUserRebateRate 设置或清除用户专属返利比例。ratePercent==nil 表示清除（沿用全局）。
-func (r *affiliateRepository) SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error {
+// SetUserRebateRates 设置或清除用户专属返利比例。specified=false 表示该字段保持不变；
+// specified=true 且 ratePercent=nil 表示清除该字段（回退全局/通用配置）。
+func (r *affiliateRepository) SetUserRebateRates(
+	ctx context.Context,
+	userID int64,
+	generalSpecified bool, generalRatePercent *float64,
+	rechargeSpecified bool, rechargeRatePercent *float64,
+	subscriptionSpecified bool, subscriptionRatePercent *float64,
+) error {
 	if userID <= 0 {
 		return service.ErrUserNotFound
+	}
+	if !generalSpecified && !rechargeSpecified && !subscriptionSpecified {
+		return nil
 	}
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
 			return err
 		}
-		// nullableArg lets us use a single UPDATE for both "set value" and
-		// "clear" cases — database/sql converts nil interface{} to SQL NULL.
-		res, err := txClient.ExecContext(txCtx, `
+		setClauses := make([]string, 0, 4)
+		args := make([]any, 0, 4)
+		if generalSpecified {
+			setClauses = append(setClauses, "aff_rebate_rate_percent = ?")
+			args = append(args, nullableArg(generalRatePercent))
+		}
+		if rechargeSpecified {
+			setClauses = append(setClauses, "aff_recharge_rebate_rate_percent = ?")
+			args = append(args, nullableArg(rechargeRatePercent))
+		}
+		if subscriptionSpecified {
+			setClauses = append(setClauses, "aff_subscription_rebate_rate_percent = ?")
+			args = append(args, nullableArg(subscriptionRatePercent))
+		}
+		setClauses = append(setClauses, "updated_at = NOW()")
+		args = append(args, userID)
+		query := `
 UPDATE user_affiliates
-SET aff_rebate_rate_percent = ?,
-    updated_at = NOW()
-WHERE user_id = ?`, nullableArg(ratePercent), userID)
+SET ` + strings.Join(setClauses, ",\n    ") + `
+WHERE user_id = ?`
+		res, err := txClient.ExecContext(txCtx, query, args...)
 		if err != nil {
-			return fmt.Errorf("set aff_rebate_rate_percent: %w", err)
+			return fmt.Errorf("set affiliate rebate rates: %w", err)
 		}
 		affected, _ := res.RowsAffected()
 		if affected == 0 {
@@ -1102,13 +1174,22 @@ WHERE user_id = ?`, nullableArg(ratePercent), userID)
 	})
 }
 
-// BatchSetUserRebateRate 批量为多个用户设置专属比例（nil 清除）。
+// BatchSetUserRebateRates 批量为多个用户设置专属比例（nil 清除）。
 //
 // MySQL 不支持 PG 的 `WHERE user_id = ANY($2)` + 数组绑定，
 // 这里把 user_id 列表展开成 IN (?, ?, ...)，参数逐个绑定。
 // 调用方已限制 user_ids 不会超过批处理上限，不会触达单语句占位符上限。
-func (r *affiliateRepository) BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error {
+func (r *affiliateRepository) BatchSetUserRebateRates(
+	ctx context.Context,
+	userIDs []int64,
+	generalSpecified bool, generalRatePercent *float64,
+	rechargeSpecified bool, rechargeRatePercent *float64,
+	subscriptionSpecified bool, subscriptionRatePercent *float64,
+) error {
 	if len(userIDs) == 0 {
+		return nil
+	}
+	if !generalSpecified && !rechargeSpecified && !subscriptionSpecified {
 		return nil
 	}
 	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
@@ -1127,8 +1208,20 @@ func (r *affiliateRepository) BatchSetUserRebateRate(ctx context.Context, userID
 		}
 
 		placeholders := make([]string, len(validIDs))
-		args := make([]any, 0, 1+len(validIDs))
-		args = append(args, nullableArg(ratePercent))
+		args := make([]any, 0, 3+len(validIDs))
+		setClauses := make([]string, 0, 4)
+		if generalSpecified {
+			setClauses = append(setClauses, "aff_rebate_rate_percent = ?")
+			args = append(args, nullableArg(generalRatePercent))
+		}
+		if rechargeSpecified {
+			setClauses = append(setClauses, "aff_recharge_rebate_rate_percent = ?")
+			args = append(args, nullableArg(rechargeRatePercent))
+		}
+		if subscriptionSpecified {
+			setClauses = append(setClauses, "aff_subscription_rebate_rate_percent = ?")
+			args = append(args, nullableArg(subscriptionRatePercent))
+		}
 		for i, uid := range validIDs {
 			placeholders[i] = "?"
 			args = append(args, uid)
@@ -1136,12 +1229,11 @@ func (r *affiliateRepository) BatchSetUserRebateRate(ctx context.Context, userID
 
 		query := `
 UPDATE user_affiliates
-SET aff_rebate_rate_percent = ?,
-    updated_at = NOW()
+SET ` + strings.Join(append(setClauses, "updated_at = NOW()"), ",\n    ") + `
 WHERE user_id IN (` + strings.Join(placeholders, ",") + `)`
 
 		if _, err := txClient.ExecContext(txCtx, query, args...); err != nil {
-			return fmt.Errorf("batch set aff_rebate_rate_percent: %w", err)
+			return fmt.Errorf("batch set affiliate rebate rates: %w", err)
 		}
 		return nil
 	})
@@ -1186,7 +1278,10 @@ func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, f
 	const baseFrom = `
 FROM user_affiliates ua
 JOIN users u ON u.id = ua.user_id
-WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
+WHERE (ua.aff_code_custom = true
+   OR ua.aff_rebate_rate_percent IS NOT NULL
+   OR ua.aff_recharge_rebate_rate_percent IS NOT NULL
+   OR ua.aff_subscription_rebate_rate_percent IS NOT NULL)
   AND (LOWER(u.email) LIKE ? OR LOWER(u.username) LIKE ?)`
 
 	client := clientFromContext(ctx, r.client)
@@ -1203,6 +1298,8 @@ SELECT ua.user_id,
        ua.aff_code,
        ua.aff_code_custom,
        ua.aff_rebate_rate_percent,
+       ua.aff_recharge_rebate_rate_percent,
+       ua.aff_subscription_rebate_rate_percent,
        ua.aff_count` + baseFrom + `
 ORDER BY ua.updated_at DESC
 LIMIT ? OFFSET ?`
@@ -1217,13 +1314,23 @@ LIMIT ? OFFSET ?`
 	for rows.Next() {
 		var e service.AffiliateAdminEntry
 		var rebate sql.NullFloat64
+		var rechargeRebate sql.NullFloat64
+		var subscriptionRebate sql.NullFloat64
 		if err := rows.Scan(&e.UserID, &e.Email, &e.Username, &e.AffCode,
-			&e.AffCodeCustom, &rebate, &e.AffCount); err != nil {
+			&e.AffCodeCustom, &rebate, &rechargeRebate, &subscriptionRebate, &e.AffCount); err != nil {
 			return nil, 0, err
 		}
 		if rebate.Valid {
 			v := rebate.Float64
 			e.AffRebateRatePercent = &v
+		}
+		if rechargeRebate.Valid {
+			v := rechargeRebate.Float64
+			e.AffRechargeRebateRatePercent = &v
+		}
+		if subscriptionRebate.Valid {
+			v := subscriptionRebate.Float64
+			e.AffSubscriptionRebateRatePercent = &v
 		}
 		entries = append(entries, e)
 	}

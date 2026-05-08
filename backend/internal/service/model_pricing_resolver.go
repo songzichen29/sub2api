@@ -149,13 +149,17 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 		resolved.BasePricing = &ModelPricing{}
 	}
 
+	// 渠道 token 定价命中后，fast/priority 应基于渠道普通价走 service tier 倍率，
+	// 而不是继续沿用上游/兜底的显式 priority 单价。
+	resolved.BasePricing.InputPricePerTokenPriority = 0
+	resolved.BasePricing.OutputPricePerTokenPriority = 0
+	resolved.BasePricing.CacheReadPricePerTokenPriority = 0
+
 	if chPricing.InputPrice != nil {
 		resolved.BasePricing.InputPricePerToken = *chPricing.InputPrice
-		resolved.BasePricing.InputPricePerTokenPriority = *chPricing.InputPrice
 	}
 	if chPricing.OutputPrice != nil {
 		resolved.BasePricing.OutputPricePerToken = *chPricing.OutputPrice
-		resolved.BasePricing.OutputPricePerTokenPriority = *chPricing.OutputPrice
 	}
 	if chPricing.CacheWritePrice != nil {
 		resolved.BasePricing.CacheCreationPricePerToken = *chPricing.CacheWritePrice
@@ -164,7 +168,6 @@ func (r *ModelPricingResolver) applyTokenOverrides(chPricing *ChannelModelPricin
 	}
 	if chPricing.CacheReadPrice != nil {
 		resolved.BasePricing.CacheReadPricePerToken = *chPricing.CacheReadPrice
-		resolved.BasePricing.CacheReadPricePerTokenPriority = *chPricing.CacheReadPrice
 	}
 	if chPricing.ImageOutputPrice != nil {
 		resolved.BasePricing.ImageOutputPricePerToken = *chPricing.ImageOutputPrice
@@ -215,11 +218,9 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *M
 	}
 	if iv.InputPrice != nil {
 		pricing.InputPricePerToken = *iv.InputPrice
-		pricing.InputPricePerTokenPriority = *iv.InputPrice
 	}
 	if iv.OutputPrice != nil {
 		pricing.OutputPricePerToken = *iv.OutputPrice
-		pricing.OutputPricePerTokenPriority = *iv.OutputPrice
 	}
 	if iv.CacheWritePrice != nil {
 		pricing.CacheCreationPricePerToken = *iv.CacheWritePrice
@@ -228,7 +229,6 @@ func intervalToModelPricing(iv *PricingInterval, supportsCacheBreakdown bool) *M
 	}
 	if iv.CacheReadPrice != nil {
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
-		pricing.CacheReadPricePerTokenPriority = *iv.CacheReadPrice
 	}
 	return pricing
 }

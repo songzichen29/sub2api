@@ -60,6 +60,89 @@ func TestCalculateCostUnified_TokenMode(t *testing.T) {
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 }
 
+func TestCalculateCostUnified_TokenModeChannelFlatPriorityUsesTierMultiplier(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 3, platform: "openai", model: "gpt-5.4"}: {
+				BillingMode: BillingModeToken,
+				InputPrice:  testPtrFloat64(10e-6),
+				OutputPrice: testPtrFloat64(20e-6),
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			3: {ID: 3, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{3: "openai"},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(3)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "gpt-5.4",
+		GroupID:        &groupID,
+		Tokens:         UsageTokens{InputTokens: 100, OutputTokens: 50},
+		RateMultiplier: 1.0,
+		ServiceTier:    "priority",
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+
+	baseTotal := 100*10e-6 + 50*20e-6
+	require.InDelta(t, baseTotal*2, cost.TotalCost, 1e-10)
+	require.InDelta(t, baseTotal*2, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
+func TestCalculateCostUnified_TokenModeChannelIntervalsPriorityUsesTierMultiplier(t *testing.T) {
+	cs := newTestChannelServiceWithCache(t, &channelCache{
+		pricingByGroupModel: map[channelModelKey]*ChannelModelPricing{
+			{groupID: 4, platform: "openai", model: "gpt-5.4"}: {
+				BillingMode: BillingModeToken,
+				Intervals: []PricingInterval{
+					{MinTokens: 0, MaxTokens: testPtrInt(1000), InputPrice: testPtrFloat64(4e-6), OutputPrice: testPtrFloat64(8e-6)},
+				},
+			},
+		},
+		channelByGroupID: map[int64]*Channel{
+			4: {ID: 4, Status: StatusActive},
+		},
+		groupPlatform:           map[int64]string{4: "openai"},
+		wildcardByGroupPlatform: map[channelGroupPlatformKey][]*wildcardPricingEntry{},
+		mappingByGroupModel:     map[channelModelKey]string{},
+		wildcardMappingByGP:     map[channelGroupPlatformKey][]*wildcardMappingEntry{},
+		byID:                    map[int64]*Channel{},
+	})
+
+	bs := newTestBillingService()
+	resolver := NewModelPricingResolver(cs, bs)
+	groupID := int64(4)
+
+	cost, err := bs.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          "gpt-5.4",
+		GroupID:        &groupID,
+		Tokens:         UsageTokens{InputTokens: 100, OutputTokens: 50},
+		RateMultiplier: 1.0,
+		ServiceTier:    "priority",
+		Resolver:       resolver,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cost)
+
+	baseTotal := 100*4e-6 + 50*8e-6
+	require.InDelta(t, baseTotal*2, cost.TotalCost, 1e-10)
+	require.InDelta(t, baseTotal*2, cost.ActualCost, 1e-10)
+	require.Equal(t, string(BillingModeToken), cost.BillingMode)
+}
+
 func TestCalculateCostUnified_PerRequestMode(t *testing.T) {
 	// Set up a ChannelService with a per-request pricing channel
 	cs := newTestChannelServiceWithCache(t, &channelCache{

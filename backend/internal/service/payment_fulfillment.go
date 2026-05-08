@@ -364,6 +364,9 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
 	}
+	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
+		return err
+	}
 	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 }
@@ -377,7 +380,17 @@ func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action 
 }
 
 func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *dbent.PaymentOrder) error {
-	if o == nil || o.OrderType != payment.OrderTypeBalance || o.Amount <= 0 {
+	if o == nil {
+		return nil
+	}
+	var rebateBase float64
+	switch o.OrderType {
+	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+		rebateBase = o.PayAmount
+	default:
+		return nil
+	}
+	if rebateBase <= 0 {
 		return nil
 	}
 	if s.affiliateService == nil {
@@ -394,7 +407,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	defer func() { _ = tx.Rollback() }()
 
 	txCtx := dbent.NewTxContext(ctx, tx)
-	claimed, err := s.tryClaimAffiliateRebateAudit(txCtx, tx.Client(), o.ID, o.Amount)
+	claimed, err := s.tryClaimAffiliateRebateAudit(txCtx, tx.Client(), o.ID, rebateBase)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -406,7 +419,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	sourceOrderID := o.ID
-	rebateAmount, err := s.affiliateService.AccrueInviteRebateForOrder(txCtx, o.UserID, o.Amount, &sourceOrderID)
+	rebateAmount, err := s.affiliateService.AccrueInviteRebateByKind(txCtx, o.UserID, rebateBase, o.OrderType, &sourceOrderID)
 	if err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
@@ -416,7 +429,8 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 
 	if rebateAmount <= 0 {
 		if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_SKIPPED", map[string]any{
-			"baseAmount": o.Amount,
+			"baseAmount": rebateBase,
+			"orderType":  o.OrderType,
 			"reason":     "no inviter bound or rebate amount <= 0",
 		}); err != nil {
 			s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
@@ -434,7 +448,8 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_APPLIED", map[string]any{
-		"baseAmount":   o.Amount,
+		"baseAmount":   rebateBase,
+		"orderType":    o.OrderType,
 		"rebateAmount": rebateAmount,
 	}); err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{

@@ -321,7 +321,7 @@ func TestAffiliateRepository_AdminRebateRate(t *testing.T) {
 
 	// Set exclusive rate for u1
 	rate := 42.5
-	require.NoError(t, repo.SetUserRebateRate(txCtx, u1.ID, &rate))
+	require.NoError(t, repo.SetUserRebateRates(txCtx, u1.ID, true, &rate, false, nil, false, nil))
 
 	got, err := repo.EnsureUserAffiliate(txCtx, u1.ID)
 	require.NoError(t, err)
@@ -329,14 +329,14 @@ func TestAffiliateRepository_AdminRebateRate(t *testing.T) {
 	require.InDelta(t, 42.5, *got.AffRebateRatePercent, 1e-9)
 
 	// Clear exclusive rate
-	require.NoError(t, repo.SetUserRebateRate(txCtx, u1.ID, nil))
+	require.NoError(t, repo.SetUserRebateRates(txCtx, u1.ID, true, nil, false, nil, false, nil))
 	cleared, err := repo.EnsureUserAffiliate(txCtx, u1.ID)
 	require.NoError(t, err)
 	require.Nil(t, cleared.AffRebateRatePercent)
 
 	// Batch set both users
 	batchRate := 15.0
-	require.NoError(t, repo.BatchSetUserRebateRate(txCtx, []int64{u1.ID, u2.ID}, &batchRate))
+	require.NoError(t, repo.BatchSetUserRebateRates(txCtx, []int64{u1.ID, u2.ID}, true, &batchRate, false, nil, false, nil))
 
 	for _, uid := range []int64{u1.ID, u2.ID} {
 		v, err := repo.EnsureUserAffiliate(txCtx, uid)
@@ -346,7 +346,7 @@ func TestAffiliateRepository_AdminRebateRate(t *testing.T) {
 	}
 
 	// Batch clear
-	require.NoError(t, repo.BatchSetUserRebateRate(txCtx, []int64{u1.ID, u2.ID}, nil))
+	require.NoError(t, repo.BatchSetUserRebateRates(txCtx, []int64{u1.ID, u2.ID}, true, nil, false, nil, false, nil))
 	for _, uid := range []int64{u1.ID, u2.ID} {
 		v, err := repo.EnsureUserAffiliate(txCtx, uid)
 		require.NoError(t, err)
@@ -388,7 +388,7 @@ func TestAffiliateRepository_ListUsersWithCustomSettings(t *testing.T) {
 		Role:         service.RoleUser, Status: service.StatusActive,
 	})
 	r := 33.3
-	require.NoError(t, repo.SetUserRebateRate(txCtx, uRate.ID, &r))
+	require.NoError(t, repo.SetUserRebateRates(txCtx, uRate.ID, true, &r, false, nil, false, nil))
 
 	entries, total, err := repo.ListUsersWithCustomSettings(txCtx, service.AffiliateAdminFilter{
 		Page: 1, PageSize: 100,

@@ -664,6 +664,28 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
   return false
 }
 
+function resolveAuthenticatedPublicRedirect(redirect: unknown, fallback: string): string {
+  if (typeof redirect !== 'string') return fallback
+
+  const trimmed = redirect.trim()
+  if (!trimmed) return fallback
+
+  if (trimmed.startsWith('/') && !trimmed.startsWith('//')) {
+    return trimmed
+  }
+
+  try {
+    const url = new URL(trimmed, window.location.origin)
+    if (url.origin === window.location.origin) {
+      return `${url.pathname}${url.search}${url.hash}`
+    }
+  } catch {
+    return fallback
+  }
+
+  return fallback
+}
+
 router.beforeEach((to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
@@ -710,7 +732,8 @@ router.beforeEach((to, _from, next) => {
         return
       }
       // Admin users go to admin dashboard, regular users go to user dashboard
-      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      const fallbackPath = authStore.isAdmin ? '/admin/dashboard' : '/dashboard'
+      next(resolveAuthenticatedPublicRedirect(to.query.redirect, fallbackPath))
       return
     }
     // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
