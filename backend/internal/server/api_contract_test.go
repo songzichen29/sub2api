@@ -323,6 +323,7 @@ func TestAPIContracts(t *testing.T) {
 						"status": "active",
 						"subscription_type": "standard",
 						"daily_limit_usd": null,
+						"daily_limit_reset_price": null,
 						"weekly_limit_usd": null,
 						"monthly_limit_usd": null,
 						"image_price_1k": null,

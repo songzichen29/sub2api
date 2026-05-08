@@ -180,7 +180,7 @@ func probeCustomPageURL(ctx context.Context, rawURL string) (available bool, sta
 	if err != nil {
 		return false, 0, "network_error"
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 	return customPageStatusFromHTTPStatus(resp.StatusCode)
 }
