@@ -1,0 +1,55 @@
+﻿feature: 2026-05-09-daily-limit-reset-payment
+created: 2026-05-09
+
+steps:
+  - action: "数据库与类型贯通：schema、迁移、service Group、repo mapper、DTO、TS 类型都能看到 daily_limit_reset_price / subscription_id"
+    exit_signal: "后端编译能通过相关包，接口 mock/类型无缺字段"
+    status: completed
+  - action: "分组后台配置：GroupsView.vue create/edit 表单保存和回显重置价格"
+    exit_signal: "编辑分组 payload 含 daily_limit_reset_price，刷新后值仍在"
+    status: completed
+  - action: "订单创建校验：新增 order type、handler request 字段、validateDailyLimitResetOrder，确保后端金额来自 group price"
+    exit_signal: "单测覆盖低价篡改请求仍按 group price 建单"
+    status: completed
+  - action: "支付履约重置：新增 fulfillment 分支，支付成功后只清零 daily usage 和 daily window"
+    exit_signal: "单测覆盖成功、重复履约、不存在订阅/不可用订阅"
+    status: completed
+  - action: "用户侧入口与支付页模式：我的订阅按钮 + /purchase?tab=daily_limit_reset&subscription_id=... 确认卡片 + createOrder payload"
+    exit_signal: "前端测试确认按钮展示条件和 payload"
+    status: completed
+  - action: "i18n、错误提示与回归：补齐中英文，跑最小相关测试"
+    exit_signal: "后端相关 go test、前端 vitest/typecheck 通过或记录剩余风险"
+    status: completed
+
+checks:
+  - item: "不新增周额度/月额度付费重置"
+    source: 范围守护
+    status: completed
+  - item: "不允许用户自定义重置金额，订单金额只取分组 daily_limit_reset_price"
+    source: 范围守护
+    status: completed
+  - item: "重置订单不生成 RedeemCode、不充值余额、不续期订阅"
+    source: 范围守护
+    status: completed
+  - item: "不放宽 AdminResetQuota 对 source=payment 的限制"
+    source: 范围守护
+    status: completed
+  - item: "PUT /api/v1/admin/groups/:id 支持 daily_limit_reset_price 保存、回显、null/非正数关闭"
+    source: 接口契约
+    status: completed
+  - item: "GET /api/v1/subscriptions 返回 group.daily_limit_reset_price"
+    source: 接口契约
+    status: completed
+  - item: "POST /api/v1/payment/orders 支持 order_type=daily_limit_reset + subscription_id，且忽略前端 amount"
+    source: 接口契约
+    status: completed
+  - item: "支付完成后只重置目标订阅 daily_usage_usd 和 daily_window_start，weekly/monthly 不变"
+    source: 接口契约
+    status: completed
+  - item: "后端测试覆盖 group 字段贯通、重置订单创建、支付履约幂等"
+    source: 测试约束
+    status: completed
+  - item: "前端测试覆盖我的订阅按钮展示条件和支付页 createOrder payload"
+    source: 测试约束
+    status: completed
+

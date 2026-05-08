@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -46,7 +47,11 @@ func (s *settingHandlerPublicRepoStub) SetMultiple(ctx context.Context, settings
 }
 
 func (s *settingHandlerPublicRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
-	panic("unexpected GetAll call")
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+	}
+	return out, nil
 }
 
 func (s *settingHandlerPublicRepoStub) Delete(ctx context.Context, key string) error {
@@ -119,4 +124,99 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 	require.True(t, resp.Data.WeChatOAuthEnabled)
 	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
+}
+
+func TestSettingHandler_GetCustomPageStatus_Available(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[{"id":"image2","label":"Image2","url":"` + target.URL + `","visibility":"user"}]`,
+		},
+	}, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "image2"}}
+	c.Set(string(middleware2.ContextKeyUserRole), service.RoleUser)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/custom-pages/image2/status", nil)
+
+	h.GetCustomPageStatus(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Available  bool   `json:"available"`
+			StatusCode int    `json:"status_code"`
+			Reason     string `json:"reason"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.True(t, resp.Data.Available)
+	require.Equal(t, http.StatusNoContent, resp.Data.StatusCode)
+	require.Empty(t, resp.Data.Reason)
+}
+
+func TestSettingHandler_GetCustomPageStatus_UnavailableOnServerError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer target.Close()
+
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[{"id":"image2","label":"Image2","url":"` + target.URL + `","visibility":"user"}]`,
+		},
+	}, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "image2"}}
+	c.Set(string(middleware2.ContextKeyUserRole), service.RoleUser)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/custom-pages/image2/status", nil)
+
+	h.GetCustomPageStatus(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Available  bool   `json:"available"`
+			StatusCode int    `json:"status_code"`
+			Reason     string `json:"reason"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.False(t, resp.Data.Available)
+	require.Equal(t, http.StatusServiceUnavailable, resp.Data.StatusCode)
+	require.Equal(t, "http_status", resp.Data.Reason)
+}
+
+func TestSettingHandler_GetCustomPageStatus_HidesAdminOnlyItemFromUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyCustomMenuItems: `[{"id":"admin-page","label":"Admin","url":"https://example.com","visibility":"admin"}]`,
+		},
+	}, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Params = gin.Params{{Key: "id", Value: "admin-page"}}
+	c.Set(string(middleware2.ContextKeyUserRole), service.RoleUser)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/custom-pages/admin-page/status", nil)
+
+	h.GetCustomPageStatus(c)
+
+	require.Equal(t, http.StatusNotFound, recorder.Code)
 }

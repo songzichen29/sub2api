@@ -22,6 +22,8 @@ const {
   updateProvider,
   createProvider,
   deleteProvider,
+  getEmailNotificationConfig,
+  updateEmailNotificationConfig,
   fetchPublicSettings,
   adminSettingsFetch,
   showError,
@@ -44,6 +46,8 @@ const {
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
   deleteProvider: vi.fn(),
+  getEmailNotificationConfig: vi.fn(),
+  updateEmailNotificationConfig: vi.fn(),
   fetchPublicSettings: vi.fn(),
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
@@ -79,6 +83,17 @@ vi.mock("@/api", () => ({
       createProvider,
       deleteProvider,
     },
+  },
+}));
+
+vi.mock("@/api/admin/ops", () => ({
+  default: {
+    getEmailNotificationConfig,
+    updateEmailNotificationConfig,
+  },
+  opsAPI: {
+    getEmailNotificationConfig,
+    updateEmailNotificationConfig,
   },
 }));
 
@@ -175,6 +190,32 @@ vi.mock("vue-i18n", async () => {
 });
 
 const AppLayoutStub = { template: "<div><slot /></div>" };
+
+const baseEmailNotificationConfig = {
+  alert: {
+    enabled: false,
+    recipients: [],
+    min_severity: "",
+    rate_limit_per_hour: 0,
+    batching_window_seconds: 0,
+    include_resolved_alerts: false,
+  },
+  report: {
+    enabled: false,
+    recipients: [],
+    daily_summary_enabled: false,
+    daily_summary_schedule: "",
+    weekly_summary_enabled: false,
+    weekly_summary_schedule: "",
+    error_digest_enabled: false,
+    error_digest_schedule: "",
+    error_digest_min_count: 0,
+    account_health_enabled: false,
+    account_health_schedule: "",
+    account_health_error_rate_threshold: 0,
+  },
+};
+
 const ToggleStub = defineComponent({
   props: {
     modelValue: {
@@ -471,6 +512,8 @@ describe("admin SettingsView payment visible method controls", () => {
     updateProvider.mockReset();
     createProvider.mockReset();
     deleteProvider.mockReset();
+    getEmailNotificationConfig.mockReset();
+    updateEmailNotificationConfig.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();
@@ -527,6 +570,8 @@ describe("admin SettingsView payment visible method controls", () => {
     getProviders.mockResolvedValue({
       data: [],
     });
+    getEmailNotificationConfig.mockResolvedValue(baseEmailNotificationConfig);
+    updateEmailNotificationConfig.mockImplementation(async (payload) => payload);
     fetchPublicSettings.mockResolvedValue(undefined);
     adminSettingsFetch.mockResolvedValue(undefined);
   });

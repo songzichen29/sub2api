@@ -37,6 +37,9 @@ var (
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		return client.TradePagePay(param)
 	}
+	alipayTradeQuery = func(ctx context.Context, client *alipay.Client, param alipay.TradeQuery) (*alipay.TradeQueryRsp, error) {
+		return client.TradeQuery(ctx, param)
+	}
 )
 
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
@@ -107,8 +110,9 @@ func (a *Alipay) MerchantIdentityMetadata() map[string]string {
 //   - Mobile (H5): alipay.trade.wap.pay — browser redirect into Alipay.
 //   - Desktop: prefer alipay.trade.precreate to get a scan payload directly.
 //   - Desktop fallback: if precreate is unavailable for the merchant, fall back
-//     to alipay.trade.page.pay and expose both pay_url and qr_code so the
-//     frontend can render a QR while still allowing direct page open.
+//     to alipay.trade.page.pay (PC web redirect). Do not expose qr_code in
+//     this branch: page.pay returns a gateway/cashier URL, not the native
+//     scan-pay payload that alipay.trade.precreate returns.
 func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
@@ -207,7 +211,6 @@ func (a *Alipay) createPagePayTrade(client *alipay.Client, req payment.CreatePay
 	return &payment.CreatePaymentResponse{
 		TradeNo: req.OrderID,
 		PayURL:  payURL.String(),
-		QRCode:  payURL.String(),
 	}, nil
 }
 
@@ -218,7 +221,7 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		return nil, err
 	}
 
-	result, err := client.TradeQuery(ctx, alipay.TradeQuery{OutTradeNo: tradeNo})
+	result, err := alipayTradeQuery(ctx, client, alipay.TradeQuery{OutTradeNo: tradeNo})
 	if err != nil {
 		if isTradeNotExist(err) {
 			return &payment.QueryOrderResponse{
@@ -227,6 +230,12 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 			}, nil
 		}
 		return nil, fmt.Errorf("alipay TradeQuery: %w", err)
+	}
+	if result == nil {
+		return &payment.QueryOrderResponse{
+			TradeNo: tradeNo,
+			Status:  payment.ProviderStatusPending,
+		}, nil
 	}
 
 	status := payment.ProviderStatusPending
@@ -237,16 +246,19 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = payment.ProviderStatusFailed
 	}
 
-	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
-	if err != nil {
-		amount, err = parseAlipayAmount(
-			result.TotalAmount,
-			result.ReceiptAmount,
-			result.BuyerPayAmount,
-			result.InvoiceAmount,
-		)
+	var amount float64
+	if status == payment.ProviderStatusPaid {
+		amount, err = strconv.ParseFloat(result.TotalAmount, 64)
 		if err != nil {
-			return nil, fmt.Errorf("alipay parse amount: %w", err)
+			amount, err = parseAlipayAmount(
+				result.TotalAmount,
+				result.ReceiptAmount,
+				result.BuyerPayAmount,
+				result.InvoiceAmount,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("alipay parse amount: %w", err)
+			}
 		}
 	}
 

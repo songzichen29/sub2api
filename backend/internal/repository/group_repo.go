@@ -60,6 +60,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
+		SetNillableDailyLimitResetPrice(groupIn.DailyLimitResetPrice).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
@@ -133,6 +134,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
+		SetNillableDailyLimitResetPrice(groupIn.DailyLimitResetPrice).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
@@ -157,6 +159,11 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetDailyLimitUsd(*groupIn.DailyLimitUSD)
 	} else {
 		builder = builder.ClearDailyLimitUsd()
+	}
+	if groupIn.DailyLimitResetPrice != nil {
+		builder = builder.SetDailyLimitResetPrice(*groupIn.DailyLimitResetPrice)
+	} else {
+		builder = builder.ClearDailyLimitResetPrice()
 	}
 	if groupIn.WeeklyLimitUSD != nil {
 		builder = builder.SetWeeklyLimitUsd(*groupIn.WeeklyLimitUSD)

@@ -37,8 +37,9 @@ const (
 
 // Order types distinguish balance recharges from subscription purchases.
 const (
-	OrderTypeBalance      = "balance"
-	OrderTypeSubscription = "subscription"
+	OrderTypeBalance         = "balance"
+	OrderTypeSubscription    = "subscription"
+	OrderTypeDailyLimitReset = "daily_limit_reset"
 )
 
 // Entity statuses shared across users, groups, etc.

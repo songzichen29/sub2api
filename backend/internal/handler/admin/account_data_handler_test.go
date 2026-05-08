@@ -501,10 +501,13 @@ func TestExportData_EmptyTagsAndGroups_OmittedFromJSON(t *testing.T) {
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &raw))
-	dataField := raw["data"].(map[string]any)
-	accounts := dataField["accounts"].([]any)
+	dataField, ok := raw["data"].(map[string]any)
+	require.True(t, ok)
+	accounts, ok := dataField["accounts"].([]any)
+	require.True(t, ok)
 	require.Len(t, accounts, 1)
-	first := accounts[0].(map[string]any)
+	first, ok := accounts[0].(map[string]any)
+	require.True(t, ok)
 	// omitempty 应该让空 tags / group_ids 完全不出现在 JSON 里，
 	// 而不是序列化成 null（避免下游客户端 type 不一致）
 	_, hasTags := first["tags"]

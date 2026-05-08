@@ -2169,6 +2169,8 @@ export default {
         standard: '标准（余额）',
         subscription: '订阅（配额）',
         dailyLimit: '每日限额（USD）',
+        dailyLimitResetPrice: '重置价格（¥）',
+        dailyLimitResetPriceHint: '用户在我的订阅中自助重置当日额度时支付的金额；留空或 0 表示关闭。',
         weeklyLimit: '每周限额（USD）',
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
@@ -5626,8 +5628,8 @@ export default {
         alipayGuideFaceToFaceFallback: '接口不可用或返回失败时，自动降级到电脑网站支付。',
         alipayGuidePagePayTitle: '电脑网站支付',
         alipayGuidePagePayOpen: '需开通电脑网站支付。',
-        alipayGuidePagePayCall: '桌面端当面付不可用时调用 alipay.trade.page.pay，并继续把返回链接渲染成二维码。',
-        alipayGuidePagePayFallback: '同时保留打开收银台入口，用户可手动重新拉起支付页。',
+        alipayGuidePagePayCall: '桌面端当面付不可用时调用 alipay.trade.page.pay，并返回收银台跳转链接。',
+        alipayGuidePagePayFallback: '不会把收银台链接渲染成二维码；用户可手动重新拉起支付页。',
         alipayGuideWapTitle: '手机网站支付',
         alipayGuideWapOpen: '需开通手机网站支付。',
         alipayGuideWapCall: '移动端优先调用 alipay.trade.wap.pay，跳转支付宝收银台。',
@@ -6229,6 +6231,11 @@ export default {
     notFoundDesc: '该自定义页面不存在或已被删除。',
     notConfiguredTitle: '页面链接未配置',
     notConfiguredDesc: '该自定义页面的 URL 未正确配置。',
+    checkingTitle: '正在打开页面',
+    checkingDesc: '正在检查页面服务状态，请稍候。',
+    unavailableTitle: '暂未开放使用',
+    unavailableDesc: '该页面服务暂时无法访问，可能正在维护或尚未开放。请稍后再试。',
+    unavailableStatus: '服务返回状态码：{status}',
   },
 
   // Announcements Page
@@ -6279,7 +6286,8 @@ export default {
     expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    resetDailyLimit: '重置当日额度'
   },
 
   // Onboarding Tour
@@ -6495,7 +6503,7 @@ export default {
       scanToPay: '请扫码支付',
       scanAlipay: '支付宝扫码支付',
       scanWxpay: '微信扫码支付',
-      scanAlipayHint: '请使用手机打开支付宝，扫描二维码完成支付',
+      scanAlipayHint: '请使用支付宝扫码；手机端可长按保存二维码后在支付宝中识别付款',
       scanWxpayHint: '请使用手机打开微信，扫描二维码完成支付',
       payInNewWindow: '请在新窗口中完成支付',
       payInNewWindowHint: '支付页面已在新窗口打开，请在新窗口中完成支付后返回此页面',
@@ -6505,6 +6513,8 @@ export default {
       expiredDesc: '订单已超时，请重新创建订单',
       cancelled: '订单已取消',
       cancelledDesc: '您已取消本次支付',
+      failed: '订单失败',
+      failedDesc: '订单处理失败，请重试或联系客服',
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
     },
@@ -6531,6 +6541,7 @@ export default {
     result: {
       success: '支付成功',
       subscriptionSuccess: '订阅成功',
+      dailyResetSuccess: '当日额度已重置',
       processing: '支付处理中',
       processingHint: '支付结果仍在确认中，页面会自动刷新。',
       failed: '支付失败',
@@ -6544,6 +6555,12 @@ export default {
     noActiveSubscription: '暂无有效订阅',
     tabTopUp: '充值',
     tabSubscribe: '订阅',
+    dailyReset: {
+      tab: '重置额度',
+      price: '重置价格',
+      payAndReset: '支付并重置',
+      notAvailable: '当前订阅暂不支持自助重置当日额度'
+    },
     noPlans: '暂无可用订阅套餐',
     notAvailable: '充值功能暂未开放',
     confirmSubscription: '确认订阅',
@@ -6587,6 +6604,7 @@ export default {
       PLAN_NOT_AVAILABLE: '套餐不存在或已下架',
       GROUP_NOT_FOUND: '订阅分组不可用',
       GROUP_TYPE_MISMATCH: '分组类型不是订阅类型',
+      DAILY_LIMIT_RESET_NOT_AVAILABLE: '当前订阅暂不支持重置当日额度',
       TOO_MANY_PENDING: '待支付订单过多（最多 {max} 个），请先完成或取消现有订单',
       DAILY_LIMIT_EXCEEDED: '今日充值已达上限，剩余额度 {remaining}',
       PAYMENT_GATEWAY_ERROR: '支付方式不可用',
@@ -6772,3 +6790,5 @@ export default {
   },
 
 }
+
+

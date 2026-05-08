@@ -611,14 +611,27 @@
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
               }}</label>
-              <input
-                v-model.number="createForm.daily_limit_usd"
-                type="number"
-                step="0.01"
-                min="0"
-                class="input"
-                :placeholder="t('admin.groups.subscription.noLimit')"
-              />
+              <div class="grid gap-3 sm:grid-cols-2">
+                <input
+                  v-model.number="createForm.daily_limit_usd"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  :placeholder="t('admin.groups.subscription.noLimit')"
+                />
+                <input
+                  v-model.number="createForm.daily_limit_reset_price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  :placeholder="t('admin.groups.subscription.dailyLimitResetPrice')"
+                />
+              </div>
+              <p class="input-hint">
+                {{ t("admin.groups.subscription.dailyLimitResetPriceHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -1803,14 +1816,27 @@
               <label class="input-label">{{
                 t("admin.groups.subscription.dailyLimit")
               }}</label>
-              <input
-                v-model.number="editForm.daily_limit_usd"
-                type="number"
-                step="0.01"
-                min="0"
-                class="input"
-                :placeholder="t('admin.groups.subscription.noLimit')"
-              />
+              <div class="grid gap-3 sm:grid-cols-2">
+                <input
+                  v-model.number="editForm.daily_limit_usd"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  :placeholder="t('admin.groups.subscription.noLimit')"
+                />
+                <input
+                  v-model.number="editForm.daily_limit_reset_price"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                  :placeholder="t('admin.groups.subscription.dailyLimitResetPrice')"
+                />
+              </div>
+              <p class="input-hint">
+                {{ t("admin.groups.subscription.dailyLimitResetPriceHint") }}
+              </p>
             </div>
             <div>
               <label class="input-label">{{
@@ -3130,6 +3156,7 @@ const createForm = reactive({
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
+  daily_limit_reset_price: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3415,6 +3442,7 @@ const editForm = reactive({
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
+  daily_limit_reset_price: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3703,6 +3731,7 @@ const closeCreateModal = () => {
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
+  createForm.daily_limit_reset_price = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
@@ -3765,6 +3794,9 @@ const handleCreateGroup = async () => {
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
       ),
+      daily_limit_reset_price: normalizeOptionalLimit(
+        createForm.daily_limit_reset_price as number | string | null,
+      ),
       weekly_limit_usd: normalizeOptionalLimit(
         createForm.weekly_limit_usd as number | string | null,
       ),
@@ -3788,6 +3820,7 @@ const handleCreateGroup = async () => {
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
+    requestData.daily_limit_reset_price = emptyToNull(requestData.daily_limit_reset_price);
     requestData.weekly_limit_usd = emptyToNull(requestData.weekly_limit_usd);
     requestData.monthly_limit_usd = emptyToNull(requestData.monthly_limit_usd);
     requestData.image_rate_multiplier = normalizeImageRateMultiplier(
@@ -3827,6 +3860,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
+  editForm.daily_limit_reset_price = group.daily_limit_reset_price;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -3907,6 +3941,9 @@ const handleUpdateGroup = async () => {
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,
       ),
+      daily_limit_reset_price: normalizeOptionalLimit(
+        editForm.daily_limit_reset_price as number | string | null,
+      ),
       weekly_limit_usd: normalizeOptionalLimit(
         editForm.weekly_limit_usd as number | string | null,
       ),
@@ -3936,6 +3973,7 @@ const handleUpdateGroup = async () => {
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
+    payload.daily_limit_reset_price = emptyToNull(payload.daily_limit_reset_price);
     payload.weekly_limit_usd = emptyToNull(payload.weekly_limit_usd);
     payload.monthly_limit_usd = emptyToNull(payload.monthly_limit_usd);
     payload.image_rate_multiplier = normalizeImageRateMultiplier(

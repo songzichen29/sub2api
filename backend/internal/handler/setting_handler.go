@@ -1,17 +1,33 @@
 package handler
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
 
+const customPageProbeTimeout = 4 * time.Second
+
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
 	settingService *service.SettingService
 	version        string
+}
+
+type customPageStatusResponse struct {
+	Available  bool   `json:"available"`
+	Reason     string `json:"reason,omitempty"`
+	StatusCode int    `json:"status_code,omitempty"`
 }
 
 // NewSettingHandler 创建公开设置处理器
@@ -78,4 +94,112 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 	})
+}
+
+// GetCustomPageStatus checks whether an authenticated user's configured custom page target is reachable.
+// GET /api/v1/settings/custom-pages/:id/status
+func (h *SettingHandler) GetCustomPageStatus(c *gin.Context) {
+	pageID := strings.TrimSpace(c.Param("id"))
+	if pageID == "" {
+		response.BadRequest(c, "custom page id is required")
+		return
+	}
+
+	settings, err := h.settingService.GetAllSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	role, _ := middleware2.GetUserRoleFromContext(c)
+	item, ok := findVisibleCustomMenuItem(dto.ParseCustomMenuItems(settings.CustomMenuItems), pageID, role == service.RoleAdmin)
+	if !ok {
+		response.NotFound(c, "Custom page not found")
+		return
+	}
+
+	rawURL := strings.TrimSpace(item.URL)
+	if !isHTTPURL(rawURL) {
+		response.Success(c, customPageStatusResponse{
+			Available: false,
+			Reason:    "invalid_url",
+		})
+		return
+	}
+
+	available, statusCode, reason := probeCustomPageURL(c.Request.Context(), rawURL)
+	response.Success(c, customPageStatusResponse{
+		Available:  available,
+		Reason:     reason,
+		StatusCode: statusCode,
+	})
+}
+
+func findVisibleCustomMenuItem(items []dto.CustomMenuItem, id string, isAdmin bool) (dto.CustomMenuItem, bool) {
+	for _, item := range items {
+		if item.ID != id {
+			continue
+		}
+		if item.Visibility == "admin" && !isAdmin {
+			return dto.CustomMenuItem{}, false
+		}
+		return item, true
+	}
+	return dto.CustomMenuItem{}, false
+}
+
+func isHTTPURL(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
+func probeCustomPageURL(ctx context.Context, rawURL string) (available bool, statusCode int, reason string) {
+	ctx, cancel := context.WithTimeout(ctx, customPageProbeTimeout)
+	defer cancel()
+
+	client := &http.Client{
+		Timeout: customPageProbeTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := doCustomPageProbe(ctx, client, http.MethodHead, rawURL)
+	if err == nil && resp != nil {
+		statusCode := resp.StatusCode
+		_ = resp.Body.Close()
+		if statusCode != http.StatusMethodNotAllowed && statusCode != http.StatusNotImplemented {
+			return customPageStatusFromHTTPStatus(statusCode)
+		}
+	}
+
+	resp, err = doCustomPageProbe(ctx, client, http.MethodGet, rawURL)
+	if err != nil {
+		return false, 0, "network_error"
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+	return customPageStatusFromHTTPStatus(resp.StatusCode)
+}
+
+func doCustomPageProbe(ctx context.Context, client *http.Client, method, rawURL string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Sub2API custom-page-health-check")
+	if method == http.MethodGet {
+		req.Header.Set("Range", "bytes=0-0")
+	}
+	return client.Do(req)
+}
+
+func customPageStatusFromHTTPStatus(statusCode int) (bool, int, string) {
+	if statusCode >= http.StatusInternalServerError {
+		return false, statusCode, "http_status"
+	}
+	return true, statusCode, ""
 }

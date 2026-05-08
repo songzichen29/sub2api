@@ -705,6 +705,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Hydrated:                        true,
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUsd,
+		DailyLimitResetPrice:            g.DailyLimitResetPrice,
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
 		AllowImageGeneration:            g.AllowImageGeneration,

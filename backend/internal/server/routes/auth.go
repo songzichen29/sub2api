@@ -183,5 +183,6 @@ func RegisterAuthRoutes(
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
 		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
+		authenticated.GET("/settings/custom-pages/:id/status", h.Setting.GetCustomPageStatus)
 	}
 }

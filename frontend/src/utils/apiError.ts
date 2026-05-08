@@ -24,10 +24,20 @@ interface ApiErrorLike {
 }
 
 const getCommonGatewayErrorMap = (): Record<string, string> => {
-  const t = i18n.global.t.bind(i18n.global)
+  const global = i18n.global
+  const t = global.t.bind(global)
+  const te = typeof global.te === 'function' ? global.te.bind(global) : undefined
+  const safeT = (key: string, fallback: string) => {
+    // In unit tests the global i18n instance can be intentionally empty while
+    // components mock useI18n(). Calling t() on a missing global key emits
+    // noisy warnings, so check existence first and fall back quietly.
+    if (te && !te(key)) return fallback
+    const translated = t(key)
+    return translated === key ? fallback : translated
+  }
   return {
-    model_not_allowed: t('errors.gateway.modelNotAllowed'),
-    model_not_configured: t('errors.gateway.modelNotConfigured'),
+    model_not_allowed: safeT('errors.gateway.modelNotAllowed', 'This model is not enabled for the current group'),
+    model_not_configured: safeT('errors.gateway.modelNotConfigured', 'No account in the current group is configured to support this model'),
   }
 }
 

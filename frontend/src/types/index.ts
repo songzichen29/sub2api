@@ -490,6 +490,7 @@ export interface Group {
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
+  daily_limit_reset_price: number | null
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   // 图片生成计费配置
@@ -603,6 +604,7 @@ export interface CreateGroupRequest {
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
+  daily_limit_reset_price?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -631,6 +633,7 @@ export interface UpdateGroupRequest {
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
+  daily_limit_reset_price?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestResolveMessagesDispatchMappedModel_FallsBackToAllowedModelFromCandidate
 		},
 	}
 
-	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	got := svc.ResolveMessagesDispatchMappedModel(context.TODO(), &groupID, group, "claude-haiku-4-5-20251001")
 	require.Equal(t, "gpt-5.4", got)
 }
 
@@ -89,7 +90,7 @@ func TestResolveMessagesDispatchMappedModel_PrefersConfiguredAllowedModel(t *tes
 		},
 	}
 
-	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	got := svc.ResolveMessagesDispatchMappedModel(context.TODO(), &groupID, group, "claude-haiku-4-5-20251001")
 	require.Equal(t, "gpt-5.4-mini", got)
 }
 
@@ -111,6 +112,6 @@ func TestResolveMessagesDispatchMappedModel_SkipsImageModels(t *testing.T) {
 		},
 	}
 
-	got := svc.ResolveMessagesDispatchMappedModel(nil, &groupID, group, "claude-haiku-4-5-20251001")
+	got := svc.ResolveMessagesDispatchMappedModel(context.TODO(), &groupID, group, "claude-haiku-4-5-20251001")
 	require.Equal(t, "gpt-5.3-codex", got)
 }

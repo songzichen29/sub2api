@@ -5,6 +5,7 @@ const pollOrderStatus = vi.hoisted(() => vi.fn())
 const cancelOrder = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
 const toCanvas = vi.hoisted(() => vi.fn())
+const toDataURL = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -37,6 +38,7 @@ vi.mock('@/api/payment', () => ({
 vi.mock('qrcode', () => ({
   default: {
     toCanvas,
+    toDataURL,
   },
 }))
 
@@ -64,6 +66,7 @@ describe('PaymentStatusPanel', () => {
     cancelOrder.mockReset()
     showError.mockReset()
     toCanvas.mockReset().mockResolvedValue(undefined)
+    toDataURL.mockReset().mockResolvedValue('data:image/png;base64,qr')
   })
 
   afterEach(() => {
@@ -118,6 +121,7 @@ describe('PaymentStatusPanel', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('payment.qr.openPayWindow')
+    expect(wrapper.get('img').attributes('src')).toBe('data:image/png;base64,qr')
 
     await wrapper.get('button.btn.btn-secondary.text-sm').trigger('click')
     expect(openSpy).toHaveBeenCalledWith(

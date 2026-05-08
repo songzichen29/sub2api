@@ -175,6 +175,20 @@ func (_c *GroupCreate) SetNillableDailyLimitUsd(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetDailyLimitResetPrice sets the "daily_limit_reset_price" field.
+func (_c *GroupCreate) SetDailyLimitResetPrice(v float64) *GroupCreate {
+	_c.mutation.SetDailyLimitResetPrice(v)
+	return _c
+}
+
+// SetNillableDailyLimitResetPrice sets the "daily_limit_reset_price" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableDailyLimitResetPrice(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetDailyLimitResetPrice(*v)
+	}
+	return _c
+}
+
 // SetWeeklyLimitUsd sets the "weekly_limit_usd" field.
 func (_c *GroupCreate) SetWeeklyLimitUsd(v float64) *GroupCreate {
 	_c.mutation.SetWeeklyLimitUsd(v)
@@ -872,6 +886,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldDailyLimitUsd, field.TypeFloat64, value)
 		_node.DailyLimitUsd = &value
 	}
+	if value, ok := _c.mutation.DailyLimitResetPrice(); ok {
+		_spec.SetField(group.FieldDailyLimitResetPrice, field.TypeFloat64, value)
+		_node.DailyLimitResetPrice = &value
+	}
 	if value, ok := _c.mutation.WeeklyLimitUsd(); ok {
 		_spec.SetField(group.FieldWeeklyLimitUsd, field.TypeFloat64, value)
 		_node.WeeklyLimitUsd = &value
@@ -1267,6 +1285,30 @@ func (u *GroupUpsert) AddDailyLimitUsd(v float64) *GroupUpsert {
 // ClearDailyLimitUsd clears the value of the "daily_limit_usd" field.
 func (u *GroupUpsert) ClearDailyLimitUsd() *GroupUpsert {
 	u.SetNull(group.FieldDailyLimitUsd)
+	return u
+}
+
+// SetDailyLimitResetPrice sets the "daily_limit_reset_price" field.
+func (u *GroupUpsert) SetDailyLimitResetPrice(v float64) *GroupUpsert {
+	u.Set(group.FieldDailyLimitResetPrice, v)
+	return u
+}
+
+// UpdateDailyLimitResetPrice sets the "daily_limit_reset_price" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateDailyLimitResetPrice() *GroupUpsert {
+	u.SetExcluded(group.FieldDailyLimitResetPrice)
+	return u
+}
+
+// AddDailyLimitResetPrice adds v to the "daily_limit_reset_price" field.
+func (u *GroupUpsert) AddDailyLimitResetPrice(v float64) *GroupUpsert {
+	u.Add(group.FieldDailyLimitResetPrice, v)
+	return u
+}
+
+// ClearDailyLimitResetPrice clears the value of the "daily_limit_reset_price" field.
+func (u *GroupUpsert) ClearDailyLimitResetPrice() *GroupUpsert {
+	u.SetNull(group.FieldDailyLimitResetPrice)
 	return u
 }
 
@@ -1877,6 +1919,34 @@ func (u *GroupUpsertOne) UpdateDailyLimitUsd() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearDailyLimitUsd() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDailyLimitUsd()
+	})
+}
+
+// SetDailyLimitResetPrice sets the "daily_limit_reset_price" field.
+func (u *GroupUpsertOne) SetDailyLimitResetPrice(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDailyLimitResetPrice(v)
+	})
+}
+
+// AddDailyLimitResetPrice adds v to the "daily_limit_reset_price" field.
+func (u *GroupUpsertOne) AddDailyLimitResetPrice(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDailyLimitResetPrice(v)
+	})
+}
+
+// UpdateDailyLimitResetPrice sets the "daily_limit_reset_price" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateDailyLimitResetPrice() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDailyLimitResetPrice()
+	})
+}
+
+// ClearDailyLimitResetPrice clears the value of the "daily_limit_reset_price" field.
+func (u *GroupUpsertOne) ClearDailyLimitResetPrice() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDailyLimitResetPrice()
 	})
 }
 
@@ -2718,6 +2788,34 @@ func (u *GroupUpsertBulk) UpdateDailyLimitUsd() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearDailyLimitUsd() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDailyLimitUsd()
+	})
+}
+
+// SetDailyLimitResetPrice sets the "daily_limit_reset_price" field.
+func (u *GroupUpsertBulk) SetDailyLimitResetPrice(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetDailyLimitResetPrice(v)
+	})
+}
+
+// AddDailyLimitResetPrice adds v to the "daily_limit_reset_price" field.
+func (u *GroupUpsertBulk) AddDailyLimitResetPrice(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddDailyLimitResetPrice(v)
+	})
+}
+
+// UpdateDailyLimitResetPrice sets the "daily_limit_reset_price" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateDailyLimitResetPrice() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateDailyLimitResetPrice()
+	})
+}
+
+// ClearDailyLimitResetPrice clears the value of the "daily_limit_reset_price" field.
+func (u *GroupUpsertBulk) ClearDailyLimitResetPrice() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearDailyLimitResetPrice()
 	})
 }
 

@@ -20,7 +20,7 @@ export type OrderStatus =
 
 export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay'
 
-export type OrderType = 'balance' | 'subscription'
+export type OrderType = 'balance' | 'subscription' | 'daily_limit_reset'
 
 // ==================== Configuration ====================
 
@@ -92,6 +92,7 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  subscription_id?: number
   provider_instance_id?: string
 }
 
@@ -104,6 +105,7 @@ export interface SubscriptionPlan {
   group_name?: string
   rate_multiplier?: number
   daily_limit_usd?: number | null
+  daily_limit_reset_price?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   supported_model_scopes?: string[]
@@ -154,6 +156,7 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  subscription_id?: number
   return_url?: string
   payment_source?: string
   openid?: string

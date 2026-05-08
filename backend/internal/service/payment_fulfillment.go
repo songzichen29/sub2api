@@ -208,6 +208,9 @@ func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) erro
 	if o.OrderType == payment.OrderTypeSubscription {
 		return s.ExecuteSubscriptionFulfillment(ctx, oid)
 	}
+	if o.OrderType == payment.OrderTypeDailyLimitReset {
+		return s.ExecuteDailyLimitResetFulfillment(ctx, oid)
+	}
 	return s.ExecuteBalanceFulfillment(ctx, oid)
 }
 
@@ -369,6 +372,59 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	}
 	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+}
+
+func (s *PaymentService) ExecuteDailyLimitResetFulfillment(ctx context.Context, oid int64) error {
+	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	if err != nil {
+		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.Status == OrderStatusCompleted {
+		return nil
+	}
+	if psIsRefundStatus(o.Status) {
+		return infraerrors.BadRequest("INVALID_STATUS", "refund-related order cannot fulfill")
+	}
+	if o.Status != OrderStatusPaid && o.Status != OrderStatusFailed {
+		return infraerrors.BadRequest("INVALID_STATUS", "order cannot fulfill in status "+o.Status)
+	}
+	if o.SubscriptionID == nil {
+		return infraerrors.BadRequest("INVALID_STATUS", "missing subscription info")
+	}
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(paymentorder.IDEQ(oid), paymentorder.StatusIn(OrderStatusPaid, OrderStatusFailed)).
+		SetStatus(OrderStatusRecharging).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("lock: %w", err)
+	}
+	if c == 0 {
+		return nil
+	}
+	if err := s.doDailyLimitReset(ctx, o); err != nil {
+		s.markFailed(ctx, oid, err)
+		return err
+	}
+	return nil
+}
+
+func (s *PaymentService) doDailyLimitReset(ctx context.Context, o *dbent.PaymentOrder) error {
+	subscriptionID := *o.SubscriptionID
+	const appliedAction = "DAILY_LIMIT_RESET_APPLIED"
+	const successAction = "DAILY_LIMIT_RESET_SUCCESS"
+	if s.hasAuditLog(ctx, o.ID, appliedAction) || s.hasAuditLog(ctx, o.ID, successAction) {
+		slog.Info("daily limit reset already applied for order, skipping", "orderID", o.ID, "subscriptionID", subscriptionID)
+		return s.markCompleted(ctx, o, successAction)
+	}
+	if _, err := s.subscriptionSvc.PaidResetDailyQuota(ctx, o.UserID, subscriptionID); err != nil {
+		return fmt.Errorf("reset daily quota: %w", err)
+	}
+	s.writeAuditLog(ctx, o.ID, appliedAction, "system", map[string]any{
+		"subscriptionID": subscriptionID,
+		"userID":         o.UserID,
+	})
+	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, successAction)
+	return s.markCompleted(ctx, o, successAction)
 }
 
 func (s *PaymentService) hasAuditLog(ctx context.Context, orderID int64, action string) bool {

@@ -432,12 +432,22 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
   })
 
-  it('shows the desktop handoff dialog instead of creating a mobile Alipay order', async () => {
+  it('creates a QR-capable Alipay order on mobile instead of blocking with desktop handoff', async () => {
     routeState.query = {
       amount: '88',
       payment_type: 'alipay',
     }
     getCheckoutInfo.mockResolvedValue(alipayCheckoutInfoFixture())
+    createOrder.mockResolvedValue({
+      order_id: 889,
+      amount: 88,
+      pay_amount: 88,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'alipay',
+      qr_code: 'https://qr.alipay.com/mobile-saveable-qr',
+      out_trade_no: 'sub2_alipay_889',
+    })
 
     const wrapper = shallowMount(PaymentView, {
       global: {
@@ -446,10 +456,6 @@ describe('PaymentView WeChat JSAPI flow', () => {
           Transition: false,
           AppLayout: {
             template: '<div><slot /></div>',
-          },
-          BaseDialog: {
-            props: ['show', 'title'],
-            template: '<div v-if="show"><div>{{ title }}</div><slot /><slot name="footer" /></div>',
           },
         },
       },
@@ -461,10 +467,16 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(payButton).toBeTruthy()
 
     await payButton!.trigger('click')
+    await flushPromises()
     await nextTick()
 
-    expect(createOrder).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('payment.desktopAlipayTitle')
-    expect(wrapper.text()).toContain('payment.desktopAlipayCopyPageLink')
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      payment_type: 'alipay',
+      is_mobile: false,
+      payment_source: 'hosted_redirect',
+    }))
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('https://qr.alipay.com/mobile-saveable-qr')
+    expect(wrapper.html()).toContain('payment-status-panel-stub')
+    expect(wrapper.text()).not.toContain('payment.desktopAlipayTitle')
   })
 })

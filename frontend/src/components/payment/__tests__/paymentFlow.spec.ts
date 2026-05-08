@@ -123,12 +123,27 @@ describe('decidePaymentLaunch', () => {
     expect(decision.recovery.resumeToken).toBe('resume-2')
   })
 
-  it('prefers redirect on mobile when both pay_url and qr_code are present', () => {
+  it('prefers QR on mobile Alipay when both pay_url and qr_code are present', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       pay_url: 'https://pay.example.com/mobile/session',
       qr_code: 'https://pay.example.com/qr/session',
     }), {
       visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+    })
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.payUrl).toBe('https://pay.example.com/mobile/session')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  })
+
+  it('keeps redirect preference for mobile WeChat when both pay_url and qr_code are present', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    }), {
+      visibleMethod: 'wxpay',
       orderType: 'balance',
       isMobile: true,
     })

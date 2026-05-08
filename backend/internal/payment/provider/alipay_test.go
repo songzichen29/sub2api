@@ -189,8 +189,8 @@ func TestCreateTradeUsesPagePayForDesktop(t *testing.T) {
 	if resp.PayURL == "" {
 		t.Fatal("expected pay_url for desktop page pay")
 	}
-	if resp.QRCode != resp.PayURL {
-		t.Fatalf("qr_code = %q, want same as pay_url %q", resp.QRCode, resp.PayURL)
+	if resp.QRCode != "" {
+		t.Fatalf("qr_code = %q, want empty (page.pay is redirect-only)", resp.QRCode)
 	}
 }
 
@@ -303,5 +303,76 @@ func TestParseAlipayAmount(t *testing.T) {
 
 	if _, err := parseAlipayAmount("", "not-a-number"); err == nil {
 		t.Fatal("expected error when no valid amount field exists")
+	}
+}
+
+func TestQueryOrderPendingDoesNotRequireAmount(t *testing.T) {
+	origTradeQuery := alipayTradeQuery
+	t.Cleanup(func() {
+		alipayTradeQuery = origTradeQuery
+	})
+
+	queryCalls := 0
+	alipayTradeQuery = func(ctx context.Context, client *alipay.Client, param alipay.TradeQuery) (*alipay.TradeQueryRsp, error) {
+		queryCalls++
+		if param.OutTradeNo != "sub2_pending" {
+			t.Fatalf("out_trade_no = %q, want sub2_pending", param.OutTradeNo)
+		}
+		return &alipay.TradeQueryRsp{
+			OutTradeNo:  "sub2_pending",
+			TradeStatus: alipay.TradeStatusWaitBuyerPay,
+		}, nil
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	resp, err := provider.QueryOrder(context.Background(), "sub2_pending")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if queryCalls != 1 {
+		t.Fatalf("query calls = %d, want 1", queryCalls)
+	}
+	if resp.Status != payment.ProviderStatusPending {
+		t.Fatalf("status = %q, want %q", resp.Status, payment.ProviderStatusPending)
+	}
+	if resp.Amount != 0 {
+		t.Fatalf("amount = %v, want 0 for pending order", resp.Amount)
+	}
+}
+
+func TestQueryOrderPaidRequiresValidAmount(t *testing.T) {
+	origTradeQuery := alipayTradeQuery
+	t.Cleanup(func() {
+		alipayTradeQuery = origTradeQuery
+	})
+
+	alipayTradeQuery = func(ctx context.Context, client *alipay.Client, param alipay.TradeQuery) (*alipay.TradeQueryRsp, error) {
+		return &alipay.TradeQueryRsp{
+			OutTradeNo:    "sub2_paid",
+			TradeStatus:   alipay.TradeStatusSuccess,
+			ReceiptAmount: "18.88",
+		}, nil
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	resp, err := provider.QueryOrder(context.Background(), "sub2_paid")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Status != payment.ProviderStatusPaid {
+		t.Fatalf("status = %q, want %q", resp.Status, payment.ProviderStatusPaid)
+	}
+	if resp.Amount != 18.88 {
+		t.Fatalf("amount = %v, want 18.88", resp.Amount)
+	}
+
+	alipayTradeQuery = func(ctx context.Context, client *alipay.Client, param alipay.TradeQuery) (*alipay.TradeQueryRsp, error) {
+		return &alipay.TradeQueryRsp{
+			OutTradeNo:  "sub2_paid",
+			TradeStatus: alipay.TradeStatusSuccess,
+		}, nil
+	}
+	if _, err := provider.QueryOrder(context.Background(), "sub2_paid"); err == nil || !strings.Contains(err.Error(), "no valid amount field") {
+		t.Fatalf("error = %v, want no valid amount field", err)
 	}
 }

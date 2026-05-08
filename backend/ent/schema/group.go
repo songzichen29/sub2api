@@ -62,6 +62,11 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
+		field.Float("daily_limit_reset_price").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			Comment("用户自助重置订阅当日额度的支付金额（CNY）；NULL/<=0 表示关闭"),
 		field.Float("weekly_limit_usd").
 			Optional().
 			Nillable().

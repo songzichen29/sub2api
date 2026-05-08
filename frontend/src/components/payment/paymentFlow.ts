@@ -68,6 +68,7 @@ export interface BuildCreateOrderPayloadInput {
   paymentType: string
   orderType: OrderType
   planId?: number
+  subscriptionId?: number
   origin?: string
   isMobile: boolean
   isWechatBrowser: boolean
@@ -116,6 +117,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
 
   if (input.planId) {
     payload.plan_id = input.planId
+  }
+  if (input.subscriptionId) {
+    payload.subscription_id = input.subscriptionId
   }
   if (normalizedOrigin) {
     payload.return_url = `${normalizedOrigin}/payment/result`
@@ -171,11 +175,13 @@ export function decidePaymentLaunch(
   }
 
   const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
+  const prefersAlipayQrOnMobile = visibleMethod === 'alipay' && context.isMobile && !!baseState.qrCode
   const prefersRedirect = normalizedPaymentMode === 'redirect'
     || normalizedPaymentMode === 'popup'
-    || (context.isMobile && !!baseState.payUrl)
+    || (context.isMobile && !prefersAlipayQrOnMobile && !!baseState.payUrl)
   const prefersQr = normalizedPaymentMode === 'qrcode'
     || normalizedPaymentMode === 'native'
+    || prefersAlipayQrOnMobile
     || (!prefersRedirect && !!baseState.qrCode)
 
   if (visibleMethod === 'wxpay' && context.isWechatBrowser && baseState.payUrl && !baseState.qrCode) {
@@ -266,7 +272,11 @@ export function readPaymentRecoverySnapshot(
       outTradeNo: parsed.outTradeNo || '',
       clientSecret: parsed.clientSecret,
       payAmount: parsed.payAmount,
-      orderType: parsed.orderType === 'subscription' ? 'subscription' : 'balance',
+      orderType: parsed.orderType === 'subscription'
+        ? 'subscription'
+        : parsed.orderType === 'daily_limit_reset'
+          ? 'daily_limit_reset'
+          : 'balance',
       paymentMode: parsed.paymentMode,
       resumeToken: parsed.resumeToken,
       createdAt: parsed.createdAt,

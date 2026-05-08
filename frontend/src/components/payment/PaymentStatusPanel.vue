@@ -9,7 +9,7 @@
           <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
             <Icon name="check" size="lg" class="text-green-500" />
           </div>
-          <p class="text-lg font-bold text-gray-900 dark:text-white">{{ props.orderType === 'subscription' ? t('payment.result.subscriptionSuccess') : t('payment.result.success') }}</p>
+          <p class="text-lg font-bold text-gray-900 dark:text-white">{{ successTitle }}</p>
           <div v-if="paidOrder" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
@@ -75,7 +75,13 @@
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
           <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
-            <canvas ref="qrCanvas" class="mx-auto"></canvas>
+            <img
+              v-if="qrImageUrl"
+              :src="qrImageUrl"
+              :alt="scanTitle"
+              class="mx-auto h-[220px] w-[220px] select-auto object-contain"
+            />
+            <canvas v-else ref="qrCanvas" class="mx-auto"></canvas>
             <!-- Brand logo overlay -->
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
               <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
@@ -154,6 +160,7 @@ const appStore = useAppStore()
 
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
+const qrImageUrl = ref('')
 const remainingSeconds = ref(0)
 const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
@@ -191,6 +198,12 @@ const scanHint = computed(() => {
   return ''
 })
 
+const successTitle = computed(() => {
+  if (props.orderType === 'subscription') return t('payment.result.subscriptionSuccess')
+  if (props.orderType === 'daily_limit_reset') return t('payment.result.dailyResetSuccess')
+  return t('payment.result.success')
+})
+
 const countdownDisplay = computed(() => {
   const m = Math.floor(remainingSeconds.value / 60)
   const s = remainingSeconds.value % 60
@@ -218,11 +231,20 @@ function setOutcome(next: PaymentOutcome) {
 
 async function renderQR() {
   await nextTick()
-  if (!qrCanvas.value || !qrUrl.value) return
-  await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
-    width: 220, margin: 2,
-    errorCorrectionLevel: 'M',
-  })
+  if (!qrUrl.value) return
+  const qrOptions = {
+    width: 220,
+    margin: 2,
+    errorCorrectionLevel: 'M' as const,
+  }
+  try {
+    qrImageUrl.value = await QRCode.toDataURL(qrUrl.value, qrOptions)
+    return
+  } catch {
+    qrImageUrl.value = ''
+  }
+  if (!qrCanvas.value) return
+  await QRCode.toCanvas(qrCanvas.value, qrUrl.value, qrOptions)
 }
 
 async function pollStatus() {

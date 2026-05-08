@@ -71,6 +71,13 @@
               >
                 {{ t('payment.renewNow') }}
               </button>
+              <button
+                v-if="canResetDailyLimit(subscription)"
+                class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-700"
+                @click="resetDailyLimit(subscription)"
+              >
+                {{ t('userSubscriptions.resetDailyLimit') }}
+              </button>
             </div>
           </div>
 
@@ -298,6 +305,24 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+function canResetDailyLimit(subscription: UserSubscription): boolean {
+  return subscription.status === 'active'
+    && !!subscription.group?.daily_limit_usd
+    && subscription.group.daily_limit_usd > 0
+    && !!subscription.group.daily_limit_reset_price
+    && subscription.group.daily_limit_reset_price > 0
+}
+
+function resetDailyLimit(subscription: UserSubscription) {
+  router.push({
+    path: '/purchase',
+    query: {
+      tab: 'daily_limit_reset',
+      subscription_id: String(subscription.id),
+    },
+  })
 }
 
 function formatExpirationDate(expiresAt: string): string {

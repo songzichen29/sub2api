@@ -88,6 +88,67 @@
             </button>
             </template>
           </template>
+          <!-- Daily limit reset Tab -->
+          <template v-else-if="activeTab === 'daily_limit_reset'">
+            <div v-if="!selectedDailyResetSubscription" class="card py-16 text-center">
+              <p class="text-gray-500 dark:text-gray-400">{{ t('payment.dailyReset.notAvailable') }}</p>
+            </div>
+            <template v-else>
+              <div class="card p-5">
+                <div class="mb-3 flex flex-wrap items-center gap-2">
+                  <span :class="['rounded-md border px-2 py-0.5 text-xs font-medium', platformBadgeClass(selectedDailyResetSubscription.group?.platform || '')]">
+                    {{ platformLabel(selectedDailyResetSubscription.group?.platform || '') }}
+                  </span>
+                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">
+                    {{ selectedDailyResetSubscription.group?.name || t('payment.groupFallback', { id: selectedDailyResetSubscription.group_id }) }}
+                  </h3>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('userSubscriptions.daily') }}</span>
+                    <span class="text-gray-900 dark:text-white">
+                      ${{ (selectedDailyResetSubscription.daily_usage_usd || 0).toFixed(2) }} /
+                      ${{ selectedDailyResetSubscription.group?.daily_limit_usd?.toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.dailyReset.price') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ dailyResetPrice.toFixed(2) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="enabledMethods.length >= 1" class="card p-6">
+                <PaymentMethodSelector
+                  :methods="dailyResetMethodOptions"
+                  :selected="selectedMethod"
+                  @select="selectedMethod = $event"
+                />
+              </div>
+              <div v-if="feeRate > 0 && dailyResetPrice > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ dailyResetPrice.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ dailyResetFeeAmount.toFixed(2) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ dailyResetTotalAmount.toFixed(2) }}</span>
+                  </div>
+                </div>
+              </div>
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitDailyReset || submitting" @click="confirmDailyLimitReset">
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.dailyReset.payAndReset') }} ¥{{ dailyResetTotalAmount.toFixed(2) }}</span>
+              </button>
+            </template>
+          </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
             <!-- Subscription confirm (inline, replaces plan list) -->
@@ -215,30 +276,6 @@
         </div>
       </template>
     </div>
-    <BaseDialog
-      :show="showDesktopAlipayDialog"
-      :title="t('payment.desktopAlipayTitle')"
-      width="narrow"
-      :close-on-click-outside="true"
-      @close="showDesktopAlipayDialog = false"
-    >
-      <div class="space-y-3 text-sm text-gray-600 dark:text-gray-300">
-        <p>{{ t('payment.desktopAlipayDescription') }}</p>
-        <div v-if="desktopContinueUrl" class="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800">
-          <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.desktopAlipayCurrentPage') }}</p>
-          <code class="block break-all text-xs text-gray-700 dark:text-gray-200">{{ desktopContinueUrl }}</code>
-        </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.desktopAlipayHint') }}</p>
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button class="btn btn-secondary" @click="showDesktopAlipayDialog = false">{{ t('common.cancel') }}</button>
-          <button class="btn btn-primary" @click="copyDesktopContinueUrl">
-            {{ desktopContinueCopied ? t('common.copied') : t('payment.desktopAlipayCopyPageLink') }}
-          </button>
-        </div>
-      </template>
-    </BaseDialog>
     <!-- Renewal Plan Selection Modal -->
     <Teleport to="body">
       <Transition name="modal">
@@ -279,8 +316,8 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
@@ -323,13 +360,14 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+type PaymentTab = 'recharge' | 'subscription' | 'daily_limit_reset'
+
+const activeTab = ref<PaymentTab>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const selectedDailyResetSubscriptionId = ref<number | null>(null)
 const previewImage = ref('')
-const showDesktopAlipayDialog = ref(false)
-const desktopContinueCopied = ref(false)
 
 const paymentPhase = ref<'select' | 'paying'>('select')
 
@@ -337,6 +375,7 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
+  subscriptionId?: number
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -364,19 +403,6 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     paymentMode: '',
     resumeToken: '',
     createdAt: 0,
-  }
-}
-
-function copyTextFallback(text: string): boolean {
-  const textarea = document.createElement('textarea')
-  textarea.value = text
-  textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
-  document.body.appendChild(textarea)
-  textarea.select()
-  try {
-    return document.execCommand('copy')
-  } finally {
-    document.body.removeChild(textarea)
   }
 }
 
@@ -452,7 +478,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; subscriptionId?: number; orderAmount: number },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -473,6 +499,11 @@ function buildWechatOAuthAuthorizeUrl(
     } else {
       redirectUrl.searchParams.delete('plan_id')
     }
+    if (context.subscriptionId) {
+      redirectUrl.searchParams.set('subscription_id', String(context.subscriptionId))
+    } else {
+      redirectUrl.searchParams.delete('subscription_id')
+    }
 
     if (context.orderAmount > 0) {
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
@@ -488,10 +519,11 @@ function buildWechatOAuthAuthorizeUrl(
 }
 
 function onPaymentDone() {
-  const wasSubscription = paymentState.value.orderType === 'subscription'
+  const shouldRefreshSubscriptions = paymentState.value.orderType === 'subscription'
+    || paymentState.value.orderType === 'daily_limit_reset'
   resetPayment()
   selectedPlan.value = null
-  if (wasSubscription) {
+  if (shouldRefreshSubscriptions) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
 }
@@ -499,7 +531,7 @@ function onPaymentDone() {
 function onPaymentSuccess() {
   removeRecoverySnapshot()
   authStore.refreshUser()
-  if (paymentState.value.orderType === 'subscription') {
+  if (paymentState.value.orderType === 'subscription' || paymentState.value.orderType === 'daily_limit_reset') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
 }
@@ -515,9 +547,12 @@ const checkout = ref<CheckoutInfoResponse>({
 })
 
 const tabs = computed(() => {
-  const result: { key: 'recharge' | 'subscription'; label: string }[] = []
+  const result: { key: PaymentTab; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
+  if (activeTab.value === 'daily_limit_reset') {
+    result.push({ key: 'daily_limit_reset', label: t('payment.dailyReset.tab') })
+  }
   return result
 })
 
@@ -529,28 +564,6 @@ const balanceRechargeMultiplier = computed(() => {
   return multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
-const desktopContinueUrl = computed(() => {
-  if (typeof window === 'undefined') return ''
-
-  const params = new URLSearchParams()
-  const normalizedMethod = normalizeVisibleMethod(selectedMethod.value) || selectedMethod.value
-  if (normalizedMethod) {
-    params.set('payment_type', normalizedMethod)
-  }
-
-  if (activeTab.value === 'subscription') {
-    params.set('tab', 'subscription')
-    if (selectedPlan.value) {
-      params.set('plan_id', String(selectedPlan.value.id))
-    }
-  } else if (validAmount.value > 0) {
-    params.set('amount', validAmount.value.toFixed(2))
-  }
-
-  const query = params.toString()
-  return `${window.location.origin}${route.path}${query ? `?${query}` : ''}`
-})
-
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length
@@ -660,10 +673,55 @@ const canSubmitSubscription = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
+const selectedDailyResetSubscription = computed<UserSubscription | null>(() => {
+  const id = selectedDailyResetSubscriptionId.value
+  if (!id) return null
+  return activeSubscriptions.value.find(sub => sub.id === id) ?? null
+})
+
+const dailyResetPrice = computed(() => {
+  const price = selectedDailyResetSubscription.value?.group?.daily_limit_reset_price ?? 0
+  return price > 0 ? price : 0
+})
+
+const dailyResetMethodOptions = computed<PaymentMethodOption[]>(() =>
+  enabledMethods.value.map((type) => {
+    const ml = visibleMethods.value[type]
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(dailyResetPrice.value, type),
+    }
+  })
+)
+
+const dailyResetFeeAmount = computed(() => {
+  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return 0
+  return Math.ceil(((dailyResetPrice.value * feeRate.value) / 100) * 100) / 100
+})
+
+const dailyResetTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return dailyResetPrice.value
+  return Math.round((dailyResetPrice.value + dailyResetFeeAmount.value) * 100) / 100
+})
+
+const canSubmitDailyReset = computed(() =>
+  selectedDailyResetSubscription.value !== null
+    && dailyResetPrice.value > 0
+    && amountFitsMethod(dailyResetPrice.value, selectedMethod.value)
+    && selectedLimit.value?.available !== false
+)
+
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
   const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (available) selectedMethod.value = available
+})
+
+watch(() => [dailyResetPrice.value, selectedMethod.value] as const, ([price, method]) => {
+  if (activeTab.value !== 'daily_limit_reset' || price <= 0 || amountFitsMethod(price, method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(price, m))
   if (available) selectedMethod.value = available
 })
 
@@ -676,45 +734,6 @@ const paymentButtonClass = computed(() => {
   if (m === 'stripe') return 'btn-stripe'
   return 'btn-primary'
 })
-
-function shouldPromptDesktopAlipay(paymentType: string): boolean {
-  if (!isMobileDevice()) return false
-  const normalizedMethod = normalizeVisibleMethod(paymentType) || paymentType
-  return normalizedMethod === 'alipay'
-}
-
-function promptDesktopAlipayDialog() {
-  desktopContinueCopied.value = false
-  showDesktopAlipayDialog.value = true
-}
-
-async function copyDesktopContinueUrl() {
-  const target = desktopContinueUrl.value.trim()
-  if (!target) return
-
-  let copied = false
-  if (navigator.clipboard?.writeText && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(target)
-      copied = true
-    } catch {
-      copied = copyTextFallback(target)
-    }
-  } else {
-    copied = copyTextFallback(target)
-  }
-
-  if (copied) {
-    desktopContinueCopied.value = true
-    appStore.showInfo(t('common.copiedToClipboard'))
-    window.setTimeout(() => {
-      desktopContinueCopied.value = false
-    }, 2000)
-    return
-  }
-
-  appStore.showError(t('common.copyFailed'))
-}
 
 // Subscription confirm: platform accent colors (clean card, no gradient)
 const planBadgeClass = computed(() => platformBadgeClass(selectedPlan.value?.group_platform || ''))
@@ -755,20 +774,20 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  if (shouldPromptDesktopAlipay(selectedMethod.value)) {
-    promptDesktopAlipayDialog()
-    return
-  }
   await createOrder(validAmount.value, 'balance')
 }
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  if (shouldPromptDesktopAlipay(selectedMethod.value)) {
-    promptDesktopAlipayDialog()
-    return
-  }
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+}
+
+async function confirmDailyLimitReset() {
+  const sub = selectedDailyResetSubscription.value
+  if (!sub || dailyResetPrice.value <= 0 || submitting.value) return
+  await createOrder(dailyResetPrice.value, 'daily_limit_reset', undefined, {
+    subscriptionId: sub.id,
+  })
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -777,14 +796,19 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
   try {
+    const requestVisibleMethod = normalizeVisibleMethod(requestType) || requestType
+    const requestFromMobile = isMobileDevice()
+    const requestQrCapableDesktopOrder = requestFromMobile && requestVisibleMethod === 'alipay'
+    const requestIsMobile = requestFromMobile && !requestQrCapableDesktopOrder
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
+      subscriptionId: options.subscriptionId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
-      isMobile: isMobileDevice(),
-      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      isMobile: requestIsMobile,
+      isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
     })
     if (options.openid) {
       payload.openid = options.openid
@@ -831,6 +855,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         paymentType: visibleMethod,
         orderType,
         planId,
+        subscriptionId: options.subscriptionId,
         orderAmount,
       })
       return
@@ -868,6 +893,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
+              subscriptionId: options.subscriptionId,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -886,6 +912,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
+          subscriptionId: options.subscriptionId,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -915,6 +942,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
+      subscriptionId: options.subscriptionId,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -942,6 +970,7 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
+  subscriptionId?: number
   paymentType: string
   attempted: boolean
 }
@@ -991,6 +1020,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
+      subscriptionId: context.subscriptionId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1070,6 +1100,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
+      subscriptionId: resume.subscriptionId,
       isResume: true,
     })
     return
@@ -1079,6 +1110,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
+      subscriptionId: resume.subscriptionId,
       isResume: true,
     })
   }
@@ -1134,6 +1166,16 @@ onMounted(async () => {
     await resumeWechatPaymentFromQuery()
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
+    }
+    if (route.query.tab === 'daily_limit_reset') {
+      activeTab.value = 'daily_limit_reset'
+      await subscriptionStore.fetchActiveSubscriptions(true)
+      const subscriptionId = typeof route.query.subscription_id === 'string'
+        ? Number(route.query.subscription_id)
+        : NaN
+      selectedDailyResetSubscriptionId.value = Number.isFinite(subscriptionId) && subscriptionId > 0
+        ? subscriptionId
+        : null
     }
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {

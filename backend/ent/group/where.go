@@ -110,6 +110,11 @@ func DailyLimitUsd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDailyLimitUsd, v))
 }
 
+// DailyLimitResetPrice applies equality check predicate on the "daily_limit_reset_price" field. It's identical to DailyLimitResetPriceEQ.
+func DailyLimitResetPrice(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDailyLimitResetPrice, v))
+}
+
 // WeeklyLimitUsd applies equality check predicate on the "weekly_limit_usd" field. It's identical to WeeklyLimitUsdEQ.
 func WeeklyLimitUsd(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldWeeklyLimitUsd, v))
@@ -773,6 +778,56 @@ func DailyLimitUsdIsNil() predicate.Group {
 // DailyLimitUsdNotNil applies the NotNil predicate on the "daily_limit_usd" field.
 func DailyLimitUsdNotNil() predicate.Group {
 	return predicate.Group(sql.FieldNotNull(FieldDailyLimitUsd))
+}
+
+// DailyLimitResetPriceEQ applies the EQ predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceNEQ applies the NEQ predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceIn applies the In predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldDailyLimitResetPrice, vs...))
+}
+
+// DailyLimitResetPriceNotIn applies the NotIn predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldDailyLimitResetPrice, vs...))
+}
+
+// DailyLimitResetPriceGT applies the GT predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceGTE applies the GTE predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceLT applies the LT predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceLTE applies the LTE predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldDailyLimitResetPrice, v))
+}
+
+// DailyLimitResetPriceIsNil applies the IsNil predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldDailyLimitResetPrice))
+}
+
+// DailyLimitResetPriceNotNil applies the NotNil predicate on the "daily_limit_reset_price" field.
+func DailyLimitResetPriceNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldDailyLimitResetPrice))
 }
 
 // WeeklyLimitUsdEQ applies the EQ predicate on the "weekly_limit_usd" field.

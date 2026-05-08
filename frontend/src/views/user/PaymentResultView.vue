@@ -157,6 +157,8 @@ const isPending = computed(() => {
 
 const statusTitle = computed(() => {
   if (isSuccess.value) {
+    if (order.value?.order_type === 'subscription') return t('payment.result.subscriptionSuccess')
+    if (order.value?.order_type === 'daily_limit_reset') return t('payment.result.dailyResetSuccess')
     return t('payment.result.success')
   }
   if (isPending.value) {

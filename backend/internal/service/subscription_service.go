@@ -40,9 +40,10 @@ var (
 	ErrSubscriptionNilInput       = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
 	ErrAdjustWouldExpire          = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 	// 重置配额相关错误
-	ErrPaidSubscriptionImmutable = infraerrors.Forbidden("SUBSCRIPTION_PAID_IMMUTABLE", "paid subscriptions cannot be reset")
-	ErrNoLimitsConfigured        = infraerrors.BadRequest("SUBSCRIPTION_NO_LIMITS", "subscription group has no usage limits configured, nothing to reset")
-	ErrInvalidResetTarget        = infraerrors.BadRequest("SUBSCRIPTION_INVALID_RESET_TARGET", "selected window cannot be reset (either not configured or is the upper-bound window)")
+	ErrPaidSubscriptionImmutable   = infraerrors.Forbidden("SUBSCRIPTION_PAID_IMMUTABLE", "paid subscriptions cannot be reset")
+	ErrNoLimitsConfigured          = infraerrors.BadRequest("SUBSCRIPTION_NO_LIMITS", "subscription group has no usage limits configured, nothing to reset")
+	ErrInvalidResetTarget          = infraerrors.BadRequest("SUBSCRIPTION_INVALID_RESET_TARGET", "selected window cannot be reset (either not configured or is the upper-bound window)")
+	ErrDailyLimitResetNotAvailable = infraerrors.BadRequest("DAILY_LIMIT_RESET_NOT_AVAILABLE", "daily limit reset is not available for this subscription")
 )
 
 // SubscriptionService 订阅服务
@@ -59,6 +60,14 @@ type SubscriptionService struct {
 	subCacheJitter int // 抖动百分比
 
 	maintenanceQueue *SubscriptionMaintenanceQueue
+}
+
+// DailyLimitResetPaymentTarget is the server-side source of truth for a
+// user-paid daily quota reset order.
+type DailyLimitResetPaymentTarget struct {
+	Subscription *UserSubscription
+	Group        *Group
+	Price        float64
 }
 
 // NewSubscriptionService 创建订阅服务
@@ -886,6 +895,68 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	}
 	// Return the refreshed subscription from DB
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+// GetDailyLimitResetPaymentTarget validates a user's subscription and returns
+// the price that must be used to create a daily-limit reset payment order.
+func (s *SubscriptionService) GetDailyLimitResetPaymentTarget(ctx context.Context, userID, subscriptionID int64) (*DailyLimitResetPaymentTarget, error) {
+	if subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.UserID != userID {
+		return nil, ErrSubscriptionNotFound
+	}
+	if err := s.validateDailyLimitResetTarget(sub); err != nil {
+		return nil, err
+	}
+	return &DailyLimitResetPaymentTarget{
+		Subscription: sub,
+		Group:        sub.Group,
+		Price:        *sub.Group.DailyLimitResetPrice,
+	}, nil
+}
+
+// PaidResetDailyQuota resets only the daily usage window after a successful
+// daily-limit reset payment. It intentionally does not reuse AdminResetQuota,
+// because the admin entry has different business rules for paid subscriptions.
+func (s *SubscriptionService) PaidResetDailyQuota(ctx context.Context, userID, subscriptionID int64) (*UserSubscription, error) {
+	target, err := s.GetDailyLimitResetPaymentTarget(ctx, userID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	sub := target.Subscription
+	windowStart := startOfDay(time.Now())
+	if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+		return nil, err
+	}
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func (s *SubscriptionService) validateDailyLimitResetTarget(sub *UserSubscription) error {
+	if sub == nil || sub.Group == nil {
+		return ErrDailyLimitResetNotAvailable
+	}
+	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(time.Now()) {
+		return ErrSubscriptionNotFound
+	}
+	if !sub.Group.IsSubscriptionType() || !sub.Group.HasDailyLimit() {
+		return ErrDailyLimitResetNotAvailable
+	}
+	if sub.Group.DailyLimitResetPrice == nil || *sub.Group.DailyLimitResetPrice <= 0 {
+		return ErrDailyLimitResetNotAvailable
+	}
+	return nil
 }
 
 // resolveSubscriptionSource 把入参 Source 标准化为最终落库值。

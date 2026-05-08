@@ -5,7 +5,13 @@
         {{ qrUrl ? scanTitle : t('payment.qr.payInNewWindow') }}
       </h2>
       <div v-if="qrUrl && !expired" class="rounded-2xl bg-white p-6 shadow-lg dark:bg-dark-800">
-        <canvas ref="qrCanvas" class="mx-auto"></canvas>
+        <img
+          v-if="qrImageUrl"
+          :src="qrImageUrl"
+          :alt="scanTitle"
+          class="mx-auto h-64 w-64 select-auto object-contain"
+        />
+        <canvas v-else ref="qrCanvas" class="mx-auto"></canvas>
       </div>
       <!-- Scan prompt for QR code -->
       <p v-if="qrUrl && !expired && scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
@@ -53,6 +59,7 @@ const paymentStore = usePaymentStore()
 const appStore = useAppStore()
 
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
+const qrImageUrl = ref('')
 const qrUrl = ref('')
 const payUrl = ref('')
 const orderId = ref(0)
@@ -104,10 +111,23 @@ function getLogoForType(): string | null {
 
 async function renderQR() {
   await nextTick()
-  if (!qrCanvas.value || !qrUrl.value) return
+  if (!qrUrl.value) return
+
+  const logoSrc = getLogoForType()
+  try {
+    qrImageUrl.value = await QRCode.toDataURL(qrUrl.value, {
+      width: 256,
+      margin: 2,
+      errorCorrectionLevel: logoSrc ? 'M' : 'L',
+    })
+    return
+  } catch {
+    qrImageUrl.value = ''
+  }
+
+  if (!qrCanvas.value) return
 
   // Use medium error correction to support logo overlay while keeping QR code scannable
-  const logoSrc = getLogoForType()
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 256,
     margin: 2,

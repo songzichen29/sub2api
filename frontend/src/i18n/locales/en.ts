@@ -2086,6 +2086,8 @@ export default {
         standard: 'Standard (Balance)',
         subscription: 'Subscription (Quota)',
         dailyLimit: 'Daily Limit (USD)',
+        dailyLimitResetPrice: 'Reset price (¥)',
+        dailyLimitResetPriceHint: 'Amount users pay from My Subscriptions to reset today\'s quota; empty or 0 disables it.',
         weeklyLimit: 'Weekly Limit (USD)',
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
@@ -5466,8 +5468,8 @@ export default {
         alipayGuideFaceToFaceFallback: 'If unavailable or failed, the flow falls back to website checkout automatically.',
         alipayGuidePagePayTitle: 'Website Payment',
         alipayGuidePagePayOpen: 'Enable website payment.',
-        alipayGuidePagePayCall: 'When face-to-face is unavailable on desktop, the flow calls alipay.trade.page.pay and still renders the returned link as a QR code.',
-        alipayGuidePagePayFallback: 'The cashier link stays available so users can reopen the checkout page manually.',
+        alipayGuidePagePayCall: 'When face-to-face is unavailable on desktop, the flow calls alipay.trade.page.pay and returns a cashier redirect link.',
+        alipayGuidePagePayFallback: 'The cashier link is not rendered as a QR code; users can reopen the checkout page manually.',
         alipayGuideWapTitle: 'WAP Payment',
         alipayGuideWapOpen: 'Enable mobile website payment.',
         alipayGuideWapCall: 'Mobile orders call alipay.trade.wap.pay first and jump to Alipay checkout.',
@@ -6071,6 +6073,11 @@ export default {
     notFoundDesc: 'This custom page does not exist or has been removed.',
     notConfiguredTitle: 'Page URL not configured',
     notConfiguredDesc: 'The URL for this custom page has not been properly configured.',
+    checkingTitle: 'Opening page',
+    checkingDesc: 'Checking the page service status. Please wait.',
+    unavailableTitle: 'Temporarily unavailable',
+    unavailableDesc: 'This page service is not reachable now. It may be under maintenance or not yet open. Please try again later.',
+    unavailableStatus: 'Service returned status code: {status}',
   },
 
   // Announcements Page
@@ -6122,7 +6129,8 @@ export default {
     expiresOn: 'Expires on {date}',
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    resetDailyLimit: 'Reset daily quota'
   },
 
   // Onboarding Tour
@@ -6311,7 +6319,7 @@ export default {
       scanToPay: 'Scan to Pay',
       scanAlipay: 'Alipay QR Payment',
       scanWxpay: 'WeChat QR Payment',
-      scanAlipayHint: 'Open Alipay on your phone and scan the QR code to pay',
+      scanAlipayHint: 'Scan with Alipay. On mobile, long-press and save the QR image, then identify it in Alipay.',
       scanWxpayHint: 'Open WeChat on your phone and scan the QR code to pay',
       payInNewWindow: 'Complete Payment in New Window',
       payInNewWindowHint: 'The payment page has opened in a new window. Please complete the payment there and return to this page.',
@@ -6321,6 +6329,8 @@ export default {
       expiredDesc: 'This order has expired. Please create a new one.',
       cancelled: 'Order Cancelled',
       cancelledDesc: 'You have cancelled this payment.',
+      failed: 'Order Failed',
+      failedDesc: 'This order failed. Please retry or contact support.',
       waitingPayment: 'Waiting for payment...',
       cancelOrder: 'Cancel Order',
     },
@@ -6347,6 +6357,7 @@ export default {
     result: {
       success: 'Payment Successful',
       subscriptionSuccess: 'Subscription Successful',
+      dailyResetSuccess: 'Daily quota reset',
       processing: 'Payment Processing',
       processingHint: 'Payment confirmation is still pending. This page will refresh automatically.',
       failed: 'Payment Failed',
@@ -6360,6 +6371,12 @@ export default {
     noActiveSubscription: 'No active subscription',
     tabTopUp: 'Top Up',
     tabSubscribe: 'Subscribe',
+    dailyReset: {
+      tab: 'Reset quota',
+      price: 'Reset price',
+      payAndReset: 'Pay and reset',
+      notAvailable: 'Daily quota reset is not available for this subscription'
+    },
     noPlans: 'No subscription plans available',
     notAvailable: 'Top-up is currently unavailable',
     confirmSubscription: 'Confirm Subscription',
@@ -6403,6 +6420,7 @@ export default {
       PLAN_NOT_AVAILABLE: 'Plan not found or no longer available.',
       GROUP_NOT_FOUND: 'Subscription group is no longer available.',
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
+      DAILY_LIMIT_RESET_NOT_AVAILABLE: 'Daily quota reset is not available for this subscription.',
       TOO_MANY_PENDING: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
       DAILY_LIMIT_EXCEEDED: 'Daily recharge limit reached. Remaining: {remaining}.',
       PAYMENT_GATEWAY_ERROR: 'Payment method is unavailable.',
@@ -6589,3 +6607,7 @@ export default {
   },
 
 }
+
+
+
+
