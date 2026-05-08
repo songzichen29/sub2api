@@ -140,7 +140,7 @@ type WechatJSAPIPayload struct {
 // CreatePaymentResponse is returned after successfully initiating a payment.
 type CreatePaymentResponse struct {
 	TradeNo      string                  // Third-party transaction ID
-	PayURL       string                  // H5 payment URL (alipay/wxpay)
+	PayURL       string                  // Redirect/H5 payment URL when a provider uses hosted checkout
 	QRCode       string                  // QR code content for scanning
 	ClientSecret string                  // Stripe PaymentIntent client secret
 	ResultType   CreatePaymentResultType // Typed result contract for frontend flows

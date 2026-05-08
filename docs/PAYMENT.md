@@ -22,7 +22,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 | Provider | Payment Methods | Description |
 |----------|----------------|-------------|
 | **EasyPay** | Alipay, WeChat Pay | Third-party aggregation via EasyPay protocol |
-| **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
+| **Alipay (Direct)** | Desktop / H5 Face-to-face QR code | Direct integration with Alipay Open Platform, returning native Face-to-face QR payloads |
 | **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
 | **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
 
@@ -122,7 +122,7 @@ Compatible with any payment service that implements the EasyPay protocol.
 
 ### Alipay (Direct)
 
-Direct integration with Alipay Open Platform. Mobile flows return an Alipay WAP/app redirect URL. Desktop flows prefer Face-to-Face Precreate QR payloads; if the merchant has not enabled that product, the provider falls back to Computer Website Pay and also returns the cashier URL so the frontend can render a QR code or open the hosted checkout page directly.
+Direct integration with Alipay Open Platform. Desktop and mobile/H5 flows both use Face-to-Face `alipay.trade.precreate` and must return a native QR payload. The frontend renders the QR code; on mobile, users can long-press/save the QR image and identify it in Alipay. If the merchant has not enabled that product or the precreate call fails, the provider returns an error instead of falling back to WAP or Computer Website Pay.
 
 | Parameter | Description | Required |
 |-----------|-------------|----------|
@@ -229,7 +229,7 @@ User selects amount and payment method
        ▼
   User completes payment
   ├─ EasyPay     → QR code / H5 redirect
-  ├─ Alipay      → Desktop QR payload (Face-to-Face preferred, Website Pay fallback) / mobile Alipay redirect
+  ├─ Alipay      → Desktop / H5 QR payload (Face-to-Face required)
   ├─ WeChat Pay  → Desktop Native QR / non-WeChat H5 / in-WeChat JSAPI
   └─ Stripe      → Payment Element (card/Alipay/WeChat/etc.)
        │

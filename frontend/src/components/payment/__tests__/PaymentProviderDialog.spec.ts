@@ -6,7 +6,7 @@ import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vu
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
   'admin.settings.payment.paymentGuideTrigger': 'View payment guide',
-  'admin.settings.payment.alipayGuideSummary': 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
+  'admin.settings.payment.alipayGuideSummary': 'Desktop and H5 must generate a Face-to-face QR payload; on mobile, users can long-press the QR image and identify it in Alipay.',
   'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
 }
 

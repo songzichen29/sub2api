@@ -5461,19 +5461,19 @@ export default {
         guideOpenLabel: 'Enable: ',
         guideCallLabel: 'Call: ',
         guideFallbackLabel: 'Fallback: ',
-        alipayGuideSummary: 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
+        alipayGuideSummary: 'Desktop and H5 must generate a Face-to-face QR payload; on mobile, users can long-press the QR image and identify it in Alipay.',
         alipayGuideFaceToFaceTitle: 'Face-to-face / QR Payment',
         alipayGuideFaceToFaceOpen: 'Enable face-to-face or QR payment capability.',
-        alipayGuideFaceToFaceCall: 'Desktop orders call alipay.trade.precreate first and render the QR code directly.',
-        alipayGuideFaceToFaceFallback: 'If unavailable or failed, the flow falls back to website checkout automatically.',
+        alipayGuideFaceToFaceCall: 'Desktop and H5 orders call alipay.trade.precreate and render the QR code directly.',
+        alipayGuideFaceToFaceFallback: 'If unavailable or failed, the flow returns an error instead of falling back to WAP or website checkout.',
         alipayGuidePagePayTitle: 'Website Payment',
         alipayGuidePagePayOpen: 'Enable website payment.',
-        alipayGuidePagePayCall: 'When face-to-face is unavailable on desktop, the flow calls alipay.trade.page.pay and returns a cashier redirect link.',
-        alipayGuidePagePayFallback: 'The cashier link is not rendered as a QR code; users can reopen the checkout page manually.',
-        alipayGuideWapTitle: 'WAP Payment',
-        alipayGuideWapOpen: 'Enable mobile website payment.',
-        alipayGuideWapCall: 'Mobile orders call alipay.trade.wap.pay first and jump to Alipay checkout.',
-        alipayGuideWapFallback: 'If mobile payment is unavailable or fails, the frontend switches to QR payment and shows a notice.',
+        alipayGuidePagePayCall: 'The system no longer downgrades desktop QR payments to alipay.trade.page.pay.',
+        alipayGuidePagePayFallback: 'If website checkout is required, integrate it explicitly instead of presenting it as a Face-to-face QR code.',
+        alipayGuideWapTitle: 'H5 QR Code',
+        alipayGuideWapOpen: 'Mobile website payment is not required; Face-to-face payment must be available.',
+        alipayGuideWapCall: 'H5 renders the same Face-to-face QR code so users can long-press/save it and identify it in Alipay.',
+        alipayGuideWapFallback: 'The flow does not redirect to WAP checkout; Face-to-face failures are shown as errors.',
         wxpayGuideSummary: 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
         wxpayGuideNote: 'The current form defaults to one shared App ID, which fits the common single-subject web, mobile, and Official Account setup.',
         wxpayGuideNativeTitle: 'Native / QR Payment',
@@ -6607,7 +6607,5 @@ export default {
   },
 
 }
-
-
 
 
