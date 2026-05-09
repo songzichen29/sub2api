@@ -238,7 +238,9 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
-	AffiliateEnabled bool `json:"affiliate_enabled"`
+	AffiliateEnabled             bool `json:"affiliate_enabled"`
+	AffiliateRechargeEnabled     bool `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled bool `json:"affiliate_subscription_enabled"`
 }
 
 type WeChatConnectOAuthConfig struct {

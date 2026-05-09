@@ -7,43 +7,104 @@ import (
 	"math"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
 
-// TestResolveRebateRatePercent_PerUserOverride verifies that per-inviter
-// AffRebateRatePercent overrides the global rate, that NULL falls back to the
-// global rate, and that out-of-range exclusive rates are clamped silently.
-//
-// SettingService is left nil here so globalRebateRatePercent returns the
-// documented default (AffiliateRebateRateDefault = 20%) — this exercises the
-// fallback path without spinning up a settings stub.
-func TestResolveRebateRatePercent_PerUserOverride(t *testing.T) {
+type stubSettingRepo struct {
+	values map[string]string
+}
+
+func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if s == nil || s.values == nil {
+		return "", nil
+	}
+	return s.values[key], nil
+}
+
+func (s *stubSettingRepo) SetValue(context.Context, string, string) error { return nil }
+func (s *stubSettingRepo) GetValues(context.Context) (map[string]string, error) {
+	if s == nil || s.values == nil {
+		return map[string]string{}, nil
+	}
+	out := make(map[string]string, len(s.values))
+	for k, v := range s.values {
+		out[k] = v
+	}
+	return out, nil
+}
+
+func TestResolveRebateRatePercentByKind_PrefersKindSpecificThenGeneral(t *testing.T) {
 	t.Parallel()
+
+	svc := &AffiliateService{}
+	general := 15.0
+	recharge := 25.0
+	subscription := 35.0
+	summary := &AffiliateSummary{
+		AffRebateRatePercent:             &general,
+		AffRechargeRebateRatePercent:     &recharge,
+		AffSubscriptionRebateRatePercent: &subscription,
+	}
+
+	require.InDelta(t, 25.0,
+		svc.resolveRebateRatePercentByKind(context.Background(), summary, payment.OrderTypeBalance), 1e-9)
+	require.InDelta(t, 35.0,
+		svc.resolveRebateRatePercentByKind(context.Background(), summary, payment.OrderTypeSubscription), 1e-9)
+}
+
+func TestResolveRebateRatePercentByKind_FallsBackToGeneralRate(t *testing.T) {
+	t.Parallel()
+
+	svc := &AffiliateService{}
+	general := 18.0
+	summary := &AffiliateSummary{AffRebateRatePercent: &general}
+
+	require.InDelta(t, 18.0,
+		svc.resolveRebateRatePercentByKind(context.Background(), summary, payment.OrderTypeBalance), 1e-9)
+	require.InDelta(t, 18.0,
+		svc.resolveRebateRatePercentByKind(context.Background(), summary, payment.OrderTypeSubscription), 1e-9)
+}
+
+func TestSettingService_AffiliateKindRateFallsBackToGlobalRate(t *testing.T) {
+	t.Parallel()
+
+	svc := &SettingService{
+		settingRepo: &stubSettingRepo{
+			values: map[string]string{
+				SettingKeyAffiliateRebateRate: "35",
+			},
+		},
+	}
+
+	require.InDelta(t, 35.0, svc.GetAffiliateRechargeRebateRatePercent(context.Background()), 1e-9)
+	require.InDelta(t, 35.0, svc.GetAffiliateSubscriptionRebateRatePercent(context.Background()), 1e-9)
+}
+
+func TestSettingService_AffiliateKindRatePrefersExplicitSetting(t *testing.T) {
+	t.Parallel()
+
+	svc := &SettingService{
+		settingRepo: &stubSettingRepo{
+			values: map[string]string{
+				SettingKeyAffiliateRebateRate:              "35",
+				SettingKeyAffiliateRechargeRebateRate:      "25",
+				SettingKeyAffiliateSubscriptionRebateRate:  "15",
+			},
+		},
+	}
+
+	require.InDelta(t, 25.0, svc.GetAffiliateRechargeRebateRatePercent(context.Background()), 1e-9)
+	require.InDelta(t, 15.0, svc.GetAffiliateSubscriptionRebateRatePercent(context.Background()), 1e-9)
+}
+
+func TestAffiliateService_IsAffiliateKindEnabled_UsesDefaultsWhenSettingServiceNil(t *testing.T) {
+	t.Parallel()
+
 	svc := &AffiliateService{}
 
-	// nil exclusive rate → falls back to global default (20%)
-	require.InDelta(t, AffiliateRebateRateDefault,
-		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{}), 1e-9)
-
-	// exclusive rate set → overrides global
-	rate := 50.0
-	require.InDelta(t, 50.0,
-		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &rate}), 1e-9)
-
-	// exclusive rate 0 → returns 0 (no rebate, intentional)
-	zero := 0.0
-	require.InDelta(t, 0.0,
-		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &zero}), 1e-9)
-
-	// exclusive rate above max → clamped to Max
-	tooHigh := 250.0
-	require.InDelta(t, AffiliateRebateRateMax,
-		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &tooHigh}), 1e-9)
-
-	// exclusive rate below min → clamped to Min
-	tooLow := -5.0
-	require.InDelta(t, AffiliateRebateRateMin,
-		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &tooLow}), 1e-9)
+	require.Equal(t, AffiliateRechargeEnabledDefault, svc.isAffiliateRechargeEnabled(context.Background()))
+	require.Equal(t, AffiliateSubscriptionEnabledDefault, svc.isAffiliateSubscriptionEnabled(context.Background()))
 }
 
 // TestIsEnabled_NilSettingServiceReturnsDefault verifies that IsEnabled

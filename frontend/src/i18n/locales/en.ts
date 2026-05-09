@@ -1017,8 +1017,10 @@ export default {
     loadFailed: 'Failed to load affiliate data',
     transferFailed: 'Failed to transfer affiliate quota',
     stats: {
-      rebateRate: 'My Rebate Rate',
-      rebateRateHint: 'What you earn each time an invitee recharges',
+      rechargeRebateRate: 'Recharge Rebate Rate',
+      rechargeRebateRateHint: 'What you earn when an invitee recharges balance',
+      subscriptionRebateRate: 'Subscription Rebate Rate',
+      subscriptionRebateRateHint: 'What you earn when an invitee purchases a subscription',
       invitedUsers: 'Invited Users',
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
@@ -1046,7 +1048,9 @@ export default {
     tips: {
       title: 'How It Works',
       line1: 'Share your affiliate code or invite link with new users.',
-      line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
+      line2Both: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota; when they buy subscriptions, you receive {subscriptionRate}.',
+      line2Recharge: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota.',
+      line2Subscription: 'When invitees buy subscriptions, you receive {subscriptionRate} as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
     }
@@ -1675,7 +1679,7 @@ export default {
 
     affiliates: {
       invitesDescription: 'View site-wide inviter and invitee relationships',
-      rebatesDescription: 'View recharge orders that generated affiliate rebates',
+      rebatesDescription: 'View balance top-up / subscription orders that generated affiliate rebates',
       transfersDescription: 'View affiliate quota transfers into account balance',
       errors: {
         loadFailed: 'Failed to load affiliate records'
@@ -1694,6 +1698,9 @@ export default {
         orderAmount: 'Top-up Amount',
         payAmount: 'Paid Amount',
         rebateAmount: 'Rebate Amount',
+        orderType: 'Order Type',
+        balanceOrder: 'Balance Top-Up',
+        subscriptionOrder: 'Subscription',
         paymentType: 'Payment Method',
         orderStatus: 'Order Status',
         transferAmount: 'Transfer Amount',
@@ -1708,7 +1715,8 @@ export default {
       overview: {
         title: 'Affiliate User Overview',
         affCode: 'Invite Code',
-        rebateRate: 'Rebate Rate',
+        rechargeRebateRate: 'Recharge Rebate Rate',
+        subscriptionRebateRate: 'Subscription Rebate Rate',
         invitedCount: 'Invited Users',
         rebatedInviteeCount: 'Rebated Invitees',
         availableQuota: 'Available Quota',
@@ -4996,8 +5004,6 @@ export default {
           subscriptionEnabledHint: 'When enabled, invitees’ subscription purchases generate rebate based on paid amount.',
           rechargeRebateRate: 'Recharge Rebate Rate',
           subscriptionRebateRate: 'Subscription Rebate Rate',
-          rebateRate: 'Global Rebate Rate',
-          rebateRateHint: 'Default percentage given back to the inviter on recharges (0-100, e.g. 10 = 10%).',
           freezeHours: 'Rebate Freeze Period (hours)',
           freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
           durationDays: 'Rebate Duration (days)',
@@ -5006,18 +5012,18 @@ export default {
           perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
           customUsers: {
             title: 'Per-User Overrides',
-            description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
+            description: 'Set a custom invite code, exclusive recharge rebate rate, or exclusive subscription rebate rate for specific users. Lists only users that have an override applied.',
             addButton: 'Add Custom User',
             searchPlaceholder: 'Search by email or username',
             batchButton: 'Batch Set Rate ({count} selected)',
             empty: 'No users with custom affiliate settings yet',
             customBadge: 'custom',
-            useGlobal: 'use global',
-            generalRate: 'General',
+            useGlobal: 'use system rate',
+            generalRate: 'General (legacy)',
             rechargeRate: 'Recharge',
             subscriptionRate: 'Subscription',
             resetTitle: 'Reset Custom Settings',
-            resetMessage: 'Reset all custom settings for {email}?\n• The exclusive rebate rate will be cleared (fall back to the global rate)\n• The invite code will be regenerated as a new system code (previously shared links will stop working)',
+            resetMessage: 'Reset all custom settings for {email}?\n• The exclusive rebate rate will be cleared (fall back to the system recharge/subscription settings)\n• The invite code will be regenerated as a new system code (previously shared links will stop working)',
             totalLabel: '{total} total',
             col: {
               email: 'Email',
@@ -5036,15 +5042,15 @@ export default {
             codeLabel: 'Custom Invite Code (optional)',
             codePlaceholder: 'e.g. VIP2026',
             codeHint: '4-32 characters; A-Z, 0-9, underscore, dash. Leave empty to keep current. Input is upper-cased.',
-            rateLabel: 'Exclusive Rebate Rate (optional)',
+            rateLabel: 'Exclusive Rebate Rate (legacy, optional)',
             ratePlaceholder: 'e.g. 30',
-            rateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the global rate.',
+            rateHint: '0-100. Legacy fallback only when kind-specific rates are not set. Leave empty (in edit mode) to clear.',
             rechargeRateLabel: 'Exclusive Recharge Rebate Rate (optional)',
             rechargeRatePlaceholder: 'e.g. 20',
-            rechargeRateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the general/global rate.',
+            rechargeRateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the system recharge rebate rate.',
             subscriptionRateLabel: 'Exclusive Subscription Rebate Rate (optional)',
             subscriptionRatePlaceholder: 'e.g. 5',
-            subscriptionRateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the general/global rate.',
+            subscriptionRateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the system subscription rebate rate.',
             errorBadRate: 'Please enter a number between 0 and 100',
             errorEmpty: 'Fill at least one: custom invite code, exclusive rebate rate, exclusive recharge rebate rate, or exclusive subscription rebate rate',
           },
@@ -6607,5 +6613,3 @@ export default {
   },
 
 }
-
-

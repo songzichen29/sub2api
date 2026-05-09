@@ -65,6 +65,9 @@
           <template #cell-payment_type="{ row }">
             {{ t('payment.methods.' + row.payment_type, row.payment_type || '-') }}
           </template>
+          <template #cell-order_type="{ row }">
+            {{ row.order_type === 'subscription' ? t('admin.affiliates.records.subscriptionOrder') : t('admin.affiliates.records.balanceOrder') }}
+          </template>
           <template #cell-order_status="{ row }">
             <OrderStatusBadge :status="row.order_status" />
           </template>
@@ -128,9 +131,10 @@
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">{{ selectedOverview.email || '-' }}</div>
           <div class="mt-0.5 text-sm text-gray-500 dark:text-dark-400">{{ selectedOverview.username || '-' }}</div>
         </div>
-        <div class="grid gap-3 sm:grid-cols-2">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <OverviewStat :label="t('admin.affiliates.overview.affCode')" :value="selectedOverview.aff_code || '-'" mono />
-          <OverviewStat :label="t('admin.affiliates.overview.rebateRate')" :value="formatPercent(selectedOverview.rebate_rate_percent)" />
+          <OverviewStat :label="t('admin.affiliates.overview.rechargeRebateRate')" :value="formatPercent(selectedOverview.recharge_rebate_rate_percent)" />
+          <OverviewStat :label="t('admin.affiliates.overview.subscriptionRebateRate')" :value="formatPercent(selectedOverview.subscription_rebate_rate_percent)" />
           <OverviewStat :label="t('admin.affiliates.overview.invitedCount')" :value="String(selectedOverview.invited_count)" />
           <OverviewStat :label="t('admin.affiliates.overview.rebatedInviteeCount')" :value="String(selectedOverview.rebated_invitee_count)" />
           <OverviewStat :label="t('admin.affiliates.overview.availableQuota')" :value="'$' + formatAmount(selectedOverview.available_quota)" />
@@ -194,6 +198,7 @@ const columns = computed<Column[]>(() => {
       { key: 'order_amount', label: t('admin.affiliates.records.orderAmount'), sortable: true },
       { key: 'pay_amount', label: t('admin.affiliates.records.payAmount'), sortable: true },
       { key: 'rebate_amount', label: t('admin.affiliates.records.rebateAmount') },
+      { key: 'order_type', label: t('admin.affiliates.records.orderType'), sortable: true },
       { key: 'payment_type', label: t('admin.affiliates.records.paymentType'), sortable: true },
       { key: 'order_status', label: t('admin.affiliates.records.orderStatus'), sortable: true },
       { key: 'created_at', label: t('admin.affiliates.records.rebatedAt'), sortable: true },

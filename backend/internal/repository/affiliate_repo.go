@@ -479,7 +479,7 @@ func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, fi
 	client := clientFromContext(ctx, r.client)
 	where, args := buildAffiliateRecordWhere(filter, "ual.created_at", []string{
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
-		"CAST(po.id AS CHAR)", "po.out_trade_no", "po.payment_type", "po.status",
+		"CAST(po.id AS CHAR)", "po.out_trade_no", "po.payment_type", "po.order_type", "po.status",
 	})
 	baseJoin := `
 FROM user_affiliate_ledger ual
@@ -504,6 +504,7 @@ WHERE ual.action = 'accrue'
 		"order_amount":  "po.amount",
 		"pay_amount":    "po.pay_amount",
 		"rebate_amount": "ual.amount",
+		"order_type":    "po.order_type",
 		"payment_type":  "po.payment_type",
 		"order_status":  "po.status",
 		"created_at":    "ual.created_at",
@@ -521,6 +522,7 @@ SELECT po.id,
        po.amount,
        po.pay_amount,
        ual.amount,
+       po.order_type,
        po.payment_type,
        po.status,
        ual.created_at
@@ -547,6 +549,7 @@ LIMIT ? OFFSET ?`, args...)
 			&item.OrderAmount,
 			&item.PayAmount,
 			&item.RebateAmount,
+			&item.OrderType,
 			&item.PaymentType,
 			&item.OrderStatus,
 			&item.CreatedAt,

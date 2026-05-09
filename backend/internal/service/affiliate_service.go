@@ -90,10 +90,12 @@ type AffiliateDetail struct {
 	AffQuota        float64 `json:"aff_quota"`
 	AffFrozenQuota  float64 `json:"aff_frozen_quota"`
 	AffHistoryQuota float64 `json:"aff_history_quota"`
-	// EffectiveRebateRatePercent 是当前用户作为邀请人时实际生效的返利比例：
-	// 优先用户自己的专属比例（aff_rebate_rate_percent），否则回退到全局比例。
-	// 用于在用户的 /affiliate 页面直观展示「分享后能拿到多少」。
-	EffectiveRebateRatePercent float64            `json:"effective_rebate_rate_percent"`
+	RechargeEnabled bool    `json:"recharge_enabled"`
+	SubscriptionEnabled bool `json:"subscription_enabled"`
+	// EffectiveRechargeRebateRatePercent / EffectiveSubscriptionRebateRatePercent
+	// 用于用户端展示按订单类型实际生效的返利比例。
+	EffectiveRechargeRebateRatePercent     float64            `json:"effective_recharge_rebate_rate_percent"`
+	EffectiveSubscriptionRebateRatePercent float64            `json:"effective_subscription_rebate_rate_percent"`
 	Invitees                   []AffiliateInvitee `json:"invitees"`
 }
 
@@ -181,6 +183,7 @@ type AffiliateRebateRecord struct {
 	OrderAmount     float64   `json:"order_amount"`
 	PayAmount       float64   `json:"pay_amount"`
 	RebateAmount    float64   `json:"rebate_amount"`
+	OrderType       string    `json:"order_type"`
 	PaymentType     string    `json:"payment_type"`
 	OrderStatus     string    `json:"order_status"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -270,16 +273,29 @@ func (s *AffiliateService) GetAffiliateDetail(ctx context.Context, userID int64)
 	if err != nil {
 		return nil, err
 	}
+	rechargeEnabled := s.isAffiliateRechargeEnabled(ctx)
+	subscriptionEnabled := s.isAffiliateSubscriptionEnabled(ctx)
+	rechargeRate := s.resolveRebateRatePercentByKind(ctx, summary, payment.OrderTypeBalance)
+	subscriptionRate := s.resolveRebateRatePercentByKind(ctx, summary, payment.OrderTypeSubscription)
+	if !rechargeEnabled {
+		rechargeRate = 0
+	}
+	if !subscriptionEnabled {
+		subscriptionRate = 0
+	}
 	return &AffiliateDetail{
-		UserID:                     summary.UserID,
-		AffCode:                    summary.AffCode,
-		InviterID:                  summary.InviterID,
-		AffCount:                   summary.AffCount,
-		AffQuota:                   summary.AffQuota,
-		AffFrozenQuota:             summary.AffFrozenQuota,
-		AffHistoryQuota:            summary.AffHistoryQuota,
-		EffectiveRebateRatePercent: s.resolveRebateRatePercent(ctx, summary),
-		Invitees:                   invitees,
+		UserID:                                 summary.UserID,
+		AffCode:                                summary.AffCode,
+		InviterID:                              summary.InviterID,
+		AffCount:                               summary.AffCount,
+		AffQuota:                               summary.AffQuota,
+		AffFrozenQuota:                         summary.AffFrozenQuota,
+		AffHistoryQuota:                        summary.AffHistoryQuota,
+		RechargeEnabled:                        rechargeEnabled,
+		SubscriptionEnabled:                    subscriptionEnabled,
+		EffectiveRechargeRebateRatePercent:     rechargeRate,
+		EffectiveSubscriptionRebateRatePercent: subscriptionRate,
+		Invitees:                               invitees,
 	}, nil
 }
 
@@ -332,6 +348,8 @@ func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID
 	return s.AccrueInviteRebateByKind(ctx, inviteeUserID, baseRechargeAmount, payment.OrderTypeBalance, nil)
 }
 
+// AccrueInviteRebateForOrder exists for legacy balance-order callers only.
+// Deprecated: use AccrueInviteRebateByKind with the actual order type instead.
 func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
 	return s.AccrueInviteRebateByKind(ctx, inviteeUserID, baseRechargeAmount, payment.OrderTypeBalance, sourceOrderID)
 }
@@ -349,11 +367,11 @@ func (s *AffiliateService) AccrueInviteRebateByKind(ctx context.Context, invitee
 	}
 	switch orderType {
 	case payment.OrderTypeBalance:
-		if s.settingService != nil && !s.settingService.IsAffiliateRechargeEnabled(ctx) {
+		if !s.isAffiliateRechargeEnabled(ctx) {
 			return 0, nil
 		}
 	case payment.OrderTypeSubscription:
-		if s.settingService != nil && !s.settingService.IsAffiliateSubscriptionEnabled(ctx) {
+		if !s.isAffiliateSubscriptionEnabled(ctx) {
 			return 0, nil
 		}
 	default:
@@ -419,19 +437,6 @@ func (s *AffiliateService) AccrueInviteRebateByKind(ctx context.Context, invitee
 	return rebate, nil
 }
 
-// resolveRebateRatePercent returns the inviter's exclusive rate when set,
-// otherwise the global setting value (clamped to [Min, Max]).
-func (s *AffiliateService) resolveRebateRatePercent(ctx context.Context, inviter *AffiliateSummary) float64 {
-	if inviter != nil && inviter.AffRebateRatePercent != nil {
-		v := *inviter.AffRebateRatePercent
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return s.globalRebateRatePercent(ctx)
-		}
-		return clampAffiliateRebateRate(v)
-	}
-	return s.globalRebateRatePercent(ctx)
-}
-
 func (s *AffiliateService) resolveRebateRatePercentByKind(ctx context.Context, inviter *AffiliateSummary, orderType string) float64 {
 	switch orderType {
 	case payment.OrderTypeSubscription:
@@ -450,6 +455,7 @@ func (s *AffiliateService) resolveRebateRatePercentByKind(ctx context.Context, i
 		if s != nil && s.settingService != nil {
 			return s.settingService.GetAffiliateSubscriptionRebateRatePercent(ctx)
 		}
+		return AffiliateRebateRateDefault
 	case payment.OrderTypeBalance:
 		if inviter != nil && inviter.AffRechargeRebateRatePercent != nil {
 			v := *inviter.AffRechargeRebateRatePercent
@@ -466,17 +472,86 @@ func (s *AffiliateService) resolveRebateRatePercentByKind(ctx context.Context, i
 		if s != nil && s.settingService != nil {
 			return s.settingService.GetAffiliateRechargeRebateRatePercent(ctx)
 		}
-	}
-	return s.globalRebateRatePercent(ctx)
-}
-
-// globalRebateRatePercent reads the system-wide rebate rate via SettingService,
-// returning the documented default when SettingService is unavailable.
-func (s *AffiliateService) globalRebateRatePercent(ctx context.Context) float64 {
-	if s == nil || s.settingService == nil {
 		return AffiliateRebateRateDefault
 	}
-	return s.settingService.GetAffiliateRebateRatePercent(ctx)
+	return 0
+}
+
+func (s *AffiliateService) isAffiliateRechargeEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return AffiliateRechargeEnabledDefault
+	}
+	return s.settingService.IsAffiliateRechargeEnabled(ctx)
+}
+
+func (s *AffiliateService) isAffiliateSubscriptionEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return AffiliateSubscriptionEnabledDefault
+	}
+	return s.settingService.IsAffiliateSubscriptionEnabled(ctx)
+}
+
+func (s *AffiliateService) explainRebateSkipReason(ctx context.Context, inviteeUserID int64, baseAmount float64, orderType string) string {
+	if s == nil || s.repo == nil {
+		return "affiliate_service_unavailable"
+	}
+	if inviteeUserID <= 0 || baseAmount <= 0 || math.IsNaN(baseAmount) || math.IsInf(baseAmount, 0) {
+		return "invalid_rebate_input"
+	}
+	if !s.IsEnabled(ctx) {
+		return "affiliate_disabled"
+	}
+	switch orderType {
+	case payment.OrderTypeBalance:
+		if !s.isAffiliateRechargeEnabled(ctx) {
+			return "affiliate_recharge_disabled"
+		}
+	case payment.OrderTypeSubscription:
+		if !s.isAffiliateSubscriptionEnabled(ctx) {
+			return "affiliate_subscription_disabled"
+		}
+	default:
+		return "unsupported_order_type"
+	}
+
+	inviteeSummary, err := s.repo.EnsureUserAffiliate(ctx, inviteeUserID)
+	if err != nil {
+		return "invitee_affiliate_lookup_failed"
+	}
+	if inviteeSummary.InviterID == nil || *inviteeSummary.InviterID <= 0 {
+		return "no_inviter_bound"
+	}
+
+	inviterSummary, err := s.repo.EnsureUserAffiliate(ctx, *inviteeSummary.InviterID)
+	if err != nil {
+		return "inviter_affiliate_lookup_failed"
+	}
+	if s.settingService != nil {
+		if durationDays := s.settingService.GetAffiliateRebateDurationDays(ctx); durationDays > 0 {
+			if time.Now().After(inviteeSummary.CreatedAt.AddDate(0, 0, durationDays)) {
+				return "rebate_duration_expired"
+			}
+		}
+	}
+
+	rebateRatePercent := s.resolveRebateRatePercentByKind(ctx, inviterSummary, orderType)
+	rebate := roundTo(baseAmount*(rebateRatePercent/100), 8)
+	if rebate <= 0 {
+		return "rebate_rate_zero"
+	}
+
+	if s.settingService != nil {
+		if perInviteeCap := s.settingService.GetAffiliateRebatePerInviteeCap(ctx); perInviteeCap > 0 {
+			existing, err := s.repo.GetAccruedRebateFromInvitee(ctx, *inviteeSummary.InviterID, inviteeUserID)
+			if err != nil {
+				return "rebate_cap_lookup_failed"
+			}
+			if existing >= perInviteeCap {
+				return "rebate_cap_reached"
+			}
+		}
+	}
+	return "rebate_not_applied"
 }
 
 func (s *AffiliateService) TransferAffiliateQuota(ctx context.Context, userID int64) (float64, float64, error) {
@@ -707,7 +782,7 @@ func (s *AffiliateService) AdminGetUserOverview(ctx context.Context, userID int6
 	}
 	if overview != nil {
 		if !overview.RebateRateCustom {
-			overview.RebateRatePercent = s.globalRebateRatePercent(ctx)
+			overview.RebateRatePercent = s.settingService.GetAffiliateRebateRatePercent(ctx)
 		}
 		overview.RebateRatePercent = clampAffiliateRebateRate(overview.RebateRatePercent)
 		if !overview.RechargeRebateRateCustom {

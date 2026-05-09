@@ -141,8 +141,12 @@ export interface UserAffiliateDetail {
   aff_quota: number
   aff_frozen_quota: number
   aff_history_quota: number
-  /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
-  effective_rebate_rate_percent: number
+  recharge_enabled: boolean
+  subscription_enabled: boolean
+  /** 当前用户作为邀请人时，对充值订单实际生效的返利比例。0-100。 */
+  effective_recharge_rebate_rate_percent: number
+  /** 当前用户作为邀请人时，对订阅订单实际生效的返利比例。0-100。 */
+  effective_subscription_rebate_rate_percent: number
   invitees: AffiliateInvitee[]
 }
 
@@ -217,6 +221,8 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
   affiliate_enabled: boolean
+  affiliate_recharge_enabled: boolean
+  affiliate_subscription_enabled: boolean
 }
 
 export interface AuthResponse {

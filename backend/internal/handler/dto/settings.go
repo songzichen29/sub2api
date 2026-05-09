@@ -261,7 +261,9 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	AffiliateEnabled bool `json:"affiliate_enabled"`
+	AffiliateEnabled             bool `json:"affiliate_enabled"`
+	AffiliateRechargeEnabled     bool `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled bool `json:"affiliate_subscription_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

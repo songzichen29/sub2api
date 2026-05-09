@@ -1,0 +1,61 @@
+﻿feature: 2026-05-09-group-free-usage-buckets
+created: 2026-05-09
+
+steps:
+  - action: "schema 与类型贯通：用户三桶余额、分组免费额度字段、免费使用聚合表、DTO/TS 类型全部可见"
+    exit_signal: "后端相关包编译通过，前端 typecheck 无缺字段"
+    status: pending
+  - action: "入账来源分桶：支付充值与返利转入进 paid，默认赠送/来源赠送/首绑/赠送兑换码/管理员默认赠送进 free，并保持总 balance 守恒"
+    exit_signal: "单测覆盖各来源落桶，balance = free + paid + legacy"
+    status: pending
+  - action: "历史迁移：按支付订单+返利转入回填 paid_balance，其余余额进 legacy_balance，free_balance 初始化为 0"
+    exit_signal: "迁移测试样例通过且总余额守恒"
+    status: pending
+  - action: "运行时免费资格判定与真实扣费：按分组金额/次数限制决定是否可消耗 free，允许拆分扣费，并在请求成功后更新 user_group_free_usage"
+    exit_signal: "单测覆盖 free -> paid -> legacy 拆分扣费 / 订阅分组绕过 / 金额与次数双阈值"
+    status: pending
+  - action: "退款与管理端兼容：退款只回收付费/历史桶；管理员调余额支持 bucket"
+    exit_signal: "payment_refund 与 admin balance 调整相关测试通过"
+    status: pending
+  - action: "前端配置与展示：GroupsView 可配置免费金额/次数，用户/admin 页面可看到三桶余额"
+    exit_signal: "界面可保存/回显配置，展示字段齐全"
+    status: pending
+  - action: "回归与封口：最小跑通支付、返利、默认赠送、请求扣费、退款回收链路"
+    exit_signal: "关键回归集通过或有明确剩余风险说明"
+    status: pending
+
+checks:
+  - item: "不使用‘当前余额 - 累计充值’公式直接回算历史免费余额"
+    source: 范围守护
+    status: pending
+  - item: "返利转入按 paid_balance 处理，不记入 free_balance"
+    source: 范围守护
+    status: pending
+  - item: "订阅分组(subscription_type=subscription)不参与免费额度金额/次数限制"
+    source: 范围守护
+    status: pending
+  - item: "保留 legacy_balance，不在首版强行把历史不确定余额归类为免费或付费"
+    source: 范围守护
+    status: pending
+  - item: "users / DTO / TS 类型可同时返回 balance/free_balance/paid_balance/legacy_balance"
+    source: 接口契约
+    status: pending
+  - item: "groups 支持 free_usage_limit_usd 与 free_usage_limit_requests 保存、回显；订阅分组提交时服务端清空这两个字段"
+    source: 接口契约
+    status: pending
+  - item: "支付充值与返利转入进入 paid_balance；默认赠送/首绑/兑换码赠送进入 free_balance"
+    source: 接口契约
+    status: pending
+  - item: "退款不回收 free_balance，只回收 paid_balance 和 legacy_balance"
+    source: 接口契约
+    status: pending
+  - item: "运行时扣费遵守 free -> paid -> legacy 顺序，且支持拆分扣费计划"
+    source: 接口契约
+    status: pending
+  - item: "后端测试覆盖入账分桶、迁移守恒、免费资格判定、退款回收"
+    source: 测试约束
+    status: pending
+  - item: "前端测试覆盖 GroupsView 配置与三桶余额展示"
+    source: 测试约束
+    status: pending
+

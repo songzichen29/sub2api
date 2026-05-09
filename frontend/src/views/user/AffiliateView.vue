@@ -9,16 +9,28 @@
 
       <template v-else-if="detail">
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div class="card p-5">
+          <div v-if="rechargeEnabled" class="card p-5">
             <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
-              <Icon name="dollar" size="sm" class="text-primary-500" />
-              {{ t('affiliate.stats.rebateRate') }}
+              <Icon name="creditCard" size="sm" class="text-emerald-500" />
+              {{ t('affiliate.stats.rechargeRebateRate') }}
             </p>
-            <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
-              {{ formattedRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
+            <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              {{ formattedRechargeRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
             </p>
             <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
-              {{ t('affiliate.stats.rebateRateHint') }}
+              {{ t('affiliate.stats.rechargeRebateRateHint') }}
+            </p>
+          </div>
+          <div v-if="subscriptionEnabled" class="card p-5">
+            <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
+              <Icon name="badge" size="sm" class="text-violet-500" />
+              {{ t('affiliate.stats.subscriptionRebateRate') }}
+            </p>
+            <p class="mt-2 text-2xl font-semibold text-violet-600 dark:text-violet-400">
+              {{ formattedSubscriptionRebateRate }}<span class="ml-0.5 text-base font-medium">%</span>
+            </p>
+            <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+              {{ t('affiliate.stats.subscriptionRebateRateHint') }}
             </p>
           </div>
           <div class="card p-5">
@@ -76,7 +88,15 @@
             <p class="text-sm font-medium text-primary-800 dark:text-primary-200">{{ t('affiliate.tips.title') }}</p>
             <ul class="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
               <li>1. {{ t('affiliate.tips.line1') }}</li>
-              <li>2. {{ t('affiliate.tips.line2', { rate: `${formattedRebateRate}%` }) }}</li>
+              <li v-if="rechargeEnabled && subscriptionEnabled">
+                {{ t('affiliate.tips.line2Both', { rechargeRate: `${formattedRechargeRebateRate}%`, subscriptionRate: `${formattedSubscriptionRebateRate}%` }) }}
+              </li>
+              <li v-else-if="rechargeEnabled">
+                {{ t('affiliate.tips.line2Recharge', { rechargeRate: `${formattedRechargeRebateRate}%` }) }}
+              </li>
+              <li v-else-if="subscriptionEnabled">
+                {{ t('affiliate.tips.line2Subscription', { subscriptionRate: `${formattedSubscriptionRebateRate}%` }) }}
+              </li>
               <li>3. {{ t('affiliate.tips.line3') }}</li>
               <li v-if="detail.aff_frozen_quota > 0">4. {{ t('affiliate.tips.line4') }}</li>
             </ul>
@@ -160,6 +180,8 @@ const { copyToClipboard } = useClipboard()
 const loading = ref(true)
 const transferring = ref(false)
 const detail = ref<UserAffiliateDetail | null>(null)
+const rechargeEnabled = computed(() => detail.value?.recharge_enabled === true)
+const subscriptionEnabled = computed(() => detail.value?.subscription_enabled === true)
 
 const inviteLink = computed(() => {
   if (!detail.value) return ''
@@ -167,13 +189,20 @@ const inviteLink = computed(() => {
   return `${window.location.origin}/register?aff=${encodeURIComponent(detail.value.aff_code)}`
 })
 
-// Rebate rate is a percentage in the range [0, 100]; backend already clamps it.
-// We trim trailing zeros (e.g. 20.00 → "20", 12.50 → "12.5") for a cleaner UI.
-const formattedRebateRate = computed(() => {
-  const v = detail.value?.effective_rebate_rate_percent ?? 0
+const formattedRechargeRebateRate = computed(() => {
+  const v = detail.value?.effective_recharge_rebate_rate_percent ?? 0
+  return formatRate(v)
+})
+
+const formattedSubscriptionRebateRate = computed(() => {
+  const v = detail.value?.effective_subscription_rebate_rate_percent ?? 0
+  return formatRate(v)
+})
+
+function formatRate(v: number): string {
   const rounded = Math.round(v * 100) / 100
   return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
-})
+}
 
 function formatCount(value: number): string {
   return value.toLocaleString()

@@ -60,6 +60,7 @@ export interface AffiliateRebateRecord {
   order_amount: number
   pay_amount: number
   rebate_amount: number
+  order_type: string
   payment_type: string
   order_status: string
   created_at: string

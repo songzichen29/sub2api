@@ -484,10 +484,14 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 
 	if rebateAmount <= 0 {
+		reason := "rebate_not_applied"
+		if s.affiliateService != nil {
+			reason = s.affiliateService.explainRebateSkipReason(txCtx, o.UserID, rebateBase, o.OrderType)
+		}
 		if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_SKIPPED", map[string]any{
 			"baseAmount": rebateBase,
 			"orderType":  o.OrderType,
-			"reason":     "no inviter bound or rebate amount <= 0",
+			"reason":     reason,
 		}); err != nil {
 			s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 				"error": err.Error(),
