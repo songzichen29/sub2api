@@ -68,6 +68,34 @@ func TestUserHandlerListIncludesActivityFieldsAndSortParams(t *testing.T) {
 	require.WithinDuration(t, lastUsedAt, *resp.Data.Items[0].LastUsedAt, time.Second)
 }
 
+func TestUserHandlerListDefaultsToLastUsedAtDesc(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	adminSvc := newStubAdminService()
+	adminSvc.users = []service.User{
+		{
+			ID:        7,
+			Email:     "activity@example.com",
+			Username:  "activity-user",
+			Role:      service.RoleUser,
+			Status:    service.StatusActive,
+			CreatedAt: time.Date(2026, 4, 19, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 4, 20, 8, 0, 0, 0, time.UTC),
+		},
+	}
+	handler := NewUserHandler(adminSvc, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+
+	handler.List(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "last_used_at", adminSvc.lastListUsers.sortBy)
+	require.Equal(t, "desc", adminSvc.lastListUsers.sortOrder)
+}
+
 func TestUserHandlerGetByIDIncludesActivityFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

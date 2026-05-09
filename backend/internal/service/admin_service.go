@@ -184,6 +184,26 @@ type AdminBoundAuthIdentityChannel struct {
 	UpdatedAt      time.Time      `json:"updated_at"`
 }
 
+type adminUserStatusUpdater interface {
+	UpdateUserStatus(ctx context.Context, id int64, status string) (*User, error)
+}
+
+func isStatusOnlyUserUpdate(input *UpdateUserInput) bool {
+	if input == nil {
+		return false
+	}
+	return input.Status != "" &&
+		input.Email == "" &&
+		input.Password == "" &&
+		input.Username == nil &&
+		input.Notes == nil &&
+		input.Balance == nil &&
+		input.Concurrency == nil &&
+		input.RPMLimit == nil &&
+		input.AllowedGroups == nil &&
+		input.GroupRates == nil
+}
+
 type CreateGroupInput struct {
 	Name                 string
 	Description          string
@@ -735,8 +755,21 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, errors.New("cannot disable admin user")
 	}
 
-	oldConcurrency := user.Concurrency
 	oldStatus := user.Status
+	if isStatusOnlyUserUpdate(input) {
+		if updater, ok := s.userRepo.(adminUserStatusUpdater); ok {
+			updated, err := updater.UpdateUserStatus(ctx, id, input.Status)
+			if err != nil {
+				return nil, err
+			}
+			if s.authCacheInvalidator != nil && updated.Status != oldStatus {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, updated.ID)
+			}
+			return updated, nil
+		}
+	}
+
+	oldConcurrency := user.Concurrency
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 

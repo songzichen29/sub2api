@@ -241,7 +241,7 @@
           :loading="loading"
           :actions-count="7"
           :server-side-sort="true"
-          default-sort-key="created_at"
+          default-sort-key="last_used_at"
           default-sort-order="desc"
           :sort-storage-key="USER_SORT_STORAGE_KEY"
           @sort="handleSort"
@@ -880,7 +880,7 @@ const loading = ref(false)
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
-  const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }
+  const fallback = { sort_by: 'last_used_at', sort_order: 'desc' as 'asc' | 'desc' }
   const sortable = new Set(['email', 'id', 'username', 'role', 'balance', 'concurrency', 'status', 'last_used_at', 'last_active_at', 'created_at'])
   try {
     const raw = localStorage.getItem(USER_SORT_STORAGE_KEY)

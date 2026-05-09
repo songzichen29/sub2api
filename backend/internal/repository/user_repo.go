@@ -254,6 +254,27 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	return nil
 }
 
+// UpdateUserStatus updates only the user's status and reloads the user.
+//
+// Admin list status toggles only need to change the status field.  Keeping this
+// path narrow avoids the full Update flow touching unrelated fields and
+// re-syncing email auth identities, which can make a simple status toggle fail
+// because of unrelated legacy identity/email state.
+func (r *userRepository) UpdateUserStatus(ctx context.Context, id int64, status string) (*service.User, error) {
+	client := clientFromContext(ctx, r.client)
+	n, err := client.User.Update().
+		Where(dbuser.IDEQ(id), dbuser.DeletedAtIsNil()).
+		SetStatus(status).
+		Save(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if n == 0 {
+		return nil, service.ErrUserNotFound
+	}
+	return r.GetByID(ctx, id)
+}
+
 func ensureEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, email string, source string) error {
 	client = clientFromContext(ctx, client)
 	if client == nil || userID <= 0 {

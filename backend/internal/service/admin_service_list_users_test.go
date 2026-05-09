@@ -183,3 +183,47 @@ func TestAdminService_ListUsers_PopulatesLastUsedAt(t *testing.T) {
 	require.NotNil(t, users[0].LastUsedAt)
 	require.WithinDuration(t, lastUsed, *users[0].LastUsedAt, time.Second)
 }
+
+func TestAdminService_UpdateUser_StatusOnlyUsesNarrowStatusPath(t *testing.T) {
+	baseRepo := &userRepoStub{user: &User{
+		ID:          42,
+		Email:       "user@example.com",
+		Role:        RoleUser,
+		Status:      StatusActive,
+		Concurrency: 3,
+	}}
+	repo := &statusOnlyUserRepoStub{userRepoStub: baseRepo}
+	invalidator := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{
+		userRepo:             repo,
+		redeemCodeRepo:       &redeemRepoStub{},
+		authCacheInvalidator: invalidator,
+	}
+
+	updated, err := svc.UpdateUser(context.Background(), 42, &UpdateUserInput{
+		Status: StatusDisabled,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, StatusDisabled, updated.Status)
+	require.Equal(t, 1, repo.statusOnlyCalls)
+	require.Empty(t, repo.updated, "状态单字段更新不应走通用 Update")
+	require.Equal(t, []int64{42}, invalidator.userIDs)
+}
+
+type statusOnlyUserRepoStub struct {
+	*userRepoStub
+	statusOnlyCalls int
+}
+
+func (s *statusOnlyUserRepoStub) UpdateUserStatus(_ context.Context, id int64, status string) (*User, error) {
+	s.statusOnlyCalls++
+	if s.userRepoStub == nil || s.userRepoStub.user == nil {
+		return nil, ErrUserNotFound
+	}
+	clone := *s.userRepoStub.user
+	clone.ID = id
+	clone.Status = status
+	s.userRepoStub.user = &clone
+	return &clone, nil
+}
