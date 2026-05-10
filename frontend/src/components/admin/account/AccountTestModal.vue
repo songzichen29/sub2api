@@ -99,6 +99,9 @@
           >
             <Icon name="check" size="sm" :stroke-width="2" />
             <span>{{ t('admin.accounts.testCompleted') }}</span>
+            <span v-if="elapsedMs !== null" class="text-xs text-green-300/80">
+              ({{ formatElapsed(elapsedMs) }})
+            </span>
           </div>
           <div
             v-else-if="status === 'error'"
@@ -106,6 +109,9 @@
           >
             <Icon name="x" size="sm" :stroke-width="2" />
             <span>{{ errorMessage }}</span>
+            <span v-if="elapsedMs !== null" class="text-xs text-red-300/80">
+              ({{ formatElapsed(elapsedMs) }})
+            </span>
           </div>
         </div>
 
@@ -272,6 +278,9 @@ const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
 const loadingModels = ref(false)
+const elapsedMs = ref<number | null>(null)
+const connectMs = ref<number | null>(null)
+const firstResponseMs = ref<number | null>(null)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const previewImageUrl = ref('')
@@ -357,6 +366,9 @@ const resetState = () => {
   outputLines.value = []
   streamingContent.value = ''
   errorMessage.value = ''
+  elapsedMs.value = null
+  connectMs.value = null
+  firstResponseMs.value = null
   generatedImages.value = []
   previewImageUrl.value = ''
 }
@@ -468,6 +480,9 @@ const handleEvent = (event: {
   model?: string
   success?: boolean
   error?: string
+  elapsed_ms?: number
+  connect_ms?: number
+  first_response_ms?: number
   image_url?: string
   mime_type?: string
 }) => {
@@ -505,6 +520,16 @@ const handleEvent = (event: {
       break
 
     case 'test_complete':
+      if (typeof event.connect_ms === 'number' && Number.isFinite(event.connect_ms)) {
+        connectMs.value = event.connect_ms
+      }
+      if (typeof event.first_response_ms === 'number' && Number.isFinite(event.first_response_ms)) {
+        firstResponseMs.value = event.first_response_ms
+      }
+      if (typeof event.elapsed_ms === 'number' && Number.isFinite(event.elapsed_ms)) {
+        elapsedMs.value = event.elapsed_ms
+        addLine(formatTimingSummary(), 'text-sky-300')
+      }
       // Move streaming content to output lines
       if (streamingContent.value) {
         addLine(streamingContent.value, 'text-green-300')
@@ -521,12 +546,41 @@ const handleEvent = (event: {
     case 'error':
       status.value = 'error'
       errorMessage.value = event.error || 'Unknown error'
+      if (typeof event.connect_ms === 'number' && Number.isFinite(event.connect_ms)) {
+        connectMs.value = event.connect_ms
+      }
+      if (typeof event.first_response_ms === 'number' && Number.isFinite(event.first_response_ms)) {
+        firstResponseMs.value = event.first_response_ms
+      }
+      if (typeof event.elapsed_ms === 'number' && Number.isFinite(event.elapsed_ms)) {
+        elapsedMs.value = event.elapsed_ms
+        addLine(formatTimingSummary(), 'text-sky-300')
+      }
       if (streamingContent.value) {
         addLine(streamingContent.value, 'text-green-300')
         streamingContent.value = ''
       }
       break
   }
+}
+
+const formatElapsed = (ms: number): string => {
+  if (ms < 1000) return `${ms} ms`
+  return `${(ms / 1000).toFixed(2)} s`
+}
+
+const formatTimingSummary = (): string => {
+  const parts: string[] = []
+  if (connectMs.value !== null) {
+    parts.push(`${t('admin.accounts.testConnectElapsed')}: ${formatElapsed(connectMs.value)}`)
+  }
+  if (firstResponseMs.value !== null) {
+    parts.push(`${t('admin.accounts.testFirstResponseElapsed')}: ${formatElapsed(firstResponseMs.value)}`)
+  }
+  if (elapsedMs.value !== null) {
+    parts.push(`${t('admin.accounts.testElapsed')}: ${formatElapsed(elapsedMs.value)}`)
+  }
+  return parts.join(' | ')
 }
 
 const copyOutput = () => {

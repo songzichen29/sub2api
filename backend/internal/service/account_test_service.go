@@ -43,11 +43,25 @@ type TestEvent struct {
 	Model    string `json:"model,omitempty"`
 	Status   string `json:"status,omitempty"`
 	Code     string `json:"code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
-	MimeType string `json:"mime_type,omitempty"`
-	Data     any    `json:"data,omitempty"`
-	Success  bool   `json:"success,omitempty"`
-	Error    string `json:"error,omitempty"`
+	ElapsedMs       int64  `json:"elapsed_ms,omitempty"`
+	ConnectMs       int64  `json:"connect_ms,omitempty"`
+	FirstResponseMs int64  `json:"first_response_ms,omitempty"`
+	ImageURL        string `json:"image_url,omitempty"`
+	MimeType        string `json:"mime_type,omitempty"`
+	Data            any    `json:"data,omitempty"`
+	Success         bool   `json:"success,omitempty"`
+	Error           string `json:"error,omitempty"`
+}
+
+const accountTestStartedAtContextKey = "account_test_started_at"
+const accountTestMetricsContextKey = "account_test_metrics"
+
+type accountTestMetrics struct {
+	startedAt        time.Time
+	connectMs        int64
+	connectRecorded  bool
+	firstResponseMs  int64
+	firstRespRecorded bool
 }
 
 const (
@@ -175,6 +189,9 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
 	ctx := c.Request.Context()
+	startedAt := time.Now()
+	c.Set(accountTestStartedAtContextKey, startedAt)
+	c.Set(accountTestMetricsContextKey, &accountTestMetrics{startedAt: startedAt})
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -200,6 +217,36 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func getAccountTestMetrics(c *gin.Context) *accountTestMetrics {
+	if c == nil {
+		return nil
+	}
+	value, ok := c.Get(accountTestMetricsContextKey)
+	if !ok {
+		return nil
+	}
+	metrics, _ := value.(*accountTestMetrics)
+	return metrics
+}
+
+func markAccountTestConnected(c *gin.Context) {
+	metrics := getAccountTestMetrics(c)
+	if metrics == nil || metrics.connectRecorded || metrics.startedAt.IsZero() {
+		return
+	}
+	metrics.connectMs = time.Since(metrics.startedAt).Milliseconds()
+	metrics.connectRecorded = true
+}
+
+func markAccountTestFirstResponse(c *gin.Context) {
+	metrics := getAccountTestMetrics(c)
+	if metrics == nil || metrics.firstRespRecorded || metrics.startedAt.IsZero() {
+		return
+	}
+	metrics.firstResponseMs = time.Since(metrics.startedAt).Milliseconds()
+	metrics.firstRespRecorded = true
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -322,6 +369,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 		return s.sendErrorAndEnd(c, errMsg)
 	}
+	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body)
@@ -391,6 +439,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		}
 		return s.sendErrorAndEnd(c, errMsg)
 	}
+	markAccountTestConnected(c)
 
 	return s.processClaudeStream(c, resp.Body)
 }
@@ -474,6 +523,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	if resp.StatusCode != http.StatusOK {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
+	markAccountTestConnected(c)
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
 	var result struct {
@@ -639,6 +689,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
+	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
@@ -753,6 +804,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
+	markAccountTestConnected(c)
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
@@ -860,6 +912,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
+	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processGeminiStream(c, resp.Body)
@@ -907,6 +960,7 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
+	markAccountTestConnected(c)
 
 	// 发送响应内容
 	if result.Text != "" {
@@ -943,6 +997,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
+	markAccountTestConnected(c)
 
 	if result.Text != "" {
 		s.sendEvent(c, TestEvent{Type: "content", Text: result.Text})
@@ -1430,6 +1485,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	if resp.StatusCode != http.StatusOK {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
+	markAccountTestConnected(c)
 
 	// Parse {"data": [{"b64_json": "...", "revised_prompt": "..."}]}
 	var result struct {
@@ -1532,6 +1588,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		}
 		return s.sendErrorAndEnd(c, message)
 	}
+	markAccountTestConnected(c)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -1563,6 +1620,26 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
+	if event.Type == "content" || event.Type == "image" {
+		markAccountTestFirstResponse(c)
+	}
+	if (event.Type == "test_complete" || event.Type == "error") && event.ElapsedMs == 0 {
+		if metrics := getAccountTestMetrics(c); metrics != nil {
+			if !metrics.startedAt.IsZero() {
+				event.ElapsedMs = time.Since(metrics.startedAt).Milliseconds()
+			}
+			if metrics.connectRecorded {
+				event.ConnectMs = metrics.connectMs
+			}
+			if metrics.firstRespRecorded {
+				event.FirstResponseMs = metrics.firstResponseMs
+			}
+		} else if startedAtValue, ok := c.Get(accountTestStartedAtContextKey); ok {
+			if startedAt, ok := startedAtValue.(time.Time); ok && !startedAt.IsZero() {
+				event.ElapsedMs = time.Since(startedAt).Milliseconds()
+			}
+		}
+	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {
 		log.Printf("failed to write SSE event: %v", err)
