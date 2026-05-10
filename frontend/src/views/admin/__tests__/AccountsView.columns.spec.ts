@@ -27,8 +27,6 @@ vi.mock('@/api/admin', () => ({
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
       toggleSchedulable: vi.fn(),
-      // step 4 引入：AccountsView onMounted 会拉一次标签字典做 filter 候选。
-      // 测试不关心结果，mock 成空数组即可。
       listTags: vi.fn().mockResolvedValue([])
     },
     proxies: {
@@ -50,7 +48,8 @@ vi.mock('@/stores/app', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
-    token: 'test-token'
+    token: 'test-token',
+    isSimpleMode: false
   })
 }))
 
@@ -75,21 +74,16 @@ vi.mock('vue-router', () => ({
 
 const DataTableStub = {
   props: ['columns', 'data'],
-  template: '<div data-test="data-table"></div>'
+  emits: ['sort'],
+  template: `
+    <div>
+      <div data-test="columns">{{ columns.map(col => col.key).join(',') }}</div>
+      <button data-test="sort-created-at" @click="$emit('sort', 'created_at', 'desc')">sort</button>
+    </div>
+  `
 }
 
-const AccountBulkActionsBarStub = {
-  props: ['selectedIds'],
-  emits: ['edit-filtered'],
-  template: '<button data-test="edit-filtered" @click="$emit(\'edit-filtered\')">edit filtered</button>'
-}
-
-const BulkEditAccountModalStub = {
-  props: ['show', 'target'],
-  template: '<div data-test="bulk-edit-modal" :data-show="String(show)" :data-target-mode="target?.mode ?? \'\'"></div>'
-}
-
-describe('admin AccountsView bulk edit scope', () => {
+describe('admin AccountsView created_at column', () => {
   beforeEach(() => {
     localStorage.clear()
 
@@ -116,7 +110,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllGroups.mockResolvedValue([])
   })
 
-  it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
+  it('shows created_at column and sends created_at sort request', async () => {
     const wrapper = mount(AccountsView, {
       global: {
         stubs: {
@@ -129,7 +123,7 @@ describe('admin AccountsView bulk edit scope', () => {
           ConfirmDialog: true,
           AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
           AccountTableFilters: { template: '<div></div>' },
-          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountBulkActionsBar: true,
           AccountActionMenu: true,
           ImportDataModal: true,
           ReAuthAccountModal: true,
@@ -142,7 +136,7 @@ describe('admin AccountsView bulk edit scope', () => {
           TLSFingerprintProfilesModal: true,
           CreateAccountModal: true,
           EditAccountModal: true,
-          BulkEditAccountModal: BulkEditAccountModalStub,
+          BulkEditAccountModal: true,
           PlatformTypeBadge: true,
           AccountCapacityCell: true,
           AccountStatusIndicator: true,
@@ -155,10 +149,21 @@ describe('admin AccountsView bulk edit scope', () => {
     })
 
     await flushPromises()
-    await wrapper.get('[data-test="edit-filtered"]').trigger('click')
+
+    const columns = wrapper.get('[data-test="columns"]').text().split(',')
+    expect(columns).toContain('created_at')
+
+    await wrapper.get('[data-test="sort-created-at"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-show')).toBe('true')
-    expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-target-mode')).toBe('filtered')
+    expect(listAccounts).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        sort_by: 'created_at',
+        sort_order: 'desc'
+      }),
+      expect.any(Object)
+    )
   })
 })

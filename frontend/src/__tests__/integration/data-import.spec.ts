@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 
 const showError = vi.fn()
@@ -55,13 +55,33 @@ const mountModal = (props: Record<string, unknown> = {}) =>
     }
   })
 
-const attachJsonFile = async (wrapper: ReturnType<typeof mountModal>, payload: Record<string, unknown>) => {
+const attachJsonFile = async (
+  wrapper: ReturnType<typeof mountModal>,
+  payload: Record<string, unknown>,
+  name = 'data.json'
+) => {
   const input = wrapper.find('input[type="file"]')
-  const file = new File([JSON.stringify(payload)], 'data.json', { type: 'application/json' })
+  const file = new File([JSON.stringify(payload)], name, { type: 'application/json' })
   Object.defineProperty(file, 'text', {
     value: () => Promise.resolve(JSON.stringify(payload))
   })
   Object.defineProperty(input.element, 'files', { value: [file] })
+  await input.trigger('change')
+}
+
+const attachJsonFiles = async (
+  wrapper: ReturnType<typeof mountModal>,
+  filesPayload: Array<{ name: string; payload: Record<string, unknown> }>
+) => {
+  const input = wrapper.find('input[type="file"]')
+  const files = filesPayload.map(({ name, payload }) => {
+    const file = new File([JSON.stringify(payload)], name, { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: () => Promise.resolve(JSON.stringify(payload))
+    })
+    return file
+  })
+  Object.defineProperty(input.element, 'files', { value: files })
   await input.trigger('change')
 }
 
@@ -116,9 +136,80 @@ describe('ImportDataModal', () => {
 
     await input.trigger('change')
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
+    await flushPromises()
 
     expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportParseFailed')
+  })
+
+  it('支持选择多个 JSON 文件并合并后导入', async () => {
+    const wrapper = mountModal()
+
+    await attachJsonFiles(wrapper, [
+      {
+        name: 'part-1.json',
+        payload: {
+          ...sampleData,
+          proxies: [
+            {
+              proxy_key: 'http|127.0.0.1|8080||',
+              name: 'px-1',
+              protocol: 'http',
+              host: '127.0.0.1',
+              port: 8080,
+              status: 'active'
+            }
+          ],
+          accounts: [
+            {
+              name: 'acc-1',
+              platform: 'anthropic',
+              type: 'oauth',
+              credentials: { access_token: 'tok-1' },
+              concurrency: 3,
+              priority: 50
+            }
+          ]
+        }
+      },
+      {
+        name: 'part-2.json',
+        payload: {
+          ...sampleData,
+          proxies: [],
+          accounts: [
+            {
+              name: 'acc-2',
+              platform: 'openai',
+              type: 'apikey',
+              credentials: { api_key: 'tok-2' },
+              concurrency: 1,
+              priority: 10
+            }
+          ]
+        }
+      }
+    ])
+
+    await wrapper.find('form').trigger('submit')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(importDataMock).toHaveBeenCalledTimes(1)
+    expect(importDataMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'sub2api-data',
+          version: 1,
+          proxies: expect.arrayContaining([
+            expect.objectContaining({ name: 'px-1' })
+          ]),
+          accounts: expect.arrayContaining([
+            expect.objectContaining({ name: 'acc-1' }),
+            expect.objectContaining({ name: 'acc-2' })
+          ])
+        })
+      })
+    )
   })
 
   // ===== feature 2026-05-06-account-import-apply：折叠面板 + 6 字段 =====
