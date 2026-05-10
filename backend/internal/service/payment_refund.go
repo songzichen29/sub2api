@@ -203,6 +203,9 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	if err != nil {
 		return nil, nil, infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
+	if o.OrderType == payment.OrderTypeDailyLimitReset {
+		return nil, nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "daily limit reset orders cannot be refunded")
+	}
 	ok := []string{OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundFailed}
 	if !psSliceContains(ok, o.Status) {
 		return nil, nil, infraerrors.BadRequest("INVALID_STATUS", "order status does not allow refund")

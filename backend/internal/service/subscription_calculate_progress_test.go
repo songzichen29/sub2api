@@ -43,10 +43,12 @@ func TestCalculateProgress_BasicFields(t *testing.T) {
 func TestCalculateProgress_DailyUsage(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()
-	dailyStart := now.Add(-12 * time.Hour)
+	startsAt := now.Add(-50 * time.Hour)
+	dailyStart := startsAt.Add(48 * time.Hour)
 
 	sub := &UserSubscription{
 		ID:               1,
+		StartsAt:         startsAt,
 		ExpiresAt:        now.Add(10 * 24 * time.Hour),
 		DailyUsageUSD:    3.0,
 		DailyWindowStart: ptrTime(dailyStart),
@@ -64,15 +66,18 @@ func TestCalculateProgress_DailyUsage(t *testing.T) {
 	assert.Equal(t, 7.0, progress.Daily.RemainingUSD)
 	assert.Equal(t, 30.0, progress.Daily.Percentage)
 	assert.Equal(t, dailyStart, progress.Daily.WindowStart)
+	assert.WithinDuration(t, startsAt.Add(72*time.Hour), progress.Daily.ResetsAt, 2*time.Second)
 }
 
 func TestCalculateProgress_WeeklyUsage(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()
-	weeklyStart := now.Add(-3 * 24 * time.Hour)
+	startsAt := now.Add(-10 * 24 * time.Hour)
+	weeklyStart := startsAt.Add(7 * 24 * time.Hour)
 
 	sub := &UserSubscription{
 		ID:                1,
+		StartsAt:          startsAt,
 		ExpiresAt:         now.Add(10 * 24 * time.Hour),
 		WeeklyUsageUSD:    25.0,
 		WeeklyWindowStart: ptrTime(weeklyStart),
@@ -94,10 +99,12 @@ func TestCalculateProgress_WeeklyUsage(t *testing.T) {
 func TestCalculateProgress_MonthlyUsage(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()
-	monthlyStart := now.Add(-15 * 24 * time.Hour)
+	startsAt := now.Add(-40 * 24 * time.Hour)
+	monthlyStart := startsAt.Add(30 * 24 * time.Hour)
 
 	sub := &UserSubscription{
 		ID:                 1,
+		StartsAt:           startsAt,
 		ExpiresAt:          now.Add(10 * 24 * time.Hour),
 		MonthlyUsageUSD:    80.0,
 		MonthlyWindowStart: ptrTime(monthlyStart),
@@ -122,6 +129,7 @@ func TestCalculateProgress_OverLimit_ClampedTo100Percent(t *testing.T) {
 
 	sub := &UserSubscription{
 		ID:               1,
+		StartsAt:         now.Add(-2 * time.Hour),
 		ExpiresAt:        now.Add(10 * 24 * time.Hour),
 		DailyUsageUSD:    15.0, // 超过限额
 		DailyWindowStart: ptrTime(now.Add(-1 * time.Hour)),
@@ -167,6 +175,7 @@ func TestCalculateProgress_AllLimits(t *testing.T) {
 
 	sub := &UserSubscription{
 		ID:                 1,
+		StartsAt:           now.Add(-20 * 24 * time.Hour),
 		ExpiresAt:          now.Add(10 * 24 * time.Hour),
 		DailyUsageUSD:      5.0,
 		WeeklyUsageUSD:     20.0,
@@ -214,6 +223,7 @@ func TestCalculateProgress_ResetsInSeconds_NotNegative(t *testing.T) {
 
 	sub := &UserSubscription{
 		ID:               1,
+		StartsAt:         time.Now().Add(-72 * time.Hour),
 		ExpiresAt:        time.Now().Add(10 * 24 * time.Hour),
 		DailyUsageUSD:    1.0,
 		DailyWindowStart: ptrTime(pastStart),
@@ -228,4 +238,29 @@ func TestCalculateProgress_ResetsInSeconds_NotNegative(t *testing.T) {
 	require.NotNil(t, progress.Daily)
 	assert.GreaterOrEqual(t, progress.Daily.ResetsInSeconds, int64(0),
 		"ResetsInSeconds 不应为负数")
+}
+
+func TestCalculateProgress_DailyResetAnchoredToSubscriptionStart(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	startsAt := now.Add(-50 * time.Hour)
+	dailyStart := startsAt.Add(48 * time.Hour)
+
+	sub := &UserSubscription{
+		ID:               7,
+		StartsAt:         startsAt,
+		ExpiresAt:        now.Add(10 * 24 * time.Hour),
+		DailyUsageUSD:    2,
+		DailyWindowStart: ptrTime(dailyStart),
+	}
+	group := &Group{
+		Name:          "Anchored",
+		DailyLimitUSD: ptrFloat64(10),
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Daily)
+	expectedResetAt := startsAt.Add(72 * time.Hour)
+	assert.WithinDuration(t, expectedResetAt, progress.Daily.ResetsAt, 2*time.Second)
 }

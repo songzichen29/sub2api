@@ -4,13 +4,23 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
+
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
+	_ "modernc.org/sqlite"
 )
 
 type settingRepoStub struct {
@@ -72,6 +82,301 @@ type defaultSubscriptionAssignerStub struct {
 }
 
 type refreshTokenCacheStub struct{}
+
+type redeemRepoRegisterStub struct {
+	useErr   error
+	usedID   int64
+	usedUser int64
+}
+
+func (s *redeemRepoRegisterStub) Create(context.Context, *RedeemCode) error { panic("unexpected Create call") }
+func (s *redeemRepoRegisterStub) CreateBatch(context.Context, []RedeemCode) error {
+	panic("unexpected CreateBatch call")
+}
+func (s *redeemRepoRegisterStub) GetByID(context.Context, int64) (*RedeemCode, error) {
+	panic("unexpected GetByID call")
+}
+func (s *redeemRepoRegisterStub) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
+	switch code {
+	case "INVITE-OK":
+		return &RedeemCode{ID: 41, Code: code, Type: RedeemTypeInvitation, Status: StatusUnused}, nil
+	case "INVITE-USED":
+		return &RedeemCode{ID: 42, Code: code, Type: RedeemTypeInvitation, Status: StatusUsed}, nil
+	default:
+		return nil, ErrRedeemCodeNotFound
+	}
+}
+func (s *redeemRepoRegisterStub) Update(context.Context, *RedeemCode) error { panic("unexpected Update call") }
+func (s *redeemRepoRegisterStub) Delete(context.Context, int64) error       { panic("unexpected Delete call") }
+func (s *redeemRepoRegisterStub) Use(_ context.Context, id, userID int64) error {
+	s.usedID = id
+	s.usedUser = userID
+	return s.useErr
+}
+func (s *redeemRepoRegisterStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+func (s *redeemRepoRegisterStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+func (s *redeemRepoRegisterStub) ListByUser(context.Context, int64, int) ([]RedeemCode, error) {
+	panic("unexpected ListByUser call")
+}
+func (s *redeemRepoRegisterStub) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserPaginated call")
+}
+func (s *redeemRepoRegisterStub) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
+}
+
+type affiliateRepoRegisterStub struct {
+	summaries map[int64]*AffiliateSummary
+	codes     map[string]int64
+	bindErr   error
+	bound     map[int64]int64
+}
+
+type registerUserRepoWithEnt struct {
+	client *dbent.Client
+}
+
+func (r *registerUserRepoWithEnt) entClient(ctx context.Context) *dbent.Client {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return r.client
+}
+
+func (r *registerUserRepoWithEnt) Create(ctx context.Context, user *User) error {
+	signupSource := strings.TrimSpace(strings.ToLower(user.SignupSource))
+	if signupSource == "" {
+		signupSource = "email"
+	}
+	created, err := r.entClient(ctx).User.Create().
+		SetEmail(user.Email).
+		SetUsername(user.Username).
+		SetNotes(user.Notes).
+		SetPasswordHash(user.PasswordHash).
+		SetRole(user.Role).
+		SetBalance(user.Balance).
+		SetConcurrency(user.Concurrency).
+		SetStatus(user.Status).
+		SetSignupSource(signupSource).
+		SetNillableLastLoginAt(user.LastLoginAt).
+		SetNillableLastActiveAt(user.LastActiveAt).
+		SetRpmLimit(user.RPMLimit).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	user.ID = created.ID
+	return nil
+}
+
+func (r *registerUserRepoWithEnt) GetByID(ctx context.Context, id int64) (*User, error) {
+	entity, err := r.entClient(ctx).User.Get(ctx, id)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	return &User{
+		ID:          entity.ID,
+		Email:       entity.Email,
+		Username:    entity.Username,
+		PasswordHash: entity.PasswordHash,
+		Role:        entity.Role,
+		Balance:     entity.Balance,
+		Concurrency: entity.Concurrency,
+		Status:      entity.Status,
+		SignupSource: entity.SignupSource,
+	}, nil
+}
+
+func (r *registerUserRepoWithEnt) GetByEmail(ctx context.Context, email string) (*User, error) {
+	entity, err := r.entClient(ctx).User.Query().Where(dbuser.EmailEQ(email)).Only(ctx)
+	if err != nil {
+		return nil, ErrUserNotFound
+	}
+	return &User{
+		ID:          entity.ID,
+		Email:       entity.Email,
+		Username:    entity.Username,
+		PasswordHash: entity.PasswordHash,
+		Role:        entity.Role,
+		Balance:     entity.Balance,
+		Concurrency: entity.Concurrency,
+		Status:      entity.Status,
+		SignupSource: entity.SignupSource,
+	}, nil
+}
+
+func (r *registerUserRepoWithEnt) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+	return r.entClient(ctx).User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
+}
+
+func (r *registerUserRepoWithEnt) GetFirstAdmin(context.Context) (*User, error) { panic("unexpected GetFirstAdmin call") }
+func (r *registerUserRepoWithEnt) Update(context.Context, *User) error { panic("unexpected Update call") }
+func (r *registerUserRepoWithEnt) Delete(context.Context, int64) error { panic("unexpected Delete call") }
+func (r *registerUserRepoWithEnt) GetUserAvatar(context.Context, int64) (*UserAvatar, error) {
+	panic("unexpected GetUserAvatar call")
+}
+func (r *registerUserRepoWithEnt) UpsertUserAvatar(context.Context, int64, UpsertUserAvatarInput) (*UserAvatar, error) {
+	panic("unexpected UpsertUserAvatar call")
+}
+func (r *registerUserRepoWithEnt) DeleteUserAvatar(context.Context, int64) error {
+	panic("unexpected DeleteUserAvatar call")
+}
+func (r *registerUserRepoWithEnt) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+func (r *registerUserRepoWithEnt) ListWithFilters(context.Context, pagination.PaginationParams, UserListFilters) ([]User, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+func (r *registerUserRepoWithEnt) GetLatestUsedAtByUserIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	panic("unexpected GetLatestUsedAtByUserIDs call")
+}
+func (r *registerUserRepoWithEnt) GetLatestUsedAtByUserID(context.Context, int64) (*time.Time, error) {
+	panic("unexpected GetLatestUsedAtByUserID call")
+}
+func (r *registerUserRepoWithEnt) UpdateUserLastActiveAt(context.Context, int64, time.Time) error {
+	panic("unexpected UpdateUserLastActiveAt call")
+}
+func (r *registerUserRepoWithEnt) UpdateBalance(context.Context, int64, float64) error {
+	panic("unexpected UpdateBalance call")
+}
+func (r *registerUserRepoWithEnt) DeductBalance(context.Context, int64, float64) error {
+	panic("unexpected DeductBalance call")
+}
+func (r *registerUserRepoWithEnt) UpdateConcurrency(context.Context, int64, int) error {
+	panic("unexpected UpdateConcurrency call")
+}
+func (r *registerUserRepoWithEnt) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
+	panic("unexpected RemoveGroupFromAllowedGroups call")
+}
+func (r *registerUserRepoWithEnt) AddGroupToAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected AddGroupToAllowedGroups call")
+}
+func (r *registerUserRepoWithEnt) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	panic("unexpected RemoveGroupFromUserAllowedGroups call")
+}
+func (r *registerUserRepoWithEnt) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
+	panic("unexpected ListUserAuthIdentities call")
+}
+func (r *registerUserRepoWithEnt) UnbindUserAuthProvider(context.Context, int64, string) error {
+	panic("unexpected UnbindUserAuthProvider call")
+}
+func (r *registerUserRepoWithEnt) UpdateTotpSecret(context.Context, int64, *string) error {
+	panic("unexpected UpdateTotpSecret call")
+}
+func (r *registerUserRepoWithEnt) EnableTotp(context.Context, int64) error { panic("unexpected EnableTotp call") }
+func (r *registerUserRepoWithEnt) DisableTotp(context.Context, int64) error { panic("unexpected DisableTotp call") }
+
+func newRegisterAuthServiceWithEnt(
+	t *testing.T,
+	settings map[string]string,
+	redeemRepo RedeemCodeRepository,
+	affiliateRepo AffiliateRepository,
+) (*AuthService, *dbent.Client) {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", "file:auth_service_register?mode=memory&cache=shared&_pragma=foreign_keys(1)")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	cfg := &config.Config{
+		JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		Default: config.DefaultConfig{UserBalance: 3.5, UserConcurrency: 2},
+	}
+	settingSvc := NewSettingService(&settingRepoStub{values: settings}, cfg)
+	affiliateSvc := NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
+	userRepo := &registerUserRepoWithEnt{client: client}
+	svc := NewAuthService(client, userRepo, redeemRepo, &refreshTokenCacheStub{}, cfg, settingSvc, nil, nil, nil, nil, nil, affiliateSvc)
+	return svc, client
+}
+
+func (s *affiliateRepoRegisterStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
+	if s.summaries == nil {
+		s.summaries = map[int64]*AffiliateSummary{}
+	}
+	if summary, ok := s.summaries[userID]; ok {
+		cp := *summary
+		return &cp, nil
+	}
+	summary := &AffiliateSummary{UserID: userID, AffCode: "AUTO-CODE", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	s.summaries[userID] = summary
+	cp := *summary
+	return &cp, nil
+}
+func (s *affiliateRepoRegisterStub) GetAffiliateByCode(_ context.Context, code string) (*AffiliateSummary, error) {
+	if s.codes == nil {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	uid, ok := s.codes[code]
+	if !ok {
+		return nil, ErrAffiliateProfileNotFound
+	}
+	return &AffiliateSummary{UserID: uid, AffCode: code, CreatedAt: time.Now(), UpdatedAt: time.Now()}, nil
+}
+func (s *affiliateRepoRegisterStub) BindInviter(_ context.Context, userID, inviterID int64) (bool, error) {
+	if s.bindErr != nil {
+		return false, s.bindErr
+	}
+	if s.bound == nil {
+		s.bound = map[int64]int64{}
+	}
+	if _, exists := s.bound[userID]; exists {
+		return false, nil
+	}
+	s.bound[userID] = inviterID
+	if summary, ok := s.summaries[userID]; ok {
+		id := inviterID
+		summary.InviterID = &id
+	}
+	return true, nil
+}
+func (s *affiliateRepoRegisterStub) AccrueQuota(context.Context, int64, int64, float64, int, *int64) (bool, error) {
+	panic("unexpected AccrueQuota call")
+}
+func (s *affiliateRepoRegisterStub) GetAccruedRebateFromInvitee(context.Context, int64, int64) (float64, error) {
+	panic("unexpected GetAccruedRebateFromInvitee call")
+}
+func (s *affiliateRepoRegisterStub) ThawFrozenQuota(context.Context, int64) (float64, error) {
+	panic("unexpected ThawFrozenQuota call")
+}
+func (s *affiliateRepoRegisterStub) TransferQuotaToBalance(context.Context, int64) (float64, float64, error) {
+	panic("unexpected TransferQuotaToBalance call")
+}
+func (s *affiliateRepoRegisterStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
+	panic("unexpected ListInvitees call")
+}
+func (s *affiliateRepoRegisterStub) UpdateUserAffCode(context.Context, int64, string) error { panic("unexpected UpdateUserAffCode call") }
+func (s *affiliateRepoRegisterStub) ResetUserAffCode(context.Context, int64) (string, error) {
+	panic("unexpected ResetUserAffCode call")
+}
+func (s *affiliateRepoRegisterStub) SetUserRebateRates(context.Context, int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected SetUserRebateRates call")
+}
+func (s *affiliateRepoRegisterStub) BatchSetUserRebateRates(context.Context, []int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected BatchSetUserRebateRates call")
+}
+func (s *affiliateRepoRegisterStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {
+	panic("unexpected ListUsersWithCustomSettings call")
+}
+func (s *affiliateRepoRegisterStub) ListAffiliateInviteRecords(context.Context, AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	panic("unexpected ListAffiliateInviteRecords call")
+}
+func (s *affiliateRepoRegisterStub) ListAffiliateRebateRecords(context.Context, AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	panic("unexpected ListAffiliateRebateRecords call")
+}
+func (s *affiliateRepoRegisterStub) ListAffiliateTransferRecords(context.Context, AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	panic("unexpected ListAffiliateTransferRecords call")
+}
+func (s *affiliateRepoRegisterStub) GetAffiliateUserOverview(context.Context, int64) (*AffiliateUserOverview, error) {
+	panic("unexpected GetAffiliateUserOverview call")
+}
 
 func (s *defaultSubscriptionAssignerStub) AssignOrExtendSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error) {
 	if input != nil {
@@ -333,6 +638,48 @@ func TestAuthService_Register_EmailSuffixAllowed(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, int64(8), user.ID)
+}
+
+func TestAuthService_RegisterWithVerification_InvitationAndAffiliateAreAtomic(t *testing.T) {
+	redeemRepo := &redeemRepoRegisterStub{useErr: ErrRedeemCodeUsed}
+	affiliateRepo := &affiliateRepoRegisterStub{
+		codes: map[string]int64{
+			"AFF123": 99,
+		},
+	}
+	svc, client := newRegisterAuthServiceWithEnt(t, map[string]string{
+		SettingKeyRegistrationEnabled:   "true",
+		SettingKeyInvitationCodeEnabled: "true",
+		SettingKeyAffiliateEnabled:      "true",
+	}, redeemRepo, affiliateRepo)
+
+	_, _, err := svc.RegisterWithVerification(context.Background(), "atomic@example.com", "password", "", "", "INVITE-OK", "AFF123")
+	require.ErrorIs(t, err, ErrInvitationCodeInvalid)
+
+	count, queryErr := client.User.Query().Count(context.Background())
+	require.NoError(t, queryErr)
+	require.Equal(t, 0, count, "邀请码核销失败时，用户创建必须整体回滚")
+}
+
+func TestAuthService_RegisterWithVerification_AffiliateBindFailureRollsBackUser(t *testing.T) {
+	redeemRepo := &redeemRepoRegisterStub{}
+	affiliateRepo := &affiliateRepoRegisterStub{
+		codes: map[string]int64{
+			"BAD-AFF": 77,
+		},
+		bindErr: ErrAffiliateCodeInvalid,
+	}
+	svc, client := newRegisterAuthServiceWithEnt(t, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+		SettingKeyAffiliateEnabled:    "true",
+	}, redeemRepo, affiliateRepo)
+
+	_, _, err := svc.RegisterWithVerification(context.Background(), "rollback-aff@example.com", "password", "", "", "", "BAD-AFF")
+	require.ErrorIs(t, err, ErrAffiliateCodeInvalid)
+
+	count, queryErr := client.User.Query().Count(context.Background())
+	require.NoError(t, queryErr)
+	require.Equal(t, 0, count, "返利绑定失败时，用户创建必须回滚")
 }
 
 func TestAuthService_SendVerifyCode_EmailSuffixNotAllowed(t *testing.T) {

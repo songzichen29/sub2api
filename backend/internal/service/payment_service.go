@@ -15,6 +15,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 )
 
@@ -344,8 +345,7 @@ func psComputeValidityDays(days int, unit string) int {
 }
 
 func psStartOfDayUTC(t time.Time) time.Time {
-	y, m, d := t.UTC().Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	return timezone.StartOfDay(t)
 }
 
 func applyPagination(pageSize, page int) (size, pg int) {

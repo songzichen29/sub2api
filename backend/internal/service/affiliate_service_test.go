@@ -15,6 +15,10 @@ type stubSettingRepo struct {
 	values map[string]string
 }
 
+func (s *stubSettingRepo) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+}
+
 func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	if s == nil || s.values == nil {
 		return "", nil
@@ -22,8 +26,8 @@ func (s *stubSettingRepo) GetValue(_ context.Context, key string) (string, error
 	return s.values[key], nil
 }
 
-func (s *stubSettingRepo) SetValue(context.Context, string, string) error { return nil }
-func (s *stubSettingRepo) GetValues(context.Context) (map[string]string, error) {
+func (s *stubSettingRepo) Set(context.Context, string, string) error { return nil }
+func (s *stubSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
 	if s == nil || s.values == nil {
 		return map[string]string{}, nil
 	}
@@ -33,6 +37,18 @@ func (s *stubSettingRepo) GetValues(context.Context) (map[string]string, error) 
 	}
 	return out, nil
 }
+func (s *stubSettingRepo) SetMultiple(context.Context, map[string]string) error { return nil }
+func (s *stubSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	if s == nil || s.values == nil {
+		return map[string]string{}, nil
+	}
+	out := make(map[string]string, len(s.values))
+	for k, v := range s.values {
+		out[k] = v
+	}
+	return out, nil
+}
+func (s *stubSettingRepo) Delete(context.Context, string) error { return nil }
 
 func TestResolveRebateRatePercentByKind_PrefersKindSpecificThenGeneral(t *testing.T) {
 	t.Parallel()

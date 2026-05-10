@@ -198,6 +198,25 @@ func TestAdminService_CreateGroup_NilImagePricing(t *testing.T) {
 	require.Nil(t, repo.created.ImagePrice4K)
 }
 
+func TestAdminService_CreateGroup_NonSubscriptionClearsDailyResetPrice(t *testing.T) {
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+	resetPrice := 9.9
+
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                 "standard-group",
+		Description:          "standard",
+		Platform:             PlatformOpenAI,
+		RateMultiplier:       1.0,
+		SubscriptionType:     SubscriptionTypeStandard,
+		DailyLimitResetPrice: &resetPrice,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.created)
+	require.Nil(t, repo.created.DailyLimitResetPrice)
+}
+
 // TestAdminService_UpdateGroup_WithImagePricing 测试更新分组时 ImagePrice 字段正确更新
 func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	existingGroup := &Group{
@@ -231,6 +250,29 @@ func TestAdminService_UpdateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.12, *repo.updated.ImagePrice1K, 0.0001)
 	require.InDelta(t, 0.18, *repo.updated.ImagePrice2K, 0.0001)
 	require.InDelta(t, 0.36, *repo.updated.ImagePrice4K, 0.0001)
+}
+
+func TestAdminService_UpdateGroup_NonSubscriptionClearsDailyResetPrice(t *testing.T) {
+	existingPrice := 8.8
+	existingGroup := &Group{
+		ID:                   1,
+		Name:                 "existing-group",
+		Platform:             PlatformOpenAI,
+		Status:               StatusActive,
+		SubscriptionType:     SubscriptionTypeStandard,
+		DailyLimitResetPrice: &existingPrice,
+	}
+	repo := &groupRepoStubForAdmin{getByID: existingGroup}
+	svc := &adminServiceImpl{groupRepo: repo}
+	newPrice := 12.5
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		DailyLimitResetPrice: &newPrice,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.Nil(t, repo.updated.DailyLimitResetPrice)
 }
 
 // TestAdminService_UpdateGroup_PartialImagePricing 测试仅更新部分 ImagePrice 字段

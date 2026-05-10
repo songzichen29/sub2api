@@ -19,6 +19,12 @@ type resetQuotaUserSubRepoStub struct {
 
 	sub *UserSubscription
 
+	activateDailyStart   *time.Time
+	activateWeeklyStart  *time.Time
+	activateMonthlyStart *time.Time
+	lastResetDailyStart   *time.Time
+	lastResetWeeklyStart  *time.Time
+	lastResetMonthlyStart *time.Time
 	resetDailyCalled   bool
 	resetWeeklyCalled  bool
 	resetMonthlyCalled bool
@@ -37,6 +43,7 @@ func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserS
 
 func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, windowStart time.Time) error {
 	r.resetDailyCalled = true
+	r.lastResetDailyStart = &windowStart
 	if r.resetDailyErr == nil && r.sub != nil {
 		r.sub.DailyUsageUSD = 0
 		r.sub.DailyWindowStart = &windowStart
@@ -44,14 +51,36 @@ func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, 
 	return r.resetDailyErr
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetWeeklyUsage(_ context.Context, _ int64, _ time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ResetWeeklyUsage(_ context.Context, _ int64, windowStart time.Time) error {
 	r.resetWeeklyCalled = true
+	r.lastResetWeeklyStart = &windowStart
+	if r.sub != nil {
+		r.sub.WeeklyWindowStart = &windowStart
+		r.sub.WeeklyUsageUSD = 0
+	}
 	return r.resetWeeklyErr
 }
 
-func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64, _ time.Time) error {
+func (r *resetQuotaUserSubRepoStub) ResetMonthlyUsage(_ context.Context, _ int64, windowStart time.Time) error {
 	r.resetMonthlyCalled = true
+	r.lastResetMonthlyStart = &windowStart
+	if r.sub != nil {
+		r.sub.MonthlyWindowStart = &windowStart
+		r.sub.MonthlyUsageUSD = 0
+	}
 	return r.resetMonthlyErr
+}
+
+func (r *resetQuotaUserSubRepoStub) ActivateWindows(_ context.Context, _ int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
+	r.activateDailyStart = &dailyStart
+	r.activateWeeklyStart = &weeklyStart
+	r.activateMonthlyStart = &monthlyStart
+	if r.sub != nil {
+		r.sub.DailyWindowStart = &dailyStart
+		r.sub.WeeklyWindowStart = &weeklyStart
+		r.sub.MonthlyWindowStart = &monthlyStart
+	}
+	return nil
 }
 
 func newResetQuotaSvc(stub *resetQuotaUserSubRepoStub) *SubscriptionService {
@@ -278,4 +307,114 @@ func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
 	// 服务应返回第二次 GetByID 的刷新值而非初始的 99.9
 	require.Equal(t, float64(0), result.DailyUsageUSD, "返回的订阅应反映已归零的用量")
 	require.True(t, stub.resetDailyCalled)
+}
+
+func TestCheckAndActivateWindow_UsesSubscriptionAnchoredRollingWindows(t *testing.T) {
+	startsAt := time.Now().Add(-50 * time.Hour)
+	sub := newAdminSub(100)
+	sub.StartsAt = startsAt
+	sub.DailyWindowStart = nil
+	sub.WeeklyWindowStart = nil
+	sub.MonthlyWindowStart = nil
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	err := svc.CheckAndActivateWindow(context.Background(), sub)
+
+	require.NoError(t, err)
+	require.NotNil(t, stub.activateDailyStart)
+	require.NotNil(t, stub.activateWeeklyStart)
+	require.NotNil(t, stub.activateMonthlyStart)
+
+	expectedDaily := startsAt.Add(48 * time.Hour)
+	expectedWeekly := startsAt
+	expectedMonthly := startsAt
+	require.WithinDuration(t, expectedDaily, *stub.activateDailyStart, 2*time.Second)
+	require.WithinDuration(t, expectedWeekly, *stub.activateWeeklyStart, 2*time.Second)
+	require.WithinDuration(t, expectedMonthly, *stub.activateMonthlyStart, 2*time.Second)
+}
+
+func TestPaidResetDailyQuota_KeepsRollingWindowBoundary(t *testing.T) {
+	price := 9.9
+	limit := 20.0
+	startsAt := time.Now().Add(-50 * time.Hour)
+	currentDailyWindowStart := startsAt.Add(48 * time.Hour)
+	sub := &UserSubscription{
+		ID:               101,
+		UserID:           10,
+		GroupID:          20,
+		StartsAt:         startsAt,
+		ExpiresAt:        time.Now().Add(24 * time.Hour),
+		Status:           SubscriptionStatusActive,
+		Source:           domain.SubscriptionSourcePayment,
+		DailyUsageUSD:    18.5,
+		DailyWindowStart: &currentDailyWindowStart,
+		Group: &Group{
+			ID:                   20,
+			SubscriptionType:     "subscription",
+			DailyLimitUSD:        &limit,
+			DailyLimitResetPrice: &price,
+		},
+	}
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	result, err := svc.PaidResetDailyQuota(context.Background(), sub.UserID, sub.ID)
+
+	require.NoError(t, err)
+	require.True(t, stub.resetDailyCalled)
+	require.NotNil(t, sub.DailyWindowStart)
+	require.WithinDuration(t, currentDailyWindowStart, *sub.DailyWindowStart, 2*time.Second)
+	require.Equal(t, 0.0, result.DailyUsageUSD)
+}
+
+func TestFulfillPaidDailyQuotaReset_IgnoresLatestGroupResetSwitch(t *testing.T) {
+	startsAt := time.Now().Add(-50 * time.Hour)
+	currentDailyWindowStart := startsAt.Add(48 * time.Hour)
+	sub := &UserSubscription{
+		ID:               103,
+		UserID:           10,
+		GroupID:          20,
+		StartsAt:         startsAt,
+		ExpiresAt:        time.Now().Add(24 * time.Hour),
+		Status:           SubscriptionStatusActive,
+		DailyUsageUSD:    18.5,
+		DailyWindowStart: &currentDailyWindowStart,
+		Group: &Group{
+			ID:               20,
+			SubscriptionType: "subscription",
+			// 注意：这里不提供 DailyLimitResetPrice，模拟“管理员下单后把按钮关闭”
+		},
+	}
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	result, err := svc.FulfillPaidDailyQuotaReset(context.Background(), sub.UserID, sub.ID)
+
+	require.NoError(t, err)
+	require.True(t, stub.resetDailyCalled)
+	require.NotNil(t, sub.DailyWindowStart)
+	require.WithinDuration(t, currentDailyWindowStart, *sub.DailyWindowStart, 2*time.Second)
+	require.Equal(t, 0.0, result.DailyUsageUSD)
+}
+
+func TestAdminResetQuota_UsesAnchoredWindowForEachDimension(t *testing.T) {
+	startsAt := time.Now().Add(-(8*24 + 6) * time.Hour)
+	sub := newAdminSub(102)
+	sub.StartsAt = startsAt
+	sub.DailyUsageUSD = 1
+	sub.WeeklyUsageUSD = 2
+	sub.MonthlyUsageUSD = 3
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	_, err := svc.AdminResetQuota(context.Background(), sub.ID, true, true, true)
+
+	require.NoError(t, err)
+	require.NotNil(t, stub.lastResetDailyStart)
+	require.NotNil(t, stub.lastResetWeeklyStart)
+	require.NotNil(t, stub.lastResetMonthlyStart)
+	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *stub.lastResetDailyStart, 2*time.Second)
+	require.WithinDuration(t, sub.CurrentWeeklyWindowStart(time.Now()), *stub.lastResetWeeklyStart, 2*time.Second)
+	require.WithinDuration(t, sub.CurrentMonthlyWindowStart(time.Now()), *stub.lastResetMonthlyStart, 2*time.Second)
 }

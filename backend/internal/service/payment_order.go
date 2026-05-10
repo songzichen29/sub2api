@@ -289,6 +289,11 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		}
 	}
 
+	if req.OrderType == payment.OrderTypeDailyLimitReset && req.SubscriptionID > 0 {
+		snapshot["daily_limit_reset_subscription_id"] = req.SubscriptionID
+		snapshot["daily_limit_reset_price_cny"] = req.Amount
+	}
+
 	if len(snapshot) == 1 {
 		return nil
 	}
@@ -323,8 +328,15 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 		used += o.Amount
 	}
 	if used+amount > limit {
+		reason := "daily_limit_exceeded"
+		if amount > 0 {
+			reason = "daily_payment_limit_exceeded"
+		}
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
-			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))})
+			WithMetadata(map[string]string{
+				"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used)),
+				"reason":    reason,
+			})
 	}
 	return nil
 }

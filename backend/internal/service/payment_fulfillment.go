@@ -416,7 +416,7 @@ func (s *PaymentService) doDailyLimitReset(ctx context.Context, o *dbent.Payment
 		slog.Info("daily limit reset already applied for order, skipping", "orderID", o.ID, "subscriptionID", subscriptionID)
 		return s.markCompleted(ctx, o, successAction)
 	}
-	if _, err := s.subscriptionSvc.PaidResetDailyQuota(ctx, o.UserID, subscriptionID); err != nil {
+	if _, err := s.subscriptionSvc.FulfillPaidDailyQuotaReset(ctx, o.UserID, subscriptionID); err != nil {
 		return fmt.Errorf("reset daily quota: %w", err)
 	}
 	s.writeAuditLog(ctx, o.ID, appliedAction, "system", map[string]any{
@@ -488,11 +488,9 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		if s.affiliateService != nil {
 			reason = s.affiliateService.explainRebateSkipReason(txCtx, o.UserID, rebateBase, o.OrderType)
 		}
-		if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_SKIPPED", map[string]any{
-			"baseAmount": rebateBase,
-			"orderType":  o.OrderType,
-			"reason":     reason,
-		}); err != nil {
+		if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_SKIPPED",
+			buildAffiliateRebateSkippedAuditDetail(o.OrderType, rebateBase, reason),
+		); err != nil {
 			s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 				"error": err.Error(),
 			})
@@ -507,11 +505,9 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return nil
 	}
 
-	if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_APPLIED", map[string]any{
-		"baseAmount":   rebateBase,
-		"orderType":    o.OrderType,
-		"rebateAmount": rebateAmount,
-	}); err != nil {
+	if err := s.updateClaimedAffiliateRebateAudit(txCtx, tx.Client(), o.ID, "AFFILIATE_REBATE_APPLIED",
+		buildAffiliateRebateAppliedAuditDetail(o.OrderType, rebateBase, rebateAmount),
+	); err != nil {
 		s.writeAuditLog(ctx, o.ID, "AFFILIATE_REBATE_FAILED", "system", map[string]any{
 			"error": err.Error(),
 		})
@@ -525,6 +521,22 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 		return fmt.Errorf("commit affiliate rebate tx: %w", err)
 	}
 	return nil
+}
+
+func buildAffiliateRebateSkippedAuditDetail(orderType string, rebateBasePayAmount float64, reason string) map[string]any {
+	return map[string]any{
+		"rebateBasePayAmount": rebateBasePayAmount,
+		"orderType":           orderType,
+		"reason":              reason,
+	}
+}
+
+func buildAffiliateRebateAppliedAuditDetail(orderType string, rebateBasePayAmount, rebateAmount float64) map[string]any {
+	return map[string]any{
+		"rebateBasePayAmount": rebateBasePayAmount,
+		"orderType":           orderType,
+		"rebateAmount":        rebateAmount,
+	}
 }
 
 func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, client *dbent.Client, orderID int64, baseAmount float64) (bool, error) {

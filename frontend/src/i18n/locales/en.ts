@@ -6431,7 +6431,7 @@ export default {
       GROUP_TYPE_MISMATCH: 'Group is not a subscription type.',
       DAILY_LIMIT_RESET_NOT_AVAILABLE: 'Daily quota reset is not available for this subscription.',
       TOO_MANY_PENDING: 'Too many pending orders (max {max}). Please complete or cancel existing orders first.',
-      DAILY_LIMIT_EXCEEDED: 'Daily recharge limit reached. Remaining: {remaining}.',
+      DAILY_LIMIT_EXCEEDED: 'Daily payment limit reached. Remaining: {remaining}.',
       PAYMENT_GATEWAY_ERROR: 'Payment method is unavailable.',
       NO_AVAILABLE_INSTANCE: 'No payment channel available right now.',
       PAYMENT_PROVIDER_MISCONFIGURED: 'Payment provider misconfigured. Please contact an administrator.',

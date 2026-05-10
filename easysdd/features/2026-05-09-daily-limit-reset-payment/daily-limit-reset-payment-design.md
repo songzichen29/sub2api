@@ -13,7 +13,7 @@ tags: [subscription, payment, group, quota, frontend]
 | 术语 | 定义 | 防冲突结论 |
 |---|---|---|
 | 每日额度重置价格 / `daily_limit_reset_price` | 配在 `groups` 表上的人民币金额，用于用户主动重置当前订阅的日用量窗口；字段值 `nil` 或 `<=0` 表示不允许用户自助购买重置。 | 已 grep `daily_limit_reset` / `reset_price` / `OrderType`，仓库内没有同名字段；现有 `daily_limit_usd` 是 USD 用量上限，本字段是 CNY 支付金额，命名必须带 `price`，避免和 USD 用量混淆。 |
-| 当日额度重置订单 / `daily_limit_reset` order type | 支付系统新增订单类型。订单金额来自订阅所属分组的 `daily_limit_reset_price`，支付成功后只清零该用户该订阅的 `daily_usage_usd` 并把 `daily_window_start` 置为当天零点。 | 现有 `payment.OrderTypeBalance` / `payment.OrderTypeSubscription` 只覆盖余额充值和买订阅；新增显式 order type，避免把重置伪装成余额充值或订阅续期。 |
+| 当日额度重置订单 / `daily_limit_reset` order type | 支付系统新增订单类型。订单金额来自订阅所属分组的 `daily_limit_reset_price`，支付成功后只清零该用户该订阅当前日窗口的 `daily_usage_usd`，并保持 `daily_window_start` 对齐该订阅的滚动 24 小时窗口起点。 | 现有 `payment.OrderTypeBalance` / `payment.OrderTypeSubscription` 只覆盖余额充值和买订阅；新增显式 order type，避免把重置伪装成余额充值或订阅续期。 |
 | 目标订阅 / `subscription_id` | 用户在“我的订阅”点击按钮时要重置的 `user_subscriptions.id`。订单创建时校验此订阅属于当前用户、状态 active、未过期、关联分组为 subscription 类型且配置了日限额和重置价格。 | 现有 `plan_id` 只用于订阅套餐购买；本功能新增 `subscription_id` 入参和 `payment_orders.subscription_id` 落库，不复用 `plan_id`。 |
 | 管理员重置配额 / `AdminResetQuota` | 管理后台手动重置订阅配额的已有能力，当前会禁止 `source=payment` 的订阅被管理员重置。 | 用户自助付费重置是新的业务入口，不改变管理员重置规则；实现应新增 service 方法，而不是放宽 `AdminResetQuota` 的 `SUBSCRIPTION_PAID_IMMUTABLE` 约束。 |
 
@@ -32,7 +32,7 @@ tags: [subscription, payment, group, quota, frontend]
 1. 管理员在分组设置订阅限额时，可以在“每日限额”旁配置一个“重置当日额度价格”。
 2. 普通用户在“我的订阅”页看到可用订阅时，如果该订阅分组配置了日限额和重置价格，可以点击“重置当日额度”。
 3. 点击后调起现有支付站/支付二维码，金额等于分组配置的重置价格。
-4. 支付成功履约后，该用户该订阅的 `daily_usage_usd` 清零，`daily_window_start` 重新置为当天零点，后续请求按新的当日额度继续使用。
+4. 支付成功履约后，该用户该订阅当前日窗口的 `daily_usage_usd` 清零；`daily_window_start` 继续保持与订阅生效时间对齐的滚动 24 小时窗口起点，后续请求按新的当日额度继续使用。
 
 **为谁**：
 
@@ -67,7 +67,7 @@ tags: [subscription, payment, group, quota, frontend]
 | 订单类型 | (a) 新增 `daily_limit_reset` (b) 复用 `balance` 加备注 (c) 复用 `subscription` 加特殊 plan | (a) | 履约目标和退款语义都不同，混在余额/订阅会让 `payment_fulfillment.go` 继续膨胀且容易误充值/误续期。 |
 | 订单关联目标 | (a) 新增 `payment_orders.subscription_id` (b) 把订阅 ID 塞 `provider_snapshot` / notes (c) 只存 group_id | (a) | 履约必须精确到一个用户订阅；结构化字段可查询、可审计、可测试。 |
 | 支付金额来源 | (a) 后端从 group 读取并覆盖 amount (b) 信任前端 amount (c) 让用户输入金额 | (a) | 支付金额是服务端规则，不能让用户改请求体低价重置。 |
-| 重置窗口时间 | (a) `startOfDay(time.Now())` (b) 付款时间精确到秒 (c) 沿用原窗口开始时间 | (a) | 与现有 `AdminResetQuota` / 自动窗口重置一致，前端倒计时逻辑无需新增语义。 |
+| 重置窗口时间 | (a) 重新置为付款时间精确到秒 (b) 重新置为当天零点 (c) 沿用该订阅当前滚动窗口起点 | (c) | 订阅的日额度窗口应锚定订阅生效时间（如 16:30→次日 16:30）；付费重置只应清零当前窗口已用量，不应把每天截止时刻漂移到新的支付时间，也不应退化成自然日零点。 |
 | idempotency | (a) audit log `DAILY_LIMIT_RESET_SUCCESS` 防重复 (b) 只靠订单状态 (c) 无幂等 | (a) | 现有订阅履约已用 audit log 防 `markCompleted` 失败后的二次扩展；本功能照同一模式实现。 |
 
 ### 1.3 假设，review 时可以反驳
@@ -99,7 +99,7 @@ sequenceDiagram
     Pay-->>FE: qr_code/pay_url
     Pay-->>API: webhook / verify paid
     API->>DB: payment_orders -> RECHARGING
-    API->>DB: user_subscriptions.daily_usage_usd=0, daily_window_start=startOfDay(now)
+    API->>DB: user_subscriptions.daily_usage_usd=0, daily_window_start=currentDailyWindowStart(subscription.starts_at, now)
     API->>DB: payment_orders -> COMPLETED + audit
 ```
 
@@ -285,7 +285,7 @@ function resetDailyLimit(sub: UserSubscription) {
 1. **数据库与类型贯通**：schema、迁移、service `Group`、repo mapper、DTO、TS 类型都能看到 `daily_limit_reset_price` / `subscription_id`。退出信号：后端编译能通过相关包，接口 mock/类型无缺字段。
 2. **分组后台配置**：`GroupsView.vue` create/edit 表单保存和回显重置价格。退出信号：编辑分组 payload 含 `daily_limit_reset_price`，刷新后值仍在。
 3. **订单创建校验**：新增 order type、handler request 字段、`validateDailyLimitResetOrder`，确保后端金额来自 group price。退出信号：单测覆盖低价篡改请求仍按 group price 建单。
-4. **支付履约重置**：新增 fulfillment 分支，支付成功后只清零 daily usage 和 daily window。退出信号：单测覆盖成功、重复履约、不存在订阅/不可用订阅。
+4. **支付履约重置**：新增 fulfillment 分支，支付成功后只清零当前 daily window 的已用量，并保持该 window 继续锚定订阅生效时间。退出信号：单测覆盖成功、重复履约、不存在订阅/不可用订阅。
 5. **用户侧入口与支付页模式**：我的订阅按钮 + `/purchase?tab=daily_limit_reset&subscription_id=...` 确认卡片 + createOrder payload。退出信号：前端测试确认按钮展示条件和 payload。
 6. **i18n、错误提示与回归**：补齐中英文，跑最小相关测试。退出信号：后端相关 go test、前端 vitest/typecheck 通过或记录剩余风险。
 
@@ -304,7 +304,7 @@ function resetDailyLimit(sub: UserSubscription) {
 |---|---|---|
 | group 字段贯通 | 后端 service/repo 或 handler 单测 | create/update group 保存 `daily_limit_reset_price=9.9`；传 `null`/负数清空。 |
 | 重置订单创建 | `backend/internal/service/payment_order*_test.go` | `order_type=daily_limit_reset` + `amount=0.01` + group price 9.9 → 订单 amount/pay_amount 按 9.9；无 active subscription 返回错误；无 price 返回错误。 |
-| 支付履约 | `backend/internal/service/payment_fulfillment*_test.go` | paid order → subscription daily usage 清零；weekly/monthly usage 不变；重复执行不二次写；订单 completed。 |
+| 支付履约 | `backend/internal/service/payment_fulfillment*_test.go` | paid order → subscription 当前日窗口 usage 清零、`daily_window_start` 仍保持当前滚动窗口起点；weekly/monthly usage 不变；重复执行不二次写；订单 completed。 |
 | 用户按钮展示 | `frontend/src/views/user/__tests__/SubscriptionsView.spec.ts` 或新增测试 | active + daily limit + reset price 展示按钮；缺任一条件不展示；点击跳 `/purchase?tab=daily_limit_reset&subscription_id=...`。 |
 | 支付页 payload | `frontend/src/views/user/__tests__/PaymentView.spec.ts` | daily reset query 下点击支付，`paymentAPI.createOrder` 收到 `order_type='daily_limit_reset'` 和 `subscription_id`。 |
 | 类型检查 | `pnpm typecheck` | `OrderType` union、group 字段、i18n key 无 TS 报错。 |

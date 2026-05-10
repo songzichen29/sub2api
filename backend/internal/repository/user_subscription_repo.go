@@ -120,15 +120,27 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetStartsAt(sub.StartsAt).
 		SetExpiresAt(sub.ExpiresAt).
 		SetStatus(sub.Status).
-		SetNillableDailyWindowStart(sub.DailyWindowStart).
-		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
-		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	if sub.DailyWindowStart != nil {
+		builder.SetDailyWindowStart(*sub.DailyWindowStart)
+	} else {
+		builder.ClearDailyWindowStart()
+	}
+	if sub.WeeklyWindowStart != nil {
+		builder.SetWeeklyWindowStart(*sub.WeeklyWindowStart)
+	} else {
+		builder.ClearWeeklyWindowStart()
+	}
+	if sub.MonthlyWindowStart != nil {
+		builder.SetMonthlyWindowStart(*sub.MonthlyWindowStart)
+	} else {
+		builder.ClearMonthlyWindowStart()
+	}
 	if sub.Source != "" {
 		builder.SetSource(sub.Source)
 	}
@@ -375,12 +387,12 @@ func (r *userSubscriptionRepository) UpdateNotes(ctx context.Context, subscripti
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
-func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, start time.Time) error {
+func (r *userSubscriptionRepository) ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
 	client := clientFromContext(ctx, r.client)
 	_, err := client.UserSubscription.UpdateOneID(id).
-		SetDailyWindowStart(start).
-		SetWeeklyWindowStart(start).
-		SetMonthlyWindowStart(start).
+		SetDailyWindowStart(dailyStart).
+		SetWeeklyWindowStart(weeklyStart).
+		SetMonthlyWindowStart(monthlyStart).
 		Save(ctx)
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
