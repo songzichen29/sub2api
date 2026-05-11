@@ -368,6 +368,56 @@ func TestAccountSupportsOpenAIImageCapability_OAuthSupportsNative(t *testing.T) 
 	require.True(t, account.SupportsOpenAIImageCapability(OpenAIImagesCapabilityNative))
 }
 
+func TestAccountIsOpenAIOAuthFreePlan(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"plan_type": " Free ",
+		},
+	}
+	require.True(t, account.IsOpenAIOAuthFreePlan())
+}
+
+func TestOpenAIGatewayServiceForwardImages_OAuthFreePlanRejected(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"plan_type": "free",
+		},
+	}
+	require.True(t, account.SupportsOpenAIImageCapability(OpenAIImagesCapabilityBasic))
+	require.True(t, account.SupportsOpenAIImageCapability(OpenAIImagesCapabilityNative))
+}
+
+func TestNormalizeOpenAIPlanType(t *testing.T) {
+	require.Equal(t, "free", normalizeOpenAIPlanType(" Free "))
+	require.Equal(t, "plus", normalizeOpenAIPlanType("PLUS"))
+	require.Equal(t, "team", normalizeOpenAIPlanType("team"))
+	require.Equal(t, "pro", normalizeOpenAIPlanType(" Pro "))
+	require.Equal(t, "enterprise", normalizeOpenAIPlanType("enterprise"))
+}
+
+func TestBuildOpenAIImagesFreeConversationRequest(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "gpt-image-2",
+		Prompt:   "draw a cat",
+	}
+
+	body, err := buildOpenAIImagesFreeConversationRequest(parsed, nil)
+	require.NoError(t, err)
+	require.Equal(t, openAIFreeImageConversationModel, gjson.GetBytes(body, "model").String())
+	require.Equal(t, "next", gjson.GetBytes(body, "action").String())
+	require.Equal(t, "picture_v2", gjson.GetBytes(body, "system_hints.0").String())
+	require.Equal(t, "draw a cat", gjson.GetBytes(body, "messages.0.content.parts.0").String())
+}
+
+func TestSolveOpenAITurnstileToken_InvalidInput(t *testing.T) {
+	require.Equal(t, "", solveOpenAITurnstileToken("bad", "seed"))
+}
+
 func TestBuildOpenAIImagesURL_HandlesVersionedBaseURL(t *testing.T) {
 	require.Equal(t,
 		"https://image-upstream.example/v1/images/generations",
@@ -1095,6 +1145,39 @@ func TestBuildOpenAIImagesResponsesRequest_StripsInputFidelity(t *testing.T) {
 	require.NotNil(t, body)
 	require.False(t, gjson.GetBytes(body, "tools.0.input_fidelity").Exists())
 	require.Equal(t, "edit", gjson.GetBytes(body, "tools.0.action").String())
+}
+
+func TestEnsureOpenAIImagesResponsesRequestInvariant_RebuildsMissingImageTool(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "gpt-image-2",
+		Prompt:   "draw a cat",
+		Size:     "1024x1024",
+	}
+
+	body := []byte(`{"model":"gpt-5.4-mini","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"draw a cat"}]}],"tool_choice":{"type":"image_generation"}}`)
+	fixed, modified, err := ensureOpenAIImagesResponsesRequestInvariant(body, parsed, "gpt-image-2")
+	require.NoError(t, err)
+	require.True(t, modified)
+	require.True(t, openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(fixed, "tool_choice")))
+	require.True(t, openAIJSONToolsContainImageGeneration(gjson.GetBytes(fixed, "tools")))
+	require.Equal(t, "gpt-image-2", gjson.GetBytes(fixed, "tools.0.model").String())
+	require.Equal(t, "1024x1024", gjson.GetBytes(fixed, "tools.0.size").String())
+}
+
+func TestEnsureOpenAIImagesResponsesRequestInvariant_NormalizesStringToolChoice(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "gpt-image-2",
+		Prompt:   "draw a cat",
+	}
+
+	body := []byte(`{"model":"gpt-5.4-mini","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"draw a cat"}]}],"tool_choice":"image_generation","tools":[{"type":"image_generation","model":"gpt-image-2"}]}`)
+	fixed, modified, err := ensureOpenAIImagesResponsesRequestInvariant(body, parsed, "gpt-image-2")
+	require.NoError(t, err)
+	require.True(t, modified)
+	require.Equal(t, "image_generation", gjson.GetBytes(fixed, "tool_choice.type").String())
+	require.True(t, openAIJSONToolsContainImageGeneration(gjson.GetBytes(fixed, "tools")))
 }
 
 func TestCollectOpenAIImagesFromResponsesBody_FallsBackToOutputItemDone(t *testing.T) {

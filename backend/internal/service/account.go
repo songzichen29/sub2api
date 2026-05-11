@@ -1096,6 +1096,36 @@ func (a *Account) GetChatGPTUserID() string {
 	return a.GetCredential("chatgpt_user_id")
 }
 
+func (a *Account) OpenAIPlanType() string {
+	if a == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("plan_type"))
+}
+
+func normalizeOpenAIPlanType(planType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(planType))
+	switch normalized {
+	case "free":
+		return "free"
+	case "plus":
+		return "plus"
+	case "team":
+		return "team"
+	case "pro":
+		return "pro"
+	default:
+		return normalized
+	}
+}
+
+func (a *Account) IsOpenAIOAuthFreePlan() bool {
+	if a == nil || !a.IsOpenAIOAuth() {
+		return false
+	}
+	return normalizeOpenAIPlanType(a.OpenAIPlanType()) == "free"
+}
+
 func (a *Account) GetOpenAIOrganizationID() string {
 	if !a.IsOpenAIOAuth() {
 		return ""

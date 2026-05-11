@@ -5,15 +5,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/sha3"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"mime"
 	"mime/multipart"
+	"math/rand"
 	"net/http"
 	"net/textproto"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -21,6 +28,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
+	"github.com/google/uuid"
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req/v3"
 	"github.com/tidwall/gjson"
@@ -36,11 +44,17 @@ const (
 
 	openAIChatGPTStartURL          = "https://chatgpt.com/"
 	openAIChatGPTFilesURL          = "https://chatgpt.com/backend-api/files"
+	openAIChatGPTPrepareURL        = "https://chatgpt.com/backend-api/f/conversation/prepare"
+	openAIChatGPTConversationURL   = "https://chatgpt.com/backend-api/f/conversation"
+	openAIChatGPTRequirementsURL   = "https://chatgpt.com/backend-api/sentinel/chat-requirements"
 	openAIImageBackendUserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
 	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
 	openAIImagesResponsesMainModel = "gpt-5.4-mini"
 )
+
+const openAIFreeImageConversationModel = "gpt-5-3"
+const openAIDefaultSentinelPowScript = "https://chatgpt.com/backend-api/sentinel/sdk.js"
 
 type OpenAIImagesCapability string
 
@@ -88,6 +102,22 @@ type OpenAIImagesRequest struct {
 	MaskUpload         *OpenAIImagesUpload
 	Body               []byte
 	bodyHash           string
+}
+
+type openAIChatRequirements struct {
+	Token          string
+	ProofToken     string
+	TurnstileToken string
+}
+
+type openAIPowScriptParser struct {
+	scriptSources []string
+	dataBuild     string
+}
+
+type openAITurnstileOrderedMap struct {
+	keys   []string
+	values map[string]any
 }
 
 func (r *OpenAIImagesRequest) IsEdits() bool {
@@ -534,6 +564,9 @@ func (s *OpenAIGatewayService) ForwardImages(
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
 	case AccountTypeOAuth:
+		if account.IsOpenAIOAuthFreePlan() {
+			return s.forwardOpenAIImagesOAuthFree(ctx, c, account, parsed, channelMappedModel)
+		}
 		return s.forwardOpenAIImagesOAuth(ctx, c, account, parsed, channelMappedModel)
 	default:
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
@@ -686,6 +719,191 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	}, nil
 }
 
+func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthFree(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	parsed *OpenAIImagesRequest,
+	channelMappedModel string,
+) (*OpenAIForwardResult, error) {
+	startTime := time.Now()
+	requestModel := strings.TrimSpace(parsed.Model)
+	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
+		requestModel = mapped
+	}
+	if requestModel == "" {
+		requestModel = "gpt-image-2"
+	}
+	if err := validateOpenAIImagesModel(requestModel); err != nil {
+		return nil, err
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := createOpenAIFreeImageClient(proxyURL)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s plan_type=%s route=free_conversation",
+		requestModel,
+		parsed.Endpoint,
+		account.Type,
+		account.OpenAIPlanType(),
+	)
+
+	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	defer releaseUpstreamCtx()
+
+	token, _, err := s.GetAccessToken(upstreamCtx, account)
+	if err != nil {
+		return nil, err
+	}
+
+	requirements, err := fetchOpenAIFreeImageRequirements(upstreamCtx, client, account)
+	if err != nil {
+		return nil, err
+	}
+	conduitToken, err := prepareOpenAIFreeImageConversation(upstreamCtx, client, account, requirements, strings.TrimSpace(parsed.Prompt))
+	if err != nil {
+		return nil, err
+	}
+
+	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
+	for _, imageURL := range parsed.InputImageURLs {
+		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
+			inputImages = append(inputImages, trimmed)
+		}
+	}
+	for _, upload := range parsed.Uploads {
+		dataURL, dataErr := openAIImageUploadToDataURL(upload)
+		if dataErr != nil {
+			return nil, dataErr
+		}
+		inputImages = append(inputImages, dataURL)
+	}
+	uploadedRefs := make([]map[string]any, 0, len(inputImages))
+	for idx, imageURL := range inputImages {
+		fileName := fmt.Sprintf("image_%d.png", idx+1)
+		ref, uploadErr := uploadOpenAIFreeImage(upstreamCtx, client, account, imageURL, fileName)
+		if uploadErr != nil {
+			return nil, uploadErr
+		}
+		uploadedRefs = append(uploadedRefs, ref)
+	}
+
+	conversationBody, err := buildOpenAIImagesFreeConversationRequest(parsed, uploadedRefs)
+	if err != nil {
+		return nil, err
+	}
+	setOpsUpstreamRequestBody(c, conversationBody)
+
+	// 先用现有 cookie / account headers 拿到初始 SSE，再复用现有 pointer 解析和下载逻辑。
+	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, conversationBody, token, true, parsed.StickySessionSeed(), false)
+	if err != nil {
+		return nil, err
+	}
+	upstreamReq.Host = "chatgpt.com"
+	upstreamReq.URL.Scheme = "https"
+	upstreamReq.URL.Host = "chatgpt.com"
+	upstreamReq.URL.Path = "/backend-api/f/conversation"
+	upstreamReq.URL.RawPath = ""
+	upstreamReq.URL.RawQuery = ""
+	upstreamReq.Method = http.MethodPost
+	upstreamReq.Header.Set("Content-Type", "application/json")
+	upstreamReq.Header.Set("Accept", "text/event-stream")
+	upstreamReq.Header.Del("OpenAI-Beta")
+	upstreamReq.Header.Del("originator")
+	upstreamReq.Header.Del("session_id")
+	upstreamReq.Header.Del("conversation_id")
+	upstreamReq.Header.Set("OpenAI-Sentinel-Chat-Requirements-Token", requirements.Token)
+	if strings.TrimSpace(requirements.ProofToken) != "" {
+		upstreamReq.Header.Set("OpenAI-Sentinel-Proof-Token", requirements.ProofToken)
+	}
+	if strings.TrimSpace(requirements.TurnstileToken) != "" {
+		upstreamReq.Header.Set("OpenAI-Sentinel-Turnstile-Token", requirements.TurnstileToken)
+	}
+	if strings.TrimSpace(conduitToken) != "" {
+		upstreamReq.Header.Set("X-Conduit-Token", conduitToken)
+	}
+
+	upstreamStart := time.Now()
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	if err != nil {
+		safeErr := sanitizeUpstreamErrorMessage(err.Error())
+		setOpsUpstreamError(c, 0, safeErr, "")
+		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			Platform:           account.Platform,
+			AccountID:          account.ID,
+			AccountName:        account.Name,
+			UpstreamStatusCode: 0,
+			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+			Kind:               "request_error",
+			Message:            safeErr,
+		})
+		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(respBody))
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: resp.StatusCode,
+				UpstreamRequestID:  resp.Header.Get("x-request-id"),
+				UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+				Kind:               "failover",
+				Message:            upstreamMsg,
+			})
+			s.handleFailoverSideEffects(upstreamCtx, resp, account)
+			return nil, &UpstreamFailoverError{
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: account.IsPoolMode() && isPoolModeRetryableStatus(resp.StatusCode),
+			}
+		}
+		return s.handleErrorResponse(upstreamCtx, resp, c, account, conversationBody)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return nil, err
+	}
+
+	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+	c.Status(http.StatusOK)
+	c.Header("Content-Type", "application/json")
+
+	results, usage, err := s.handleOpenAIImagesOAuthFreeConversationBody(upstreamCtx, c, account, body, parsed)
+	if err != nil {
+		return nil, err
+	}
+	c.Data(http.StatusOK, "application/json", results)
+
+	return &OpenAIForwardResult{
+		RequestID:       resp.Header.Get("x-request-id"),
+		Usage:           usage,
+		Model:           requestModel,
+		UpstreamModel:   openAIFreeImageConversationModel,
+		Stream:          parsed.Stream,
+		ResponseHeaders: resp.Header.Clone(),
+		Duration:        time.Since(startTime),
+		ImageCount:      extractOpenAIImagesBillableCountFromJSONBytes(results),
+		ImageSize:       parsed.SizeTier,
+	}, nil
+}
+
 func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	ctx context.Context,
 	c *gin.Context,
@@ -743,6 +961,774 @@ func buildOpenAIImagesURL(base string, endpoint string) string {
 	return normalized + endpoint
 }
 
+func parseOpenAIPowResources(htmlContent string) ([]string, string) {
+	parser := &openAIPowScriptParser{}
+	scriptTagRe := regexp.MustCompile(`(?is)<script[^>]+src="([^"]+)"[^>]*>`)
+	buildRe := regexp.MustCompile(`c/[^/]*/_`)
+	for _, match := range scriptTagRe.FindAllStringSubmatch(htmlContent, -1) {
+		if len(match) < 2 {
+			continue
+		}
+		src := strings.TrimSpace(match[1])
+		if src == "" {
+			continue
+		}
+		parser.scriptSources = append(parser.scriptSources, src)
+		if parser.dataBuild == "" {
+			if hit := buildRe.FindString(src); hit != "" {
+				parser.dataBuild = hit
+			}
+		}
+	}
+	if parser.dataBuild == "" {
+		htmlBuildRe := regexp.MustCompile(`data-build="([^"]*)"`)
+		if match := htmlBuildRe.FindStringSubmatch(htmlContent); len(match) > 1 {
+			parser.dataBuild = strings.TrimSpace(match[1])
+		}
+	}
+	if len(parser.scriptSources) == 0 {
+		parser.scriptSources = []string{openAIDefaultSentinelPowScript}
+	}
+	return parser.scriptSources, parser.dataBuild
+}
+
+func buildOpenAILegacyRequirementsToken(userAgent string, scriptSources []string, dataBuild string) string {
+	seed := strconv.FormatFloat(rand.Float64(), 'f', -1, 64)
+	config := buildOpenAIPowConfig(userAgent, scriptSources, dataBuild)
+	answer, _ := solveOpenAIPow(seed, "0fffff", config, 500000)
+	return "gAAAAAC" + answer
+}
+
+func buildOpenAIProofToken(seed string, difficulty string, userAgent string, scriptSources []string, dataBuild string) (string, error) {
+	config := buildOpenAIPowConfig(userAgent, scriptSources, dataBuild)
+	answer, solved := solveOpenAIPow(seed, difficulty, config, 500000)
+	if !solved {
+		return "", fmt.Errorf("failed to solve proof token")
+	}
+	return "gAAAAAB" + answer, nil
+}
+
+func buildOpenAIPowConfig(userAgent string, scriptSources []string, dataBuild string) []any {
+	now := time.Now().Add(-5 * time.Hour)
+	scriptSource := openAIDefaultSentinelPowScript
+	if len(scriptSources) > 0 {
+		scriptSource = scriptSources[rand.Intn(len(scriptSources))]
+	}
+	return []any{
+		3000 + rand.Intn(3)*1000,
+		now.Format("Mon Jan 02 2006 15:04:05") + " GMT-0500 (Eastern Standard Time)",
+		4294705152,
+		0,
+		userAgent,
+		scriptSource,
+		dataBuild,
+		"en-US",
+		"en-US,es-US,en,es",
+		0,
+		"webdriver−false",
+		"location",
+		"window",
+		float64(time.Now().UnixNano()) / 1e6,
+		uuid.NewString(),
+		"",
+		8,
+		float64(time.Now().UnixNano()) / 1e6,
+	}
+}
+
+func solveOpenAIPow(seed string, difficulty string, config []any, limit int) (string, bool) {
+	target, err := hex.DecodeString(strings.TrimSpace(difficulty))
+	if err != nil || len(target) == 0 {
+		return "", false
+	}
+	configBytes, err := json.Marshal(config)
+	if err != nil {
+		return "", false
+	}
+	seedBytes := []byte(seed)
+	for i := 0; i < limit; i++ {
+		payload := append([]byte{}, configBytes...)
+		payload = append(payload, []byte(strconv.Itoa(i))...)
+		encoded := base64.StdEncoding.EncodeToString(payload)
+		sum := sha3.Sum512(append(seedBytes, []byte(encoded)...))
+		if bytes.Compare(sum[:len(target)], target) <= 0 {
+			return encoded, true
+		}
+	}
+	fallback := "wQ8Lk5FbGpA2NcR9dShT6gYjU7VxZ4D" + base64.StdEncoding.EncodeToString([]byte(`"`+seed+`"`))
+	return fallback, false
+}
+
+func (m *openAITurnstileOrderedMap) add(key string, value any) {
+	if m == nil {
+		return
+	}
+	if m.values == nil {
+		m.values = make(map[string]any)
+	}
+	if _, exists := m.values[key]; !exists {
+		m.keys = append(m.keys, key)
+	}
+	m.values[key] = value
+}
+
+func turnstileValueToString(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return "undefined"
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case string:
+		switch v {
+		case "window.Math":
+			return "[object Math]"
+		case "window.Reflect":
+			return "[object Reflect]"
+		case "window.performance":
+			return "[object Performance]"
+		case "window.localStorage":
+			return "[object Storage]"
+		case "window.Object":
+			return "function Object() { [native code] }"
+		case "window.Reflect.set":
+			return "function set() { [native code] }"
+		case "window.performance.now":
+			return "function () { [native code] }"
+		case "window.Object.create":
+			return "function create() { [native code] }"
+		case "window.Object.keys":
+			return "function keys() { [native code] }"
+		case "window.Math.random":
+			return "function random() { [native code] }"
+		default:
+			return v
+		}
+	case []string:
+		return strings.Join(v, ",")
+	case []any:
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			parts = append(parts, turnstileValueToString(item))
+		}
+		return strings.Join(parts, ",")
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func xorOpenAITurnstileString(text string, key string) string {
+	if key == "" {
+		return text
+	}
+	keyRunes := []rune(key)
+	out := make([]rune, 0, len(text))
+	for i, ch := range []rune(text) {
+		out = append(out, ch^keyRunes[i%len(keyRunes)])
+	}
+	return string(out)
+}
+
+func solveOpenAITurnstileToken(dx string, p string) string {
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(dx))
+	if err != nil {
+		return ""
+	}
+	decoded := xorOpenAITurnstileString(string(raw), p)
+	var tokenList []any
+	if err := json.Unmarshal([]byte(decoded), &tokenList); err != nil {
+		return ""
+	}
+
+	processMap := map[float64]any{
+		10: "window",
+		16: p,
+	}
+	startTime := time.Now()
+	result := ""
+
+	func1 := func(e float64, t float64) {
+		processMap[e] = xorOpenAITurnstileString(turnstileValueToString(processMap[e]), turnstileValueToString(processMap[t]))
+	}
+	func2 := func(e float64, t any) { processMap[e] = t }
+	func3 := func(e string) { result = base64.StdEncoding.EncodeToString([]byte(e)) }
+	func5 := func(e float64, t float64) {
+		current := processMap[e]
+		incoming := processMap[t]
+		switch cur := current.(type) {
+		case []any:
+			processMap[e] = append(cur, incoming)
+		case []string:
+			processMap[e] = append(cur, turnstileValueToString(incoming))
+		default:
+			if _, ok := current.(string); ok {
+				processMap[e] = turnstileValueToString(current) + turnstileValueToString(incoming)
+				return
+			}
+			if _, ok := current.(float64); ok {
+				processMap[e] = turnstileValueToString(current) + turnstileValueToString(incoming)
+				return
+			}
+			if _, ok := incoming.(string); ok {
+				processMap[e] = turnstileValueToString(current) + turnstileValueToString(incoming)
+				return
+			}
+			if _, ok := incoming.(float64); ok {
+				processMap[e] = turnstileValueToString(current) + turnstileValueToString(incoming)
+				return
+			}
+			processMap[e] = "NaN"
+		}
+	}
+	func6 := func(e float64, t float64, n float64) {
+		tv := turnstileValueToString(processMap[t])
+		nv := turnstileValueToString(processMap[n])
+		value := tv + "." + nv
+		if value == "window.document.location" {
+			processMap[e] = "https://chatgpt.com/"
+			return
+		}
+		processMap[e] = value
+	}
+	func7 := func(e float64, args ...float64) {
+		target := processMap[e]
+		values := make([]any, 0, len(args))
+		for _, arg := range args {
+			values = append(values, processMap[arg])
+		}
+		if targetStr, ok := target.(string); ok && targetStr == "window.Reflect.set" && len(values) >= 3 {
+			obj, _ := values[0].(*openAITurnstileOrderedMap)
+			if obj != nil {
+				obj.add(turnstileValueToString(values[1]), values[2])
+			}
+			return
+		}
+		if callable, ok := target.(func(...any)); ok {
+			callable(values...)
+		}
+	}
+	func8 := func(e float64, t float64) { processMap[e] = processMap[t] }
+	func14 := func(e float64, t float64) {
+		var parsed any
+		if err := json.Unmarshal([]byte(turnstileValueToString(processMap[t])), &parsed); err == nil {
+			processMap[e] = parsed
+		}
+	}
+	func15 := func(e float64, t float64) {
+		if b, err := json.Marshal(processMap[t]); err == nil {
+			processMap[e] = string(b)
+		}
+	}
+	func17 := func(e float64, t float64, args ...float64) {
+		callArgs := make([]any, 0, len(args))
+		for _, arg := range args {
+			callArgs = append(callArgs, processMap[arg])
+		}
+		target := turnstileValueToString(processMap[t])
+		switch target {
+		case "window.performance.now":
+			elapsed := float64(time.Since(startTime).Nanoseconds()) / 1e6
+			processMap[e] = elapsed + rand.Float64()
+		case "window.Object.create":
+			processMap[e] = &openAITurnstileOrderedMap{values: make(map[string]any)}
+		case "window.Object.keys":
+			processMap[e] = []string{
+				"STATSIG_LOCAL_STORAGE_INTERNAL_STORE_V4",
+				"STATSIG_LOCAL_STORAGE_STABLE_ID",
+				"client-correlated-secret",
+				"oai/apps/capExpiresAt",
+				"oai-did",
+				"STATSIG_LOCAL_STORAGE_LOGGING_REQUEST",
+				"UiState.isNavigationCollapsed.1",
+			}
+		case "window.Math.random":
+			processMap[e] = rand.Float64()
+		default:
+			if callable, ok := processMap[t].(func(...any) any); ok {
+				processMap[e] = callable(callArgs...)
+			}
+		}
+	}
+	func18 := func(e float64) {
+		decodedValue, err := base64.StdEncoding.DecodeString(turnstileValueToString(processMap[e]))
+		if err == nil {
+			processMap[e] = string(decodedValue)
+		}
+	}
+	func19 := func(e float64) {
+		processMap[e] = base64.StdEncoding.EncodeToString([]byte(turnstileValueToString(processMap[e])))
+	}
+	func20 := func(e float64, t float64, n float64, args ...float64) {
+		if turnstileValueToString(processMap[e]) == turnstileValueToString(processMap[t]) {
+			if callable, ok := processMap[n].(func(...any)); ok {
+				callArgs := make([]any, 0, len(args))
+				for _, arg := range args {
+					callArgs = append(callArgs, processMap[arg])
+				}
+				callable(callArgs...)
+			}
+		}
+	}
+	func21 := func(...any) {}
+	func23 := func(e float64, t float64, args ...float64) {
+		if processMap[e] != nil {
+			if callable, ok := processMap[t].(func(...any)); ok {
+				callArgs := make([]any, 0, len(args))
+				for _, arg := range args {
+					callArgs = append(callArgs, processMap[arg])
+				}
+				callable(callArgs...)
+			}
+		}
+	}
+	func24 := func(e float64, t float64, n float64) {
+		processMap[e] = turnstileValueToString(processMap[t]) + "." + turnstileValueToString(processMap[n])
+	}
+
+	processMap[1] = func1
+	processMap[2] = func2
+	processMap[3] = func3
+	processMap[5] = func5
+	processMap[6] = func6
+	processMap[7] = func7
+	processMap[8] = func8
+	processMap[14] = func14
+	processMap[15] = func15
+	processMap[17] = func17
+	processMap[18] = func18
+	processMap[19] = func19
+	processMap[20] = func20
+	processMap[21] = func21
+	processMap[23] = func23
+	processMap[24] = func24
+
+	for _, token := range tokenList {
+		tokenArr, ok := token.([]any)
+		if !ok || len(tokenArr) == 0 {
+			continue
+		}
+		op, ok := tokenArr[0].(float64)
+		if !ok {
+			continue
+		}
+		switch op {
+		case 1:
+			if len(tokenArr) >= 3 {
+				func1(tokenArr[1].(float64), tokenArr[2].(float64))
+			}
+		case 2:
+			if len(tokenArr) >= 3 {
+				func2(tokenArr[1].(float64), tokenArr[2])
+			}
+		case 3:
+			if len(tokenArr) >= 2 {
+				func3(turnstileValueToString(tokenArr[1]))
+			}
+		case 5:
+			if len(tokenArr) >= 3 {
+				func5(tokenArr[1].(float64), tokenArr[2].(float64))
+			}
+		case 6:
+			if len(tokenArr) >= 4 {
+				func6(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64))
+			}
+		case 7:
+			if len(tokenArr) >= 2 {
+				args := make([]float64, 0, len(tokenArr)-2)
+				for _, raw := range tokenArr[2:] {
+					if f, ok := raw.(float64); ok {
+						args = append(args, f)
+					}
+				}
+				func7(tokenArr[1].(float64), args...)
+			}
+		case 8:
+			if len(tokenArr) >= 3 {
+				func8(tokenArr[1].(float64), tokenArr[2].(float64))
+			}
+		case 14:
+			if len(tokenArr) >= 3 {
+				func14(tokenArr[1].(float64), tokenArr[2].(float64))
+			}
+		case 15:
+			if len(tokenArr) >= 3 {
+				func15(tokenArr[1].(float64), tokenArr[2].(float64))
+			}
+		case 17:
+			if len(tokenArr) >= 3 {
+				args := make([]float64, 0, len(tokenArr)-3)
+				for _, raw := range tokenArr[3:] {
+					if f, ok := raw.(float64); ok {
+						args = append(args, f)
+					}
+				}
+				func17(tokenArr[1].(float64), tokenArr[2].(float64), args...)
+			}
+		case 18:
+			if len(tokenArr) >= 2 {
+				func18(tokenArr[1].(float64))
+			}
+		case 19:
+			if len(tokenArr) >= 2 {
+				func19(tokenArr[1].(float64))
+			}
+		case 20:
+			if len(tokenArr) >= 4 {
+				args := make([]float64, 0, len(tokenArr)-4)
+				for _, raw := range tokenArr[4:] {
+					if f, ok := raw.(float64); ok {
+						args = append(args, f)
+					}
+				}
+				func20(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64), args...)
+			}
+		case 21:
+			func21()
+		case 23:
+			if len(tokenArr) >= 3 {
+				args := make([]float64, 0, len(tokenArr)-3)
+				for _, raw := range tokenArr[3:] {
+					if f, ok := raw.(float64); ok {
+						args = append(args, f)
+					}
+				}
+				func23(tokenArr[1].(float64), tokenArr[2].(float64), args...)
+			}
+		case 24:
+			if len(tokenArr) >= 4 {
+				func24(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64))
+			}
+		}
+	}
+	return result
+}
+
+func buildOpenAIImagesFreeConversationRequest(parsed *OpenAIImagesRequest, uploadedRefs []map[string]any) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+
+	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
+	for _, imageURL := range parsed.InputImageURLs {
+		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
+			inputImages = append(inputImages, trimmed)
+		}
+	}
+	for _, upload := range parsed.Uploads {
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, err
+		}
+		inputImages = append(inputImages, dataURL)
+	}
+	if parsed.IsEdits() && len(inputImages) == 0 {
+		return nil, fmt.Errorf("image input is required")
+	}
+
+	parts := make([]any, 0, len(uploadedRefs)+1)
+	for _, ref := range uploadedRefs {
+		parts = append(parts, map[string]any{
+			"content_type":  "image_asset_pointer",
+			"asset_pointer": firstNonEmptyString(ref["asset_ptr"]),
+			"width":         ref["width"],
+			"height":        ref["height"],
+			"size_bytes":    ref["file_size"],
+		})
+	}
+	parts = append(parts, prompt)
+	payload := map[string]any{
+		"action": "next",
+		"messages": []any{
+			map[string]any{
+				"id":          fmt.Sprintf("msg_%d", time.Now().UnixNano()),
+				"author":      map[string]any{"role": "user"},
+				"create_time": float64(time.Now().UnixNano()) / float64(time.Second),
+				"content": map[string]any{
+					"content_type": "multimodal_text",
+					"parts":        parts,
+				},
+				"metadata": map[string]any{
+					"system_hints": []any{"picture_v2"},
+				},
+			},
+		},
+		"parent_message_id":            fmt.Sprintf("msg_%d", time.Now().UnixNano()+1),
+		"model":                        openAIFreeImageConversationModel,
+		"client_prepare_state":         "sent",
+		"timezone_offset_min":          -480,
+		"timezone":                     "Asia/Shanghai",
+		"conversation_mode":            map[string]any{"kind": "primary_assistant"},
+		"enable_message_followups":     true,
+		"system_hints":                 []any{"picture_v2"},
+		"supports_buffering":           true,
+		"supported_encodings":          []any{"v1"},
+		"paragen_cot_summary_display_override": "allow",
+		"force_parallel_switch":                "auto",
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal free image conversation payload: %w", err)
+	}
+	return body, nil
+}
+
+func uploadOpenAIFreeImage(
+	ctx context.Context,
+	client *req.Client,
+	account *Account,
+	dataURL string,
+	fileName string,
+) (map[string]any, error) {
+	data := dataURL
+	if idx := strings.Index(data, ","); idx >= 0 && idx+1 < len(data) {
+		data = data[idx+1:]
+	}
+	imageBytes, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return nil, fmt.Errorf("decode free image upload data: %w", err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(imageBytes))
+	if err != nil {
+		return nil, fmt.Errorf("decode free image upload config: %w", err)
+	}
+	mimeType := "image/png"
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "jpeg", "jpg":
+		mimeType = "image/jpeg"
+	case "gif":
+		mimeType = "image/gif"
+	}
+
+	headers := buildOpenAIFreeImageHeaders(account, nil, "", "application/json")
+	headers.Set("X-OpenAI-Target-Path", "/backend-api/files")
+	headers.Set("X-OpenAI-Target-Route", "/backend-api/files")
+	body := map[string]any{
+		"file_name": fileName,
+		"file_size": len(imageBytes),
+		"use_case":  "multimodal",
+		"width":     cfg.Width,
+		"height":    cfg.Height,
+	}
+	var uploadMeta map[string]any
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(headerToMap(headers)).
+		SetBodyJsonMarshal(body).
+		SetSuccessResult(&uploadMeta).
+		Post(openAIChatGPTFilesURL)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("free image upload init failed: HTTP %d", resp.StatusCode)
+	}
+	uploadURL := firstNonEmptyString(uploadMeta["upload_url"])
+	if uploadURL == "" {
+		return nil, fmt.Errorf("free image upload init missing upload_url")
+	}
+	putResp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Content-Type", mimeType).
+		SetHeader("x-ms-blob-type", "BlockBlob").
+		SetHeader("x-ms-version", "2020-04-08").
+		SetHeader("Origin", "https://chatgpt.com").
+		SetHeader("Referer", "https://chatgpt.com/").
+		SetHeader("User-Agent", firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent)).
+		SetBody(imageBytes).
+		Put(uploadURL)
+	if err != nil {
+		return nil, err
+	}
+	if !putResp.IsSuccessState() {
+		return nil, fmt.Errorf("free image upload blob failed: HTTP %d", putResp.StatusCode)
+	}
+	fileID := firstNonEmptyString(uploadMeta["file_id"])
+	if fileID == "" {
+		return nil, fmt.Errorf("free image upload missing file_id")
+	}
+	confirmURL := fmt.Sprintf("%s/%s/uploaded", openAIChatGPTFilesURL, fileID)
+	confirmResp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(headerToMap(headers)).
+		SetBodyString("{}").
+		Post(confirmURL)
+	if err != nil {
+		return nil, err
+	}
+	if !confirmResp.IsSuccessState() {
+		return nil, fmt.Errorf("free image upload confirm failed: HTTP %d", confirmResp.StatusCode)
+	}
+
+	return map[string]any{
+		"file_id":    fileID,
+		"file_name":  fileName,
+		"file_size":  len(imageBytes),
+		"mime_type":  mimeType,
+		"width":      cfg.Width,
+		"height":     cfg.Height,
+		"asset_ptr":  "file-service://" + fileID,
+	}, nil
+}
+
+func createOpenAIFreeImageClient(proxyURL string) (*req.Client, error) {
+	client := req.C().SetTimeout(30 * time.Second).ImpersonateChrome()
+	trimmed := strings.TrimSpace(proxyURL)
+	if trimmed != "" {
+		client.SetProxyURL(trimmed)
+	}
+	return client, nil
+}
+
+func buildOpenAIFreeImageHeaders(account *Account, requirements *openAIChatRequirements, conduitToken string, accept string) http.Header {
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+account.GetOpenAIAccessToken())
+	headers.Set("Origin", "https://chatgpt.com")
+	headers.Set("Referer", "https://chatgpt.com/")
+	headers.Set("User-Agent", firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent))
+	headers.Set("Content-Type", "application/json")
+	headers.Set("Accept", accept)
+	if account.GetChatGPTAccountID() != "" {
+		headers.Set("chatgpt-account-id", account.GetChatGPTAccountID())
+	}
+	if requirements != nil {
+		if strings.TrimSpace(requirements.Token) != "" {
+			headers.Set("OpenAI-Sentinel-Chat-Requirements-Token", strings.TrimSpace(requirements.Token))
+		}
+		if strings.TrimSpace(requirements.ProofToken) != "" {
+			headers.Set("OpenAI-Sentinel-Proof-Token", strings.TrimSpace(requirements.ProofToken))
+		}
+		if strings.TrimSpace(requirements.TurnstileToken) != "" {
+			headers.Set("OpenAI-Sentinel-Turnstile-Token", strings.TrimSpace(requirements.TurnstileToken))
+		}
+	}
+	if strings.TrimSpace(conduitToken) != "" {
+		headers.Set("X-Conduit-Token", strings.TrimSpace(conduitToken))
+	}
+	headers.Set("X-OpenAI-Target-Path", "/backend-api/f/conversation")
+	headers.Set("X-OpenAI-Target-Route", "/backend-api/f/conversation")
+	return headers
+}
+
+func fetchOpenAIFreeImageRequirements(
+	ctx context.Context,
+	client *req.Client,
+	account *Account,
+) (*openAIChatRequirements, error) {
+	if client == nil {
+		return nil, fmt.Errorf("free image client is required")
+	}
+
+	bootstrapResp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Authorization", "Bearer "+account.GetOpenAIAccessToken()).
+		SetHeader("User-Agent", firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent)).
+		SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8").
+		Get(openAIChatGPTStartURL)
+	if err != nil {
+		return nil, err
+	}
+	if !bootstrapResp.IsSuccessState() {
+		return nil, fmt.Errorf("bootstrap failed: HTTP %d", bootstrapResp.StatusCode)
+	}
+	scriptSources, dataBuild := parseOpenAIPowResources(bootstrapResp.String())
+	reqBody := map[string]any{
+		"p": buildOpenAILegacyRequirementsToken(firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent), scriptSources, dataBuild),
+	}
+	var payload map[string]any
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(headerToMap(buildOpenAIFreeImageHeaders(account, nil, "", "application/json"))).
+		SetBodyJsonMarshal(reqBody).
+		SetSuccessResult(&payload).
+		Post(openAIChatGPTRequirementsURL)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccessState() {
+		return nil, fmt.Errorf("chat requirements failed: HTTP %d", resp.StatusCode)
+	}
+	requirements := &openAIChatRequirements{
+		Token: strings.TrimSpace(firstNonEmptyString(payload["token"])),
+	}
+	if requirements.Token == "" {
+		return nil, fmt.Errorf("missing chat requirements token")
+	}
+	if proofInfo, ok := payload["proofofwork"].(map[string]any); ok {
+		required, _ := proofInfo["required"].(bool)
+		if required {
+			proofToken, proofErr := buildOpenAIProofToken(
+				firstNonEmptyString(proofInfo["seed"]),
+				firstNonEmptyString(proofInfo["difficulty"]),
+				firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent),
+				scriptSources,
+				dataBuild,
+			)
+			if proofErr != nil {
+				return nil, proofErr
+			}
+			requirements.ProofToken = proofToken
+		}
+	}
+	if turnstileInfo, ok := payload["turnstile"].(map[string]any); ok {
+		required, _ := turnstileInfo["required"].(bool)
+		if required {
+			dx := firstNonEmptyString(turnstileInfo["dx"])
+			if dx != "" {
+				requirements.TurnstileToken = solveOpenAITurnstileToken(dx, firstNonEmptyString(reqBody["p"]))
+			}
+		}
+	}
+	return requirements, nil
+}
+
+func prepareOpenAIFreeImageConversation(
+	ctx context.Context,
+	client *req.Client,
+	account *Account,
+	requirements *openAIChatRequirements,
+	prompt string,
+) (string, error) {
+	preparePayload := map[string]any{
+		"action":               "next",
+		"fork_from_shared_post": false,
+		"parent_message_id":    uuid.NewString(),
+		"model":                openAIFreeImageConversationModel,
+		"client_prepare_state": "success",
+		"timezone_offset_min":  -480,
+		"timezone":             "Asia/Shanghai",
+		"conversation_mode":    map[string]any{"kind": "primary_assistant"},
+		"system_hints":         []any{"picture_v2"},
+		"partial_query": map[string]any{
+			"id":      uuid.NewString(),
+			"author":  map[string]any{"role": "user"},
+			"content": map[string]any{"content_type": "text", "parts": []any{prompt}},
+		},
+		"supports_buffering":  true,
+		"supported_encodings": []any{"v1"},
+		"client_contextual_info": map[string]any{
+			"app_name": "chatgpt.com",
+		},
+	}
+	var result map[string]any
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeaders(headerToMap(buildOpenAIFreeImageHeaders(account, requirements, "", "application/json"))).
+		SetBodyJsonMarshal(preparePayload).
+		SetSuccessResult(&result).
+		Post(openAIChatGPTPrepareURL)
+	if err != nil {
+		return "", err
+	}
+	if !resp.IsSuccessState() {
+		return "", fmt.Errorf("prepare image conversation failed: HTTP %d", resp.StatusCode)
+	}
+	return strings.TrimSpace(firstNonEmptyString(result["conduit_token"])), nil
+}
+
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
@@ -758,6 +1744,64 @@ func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]
 		return nil, "", fmt.Errorf("rewrite image request model: %w", err)
 	}
 	return rewritten, contentType, nil
+}
+
+func (s *OpenAIGatewayService) handleOpenAIImagesOAuthFreeConversationBody(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	parsed *OpenAIImagesRequest,
+) ([]byte, OpenAIUsage, error) {
+	usage := OpenAIUsage{}
+	mergeOpenAIUsage(&usage, body)
+
+	pointers := collectOpenAIImagePointers(body)
+	if len(pointers) == 0 {
+		return nil, usage, fmt.Errorf("free image conversation returned no image pointers")
+	}
+
+	conversationID := strings.TrimSpace(gjson.GetBytes(body, "conversation_id").String())
+	if conversationID == "" {
+		conversationID = strings.TrimSpace(gjson.GetBytes(body, "v.conversation_id").String())
+	}
+
+	client := req.C()
+	headers := http.Header{
+		"Authorization":       []string{"Bearer " + account.GetOpenAIAccessToken()},
+		"Accept":              []string{"application/json"},
+		"Origin":              []string{"https://chatgpt.com"},
+		"Referer":             []string{"https://chatgpt.com/"},
+		"User-Agent":          []string{firstNonEmptyString(account.GetOpenAIUserAgent(), openAIImageBackendUserAgent)},
+		"chatgpt-account-id":  []string{account.GetChatGPTAccountID()},
+	}
+
+	data := make([]map[string]any, 0, len(pointers))
+	for _, pointer := range pointers {
+		imgBytes, err := resolveOpenAIImageBytes(ctx, client, headers, conversationID, pointer)
+		if err != nil {
+			return nil, usage, err
+		}
+		entry := map[string]any{
+			"revised_prompt": strings.TrimSpace(pointer.Prompt),
+		}
+		if strings.EqualFold(strings.TrimSpace(parsed.ResponseFormat), "url") {
+			entry["url"] = "data:image/png;base64," + base64.StdEncoding.EncodeToString(imgBytes)
+		} else {
+			entry["b64_json"] = base64.StdEncoding.EncodeToString(imgBytes)
+		}
+		data = append(data, entry)
+	}
+
+	result := map[string]any{
+		"created": time.Now().Unix(),
+		"data":    data,
+	}
+	out, err := json.Marshal(result)
+	if err != nil {
+		return nil, usage, fmt.Errorf("marshal free image result: %w", err)
+	}
+	return out, usage, nil
 }
 
 func rewriteOpenAIImagesMultipartModel(body []byte, contentType string, model string) ([]byte, string, error) {

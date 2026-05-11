@@ -201,43 +201,10 @@ func openAIImageUploadToDataURL(upload OpenAIImagesUpload) (string, error) {
 	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(upload.Data), nil
 }
 
-func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+func buildOpenAIImagesResponsesTool(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
-	prompt := strings.TrimSpace(parsed.Prompt)
-	if prompt == "" {
-		return nil, fmt.Errorf("prompt is required")
-	}
-
-	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
-	for _, imageURL := range parsed.InputImageURLs {
-		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
-			inputImages = append(inputImages, trimmed)
-		}
-	}
-	for _, upload := range parsed.Uploads {
-		dataURL, err := openAIImageUploadToDataURL(upload)
-		if err != nil {
-			return nil, err
-		}
-		inputImages = append(inputImages, dataURL)
-	}
-	if parsed.IsEdits() && len(inputImages) == 0 {
-		return nil, fmt.Errorf("image input is required")
-	}
-
-	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
-	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
-
-	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
-	input, _ = sjson.SetBytes(input, "0.content.0.text", prompt)
-	for index, imageURL := range inputImages {
-		part := []byte(`{"type":"input_image","image_url":""}`)
-		part, _ = sjson.SetBytes(part, "image_url", imageURL)
-		input, _ = sjson.SetRawBytes(input, fmt.Sprintf("0.content.%d", index+1), part)
-	}
-	req, _ = sjson.SetRawBytes(req, "input", input)
 
 	action := "generate"
 	if parsed.IsEdits() {
@@ -281,9 +248,103 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 		tool, _ = sjson.SetBytes(tool, "input_image_mask.image_url", maskImageURL)
 	}
 
+	return tool, nil
+}
+
+func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel string) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	prompt := strings.TrimSpace(parsed.Prompt)
+	if prompt == "" {
+		return nil, fmt.Errorf("prompt is required")
+	}
+
+	inputImages := make([]string, 0, len(parsed.InputImageURLs)+len(parsed.Uploads))
+	for _, imageURL := range parsed.InputImageURLs {
+		if trimmed := strings.TrimSpace(imageURL); trimmed != "" {
+			inputImages = append(inputImages, trimmed)
+		}
+	}
+	for _, upload := range parsed.Uploads {
+		dataURL, err := openAIImageUploadToDataURL(upload)
+		if err != nil {
+			return nil, err
+		}
+		inputImages = append(inputImages, dataURL)
+	}
+	if parsed.IsEdits() && len(inputImages) == 0 {
+		return nil, fmt.Errorf("image input is required")
+	}
+
+	req := []byte(`{"instructions":"","stream":true,"reasoning":{"effort":"medium","summary":"auto"},"parallel_tool_calls":true,"include":["reasoning.encrypted_content"],"model":"","store":false,"tool_choice":{"type":"image_generation"}}`)
+	req, _ = sjson.SetBytes(req, "model", openAIImagesResponsesMainModel)
+
+	input := []byte(`[{"type":"message","role":"user","content":[{"type":"input_text","text":""}]}]`)
+	input, _ = sjson.SetBytes(input, "0.content.0.text", prompt)
+	for index, imageURL := range inputImages {
+		part := []byte(`{"type":"input_image","image_url":""}`)
+		part, _ = sjson.SetBytes(part, "image_url", imageURL)
+		input, _ = sjson.SetRawBytes(input, fmt.Sprintf("0.content.%d", index+1), part)
+	}
+	req, _ = sjson.SetRawBytes(req, "input", input)
+
+	tool, err := buildOpenAIImagesResponsesTool(parsed, toolModel)
+	if err != nil {
+		return nil, err
+	}
+
 	req, _ = sjson.SetRawBytes(req, "tools", []byte(`[]`))
 	req, _ = sjson.SetRawBytes(req, "tools.-1", tool)
 	return req, nil
+}
+
+func ensureOpenAIImagesResponsesRequestInvariant(body []byte, parsed *OpenAIImagesRequest, toolModel string) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return nil, false, fmt.Errorf("responses body is empty")
+	}
+	if !gjson.ValidBytes(body) {
+		return nil, false, fmt.Errorf("responses body is invalid json")
+	}
+
+	modified := false
+	if gjson.GetBytes(body, "model").String() != openAIImagesResponsesMainModel {
+		next, err := sjson.SetBytes(body, "model", openAIImagesResponsesMainModel)
+		if err != nil {
+			return nil, false, fmt.Errorf("set responses model: %w", err)
+		}
+		body = next
+		modified = true
+	}
+	toolChoice := gjson.GetBytes(body, "tool_choice")
+	if !toolChoice.Exists() || toolChoice.Type != gjson.JSON || strings.TrimSpace(toolChoice.Get("type").String()) != "image_generation" {
+		next, err := sjson.SetRawBytes(body, "tool_choice", []byte(`{"type":"image_generation"}`))
+		if err != nil {
+			return nil, false, fmt.Errorf("set image_generation tool_choice: %w", err)
+		}
+		body = next
+		modified = true
+	}
+	if !openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools")) {
+		tool, err := buildOpenAIImagesResponsesTool(parsed, toolModel)
+		if err != nil {
+			return nil, false, err
+		}
+		if !gjson.GetBytes(body, "tools").IsArray() {
+			next, err := sjson.SetRawBytes(body, "tools", []byte(`[]`))
+			if err != nil {
+				return nil, false, fmt.Errorf("initialize tools array: %w", err)
+			}
+			body = next
+		}
+		next, err := sjson.SetRawBytes(body, "tools.-1", tool)
+		if err != nil {
+			return nil, false, fmt.Errorf("append image_generation tool: %w", err)
+		}
+		body = next
+		modified = true
+	}
+	return body, modified, nil
 }
 
 func extractOpenAIImagesFromResponsesCompleted(payload []byte) ([]openAIResponsesImageResult, int64, []byte, openAIResponsesImageResult, error) {
@@ -959,6 +1020,29 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, requestModel)
 	if err != nil {
 		return nil, err
+	}
+	responsesBody, invariantModified, err := ensureOpenAIImagesResponsesRequestInvariant(responsesBody, parsed, requestModel)
+	if err != nil {
+		return nil, err
+	}
+	if invariantModified {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[OpenAI] Repaired OAuth images /responses payload tool_choice=%s tools_count=%d request_model=%s endpoint=%s",
+			gjson.GetBytes(responsesBody, "tool_choice").Raw,
+			len(gjson.GetBytes(responsesBody, "tools").Array()),
+			requestModel,
+			parsed.Endpoint,
+		)
+	}
+	if !openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(responsesBody, "tool_choice")) ||
+		!openAIJSONToolsContainImageGeneration(gjson.GetBytes(responsesBody, "tools")) {
+		return nil, fmt.Errorf(
+			"invalid oauth images responses payload: tool_choice=%s tools_count=%d has_image_tool=%v",
+			gjson.GetBytes(responsesBody, "tool_choice").Raw,
+			len(gjson.GetBytes(responsesBody, "tools").Array()),
+			openAIJSONToolsContainImageGeneration(gjson.GetBytes(responsesBody, "tools")),
+		)
 	}
 	setOpsUpstreamRequestBody(c, responsesBody)
 
