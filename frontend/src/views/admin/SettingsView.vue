@@ -3846,6 +3846,54 @@
                 </p>
               </div>
 
+              <!-- Free Image Bridge URL -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.openaiFreeImageBridgeUrl") }}
+                </label>
+                <input
+                  v-model="form.openai_free_image_bridge_url"
+                  type="text"
+                  class="input font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.site.openaiFreeImageBridgeUrlPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.site.openaiFreeImageBridgeUrlHint") }}
+                </p>
+              </div>
+
+              <!-- Free Image Bridge Auth Key -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.site.openaiFreeImageBridgeAuthKey") }}
+                </label>
+                <input
+                  v-model="form.openai_free_image_bridge_auth_key"
+                  type="password"
+                  class="input font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.site.openaiFreeImageBridgeAuthKeyPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    form.openai_free_image_bridge_auth_key_configured
+                      ? t(
+                          "admin.settings.site.openaiFreeImageBridgeAuthKeyHintConfigured",
+                        )
+                      : t(
+                          "admin.settings.site.openaiFreeImageBridgeAuthKeyHintMissing",
+                        )
+                  }}
+                </p>
+              </div>
+
               <!-- Global Table Preferences -->
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                 <h3 class="text-sm font-medium text-gray-900 dark:text-white">
@@ -6131,6 +6179,7 @@ type SettingsForm = Omit<
 > & {
   smtp_password: string;
   turnstile_secret_key: string;
+  openai_free_image_bridge_auth_key: string;
   linuxdo_connect_client_secret: string;
   wechat_connect_app_secret: string;
   wechat_connect_open_app_secret: string;
@@ -6169,6 +6218,9 @@ const form = reactive<SettingsForm>({
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
   api_base_url: "",
+  openai_free_image_bridge_url: "",
+  openai_free_image_bridge_auth_key: "",
+  openai_free_image_bridge_auth_key_configured: false,
   contact_info: "",
   doc_url: "",
   home_content: "",
@@ -7281,6 +7333,9 @@ async function saveSettings() {
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
       api_base_url: form.api_base_url,
+      openai_free_image_bridge_url: form.openai_free_image_bridge_url,
+      openai_free_image_bridge_auth_key:
+        form.openai_free_image_bridge_auth_key || undefined,
       contact_info: form.contact_info,
       doc_url: form.doc_url,
       home_content: form.home_content,

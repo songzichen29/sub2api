@@ -183,6 +183,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { useSubscriptionStore } from '@/stores'
 import type { UserSubscription } from '@/types'
+import { formatRemainingDuration } from '@/utils/format'
 
 const { t } = useI18n()
 
@@ -258,14 +259,9 @@ function formatUsage(used: number | undefined, limit: number | null | undefined)
 }
 
 function formatDaysRemaining(expiresAt: string): string {
-  const now = new Date()
-  const expires = new Date(expiresAt)
-  const diff = expires.getTime() - now.getTime()
-  if (diff < 0) return t('subscriptionProgress.expired')
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-  if (days === 0) return t('subscriptionProgress.expiresToday')
-  if (days === 1) return t('subscriptionProgress.expiresTomorrow')
-  return t('subscriptionProgress.daysRemaining', { days })
+  const remaining = formatRemainingDuration(expiresAt)
+  if (!remaining) return t('subscriptionProgress.expired')
+  return t('userSubscriptions.exactRemaining', { time: remaining })
 }
 
 function getDaysRemainingClass(expiresAt: string): string {

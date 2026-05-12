@@ -255,7 +255,7 @@
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
                         <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
-                        <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
+                        <span v-if="sub.expires_at">{{ getRemainingSubscriptionText(sub.expires_at) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
                       </div>
                     </div>
@@ -333,6 +333,7 @@ import {
   writePaymentRecoverySnapshot,
 } from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
+import { formatRemainingDuration } from '@/utils/format'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -351,9 +352,9 @@ const appStore = useAppStore()
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
 
-function getDaysRemaining(expiresAt: string): number {
-  const diff = new Date(expiresAt).getTime() - Date.now()
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+function getRemainingSubscriptionText(expiresAt: string): string {
+  const remaining = formatRemainingDuration(expiresAt)
+  return remaining ? t('userSubscriptions.exactRemaining', { time: remaining }) : t('userSubscriptions.status.expired')
 }
 
 const loading = ref(true)
@@ -528,12 +529,14 @@ function onPaymentDone() {
   }
 }
 
-function onPaymentSuccess() {
+async function onPaymentSuccess() {
+  const resultState = { ...paymentState.value }
   removeRecoverySnapshot()
   authStore.refreshUser()
-  if (paymentState.value.orderType === 'subscription' || paymentState.value.orderType === 'daily_limit_reset') {
+  if (resultState.orderType === 'subscription' || resultState.orderType === 'daily_limit_reset') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
+  await redirectToPaymentResult(resultState)
 }
 
 function onPaymentSettled() {

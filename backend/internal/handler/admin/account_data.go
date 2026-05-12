@@ -423,12 +423,12 @@ func (h *AccountHandler) listAllProxies(ctx context.Context) ([]service.Proxy, e
 	return out, nil
 }
 
-func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode, sortBy, sortOrder string) ([]service.Account, error) {
+func (h *AccountHandler) listAccountsFiltered(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode, sortBy, sortOrder string, tags []string) ([]service.Account, error) {
 	page := 1
 	pageSize := dataPageCap
 	var out []service.Account
 	for {
-		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, nil)
+		items, total, err := h.adminService.ListAccounts(ctx, page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, tags)
 		if err != nil {
 			return nil, err
 		}
@@ -462,8 +462,8 @@ func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64,
 	status := c.Query("status")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
 	search := strings.TrimSpace(c.Query("search"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
+	sortBy := c.DefaultQuery("sort_by", "last_used_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
 	if len(search) > 100 {
 		search = search[:100]
 	}
@@ -481,7 +481,13 @@ func (h *AccountHandler) resolveExportAccounts(ctx context.Context, ids []int64,
 		}
 	}
 
-	return h.listAccountsFiltered(ctx, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	rawTags := c.QueryArray("tags")
+	tagsFilter, tagsErr := normalizeTagsForListFilter(rawTags)
+	if tagsErr != nil {
+		return nil, tagsErr
+	}
+
+	return h.listAccountsFiltered(ctx, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, tagsFilter)
 }
 
 func (h *AccountHandler) resolveExportProxies(ctx context.Context, accounts []service.Account) ([]service.Proxy, error) {

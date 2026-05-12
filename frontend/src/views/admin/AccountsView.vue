@@ -163,8 +163,8 @@
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
-          default-sort-key="name"
-          default-sort-order="asc"
+          default-sort-key="last_used_at"
+          default-sort-order="desc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
           :estimate-row-height="140"
           :overscan="5"
@@ -498,7 +498,7 @@ const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'ra
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 
 // Sorting settings
-const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
+const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort-v2'
 type AccountSortOrder = 'asc' | 'desc'
 type AccountSortState = {
   sort_by: string
@@ -1001,7 +1001,7 @@ const refreshAccountsIncrementally = async () => {
         search?: string
         sort_by?: string
         sort_order?: AccountSortOrder
-
+        tags?: string[]
       },
       { etag: autoRefreshETag.value }
     )
@@ -1379,7 +1379,8 @@ const buildBulkEditFilterSnapshot = () => {
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
-    sort_order: sortOrder
+    sort_order: sortOrder,
+    tags: Array.isArray(rawParams.tags) ? rawParams.tags.filter((tag): tag is string => typeof tag === 'string') : []
   }
 }
 
@@ -1430,7 +1431,8 @@ const buildAccountQueryFilters = () => ({
   privacy_mode: params.privacy_mode || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
-  sort_order: sortState.sort_order
+  sort_order: sortState.sort_order,
+  tags: Array.isArray(params.tags) ? params.tags : []
 })
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
@@ -1470,6 +1472,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
     } else if (privacyMode !== filters.privacy_mode) {
       return false
     }
+  }
+  if (Array.isArray(filters.tags) && filters.tags.length > 0) {
+    const accountTags = Array.isArray(account.tags) ? account.tags : []
+    if (!filters.tags.some((tag) => accountTags.includes(tag))) return false
   }
   const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false

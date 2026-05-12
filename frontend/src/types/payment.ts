@@ -92,8 +92,12 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  subscription_group_id?: number
   subscription_id?: number
+  subscription_days?: number
   provider_instance_id?: string
+  product_name?: string
+  group_name?: string
 }
 
 // ==================== Plans & Channels ====================
@@ -119,6 +123,7 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+  sales_count?: number
 }
 
 export interface PaymentChannel {

@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
@@ -132,6 +132,16 @@ async function fetchOrders() {
   } finally {
     loading.value = false
   }
+}
+
+function handleVisibilityRefresh() {
+  if (!document.hidden) {
+    fetchOrders()
+  }
+}
+
+function handleWindowFocusRefresh() {
+  fetchOrders()
 }
 
 function handlePageChange(page: number) { pagination.page = page; fetchOrders() }
@@ -185,5 +195,15 @@ async function loadRefundEligibility() {
   } catch { /* ignore — default to hiding refund button */ }
 }
 
-onMounted(() => { fetchOrders(); loadRefundEligibility() })
+onMounted(() => {
+  fetchOrders()
+  loadRefundEligibility()
+  document.addEventListener('visibilitychange', handleVisibilityRefresh)
+  window.addEventListener('focus', handleWindowFocusRefresh)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityRefresh)
+  window.removeEventListener('focus', handleWindowFocusRefresh)
+})
 </script>

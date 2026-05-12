@@ -547,7 +547,28 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}
 	}
 	if search != "" {
-		q = q.Where(dbaccount.NameContainsFold(search))
+		isPostgres := r.client.Driver().Dialect() == dialect.Postgres
+		q = q.Where(
+			dbaccount.Or(
+				dbaccount.NameContainsFold(search),
+				dbaccount.NotesContainsFold(search),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					s.Where(entsql.P(func(b *entsql.Builder) {
+						if isPostgres {
+							b.WriteString("LOWER(COALESCE(").
+								Ident(s.C(dbaccount.FieldExtra)).
+								WriteString("->>'email_address','')) LIKE ")
+							b.Arg("%" + strings.ToLower(search) + "%")
+							return
+						}
+						b.WriteString("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(").
+							Ident(s.C(dbaccount.FieldExtra)).
+							WriteString(", '$.email_address')), '')) LIKE ")
+						b.Arg("%" + strings.ToLower(search) + "%")
+					}))
+				}),
+			),
+		)
 	}
 	if groupID == service.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))

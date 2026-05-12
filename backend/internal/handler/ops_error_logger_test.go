@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -85,6 +86,32 @@ func TestAttachOpsRequestBodyToEntry_InvalidJSONKeepsSize(t *testing.T) {
 	require.Equal(t, len(raw), *entry.RequestBodyBytes)
 	require.False(t, entry.RequestBodyTruncated)
 	require.Equal(t, int64(1), OpsErrorLogSanitizedTotal())
+}
+
+func TestExtractOpsRetryRequestHeaders_IncludesAuthFailureMetadata(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Request.Header.Set("anthropic-version", "2023-06-01")
+	c.Set(string(middleware2.ContextKeyAPIKeyAuthFailure), middleware2.APIKeyAuthFailureInfo{
+		Source:      "authorization",
+		Fingerprint: "sha256:deadbeefcafebabe12345678",
+		Hint:        "sk-…(len=48)",
+	})
+
+	raw := extractOpsRetryRequestHeaders(c)
+	require.NotNil(t, raw)
+
+	var headers map[string]string
+	require.NoError(t, json.Unmarshal([]byte(*raw), &headers))
+	require.Equal(t, "2023-06-01", headers["anthropic-version"])
+	require.Equal(t, "authorization", headers["auth_failure_key_source"])
+	require.Equal(t, "sha256:deadbeefcafebabe12345678", headers["auth_failure_key_fingerprint"])
+	require.Equal(t, "sk-…(len=48)", headers["auth_failure_key_hint"])
+	require.NotContains(t, *raw, "sk-invalid-raw-secret")
 }
 
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {

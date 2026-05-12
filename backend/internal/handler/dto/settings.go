@@ -95,6 +95,8 @@ type SystemSettings struct {
 	SiteLogo                    string           `json:"site_logo"`
 	SiteSubtitle                string           `json:"site_subtitle"`
 	APIBaseURL                  string           `json:"api_base_url"`
+	OpenAIFreeImageBridgeURL    string           `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKeyConfigured bool `json:"openai_free_image_bridge_auth_key_configured"`
 	ContactInfo                 string           `json:"contact_info"`
 	DocURL                      string           `json:"doc_url"`
 	HomeContent                 string           `json:"home_content"`
@@ -230,6 +232,8 @@ type PublicSettings struct {
 	SiteLogo                         string           `json:"site_logo"`
 	SiteSubtitle                     string           `json:"site_subtitle"`
 	APIBaseURL                       string           `json:"api_base_url"`
+	OpenAIFreeImageBridgeURL         string           `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKeyConfigured bool      `json:"openai_free_image_bridge_auth_key_configured"`
 	ContactInfo                      string           `json:"contact_info"`
 	DocURL                           string           `json:"doc_url"`
 	HomeContent                      string           `json:"home_content"`

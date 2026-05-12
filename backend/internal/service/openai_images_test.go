@@ -411,7 +411,99 @@ func TestBuildOpenAIImagesFreeConversationRequest(t *testing.T) {
 	require.Equal(t, openAIFreeImageConversationModel, gjson.GetBytes(body, "model").String())
 	require.Equal(t, "next", gjson.GetBytes(body, "action").String())
 	require.Equal(t, "picture_v2", gjson.GetBytes(body, "system_hints.0").String())
+	require.Equal(t, "text", gjson.GetBytes(body, "messages.0.content.content_type").String())
 	require.Equal(t, "draw a cat", gjson.GetBytes(body, "messages.0.content.parts.0").String())
+	require.Equal(t, "chatgpt.com", gjson.GetBytes(body, "client_contextual_info.app_name").String())
+}
+
+func TestBuildOpenAIImagesFreeConversationRequest_WithUploadedRefs(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint:       openAIImagesEditsEndpoint,
+		Model:          "gpt-image-2",
+		Prompt:         "edit this image",
+		InputImageURLs: []string{"data:image/png;base64,ZmFrZQ=="},
+	}
+
+	uploadedRefs := []map[string]any{
+		{
+			"file_id":   "file-123",
+			"file_name": "image_1.png",
+			"file_size": 12345,
+			"mime_type": "image/png",
+			"width":     512,
+			"height":    512,
+			"asset_ptr": "file-service://file-123",
+		},
+	}
+
+	body, err := buildOpenAIImagesFreeConversationRequest(parsed, uploadedRefs)
+	require.NoError(t, err)
+	require.Equal(t, "multimodal_text", gjson.GetBytes(body, "messages.0.content.content_type").String())
+	require.Equal(t, "file-service://file-123", gjson.GetBytes(body, "messages.0.content.parts.0.asset_pointer").String())
+	require.Equal(t, "edit this image", gjson.GetBytes(body, "messages.0.content.parts.1").String())
+	require.Equal(t, "file-123", gjson.GetBytes(body, "messages.0.metadata.attachments.0.id").String())
+	require.Equal(t, "image/png", gjson.GetBytes(body, "messages.0.metadata.attachments.0.mimeType").String())
+	require.Equal(t, "chatgpt.com", gjson.GetBytes(body, "client_contextual_info.app_name").String())
+}
+
+func TestResolveOpenAIImagesRequestModel_IgnoresNonImageChannelMapping(t *testing.T) {
+	require.Equal(t, "gpt-image-2", resolveOpenAIImagesRequestModel("gpt-image-2", "gpt-5.4"))
+	require.Equal(t, "gpt-image-2", resolveOpenAIImagesRequestModel("gpt-image-2", ""))
+	require.Equal(t, "gpt-image-2", resolveOpenAIImagesRequestModel("", "gpt-5.4"))
+	require.Equal(t, "gpt-image-1", resolveOpenAIImagesRequestModel("gpt-image-2", "gpt-image-1"))
+}
+
+func TestBuildOpenAIFreeImageHeaders_UsesRequestedTargetPath(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+		Extra: map[string]any{
+			"openai_device_id":  "device-123",
+			"openai_session_id": "session-123",
+		},
+	}
+
+	headers := buildOpenAIFreeImageHeaders(account, nil, "", "application/json", "/backend-api/sentinel/chat-requirements")
+	require.Equal(t, "/backend-api/sentinel/chat-requirements", headers.Get("X-OpenAI-Target-Path"))
+	require.Equal(t, "/backend-api/sentinel/chat-requirements", headers.Get("X-OpenAI-Target-Route"))
+	require.Equal(t, "device-123", headers.Get("OAI-Device-Id"))
+	require.Equal(t, "session-123", headers.Get("OAI-Session-Id"))
+	require.Equal(t, "zh-CN", headers.Get("OAI-Language"))
+	require.Equal(t, "same-origin", headers.Get("Sec-Fetch-Site"))
+
+	headers = buildOpenAIFreeImageHeaders(account, nil, "", "application/json", "/backend-api/f/conversation/prepare")
+	require.Equal(t, "/backend-api/f/conversation/prepare", headers.Get("X-OpenAI-Target-Path"))
+	require.Equal(t, "/backend-api/f/conversation/prepare", headers.Get("X-OpenAI-Target-Route"))
+}
+
+func TestBuildOpenAILegacyRequirementsToken_ReturnsExpectedPrefix(t *testing.T) {
+	token := buildOpenAILegacyRequirementsToken(
+		openAIImageBackendUserAgent,
+		[]string{openAIDefaultSentinelPowScript},
+		"c/example/_",
+	)
+	require.True(t, strings.HasPrefix(token, "gAAAAAC"))
+	require.Greater(t, len(token), len("gAAAAAC"))
+}
+
+func TestClassifyOpenAIFreeImageSetupError_TimeoutBecomesFailover(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	err := classifyOpenAIFreeImageSetupError(errors.New(`Get "https://chatgpt.com/": dial tcp 1.2.3.4:443: i/o timeout`), account)
+	require.Error(t, err)
+	failoverErr, ok := err.(*UpstreamFailoverError)
+	require.True(t, ok)
+	require.Equal(t, 0, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "dial tcp")
+}
+
+func TestCreateOpenAIFreeImageClient_UsesEnvProxyFallback(t *testing.T) {
+	t.Setenv("SUB2API_FREE_IMAGE_PROXY_URL", "http://127.0.0.1:7897")
+	client, err := createOpenAIFreeImageClient("")
+	require.NoError(t, err)
+	require.NotNil(t, client)
 }
 
 func TestSolveOpenAITurnstileToken_InvalidInput(t *testing.T) {

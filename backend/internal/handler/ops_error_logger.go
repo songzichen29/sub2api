@@ -941,7 +941,7 @@ func extractOpsRetryRequestHeaders(c *gin.Context) *string {
 		return nil
 	}
 
-	headers := make(map[string]string, 4)
+	headers := make(map[string]string, 7)
 	for _, key := range opsRetryRequestHeaderAllowlist {
 		v := strings.TrimSpace(c.GetHeader(key))
 		if v == "" {
@@ -949,6 +949,17 @@ func extractOpsRetryRequestHeaders(c *gin.Context) *string {
 		}
 		// Keep headers small even if a client sends something unexpected.
 		headers[key] = truncateString(v, 512)
+	}
+	if info, ok := middleware2.GetAPIKeyAuthFailureInfo(c); ok {
+		if v := strings.TrimSpace(info.Source); v != "" {
+			headers["auth_failure_key_source"] = truncateString(v, 64)
+		}
+		if v := strings.TrimSpace(info.Fingerprint); v != "" {
+			headers["auth_failure_key_fingerprint"] = truncateString(v, 128)
+		}
+		if v := strings.TrimSpace(info.Hint); v != "" {
+			headers["auth_failure_key_hint"] = truncateString(v, 64)
+		}
 	}
 	if len(headers) == 0 {
 		return nil

@@ -237,6 +237,7 @@ type OpenAIForwardResult struct {
 	FirstTokenMs    *int
 	ImageCount      int
 	ImageSize       string
+	BillingTier     *string
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -5384,6 +5385,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
 	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)
+	if result.BillingTier != nil {
+		usageLog.BillingTier = optionalTrimmedStringPtr(*result.BillingTier)
+	}
 	// 设置计费模式
 	if cost != nil && cost.BillingMode != "" {
 		billingMode := cost.BillingMode

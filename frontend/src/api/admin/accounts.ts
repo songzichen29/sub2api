@@ -535,14 +535,15 @@ export async function exportData(options?: {
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    tags?: string[]
   }
   includeProxies?: boolean
 }): Promise<AdminDataPayload> {
-  const params: Record<string, string> = {}
+  const params: Record<string, string | string[]> = {}
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
+    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order, tags } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
@@ -551,11 +552,15 @@ export async function exportData(options?: {
     if (search) params.search = search
     if (sort_by) params.sort_by = sort_by
     if (sort_order) params.sort_order = sort_order
+    if (Array.isArray(tags) && tags.length > 0) params.tags = tags
   }
   if (options?.includeProxies === false) {
     params.include_proxies = 'false'
   }
-  const { data } = await apiClient.get<AdminDataPayload>('/admin/accounts/data', { params })
+  const { data } = await apiClient.get<AdminDataPayload>('/admin/accounts/data', {
+    params,
+    paramsSerializer: { indexes: null }
+  })
   return data
 }
 

@@ -2529,7 +2529,9 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		GROUP BY api_key_id
 	`, placeholders)
 	today := timezone.Today()
-	args := append(inArgs, startTime, endTime, today, startTime, today)
+	args := []any{startTime, endTime, today}
+	args = append(args, inArgs...)
+	args = append(args, startTime, today)
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

@@ -314,6 +314,30 @@ export function formatCountdownWithSuffix(targetDate: string | Date | null | und
   return i18n.global.t('common.time.countdown.withSuffix', { time: countdown })
 }
 
+export function formatRemainingDuration(targetDate: string | Date | null | undefined): string | null {
+  if (!targetDate) return null
+
+  const now = new Date()
+  const target = new Date(targetDate)
+  const diffMs = target.getTime() - now.getTime()
+
+  if (diffMs <= 0 || isNaN(diffMs)) return null
+
+  const totalMinutes = Math.floor(diffMs / (1000 * 60))
+  const totalHours = Math.floor(totalMinutes / 60)
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  const minutes = totalMinutes % 60
+
+  if (days > 0) {
+    return i18n.global.t('common.time.remaining.daysHours', { d: days, h: hours })
+  }
+  if (totalHours > 0) {
+    return i18n.global.t('common.time.remaining.hoursMinutes', { h: totalHours, m: minutes })
+  }
+  return i18n.global.t('common.time.remaining.minutes', { m: totalMinutes })
+}
+
 /**
  * 格式化为相对时间 + 具体时间组合
  * @param date 日期字符串或 Date 对象

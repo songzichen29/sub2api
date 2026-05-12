@@ -128,7 +128,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
@@ -170,6 +170,13 @@ const outcome = ref<PaymentOutcome | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
+let isResumingFromBackground = false
+let activePollIntervalMs = 3000
+let panelMountedAt = 0
+
+const FAST_POLL_WINDOW_MS = 30_000
+const FAST_POLL_INTERVAL_MS = 1500
+const NORMAL_POLL_INTERVAL_MS = 3000
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
@@ -265,6 +272,39 @@ async function pollStatus() {
   }
 }
 
+function desiredPollIntervalMs(): number {
+  if (!panelMountedAt) return NORMAL_POLL_INTERVAL_MS
+  return Date.now() - panelMountedAt < FAST_POLL_WINDOW_MS
+    ? FAST_POLL_INTERVAL_MS
+    : NORMAL_POLL_INTERVAL_MS
+}
+
+function restartPollTimer() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  if (!props.orderId || outcome.value) return
+  activePollIntervalMs = desiredPollIntervalMs()
+  pollTimer = setInterval(() => {
+    if (desiredPollIntervalMs() !== activePollIntervalMs) {
+      restartPollTimer()
+      return
+    }
+    void pollStatus()
+  }, activePollIntervalMs)
+}
+
+async function pollStatusImmediatelyOnResume() {
+  if (isResumingFromBackground || !props.orderId || outcome.value) return
+  isResumingFromBackground = true
+  try {
+    await pollStatus()
+  } finally {
+    isResumingFromBackground = false
+  }
+}
+
 function startCountdown(seconds: number) {
   remainingSeconds.value = Math.max(0, seconds)
   if (remainingSeconds.value <= 0) { setOutcome('expired'); return }
@@ -295,16 +335,41 @@ function cleanup() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
 }
 
-// Initialize on mount
-qrUrl.value = props.qrCode
-let seconds = 30 * 60
-if (props.expiresAt) {
-  seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
+function handleVisibilityChange() {
+  if (!document.hidden) {
+    void pollStatusImmediatelyOnResume()
+  }
 }
-startCountdown(seconds)
-pollTimer = setInterval(pollStatus, 3000)
-renderQR()
+
+function handleWindowFocus() {
+  void pollStatusImmediatelyOnResume()
+}
+
+function handlePageShow() {
+  void pollStatusImmediatelyOnResume()
+}
+
+onMounted(() => {
+  panelMountedAt = Date.now()
+  qrUrl.value = props.qrCode
+  let seconds = 30 * 60
+  if (props.expiresAt) {
+    seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
+  }
+  startCountdown(seconds)
+  restartPollTimer()
+  renderQR()
+
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  window.addEventListener('focus', handleWindowFocus)
+  window.addEventListener('pageshow', handlePageShow)
+})
 
 watch(() => qrUrl.value, () => renderQR())
-onUnmounted(() => cleanup())
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('focus', handleWindowFocus)
+  window.removeEventListener('pageshow', handlePageShow)
+  cleanup()
+})
 </script>

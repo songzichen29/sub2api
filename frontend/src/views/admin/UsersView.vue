@@ -383,6 +383,7 @@
                 :subscription-type="sub.group?.subscription_type"
                 :rate-multiplier="sub.group?.rate_multiplier"
                 :days-remaining="sub.expires_at ? getDaysRemaining(sub.expires_at) : null"
+                :remaining-text="sub.expires_at ? getRemainingText(sub.expires_at) : null"
                 :title="sub.expires_at ? formatDateTime(sub.expires_at) : ''"
               />
             </div>
@@ -644,7 +645,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatRemainingDuration } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -1208,6 +1209,8 @@ const getDaysRemaining = (expiresAt: string): number => {
   const diffMs = expires.getTime() - now.getTime()
   return Math.ceil(diffMs / (1000 * 60 * 60 * 24))
 }
+
+const getRemainingText = (expiresAt: string): string | null => formatRemainingDuration(expiresAt)
 
 const loadAttributeDefinitions = async () => {
   try {

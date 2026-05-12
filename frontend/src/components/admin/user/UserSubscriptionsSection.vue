@@ -61,6 +61,8 @@
               :platform="sub.group.platform"
               :subscription-type="sub.group.subscription_type"
               :rate-multiplier="sub.group.rate_multiplier"
+              :days-remaining="sub.expires_at ? getDaysRemaining(sub.expires_at) : null"
+              :remaining-text="sub.expires_at ? getRemainingText(sub.expires_at) : null"
               :show-rate="false"
             />
             <span v-else class="text-xs text-gray-400 dark:text-dark-500">-</span>
@@ -201,7 +203,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { UserSubscription } from '@/types'
-import { formatDateOnly } from '@/utils/format'
+import { formatDateOnly, formatRemainingDuration } from '@/utils/format'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -288,6 +290,8 @@ const getDaysRemaining = (expiresAt: string): number | null => {
   if (diff < 0) return null
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
+
+const getRemainingText = (expiresAt: string): string | null => formatRemainingDuration(expiresAt)
 
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)

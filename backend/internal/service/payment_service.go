@@ -138,6 +138,12 @@ type RefundResult struct {
 	SubDaysDeducted int     `json:"subscription_days_deducted,omitempty"`
 }
 
+type RefundPreview struct {
+	RefundAmount            float64 `json:"refund_amount"`
+	MaxRefundableAmount     float64 `json:"max_refundable_amount"`
+	CalculatedAutomatically bool    `json:"calculated_automatically"`
+}
+
 type DashboardStats struct {
 	TodayAmount   float64 `json:"today_amount"`
 	TotalAmount   float64 `json:"total_amount"`
@@ -184,6 +190,10 @@ type PaymentService struct {
 	groupRepo        GroupRepository
 	resumeService    *PaymentResumeService
 	affiliateService *AffiliateService
+}
+
+func (s *PaymentService) GetEntClient() *dbent.Client {
+	return s.entClient
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
