@@ -185,6 +185,8 @@ const (
 	SettingKeySiteLogo                    = "site_logo"                     // 网站Logo (base64)
 	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标题
 	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
+	SettingKeyOpenAIFreeImageBridgeURL    = "openai_free_image_bridge_url"  // OpenAI free 图片桥接地址（指向 chatgpt2api）
+	SettingKeyOpenAIFreeImageBridgeAuthKey = "openai_free_image_bridge_auth_key" // OpenAI free 图片桥接鉴权密钥
 	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
 	SettingKeyDocURL                      = "doc_url"                       // 文档链接
 	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
@@ -361,6 +363,7 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+	SettingKeyAccountImportApplyTemplates = "account_import_apply_templates" // 账号导入 Apply 模板（JSON）
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

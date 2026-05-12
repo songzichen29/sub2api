@@ -236,6 +236,35 @@ func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestAPIKeyAuthInvalidKeySetsAuthFailureContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	apiKeyRepo := &stubApiKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return nil, service.ErrAPIKeyNotFound
+		},
+	}
+	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set("Authorization", "Bearer sk-invalid-123456")
+	c.Request = req
+
+	handler := gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg))
+	handler(c)
+
+	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	info, ok := GetAPIKeyAuthFailureInfo(c)
+	require.True(t, ok)
+	require.Equal(t, "authorization", info.Source)
+	require.Equal(t, "sk-…(len=17)", info.Hint)
+	require.NotEmpty(t, info.Fingerprint)
+	require.NotContains(t, info.Fingerprint, "sk-invalid-123456")
+}
+
 func TestAPIKeyAuthOverwritesInvalidContextGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

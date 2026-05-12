@@ -7,10 +7,15 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type paymentFulfillmentTestProvider struct {
@@ -365,4 +370,247 @@ func TestValidateProviderNotificationMetadataRejectsEasyPaySnapshotMismatch(t *t
 		"pid": "pid-other",
 	})
 	assert.ErrorContains(t, err, "easypay pid mismatch")
+}
+
+func TestDoSubPersistsSubscriptionIDToOrder(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("fulfill-sub@example.com").
+		SetPasswordHash("hash").
+		SetUsername("fulfill-sub-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupEntity, err := client.Group.Create().
+		SetName("fulfill-sub-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(99).
+		SetPayAmount(99).
+		SetFeeRate(0).
+		SetRechargeCode("FULFILL-SUB").
+		SetOutTradeNo("sub2_fulfill_sub").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-fulfill-sub").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusPaid).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupRepo := &groupRepoStubForDoSub{
+		group: &Group{
+			ID:               groupEntity.ID,
+			Status:           StatusActive,
+			SubscriptionType: SubscriptionTypeSubscription,
+		},
+	}
+	subRepo := newUserSubRepoForDoSub(client)
+	subSvc := NewSubscriptionService(groupRepo, subRepo, nil, client, nil)
+	svc := &PaymentService{
+		entClient:       client,
+		groupRepo:       groupRepo,
+		subscriptionSvc: subSvc,
+	}
+
+	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)
+	require.NoError(t, err)
+
+	updatedOrder, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedOrder.SubscriptionID)
+	require.Positive(t, *updatedOrder.SubscriptionID)
+
+	sub, err := client.UserSubscription.Get(ctx, *updatedOrder.SubscriptionID)
+	require.NoError(t, err)
+	require.Equal(t, user.ID, sub.UserID)
+	require.Equal(t, groupEntity.ID, sub.GroupID)
+	require.Equal(t, domain.SubscriptionSourcePayment, sub.Source)
+	if sub.Notes != nil {
+		require.Contains(t, *sub.Notes, "payment order")
+	}
+}
+
+type groupRepoStubForDoSub struct {
+	group *Group
+}
+
+func (s *groupRepoStubForDoSub) Create(context.Context, *Group) error { panic("unexpected Create") }
+func (s *groupRepoStubForDoSub) GetByID(context.Context, int64) (*Group, error) {
+	return s.group, nil
+}
+func (s *groupRepoStubForDoSub) GetByIDLite(context.Context, int64) (*Group, error) {
+	return s.group, nil
+}
+func (s *groupRepoStubForDoSub) Update(context.Context, *Group) error { panic("unexpected Update") }
+func (s *groupRepoStubForDoSub) Delete(context.Context, int64) error { panic("unexpected Delete") }
+func (s *groupRepoStubForDoSub) DeleteCascade(context.Context, int64) ([]int64, error) {
+	panic("unexpected DeleteCascade")
+}
+func (s *groupRepoStubForDoSub) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected List")
+}
+func (s *groupRepoStubForDoSub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters")
+}
+func (s *groupRepoStubForDoSub) ListActive(context.Context) ([]Group, error) { panic("unexpected ListActive") }
+func (s *groupRepoStubForDoSub) ListActiveByPlatform(context.Context, string) ([]Group, error) {
+	panic("unexpected ListActiveByPlatform")
+}
+func (s *groupRepoStubForDoSub) ExistsByName(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByName")
+}
+func (s *groupRepoStubForDoSub) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	panic("unexpected GetAccountCount")
+}
+func (s *groupRepoStubForDoSub) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected DeleteAccountGroupsByGroupID")
+}
+func (s *groupRepoStubForDoSub) GetAccountIDsByGroupIDs(context.Context, []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs")
+}
+func (s *groupRepoStubForDoSub) BindAccountsToGroup(context.Context, int64, []int64) error {
+	panic("unexpected BindAccountsToGroup")
+}
+func (s *groupRepoStubForDoSub) UpdateSortOrders(context.Context, []GroupSortOrderUpdate) error {
+	panic("unexpected UpdateSortOrders")
+}
+
+type userSubRepoForDoSub struct {
+	client *dbent.Client
+}
+
+func newUserSubRepoForDoSub(client *dbent.Client) *userSubRepoForDoSub {
+	return &userSubRepoForDoSub{client: client}
+}
+
+func (r *userSubRepoForDoSub) Create(ctx context.Context, sub *UserSubscription) error {
+	create := r.client.UserSubscription.Create().
+		SetUserID(sub.UserID).
+		SetGroupID(sub.GroupID).
+		SetStartsAt(sub.StartsAt).
+		SetExpiresAt(sub.ExpiresAt).
+		SetStatus(sub.Status).
+		SetAssignedAt(sub.AssignedAt).
+		SetNotes(sub.Notes).
+		SetSource(sub.Source)
+	if sub.AssignedBy != nil {
+		create.SetAssignedBy(*sub.AssignedBy)
+	}
+	entity, err := create.Save(ctx)
+	if err != nil {
+		return err
+	}
+	sub.ID = entity.ID
+	return nil
+}
+
+func (r *userSubRepoForDoSub) GetByID(ctx context.Context, id int64) (*UserSubscription, error) {
+	entity, err := r.client.UserSubscription.Query().Where(usersubscription.IDEQ(id)).WithGroup().Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentRefundEntSubscriptionToService(entity), nil
+}
+
+func (r *userSubRepoForDoSub) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
+	entity, err := r.client.UserSubscription.Query().
+		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
+		WithGroup().
+		Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentRefundEntSubscriptionToService(entity), nil
+}
+
+func (r *userSubRepoForDoSub) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
+	entity, err := r.client.UserSubscription.Query().
+		Where(
+			usersubscription.UserIDEQ(userID),
+			usersubscription.GroupIDEQ(groupID),
+			usersubscription.StatusEQ(SubscriptionStatusActive),
+		).
+		WithGroup().
+		Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return paymentRefundEntSubscriptionToService(entity), nil
+}
+
+func (r *userSubRepoForDoSub) Update(context.Context, *UserSubscription) error { panic("unexpected Update") }
+func (r *userSubRepoForDoSub) Delete(ctx context.Context, id int64) error {
+	_, err := r.client.UserSubscription.Delete().Where(usersubscription.IDEQ(id)).Exec(ctx)
+	return err
+}
+func (r *userSubRepoForDoSub) ListByUserID(ctx context.Context, userID int64) ([]UserSubscription, error) {
+	rows, err := r.client.UserSubscription.Query().Where(usersubscription.UserIDEQ(userID)).WithGroup().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserSubscription, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, *paymentRefundEntSubscriptionToService(row))
+	}
+	return out, nil
+}
+func (r *userSubRepoForDoSub) ListActiveByUserID(context.Context, int64) ([]UserSubscription, error) {
+	panic("unexpected ListActiveByUserID")
+}
+func (r *userSubRepoForDoSub) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]UserSubscription, *pagination.PaginationResult, error) {
+	panic("unexpected ListByGroupID")
+}
+func (r *userSubRepoForDoSub) List(context.Context, pagination.PaginationParams, *int64, *int64, string, string, string, string) ([]UserSubscription, *pagination.PaginationResult, error) {
+	panic("unexpected List")
+}
+func (r *userSubRepoForDoSub) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	return r.client.UserSubscription.Query().Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).Exist(ctx)
+}
+func (r *userSubRepoForDoSub) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
+	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).SetExpiresAt(newExpiresAt).Save(ctx)
+	return err
+}
+func (r *userSubRepoForDoSub) UpdateStatus(ctx context.Context, subscriptionID int64, status string) error {
+	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).SetStatus(status).Save(ctx)
+	return err
+}
+func (r *userSubRepoForDoSub) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
+	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).SetNotes(notes).Save(ctx)
+	return err
+}
+func (r *userSubRepoForDoSub) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
+	panic("unexpected ActivateWindows")
+}
+func (r *userSubRepoForDoSub) ResetDailyUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetDailyUsage")
+}
+func (r *userSubRepoForDoSub) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetWeeklyUsage")
+}
+func (r *userSubRepoForDoSub) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetMonthlyUsage")
+}
+func (r *userSubRepoForDoSub) IncrementUsage(context.Context, int64, float64) error {
+	panic("unexpected IncrementUsage")
+}
+func (r *userSubRepoForDoSub) GetLatestUsedAtBySubscriptionIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	panic("unexpected GetLatestUsedAtBySubscriptionIDs")
+}
+func (r *userSubRepoForDoSub) BatchUpdateExpiredStatus(context.Context) (int64, error) {
+	panic("unexpected BatchUpdateExpiredStatus")
 }

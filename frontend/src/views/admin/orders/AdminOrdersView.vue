@@ -62,8 +62,10 @@
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderId') }}</p><p class="font-mono text-sm font-medium text-gray-900 dark:text-white">#{{ selectedOrder.id }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderNo') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedOrder.out_trade_no }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</p><OrderStatusBadge :status="selectedOrder.status" /></div>
+          <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderType') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ orderTypeLabel(selectedOrder) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ selectedOrder.order_type === 'balance' ? '$' : '¥' }}{{ selectedOrder.amount.toFixed(2) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ selectedOrder.pay_amount.toFixed(2) }}</p></div>
+          <div v-if="orderContentLabel(selectedOrder)"><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderContent') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ orderContentLabel(selectedOrder) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + selectedOrder.payment_type, selectedOrder.payment_type) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.feeRate') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ selectedOrder.fee_rate }}%</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.createdAt') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(selectedOrder.created_at) }}</p></div>
@@ -224,17 +226,43 @@ async function handleRetryOrder(order: PaymentOrder) {
 
 function openRefundDialog(order: PaymentOrder) { selectedOrder.value = order; showRefundDialog.value = true }
 
-async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }) {
+async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean; refund_mode?: 'full' | 'proportional' }) {
   if (!selectedOrder.value) return
   refundSubmitting.value = true
   try {
-    await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
+    await adminPaymentAPI.refundOrder(selectedOrder.value.id, {
+      amount: data.amount,
+      reason: data.reason,
+      deduct_balance: data.deduct_balance,
+      force: data.force,
+      refund_mode: data.refund_mode,
+    })
     appStore.showSuccess(t('payment.admin.refundSuccess')); showRefundDialog.value = false; loadOrders()
   } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
   finally { refundSubmitting.value = false }
 }
 
 function formatDateTime(dateStr: string): string { return formatOrderDateTime(dateStr) }
+
+function orderTypeLabel(order: PaymentOrder): string {
+  if (order.order_type === 'subscription') return t('payment.admin.subscriptionOrder')
+  if (order.order_type === 'daily_limit_reset') return t('payment.admin.dailyLimitResetOrder')
+  return t('payment.admin.balanceOrder')
+}
+
+function orderContentLabel(order: PaymentOrder): string {
+  if (order.order_type === 'subscription') {
+    const name = order.product_name || order.group_name
+    if (name && order.subscription_days) return `${name} · ${order.subscription_days}${t('payment.admin.days')}`
+    if (name) return name
+    if (order.subscription_days) return `${order.subscription_days}${t('payment.admin.days')}`
+    return ''
+  }
+  if (order.order_type === 'daily_limit_reset') {
+    return order.group_name || t('payment.admin.dailyLimitResetOrder')
+  }
+  return ''
+}
 
 onMounted(() => loadOrders())
 </script>

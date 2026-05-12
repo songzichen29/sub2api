@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -57,6 +60,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		ID            int64    `json:"id"`
 		GroupID       int64    `json:"group_id"`
 		GroupPlatform string   `json:"group_platform"`
+		GroupName     string   `json:"group_name"`
 		Name          string   `json:"name"`
 		Description   string   `json:"description"`
 		Price         float64  `json:"price"`
@@ -67,15 +71,23 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		ProductName   string   `json:"product_name"`
 		ForSale       bool     `json:"for_sale"`
 		SortOrder     int      `json:"sort_order"`
+		SalesCount    int      `json:"sales_count"`
 	}
 	platformMap := h.configService.GetGroupPlatformMap(c.Request.Context(), plans)
+	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
+	planIDs := make([]int64, 0, len(plans))
+	for _, p := range plans {
+		planIDs = append(planIDs, p.ID)
+	}
+	salesMap, _ := h.configService.GetPlanSalesCountMap(c.Request.Context(), planIDs)
 	result := make([]planWithPlatform, 0, len(plans))
 	for _, p := range plans {
+		gi := groupInfo[p.GroupID]
 		result = append(result, planWithPlatform{
-			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID],
+			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID], GroupName: gi.Name,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
-			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
+			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder, SalesCount: salesMap[p.ID],
 		})
 	}
 	response.Success(c, result)
@@ -115,6 +127,11 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
+	planIDs := make([]int64, 0, len(plans))
+	for _, p := range plans {
+		planIDs = append(planIDs, p.ID)
+	}
+	salesMap, _ := h.configService.GetPlanSalesCountMap(ctx, planIDs)
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
@@ -126,7 +143,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName,
+			ProductName: p.ProductName, SalesCount: salesMap[p.ID],
 		})
 	}
 
@@ -175,6 +192,7 @@ type checkoutPlan struct {
 	ValidityUnit    string   `json:"validity_unit"`
 	Features        []string `json:"features"`
 	ProductName     string   `json:"product_name"`
+	SalesCount      int      `json:"sales_count"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
@@ -335,7 +353,7 @@ func (h *PaymentHandler) GetMyOrders(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, sanitizePaymentOrdersForResponse(orders), int64(total), page, pageSize)
+	response.Paginated(c, enrichPaymentOrdersForResponse(c.Request.Context(), h.paymentService, orders), int64(total), page, pageSize)
 }
 
 // GetOrder returns a single order for the authenticated user.
@@ -357,7 +375,7 @@ func (h *PaymentHandler) GetOrder(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, sanitizePaymentOrderForResponse(order))
+	response.Success(c, enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order))
 }
 
 // CancelOrder cancels a pending order for the authenticated user.
@@ -453,7 +471,7 @@ func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, sanitizePaymentOrderForResponse(order))
+	response.Success(c, enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order))
 }
 
 // PublicOrderResult is the limited order info returned by the public verify endpoint.
@@ -477,10 +495,17 @@ type PublicOrderResult struct {
 	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
 	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
 	PlanID              *int64     `json:"plan_id,omitempty"`
+	SubscriptionGroupID *int64     `json:"subscription_group_id,omitempty"`
 	SubscriptionID      *int64     `json:"subscription_id,omitempty"`
+	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
+	ProductName         string     `json:"product_name,omitempty"`
+	GroupName           string     `json:"group_name,omitempty"`
 }
 
-func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
+func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
+	if order == nil || order.PaymentOrder == nil {
+		return PublicOrderResult{}
+	}
 	return PublicOrderResult{
 		ID:                  order.ID,
 		OutTradeNo:          order.OutTradeNo,
@@ -500,7 +525,11 @@ func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {
 		RefundRequestedBy:   order.RefundRequestedBy,
 		RefundRequestReason: order.RefundRequestReason,
 		PlanID:              order.PlanID,
+		SubscriptionGroupID: order.SubscriptionGroupID,
 		SubscriptionID:      order.SubscriptionID,
+		SubscriptionDays:    order.SubscriptionDays,
+		ProductName:         order.ProductName,
+		GroupName:           order.GroupName,
 	}
 }
 
@@ -519,7 +548,7 @@ func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, buildPublicOrderResult(order))
+	response.Success(c, buildPublicOrderResult(enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order)))
 }
 
 // ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.
@@ -536,7 +565,7 @@ func (h *PaymentHandler) ResolveOrderPublicByResumeToken(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, buildPublicOrderResult(order))
+	response.Success(c, buildPublicOrderResult(enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order)))
 }
 
 // requireAuth extracts the authenticated subject from the context.
@@ -579,6 +608,88 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOr
 	cloned := *order
 	cloned.ProviderSnapshot = nil
 	return &cloned
+}
+
+type paymentOrderResponse struct {
+	*dbent.PaymentOrder
+	ProductName string `json:"product_name,omitempty"`
+	GroupName   string `json:"group_name,omitempty"`
+}
+
+func enrichPaymentOrdersForResponse(ctx context.Context, paymentService *service.PaymentService, orders []*dbent.PaymentOrder) []*paymentOrderResponse {
+	if len(orders) == 0 {
+		return []*paymentOrderResponse{}
+	}
+
+	planIDs := make([]int64, 0, len(orders))
+	groupIDs := make([]int64, 0, len(orders))
+	planSeen := make(map[int64]struct{})
+	groupSeen := make(map[int64]struct{})
+	for _, order := range orders {
+		if order == nil {
+			continue
+		}
+		if order.PlanID != nil {
+			if _, ok := planSeen[*order.PlanID]; !ok {
+				planSeen[*order.PlanID] = struct{}{}
+				planIDs = append(planIDs, *order.PlanID)
+			}
+		}
+		if order.SubscriptionGroupID != nil {
+			if _, ok := groupSeen[*order.SubscriptionGroupID]; !ok {
+				groupSeen[*order.SubscriptionGroupID] = struct{}{}
+				groupIDs = append(groupIDs, *order.SubscriptionGroupID)
+			}
+		}
+	}
+
+	planMap := map[int64]string{}
+	if len(planIDs) > 0 {
+		if client := paymentService.GetEntClient(); client != nil {
+			plans, err := client.SubscriptionPlan.Query().Where(subscriptionplan.IDIn(planIDs...)).All(ctx)
+			if err == nil {
+				for _, p := range plans {
+					planMap[p.ID] = p.Name
+				}
+			}
+		}
+	}
+	groupMap := map[int64]string{}
+	if len(groupIDs) > 0 {
+		if client := paymentService.GetEntClient(); client != nil {
+			groups, err := client.Group.Query().Where(group.IDIn(groupIDs...)).All(ctx)
+			if err == nil {
+				for _, g := range groups {
+					groupMap[g.ID] = g.Name
+				}
+			}
+		}
+	}
+
+	out := make([]*paymentOrderResponse, 0, len(orders))
+	for _, order := range orders {
+		sanitized := sanitizePaymentOrderForResponse(order)
+		if sanitized == nil {
+			continue
+		}
+		item := &paymentOrderResponse{PaymentOrder: sanitized}
+		if sanitized.PlanID != nil {
+			item.ProductName = planMap[*sanitized.PlanID]
+		}
+		if sanitized.SubscriptionGroupID != nil {
+			item.GroupName = groupMap[*sanitized.SubscriptionGroupID]
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func enrichPaymentOrderForResponse(ctx context.Context, paymentService *service.PaymentService, order *dbent.PaymentOrder) *paymentOrderResponse {
+	items := enrichPaymentOrdersForResponse(ctx, paymentService, []*dbent.PaymentOrder{order})
+	if len(items) == 0 {
+		return nil
+	}
+	return items[0]
 }
 
 func isWeChatBrowser(c *gin.Context) bool {

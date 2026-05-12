@@ -89,20 +89,23 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
 
-	SiteName                    string
-	SiteLogo                    string
-	SiteSubtitle                string
-	APIBaseURL                  string
-	ContactInfo                 string
-	DocURL                      string
-	HomeContent                 string
-	HideCcsImportButton         bool
-	PurchaseSubscriptionEnabled bool
-	PurchaseSubscriptionURL     string
-	TableDefaultPageSize        int
-	TablePageSizeOptions        []int
-	CustomMenuItems             string // JSON array of custom menu items
-	CustomEndpoints             string // JSON array of custom endpoints
+	SiteName                               string
+	SiteLogo                               string
+	SiteSubtitle                           string
+	APIBaseURL                             string
+	OpenAIFreeImageBridgeURL               string
+	OpenAIFreeImageBridgeAuthKey           string
+	OpenAIFreeImageBridgeAuthKeyConfigured bool
+	ContactInfo                            string
+	DocURL                                 string
+	HomeContent                            string
+	HideCcsImportButton                    bool
+	PurchaseSubscriptionEnabled            bool
+	PurchaseSubscriptionURL                string
+	TableDefaultPageSize                   int
+	TablePageSizeOptions                   []int
+	CustomMenuItems                        string // JSON array of custom menu items
+	CustomEndpoints                        string // JSON array of custom endpoints
 
 	DefaultConcurrency              int
 	DefaultBalance                  float64
@@ -188,24 +191,26 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
-	RegistrationEnabled              bool
-	EmailVerifyEnabled               bool
-	ForceEmailOnThirdPartySignup     bool
-	RegistrationEmailSuffixWhitelist []string
-	PromoCodeEnabled                 bool
-	PasswordResetEnabled             bool
-	InvitationCodeEnabled            bool
-	TotpEnabled                      bool // TOTP 双因素认证
-	TurnstileEnabled                 bool
-	TurnstileSiteKey                 string
-	SiteName                         string
-	SiteLogo                         string
-	SiteSubtitle                     string
-	APIBaseURL                       string
-	ContactInfo                      string
-	DocURL                           string
-	HomeContent                      string
-	HideCcsImportButton              bool
+	RegistrationEnabled                    bool
+	EmailVerifyEnabled                     bool
+	ForceEmailOnThirdPartySignup           bool
+	RegistrationEmailSuffixWhitelist       []string
+	PromoCodeEnabled                       bool
+	PasswordResetEnabled                   bool
+	InvitationCodeEnabled                  bool
+	TotpEnabled                            bool // TOTP 双因素认证
+	TurnstileEnabled                       bool
+	TurnstileSiteKey                       string
+	SiteName                               string
+	SiteLogo                               string
+	SiteSubtitle                           string
+	APIBaseURL                             string
+	OpenAIFreeImageBridgeURL               string
+	OpenAIFreeImageBridgeAuthKeyConfigured bool
+	ContactInfo                            string
+	DocURL                                 string
+	HomeContent                            string
+	HideCcsImportButton                    bool
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string

@@ -26,7 +26,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 400, "不再支持 query 参数 api_key，请改用 Authorization 请求头或 key 参数。")
 			return
 		}
-		apiKeyString := extractAPIKeyForGoogle(c)
+		apiKeySource, apiKeyString := extractAPIKeyForGoogleWithSource(c)
 		if apiKeyString == "" {
 			abortWithGoogleError(c, 401, "缺少 API Key")
 			return
@@ -35,6 +35,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
+				setAPIKeyAuthFailureContext(c, apiKeySource, apiKeyString)
 				abortWithGoogleError(c, 401, "API Key 无效")
 				return
 			}
@@ -122,9 +123,14 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 // Priority: x-goog-api-key > Authorization: Bearer > x-api-key > query key
 // This allows OpenClaw and other clients using Bearer auth to work with Gemini endpoints.
 func extractAPIKeyForGoogle(c *gin.Context) string {
+	_, key := extractAPIKeyForGoogleWithSource(c)
+	return key
+}
+
+func extractAPIKeyForGoogleWithSource(c *gin.Context) (string, string) {
 	// 1) preferred: Gemini native header
 	if k := strings.TrimSpace(c.GetHeader("x-goog-api-key")); k != "" {
-		return k
+		return "x-goog-api-key", k
 	}
 
 	// 2) fallback: Authorization: Bearer <key>
@@ -133,24 +139,24 @@ func extractAPIKeyForGoogle(c *gin.Context) string {
 		parts := strings.SplitN(auth, " ", 2)
 		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 			if k := strings.TrimSpace(parts[1]); k != "" {
-				return k
+				return "authorization", k
 			}
 		}
 	}
 
 	// 3) x-api-key header (backward compatibility)
 	if k := strings.TrimSpace(c.GetHeader("x-api-key")); k != "" {
-		return k
+		return "x-api-key", k
 	}
 
 	// 4) query parameter key (for specific paths)
 	if allowGoogleQueryKey(c.Request.URL.Path) {
 		if v := strings.TrimSpace(c.Query("key")); v != "" {
-			return v
+			return "query:key", v
 		}
 	}
 
-	return ""
+	return "", ""
 }
 
 func allowGoogleQueryKey(path string) bool {

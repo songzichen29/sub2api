@@ -63,6 +63,10 @@ type SettingHandler struct {
 	paymentService       *service.PaymentService
 }
 
+type accountImportTemplatesRequest struct {
+	Templates []service.AccountImportApplyTemplate `json:"templates"`
+}
+
 // NewSettingHandler 创建系统设置处理器
 func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
 	return &SettingHandler{
@@ -73,6 +77,33 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 		paymentConfigService: paymentConfigService,
 		paymentService:       paymentService,
 	}
+}
+
+// GET /api/v1/admin/settings/account-import-templates
+func (h *SettingHandler) GetAccountImportTemplates(c *gin.Context) {
+	templates, err := h.settingService.GetAccountImportApplyTemplates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"templates": templates})
+}
+
+// PUT /api/v1/admin/settings/account-import-templates
+func (h *SettingHandler) UpdateAccountImportTemplates(c *gin.Context) {
+	var req accountImportTemplatesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.Templates == nil {
+		req.Templates = []service.AccountImportApplyTemplate{}
+	}
+	if err := h.settingService.SetAccountImportApplyTemplates(c.Request.Context(), req.Templates); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"templates": req.Templates})
 }
 
 // GetSettings 获取所有系统设置
@@ -176,6 +207,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SiteLogo:                               settings.SiteLogo,
 		SiteSubtitle:                           settings.SiteSubtitle,
 		APIBaseURL:                             settings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:               settings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured: settings.OpenAIFreeImageBridgeAuthKeyConfigured,
 		ContactInfo:                            settings.ContactInfo,
 		DocURL:                                 settings.DocURL,
 		HomeContent:                            settings.HomeContent,
@@ -375,20 +408,22 @@ type UpdateSettingsRequest struct {
 	OIDCConnectUserInfoUsernamePath string `json:"oidc_connect_userinfo_username_path"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	SiteName                     string                `json:"site_name"`
+	SiteLogo                     string                `json:"site_logo"`
+	SiteSubtitle                 string                `json:"site_subtitle"`
+	APIBaseURL                   string                `json:"api_base_url"`
+	OpenAIFreeImageBridgeURL     string                `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKey string                `json:"openai_free_image_bridge_auth_key"`
+	ContactInfo                  string                `json:"contact_info"`
+	DocURL                       string                `json:"doc_url"`
+	HomeContent                  string                `json:"home_content"`
+	HideCcsImportButton          bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled  *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL      *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize         int                   `json:"table_default_page_size"`
+	TablePageSizeOptions         []int                 `json:"table_page_size_options"`
+	CustomMenuItems              *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints              *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
@@ -1236,6 +1271,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                         req.SiteLogo,
 		SiteSubtitle:                     req.SiteSubtitle,
 		APIBaseURL:                       req.APIBaseURL,
+		OpenAIFreeImageBridgeURL:         req.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKey:     req.OpenAIFreeImageBridgeAuthKey,
 		ContactInfo:                      req.ContactInfo,
 		DocURL:                           req.DocURL,
 		HomeContent:                      req.HomeContent,
@@ -1590,6 +1627,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                               updatedSettings.SiteLogo,
 		SiteSubtitle:                           updatedSettings.SiteSubtitle,
 		APIBaseURL:                             updatedSettings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:               updatedSettings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured: updatedSettings.OpenAIFreeImageBridgeAuthKeyConfigured,
 		ContactInfo:                            updatedSettings.ContactInfo,
 		DocURL:                                 updatedSettings.DocURL,
 		HomeContent:                            updatedSettings.HomeContent,

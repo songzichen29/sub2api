@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -470,6 +471,30 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 		TotalRequests:   30,
 		TotalTokens:     2600,
 	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetBatchAPIKeyUsageStats_BindsQueryArgsInCorrectOrder(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC)
+	today := timezone.Today()
+
+	mock.ExpectQuery("SELECT\\s+api_key_id,.*FROM usage_logs").
+		WithArgs(start, end, today, int64(101), int64(202), start, today).
+		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "total_cost", "today_cost"}).
+			AddRow(int64(101), 1.23, 0.45).
+			AddRow(int64(202), 6.78, 0.9))
+
+	stats, err := repo.GetBatchAPIKeyUsageStats(context.Background(), []int64{101, 202}, start, end)
+	require.NoError(t, err)
+	require.Len(t, stats, 2)
+	require.InDelta(t, 1.23, stats[101].TotalActualCost, 0.0001)
+	require.InDelta(t, 0.45, stats[101].TodayActualCost, 0.0001)
+	require.InDelta(t, 6.78, stats[202].TotalActualCost, 0.0001)
+	require.InDelta(t, 0.9, stats[202].TodayActualCost, 0.0001)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

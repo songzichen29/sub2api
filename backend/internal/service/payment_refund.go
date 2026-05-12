@@ -13,6 +13,8 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -227,7 +229,18 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 		return nil, nil, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
 	}
 	if amt <= 0 {
-		amt = o.Amount
+		if o.OrderType == payment.OrderTypeSubscription {
+			autoAmount, autoErr := s.calculateSubscriptionRefundAmount(ctx, o)
+			if autoErr != nil {
+				return nil, nil, autoErr
+			}
+			if autoAmount <= 0 {
+				return nil, nil, infraerrors.BadRequest("NO_REFUNDABLE_AMOUNT", "subscription has no refundable amount")
+			}
+			amt = autoAmount
+		} else {
+			amt = o.Amount
+		}
 	}
 	if amt-o.Amount > amountToleranceCNY {
 		return nil, nil, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
@@ -254,7 +267,7 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 		p.DeductionType = payment.DeductionTypeSubscription
 		if o.SubscriptionGroupID != nil && o.SubscriptionDays != nil {
 			p.SubDaysToDeduct = *o.SubscriptionDays
-			sub, err := s.subscriptionSvc.GetActiveSubscription(ctx, o.UserID, *o.SubscriptionGroupID)
+			sub, err := s.resolveRefundSubscription(ctx, o)
 			if err == nil && sub != nil {
 				p.SubscriptionID = sub.ID
 			} else if !force {
@@ -414,4 +427,225 @@ func (s *PaymentService) restoreStatus(ctx context.Context, p *RefundPlan) {
 		rs = OrderStatusRefundRequested
 	}
 	_, _ = s.entClient.PaymentOrder.UpdateOneID(p.OrderID).SetStatus(rs).Save(ctx)
+}
+
+func (s *PaymentService) PreviewRefund(ctx context.Context, oid int64, amt float64) (*RefundPreview, error) {
+	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
+	if err != nil {
+		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	actuallyRefunded := 0.0
+	if o.Status == OrderStatusPartiallyRefunded || o.Status == OrderStatusRefunded {
+		actuallyRefunded = o.RefundAmount
+	}
+	maxRefundable := o.Amount - actuallyRefunded
+	if maxRefundable < 0 {
+		maxRefundable = 0
+	}
+
+	preview := &RefundPreview{
+		RefundAmount:            amt,
+		MaxRefundableAmount:     math.Round(maxRefundable*100) / 100,
+		CalculatedAutomatically: false,
+	}
+	if o.OrderType == payment.OrderTypeSubscription && amt <= 0 {
+		calculated, calcErr := s.calculateSubscriptionRefundAmount(ctx, o)
+		if calcErr != nil {
+			return nil, calcErr
+		}
+		preview.RefundAmount = calculated
+		preview.CalculatedAutomatically = true
+	}
+	if preview.RefundAmount < 0 {
+		preview.RefundAmount = 0
+	}
+	if preview.RefundAmount > preview.MaxRefundableAmount {
+		preview.RefundAmount = preview.MaxRefundableAmount
+	}
+	preview.RefundAmount = math.Round(preview.RefundAmount*100) / 100
+	return preview, nil
+}
+
+func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, o *dbent.PaymentOrder) (float64, error) {
+	if o == nil {
+		return 0, infraerrors.BadRequest("INVALID_ORDER", "order is required")
+	}
+	if o.OrderType != payment.OrderTypeSubscription {
+		return 0, infraerrors.BadRequest("INVALID_ORDER_TYPE", "only subscription orders support automatic refund calculation")
+	}
+	if o.SubscriptionGroupID == nil || o.SubscriptionDays == nil || *o.SubscriptionDays <= 0 {
+		return 0, infraerrors.BadRequest("INVALID_SUBSCRIPTION_ORDER", "subscription order missing required refund metadata")
+	}
+
+	sub, err := s.resolveRefundSubscription(ctx, o)
+	if err != nil {
+		return 0, err
+	}
+	if sub == nil {
+		return 0, infraerrors.BadRequest("SUBSCRIPTION_NOT_FOUND", "cannot find subscription for this order")
+	}
+	if sub.Group == nil {
+		sub.Group, err = s.groupRepo.GetByID(ctx, sub.GroupID)
+		if err != nil {
+			return 0, infraerrors.BadRequest("GROUP_NOT_FOUND", "subscription group not found")
+		}
+	}
+	if sub.Group == nil || !sub.Group.HasDailyLimit() {
+		return 0, infraerrors.BadRequest("DAILY_LIMIT_NOT_CONFIGURED", "subscription group has no daily limit, cannot calculate automatic refund")
+	}
+
+	totalDays := *o.SubscriptionDays
+	if totalDays <= 0 {
+		return 0, infraerrors.BadRequest("INVALID_SUBSCRIPTION_DAYS", "subscription days must be greater than zero")
+	}
+
+	now := time.Now()
+	fullUsedDays := 0
+	if now.After(sub.StartsAt) {
+		fullUsedDays = int(now.Sub(sub.StartsAt) / dailyWindowDuration)
+	}
+	if fullUsedDays < 0 {
+		fullUsedDays = 0
+	}
+	if fullUsedDays > totalDays {
+		fullUsedDays = totalDays
+	}
+
+	remainingFullDays := totalDays - fullUsedDays - 1
+	if remainingFullDays < 0 {
+		remainingFullDays = 0
+	}
+
+	dailyLimit := *sub.Group.DailyLimitUSD
+	todayRemainingRatio := 0.0
+	if dailyLimit > 0 && fullUsedDays < totalDays {
+		remaining := dailyLimit - sub.DailyUsageUSD
+		if remaining < 0 {
+			remaining = 0
+		}
+		todayRemainingRatio = remaining / dailyLimit
+		if todayRemainingRatio > 1 {
+			todayRemainingRatio = 1
+		}
+	}
+
+	refundableDaysEquivalent := float64(remainingFullDays) + todayRemainingRatio
+	maxEquivalent := float64(totalDays)
+	if refundableDaysEquivalent < 0 {
+		refundableDaysEquivalent = 0
+	}
+	if refundableDaysEquivalent > maxEquivalent {
+		refundableDaysEquivalent = maxEquivalent
+	}
+
+	refundAmount := o.Amount * refundableDaysEquivalent / float64(totalDays)
+	if refundAmount < 0 {
+		refundAmount = 0
+	}
+	if refundAmount > o.Amount {
+		refundAmount = o.Amount
+	}
+	return math.Round(refundAmount*100) / 100, nil
+}
+
+func (s *PaymentService) resolveRefundSubscription(ctx context.Context, o *dbent.PaymentOrder) (*UserSubscription, error) {
+	if s == nil || o == nil || s.entClient == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	if o.SubscriptionID != nil && *o.SubscriptionID > 0 && s.subscriptionSvc != nil {
+		sub, err := s.subscriptionSvc.GetByID(ctx, *o.SubscriptionID)
+		if err == nil && sub != nil {
+			return sub, nil
+		}
+	}
+	if o.SubscriptionGroupID == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+
+	orderNote := fmt.Sprintf("payment order %d", o.ID)
+	candidates, err := s.entClient.UserSubscription.Query().
+		Where(
+			usersubscription.UserIDEQ(o.UserID),
+			usersubscription.GroupIDEQ(*o.SubscriptionGroupID),
+			usersubscription.SourceEQ(domain.SubscriptionSourcePayment),
+		).
+		WithGroup().
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var matched []*dbent.UserSubscription
+	var noteMatched []*dbent.UserSubscription
+	for _, item := range candidates {
+		matched = append(matched, item)
+		if item.Notes != nil && strings.Contains(*item.Notes, orderNote) {
+			noteMatched = append(noteMatched, item)
+		}
+	}
+	if len(noteMatched) == 1 {
+		return paymentRefundEntSubscriptionToService(noteMatched[0]), nil
+	}
+	if len(noteMatched) > 1 {
+		return nil, infraerrors.Conflict("SUBSCRIPTION_MATCH_CONFLICT", "multiple subscriptions matched this order")
+	}
+	if len(matched) == 1 {
+		return paymentRefundEntSubscriptionToService(matched[0]), nil
+	}
+	if len(matched) == 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	return nil, infraerrors.Conflict("SUBSCRIPTION_MATCH_CONFLICT", "cannot uniquely resolve subscription for this order")
+}
+
+func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSubscription {
+	if sub == nil {
+		return nil
+	}
+	result := &UserSubscription{
+		ID:               sub.ID,
+		UserID:           sub.UserID,
+		GroupID:          sub.GroupID,
+		StartsAt:         sub.StartsAt,
+		ExpiresAt:        sub.ExpiresAt,
+		Status:           sub.Status,
+		DailyWindowStart: sub.DailyWindowStart,
+		WeeklyWindowStart: sub.WeeklyWindowStart,
+		MonthlyWindowStart: sub.MonthlyWindowStart,
+		DailyUsageUSD:    sub.DailyUsageUsd,
+		WeeklyUsageUSD:   sub.WeeklyUsageUsd,
+		MonthlyUsageUSD:  sub.MonthlyUsageUsd,
+		AssignedBy:       sub.AssignedBy,
+		AssignedAt:       sub.AssignedAt,
+		Source:           sub.Source,
+		CreatedAt:        sub.CreatedAt,
+		UpdatedAt:        sub.UpdatedAt,
+	}
+	if sub.Notes != nil {
+		result.Notes = *sub.Notes
+	}
+	if sub.Edges.Group != nil {
+		result.Group = &Group{
+			ID:               sub.Edges.Group.ID,
+			Name:             sub.Edges.Group.Name,
+			Status:           sub.Edges.Group.Status,
+			Platform:         sub.Edges.Group.Platform,
+			SubscriptionType: sub.Edges.Group.SubscriptionType,
+			CreatedAt:        sub.Edges.Group.CreatedAt,
+			UpdatedAt:        sub.Edges.Group.UpdatedAt,
+		}
+		if sub.Edges.Group.DailyLimitUsd != nil {
+			v := *sub.Edges.Group.DailyLimitUsd
+			result.Group.DailyLimitUSD = &v
+		}
+		if sub.Edges.Group.WeeklyLimitUsd != nil {
+			v := *sub.Edges.Group.WeeklyLimitUsd
+			result.Group.WeeklyLimitUSD = &v
+		}
+		if sub.Edges.Group.MonthlyLimitUsd != nil {
+			v := *sub.Edges.Group.MonthlyLimitUsd
+			result.Group.MonthlyLimitUSD = &v
+		}
+	}
+	return result
 }

@@ -356,7 +356,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
 		UserID:       o.UserID,
 		GroupID:      gid,
 		ValidityDays: days,
@@ -366,6 +366,11 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
+	}
+	if sub != nil && sub.ID > 0 {
+		if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionID(sub.ID).Save(ctx); err != nil {
+			return fmt.Errorf("persist subscription id: %w", err)
+		}
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err

@@ -25,6 +25,9 @@
           </p>
         </div>
         <div class="shrink-0 text-right">
+          <div v-if="typeof plan.sales_count === 'number'" class="mb-1 text-[11px] text-gray-400 dark:text-dark-500">
+            {{ t('payment.planCard.salesCount', { count: plan.sales_count }) }}
+          </div>
           <div class="flex items-baseline gap-1">
             <span class="text-xs text-gray-400 dark:text-dark-500">￥</span>
             <span :class="['text-2xl font-extrabold tracking-tight', textClass]">{{ plan.price }}</span>

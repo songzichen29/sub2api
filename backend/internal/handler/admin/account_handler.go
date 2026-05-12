@@ -240,8 +240,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
+	sortBy := c.DefaultQuery("sort_by", "last_used_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
@@ -398,7 +398,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	groupFilterRaw := c.Query("group")
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, groupFilterRaw, privacyMode, sortBy, sortOrder, tagsFilter, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -415,7 +416,8 @@ func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search string,
+	platform, accountType, status, search, groupFilter, privacyMode, sortBy, sortOrder string,
+	tags []string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -426,6 +428,11 @@ func buildAccountsListETag(
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
 		Search      string                   `json:"search"`
+		Group       string                   `json:"group"`
+		PrivacyMode string                   `json:"privacy_mode"`
+		SortBy      string                   `json:"sort_by"`
+		SortOrder   string                   `json:"sort_order"`
+		Tags        []string                 `json:"tags"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 	}{
@@ -436,6 +443,11 @@ func buildAccountsListETag(
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
+		Group:       groupFilter,
+		PrivacyMode: privacyMode,
+		SortBy:      sortBy,
+		SortOrder:   sortOrder,
+		Tags:        tags,
 		Lite:        lite,
 		Items:       items,
 	}

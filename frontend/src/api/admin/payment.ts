@@ -103,8 +103,13 @@ export const adminPaymentAPI = {
     return apiClient.post(`/admin/payment/orders/${id}/retry`)
   },
 
+  /** Preview refund amount */
+  previewRefund(id: number, data: { amount?: number; refund_mode?: 'full' | 'proportional' }) {
+    return apiClient.post<{ refund_amount: number; max_refundable_amount: number; calculated_automatically: boolean }>(`/admin/payment/orders/${id}/refund-preview`, data)
+  },
+
   /** Process a refund */
-  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean }) {
+  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean; refund_mode?: 'full' | 'proportional' }) {
     return apiClient.post(`/admin/payment/orders/${id}/refund`, data)
   },
 

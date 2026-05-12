@@ -39,23 +39,33 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// 尝试从Authorization header中提取API key (Bearer scheme)
 		authHeader := c.GetHeader("Authorization")
 		var apiKeyString string
+		var apiKeySource string
 
 		if authHeader != "" {
 			// 验证Bearer scheme
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
 				apiKeyString = strings.TrimSpace(parts[1])
+				if apiKeyString != "" {
+					apiKeySource = "authorization"
+				}
 			}
 		}
 
 		// 如果Authorization header中没有，尝试从x-api-key header中提取
 		if apiKeyString == "" {
-			apiKeyString = c.GetHeader("x-api-key")
+			apiKeyString = strings.TrimSpace(c.GetHeader("x-api-key"))
+			if apiKeyString != "" {
+				apiKeySource = "x-api-key"
+			}
 		}
 
 		// 如果x-api-key header中没有，尝试从x-goog-api-key header中提取（Gemini CLI兼容）
 		if apiKeyString == "" {
-			apiKeyString = c.GetHeader("x-goog-api-key")
+			apiKeyString = strings.TrimSpace(c.GetHeader("x-goog-api-key"))
+			if apiKeyString != "" {
+				apiKeySource = "x-goog-api-key"
+			}
 		}
 
 		// 如果所有header都没有API key
@@ -69,6 +79,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		apiKey, err := apiKeyService.GetByKey(c.Request.Context(), apiKeyString)
 		if err != nil {
 			if errors.Is(err, service.ErrAPIKeyNotFound) {
+				setAPIKeyAuthFailureContext(c, apiKeySource, apiKeyString)
 				AbortWithError(c, 401, "INVALID_API_KEY", "API Key 无效")
 				return
 			}

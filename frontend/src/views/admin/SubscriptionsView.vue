@@ -367,8 +367,8 @@
               >
                 {{ formatDateOnly(value) }}
               </span>
-              <div v-if="getDaysRemaining(value) !== null" class="text-xs text-gray-500">
-                {{ getDaysRemaining(value) }} {{ t('admin.subscriptions.daysRemaining') }}
+              <div v-if="getRemainingText(value)" class="text-xs text-gray-500">
+                {{ getRemainingText(value) }}
               </div>
             </div>
             <span v-else class="text-sm text-gray-500">{{
@@ -888,7 +888,7 @@ import type {
 } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
-import { formatDateOnly, formatDateTime } from '@/utils/format'
+import { formatDateOnly, formatDateTime, formatRemainingDuration } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1672,6 +1672,8 @@ const getDaysRemaining = (expiresAt: string): number | null => {
   if (diff < 0) return null
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
+
+const getRemainingText = (expiresAt: string): string | null => formatRemainingDuration(expiresAt)
 
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)

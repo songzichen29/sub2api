@@ -26,6 +26,14 @@
     <template #cell-payment_type="{ value }">
       <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
     </template>
+    <template #cell-order_type="{ value, row }">
+      <div class="text-sm">
+        <div class="text-gray-900 dark:text-white">{{ orderTypeLabel(value) }}</div>
+        <div v-if="orderContentLabel(row)" class="text-xs text-gray-500 dark:text-gray-400">
+          {{ orderContentLabel(row) }}
+        </div>
+      </div>
+    </template>
     <template #cell-status="{ value }">
       <OrderStatusBadge :status="value" />
     </template>
@@ -56,6 +64,26 @@ const props = defineProps<{
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
 
+function orderTypeLabel(orderType: PaymentOrder['order_type']): string {
+  if (orderType === 'subscription') return t('payment.admin.subscriptionOrder')
+  if (orderType === 'daily_limit_reset') return t('payment.admin.dailyLimitResetOrder')
+  return t('payment.admin.balanceOrder')
+}
+
+function orderContentLabel(row: PaymentOrder): string {
+  if (row.order_type === 'subscription') {
+    const name = row.product_name || row.group_name
+    if (name && row.subscription_days) return `${name} · ${row.subscription_days}${t('payment.admin.days')}`
+    if (name) return name
+    if (row.subscription_days) return `${row.subscription_days}${t('payment.admin.days')}`
+    return ''
+  }
+  if (row.order_type === 'daily_limit_reset') {
+    return row.group_name || t('payment.admin.dailyLimitResetOrder')
+  }
+  return ''
+}
+
 const columns = computed((): Column[] => {
   const cols: Column[] = [
     { key: 'id', label: t('payment.orders.orderId') },
@@ -65,6 +93,7 @@ const columns = computed((): Column[] => {
     cols.push({ key: 'user_email', label: t('payment.admin.colUser') })
   }
   cols.push(
+    { key: 'order_type', label: t('payment.orders.orderType') },
     { key: 'pay_amount', label: t('payment.orders.payAmount') },
     { key: 'payment_type', label: t('payment.orders.paymentMethod') },
     { key: 'status', label: t('payment.orders.status') },

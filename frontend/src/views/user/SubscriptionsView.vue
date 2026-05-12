@@ -261,7 +261,7 @@ import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateOnly } from '@/utils/format'
+import { formatDateOnly, formatRemainingDuration } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 
 function platformAccentDotClass(p: string): string {
@@ -326,25 +326,14 @@ function resetDailyLimit(subscription: UserSubscription) {
 }
 
 function formatExpirationDate(expiresAt: string): string {
-  const now = new Date()
   const expires = new Date(expiresAt)
-  const diff = expires.getTime() - now.getTime()
-  const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
-
-  if (days < 0) {
+  const remaining = formatRemainingDuration(expiresAt)
+  if (!remaining) {
     return t('userSubscriptions.status.expired')
   }
 
   const dateStr = formatDateOnly(expires)
-
-  if (days === 0) {
-    return `${dateStr} (${t('common.today')})`
-  }
-  if (days === 1) {
-    return `${dateStr} (${t('common.tomorrow')})`
-  }
-
-  return t('userSubscriptions.daysRemaining', { days }) + ` (${dateStr})`
+  return `${t('userSubscriptions.exactRemaining', { time: remaining })} (${dateStr})`
 }
 
 function getExpirationClass(expiresAt: string): string {

@@ -1305,6 +1305,7 @@ const loadApiKeys = async () => {
     apiKeys.value = response.items
     pagination.value.total = response.total
     pagination.value.pages = response.pages
+    usageStats.value = {}
 
     // Load usage stats for all API keys in the list
     if (response.items.length > 0) {

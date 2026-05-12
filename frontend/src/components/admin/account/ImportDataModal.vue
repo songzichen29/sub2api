@@ -16,6 +16,63 @@
         {{ t('admin.accounts.dataImportWarning') }}
       </div>
 
+      <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ t('admin.accounts.dataImportTemplateTitle') }}
+            </div>
+            <div class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('admin.accounts.dataImportTemplateHint') }}
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto]">
+          <Select
+            :model-value="selectedTemplateId"
+            :options="templateOptions"
+            :placeholder="t('admin.accounts.dataImportTemplateSelect')"
+            @update:model-value="handleTemplateSelect"
+          />
+          <button type="button" class="btn btn-secondary" @click="openSaveTemplateInput">
+            {{ t('admin.accounts.dataImportTemplateSave') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :disabled="!selectedTemplateId"
+            @click="deleteSelectedTemplate"
+          >
+            {{ t('common.delete') }}
+          </button>
+        </div>
+
+        <div v-if="showTemplateNameInput" class="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            v-model.trim="pendingTemplateName"
+            type="text"
+            class="input flex-1"
+            :placeholder="t('admin.accounts.dataImportTemplateNamePlaceholder')"
+            @keydown.enter.prevent="confirmSaveTemplate"
+            @keydown.esc.prevent="cancelSaveTemplate"
+          />
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="btn btn-primary"
+              :disabled="!pendingTemplateName"
+              @click="confirmSaveTemplate"
+            >
+              {{ t('common.confirm') }}
+            </button>
+            <button type="button" class="btn btn-secondary" @click="cancelSaveTemplate">
+              {{ t('common.cancel') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.dataImportFile') }}</label>
         <div
@@ -364,8 +421,10 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { adminAPI } from '@/api/admin'
+import type { AccountImportApplyTemplate } from '@/api/admin/settings'
 import { useAppStore } from '@/stores/app'
 import { buildModelMappingObject } from '@/composables/useModelWhitelist'
 import type {
@@ -375,6 +434,8 @@ import type {
   AdminGroup,
   Proxy as ProxyConfig
 } from '@/types'
+
+type ImportApplyTemplate = AccountImportApplyTemplate
 
 interface Props {
   show: boolean
@@ -415,6 +476,16 @@ const fileLabel = computed(() => {
 
 const errorItems = computed(() => result.value?.errors || [])
 
+const templates = ref<ImportApplyTemplate[]>([])
+const selectedTemplateId = ref('')
+const showTemplateNameInput = ref(false)
+const pendingTemplateName = ref('')
+
+const templateOptions = computed(() => [
+  { value: '', label: t('admin.accounts.dataImportTemplateSelect') },
+  ...templates.value.map((item) => ({ value: item.id, label: item.name }))
+])
+
 // ===== Apply 块状态：6 个 enable + 字段值 =====
 // 启用语义：勾选某字段 → 该字段值会作为 apply 块的一部分发到后端，覆盖文件原值；
 // 未勾选 → 该字段从 payload 整体省略，后端按指针 nil 判定为"不应用"。
@@ -434,6 +505,114 @@ const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
 const modelMappings = ref<{ from: string; to: string }[]>([])
 
+const buildTemplateSnapshot = (): Omit<AccountImportApplyTemplate, 'id' | 'name'> => ({
+  enableTags: enableTags.value,
+  enableGroups: enableGroups.value,
+  enableProxy: enableProxy.value,
+  enableConcurrency: enableConcurrency.value,
+  enablePriority: enablePriority.value,
+  enableModelRestriction: enableModelRestriction.value,
+  applyTags: [...applyTags.value],
+  applyGroupIds: [...applyGroupIds.value],
+  applyProxyId: applyProxyId.value,
+  applyConcurrency: applyConcurrency.value,
+  applyPriority: applyPriority.value,
+  modelRestrictionMode: modelRestrictionMode.value,
+  allowedModels: [...allowedModels.value],
+  modelMappings: modelMappings.value.map((item) => ({ ...item }))
+})
+
+const applyTemplateSnapshot = (snapshot: Omit<AccountImportApplyTemplate, 'id' | 'name'>) => {
+  enableTags.value = snapshot.enableTags
+  enableGroups.value = snapshot.enableGroups
+  enableProxy.value = snapshot.enableProxy
+  enableConcurrency.value = snapshot.enableConcurrency
+  enablePriority.value = snapshot.enablePriority
+  enableModelRestriction.value = snapshot.enableModelRestriction
+  applyTags.value = [...snapshot.applyTags]
+  applyGroupIds.value = [...snapshot.applyGroupIds]
+  applyProxyId.value = snapshot.applyProxyId
+  applyConcurrency.value = snapshot.applyConcurrency
+  applyPriority.value = snapshot.applyPriority
+  modelRestrictionMode.value = snapshot.modelRestrictionMode
+  allowedModels.value = [...snapshot.allowedModels]
+  modelMappings.value = snapshot.modelMappings.map((item) => ({ ...item }))
+}
+
+const resetApplyState = () => {
+  enableTags.value = false
+  enableGroups.value = false
+  enableProxy.value = false
+  enableConcurrency.value = false
+  enablePriority.value = false
+  enableModelRestriction.value = false
+  applyTags.value = []
+  applyGroupIds.value = []
+  applyProxyId.value = null
+  applyConcurrency.value = 1
+  applyPriority.value = 1
+  modelRestrictionMode.value = 'whitelist'
+  allowedModels.value = []
+  modelMappings.value = []
+}
+
+const loadTemplates = () => {
+  adminAPI.settings.getAccountImportTemplates()
+    .then((items) => {
+      templates.value = items
+    })
+    .catch(() => {
+      templates.value = []
+    })
+}
+
+const persistTemplates = async () => {
+  templates.value = await adminAPI.settings.updateAccountImportTemplates(templates.value)
+}
+
+const handleTemplateSelect = (value: string | number | boolean | null) => {
+  selectedTemplateId.value = typeof value === 'string' ? value : ''
+  if (!selectedTemplateId.value) return
+  const selected = templates.value.find((item) => item.id === selectedTemplateId.value)
+  if (!selected) return
+  applyTemplateSnapshot(selected)
+}
+
+const openSaveTemplateInput = () => {
+  pendingTemplateName.value = ''
+  showTemplateNameInput.value = true
+}
+
+const cancelSaveTemplate = () => {
+  pendingTemplateName.value = ''
+  showTemplateNameInput.value = false
+}
+
+const confirmSaveTemplate = () => {
+  const name = pendingTemplateName.value.trim()
+  if (!name) return
+  const template: ImportApplyTemplate = {
+    id: `tpl_${Date.now()}`,
+    name,
+    ...buildTemplateSnapshot()
+  }
+  templates.value = [template, ...templates.value]
+  selectedTemplateId.value = template.id
+  persistTemplates().then(() => {
+    cancelSaveTemplate()
+    appStore.showSuccess(t('admin.accounts.dataImportTemplateSaved'))
+  })
+}
+
+const deleteSelectedTemplate = () => {
+  if (!selectedTemplateId.value) return
+  templates.value = templates.value.filter((item) => item.id !== selectedTemplateId.value)
+  selectedTemplateId.value = ''
+  persistTemplates().then(() => {
+    appStore.showSuccess(t('admin.accounts.dataImportTemplateDeleted'))
+  })
+}
+
 const addModelMapping = () => {
   modelMappings.value.push({ from: '', to: '' })
 }
@@ -447,24 +626,13 @@ watch(
     if (open) {
       files.value = []
       result.value = null
+      loadTemplates()
+      selectedTemplateId.value = ''
+      cancelSaveTemplate()
       if (fileInput.value) {
         fileInput.value.value = ''
       }
-      // 重置 Apply 块所有状态——避免上次打开时的残留勾选误覆盖本次导入
-      enableTags.value = false
-      enableGroups.value = false
-      enableProxy.value = false
-      enableConcurrency.value = false
-      enablePriority.value = false
-      enableModelRestriction.value = false
-      applyTags.value = []
-      applyGroupIds.value = []
-      applyProxyId.value = null
-      applyConcurrency.value = 1
-      applyPriority.value = 1
-      modelRestrictionMode.value = 'whitelist'
-      allowedModels.value = []
-      modelMappings.value = []
+      resetApplyState()
     }
   }
 )

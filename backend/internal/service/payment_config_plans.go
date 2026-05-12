@@ -7,6 +7,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -118,6 +119,37 @@ func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.Subscrip
 
 func (s *PaymentConfigService) ListPlansForSale(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
 	return s.entClient.SubscriptionPlan.Query().Where(subscriptionplan.ForSaleEQ(true)).Order(subscriptionplan.BySortOrder()).All(ctx)
+}
+
+func (s *PaymentConfigService) GetPlanSalesCountMap(ctx context.Context, planIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int)
+	if len(planIDs) == 0 {
+		return result, nil
+	}
+
+	type row struct {
+		PlanID int64 `json:"plan_id"`
+		Count  int   `json:"count"`
+	}
+
+	var rows []row
+	err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.PlanIDIn(planIDs...),
+			paymentorder.OrderTypeEQ("subscription"),
+			paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"),
+		).
+		GroupBy(paymentorder.FieldPlanID).
+		Aggregate(dbent.Count()).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.PlanID] = row.Count
+	}
+	return result, nil
 }
 
 func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanRequest) (*dbent.SubscriptionPlan, error) {

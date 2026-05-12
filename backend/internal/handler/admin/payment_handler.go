@@ -1,9 +1,12 @@
 package admin
 
 import (
+	"context"
 	"strconv"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -67,7 +70,7 @@ func (h *PaymentHandler) ListOrders(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, sanitizeAdminPaymentOrdersForResponse(orders), int64(total), page, pageSize)
+	response.Paginated(c, enrichAdminPaymentOrdersForResponse(c.Request.Context(), h.paymentService, orders), int64(total), page, pageSize)
 }
 
 // GetOrderDetail returns detailed information about a single order.
@@ -83,7 +86,7 @@ func (h *PaymentHandler) GetOrderDetail(c *gin.Context) {
 		return
 	}
 	auditLogs, _ := h.paymentService.GetOrderAuditLogs(c.Request.Context(), orderID)
-	response.Success(c, gin.H{"order": sanitizeAdminPaymentOrderForResponse(order), "auditLogs": auditLogs})
+	response.Success(c, gin.H{"order": enrichAdminPaymentOrderForResponse(c.Request.Context(), h.paymentService, order), "auditLogs": auditLogs})
 }
 
 // CancelOrder cancels a pending order (admin).
@@ -135,12 +138,122 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.Paym
 	return &cloned
 }
 
+type adminPaymentOrderResponse struct {
+	*dbent.PaymentOrder
+	ProductName string `json:"product_name,omitempty"`
+	GroupName   string `json:"group_name,omitempty"`
+}
+
+func enrichAdminPaymentOrdersForResponse(ctx context.Context, paymentService *service.PaymentService, orders []*dbent.PaymentOrder) []*adminPaymentOrderResponse {
+	if len(orders) == 0 {
+		return []*adminPaymentOrderResponse{}
+	}
+
+	planIDs := make([]int64, 0, len(orders))
+	groupIDs := make([]int64, 0, len(orders))
+	planSeen := make(map[int64]struct{})
+	groupSeen := make(map[int64]struct{})
+	for _, order := range orders {
+		if order == nil {
+			continue
+		}
+		if order.PlanID != nil {
+			if _, ok := planSeen[*order.PlanID]; !ok {
+				planSeen[*order.PlanID] = struct{}{}
+				planIDs = append(planIDs, *order.PlanID)
+			}
+		}
+		if order.SubscriptionGroupID != nil {
+			if _, ok := groupSeen[*order.SubscriptionGroupID]; !ok {
+				groupSeen[*order.SubscriptionGroupID] = struct{}{}
+				groupIDs = append(groupIDs, *order.SubscriptionGroupID)
+			}
+		}
+	}
+
+	planMap := map[int64]string{}
+	groupMap := map[int64]string{}
+	if client := paymentService.GetEntClient(); client != nil {
+		if len(planIDs) > 0 {
+			if plans, err := client.SubscriptionPlan.Query().Where(subscriptionplan.IDIn(planIDs...)).All(ctx); err == nil {
+				for _, p := range plans {
+					planMap[p.ID] = p.Name
+				}
+			}
+		}
+		if len(groupIDs) > 0 {
+			if groups, err := client.Group.Query().Where(group.IDIn(groupIDs...)).All(ctx); err == nil {
+				for _, g := range groups {
+					groupMap[g.ID] = g.Name
+				}
+			}
+		}
+	}
+
+	out := make([]*adminPaymentOrderResponse, 0, len(orders))
+	for _, order := range orders {
+		sanitized := sanitizeAdminPaymentOrderForResponse(order)
+		if sanitized == nil {
+			continue
+		}
+		item := &adminPaymentOrderResponse{PaymentOrder: sanitized}
+		if sanitized.PlanID != nil {
+			item.ProductName = planMap[*sanitized.PlanID]
+		}
+		if sanitized.SubscriptionGroupID != nil {
+			item.GroupName = groupMap[*sanitized.SubscriptionGroupID]
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func enrichAdminPaymentOrderForResponse(ctx context.Context, paymentService *service.PaymentService, order *dbent.PaymentOrder) *adminPaymentOrderResponse {
+	items := enrichAdminPaymentOrdersForResponse(ctx, paymentService, []*dbent.PaymentOrder{order})
+	if len(items) == 0 {
+		return nil
+	}
+	return items[0]
+}
+
 // AdminProcessRefundRequest is the request body for admin refund processing.
 type AdminProcessRefundRequest struct {
 	Amount        float64 `json:"amount"`
 	Reason        string  `json:"reason"`
 	Force         bool    `json:"force"`
 	DeductBalance bool    `json:"deduct_balance"`
+	RefundMode    string  `json:"refund_mode"`
+}
+
+type AdminRefundPreviewRequest struct {
+	Amount     float64 `json:"amount"`
+	RefundMode string  `json:"refund_mode"`
+}
+
+// PreviewRefund previews refund amount for an order (admin).
+// POST /api/v1/admin/payment/orders/:id/refund-preview
+func (h *PaymentHandler) PreviewRefund(c *gin.Context) {
+	orderID, ok := parseIDParam(c, "id")
+	if !ok {
+		return
+	}
+
+	var req AdminRefundPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	amount := req.Amount
+	if req.RefundMode == "proportional" {
+		amount = 0
+	}
+	result, err := h.paymentService.PreviewRefund(c.Request.Context(), orderID, amount)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // ProcessRefund processes a refund for an order (admin).

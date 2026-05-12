@@ -120,6 +120,25 @@ type SettingService struct {
 	webSearchManagerBuilder WebSearchManagerBuilder
 }
 
+type AccountImportApplyTemplate struct {
+	ID                     string              `json:"id"`
+	Name                   string              `json:"name"`
+	EnableTags             bool                `json:"enableTags"`
+	EnableGroups           bool                `json:"enableGroups"`
+	EnableProxy            bool                `json:"enableProxy"`
+	EnableConcurrency      bool                `json:"enableConcurrency"`
+	EnablePriority         bool                `json:"enablePriority"`
+	EnableModelRestriction bool                `json:"enableModelRestriction"`
+	ApplyTags              []string            `json:"applyTags"`
+	ApplyGroupIDs          []int64             `json:"applyGroupIds"`
+	ApplyProxyID           *int64              `json:"applyProxyId"`
+	ApplyConcurrency       int                 `json:"applyConcurrency"`
+	ApplyPriority          int                 `json:"applyPriority"`
+	ModelRestrictionMode   string              `json:"modelRestrictionMode"`
+	AllowedModels          []string            `json:"allowedModels"`
+	ModelMappings          []map[string]string `json:"modelMappings"`
+}
+
 type ProviderDefaultGrantSettings struct {
 	Balance          float64
 	Concurrency      int
@@ -278,6 +297,39 @@ func normalizeWeChatConnectStoredMode(openEnabled, mpEnabled, mobileEnabled bool
 	}
 }
 
+func (s *SettingService) GetAccountImportApplyTemplates(ctx context.Context) ([]AccountImportApplyTemplate, error) {
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAccountImportApplyTemplates)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return []AccountImportApplyTemplate{}, nil
+		}
+		return nil, err
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []AccountImportApplyTemplate{}, nil
+	}
+	var templates []AccountImportApplyTemplate
+	if err := json.Unmarshal([]byte(raw), &templates); err != nil {
+		return nil, fmt.Errorf("unmarshal account import apply templates: %w", err)
+	}
+	if templates == nil {
+		return []AccountImportApplyTemplate{}, nil
+	}
+	return templates, nil
+}
+
+func (s *SettingService) SetAccountImportApplyTemplates(ctx context.Context, templates []AccountImportApplyTemplate) error {
+	if templates == nil {
+		templates = []AccountImportApplyTemplate{}
+	}
+	raw, err := json.Marshal(templates)
+	if err != nil {
+		return fmt.Errorf("marshal account import apply templates: %w", err)
+	}
+	return s.settingRepo.Set(ctx, SettingKeyAccountImportApplyTemplates, string(raw))
+}
+
 func mergeWeChatConnectCapabilitySettings(settings map[string]string, base config.WeChatConnectConfig, enabled bool, mode string) (bool, bool, bool) {
 	mode = normalizeWeChatConnectModeSetting(firstNonEmpty(mode, base.Mode))
 	rawOpen, hasOpen := settings[SettingKeyWeChatConnectOpenEnabled]
@@ -421,6 +473,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeySiteLogo,
 		SettingKeySiteSubtitle,
 		SettingKeyAPIBaseURL,
+		SettingKeyOpenAIFreeImageBridgeURL,
+		SettingKeyOpenAIFreeImageBridgeAuthKey,
 		SettingKeyContactInfo,
 		SettingKeyDocURL,
 		SettingKeyHomeContent,
@@ -507,43 +561,45 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 	}
 
 	return &PublicSettings{
-		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:               emailVerifyEnabled,
-		ForceEmailOnThirdPartySignup:     settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
-		RegistrationEmailSuffixWhitelist: registrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:             passwordResetEnabled,
-		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
-		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
-		ContactInfo:                      settings[SettingKeyContactInfo],
-		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
-		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		TableDefaultPageSize:             tableDefaultPageSize,
-		TablePageSizeOptions:             tablePageSizeOptions,
-		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		LinuxDoOAuthEnabled:              linuxDoEnabled,
-		WeChatOAuthEnabled:               weChatEnabled,
-		WeChatOAuthOpenEnabled:           weChatOpenEnabled,
-		WeChatOAuthMPEnabled:             weChatMPEnabled,
-		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
-		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
-		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
-		OIDCOAuthEnabled:                 oidcEnabled,
-		OIDCOAuthProviderName:            oidcProviderName,
-		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
-		AccountQuotaNotifyEnabled:        settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
-		BalanceLowNotifyThreshold:        balanceLowNotifyThreshold,
-		BalanceLowNotifyRechargeURL:      settings[SettingKeyBalanceLowNotifyRechargeURL],
+		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:                     emailVerifyEnabled,
+		ForceEmailOnThirdPartySignup:           settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
+		RegistrationEmailSuffixWhitelist:       registrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:                   passwordResetEnabled,
+		InvitationCodeEnabled:                  settings[SettingKeyInvitationCodeEnabled] == "true",
+		TotpEnabled:                            settings[SettingKeyTotpEnabled] == "true",
+		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],
+		SiteName:                               s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                               settings[SettingKeySiteLogo],
+		SiteSubtitle:                           s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                             settings[SettingKeyAPIBaseURL],
+		OpenAIFreeImageBridgeURL:               strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL]),
+		OpenAIFreeImageBridgeAuthKeyConfigured: strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey]) != "",
+		ContactInfo:                            settings[SettingKeyContactInfo],
+		DocURL:                                 settings[SettingKeyDocURL],
+		HomeContent:                            settings[SettingKeyHomeContent],
+		HideCcsImportButton:                    settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:            settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:                strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		TableDefaultPageSize:                   tableDefaultPageSize,
+		TablePageSizeOptions:                   tablePageSizeOptions,
+		CustomMenuItems:                        settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                        settings[SettingKeyCustomEndpoints],
+		LinuxDoOAuthEnabled:                    linuxDoEnabled,
+		WeChatOAuthEnabled:                     weChatEnabled,
+		WeChatOAuthOpenEnabled:                 weChatOpenEnabled,
+		WeChatOAuthMPEnabled:                   weChatMPEnabled,
+		WeChatOAuthMobileEnabled:               weChatMobileEnabled,
+		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
+		PaymentEnabled:                         settings[SettingPaymentEnabled] == "true",
+		OIDCOAuthEnabled:                       oidcEnabled,
+		OIDCOAuthProviderName:                  oidcProviderName,
+		BalanceLowNotifyEnabled:                settings[SettingKeyBalanceLowNotifyEnabled] == "true",
+		AccountQuotaNotifyEnabled:              settings[SettingKeyAccountQuotaNotifyEnabled] == "true",
+		BalanceLowNotifyThreshold:              balanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL:            settings[SettingKeyBalanceLowNotifyRechargeURL],
 
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
@@ -655,43 +711,45 @@ func (s *SettingService) SetVersion(version string) {
 // A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
 // drift automatically (see setting_service_injection_test.go).
 type PublicSettingsInjectionPayload struct {
-	RegistrationEnabled              bool            `json:"registration_enabled"`
-	EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
-	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
-	TotpEnabled                      bool            `json:"totp_enabled"`
-	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
-	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
-	SiteName                         string          `json:"site_name"`
-	SiteLogo                         string          `json:"site_logo"`
-	SiteSubtitle                     string          `json:"site_subtitle"`
-	APIBaseURL                       string          `json:"api_base_url"`
-	ContactInfo                      string          `json:"contact_info"`
-	DocURL                           string          `json:"doc_url"`
-	HomeContent                      string          `json:"home_content"`
-	HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL          string          `json:"purchase_subscription_url"`
-	TableDefaultPageSize             int             `json:"table_default_page_size"`
-	TablePageSizeOptions             []int           `json:"table_page_size_options"`
-	CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
-	CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
-	LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
-	WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
-	WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
-	WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
-	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
-	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
-	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
-	PaymentEnabled                   bool            `json:"payment_enabled"`
-	Version                          string          `json:"version"`
-	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
-	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
-	BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+	RegistrationEnabled                    bool            `json:"registration_enabled"`
+	EmailVerifyEnabled                     bool            `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist       []string        `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                       bool            `json:"promo_code_enabled"`
+	PasswordResetEnabled                   bool            `json:"password_reset_enabled"`
+	InvitationCodeEnabled                  bool            `json:"invitation_code_enabled"`
+	TotpEnabled                            bool            `json:"totp_enabled"`
+	TurnstileEnabled                       bool            `json:"turnstile_enabled"`
+	TurnstileSiteKey                       string          `json:"turnstile_site_key"`
+	SiteName                               string          `json:"site_name"`
+	SiteLogo                               string          `json:"site_logo"`
+	SiteSubtitle                           string          `json:"site_subtitle"`
+	APIBaseURL                             string          `json:"api_base_url"`
+	OpenAIFreeImageBridgeURL               string          `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKeyConfigured bool            `json:"openai_free_image_bridge_auth_key_configured"`
+	ContactInfo                            string          `json:"contact_info"`
+	DocURL                                 string          `json:"doc_url"`
+	HomeContent                            string          `json:"home_content"`
+	HideCcsImportButton                    bool            `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled            bool            `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL                string          `json:"purchase_subscription_url"`
+	TableDefaultPageSize                   int             `json:"table_default_page_size"`
+	TablePageSizeOptions                   []int           `json:"table_page_size_options"`
+	CustomMenuItems                        json.RawMessage `json:"custom_menu_items"`
+	CustomEndpoints                        json.RawMessage `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled                    bool            `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled                     bool            `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled                 bool            `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled                   bool            `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled               bool            `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                       bool            `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName                  string          `json:"oidc_oauth_provider_name"`
+	BackendModeEnabled                     bool            `json:"backend_mode_enabled"`
+	PaymentEnabled                         bool            `json:"payment_enabled"`
+	Version                                string          `json:"version"`
+	BalanceLowNotifyEnabled                bool            `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled              bool            `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold              float64         `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL            string          `json:"balance_low_notify_recharge_url"`
 
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
@@ -713,43 +771,45 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 	}
 
 	return &PublicSettingsInjectionPayload{
-		RegistrationEnabled:              settings.RegistrationEnabled,
-		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
-		PromoCodeEnabled:                 settings.PromoCodeEnabled,
-		PasswordResetEnabled:             settings.PasswordResetEnabled,
-		InvitationCodeEnabled:            settings.InvitationCodeEnabled,
-		TotpEnabled:                      settings.TotpEnabled,
-		TurnstileEnabled:                 settings.TurnstileEnabled,
-		TurnstileSiteKey:                 settings.TurnstileSiteKey,
-		SiteName:                         settings.SiteName,
-		SiteLogo:                         settings.SiteLogo,
-		SiteSubtitle:                     settings.SiteSubtitle,
-		APIBaseURL:                       settings.APIBaseURL,
-		ContactInfo:                      settings.ContactInfo,
-		DocURL:                           settings.DocURL,
-		HomeContent:                      settings.HomeContent,
-		HideCcsImportButton:              settings.HideCcsImportButton,
-		PurchaseSubscriptionEnabled:      settings.PurchaseSubscriptionEnabled,
-		PurchaseSubscriptionURL:          settings.PurchaseSubscriptionURL,
-		TableDefaultPageSize:             settings.TableDefaultPageSize,
-		TablePageSizeOptions:             settings.TablePageSizeOptions,
-		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
-		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
-		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
-		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
-		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,
-		WeChatOAuthMPEnabled:             settings.WeChatOAuthMPEnabled,
-		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
-		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
-		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
-		BackendModeEnabled:               settings.BackendModeEnabled,
-		PaymentEnabled:                   settings.PaymentEnabled,
-		Version:                          s.version,
-		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
-		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
-		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
-		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		RegistrationEnabled:                    settings.RegistrationEnabled,
+		EmailVerifyEnabled:                     settings.EmailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:       settings.RegistrationEmailSuffixWhitelist,
+		PromoCodeEnabled:                       settings.PromoCodeEnabled,
+		PasswordResetEnabled:                   settings.PasswordResetEnabled,
+		InvitationCodeEnabled:                  settings.InvitationCodeEnabled,
+		TotpEnabled:                            settings.TotpEnabled,
+		TurnstileEnabled:                       settings.TurnstileEnabled,
+		TurnstileSiteKey:                       settings.TurnstileSiteKey,
+		SiteName:                               settings.SiteName,
+		SiteLogo:                               settings.SiteLogo,
+		SiteSubtitle:                           settings.SiteSubtitle,
+		APIBaseURL:                             settings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:               settings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured: settings.OpenAIFreeImageBridgeAuthKeyConfigured,
+		ContactInfo:                            settings.ContactInfo,
+		DocURL:                                 settings.DocURL,
+		HomeContent:                            settings.HomeContent,
+		HideCcsImportButton:                    settings.HideCcsImportButton,
+		PurchaseSubscriptionEnabled:            settings.PurchaseSubscriptionEnabled,
+		PurchaseSubscriptionURL:                settings.PurchaseSubscriptionURL,
+		TableDefaultPageSize:                   settings.TableDefaultPageSize,
+		TablePageSizeOptions:                   settings.TablePageSizeOptions,
+		CustomMenuItems:                        filterUserVisibleMenuItems(settings.CustomMenuItems),
+		CustomEndpoints:                        safeRawJSONArray(settings.CustomEndpoints),
+		LinuxDoOAuthEnabled:                    settings.LinuxDoOAuthEnabled,
+		WeChatOAuthEnabled:                     settings.WeChatOAuthEnabled,
+		WeChatOAuthOpenEnabled:                 settings.WeChatOAuthOpenEnabled,
+		WeChatOAuthMPEnabled:                   settings.WeChatOAuthMPEnabled,
+		WeChatOAuthMobileEnabled:               settings.WeChatOAuthMobileEnabled,
+		OIDCOAuthEnabled:                       settings.OIDCOAuthEnabled,
+		OIDCOAuthProviderName:                  settings.OIDCOAuthProviderName,
+		BackendModeEnabled:                     settings.BackendModeEnabled,
+		PaymentEnabled:                         settings.PaymentEnabled,
+		Version:                                s.version,
+		BalanceLowNotifyEnabled:                settings.BalanceLowNotifyEnabled,
+		AccountQuotaNotifyEnabled:              settings.AccountQuotaNotifyEnabled,
+		BalanceLowNotifyThreshold:              settings.BalanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL:            settings.BalanceLowNotifyRechargeURL,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
@@ -1167,6 +1227,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
+	updates[SettingKeyOpenAIFreeImageBridgeURL] = strings.TrimSpace(settings.OpenAIFreeImageBridgeURL)
+	if strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey) != "" {
+		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
+	}
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
@@ -1910,6 +1974,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoEmailPath:             "",
 		SettingKeyOIDCConnectUserInfoIDPath:                "",
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
+		SettingKeyOpenAIFreeImageBridgeURL:                 "",
+		SettingKeyOpenAIFreeImageBridgeAuthKey:             "",
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                      strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
@@ -1992,36 +2058,39 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
 	result := &SystemSettings{
-		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
-		EmailVerifyEnabled:               emailVerifyEnabled,
-		RegistrationEmailSuffixWhitelist: ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
-		PromoCodeEnabled:                 settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
-		PasswordResetEnabled:             emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
-		FrontendURL:                      settings[SettingKeyFrontendURL],
-		InvitationCodeEnabled:            settings[SettingKeyInvitationCodeEnabled] == "true",
-		TotpEnabled:                      settings[SettingKeyTotpEnabled] == "true",
-		SMTPHost:                         settings[SettingKeySMTPHost],
-		SMTPUsername:                     settings[SettingKeySMTPUsername],
-		SMTPFrom:                         settings[SettingKeySMTPFrom],
-		SMTPFromName:                     settings[SettingKeySMTPFromName],
-		SMTPUseTLS:                       settings[SettingKeySMTPUseTLS] == "true",
-		SMTPPasswordConfigured:           settings[SettingKeySMTPPassword] != "",
-		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
-		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		TurnstileSecretKeyConfigured:     settings[SettingKeyTurnstileSecretKey] != "",
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
-		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
-		ContactInfo:                      settings[SettingKeyContactInfo],
-		DocURL:                           settings[SettingKeyDocURL],
-		HomeContent:                      settings[SettingKeyHomeContent],
-		HideCcsImportButton:              settings[SettingKeyHideCcsImportButton] == "true",
-		PurchaseSubscriptionEnabled:      settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
-		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
-		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
-		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
-		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
+		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
+		EmailVerifyEnabled:                     emailVerifyEnabled,
+		RegistrationEmailSuffixWhitelist:       ParseRegistrationEmailSuffixWhitelist(settings[SettingKeyRegistrationEmailSuffixWhitelist]),
+		PromoCodeEnabled:                       settings[SettingKeyPromoCodeEnabled] != "false", // 默认启用
+		PasswordResetEnabled:                   emailVerifyEnabled && settings[SettingKeyPasswordResetEnabled] == "true",
+		FrontendURL:                            settings[SettingKeyFrontendURL],
+		InvitationCodeEnabled:                  settings[SettingKeyInvitationCodeEnabled] == "true",
+		TotpEnabled:                            settings[SettingKeyTotpEnabled] == "true",
+		SMTPHost:                               settings[SettingKeySMTPHost],
+		SMTPUsername:                           settings[SettingKeySMTPUsername],
+		SMTPFrom:                               settings[SettingKeySMTPFrom],
+		SMTPFromName:                           settings[SettingKeySMTPFromName],
+		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
+		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
+		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
+		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],
+		TurnstileSecretKeyConfigured:           settings[SettingKeyTurnstileSecretKey] != "",
+		SiteName:                               s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteLogo:                               settings[SettingKeySiteLogo],
+		SiteSubtitle:                           s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
+		APIBaseURL:                             settings[SettingKeyAPIBaseURL],
+		OpenAIFreeImageBridgeURL:               strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL]),
+		OpenAIFreeImageBridgeAuthKey:           strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey]),
+		OpenAIFreeImageBridgeAuthKeyConfigured: strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey]) != "",
+		ContactInfo:                            settings[SettingKeyContactInfo],
+		DocURL:                                 settings[SettingKeyDocURL],
+		HomeContent:                            settings[SettingKeyHomeContent],
+		HideCcsImportButton:                    settings[SettingKeyHideCcsImportButton] == "true",
+		PurchaseSubscriptionEnabled:            settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
+		PurchaseSubscriptionURL:                strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
+		CustomMenuItems:                        settings[SettingKeyCustomMenuItems],
+		CustomEndpoints:                        settings[SettingKeyCustomEndpoints],
+		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],

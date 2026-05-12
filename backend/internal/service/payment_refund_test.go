@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -239,4 +240,244 @@ func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {
 		Reason:        "snapshot mismatch",
 	})
 	require.ErrorContains(t, err, "alipay app_id mismatch")
+}
+
+func TestPrepareRefundAutoCalculatesHistoricalSubscriptionRefund(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-historical@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-historical-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 10.0
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(300).
+		SetPayAmount(300).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-HIST").
+		SetOutTradeNo("sub2_refund_sub_hist").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-hist").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-10*24*time.Hour - 2*time.Hour)
+	expiresAt := startsAt.Add(30 * 24 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusActive).
+		SetDailyUsageUsd(4).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient: client,
+	}
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, true)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.NotNil(t, plan)
+	require.Equal(t, payment.DeductionTypeSubscription, plan.DeductionType)
+	require.Equal(t, 30, plan.SubDaysToDeduct)
+	require.Positive(t, plan.SubscriptionID)
+	require.InDelta(t, 196.00, plan.RefundAmount, 0.0001)
+	require.InDelta(t, 196.00, plan.GatewayAmount, 0.0001)
+}
+
+func TestPrepareRefundRejectsSubscriptionAutoRefundWithoutDailyLimit(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-no-daily@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-no-daily-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-group-no-daily").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-no-daily-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(300).
+		SetPayAmount(300).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-NO-DAILY").
+		SetOutTradeNo("sub2_refund_sub_no_daily").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-no-daily").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-24 * time.Hour)
+	expiresAt := startsAt.Add(30 * 24 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusActive).
+		SetDailyUsageUsd(1).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient: client,
+	}
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, false)
+	require.Nil(t, plan)
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.Equal(t, "DAILY_LIMIT_NOT_CONFIGURED", infraerrors.Reason(err))
+}
+
+func TestPrepareRefundHistoricalSubscriptionCalculationRoundsToTwoDecimals(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-round@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-round-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 3.0
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-round-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-round-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-ROUND").
+		SetOutTradeNo("sub2_refund_sub_round").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-round").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(3).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-26 * time.Hour)
+	expiresAt := startsAt.Add(3 * 24 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusActive).
+		SetDailyUsageUsd(1).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient: client,
+	}
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, false)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.NotNil(t, plan)
+	expected := math.Round((100.0*(1.0+(2.0/3.0))/3.0)*100) / 100
+	require.InDelta(t, expected, plan.RefundAmount, 0.0001)
 }

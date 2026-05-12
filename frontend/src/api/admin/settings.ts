@@ -14,6 +14,25 @@ export interface DefaultSubscriptionSetting {
   mode?: "days" | "range";
 }
 
+export interface AccountImportApplyTemplate {
+  id: string
+  name: string
+  enableTags: boolean
+  enableGroups: boolean
+  enableProxy: boolean
+  enableConcurrency: boolean
+  enablePriority: boolean
+  enableModelRestriction: boolean
+  applyTags: string[]
+  applyGroupIds: number[]
+  applyProxyId: number | null
+  applyConcurrency: number
+  applyPriority: number
+  modelRestrictionMode: 'whitelist' | 'mapping'
+  allowedModels: string[]
+  modelMappings: Array<{ from: string; to: string }>
+}
+
 export type AuthSourceType = "email" | "linuxdo" | "oidc" | "wechat";
 
 export interface AuthSourceDefaultsValue {
@@ -136,6 +155,16 @@ const WECHAT_CONNECT_MODE_ALIASES: Record<string, WeChatConnectMode> = {
   mobile_app: "mobile",
   native_app: "mobile",
 };
+
+export async function getAccountImportTemplates() {
+  const { data } = await apiClient.get<{ templates?: AccountImportApplyTemplate[] }>('/admin/settings/account-import-templates')
+  return Array.isArray(data?.templates) ? data.templates : []
+}
+
+export async function updateAccountImportTemplates(templates: AccountImportApplyTemplate[]) {
+  const { data } = await apiClient.put<{ templates?: AccountImportApplyTemplate[] }>('/admin/settings/account-import-templates', { templates })
+  return Array.isArray(data?.templates) ? data.templates : []
+}
 
 export function normalizeDefaultSubscriptionSettings(
   subscriptions: DefaultSubscriptionSetting[] | null | undefined,
@@ -371,6 +400,8 @@ export interface SystemSettings {
   site_logo: string;
   site_subtitle: string;
   api_base_url: string;
+  openai_free_image_bridge_url: string;
+  openai_free_image_bridge_auth_key_configured: boolean;
   contact_info: string;
   doc_url: string;
   home_content: string;
@@ -565,6 +596,8 @@ export interface UpdateSettingsRequest {
   site_logo?: string;
   site_subtitle?: string;
   api_base_url?: string;
+  openai_free_image_bridge_url?: string;
+  openai_free_image_bridge_auth_key?: string;
   contact_info?: string;
   doc_url?: string;
   home_content?: string;
@@ -1074,6 +1107,8 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  getAccountImportTemplates,
+  updateAccountImportTemplates,
   testSmtpConnection,
   sendTestEmail,
   getAdminApiKey,

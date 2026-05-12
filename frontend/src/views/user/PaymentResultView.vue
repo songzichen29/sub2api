@@ -64,6 +64,14 @@
               <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(order.payment_type), normalizedOrderPaymentType(order.payment_type)) }}</span>
             </div>
             <div class="flex justify-between">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderType') }}</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ orderTypeLabel }}</span>
+            </div>
+            <div v-if="orderContentLabel" class="flex justify-between gap-4">
+              <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderContent') }}</span>
+              <span class="text-right font-medium text-gray-900 dark:text-white">{{ orderContentLabel }}</span>
+            </div>
+            <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') }}</span>
               <OrderStatusBadge :status="order.status" />
             </div>
@@ -153,6 +161,27 @@ const isSuccess = computed(() => {
 
 const isPending = computed(() => {
   return isPendingStatus(order.value?.status)
+})
+
+const orderTypeLabel = computed(() => {
+  if (order.value?.order_type === 'subscription') return t('payment.admin.subscriptionOrder')
+  if (order.value?.order_type === 'daily_limit_reset') return t('payment.admin.dailyLimitResetOrder')
+  return t('payment.admin.balanceOrder')
+})
+
+const orderContentLabel = computed(() => {
+  if (!order.value) return ''
+  if (order.value.order_type === 'subscription') {
+    const name = order.value.product_name || order.value.group_name
+    if (name && order.value.subscription_days) return `${name} · ${order.value.subscription_days}${t('payment.admin.days')}`
+    if (name) return name
+    if (order.value.subscription_days) return `${order.value.subscription_days}${t('payment.admin.days')}`
+    return ''
+  }
+  if (order.value.order_type === 'daily_limit_reset') {
+    return order.value.group_name || t('payment.admin.dailyLimitResetOrder')
+  }
+  return ''
 })
 
 const statusTitle = computed(() => {

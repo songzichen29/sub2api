@@ -37,6 +37,7 @@ interface Props {
   userRateMultiplier?: number | null // 用户专属倍率
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
+  remainingText?: string | null
   /**
    * 订阅分组默认在右侧 label 展示"订阅"或剩余天数；
    * 开启后订阅分组也改为显示倍率（保留订阅主题色 label，配合可用渠道这类
@@ -49,6 +50,7 @@ const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   showRate: true,
   daysRemaining: null,
+  remainingText: null,
   userRateMultiplier: null,
   alwaysShowRate: false
 })
@@ -84,6 +86,9 @@ const labelText = computed(() => {
     if (props.daysRemaining !== null && props.daysRemaining !== undefined) {
       if (props.daysRemaining <= 0) {
         return t('admin.users.expired')
+      }
+      if (props.remainingText) {
+        return props.remainingText
       }
       return t('admin.users.daysRemaining', { days: props.daysRemaining })
     }
