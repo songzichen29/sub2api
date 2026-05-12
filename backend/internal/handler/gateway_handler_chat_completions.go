@@ -169,7 +169,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
-	groupPlatform := ""
+	groupPlatform = ""
 	if apiKey.Group != nil {
 		groupPlatform = apiKey.Group.Platform
 	}
