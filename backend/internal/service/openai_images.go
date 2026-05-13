@@ -1510,6 +1510,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 
 func buildOpenAIImagesURL(base string, endpoint string) string {
 	return buildOpenAIEndpointURL(base, endpoint)
+
 }
 
 func parseOpenAIPowResources(htmlContent string) ([]string, string) {
@@ -2764,6 +2765,7 @@ func (s *OpenAIGatewayService) pollOpenAIFreeImageResultURLs(
 		case <-time.After(4 * time.Second):
 		}
 	}
+
 }
 
 func rewriteOpenAIImagesModel(body []byte, contentType string, model string) ([]byte, string, error) {
