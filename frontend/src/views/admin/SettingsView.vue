@@ -9263,8 +9263,6 @@ watch(
 }
 
 /* ============ Settings Tab Navigation ============ */
-
-/* Scroll container: thin scrollbar on PC, auto-hide on mobile */
 .settings-tabs-shell {
   @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
   top: 4.75rem;
@@ -9272,31 +9270,35 @@ watch(
     0 12px 28px rgb(15 23 42 / 0.07),
     0 1px 0 rgb(255 255 255 / 0.9) inset;
 }
+
 .settings-tabs-scroll {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
+
 .settings-tabs-scroll:hover {
   scrollbar-color: rgb(0 0 0 / 0.15) transparent;
 }
+
 .settings-tabs-scroll::-webkit-scrollbar {
   height: 3px;
 }
+
 .settings-tabs-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
+
 .settings-tabs-scroll::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 3px;
 }
+
 .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
   background: rgb(0 0 0 / 0.15);
 }
 
 .settings-tabs {
-  @apply inline-flex min-w-full gap-0.5 rounded-2xl
-         border border-gray-100 bg-white/80 p-1 backdrop-blur-sm
-         dark:border-dark-700/50 dark:bg-dark-800/80;
+  @apply inline-flex min-w-full gap-0.5 rounded-2xl border border-gray-100 bg-white/80 p-1 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80;
   box-shadow:
     0 1px 3px rgb(0 0 0 / 0.04),
     0 1px 2px rgb(0 0 0 / 0.02);
@@ -9308,17 +9310,6 @@ watch(
   }
 }
 
-.settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-1.5
-         whitespace-nowrap rounded-xl px-2.5 py-2
-         text-sm font-medium
-         text-gray-500 dark:text-dark-400
-         transition-all duration-200 ease-out;
-}
-
-.settings-tab:hover:not(.settings-tab-active) {
-  @apply text-gray-700 dark:text-gray-300;
-  background: rgb(0 0 0 / 0.03);
 @media (min-width: 768px) {
   .settings-tabs {
     @apply min-w-full;
@@ -9333,6 +9324,10 @@ watch(
   }
 }
 
+.settings-tab {
+  @apply relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-gray-500 dark:text-dark-400 transition-all duration-200 ease-out;
+}
+
 .settings-tab::before {
   @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
   content: "";
@@ -9342,6 +9337,11 @@ watch(
 .settings-tab:hover::before,
 .settings-tab:focus-visible::before {
   opacity: 1;
+}
+
+.settings-tab:hover:not(.settings-tab-active) {
+  @apply text-gray-700 dark:text-gray-300;
+  background: rgb(0 0 0 / 0.03);
 }
 
 .settings-tab:focus-visible {
@@ -9358,20 +9358,42 @@ watch(
   box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
 }
 
+.settings-tab-active::before {
+  opacity: 0;
+}
+
+.settings-tab-active::after {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.25rem;
+  left: 0.75rem;
+  height: 2px;
+  border-radius: 9999px;
+  content: "";
+  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+}
+
 .settings-tab-icon {
-  @apply flex h-6 w-6 items-center justify-center rounded-lg
-         transition-all duration-200;
+  @apply flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400;
+}
+
+.settings-tab:hover .settings-tab-icon,
+.settings-tab:focus-visible .settings-tab-icon {
+  @apply text-gray-700 dark:text-gray-200;
 }
 
 .settings-tab-active .settings-tab-icon {
-  @apply bg-primary-500/15 text-primary-600
-         dark:bg-primary-400/15 dark:text-primary-400;
+  @apply bg-primary-500/15 text-primary-600 dark:bg-primary-400/15 dark:text-primary-400;
+}
+
+.settings-tab-label {
+  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
 }
 </style>
 
 <style>
-/* Dark-mode overrides for Settings tabs. Kept UNSCOPED so they survive Vue's
-   scoped-CSS transform and keep inactive tabs readable in production dark mode. */
+/* Dark-mode overrides for Settings tabs. Kept UNSCOPED so they survive
+   Vue scoped CSS processing and remain readable in production dark mode. */
 .dark .settings-tabs-scroll:hover {
   scrollbar-color: rgb(255 255 255 / 0.2) transparent;
 }
@@ -9384,20 +9406,6 @@ watch(
   background: rgb(255 255 255 / 0.04);
 }
 
-.dark .settings-tab-active {
-  background: linear-gradient(
-    135deg,
-    rgba(45, 212, 191, 0.12),
-    rgba(45, 212, 191, 0.05)
-  );
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
-}
-</style>
-
-<style>
-/* Dark-mode overrides for the settings tabs shell. Kept in an UNSCOPED block
-   because Vue's scoped-CSS compiler was dropping the `:global(.dark) ...`
-   rules in the production build, leaving inactive tabs unreadable on dark. */
 .dark .settings-tabs-shell {
   border-color: rgb(51 65 85 / 0.65);
   background: rgb(15 23 42 / 0.86);
@@ -9411,6 +9419,11 @@ watch(
 }
 
 .dark .settings-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(45, 212, 191, 0.12),
+    rgba(45, 212, 191, 0.05)
+  );
   box-shadow:
     0 12px 26px rgb(0 0 0 / 0.22),
     0 1px 0 rgb(255 255 255 / 0.08) inset;
