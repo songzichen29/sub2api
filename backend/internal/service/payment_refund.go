@@ -486,6 +486,9 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 	if sub == nil {
 		return 0, infraerrors.BadRequest("SUBSCRIPTION_NOT_FOUND", "cannot find subscription for this order")
 	}
+	if !sub.ExpiresAt.After(time.Now()) {
+		return 0, ErrSubscriptionExpired
+	}
 	if sub.Group == nil {
 		sub.Group, err = s.groupRepo.GetByID(ctx, sub.GroupID)
 		if err != nil {

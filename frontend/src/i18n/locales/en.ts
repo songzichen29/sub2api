@@ -6469,6 +6469,7 @@ export default {
       FORBIDDEN: 'No permission for this order.',
       CONFLICT: 'Order status has changed. Please refresh.',
       INVALID_ORDER_TYPE: 'Only balance orders can request a refund.',
+      SUBSCRIPTION_EXPIRED: 'The subscription has expired and cannot be refunded.',
       INVALID_STATUS: 'The current order status does not allow this operation.',
       BALANCE_NOT_ENOUGH: 'Refund amount exceeds balance.',
       REFUND_AMOUNT_EXCEEDED: 'Refund amount exceeds the recharge amount.',

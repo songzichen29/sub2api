@@ -6653,6 +6653,7 @@ export default {
       FORBIDDEN: '无权限操作此订单',
       CONFLICT: '订单状态已变更，请刷新',
       INVALID_ORDER_TYPE: '仅余额订单可申请退款',
+      SUBSCRIPTION_EXPIRED: '订阅已过期，无法退款',
       INVALID_STATUS: '当前订单状态不允许此操作',
       BALANCE_NOT_ENOUGH: '退款金额超过余额',
       REFUND_AMOUNT_EXCEEDED: '退款金额超过充值金额',

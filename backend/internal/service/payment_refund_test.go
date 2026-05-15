@@ -174,6 +174,82 @@ func TestPrepareRefundRejectsDailyLimitResetOrder(t *testing.T) {
 	require.Equal(t, "INVALID_ORDER_TYPE", infraerrors.Reason(err))
 }
 
+func TestPrepareRefundRejectsExpiredSubscription(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-expired@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-expired-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-expired-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(10).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-expired-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(300).
+		SetPayAmount(300).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-EXPIRED").
+		SetOutTradeNo("sub2_refund_sub_expired").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-expired").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-40 * 24 * time.Hour)
+	expiresAt := time.Now().Add(-10 * 24 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusExpired).
+		SetDailyUsageUsd(0).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, false)
+	require.Nil(t, plan)
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.Equal(t, "SUBSCRIPTION_EXPIRED", infraerrors.Reason(err))
+}
+
 func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
