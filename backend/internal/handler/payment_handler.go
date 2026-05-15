@@ -498,6 +498,9 @@ type PublicOrderResult struct {
 	SubscriptionGroupID *int64     `json:"subscription_group_id,omitempty"`
 	SubscriptionID      *int64     `json:"subscription_id,omitempty"`
 	SubscriptionDays    *int       `json:"subscription_days,omitempty"`
+	CanRefund           bool       `json:"can_refund"`
+	SubscriptionExpiresAt *time.Time `json:"subscription_expires_at,omitempty"`
+	SubscriptionRemainingDays *int `json:"subscription_remaining_days,omitempty"`
 	ProductName         string     `json:"product_name,omitempty"`
 	GroupName           string     `json:"group_name,omitempty"`
 }
@@ -528,6 +531,9 @@ func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 		SubscriptionGroupID: order.SubscriptionGroupID,
 		SubscriptionID:      order.SubscriptionID,
 		SubscriptionDays:    order.SubscriptionDays,
+		CanRefund:           order.CanRefund,
+		SubscriptionExpiresAt: order.SubscriptionExpiresAt,
+		SubscriptionRemainingDays: order.SubscriptionRemainingDays,
 		ProductName:         order.ProductName,
 		GroupName:           order.GroupName,
 	}
@@ -612,8 +618,11 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOr
 
 type paymentOrderResponse struct {
 	*dbent.PaymentOrder
-	ProductName string `json:"product_name,omitempty"`
-	GroupName   string `json:"group_name,omitempty"`
+	ProductName               string     `json:"product_name,omitempty"`
+	GroupName                 string     `json:"group_name,omitempty"`
+	CanRefund                 bool       `json:"can_refund"`
+	SubscriptionExpiresAt     *time.Time `json:"subscription_expires_at,omitempty"`
+	SubscriptionRemainingDays *int       `json:"subscription_remaining_days,omitempty"`
 }
 
 func enrichPaymentOrdersForResponse(ctx context.Context, paymentService *service.PaymentService, orders []*dbent.PaymentOrder) []*paymentOrderResponse {
@@ -679,6 +688,10 @@ func enrichPaymentOrdersForResponse(ctx context.Context, paymentService *service
 		if sanitized.SubscriptionGroupID != nil {
 			item.GroupName = groupMap[*sanitized.SubscriptionGroupID]
 		}
+		refundDisplay := paymentService.GetOrderRefundDisplay(ctx, sanitized)
+		item.CanRefund = refundDisplay.CanRefund
+		item.SubscriptionExpiresAt = refundDisplay.SubscriptionExpiresAt
+		item.SubscriptionRemainingDays = refundDisplay.SubscriptionRemainingDays
 		out = append(out, item)
 	}
 	return out

@@ -266,12 +266,14 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 	if o.OrderType == payment.OrderTypeSubscription {
 		p.DeductionType = payment.DeductionTypeSubscription
 		if o.SubscriptionGroupID != nil && o.SubscriptionDays != nil {
-			p.SubDaysToDeduct = *o.SubscriptionDays
 			sub, err := s.resolveRefundSubscription(ctx, o)
 			if err == nil && sub != nil {
 				p.SubscriptionID = sub.ID
+				p.SubDaysToDeduct = subscriptionRemainingDays(sub, time.Now())
 			} else if !force {
 				return &RefundResult{Success: false, Warning: "cannot find active subscription for deduction, use force", RequireForce: true}
+			} else {
+				p.SubDaysToDeduct = *o.SubscriptionDays
 			}
 		}
 		return nil
@@ -494,9 +496,13 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 		return 0, infraerrors.BadRequest("DAILY_LIMIT_NOT_CONFIGURED", "subscription group has no daily limit, cannot calculate automatic refund")
 	}
 
-	totalDays := *o.SubscriptionDays
-	if totalDays <= 0 {
+	orderDays := *o.SubscriptionDays
+	if orderDays <= 0 {
 		return 0, infraerrors.BadRequest("INVALID_SUBSCRIPTION_DAYS", "subscription days must be greater than zero")
+	}
+	totalDays := subscriptionEffectiveDays(sub)
+	if totalDays <= 0 {
+		totalDays = orderDays
 	}
 
 	now := time.Now()
@@ -546,6 +552,36 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 		refundAmount = o.Amount
 	}
 	return math.Round(refundAmount*100) / 100, nil
+}
+
+type PaymentOrderRefundDisplay struct {
+	CanRefund                 bool
+	SubscriptionExpiresAt     *time.Time
+	SubscriptionRemainingDays *int
+}
+
+func (s *PaymentService) GetOrderRefundDisplay(ctx context.Context, o *dbent.PaymentOrder) PaymentOrderRefundDisplay {
+	result := PaymentOrderRefundDisplay{}
+	if o == nil {
+		return result
+	}
+	okStatuses := []string{OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundFailed, OrderStatusPartiallyRefunded}
+	if !psSliceContains(okStatuses, o.Status) || o.OrderType == payment.OrderTypeDailyLimitReset {
+		return result
+	}
+	if o.OrderType != payment.OrderTypeSubscription {
+		return result
+	}
+	sub, err := s.resolveRefundSubscription(ctx, o)
+	if err != nil || sub == nil {
+		return result
+	}
+	expiresAt := sub.ExpiresAt
+	result.SubscriptionExpiresAt = &expiresAt
+	remainingDays := subscriptionRemainingDays(sub, time.Now())
+	result.SubscriptionRemainingDays = &remainingDays
+	result.CanRefund = remainingDays > 0
+	return result
 }
 
 func (s *PaymentService) resolveRefundSubscription(ctx context.Context, o *dbent.PaymentOrder) (*UserSubscription, error) {
@@ -648,4 +684,30 @@ func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSub
 		}
 	}
 	return result
+}
+
+func subscriptionEffectiveDays(sub *UserSubscription) int {
+	if sub == nil {
+		return 0
+	}
+	duration := sub.ExpiresAt.Sub(sub.StartsAt)
+	if duration <= 0 {
+		return 0
+	}
+	days := int(math.Ceil(duration.Hours() / 24))
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
+func subscriptionRemainingDays(sub *UserSubscription, now time.Time) int {
+	if sub == nil || !sub.ExpiresAt.After(now) {
+		return 0
+	}
+	days := int(math.Ceil(sub.ExpiresAt.Sub(now).Hours() / 24))
+	if days < 0 {
+		return 0
+	}
+	return days
 }

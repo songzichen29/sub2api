@@ -86,6 +86,13 @@
         </div>
       </div>
 
+      <div
+        v-if="showSubscriptionRefundExpiredHint"
+        class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+      >
+        {{ t('payment.admin.subscriptionRefundExpired') }}
+      </div>
+
       <div class="flex items-center justify-end gap-2 border-t border-gray-200 pt-4 dark:border-dark-700">
         <button
           v-if="order.status === 'PENDING'"
@@ -140,6 +147,16 @@ const feeAmount = computed(() => {
   return props.order.pay_amount - baseAmount.value
 })
 
+const showSubscriptionRefundExpiredHint = computed(() => {
+  const order = props.order
+  if (!order) return false
+  if (order.order_type !== 'subscription') return false
+  if (canRefund(order)) return false
+  if (order.subscription_remaining_days != null) return order.subscription_remaining_days <= 0
+  if (order.subscription_expires_at) return new Date(order.subscription_expires_at).getTime() <= Date.now()
+  return false
+})
+
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'cancel', order: PaymentOrder): void
@@ -148,7 +165,9 @@ const emit = defineEmits<{
 }>()
 
 function canRefund(order: PaymentOrder): boolean {
-  return canRefundStatus(order.status)
+  if (!canRefundStatus(order.status)) return false
+  if (order.order_type === 'subscription') return order.can_refund === true
+  return order.can_refund !== false
 }
 
 function formatDateTime(dateStr: string): string {

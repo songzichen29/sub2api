@@ -3,6 +3,8 @@
  * Used by AdminOrderDetail, AdminOrderTable, AdminRefundDialog, AdminOrdersView, etc.
  */
 
+import type { PaymentOrder } from '@/types/payment'
+
 const STATUS_BADGE_MAP: Record<string, string> = {
   PENDING: 'badge-warning',
   PAID: 'badge-info',
@@ -26,6 +28,13 @@ export function statusBadgeClass(status: string): string {
 
 export function canRefund(status: string): boolean {
   return REFUNDABLE_STATUSES.includes(status)
+}
+
+export function canRefundOrder(order: PaymentOrder): boolean {
+  if (!order) return false
+  if (!canRefund(order.status)) return false
+  if (order.order_type === 'subscription') return order.can_refund === true
+  return order.can_refund !== false
 }
 
 export function formatOrderDateTime(dateStr: string): string {

@@ -142,7 +142,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { statusBadgeClass, canRefund, formatOrderDateTime } from '@/components/payment/orderUtils'
+import { statusBadgeClass, canRefundOrder, formatOrderDateTime } from '@/components/payment/orderUtils'
 
 const { t } = useI18n()
 
@@ -221,7 +221,7 @@ const orderTypeFilterOptions = computed(() => [
 ])
 
 function canRefundRow(order: PaymentOrder): boolean {
-  return canRefund(order.status)
+  return canRefundOrder(order)
 }
 
 function formatDateTime(dateStr: string): string {

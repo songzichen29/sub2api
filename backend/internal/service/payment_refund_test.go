@@ -481,3 +481,84 @@ func TestPrepareRefundHistoricalSubscriptionCalculationRoundsToTwoDecimals(t *te
 	expected := math.Round((100.0*(1.0+(2.0/3.0))/3.0)*100) / 100
 	require.InDelta(t, expected, plan.RefundAmount, 0.0001)
 }
+
+func TestPrepareRefundUsesAdjustedSubscriptionRangeForRefundAndDeduction(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-adjusted@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-adjusted-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 10.0
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-adjusted-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-adjusted-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(300).
+		SetPayAmount(300).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-ADJUSTED").
+		SetOutTradeNo("sub2_refund_sub_adjusted").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-adjusted").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-5 * 24 * time.Hour)
+	expiresAt := time.Now().Add(15 * 24 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusActive).
+		SetDailyUsageUsd(2).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient:       client,
+		subscriptionSvc: NewSubscriptionService(nil, nil, nil, client, nil),
+	}
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, true)
+	require.NoError(t, err)
+	require.Nil(t, result)
+	require.NotNil(t, plan)
+	require.Equal(t, 15, plan.SubDaysToDeduct)
+	require.InDelta(t, 200.00, plan.RefundAmount, 0.0001)
+}

@@ -95,6 +95,9 @@ export interface PaymentOrder {
   subscription_group_id?: number
   subscription_id?: number
   subscription_days?: number
+  can_refund?: boolean
+  subscription_expires_at?: string
+  subscription_remaining_days?: number
   provider_instance_id?: string
   product_name?: string
   group_name?: string
