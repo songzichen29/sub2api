@@ -33,7 +33,11 @@ export function canRefund(status: string): boolean {
 export function canRefundOrder(order: PaymentOrder): boolean {
   if (!order) return false
   if (!canRefund(order.status)) return false
-  if (order.order_type === 'subscription') return order.can_refund === true
+  if (order.order_type === 'subscription') {
+    if (order.subscription_remaining_days != null) return order.subscription_remaining_days > 0
+    if (order.subscription_expires_at) return new Date(order.subscription_expires_at).getTime() > Date.now()
+    return true
+  }
   return order.can_refund !== false
 }
 

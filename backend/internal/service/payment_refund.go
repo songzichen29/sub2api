@@ -570,17 +570,19 @@ func (s *PaymentService) GetOrderRefundDisplay(ctx context.Context, o *dbent.Pay
 		return result
 	}
 	if o.OrderType != payment.OrderTypeSubscription {
+		result.CanRefund = true
 		return result
 	}
 	sub, err := s.resolveRefundSubscription(ctx, o)
 	if err != nil || sub == nil {
+		result.CanRefund = true
 		return result
 	}
 	expiresAt := sub.ExpiresAt
 	result.SubscriptionExpiresAt = &expiresAt
 	remainingDays := subscriptionRemainingDays(sub, time.Now())
 	result.SubscriptionRemainingDays = &remainingDays
-	result.CanRefund = remainingDays > 0
+	result.CanRefund = true
 	return result
 }
 
