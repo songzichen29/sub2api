@@ -3160,7 +3160,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-<<<<<<< HEAD
     const parsed = splitModelMappingObject(credentials.model_mapping as Record<string, unknown> | undefined)
     allowedModels.value = parsed.allowedModels
     modelMappings.value =
@@ -3217,7 +3216,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-<<<<<<< HEAD
     const parsedBedrock = splitModelMappingObject(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
     allowedModels.value = parsedBedrock.allowedModels
     modelMappings.value =
@@ -3287,7 +3285,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI OAuth accounts
     if (newAccount.platform === 'openai' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-<<<<<<< HEAD
       const parsedOAuth = splitModelMappingObject(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
       allowedModels.value = parsedOAuth.allowedModels
       modelMappings.value =
@@ -3841,7 +3838,6 @@ const handleSubmit = async () => {
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
-<<<<<<< HEAD
         const modelMapping = buildModelRestrictionMapping()
         applyMappingWithNotes(
           newCredentials,
@@ -4020,7 +4016,6 @@ const handleSubmit = async () => {
       }
 
       // Model mapping
-<<<<<<< HEAD
       const modelMapping = buildModelRestrictionMapping()
       applyMappingWithNotes(
         newCredentials,
@@ -4057,7 +4052,6 @@ const handleSubmit = async () => {
       const shouldApplyModelMapping = !openaiPassthroughEnabled.value
 
       if (shouldApplyModelMapping) {
-<<<<<<< HEAD
         const modelMapping = buildModelRestrictionMapping()
         applyMappingWithNotes(
           newCredentials,
