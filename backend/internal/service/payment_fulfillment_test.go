@@ -457,7 +457,7 @@ func (s *groupRepoStubForDoSub) GetByIDLite(context.Context, int64) (*Group, err
 	return s.group, nil
 }
 func (s *groupRepoStubForDoSub) Update(context.Context, *Group) error { panic("unexpected Update") }
-func (s *groupRepoStubForDoSub) Delete(context.Context, int64) error { panic("unexpected Delete") }
+func (s *groupRepoStubForDoSub) Delete(context.Context, int64) error  { panic("unexpected Delete") }
 func (s *groupRepoStubForDoSub) DeleteCascade(context.Context, int64) ([]int64, error) {
 	panic("unexpected DeleteCascade")
 }
@@ -467,7 +467,9 @@ func (s *groupRepoStubForDoSub) List(context.Context, pagination.PaginationParam
 func (s *groupRepoStubForDoSub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters")
 }
-func (s *groupRepoStubForDoSub) ListActive(context.Context) ([]Group, error) { panic("unexpected ListActive") }
+func (s *groupRepoStubForDoSub) ListActive(context.Context) ([]Group, error) {
+	panic("unexpected ListActive")
+}
 func (s *groupRepoStubForDoSub) ListActiveByPlatform(context.Context, string) ([]Group, error) {
 	panic("unexpected ListActiveByPlatform")
 }
@@ -553,7 +555,9 @@ func (r *userSubRepoForDoSub) GetActiveByUserIDAndGroupID(ctx context.Context, u
 	return paymentRefundEntSubscriptionToService(entity), nil
 }
 
-func (r *userSubRepoForDoSub) Update(context.Context, *UserSubscription) error { panic("unexpected Update") }
+func (r *userSubRepoForDoSub) Update(context.Context, *UserSubscription) error {
+	panic("unexpected Update")
+}
 func (r *userSubRepoForDoSub) Delete(ctx context.Context, id int64) error {
 	_, err := r.client.UserSubscription.Delete().Where(usersubscription.IDEQ(id)).Exec(ctx)
 	return err
@@ -593,6 +597,8 @@ func (r *userSubRepoForDoSub) UpdateNotes(ctx context.Context, subscriptionID in
 	_, err := r.client.UserSubscription.UpdateOneID(subscriptionID).SetNotes(notes).Save(ctx)
 	return err
 }
+
+func (r *userSubRepoForDoSub) UpdateDailyOverdraft(context.Context, int64, bool) error { return nil }
 func (r *userSubRepoForDoSub) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows")
 }

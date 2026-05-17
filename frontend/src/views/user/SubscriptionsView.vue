@@ -59,13 +59,15 @@
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : subscription.status === 'expired'
                       ? 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
-                      : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                      : subscription.status === 'quota_exhausted'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                        : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
                 ]"
               >
                 {{ t(`userSubscriptions.status.${subscription.status}`) }}
               </span>
               <button
-                v-if="subscription.status === 'active'"
+                v-if="subscription.status === 'active' || subscription.status === 'quota_exhausted'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
                 @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
               >
@@ -99,6 +101,29 @@
               <span class="text-gray-700 dark:text-gray-300">{{
                 t('userSubscriptions.noExpiration')
               }}</span>
+            </div>
+
+            <div
+              v-if="canConfigureDailyOverdraft(subscription)"
+              class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+            >
+              <label class="flex items-start justify-between gap-3">
+                <span>
+                  <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('userSubscriptions.dailyOverdraft') }}
+                  </span>
+                  <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">
+                    {{ t('userSubscriptions.dailyOverdraftHint') }}
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-60"
+                  :checked="subscription.allow_daily_overdraft"
+                  :disabled="overdraftUpdatingId === subscription.id"
+                  @change="toggleDailyOverdraft(subscription, ($event.target as HTMLInputElement).checked)"
+                />
+              </label>
             </div>
 
             <!-- Daily Usage -->
@@ -280,6 +305,7 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+const overdraftUpdatingId = ref<number | null>(null)
 
 async function loadSubscriptions() {
   try {
@@ -305,6 +331,37 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+
+function canConfigureDailyOverdraft(subscription: UserSubscription): boolean {
+  return subscription.status === 'active'
+    && !!subscription.group?.allow_daily_overdraft
+    && !!subscription.group?.daily_limit_usd
+    && subscription.group.daily_limit_usd > 0
+    && (!!subscription.group?.weekly_limit_usd || !!subscription.group?.monthly_limit_usd)
+}
+
+async function toggleDailyOverdraft(subscription: UserSubscription, enabled: boolean) {
+  if (!canConfigureDailyOverdraft(subscription)) return
+  const previous = subscription.allow_daily_overdraft
+  subscription.allow_daily_overdraft = enabled
+  overdraftUpdatingId.value = subscription.id
+  try {
+    const updated = await subscriptionsAPI.setDailyOverdraft(subscription.id, enabled)
+    Object.assign(subscription, updated)
+    appStore.showSuccess(
+      enabled
+        ? t('userSubscriptions.dailyOverdraftEnabled')
+        : t('userSubscriptions.dailyOverdraftDisabled')
+    )
+  } catch (error) {
+    subscription.allow_daily_overdraft = previous
+    console.error('Failed to update daily overdraft:', error)
+    appStore.showError(t('userSubscriptions.dailyOverdraftUpdateFailed'))
+  } finally {
+    overdraftUpdatingId.value = null
+  }
 }
 
 function canResetDailyLimit(subscription: UserSubscription): boolean {

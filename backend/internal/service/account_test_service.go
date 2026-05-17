@@ -38,11 +38,11 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Code     string `json:"code,omitempty"`
+	Type            string `json:"type"`
+	Text            string `json:"text,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Status          string `json:"status,omitempty"`
+	Code            string `json:"code,omitempty"`
 	ElapsedMs       int64  `json:"elapsed_ms,omitempty"`
 	ConnectMs       int64  `json:"connect_ms,omitempty"`
 	FirstResponseMs int64  `json:"first_response_ms,omitempty"`
@@ -57,10 +57,10 @@ const accountTestStartedAtContextKey = "account_test_started_at"
 const accountTestMetricsContextKey = "account_test_metrics"
 
 type accountTestMetrics struct {
-	startedAt        time.Time
-	connectMs        int64
-	connectRecorded  bool
-	firstResponseMs  int64
+	startedAt         time.Time
+	connectMs         int64
+	connectRecorded   bool
+	firstResponseMs   int64
 	firstRespRecorded bool
 }
 
@@ -1005,6 +1005,165 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+// ProbeUpstreamModelsByAccount 使用已保存账号的凭据探测上游可用模型。
+func (s *AccountTestService) ProbeUpstreamModelsByAccount(ctx context.Context, account *Account) ([]string, error) {
+	if account == nil {
+		return nil, errors.New("account is required")
+	}
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	switch account.Platform {
+	case PlatformOpenAI:
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
+	case PlatformGemini:
+		if baseURL == "" {
+			baseURL = geminicli.AIStudioBaseURL
+		}
+		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
+	case PlatformAnthropic:
+		if baseURL == "" {
+			baseURL = "https://api.anthropic.com"
+		}
+		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
+	case PlatformGrok:
+		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
+	default:
+		return nil, fmt.Errorf("unsupported platform: %s", account.Platform)
+	}
+}
+
+// ProbeUpstreamModels 使用表单传入的 base_url + api_key 探测上游可用模型。
+func (s *AccountTestService) ProbeUpstreamModels(ctx context.Context, platform, accountType, baseURL, apiKey string) ([]string, error) {
+	platform = strings.TrimSpace(platform)
+	accountType = strings.TrimSpace(accountType)
+	baseURL = strings.TrimSpace(baseURL)
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return nil, errors.New("api_key is required")
+	}
+	if accountType != AccountTypeAPIKey && !(platform == PlatformGrok && accountType == AccountTypeUpstream) {
+		return nil, fmt.Errorf("unsupported account type for model probing: %s", accountType)
+	}
+
+	switch platform {
+	case PlatformOpenAI, PlatformGrok:
+		return FetchOpenAICompatibleUpstreamModels(ctx, baseURL, apiKey)
+	case PlatformGemini:
+		return s.fetchGeminiAPIKeyModels(ctx, baseURL, apiKey)
+	case PlatformAnthropic:
+		return s.fetchAnthropicCompatibleModels(ctx, baseURL, apiKey)
+	default:
+		return nil, fmt.Errorf("unsupported platform: %s", platform)
+	}
+}
+
+func (s *AccountTestService) fetchGeminiAPIKeyModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	if baseURL == "" {
+		baseURL = geminicli.AIStudioBaseURL
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	fullURL := strings.TrimRight(normalizedBaseURL, "/") + "/v1beta/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create gemini list-models request: %w", err)
+	}
+	req.Header.Set("x-goog-api-key", apiKey)
+
+	resp, err := s.doModelProbeRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("list-models returned %d: %s", resp.StatusCode, string(body))
+	}
+	var parsed struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("parse gemini list-models response: %w", err)
+	}
+	ids := make([]string, 0, len(parsed.Models))
+	for _, m := range parsed.Models {
+		id := strings.TrimSpace(m.Name)
+		id = strings.TrimPrefix(id, "models/")
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}
+
+func (s *AccountTestService) fetchAnthropicCompatibleModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	fullURL := strings.TrimRight(normalizedBaseURL, "/") + "/v1/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create anthropic list-models request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	resp, err := s.doModelProbeRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("list-models returned %d: %s", resp.StatusCode, string(body))
+	}
+	ids, err := parseModelIDsFromDataResponse(body)
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (s *AccountTestService) doModelProbeRequest(req *http.Request) (*http.Response, error) {
+	if s.httpUpstream != nil {
+		return s.httpUpstream.Do(req, "", 0, 0)
+	}
+	client := &http.Client{Timeout: 15 * time.Second}
+	return client.Do(req)
+}
+
+func parseModelIDsFromDataResponse(body []byte) ([]string, error) {
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("parse list-models response: %w", err)
+	}
+	ids := make([]string, 0, len(parsed.Data))
+	for _, m := range parsed.Data {
+		if id := strings.TrimSpace(m.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // ListGrokUpstreamModels 委托给 GrokGatewayService 拉 grok2api 网关上当前账号可用模型 ID 列表。

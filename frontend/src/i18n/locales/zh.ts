@@ -2188,6 +2188,9 @@ export default {
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
+        allowDailyOverdraft: '允许用户开启日额度透支',
+        allowDailyOverdraftHint: '开启后用户可在自己的订阅中自行开关透支；默认关闭。必须配置周或月限额。',
+        overdraftShort: '支持透支',
         noLimit: '无限制'
       },
       imagePricing: {
@@ -2592,6 +2595,7 @@ export default {
         active: '生效中',
         not_started: '未生效',
         expired: '已过期',
+        quota_exhausted: '额度已用完',
         revoked: '已撤销'
       },
       columns: {
@@ -6304,6 +6308,7 @@ export default {
     status: {
       active: '有效',
       expired: '已过期',
+      quota_exhausted: '额度已用完',
       revoked: '已撤销'
     },
     usage: '用量',
@@ -6320,6 +6325,11 @@ export default {
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
     usageOf: '已用 {used} / {limit}',
+    dailyOverdraft: '日额度透支',
+    dailyOverdraftHint: '开启后每日额度用完仍可继续使用，消耗周/月总额度；默认关闭。',
+    dailyOverdraftEnabled: '已开启日额度透支',
+    dailyOverdraftDisabled: '已关闭日额度透支',
+    dailyOverdraftUpdateFailed: '更新日额度透支设置失败',
     resetDailyLimit: '重置当日额度'
   },
 

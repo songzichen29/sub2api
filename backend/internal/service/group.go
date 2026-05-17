@@ -24,6 +24,7 @@ type Group struct {
 	DailyLimitResetPrice *float64
 	WeeklyLimitUSD       *float64
 	MonthlyLimitUSD      *float64
+	AllowDailyOverdraft  bool
 	DefaultValidityDays  int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
@@ -94,6 +95,22 @@ func (g *Group) HasWeeklyLimit() bool {
 
 func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
+}
+
+// AllowsDailyOverdraft reports whether daily usage may exceed the daily limit
+// and continue consuming the configured period pool. It deliberately requires
+// at least one longer-window limit so a misconfigured group cannot become
+// unlimited just because daily overdraft was enabled.
+func (g *Group) AllowsDailyOverdraft() bool {
+	return g != nil &&
+		g.AllowDailyOverdraft &&
+		g.IsSubscriptionType() &&
+		g.HasDailyLimit() &&
+		(g.HasWeeklyLimit() || g.HasMonthlyLimit())
+}
+
+func (g *Group) ShouldEnforceDailyLimit() bool {
+	return g != nil && g.HasDailyLimit() && !g.AllowsDailyOverdraft()
 }
 
 // GetImagePrice 根据 image_size 返回对应的图片生成价格

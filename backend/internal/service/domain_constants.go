@@ -81,9 +81,10 @@ const (
 
 // Subscription status constants
 const (
-	SubscriptionStatusActive    = domain.SubscriptionStatusActive
-	SubscriptionStatusExpired   = domain.SubscriptionStatusExpired
-	SubscriptionStatusSuspended = domain.SubscriptionStatusSuspended
+	SubscriptionStatusActive         = domain.SubscriptionStatusActive
+	SubscriptionStatusExpired        = domain.SubscriptionStatusExpired
+	SubscriptionStatusSuspended      = domain.SubscriptionStatusSuspended
+	SubscriptionStatusQuotaExhausted = domain.SubscriptionStatusQuotaExhausted
 )
 
 // LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
@@ -181,22 +182,22 @@ const (
 	SettingKeyOIDCConnectUserInfoUsernamePath = "oidc_connect_userinfo_username_path"
 
 	// OEM设置
-	SettingKeySiteName                    = "site_name"                     // 网站名称
-	SettingKeySiteLogo                    = "site_logo"                     // 网站Logo (base64)
-	SettingKeySiteSubtitle                = "site_subtitle"                 // 网站副标题
-	SettingKeyAPIBaseURL                  = "api_base_url"                  // API端点地址（用于客户端配置和导入）
-	SettingKeyOpenAIFreeImageBridgeURL    = "openai_free_image_bridge_url"  // OpenAI free 图片桥接地址（指向 chatgpt2api）
+	SettingKeySiteName                     = "site_name"                         // 网站名称
+	SettingKeySiteLogo                     = "site_logo"                         // 网站Logo (base64)
+	SettingKeySiteSubtitle                 = "site_subtitle"                     // 网站副标题
+	SettingKeyAPIBaseURL                   = "api_base_url"                      // API端点地址（用于客户端配置和导入）
+	SettingKeyOpenAIFreeImageBridgeURL     = "openai_free_image_bridge_url"      // OpenAI free 图片桥接地址（指向 chatgpt2api）
 	SettingKeyOpenAIFreeImageBridgeAuthKey = "openai_free_image_bridge_auth_key" // OpenAI free 图片桥接鉴权密钥
-	SettingKeyContactInfo                 = "contact_info"                  // 客服联系方式
-	SettingKeyDocURL                      = "doc_url"                       // 文档链接
-	SettingKeyHomeContent                 = "home_content"                  // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
-	SettingKeyHideCcsImportButton         = "hide_ccs_import_button"        // 是否隐藏 API Keys 页面的导入 CCS 按钮
-	SettingKeyPurchaseSubscriptionEnabled = "purchase_subscription_enabled" // 是否展示"购买订阅"页面入口
-	SettingKeyPurchaseSubscriptionURL     = "purchase_subscription_url"     // "购买订阅"页面 URL（作为 iframe src）
-	SettingKeyTableDefaultPageSize        = "table_default_page_size"       // 表格默认每页条数
-	SettingKeyTablePageSizeOptions        = "table_page_size_options"       // 表格可选每页条数（JSON 数组）
-	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
-	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
+	SettingKeyContactInfo                  = "contact_info"                      // 客服联系方式
+	SettingKeyDocURL                       = "doc_url"                           // 文档链接
+	SettingKeyHomeContent                  = "home_content"                      // 首页内容（支持 Markdown/HTML，或 URL 作为 iframe src）
+	SettingKeyHideCcsImportButton          = "hide_ccs_import_button"            // 是否隐藏 API Keys 页面的导入 CCS 按钮
+	SettingKeyPurchaseSubscriptionEnabled  = "purchase_subscription_enabled"     // 是否展示"购买订阅"页面入口
+	SettingKeyPurchaseSubscriptionURL      = "purchase_subscription_url"         // "购买订阅"页面 URL（作为 iframe src）
+	SettingKeyTableDefaultPageSize         = "table_default_page_size"           // 表格默认每页条数
+	SettingKeyTablePageSizeOptions         = "table_page_size_options"           // 表格可选每页条数（JSON 数组）
+	SettingKeyCustomMenuItems              = "custom_menu_items"                 // 自定义菜单项（JSON 数组）
+	SettingKeyCustomEndpoints              = "custom_endpoints"                  // 自定义端点列表（JSON 数组）
 
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量
@@ -362,7 +363,7 @@ const (
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 
 	// Web Search Emulation
-	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+	SettingKeyWebSearchEmulationConfig    = "web_search_emulation_config"    // JSON 配置
 	SettingKeyAccountImportApplyTemplates = "account_import_apply_templates" // 账号导入 Apply 模板（JSON）
 )
 

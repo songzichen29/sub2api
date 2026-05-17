@@ -1838,6 +1838,8 @@ func (stubUserSubscriptionRepo) UpdateStatus(ctx context.Context, subscriptionID
 func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 }
+
+func (stubUserSubscriptionRepo) UpdateDailyOverdraft(context.Context, int64, bool) error { return nil }
 func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
 	return errors.New("not implemented")
 }

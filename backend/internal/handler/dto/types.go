@@ -93,6 +93,7 @@ type Group struct {
 	DailyLimitResetPrice *float64 `json:"daily_limit_reset_price"`
 	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
+	AllowDailyOverdraft  bool     `json:"allow_daily_overdraft"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool     `json:"allow_image_generation"`
@@ -508,9 +509,10 @@ type UserSubscription struct {
 	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`
 	MonthlyWindowStart *time.Time `json:"monthly_window_start"`
 
-	DailyUsageUSD   float64 `json:"daily_usage_usd"`
-	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
-	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
+	DailyUsageUSD       float64 `json:"daily_usage_usd"`
+	WeeklyUsageUSD      float64 `json:"weekly_usage_usd"`
+	MonthlyUsageUSD     float64 `json:"monthly_usage_usd"`
+	AllowDailyOverdraft bool    `json:"allow_daily_overdraft"`
 
 	// Source 标识订阅来源（admin/redeem/payment），前端据此决定能否重置配额。
 	Source string `json:"source"`

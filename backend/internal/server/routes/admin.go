@@ -288,6 +288,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.DELETE("/:id/temp-unschedulable", h.Admin.Account.ClearTempUnschedulable)
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 		accounts.GET("/:id/models", h.Admin.Account.GetAvailableModels)
+		accounts.POST("/:id/probe-models", h.Admin.Account.ProbeAccountUpstreamModels)
 		accounts.POST("/batch", h.Admin.Account.BatchCreate)
 		accounts.GET("/data", h.Admin.Account.ExportData)
 		accounts.POST("/data", h.Admin.Account.ImportData)
@@ -300,7 +301,9 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
-		// Grok 上游模型探测（账号新增/编辑时用用户填写的 base_url+api_key 拉 /v1/models）
+		// 上游模型探测（账号新增/编辑时用 base_url+api_key 拉模型列表）
+		accounts.POST("/probe-models", h.Admin.Account.ProbeUpstreamModels)
+		// Grok 专用旧接口保留兼容。
 		accounts.POST("/grok/probe-models", h.Admin.Account.ProbeGrokUpstreamModels)
 
 		// Claude OAuth routes

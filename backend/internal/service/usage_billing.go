@@ -11,6 +11,7 @@ import (
 
 var ErrUsageBillingRequestIDRequired = errors.New("usage billing request_id is required")
 var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerprint conflict")
+var ErrUsageBillingSubscriptionLimitExceeded = errors.New("subscription usage limit exceeded")
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
@@ -34,11 +35,15 @@ type UsageBillingCommand struct {
 	ImageCount          int
 	MediaType           string
 
-	BalanceCost         float64
-	SubscriptionCost    float64
-	APIKeyQuotaCost     float64
-	APIKeyRateLimitCost float64
-	AccountQuotaCost    float64
+	BalanceCost      float64
+	SubscriptionCost float64
+	// AllowSubscriptionOverLimit permits recording the final in-flight request
+	// even when its post-fact actual cost crosses a subscription limit.
+	// Follow-up requests are rejected by eligibility checks using the updated usage.
+	AllowSubscriptionOverLimit bool
+	APIKeyQuotaCost            float64
+	APIKeyRateLimitCost        float64
+	AccountQuotaCost           float64
 }
 
 func (c *UsageBillingCommand) Normalize() {

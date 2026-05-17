@@ -365,3 +365,100 @@ func TestUsageBillingRepositoryApply_DeduplicatesAgainstArchivedKey(t *testing.T
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT balance FROM users WHERE id = ?", user.ID).Scan(&balance))
 	require.InDelta(t, 98.75, balance, 0.000001)
 }
+
+func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := NewUsageBillingRepository(client, integrationDB)
+
+	newFixture := func(t *testing.T, allowOverdraft bool, dailyUsage, weeklyUsage float64) (int64, int64) {
+		t.Helper()
+		daily := 80.0
+		weekly := 560.0
+		user := mustCreateUser(t, client, &service.User{
+			Email:        fmt.Sprintf("usage-billing-overdraft-%d-%s@example.com", time.Now().UnixNano(), uuid.NewString()),
+			PasswordHash: "hash",
+		})
+		group := mustCreateGroup(t, client, &service.Group{
+			Name:                "usage-billing-overdraft-" + uuid.NewString(),
+			Platform:            service.PlatformAnthropic,
+			RateMultiplier:      1,
+			SubscriptionType:    service.SubscriptionTypeSubscription,
+			DailyLimitUSD:       &daily,
+			WeeklyLimitUSD:      &weekly,
+			AllowDailyOverdraft: allowOverdraft,
+		})
+		apiKey := mustCreateApiKey(t, client, &service.APIKey{
+			UserID:  user.ID,
+			GroupID: &group.ID,
+			Key:     "sk-usage-billing-overdraft-" + uuid.NewString(),
+			Name:    "billing-overdraft",
+		})
+		subscription := mustCreateSubscription(t, client, &service.UserSubscription{
+			UserID:              user.ID,
+			GroupID:             group.ID,
+			DailyUsageUSD:       dailyUsage,
+			WeeklyUsageUSD:      weeklyUsage,
+			AllowDailyOverdraft: allowOverdraft,
+		})
+		return apiKey.ID, subscription.ID
+	}
+
+	t.Run("strict daily rejects", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, false, 79, 100)
+		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 2,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+
+	t.Run("overdraft daily uses weekly pool", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, true, 80, 120)
+		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 5,
+		})
+		require.NoError(t, err)
+		var dailyUsage, weeklyUsage float64
+		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd, weekly_usage_usd FROM user_subscriptions WHERE id = ?", subscriptionID).Scan(&dailyUsage, &weeklyUsage))
+		require.InDelta(t, 85, dailyUsage, 0.000001)
+		require.InDelta(t, 125, weeklyUsage, 0.000001)
+	})
+
+	t.Run("overdraft rejects once weekly already full", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, true, 80, 560)
+		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 1,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+
+	t.Run("allow over limit permits final crossing but rejects next", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, true, 80, 559)
+		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:                  uuid.NewString(),
+			APIKeyID:                   apiKeyID,
+			SubscriptionID:             &subscriptionID,
+			SubscriptionCost:           5,
+			AllowSubscriptionOverLimit: true,
+		})
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:                  uuid.NewString(),
+			APIKeyID:                   apiKeyID,
+			SubscriptionID:             &subscriptionID,
+			SubscriptionCost:           1,
+			AllowSubscriptionOverLimit: true,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+}

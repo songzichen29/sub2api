@@ -725,3 +725,44 @@ func TestPrepareRefundSkipsCurrentDayRefundAfterRenewalDailyWindowStarted(t *tes
 	require.Error(t, err)
 	require.Equal(t, "NO_REFUNDABLE_AMOUNT", infraerrors.Reason(err))
 }
+
+func TestCapDailyOverdraftSubscriptionRefundUsesPeriodRemaining(t *testing.T) {
+	daily := 80.0
+	weekly := 560.0
+	monthly := 2400.0
+
+	strict := &UserSubscription{
+		WeeklyUsageUSD: 500,
+		Group: &Group{
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &daily,
+			WeeklyLimitUSD:   &weekly,
+		},
+	}
+	require.InDelta(t, 80.0, capDailyOverdraftSubscriptionRefund(80, 100, strict), 0.0001)
+
+	overdraftWeekly := &UserSubscription{
+		WeeklyUsageUSD:      500,
+		AllowDailyOverdraft: true,
+		Group: &Group{
+			SubscriptionType:    SubscriptionTypeSubscription,
+			DailyLimitUSD:       &daily,
+			WeeklyLimitUSD:      &weekly,
+			AllowDailyOverdraft: true,
+		},
+	}
+	// weekly remaining ratio=(560-500)/560=10.714%, so a 100 order can refund at most 10.71
+	require.InDelta(t, 10.714285, capDailyOverdraftSubscriptionRefund(80, 100, overdraftWeekly), 0.0001)
+
+	overdraftMonthly := &UserSubscription{
+		MonthlyUsageUSD:     1200,
+		AllowDailyOverdraft: true,
+		Group: &Group{
+			SubscriptionType:    SubscriptionTypeSubscription,
+			DailyLimitUSD:       &daily,
+			MonthlyLimitUSD:     &monthly,
+			AllowDailyOverdraft: true,
+		},
+	}
+	require.InDelta(t, 50.0, capDailyOverdraftSubscriptionRefund(80, 100, overdraftMonthly), 0.0001)
+}

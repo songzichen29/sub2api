@@ -281,6 +281,20 @@ func (_u *GroupUpdate) ClearMonthlyLimitUsd() *GroupUpdate {
 	return _u
 }
 
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (_u *GroupUpdate) SetAllowDailyOverdraft(v bool) *GroupUpdate {
+	_u.mutation.SetAllowDailyOverdraft(v)
+	return _u
+}
+
+// SetNillableAllowDailyOverdraft sets the "allow_daily_overdraft" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowDailyOverdraft(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowDailyOverdraft(*v)
+	}
+	return _u
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_u *GroupUpdate) SetDefaultValidityDays(v int) *GroupUpdate {
 	_u.mutation.ResetDefaultValidityDays()
@@ -1041,6 +1055,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
 	}
+	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
+		_spec.SetField(group.FieldAllowDailyOverdraft, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
@@ -1710,6 +1727,20 @@ func (_u *GroupUpdateOne) AddMonthlyLimitUsd(v float64) *GroupUpdateOne {
 // ClearMonthlyLimitUsd clears the value of the "monthly_limit_usd" field.
 func (_u *GroupUpdateOne) ClearMonthlyLimitUsd() *GroupUpdateOne {
 	_u.mutation.ClearMonthlyLimitUsd()
+	return _u
+}
+
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (_u *GroupUpdateOne) SetAllowDailyOverdraft(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowDailyOverdraft(v)
+	return _u
+}
+
+// SetNillableAllowDailyOverdraft sets the "allow_daily_overdraft" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowDailyOverdraft(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowDailyOverdraft(*v)
+	}
 	return _u
 }
 
@@ -2502,6 +2533,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.MonthlyLimitUsdCleared() {
 		_spec.ClearField(group.FieldMonthlyLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
+		_spec.SetField(group.FieldAllowDailyOverdraft, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)

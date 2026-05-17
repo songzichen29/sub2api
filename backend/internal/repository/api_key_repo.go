@@ -708,6 +708,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		DailyLimitResetPrice:            g.DailyLimitResetPrice,
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,
 		MonthlyLimitUSD:                 g.MonthlyLimitUsd,
+		AllowDailyOverdraft:             g.AllowDailyOverdraft,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,

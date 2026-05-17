@@ -362,7 +362,7 @@ func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
 
 	activateAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	err := s.repo.ActivateWindows(s.ctx, sub.ID, activateAt)
+	err := s.repo.ActivateWindows(s.ctx, sub.ID, activateAt, activateAt, activateAt)
 	s.Require().NoError(err, "ActivateWindows")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
@@ -604,7 +604,7 @@ func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_Ba
 	s.Require().Equal(active.ID, got.ID, "expected active subscription")
 
 	activateAt := time.Now().Add(-25 * time.Hour)
-	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt), "ActivateWindows")
+	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt, activateAt, activateAt), "ActivateWindows")
 	s.Require().NoError(s.repo.IncrementUsage(s.ctx, active.ID, 1.25), "IncrementUsage")
 
 	after, err := s.repo.GetByID(s.ctx, active.ID)

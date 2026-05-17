@@ -80,7 +80,29 @@
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
+          <div class="mb-2 flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
+            <div class="flex items-center gap-3">
+              <button
+                v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
+                type="button"
+                class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                @click="applyUpstreamModelsToWhitelist"
+              >
+                应用拉取结果到白名单（{{ upstreamModels.length }}）
+              </button>
+              <button
+                type="button"
+                class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+                :disabled="upstreamModelsProbing"
+                @click="probeCurrentUpstreamModels"
+              >
+                <span v-if="upstreamModelsProbing">拉取中…</span>
+                <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+              </button>
+            </div>
+          </div>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
 
           <div
             v-if="isOpenAIModelRestrictionDisabled"
@@ -148,7 +170,11 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :platform="account?.platform || 'anthropic'"
+                :dynamic-models="upstreamModels"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -651,25 +677,25 @@
             <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
             <div class="flex items-center gap-3">
               <button
-                v-if="modelRestrictionMode === 'whitelist' && grokUpstreamModels.length > 0"
+                v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
                 type="button"
                 class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-                @click="applyGrokUpstreamToWhitelist"
+                @click="applyUpstreamModelsToWhitelist"
               >
-                应用拉取结果到白名单（{{ grokUpstreamModels.length }}）
+                应用拉取结果到白名单（{{ upstreamModels.length }}）
               </button>
               <button
                 type="button"
                 class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
-                :disabled="grokProbing"
-                @click="probeGrokModels"
+                :disabled="upstreamModelsProbing"
+                @click="probeCurrentUpstreamModels"
               >
-                <span v-if="grokProbing">拉取中…</span>
-                <span v-else>{{ grokUpstreamModels.length > 0 ? `已拉取 ${grokUpstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+                <span v-if="upstreamModelsProbing">拉取中…</span>
+                <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
               </button>
             </div>
           </div>
-          <p v-if="grokProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ grokProbeError }}</p>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
 
           <!-- Mode Toggle -->
           <div class="mb-4 flex gap-2">
@@ -704,7 +730,7 @@
             <ModelWhitelistSelector
               v-model="allowedModels"
               platform="grok"
-              :dynamic-models="grokUpstreamModels"
+              :dynamic-models="upstreamModels"
             />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
@@ -2422,50 +2448,53 @@ const allowedModels = ref<string[]>([])
 
 // Grok 上游模型探测：编辑时优先用账号已存的 base_url+api_key 重新拉
 // （账号已入库,可直接走 GET /admin/accounts/:id/models,后端会调上游 /v1/models）
-// 也支持手动用当前表单输入的 base_url+api_key 重新探测（覆盖账号原值）
-const grokUpstreamModels = ref<string[]>([])
-const grokProbing = ref(false)
-const grokProbeError = ref('')
-const probeGrokModels = async () => {
-  grokProbeError.value = ''
-  // 优先：表单当前编辑值若都填了,直接 probe（让用户能预览改 url/key 后的效果）
+// 上游模型探测：优先用当前表单中的 base_url + api_key，api_key 留空时让后端使用已保存凭据。
+const upstreamModels = ref<string[]>([])
+const upstreamModelsProbing = ref(false)
+const upstreamModelsProbeError = ref('')
+const probeCurrentUpstreamModels = async () => {
+  upstreamModelsProbeError.value = ''
   const baseURL = (editBaseUrl.value || '').trim()
   const apiKey = (editApiKey.value || '').trim()
-  grokProbing.value = true
+
+  upstreamModelsProbing.value = true
   try {
-    if (baseURL && apiKey) {
-      grokUpstreamModels.value = await adminAPI.accounts.probeGrokUpstreamModels(baseURL, apiKey)
-    } else if (props.account?.id) {
-      // 表单 api_key 为空（保持原值场景）→ 走账号 ID 让后端用已存凭据拉
-      const remote = await adminAPI.accounts.getAvailableModels(props.account.id)
-      grokUpstreamModels.value = (remote || []).map((m: any) => m.id).filter(Boolean)
+    const account = props.account
+    if (baseURL && apiKey && account) {
+      upstreamModels.value = await adminAPI.accounts.probeUpstreamModels({
+        platform: account.platform,
+        type: account.type,
+        base_url: baseURL,
+        api_key: apiKey
+      })
+    } else if (account?.id) {
+      upstreamModels.value = await adminAPI.accounts.probeAccountUpstreamModels(account.id)
     } else {
-      grokProbeError.value = '请填写 Base URL 和 API Key'
+      upstreamModelsProbeError.value = '请填写 Base URL 和 API Key'
     }
-    if (grokUpstreamModels.value.length === 0 && !grokProbeError.value) {
-      grokProbeError.value = '上游返回空模型列表'
+    if (upstreamModels.value.length === 0 && !upstreamModelsProbeError.value) {
+      upstreamModelsProbeError.value = '上游返回空模型列表'
     }
-    // 拉取成功后自动同步白名单：仅当白名单模式且当前为空时填充,
-    // 已配置过的账号保留用户既有选择,改用下方"应用拉取结果到白名单"按钮主动覆盖。
+    // 拉取成功后自动同步白名单：仅当白名单模式且当前为空时填充。
     if (
-      grokUpstreamModels.value.length > 0 &&
+      upstreamModels.value.length > 0 &&
       modelRestrictionMode.value === 'whitelist' &&
       allowedModels.value.length === 0
     ) {
-      allowedModels.value = [...grokUpstreamModels.value]
+      allowedModels.value = [...upstreamModels.value]
     }
   } catch (e: any) {
-    grokUpstreamModels.value = []
-    grokProbeError.value = e?.response?.data?.error?.message || e?.message || '拉取失败'
+    upstreamModels.value = []
+    upstreamModelsProbeError.value = e?.response?.data?.error?.message || e?.message || '拉取失败'
   } finally {
-    grokProbing.value = false
+    upstreamModelsProbing.value = false
   }
 }
 
 // 把拉取结果一键应用到白名单（覆盖当前选择）
-const applyGrokUpstreamToWhitelist = () => {
-  if (grokUpstreamModels.value.length === 0) return
-  allowedModels.value = [...grokUpstreamModels.value]
+const applyUpstreamModelsToWhitelist = () => {
+  if (upstreamModels.value.length === 0) return
+  allowedModels.value = [...upstreamModels.value]
 }
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
@@ -3051,9 +3080,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       }
 
       // 自动尝试拉一次上游模型列表（不阻塞 UI,失败静默）
-      grokUpstreamModels.value = []
-      grokProbeError.value = ''
-      void probeGrokModels()
+      upstreamModels.value = []
+      upstreamModelsProbeError.value = ''
+      void probeCurrentUpstreamModels()
     }
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>

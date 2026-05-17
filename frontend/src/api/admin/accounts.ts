@@ -609,6 +609,29 @@ export async function probeGrokUpstreamModels(baseUrl: string, apiKey: string): 
   return data
 }
 
+export interface ProbeUpstreamModelsPayload {
+  platform: string
+  type: string
+  base_url?: string
+  api_key: string
+}
+
+/**
+ * Probe API Key/upstream account available models using base_url + api_key.
+ */
+export async function probeUpstreamModels(payload: ProbeUpstreamModelsPayload): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>('/admin/accounts/probe-models', payload)
+  return data
+}
+
+/**
+ * Probe saved account available models using stored credentials.
+ */
+export async function probeAccountUpstreamModels(id: number): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>(`/admin/accounts/${id}/probe-models`)
+  return data
+}
+
 /**
  * Refresh OpenAI token using refresh token
  * @param refreshToken - The refresh token
@@ -731,6 +754,8 @@ export const accountsAPI = {
   importData,
   getAntigravityDefaultModelMapping,
   probeGrokUpstreamModels,
+  probeUpstreamModels,
+  probeAccountUpstreamModels,
   batchClearError,
   batchRefresh,
   setPrivacy,

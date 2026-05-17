@@ -90,3 +90,88 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 	require.Nil(t, group.GetImagePrice("2K"))
 	require.Nil(t, group.GetImagePrice("4K"))
 }
+
+func TestGroup_AllowsDailyOverdraft(t *testing.T) {
+	daily := 80.0
+	weekly := 560.0
+	monthly := 2400.0
+
+	tests := []struct {
+		name  string
+		group *Group
+		want  bool
+	}{
+		{
+			name: "disabled flag",
+			group: &Group{
+				SubscriptionType: SubscriptionTypeSubscription,
+				DailyLimitUSD:    &daily,
+				WeeklyLimitUSD:   &weekly,
+			},
+			want: false,
+		},
+		{
+			name: "standard group never allows",
+			group: &Group{
+				SubscriptionType:    SubscriptionTypeStandard,
+				DailyLimitUSD:       &daily,
+				WeeklyLimitUSD:      &weekly,
+				AllowDailyOverdraft: true,
+			},
+			want: false,
+		},
+		{
+			name: "requires period pool",
+			group: &Group{
+				SubscriptionType:    SubscriptionTypeSubscription,
+				DailyLimitUSD:       &daily,
+				AllowDailyOverdraft: true,
+			},
+			want: false,
+		},
+		{
+			name: "weekly pool allows",
+			group: &Group{
+				SubscriptionType:    SubscriptionTypeSubscription,
+				DailyLimitUSD:       &daily,
+				WeeklyLimitUSD:      &weekly,
+				AllowDailyOverdraft: true,
+			},
+			want: true,
+		},
+		{
+			name: "monthly pool allows",
+			group: &Group{
+				SubscriptionType:    SubscriptionTypeSubscription,
+				DailyLimitUSD:       &daily,
+				MonthlyLimitUSD:     &monthly,
+				AllowDailyOverdraft: true,
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, tt.group.AllowsDailyOverdraft())
+			require.Equal(t, tt.group.HasDailyLimit() && !tt.want, tt.group.ShouldEnforceDailyLimit())
+		})
+	}
+}
+
+func TestUserSubscription_CheckLimitsWithDailyOverdraft(t *testing.T) {
+	daily := 80.0
+	weekly := 560.0
+	strictGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly}
+	overdraftGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly, AllowDailyOverdraft: true}
+
+	sub := &UserSubscription{DailyUsageUSD: 80, WeeklyUsageUSD: 120}
+	require.False(t, sub.CheckDailyLimit(strictGroup, 0))
+	require.False(t, sub.CheckDailyLimit(overdraftGroup, 0))
+	sub.AllowDailyOverdraft = true
+	require.True(t, sub.CheckDailyLimit(overdraftGroup, 0))
+	require.True(t, sub.CheckWeeklyLimit(overdraftGroup, 0))
+
+	sub.WeeklyUsageUSD = 560
+	require.False(t, sub.CheckWeeklyLimit(overdraftGroup, 0))
+}

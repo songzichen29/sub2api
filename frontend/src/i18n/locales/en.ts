@@ -2105,6 +2105,9 @@ export default {
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
+        allowDailyOverdraft: 'Allow users to enable daily overdraft',
+        allowDailyOverdraftHint: 'When enabled, users can turn overdraft on or off on their own subscription. Off by default. Requires a weekly or monthly limit.',
+        overdraftShort: '(supported)',
         noLimit: 'No limit'
       },
       imagePricing: {
@@ -2515,6 +2518,7 @@ export default {
         active: 'Active',
         not_started: 'Not Started',
         expired: 'Expired',
+        quota_exhausted: 'Quota Exhausted',
         revoked: 'Revoked'
       },
       columns: {
@@ -6147,6 +6151,7 @@ export default {
     status: {
       active: 'Active',
       expired: 'Expired',
+      quota_exhausted: 'Quota Exhausted',
       revoked: 'Revoked'
     },
     usage: 'Usage',
@@ -6163,6 +6168,11 @@ export default {
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}',
+    dailyOverdraft: 'Daily overdraft',
+    dailyOverdraftHint: 'When enabled, usage can continue against the weekly/monthly cap after the daily quota is used. Off by default.',
+    dailyOverdraftEnabled: 'Daily overdraft enabled',
+    dailyOverdraftDisabled: 'Daily overdraft disabled',
+    dailyOverdraftUpdateFailed: 'Failed to update daily overdraft setting',
     resetDailyLimit: 'Reset daily quota'
   },
 

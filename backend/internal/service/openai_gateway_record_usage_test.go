@@ -80,12 +80,21 @@ type openAIRecordUsageSubRepoStub struct {
 	incrementCalls int
 	incrementErr   error
 	lastCtxErr     error
+	statusCalls    int
+	lastStatus     string
 }
 
 func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	s.incrementCalls++
 	s.lastCtxErr = ctx.Err()
 	return s.incrementErr
+}
+
+func (s *openAIRecordUsageSubRepoStub) UpdateStatus(ctx context.Context, subscriptionID int64, status string) error {
+	s.statusCalls++
+	s.lastStatus = status
+	s.lastCtxErr = ctx.Err()
+	return nil
 }
 
 type openAIRecordUsageAPIKeyQuotaStub struct {
@@ -1584,4 +1593,83 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 	require.InDelta(t, 0.80, cost.TotalCost, 1e-12)
 	require.InDelta(t, 0.80, cost.ActualCost, 1e-12)
+}
+
+func TestApplyUsageBillingMarksSubscriptionQuotaExhaustedAfterBilling(t *testing.T) {
+	now := time.Now()
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	weeklyLimit := 10.0
+	applied, err := applyUsageBilling(context.Background(), "req-quota-exhausted", nil, &postUsageBillingParams{
+		Cost: &CostBreakdown{
+			TotalCost:  2,
+			ActualCost: 2,
+		},
+		User:    &User{ID: 1},
+		Account: &Account{ID: 2, Type: AccountTypeAPIKey},
+		APIKey: &APIKey{
+			ID: 3,
+			Group: &Group{
+				ID:             4,
+				WeeklyLimitUSD: &weeklyLimit,
+			},
+		},
+		Subscription: &UserSubscription{
+			ID:             5,
+			UserID:         1,
+			GroupID:        4,
+			Status:         SubscriptionStatusActive,
+			StartsAt:       now.Add(-time.Hour),
+			ExpiresAt:      now.Add(time.Hour),
+			WeeklyUsageUSD: 8,
+		},
+		IsSubscriptionBill: true,
+	}, &billingDeps{
+		userSubRepo:     subRepo,
+		deferredService: NewDeferredService(nil, nil, time.Second),
+	}, billingRepo)
+
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Equal(t, 1, subRepo.statusCalls)
+	require.Equal(t, SubscriptionStatusQuotaExhausted, subRepo.lastStatus)
+}
+
+func TestApplyUsageBillingDoesNotMarkSubscriptionQuotaExhaustedForDailyOnlyLimit(t *testing.T) {
+	now := time.Now()
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	dailyLimit := 10.0
+	applied, err := applyUsageBilling(context.Background(), "req-daily-only", nil, &postUsageBillingParams{
+		Cost: &CostBreakdown{
+			TotalCost:  2,
+			ActualCost: 2,
+		},
+		User:    &User{ID: 1},
+		Account: &Account{ID: 2, Type: AccountTypeAPIKey},
+		APIKey: &APIKey{
+			ID: 3,
+			Group: &Group{
+				ID:            4,
+				DailyLimitUSD: &dailyLimit,
+			},
+		},
+		Subscription: &UserSubscription{
+			ID:            5,
+			UserID:        1,
+			GroupID:       4,
+			Status:        SubscriptionStatusActive,
+			StartsAt:      now.Add(-time.Hour),
+			ExpiresAt:     now.Add(time.Hour),
+			DailyUsageUSD: 8,
+		},
+		IsSubscriptionBill: true,
+	}, &billingDeps{
+		userSubRepo:     subRepo,
+		deferredService: NewDeferredService(nil, nil, time.Second),
+	}, billingRepo)
+
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Zero(t, subRepo.statusCalls)
 }

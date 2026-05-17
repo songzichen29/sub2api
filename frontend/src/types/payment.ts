@@ -113,6 +113,7 @@ export interface SubscriptionPlan {
   rate_multiplier?: number
   daily_limit_usd?: number | null
   daily_limit_reset_price?: number | null
+  allow_daily_overdraft?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   supported_model_scopes?: string[]

@@ -63,9 +63,10 @@ const (
 
 // Subscription status constants
 const (
-	SubscriptionStatusActive    = "active"
-	SubscriptionStatusExpired   = "expired"
-	SubscriptionStatusSuspended = "suspended"
+	SubscriptionStatusActive         = "active"
+	SubscriptionStatusExpired        = "expired"
+	SubscriptionStatusSuspended      = "suspended"
+	SubscriptionStatusQuotaExhausted = "quota_exhausted"
 )
 
 // Subscription source constants 表示订阅来源，用于决定是否允许管理员重置配额。

@@ -101,6 +101,7 @@ func mustCreateGroup(t *testing.T, client *dbent.Client, g *service.Group) *serv
 	if g.MonthlyLimitUSD != nil {
 		create.SetMonthlyLimitUsd(*g.MonthlyLimitUSD)
 	}
+	create.SetAllowDailyOverdraft(g.AllowDailyOverdraft)
 	if !g.CreatedAt.IsZero() {
 		create.SetCreatedAt(g.CreatedAt)
 	}
@@ -393,7 +394,8 @@ func mustCreateSubscription(t *testing.T, client *dbent.Client, s *service.UserS
 		SetNotes(s.Notes).
 		SetDailyUsageUsd(s.DailyUsageUSD).
 		SetWeeklyUsageUsd(s.WeeklyUsageUSD).
-		SetMonthlyUsageUsd(s.MonthlyUsageUSD)
+		SetMonthlyUsageUsd(s.MonthlyUsageUSD).
+		SetAllowDailyOverdraft(s.AllowDailyOverdraft)
 
 	if s.AssignedBy != nil {
 		create.SetAssignedBy(*s.AssignedBy)

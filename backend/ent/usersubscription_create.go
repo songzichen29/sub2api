@@ -189,6 +189,20 @@ func (_c *UserSubscriptionCreate) SetNillableMonthlyUsageUsd(v *float64) *UserSu
 	return _c
 }
 
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (_c *UserSubscriptionCreate) SetAllowDailyOverdraft(v bool) *UserSubscriptionCreate {
+	_c.mutation.SetAllowDailyOverdraft(v)
+	return _c
+}
+
+// SetNillableAllowDailyOverdraft sets the "allow_daily_overdraft" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableAllowDailyOverdraft(v *bool) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetAllowDailyOverdraft(*v)
+	}
+	return _c
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_c *UserSubscriptionCreate) SetAssignedBy(v int64) *UserSubscriptionCreate {
 	_c.mutation.SetAssignedBy(v)
@@ -356,6 +370,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultMonthlyUsageUsd
 		_c.mutation.SetMonthlyUsageUsd(v)
 	}
+	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
+		v := usersubscription.DefaultAllowDailyOverdraft
+		_c.mutation.SetAllowDailyOverdraft(v)
+	}
 	if _, ok := _c.mutation.AssignedAt(); !ok {
 		if usersubscription.DefaultAssignedAt == nil {
 			return fmt.Errorf("ent: uninitialized usersubscription.DefaultAssignedAt (forgotten import ent/runtime?)")
@@ -406,6 +424,9 @@ func (_c *UserSubscriptionCreate) check() error {
 	}
 	if _, ok := _c.mutation.MonthlyUsageUsd(); !ok {
 		return &ValidationError{Name: "monthly_usage_usd", err: errors.New(`ent: missing required field "UserSubscription.monthly_usage_usd"`)}
+	}
+	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
+		return &ValidationError{Name: "allow_daily_overdraft", err: errors.New(`ent: missing required field "UserSubscription.allow_daily_overdraft"`)}
 	}
 	if _, ok := _c.mutation.AssignedAt(); !ok {
 		return &ValidationError{Name: "assigned_at", err: errors.New(`ent: missing required field "UserSubscription.assigned_at"`)}
@@ -498,6 +519,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.MonthlyUsageUsd(); ok {
 		_spec.SetField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
 		_node.MonthlyUsageUsd = value
+	}
+	if value, ok := _c.mutation.AllowDailyOverdraft(); ok {
+		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
+		_node.AllowDailyOverdraft = value
 	}
 	if value, ok := _c.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)
@@ -825,6 +850,18 @@ func (u *UserSubscriptionUpsert) UpdateMonthlyUsageUsd() *UserSubscriptionUpsert
 // AddMonthlyUsageUsd adds v to the "monthly_usage_usd" field.
 func (u *UserSubscriptionUpsert) AddMonthlyUsageUsd(v float64) *UserSubscriptionUpsert {
 	u.Add(usersubscription.FieldMonthlyUsageUsd, v)
+	return u
+}
+
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (u *UserSubscriptionUpsert) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldAllowDailyOverdraft, v)
+	return u
+}
+
+// UpdateAllowDailyOverdraft sets the "allow_daily_overdraft" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateAllowDailyOverdraft() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldAllowDailyOverdraft)
 	return u
 }
 
@@ -1161,6 +1198,20 @@ func (u *UserSubscriptionUpsertOne) AddMonthlyUsageUsd(v float64) *UserSubscript
 func (u *UserSubscriptionUpsertOne) UpdateMonthlyUsageUsd() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateMonthlyUsageUsd()
+	})
+}
+
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (u *UserSubscriptionUpsertOne) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetAllowDailyOverdraft(v)
+	})
+}
+
+// UpdateAllowDailyOverdraft sets the "allow_daily_overdraft" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateAllowDailyOverdraft() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateAllowDailyOverdraft()
 	})
 }
 
@@ -1673,6 +1724,20 @@ func (u *UserSubscriptionUpsertBulk) AddMonthlyUsageUsd(v float64) *UserSubscrip
 func (u *UserSubscriptionUpsertBulk) UpdateMonthlyUsageUsd() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateMonthlyUsageUsd()
+	})
+}
+
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (u *UserSubscriptionUpsertBulk) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetAllowDailyOverdraft(v)
+	})
+}
+
+// UpdateAllowDailyOverdraft sets the "allow_daily_overdraft" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateAllowDailyOverdraft() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateAllowDailyOverdraft()
 	})
 }
 

@@ -21,9 +21,10 @@ type UserSubscription struct {
 	WeeklyWindowStart  *time.Time
 	MonthlyWindowStart *time.Time
 
-	DailyUsageUSD   float64
-	WeeklyUsageUSD  float64
-	MonthlyUsageUSD float64
+	DailyUsageUSD       float64
+	WeeklyUsageUSD      float64
+	MonthlyUsageUSD     float64
+	AllowDailyOverdraft bool
 
 	AssignedBy *int64
 	AssignedAt time.Time
@@ -119,23 +120,36 @@ func (s *UserSubscription) CurrentMonthlyWindowStart(now time.Time) time.Time {
 	return currentWindowStart(s.StartsAt, now, monthlyWindowDuration)
 }
 
+func (s *UserSubscription) AllowsDailyOverdraft(group *Group) bool {
+	return s != nil && s.AllowDailyOverdraft && group != nil && group.AllowsDailyOverdraft()
+}
+
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasDailyLimit() {
+	if group == nil || !group.HasDailyLimit() || s.AllowsDailyOverdraft(group) {
 		return true
+	}
+	if additionalCost <= 0 {
+		return s.DailyUsageUSD < *group.DailyLimitUSD
 	}
 	return s.DailyUsageUSD+additionalCost <= *group.DailyLimitUSD
 }
 
 func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasWeeklyLimit() {
+	if group == nil || !group.HasWeeklyLimit() {
 		return true
+	}
+	if additionalCost <= 0 {
+		return s.WeeklyUsageUSD < *group.WeeklyLimitUSD
 	}
 	return s.WeeklyUsageUSD+additionalCost <= *group.WeeklyLimitUSD
 }
 
 func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float64) bool {
-	if !group.HasMonthlyLimit() {
+	if group == nil || !group.HasMonthlyLimit() {
 		return true
+	}
+	if additionalCost <= 0 {
+		return s.MonthlyUsageUSD < *group.MonthlyLimitUSD
 	}
 	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
 }

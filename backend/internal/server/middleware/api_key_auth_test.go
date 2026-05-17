@@ -854,6 +854,10 @@ func (r *stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscription
 	return errors.New("not implemented")
 }
 
+func (r *stubUserSubscriptionRepo) UpdateDailyOverdraft(context.Context, int64, bool) error {
+	return nil
+}
+
 func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
 	if r.activateWindow != nil {
 		return r.activateWindow(ctx, id, dailyStart, weeklyStart, monthlyStart)

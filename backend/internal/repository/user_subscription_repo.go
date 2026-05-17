@@ -38,6 +38,7 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -123,6 +124,7 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
@@ -241,7 +243,7 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 			usersubscription.Or(
 				usersubscription.StatusEQ(service.SubscriptionStatusExpired),
 				usersubscription.And(
-					usersubscription.StatusEQ(service.SubscriptionStatusActive),
+					usersubscription.StatusIn(service.SubscriptionStatusActive, service.SubscriptionStatusQuotaExhausted),
 					usersubscription.ExpiresAtLTE(now),
 				),
 			),
@@ -424,23 +426,56 @@ func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id i
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
-// IncrementUsage 原子性地累加订阅用量。
-// 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
-// 此处仅负责记录实际消费，确保消费数据的完整性。
+// IncrementUsage atomically records subscription usage in the legacy fallback path.
+// Production uses usageBillingRepository.Apply; this method keeps the same limit
+// guard semantics so degraded/test paths cannot silently overrun configured pools.
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
-	const updateSQL = "UPDATE user_subscriptions us" +
-		" JOIN `groups` g ON us.group_id = g.id" +
-		" SET" +
-		" daily_usage_usd = us.daily_usage_usd + ?," +
-		" weekly_usage_usd = us.weekly_usage_usd + ?," +
-		" monthly_usage_usd = us.monthly_usage_usd + ?," +
-		" us.updated_at = NOW()" +
-		" WHERE us.id = ?" +
-		" AND us.deleted_at IS NULL" +
-		" AND g.deleted_at IS NULL"
+	const updateSQL = `
+		UPDATE user_subscriptions us
+		JOIN ` + quotedGroupsTable + ` g ON us.group_id = g.id AND g.deleted_at IS NULL
+		SET
+			us.daily_usage_usd = us.daily_usage_usd + ?,
+			us.weekly_usage_usd = us.weekly_usage_usd + ?,
+			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.status = CASE
+				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
+				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
+				ELSE us.status
+			END,
+			us.updated_at = NOW()
+		WHERE us.id = ?
+			AND us.deleted_at IS NULL
+			AND (
+				COALESCE(g.daily_limit_usd, 0) <= 0
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = TRUE
+					AND COALESCE(g.weekly_limit_usd, 0) > 0
+					AND us.weekly_usage_usd < g.weekly_limit_usd
+				)
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = TRUE
+					AND COALESCE(g.monthly_limit_usd, 0) > 0
+					AND us.monthly_usage_usd < g.monthly_limit_usd
+				)
+				OR us.daily_usage_usd + ? <= g.daily_limit_usd
+				OR us.daily_usage_usd < g.daily_limit_usd
+			)
+			AND (
+				COALESCE(g.weekly_limit_usd, 0) <= 0
+				OR us.weekly_usage_usd + ? <= g.weekly_limit_usd
+				OR us.weekly_usage_usd < g.weekly_limit_usd
+			)
+			AND (
+				COALESCE(g.monthly_limit_usd, 0) <= 0
+				OR us.monthly_usage_usd + ? <= g.monthly_limit_usd
+				OR us.monthly_usage_usd < g.monthly_limit_usd
+			)
+	`
 
 	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(ctx, updateSQL, costUSD, costUSD, costUSD, id)
+	result, err := client.ExecContext(ctx, updateSQL, costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted, costUSD, service.SubscriptionStatusQuotaExhausted, id, costUSD, costUSD, costUSD)
 	if err != nil {
 		return err
 	}
@@ -449,20 +484,33 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 	if err != nil {
 		return err
 	}
-
 	if affected > 0 {
 		return nil
 	}
 
-	// affected == 0：订阅不存在或已删除
+	exists, err := client.UserSubscription.Query().Where(usersubscription.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return service.ErrUsageBillingSubscriptionLimitExceeded
+	}
 	return service.ErrSubscriptionNotFound
+}
+
+func (r *userSubscriptionRepository) UpdateDailyOverdraft(ctx context.Context, id int64, enabled bool) error {
+	client := clientFromContext(ctx, r.client)
+	_, err := client.UserSubscription.UpdateOneID(id).
+		SetAllowDailyOverdraft(enabled).
+		Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
 func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	client := clientFromContext(ctx, r.client)
 	n, err := client.UserSubscription.Update().
 		Where(
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusIn(service.SubscriptionStatusActive, service.SubscriptionStatusQuotaExhausted),
 			usersubscription.ExpiresAtLTE(time.Now()),
 		).
 		SetStatus(service.SubscriptionStatusExpired).
@@ -523,7 +571,7 @@ func (r *userSubscriptionRepository) ListExpired(ctx context.Context) ([]service
 	client := clientFromContext(ctx, r.client)
 	subs, err := client.UserSubscription.Query().
 		Where(
-			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StatusIn(service.SubscriptionStatusActive, service.SubscriptionStatusQuotaExhausted),
 			usersubscription.ExpiresAtLTE(time.Now()),
 		).
 		All(ctx)
@@ -562,24 +610,25 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		return nil
 	}
 	out := &service.UserSubscription{
-		ID:                 m.ID,
-		UserID:             m.UserID,
-		GroupID:            m.GroupID,
-		StartsAt:           m.StartsAt,
-		ExpiresAt:          m.ExpiresAt,
-		Status:             m.Status,
-		DailyWindowStart:   m.DailyWindowStart,
-		WeeklyWindowStart:  m.WeeklyWindowStart,
-		MonthlyWindowStart: m.MonthlyWindowStart,
-		DailyUsageUSD:      m.DailyUsageUsd,
-		WeeklyUsageUSD:     m.WeeklyUsageUsd,
-		MonthlyUsageUSD:    m.MonthlyUsageUsd,
-		AssignedBy:         m.AssignedBy,
-		AssignedAt:         m.AssignedAt,
-		Notes:              derefString(m.Notes),
-		Source:             m.Source,
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                  m.ID,
+		UserID:              m.UserID,
+		GroupID:             m.GroupID,
+		StartsAt:            m.StartsAt,
+		ExpiresAt:           m.ExpiresAt,
+		Status:              m.Status,
+		DailyWindowStart:    m.DailyWindowStart,
+		WeeklyWindowStart:   m.WeeklyWindowStart,
+		MonthlyWindowStart:  m.MonthlyWindowStart,
+		DailyUsageUSD:       m.DailyUsageUsd,
+		WeeklyUsageUSD:      m.WeeklyUsageUsd,
+		MonthlyUsageUSD:     m.MonthlyUsageUsd,
+		AllowDailyOverdraft: m.AllowDailyOverdraft,
+		AssignedBy:          m.AssignedBy,
+		AssignedAt:          m.AssignedAt,
+		Notes:               derefString(m.Notes),
+		Source:              m.Source,
+		CreatedAt:           m.CreatedAt,
+		UpdatedAt:           m.UpdatedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

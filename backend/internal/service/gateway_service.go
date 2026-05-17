@@ -8016,6 +8016,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
+		cmd.AllowSubscriptionOverLimit = true
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -8042,6 +8043,9 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		postUsageBilling(ctx, p, deps)
+		billingCtx, cancel := detachedBillingContext(ctx)
+		defer cancel()
+		markSubscriptionQuotaExhaustedAfterBilling(billingCtx, p, deps)
 		return true, nil
 	}
 
@@ -8065,7 +8069,31 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	finalizePostUsageBilling(p, deps, result)
+	markSubscriptionQuotaExhaustedAfterBilling(billingCtx, p, deps)
 	return true, nil
+}
+
+func markSubscriptionQuotaExhaustedAfterBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
+	if p == nil || p.Cost == nil || deps == nil || !p.IsSubscriptionBill || p.Subscription == nil || p.APIKey == nil || p.APIKey.Group == nil {
+		return
+	}
+	if deps.userSubRepo == nil || p.Cost.ActualCost <= 0 {
+		return
+	}
+	group := p.APIKey.Group
+	weeklyUsed := p.Subscription.WeeklyUsageUSD + p.Cost.ActualCost
+	monthlyUsed := p.Subscription.MonthlyUsageUSD + p.Cost.ActualCost
+	if (group.HasWeeklyLimit() && weeklyUsed >= *group.WeeklyLimitUSD) ||
+		(group.HasMonthlyLimit() && monthlyUsed >= *group.MonthlyLimitUSD) {
+		if err := deps.userSubRepo.UpdateStatus(ctx, p.Subscription.ID, SubscriptionStatusQuotaExhausted); err != nil {
+			slog.Error("mark subscription quota exhausted failed", "subscription_id", p.Subscription.ID, "error", err)
+			return
+		}
+		p.Subscription.Status = SubscriptionStatusQuotaExhausted
+		if deps.billingCacheService != nil && p.User != nil {
+			_ = deps.billingCacheService.InvalidateSubscription(ctx, p.User.ID, p.Subscription.GroupID)
+		}
+	}
 }
 
 func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {

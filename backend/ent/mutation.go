@@ -14834,6 +14834,7 @@ type GroupMutation struct {
 	addweekly_limit_usd                     *float64
 	monthly_limit_usd                       *float64
 	addmonthly_limit_usd                    *float64
+	allow_daily_overdraft                   *bool
 	default_validity_days                   *int
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
@@ -15671,6 +15672,42 @@ func (m *GroupMutation) ResetMonthlyLimitUsd() {
 	m.monthly_limit_usd = nil
 	m.addmonthly_limit_usd = nil
 	delete(m.clearedFields, group.FieldMonthlyLimitUsd)
+}
+
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (m *GroupMutation) SetAllowDailyOverdraft(b bool) {
+	m.allow_daily_overdraft = &b
+}
+
+// AllowDailyOverdraft returns the value of the "allow_daily_overdraft" field in the mutation.
+func (m *GroupMutation) AllowDailyOverdraft() (r bool, exists bool) {
+	v := m.allow_daily_overdraft
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowDailyOverdraft returns the old "allow_daily_overdraft" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowDailyOverdraft(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowDailyOverdraft is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowDailyOverdraft requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowDailyOverdraft: %w", err)
+	}
+	return oldValue.AllowDailyOverdraft, nil
+}
+
+// ResetAllowDailyOverdraft resets all changes to the "allow_daily_overdraft" field.
+func (m *GroupMutation) ResetAllowDailyOverdraft() {
+	m.allow_daily_overdraft = nil
 }
 
 // SetDefaultValidityDays sets the "default_validity_days" field.
@@ -17065,7 +17102,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17107,6 +17144,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.monthly_limit_usd != nil {
 		fields = append(fields, group.FieldMonthlyLimitUsd)
+	}
+	if m.allow_daily_overdraft != nil {
+		fields = append(fields, group.FieldAllowDailyOverdraft)
 	}
 	if m.default_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
@@ -17207,6 +17247,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.WeeklyLimitUsd()
 	case group.FieldMonthlyLimitUsd:
 		return m.MonthlyLimitUsd()
+	case group.FieldAllowDailyOverdraft:
+		return m.AllowDailyOverdraft()
 	case group.FieldDefaultValidityDays:
 		return m.DefaultValidityDays()
 	case group.FieldAllowImageGeneration:
@@ -17286,6 +17328,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldWeeklyLimitUsd(ctx)
 	case group.FieldMonthlyLimitUsd:
 		return m.OldMonthlyLimitUsd(ctx)
+	case group.FieldAllowDailyOverdraft:
+		return m.OldAllowDailyOverdraft(ctx)
 	case group.FieldDefaultValidityDays:
 		return m.OldDefaultValidityDays(ctx)
 	case group.FieldAllowImageGeneration:
@@ -17434,6 +17478,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMonthlyLimitUsd(v)
+		return nil
+	case group.FieldAllowDailyOverdraft:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowDailyOverdraft(v)
 		return nil
 	case group.FieldDefaultValidityDays:
 		v, ok := value.(int)
@@ -17918,6 +17969,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldMonthlyLimitUsd:
 		m.ResetMonthlyLimitUsd()
+		return nil
+	case group.FieldAllowDailyOverdraft:
+		m.ResetAllowDailyOverdraft()
 		return nil
 	case group.FieldDefaultValidityDays:
 		m.ResetDefaultValidityDays()
@@ -42943,6 +42997,7 @@ type UserSubscriptionMutation struct {
 	addweekly_usage_usd     *float64
 	monthly_usage_usd       *float64
 	addmonthly_usage_usd    *float64
+	allow_daily_overdraft   *bool
 	assigned_at             *time.Time
 	notes                   *string
 	source                  *string
@@ -43675,6 +43730,42 @@ func (m *UserSubscriptionMutation) ResetMonthlyUsageUsd() {
 	m.addmonthly_usage_usd = nil
 }
 
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (m *UserSubscriptionMutation) SetAllowDailyOverdraft(b bool) {
+	m.allow_daily_overdraft = &b
+}
+
+// AllowDailyOverdraft returns the value of the "allow_daily_overdraft" field in the mutation.
+func (m *UserSubscriptionMutation) AllowDailyOverdraft() (r bool, exists bool) {
+	v := m.allow_daily_overdraft
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowDailyOverdraft returns the old "allow_daily_overdraft" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldAllowDailyOverdraft(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowDailyOverdraft is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowDailyOverdraft requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowDailyOverdraft: %w", err)
+	}
+	return oldValue.AllowDailyOverdraft, nil
+}
+
+// ResetAllowDailyOverdraft resets all changes to the "allow_daily_overdraft" field.
+func (m *UserSubscriptionMutation) ResetAllowDailyOverdraft() {
+	m.allow_daily_overdraft = nil
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (m *UserSubscriptionMutation) SetAssignedBy(i int64) {
 	m.assigned_by_user = &i
@@ -44027,7 +44118,7 @@ func (m *UserSubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserSubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 18)
+	fields := make([]string, 0, 19)
 	if m.created_at != nil {
 		fields = append(fields, usersubscription.FieldCreatedAt)
 	}
@@ -44069,6 +44160,9 @@ func (m *UserSubscriptionMutation) Fields() []string {
 	}
 	if m.monthly_usage_usd != nil {
 		fields = append(fields, usersubscription.FieldMonthlyUsageUsd)
+	}
+	if m.allow_daily_overdraft != nil {
+		fields = append(fields, usersubscription.FieldAllowDailyOverdraft)
 	}
 	if m.assigned_by_user != nil {
 		fields = append(fields, usersubscription.FieldAssignedBy)
@@ -44118,6 +44212,8 @@ func (m *UserSubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.WeeklyUsageUsd()
 	case usersubscription.FieldMonthlyUsageUsd:
 		return m.MonthlyUsageUsd()
+	case usersubscription.FieldAllowDailyOverdraft:
+		return m.AllowDailyOverdraft()
 	case usersubscription.FieldAssignedBy:
 		return m.AssignedBy()
 	case usersubscription.FieldAssignedAt:
@@ -44163,6 +44259,8 @@ func (m *UserSubscriptionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldWeeklyUsageUsd(ctx)
 	case usersubscription.FieldMonthlyUsageUsd:
 		return m.OldMonthlyUsageUsd(ctx)
+	case usersubscription.FieldAllowDailyOverdraft:
+		return m.OldAllowDailyOverdraft(ctx)
 	case usersubscription.FieldAssignedBy:
 		return m.OldAssignedBy(ctx)
 	case usersubscription.FieldAssignedAt:
@@ -44277,6 +44375,13 @@ func (m *UserSubscriptionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetMonthlyUsageUsd(v)
+		return nil
+	case usersubscription.FieldAllowDailyOverdraft:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowDailyOverdraft(v)
 		return nil
 	case usersubscription.FieldAssignedBy:
 		v, ok := value.(int64)
@@ -44474,6 +44579,9 @@ func (m *UserSubscriptionMutation) ResetField(name string) error {
 		return nil
 	case usersubscription.FieldMonthlyUsageUsd:
 		m.ResetMonthlyUsageUsd()
+		return nil
+	case usersubscription.FieldAllowDailyOverdraft:
+		m.ResetAllowDailyOverdraft()
 		return nil
 	case usersubscription.FieldAssignedBy:
 		m.ResetAssignedBy()

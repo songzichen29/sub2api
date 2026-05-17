@@ -497,6 +497,7 @@ export interface Group {
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
   daily_limit_reset_price: number | null
+  allow_daily_overdraft: boolean
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   // 图片生成计费配置
@@ -611,6 +612,7 @@ export interface CreateGroupRequest {
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   daily_limit_reset_price?: number | null
+  allow_daily_overdraft?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -640,6 +642,7 @@ export interface UpdateGroupRequest {
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   daily_limit_reset_price?: number | null
+  allow_daily_overdraft?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -1483,10 +1486,11 @@ export interface UserSubscription {
   user_id: number
   group_id: number
   starts_at?: string | null
-  status: 'active' | 'expired' | 'revoked'
+  status: 'active' | 'expired' | 'revoked' | 'quota_exhausted'
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  allow_daily_overdraft: boolean
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null

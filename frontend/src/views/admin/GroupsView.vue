@@ -143,11 +143,14 @@
                     row.monthly_limit_usd
                   "
                 >
-                  <span v-if="row.daily_limit_usd"
-                    >${{ row.daily_limit_usd }}/{{
+                  <span v-if="row.daily_limit_usd">
+                    ${{ row.daily_limit_usd }}/{{
                       t("admin.groups.limitDay")
-                    }}</span
-                  >
+                    }}
+                    <span v-if="row.allow_daily_overdraft">
+                      {{ t("admin.groups.subscription.overdraftShort") }}
+                    </span>
+                  </span>
                   <span
                     v-if="
                       row.daily_limit_usd &&
@@ -659,6 +662,22 @@
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
             </div>
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <input
+                v-model="createForm.allow_daily_overdraft"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.groups.subscription.allowDailyOverdraft") }}
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.subscription.allowDailyOverdraftHint") }}
+                </span>
+              </span>
+            </label>
+
           </div>
         </div>
 
@@ -1864,6 +1883,21 @@
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
             </div>
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <input
+                v-model="editForm.allow_daily_overdraft"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.groups.subscription.allowDailyOverdraft") }}
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.groups.subscription.allowDailyOverdraftHint") }}
+                </span>
+              </span>
+            </label>
           </div>
         </div>
 
@@ -3157,6 +3191,7 @@ const createForm = reactive({
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   daily_limit_reset_price: null as number | null,
+  allow_daily_overdraft: false,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3443,6 +3478,7 @@ const editForm = reactive({
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
   daily_limit_reset_price: null as number | null,
+  allow_daily_overdraft: false,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3732,6 +3768,7 @@ const closeCreateModal = () => {
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
   createForm.daily_limit_reset_price = null;
+  createForm.allow_daily_overdraft = false;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
@@ -3861,6 +3898,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.subscription_type = group.subscription_type || "standard";
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.daily_limit_reset_price = group.daily_limit_reset_price;
+  editForm.allow_daily_overdraft = group.allow_daily_overdraft ?? false;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -4056,6 +4094,8 @@ watch(
     if (newVal === "subscription") {
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
+    } else {
+      createForm.allow_daily_overdraft = false;
     }
   },
 );

@@ -250,6 +250,20 @@ func (_u *UserSubscriptionUpdate) AddMonthlyUsageUsd(v float64) *UserSubscriptio
 	return _u
 }
 
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (_u *UserSubscriptionUpdate) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpdate {
+	_u.mutation.SetAllowDailyOverdraft(v)
+	return _u
+}
+
+// SetNillableAllowDailyOverdraft sets the "allow_daily_overdraft" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableAllowDailyOverdraft(v *bool) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetAllowDailyOverdraft(*v)
+	}
+	return _u
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_u *UserSubscriptionUpdate) SetAssignedBy(v int64) *UserSubscriptionUpdate {
 	_u.mutation.SetAssignedBy(v)
@@ -534,6 +548,9 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
+		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)
@@ -918,6 +935,20 @@ func (_u *UserSubscriptionUpdateOne) AddMonthlyUsageUsd(v float64) *UserSubscrip
 	return _u
 }
 
+// SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
+func (_u *UserSubscriptionUpdateOne) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpdateOne {
+	_u.mutation.SetAllowDailyOverdraft(v)
+	return _u
+}
+
+// SetNillableAllowDailyOverdraft sets the "allow_daily_overdraft" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableAllowDailyOverdraft(v *bool) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetAllowDailyOverdraft(*v)
+	}
+	return _u
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_u *UserSubscriptionUpdateOne) SetAssignedBy(v int64) *UserSubscriptionUpdateOne {
 	_u.mutation.SetAssignedBy(v)
@@ -1232,6 +1263,9 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
+		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)

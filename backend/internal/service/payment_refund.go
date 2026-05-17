@@ -557,6 +557,7 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 	}
 
 	refundAmount := o.Amount * refundableDaysEquivalent / float64(totalDays)
+	refundAmount = capDailyOverdraftSubscriptionRefund(refundAmount, o.Amount, sub)
 	if refundAmount < 0 {
 		refundAmount = 0
 	}
@@ -564,6 +565,37 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 		refundAmount = o.Amount
 	}
 	return math.Round(refundAmount*100) / 100, nil
+}
+
+func capDailyOverdraftSubscriptionRefund(refundAmount, orderAmount float64, sub *UserSubscription) float64 {
+	if sub == nil || sub.Group == nil || !sub.AllowsDailyOverdraft(sub.Group) {
+		return refundAmount
+	}
+
+	var limit, used float64
+	if sub.Group.HasWeeklyLimit() {
+		limit = *sub.Group.WeeklyLimitUSD
+		used = sub.WeeklyUsageUSD
+	} else if sub.Group.HasMonthlyLimit() {
+		limit = *sub.Group.MonthlyLimitUSD
+		used = sub.MonthlyUsageUSD
+	}
+	if limit <= 0 {
+		return refundAmount
+	}
+
+	remainingRatio := (limit - used) / limit
+	if remainingRatio < 0 {
+		remainingRatio = 0
+	}
+	if remainingRatio > 1 {
+		remainingRatio = 1
+	}
+	quotaBasedRefund := orderAmount * remainingRatio
+	if refundAmount > quotaBasedRefund {
+		return quotaBasedRefund
+	}
+	return refundAmount
 }
 
 type PaymentOrderRefundDisplay struct {
@@ -653,23 +685,24 @@ func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSub
 		return nil
 	}
 	result := &UserSubscription{
-		ID:                 sub.ID,
-		UserID:             sub.UserID,
-		GroupID:            sub.GroupID,
-		StartsAt:           sub.StartsAt,
-		ExpiresAt:          sub.ExpiresAt,
-		Status:             sub.Status,
-		DailyWindowStart:   sub.DailyWindowStart,
-		WeeklyWindowStart:  sub.WeeklyWindowStart,
-		MonthlyWindowStart: sub.MonthlyWindowStart,
-		DailyUsageUSD:      sub.DailyUsageUsd,
-		WeeklyUsageUSD:     sub.WeeklyUsageUsd,
-		MonthlyUsageUSD:    sub.MonthlyUsageUsd,
-		AssignedBy:         sub.AssignedBy,
-		AssignedAt:         sub.AssignedAt,
-		Source:             sub.Source,
-		CreatedAt:          sub.CreatedAt,
-		UpdatedAt:          sub.UpdatedAt,
+		ID:                  sub.ID,
+		UserID:              sub.UserID,
+		GroupID:             sub.GroupID,
+		StartsAt:            sub.StartsAt,
+		ExpiresAt:           sub.ExpiresAt,
+		Status:              sub.Status,
+		DailyWindowStart:    sub.DailyWindowStart,
+		WeeklyWindowStart:   sub.WeeklyWindowStart,
+		MonthlyWindowStart:  sub.MonthlyWindowStart,
+		DailyUsageUSD:       sub.DailyUsageUsd,
+		WeeklyUsageUSD:      sub.WeeklyUsageUsd,
+		MonthlyUsageUSD:     sub.MonthlyUsageUsd,
+		AllowDailyOverdraft: sub.AllowDailyOverdraft,
+		AssignedBy:          sub.AssignedBy,
+		AssignedAt:          sub.AssignedAt,
+		Source:              sub.Source,
+		CreatedAt:           sub.CreatedAt,
+		UpdatedAt:           sub.UpdatedAt,
 	}
 	if sub.Notes != nil {
 		result.Notes = *sub.Notes

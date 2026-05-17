@@ -125,6 +125,11 @@ func MonthlyUsageUsd(v float64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldMonthlyUsageUsd, v))
 }
 
+// AllowDailyOverdraft applies equality check predicate on the "allow_daily_overdraft" field. It's identical to AllowDailyOverdraftEQ.
+func AllowDailyOverdraft(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldAllowDailyOverdraft, v))
+}
+
 // AssignedBy applies equality check predicate on the "assigned_by" field. It's identical to AssignedByEQ.
 func AssignedBy(v int64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldAssignedBy, v))
@@ -728,6 +733,16 @@ func MonthlyUsageUsdLT(v float64) predicate.UserSubscription {
 // MonthlyUsageUsdLTE applies the LTE predicate on the "monthly_usage_usd" field.
 func MonthlyUsageUsdLTE(v float64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldLTE(FieldMonthlyUsageUsd, v))
+}
+
+// AllowDailyOverdraftEQ applies the EQ predicate on the "allow_daily_overdraft" field.
+func AllowDailyOverdraftEQ(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldAllowDailyOverdraft, v))
+}
+
+// AllowDailyOverdraftNEQ applies the NEQ predicate on the "allow_daily_overdraft" field.
+func AllowDailyOverdraftNEQ(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldAllowDailyOverdraft, v))
 }
 
 // AssignedByEQ applies the EQ predicate on the "assigned_by" field.

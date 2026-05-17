@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -84,6 +86,36 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
 	}
 	response.Success(c, out)
+}
+
+type SetDailyOverdraftRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetDailyOverdraft lets the current user enable/disable daily overdraft for one subscription.
+// PUT /api/v1/subscriptions/:id/daily-overdraft
+func (h *SubscriptionHandler) SetDailyOverdraft(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid subscription id")
+		return
+	}
+	var req SetDailyOverdraftRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+	sub, err := h.subscriptionService.SetUserDailyOverdraft(c.Request.Context(), subject.UserID, id, req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromService(sub))
 }
 
 // GetProgress handles getting subscription progress for current user

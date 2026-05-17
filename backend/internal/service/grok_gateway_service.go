@@ -490,20 +490,41 @@ func (s *GrokGatewayService) ListUpstreamModels(ctx context.Context, account *Ac
 		return nil, fmt.Errorf("upstream account missing base_url or api_key")
 	}
 
-	return FetchGrokUpstreamModels(ctx, baseURL, apiKey)
+	return FetchOpenAICompatibleUpstreamModels(ctx, baseURL, apiKey)
 }
 
-// FetchGrokUpstreamModels 以原始 base_url + api_key 直连 grok2api 的 GET /v1/models。
-// 独立导出供 probe 接口（管理后台填写中的新账号）复用，不依赖已入库的 Account。
+// FetchGrokUpstreamModels 使用 base_url + api_key 探测 grok2api 的 GET /v1/models。
+// 供新增/编辑账号表单在账号未保存时直接调用。
 func FetchGrokUpstreamModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
+	return FetchOpenAICompatibleUpstreamModels(ctx, baseURL, apiKey)
+}
+
+func buildOpenAIModelsURL(base string) string {
+	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
+	switch {
+	case strings.HasSuffix(normalized, "/models"):
+		return normalized
+	case strings.HasSuffix(normalized, "/responses"):
+		return strings.TrimSuffix(normalized, "/responses") + "/models"
+	case strings.HasSuffix(normalized, "/chat/completions"):
+		return strings.TrimSuffix(normalized, "/chat/completions") + "/models"
+	case strings.HasSuffix(normalized, "/v1"):
+		return normalized + "/models"
+	default:
+		return normalized + "/v1/models"
+	}
+}
+
+// FetchOpenAICompatibleUpstreamModels 拉取 OpenAI-compatible /v1/models 的模型 ID 列表。
+func FetchOpenAICompatibleUpstreamModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	apiKey = strings.TrimSpace(apiKey)
 	if baseURL == "" || apiKey == "" {
 		return nil, fmt.Errorf("base_url and api_key are required")
 	}
-	baseURL = strings.TrimSuffix(baseURL, "/")
+	baseURL = buildOpenAIModelsURL(baseURL)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create list-models request: %w", err)
 	}

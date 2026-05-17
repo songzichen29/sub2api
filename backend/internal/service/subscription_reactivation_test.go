@@ -35,6 +35,7 @@ func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription)
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNotes(sub.Notes).
 		SetSource(sub.Source).
 		Save(ctx)
@@ -86,6 +87,7 @@ func (r *subscriptionEntRepo) Update(ctx context.Context, sub *UserSubscription)
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNotes(sub.Notes).
 		SetSource(sub.Source)
 	if sub.DailyWindowStart != nil {
@@ -136,6 +138,10 @@ func (r *subscriptionEntRepo) UpdateNotes(ctx context.Context, subscriptionID in
 	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(subscriptionID).SetNotes(notes).Save(ctx)
 	return err
 }
+func (r *subscriptionEntRepo) UpdateDailyOverdraft(ctx context.Context, subscriptionID int64, enabled bool) error {
+	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(subscriptionID).SetAllowDailyOverdraft(enabled).Save(ctx)
+	return err
+}
 func (r *subscriptionEntRepo) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows")
 }
@@ -171,22 +177,23 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 		notes = *m.Notes
 	}
 	return &UserSubscription{
-		ID:                 m.ID,
-		UserID:             m.UserID,
-		GroupID:            m.GroupID,
-		StartsAt:           m.StartsAt,
-		ExpiresAt:          m.ExpiresAt,
-		Status:             m.Status,
-		DailyWindowStart:   m.DailyWindowStart,
-		WeeklyWindowStart:  m.WeeklyWindowStart,
-		MonthlyWindowStart: m.MonthlyWindowStart,
-		DailyUsageUSD:      m.DailyUsageUsd,
-		WeeklyUsageUSD:     m.WeeklyUsageUsd,
-		MonthlyUsageUSD:    m.MonthlyUsageUsd,
-		Notes:              notes,
-		Source:             m.Source,
-		CreatedAt:          m.CreatedAt,
-		UpdatedAt:          m.UpdatedAt,
+		ID:                  m.ID,
+		UserID:              m.UserID,
+		GroupID:             m.GroupID,
+		StartsAt:            m.StartsAt,
+		ExpiresAt:           m.ExpiresAt,
+		Status:              m.Status,
+		DailyWindowStart:    m.DailyWindowStart,
+		WeeklyWindowStart:   m.WeeklyWindowStart,
+		MonthlyWindowStart:  m.MonthlyWindowStart,
+		DailyUsageUSD:       m.DailyUsageUsd,
+		WeeklyUsageUSD:      m.WeeklyUsageUsd,
+		MonthlyUsageUSD:     m.MonthlyUsageUsd,
+		AllowDailyOverdraft: m.AllowDailyOverdraft,
+		Notes:               notes,
+		Source:              m.Source,
+		CreatedAt:           m.CreatedAt,
+		UpdatedAt:           m.UpdatedAt,
 	}
 }
 
@@ -327,7 +334,34 @@ func TestAssignOrExtendSubscription_PaidRenewalResetsDailyUsage(t *testing.T) {
 	require.WithinDuration(t, before, *sub.DailyWindowStart, 3*time.Second)
 	require.True(t, sub.ExpiresAt.After(expiresAt))
 	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit}
-	_, err = svc.ValidateAndCheckLimits(sub, sub.Group)
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
 	require.NoError(t, err)
 	require.WithinDuration(t, after.Add(24*time.Hour), *sub.DailyResetTime(), 3*time.Second)
+}
+
+func TestSubscriptionService_ValidateAndCheckLimits_DailyOverdraftUsesPeriodPool(t *testing.T) {
+	daily := 80.0
+	weekly := 560.0
+	now := time.Now()
+	sub := &UserSubscription{
+		StartsAt:            now.Add(-time.Hour),
+		ExpiresAt:           now.Add(24 * time.Hour),
+		Status:              SubscriptionStatusActive,
+		DailyUsageUSD:       80,
+		WeeklyUsageUSD:      120,
+		AllowDailyOverdraft: true,
+	}
+	strictGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly}
+	overdraftGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly, AllowDailyOverdraft: true}
+	svc := &SubscriptionService{}
+
+	_, err := svc.ValidateAndCheckLimits(context.Background(), sub, strictGroup)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, overdraftGroup)
+	require.NoError(t, err)
+
+	sub.WeeklyUsageUSD = weekly
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, overdraftGroup)
+	require.ErrorIs(t, err, ErrWeeklyLimitExceeded)
 }

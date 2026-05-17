@@ -75,6 +75,9 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}),
+		field.Bool("allow_daily_overdraft").
+			Default(false).
+			Comment("Allow subscription daily quota overdraft into weekly/monthly period pool"),
 		field.Int("default_validity_days").
 			Default(30),
 

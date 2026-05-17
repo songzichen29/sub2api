@@ -156,6 +156,10 @@ func (f fakeGoogleSubscriptionRepo) UpdateStatus(ctx context.Context, subscripti
 func (f fakeGoogleSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 }
+
+func (f fakeGoogleSubscriptionRepo) UpdateDailyOverdraft(context.Context, int64, bool) error {
+	return nil
+}
 func (f fakeGoogleSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
 	if f.activateWindow != nil {
 		return f.activateWindow(ctx, id, dailyStart, weeklyStart, monthlyStart)

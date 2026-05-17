@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -48,12 +49,13 @@ func billingSubKey(userID, groupID int64) string {
 }
 
 const (
-	subFieldStatus       = "status"
-	subFieldExpiresAt    = "expires_at"
-	subFieldDailyUsage   = "daily_usage"
-	subFieldWeeklyUsage  = "weekly_usage"
-	subFieldMonthlyUsage = "monthly_usage"
-	subFieldVersion      = "version"
+	subFieldStatus              = "status"
+	subFieldExpiresAt           = "expires_at"
+	subFieldDailyUsage          = "daily_usage"
+	subFieldWeeklyUsage         = "weekly_usage"
+	subFieldMonthlyUsage        = "monthly_usage"
+	subFieldAllowDailyOverdraft = "allow_daily_overdraft"
+	subFieldVersion             = "version"
 )
 
 // billingRateLimitKey generates the Redis key for API key rate limit cache.
@@ -210,6 +212,10 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		result.MonthlyUsage, _ = strconv.ParseFloat(monthlyStr, 64)
 	}
 
+	if overdraftStr, ok := data[subFieldAllowDailyOverdraft]; ok {
+		result.AllowDailyOverdraft = overdraftStr == "1" || strings.EqualFold(overdraftStr, "true")
+	}
+
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
 	}
@@ -225,12 +231,13 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	key := billingSubKey(userID, groupID)
 
 	fields := map[string]any{
-		subFieldStatus:       data.Status,
-		subFieldExpiresAt:    data.ExpiresAt.Unix(),
-		subFieldDailyUsage:   data.DailyUsage,
-		subFieldWeeklyUsage:  data.WeeklyUsage,
-		subFieldMonthlyUsage: data.MonthlyUsage,
-		subFieldVersion:      data.Version,
+		subFieldStatus:              data.Status,
+		subFieldExpiresAt:           data.ExpiresAt.Unix(),
+		subFieldDailyUsage:          data.DailyUsage,
+		subFieldWeeklyUsage:         data.WeeklyUsage,
+		subFieldMonthlyUsage:        data.MonthlyUsage,
+		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
+		subFieldVersion:             data.Version,
 	}
 
 	pipe := c.rdb.Pipeline()

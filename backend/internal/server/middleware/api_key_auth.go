@@ -192,7 +192,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 			// 订阅模式：验证订阅限额
 			if subscription != nil {
-				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(c.Request.Context(), subscription, apiKey.Group)
 				if validateErr != nil {
 					var code, msg string
 					switch {

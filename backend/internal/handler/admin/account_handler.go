@@ -2363,6 +2363,71 @@ type ProbeGrokUpstreamModelsRequest struct {
 	APIKey  string `json:"api_key" binding:"required"`
 }
 
+// ProbeUpstreamModelsRequest 通用上游模型探测请求体。
+// 用于 API Key 账号新增/编辑时，用用户填写的 base_url + api_key 拉取上游模型列表。
+type ProbeUpstreamModelsRequest struct {
+	Platform string `json:"platform" binding:"required"`
+	Type     string `json:"type" binding:"required"`
+	BaseURL  string `json:"base_url"`
+	APIKey   string `json:"api_key" binding:"required"`
+}
+
+// ProbeUpstreamModels 使用表单中的 base_url + api_key 探测上游模型列表。
+// POST /api/v1/admin/accounts/probe-models
+func (h *AccountHandler) ProbeUpstreamModels(c *gin.Context) {
+	var req ProbeUpstreamModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request: "+err.Error())
+		return
+	}
+	if h.accountTestService == nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("MODEL_PROBE_UNAVAILABLE", "account test service not configured"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	ids, err := h.accountTestService.ProbeUpstreamModels(ctx, req.Platform, req.Type, req.BaseURL, req.APIKey)
+	if err != nil {
+		log.Printf("[AccountHandler.ProbeUpstreamModels] probe failed platform=%s type=%s base_url=%s err=%v", req.Platform, req.Type, req.BaseURL, err)
+		response.ErrorFrom(c, infraerrors.BadRequest("MODEL_PROBE_FAILED", err.Error()))
+		return
+	}
+	response.Success(c, ids)
+}
+
+// ProbeAccountUpstreamModels 使用已保存账号的凭据探测上游模型列表。
+// POST /api/v1/admin/accounts/:id/probe-models
+func (h *AccountHandler) ProbeAccountUpstreamModels(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "invalid account id")
+		return
+	}
+	if h.accountTestService == nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("MODEL_PROBE_UNAVAILABLE", "account test service not configured"))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+
+	account, err := h.adminService.GetAccount(ctx, accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	ids, err := h.accountTestService.ProbeUpstreamModelsByAccount(ctx, account)
+	if err != nil {
+		log.Printf("[AccountHandler.ProbeAccountUpstreamModels] probe failed account_id=%d err=%v", accountID, err)
+		response.ErrorFrom(c, infraerrors.BadRequest("MODEL_PROBE_FAILED", err.Error()))
+		return
+	}
+	response.Success(c, ids)
+}
+
 // ProbeGrokUpstreamModels 直连 grok2api 网关的 GET /v1/models 返回模型 ID 列表。
 // POST /api/v1/admin/accounts/grok/probe-models
 // 请求体：{ "base_url": "http://localhost:8000", "api_key": "..." }

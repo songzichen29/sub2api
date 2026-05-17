@@ -215,6 +215,7 @@ type CreateGroupInput struct {
 	DailyLimitResetPrice *float64 // 用户自助重置日额度价格 (CNY)
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
+	AllowDailyOverdraft  bool     // allow daily quota overdraft into weekly/monthly pool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -256,6 +257,7 @@ type UpdateGroupInput struct {
 	DailyLimitResetPrice *float64 // 用户自助重置日额度价格 (CNY)
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
+	AllowDailyOverdraft  *bool    // allow daily quota overdraft into weekly/monthly pool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -1608,8 +1610,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	dailyLimitResetPrice := normalizePositivePrice(input.DailyLimitResetPrice)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
+	allowDailyOverdraft := input.AllowDailyOverdraft
 	if subscriptionType != SubscriptionTypeSubscription {
 		dailyLimitResetPrice = nil
+		allowDailyOverdraft = false
+	}
+	if allowDailyOverdraft && (dailyLimit == nil || (weeklyLimit == nil && monthlyLimit == nil)) {
+		return nil, errors.New("allow_daily_overdraft requires a daily limit and at least one weekly or monthly limit")
 	}
 
 	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
@@ -1691,6 +1698,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DailyLimitResetPrice:            dailyLimitResetPrice,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
+		AllowDailyOverdraft:             allowDailyOverdraft,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
@@ -1878,8 +1886,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	group.DailyLimitResetPrice = normalizePositivePrice(input.DailyLimitResetPrice)
 	group.WeeklyLimitUSD = normalizeLimit(input.WeeklyLimitUSD)
 	group.MonthlyLimitUSD = normalizeLimit(input.MonthlyLimitUSD)
+	if input.AllowDailyOverdraft != nil {
+		group.AllowDailyOverdraft = *input.AllowDailyOverdraft
+	}
 	if group.SubscriptionType != SubscriptionTypeSubscription {
 		group.DailyLimitResetPrice = nil
+		group.AllowDailyOverdraft = false
+	}
+	if group.AllowDailyOverdraft && (group.DailyLimitUSD == nil || (group.WeeklyLimitUSD == nil && group.MonthlyLimitUSD == nil)) {
+		return nil, errors.New("allow_daily_overdraft requires a daily limit and at least one weekly or monthly limit")
 	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {

@@ -102,3 +102,39 @@ func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 	})
 	require.False(t, enqueued)
 }
+
+type billingCacheSubscriptionStub struct {
+	billingCacheWorkerStub
+	data *SubscriptionCacheData
+}
+
+func (b *billingCacheSubscriptionStub) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
+	return b.data, nil
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPeriodPool(t *testing.T) {
+	daily := 80.0
+	weekly := 560.0
+	now := time.Now()
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:              SubscriptionStatusActive,
+		ExpiresAt:           now.Add(24 * time.Hour),
+		DailyUsage:          80,
+		WeeklyUsage:         120,
+		AllowDailyOverdraft: true,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	strictGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, strictGroup, nil)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly, AllowDailyOverdraft: true}
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	require.NoError(t, err)
+
+	cache.data.WeeklyUsage = weekly
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	require.ErrorIs(t, err, ErrWeeklyLimitExceeded)
+}

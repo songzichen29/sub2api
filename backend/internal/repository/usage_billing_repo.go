@@ -115,7 +115,7 @@ func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *s
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost); err != nil {
+		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost, cmd.AllowSubscriptionOverLimit); err != nil {
 			return err
 		}
 	}
@@ -153,18 +153,59 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	return nil
 }
 
-func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {
-	res, err := tx.ExecContext(ctx, `
+func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64, allowOverLimit bool) error {
+	const updateSQL = `
 		UPDATE user_subscriptions us
-		JOIN `+quotedGroupsTable+` g ON us.group_id = g.id AND g.deleted_at IS NULL
+		JOIN ` + quotedGroupsTable + ` g ON us.group_id = g.id AND g.deleted_at IS NULL
 		SET
 			us.daily_usage_usd = us.daily_usage_usd + ?,
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
 			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.status = CASE
+				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
+				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
+				ELSE us.status
+			END,
 			us.updated_at = NOW()
 		WHERE us.id = ?
 			AND us.deleted_at IS NULL
-	`, costUSD, costUSD, costUSD, subscriptionID)
+			AND (
+				COALESCE(g.daily_limit_usd, 0) <= 0
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = TRUE
+					AND COALESCE(g.weekly_limit_usd, 0) > 0
+					AND us.weekly_usage_usd < g.weekly_limit_usd
+				)
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = TRUE
+					AND COALESCE(g.monthly_limit_usd, 0) > 0
+					AND us.monthly_usage_usd < g.monthly_limit_usd
+				)
+				OR us.daily_usage_usd + ? <= g.daily_limit_usd
+				OR (? AND us.daily_usage_usd < g.daily_limit_usd)
+			)
+			AND (
+				COALESCE(g.weekly_limit_usd, 0) <= 0
+				OR us.weekly_usage_usd + ? <= g.weekly_limit_usd
+				OR (? AND us.weekly_usage_usd < g.weekly_limit_usd)
+			)
+			AND (
+				COALESCE(g.monthly_limit_usd, 0) <= 0
+				OR us.monthly_usage_usd + ? <= g.monthly_limit_usd
+				OR (? AND us.monthly_usage_usd < g.monthly_limit_usd)
+			)
+	`
+	res, err := tx.ExecContext(ctx, updateSQL,
+		costUSD, costUSD, costUSD,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
+		subscriptionID,
+		costUSD, allowOverLimit,
+		costUSD, allowOverLimit,
+		costUSD, allowOverLimit,
+	)
 	if err != nil {
 		return err
 	}
@@ -172,10 +213,36 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	if err != nil {
 		return err
 	}
-	if affected == 0 {
-		return service.ErrSubscriptionNotFound
+	if affected > 0 {
+		return nil
 	}
-	return nil
+
+	exists, limitErr := subscriptionBillingLimitExceeded(ctx, tx, subscriptionID)
+	if limitErr != nil {
+		return limitErr
+	}
+	if exists {
+		return service.ErrUsageBillingSubscriptionLimitExceeded
+	}
+	return service.ErrSubscriptionNotFound
+}
+
+func subscriptionBillingLimitExceeded(ctx context.Context, tx *sql.Tx, subscriptionID int64) (bool, error) {
+	var matched int
+	err := tx.QueryRowContext(ctx, `
+		SELECT 1
+		FROM user_subscriptions us
+		JOIN `+quotedGroupsTable+` g ON us.group_id = g.id AND g.deleted_at IS NULL
+		WHERE us.id = ? AND us.deleted_at IS NULL
+		LIMIT 1
+	`, subscriptionID).Scan(&matched)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {

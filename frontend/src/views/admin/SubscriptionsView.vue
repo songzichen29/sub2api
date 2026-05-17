@@ -384,7 +384,7 @@
                   ? 'badge-warning'
                   : value === 'active'
                   ? 'badge-success'
-                  : value === 'expired'
+                  : value === 'expired' || value === 'quota_exhausted'
                     ? 'badge-warning'
                     : 'badge-danger'
               ]"
@@ -396,7 +396,7 @@
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button
-                v-if="row.status === 'active' || row.status === 'expired'"
+                v-if="row.status === 'active' || row.status === 'expired' || row.status === 'quota_exhausted'"
                 @click="handleExtend(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
@@ -1037,6 +1037,7 @@ const statusOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allStatus') },
   { value: 'active', label: t('admin.subscriptions.status.active') },
   { value: 'expired', label: t('admin.subscriptions.status.expired') },
+  { value: 'quota_exhausted', label: t('admin.subscriptions.status.quota_exhausted') },
   { value: 'revoked', label: t('admin.subscriptions.status.revoked') }
 ])
 

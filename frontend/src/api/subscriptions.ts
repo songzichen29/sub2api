@@ -67,10 +67,26 @@ export async function getSubscriptionProgress(
   return response.data
 }
 
+
+/**
+ * Enable or disable daily overdraft for one of current user's subscriptions
+ */
+export async function setDailyOverdraft(
+  subscriptionId: number,
+  enabled: boolean
+): Promise<UserSubscription> {
+  const response = await apiClient.put<UserSubscription>(
+    `/subscriptions/${subscriptionId}/daily-overdraft`,
+    { enabled }
+  )
+  return response.data
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
-  getSubscriptionProgress
+  getSubscriptionProgress,
+  setDailyOverdraft
 }
