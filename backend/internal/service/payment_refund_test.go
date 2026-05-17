@@ -638,3 +638,90 @@ func TestPrepareRefundUsesAdjustedSubscriptionRangeForRefundAndDeduction(t *test
 	require.Equal(t, 15, plan.SubDaysToDeduct)
 	require.InDelta(t, 200.00, plan.RefundAmount, 0.0001)
 }
+
+func TestPrepareRefundSkipsCurrentDayRefundAfterRenewalDailyWindowStarted(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-sub-renew-window@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-sub-renew-window-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	groupEntity, err := client.Group.Create().
+		SetName("refund-sub-renew-window-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("refund-sub-renew-window-instance").
+		SetConfig("{}").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	completedAt := time.Now().Add(-30 * time.Minute)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(100).
+		SetPayAmount(100).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SUB-RENEW-WINDOW").
+		SetOutTradeNo("sub2_refund_sub_renew_window").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-sub-renew-window").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(1).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(completedAt).
+		SetCompletedAt(completedAt).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).
+		SetProviderKey(payment.TypeAlipay).
+		Save(ctx)
+	require.NoError(t, err)
+
+	startsAt := time.Now().Add(-12 * time.Hour)
+	windowStart := completedAt.Add(2 * time.Second)
+	expiresAt := time.Now().Add(36 * time.Hour)
+	_, err = client.UserSubscription.Create().
+		SetUserID(user.ID).
+		SetGroupID(groupEntity.ID).
+		SetStartsAt(startsAt).
+		SetExpiresAt(expiresAt).
+		SetStatus(SubscriptionStatusActive).
+		SetDailyWindowStart(windowStart).
+		SetDailyUsageUsd(0).
+		SetNotes("payment order " + strconv.FormatInt(order.ID, 10)).
+		SetSource("payment").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{entClient: client}
+
+	preview, err := svc.PreviewRefund(ctx, order.ID, 0)
+	require.NoError(t, err)
+	require.NotNil(t, preview)
+	require.True(t, preview.CalculatedAutomatically)
+	require.InDelta(t, 0.0, preview.RefundAmount, 0.0001)
+
+	plan, result, err := svc.PrepareRefund(ctx, order.ID, 0, "", false, false)
+	require.Nil(t, plan)
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.Equal(t, "NO_REFUNDABLE_AMOUNT", infraerrors.Reason(err))
+}

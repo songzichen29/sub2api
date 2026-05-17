@@ -151,6 +151,9 @@ func currentWindowStart(anchor, now time.Time, duration time.Duration) time.Time
 	if !now.After(anchor) {
 		return anchor
 	}
+	if duration <= 0 {
+		return anchor
+	}
 	elapsed := now.Sub(anchor)
 	return anchor.Add((elapsed / duration) * duration)
 }
@@ -171,15 +174,21 @@ func windowNeedsReset(anchor time.Time, storedStart *time.Time, now time.Time, d
 	if effective == nil {
 		return false
 	}
-	expectedCurrentStart := currentWindowStart(anchor, now, duration)
-	return effective.Before(expectedCurrentStart)
+	if duration <= 0 {
+		return false
+	}
+	return !now.Before(effective.Add(duration))
 }
 
 func windowResetTime(anchor time.Time, storedStart *time.Time, now time.Time, duration time.Duration) *time.Time {
-	if effectiveStoredWindowStart(anchor, storedStart) == nil {
+	effective := effectiveStoredWindowStart(anchor, storedStart)
+	if effective == nil {
 		return nil
 	}
-	start := currentWindowStart(anchor, now, duration)
-	resetAt := start.Add(duration)
+	if duration <= 0 {
+		resetAt := *effective
+		return &resetAt
+	}
+	resetAt := effective.Add(duration)
 	return &resetAt
 }

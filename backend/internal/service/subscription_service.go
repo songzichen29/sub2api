@@ -243,9 +243,11 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			return nil, false, fmt.Errorf("extend subscription: %w", err)
 		}
 
-		// 订阅已过期后重新购买/续期时，应把新的计费窗口锚点重置到本次生效时间。
-		// 否则 daily/weekly/monthly 窗口会错误沿用历史 starts_at。
-		if !existingSub.ExpiresAt.After(now) {
+		wasExpired := !existingSub.ExpiresAt.After(now)
+
+		// Reactivating an expired subscription must move the billing-window anchor
+		// to this purchase time; otherwise old windows keep using stale starts_at.
+		if wasExpired {
 			existingSub.StartsAt = now
 			existingSub.ExpiresAt = newExpiresAt
 			existingSub.Status = SubscriptionStatusActive
@@ -260,9 +262,19 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("reset expired subscription window anchor: %w", err)
 			}
+		} else if input.Source == domain.SubscriptionSourcePayment && group.HasDailyLimit() {
+			// Paid renewal grants a fresh daily card window immediately while the
+			// overall subscription expiry is still extended cumulatively. This avoids
+			// renewing a fully-used day card but still hitting DAILY_LIMIT_EXCEEDED.
+			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, now); err != nil {
+				_ = tx.Rollback()
+				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
+			}
+			existingSub.DailyWindowStart = &now
+			existingSub.DailyUsageUSD = 0
 		}
 
-		// 如果订阅已过期或被暂停，恢复为active状态
+		// Restore active status when a non-active subscription is renewed.
 		if existingSub.ExpiresAt.After(now) && existingSub.Status != SubscriptionStatusActive {
 			if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
 				_ = tx.Rollback()

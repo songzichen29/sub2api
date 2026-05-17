@@ -139,10 +139,22 @@ func (r *subscriptionEntRepo) UpdateNotes(ctx context.Context, subscriptionID in
 func (r *subscriptionEntRepo) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows")
 }
-func (r *subscriptionEntRepo) ResetDailyUsage(context.Context, int64, time.Time) error { panic("unexpected ResetDailyUsage") }
-func (r *subscriptionEntRepo) ResetWeeklyUsage(context.Context, int64, time.Time) error { panic("unexpected ResetWeeklyUsage") }
-func (r *subscriptionEntRepo) ResetMonthlyUsage(context.Context, int64, time.Time) error { panic("unexpected ResetMonthlyUsage") }
-func (r *subscriptionEntRepo) IncrementUsage(context.Context, int64, float64) error { panic("unexpected IncrementUsage") }
+func (r *subscriptionEntRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(id).
+		SetDailyUsageUsd(0).
+		SetDailyWindowStart(newWindowStart).
+		Save(ctx)
+	return err
+}
+func (r *subscriptionEntRepo) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetWeeklyUsage")
+}
+func (r *subscriptionEntRepo) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+	panic("unexpected ResetMonthlyUsage")
+}
+func (r *subscriptionEntRepo) IncrementUsage(context.Context, int64, float64) error {
+	panic("unexpected IncrementUsage")
+}
 func (r *subscriptionEntRepo) GetLatestUsedAtBySubscriptionIDs(context.Context, []int64) (map[int64]*time.Time, error) {
 	return map[int64]*time.Time{}, nil
 }
@@ -159,22 +171,22 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 		notes = *m.Notes
 	}
 	return &UserSubscription{
-		ID:                m.ID,
-		UserID:            m.UserID,
-		GroupID:           m.GroupID,
-		StartsAt:          m.StartsAt,
-		ExpiresAt:         m.ExpiresAt,
-		Status:            m.Status,
-		DailyWindowStart:  m.DailyWindowStart,
-		WeeklyWindowStart: m.WeeklyWindowStart,
+		ID:                 m.ID,
+		UserID:             m.UserID,
+		GroupID:            m.GroupID,
+		StartsAt:           m.StartsAt,
+		ExpiresAt:          m.ExpiresAt,
+		Status:             m.Status,
+		DailyWindowStart:   m.DailyWindowStart,
+		WeeklyWindowStart:  m.WeeklyWindowStart,
 		MonthlyWindowStart: m.MonthlyWindowStart,
-		DailyUsageUSD:     m.DailyUsageUsd,
-		WeeklyUsageUSD:    m.WeeklyUsageUsd,
-		MonthlyUsageUSD:   m.MonthlyUsageUsd,
-		Notes:             notes,
-		Source:            m.Source,
-		CreatedAt:         m.CreatedAt,
-		UpdatedAt:         m.UpdatedAt,
+		DailyUsageUSD:      m.DailyUsageUsd,
+		WeeklyUsageUSD:     m.WeeklyUsageUsd,
+		MonthlyUsageUSD:    m.MonthlyUsageUsd,
+		Notes:              notes,
+		Source:             m.Source,
+		CreatedAt:          m.CreatedAt,
+		UpdatedAt:          m.UpdatedAt,
 	}
 }
 
@@ -250,4 +262,72 @@ func TestAssignOrExtendSubscription_ExpiredSubscriptionResetsStartAnchor(t *test
 	require.Equal(t, float64(0), sub.MonthlyUsageUSD)
 	require.Contains(t, sub.Notes, "old-note")
 	require.Contains(t, sub.Notes, "renew-note")
+}
+
+func TestAssignOrExtendSubscription_PaidRenewalResetsDailyUsage(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-paid-renew-reset@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-paid-renew-reset-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	group, err := client.Group.Create().
+		SetName("sub-paid-renew-reset-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-2 * time.Hour)
+	expiresAt := time.Now().Add(22 * time.Hour)
+	dailyStart := startsAt
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:           user.ID,
+		GroupID:          group.ID,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		Status:           SubscriptionStatusActive,
+		DailyWindowStart: &dailyStart,
+		DailyUsageUSD:    dailyLimit,
+		Source:           "payment",
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:               group.ID,
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &dailyLimit,
+		},
+	}, repo, nil, client, nil)
+
+	before := time.Now()
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 1,
+		Notes:        "renew-note",
+		Source:       "payment",
+	})
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.NotNil(t, sub.DailyWindowStart)
+	require.WithinDuration(t, before, *sub.DailyWindowStart, 3*time.Second)
+	require.True(t, sub.ExpiresAt.After(expiresAt))
+	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit}
+	_, err = svc.ValidateAndCheckLimits(sub, sub.Group)
+	require.NoError(t, err)
+	require.WithinDuration(t, after.Add(24*time.Hour), *sub.DailyResetTime(), 3*time.Second)
 }

@@ -526,8 +526,9 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 	}
 
 	dailyLimit := *sub.Group.DailyLimitUSD
+	renewalDailyWindowStarted := subscriptionOrderDailyWindowStarted(o, sub, now)
 	todayRemainingRatio := 0.0
-	if dailyLimit > 0 && fullUsedDays < totalDays {
+	if dailyLimit > 0 && fullUsedDays < totalDays && !renewalDailyWindowStarted {
 		remaining := dailyLimit - sub.DailyUsageUSD
 		if remaining < 0 {
 			remaining = 0
@@ -540,6 +541,14 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 
 	refundableDaysEquivalent := float64(remainingFullDays) + todayRemainingRatio
 	maxEquivalent := float64(totalDays)
+	if renewalDailyWindowStarted {
+		// The current day granted by this renewal has already started. Avoid
+		// refunding it as unused just because fulfillment reset daily_usage_usd.
+		maxEquivalent = float64(orderDays - 1)
+		if maxEquivalent < 0 {
+			maxEquivalent = 0
+		}
+	}
 	if refundableDaysEquivalent < 0 {
 		refundableDaysEquivalent = 0
 	}
@@ -644,23 +653,23 @@ func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSub
 		return nil
 	}
 	result := &UserSubscription{
-		ID:               sub.ID,
-		UserID:           sub.UserID,
-		GroupID:          sub.GroupID,
-		StartsAt:         sub.StartsAt,
-		ExpiresAt:        sub.ExpiresAt,
-		Status:           sub.Status,
-		DailyWindowStart: sub.DailyWindowStart,
-		WeeklyWindowStart: sub.WeeklyWindowStart,
+		ID:                 sub.ID,
+		UserID:             sub.UserID,
+		GroupID:            sub.GroupID,
+		StartsAt:           sub.StartsAt,
+		ExpiresAt:          sub.ExpiresAt,
+		Status:             sub.Status,
+		DailyWindowStart:   sub.DailyWindowStart,
+		WeeklyWindowStart:  sub.WeeklyWindowStart,
 		MonthlyWindowStart: sub.MonthlyWindowStart,
-		DailyUsageUSD:    sub.DailyUsageUsd,
-		WeeklyUsageUSD:   sub.WeeklyUsageUsd,
-		MonthlyUsageUSD:  sub.MonthlyUsageUsd,
-		AssignedBy:       sub.AssignedBy,
-		AssignedAt:       sub.AssignedAt,
-		Source:           sub.Source,
-		CreatedAt:        sub.CreatedAt,
-		UpdatedAt:        sub.UpdatedAt,
+		DailyUsageUSD:      sub.DailyUsageUsd,
+		WeeklyUsageUSD:     sub.WeeklyUsageUsd,
+		MonthlyUsageUSD:    sub.MonthlyUsageUsd,
+		AssignedBy:         sub.AssignedBy,
+		AssignedAt:         sub.AssignedAt,
+		Source:             sub.Source,
+		CreatedAt:          sub.CreatedAt,
+		UpdatedAt:          sub.UpdatedAt,
 	}
 	if sub.Notes != nil {
 		result.Notes = *sub.Notes
@@ -689,6 +698,27 @@ func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSub
 		}
 	}
 	return result
+}
+
+func subscriptionOrderDailyWindowStarted(o *dbent.PaymentOrder, sub *UserSubscription, now time.Time) bool {
+	if o == nil || sub == nil || sub.DailyWindowStart == nil {
+		return false
+	}
+	orderTime := o.CompletedAt
+	if orderTime == nil {
+		orderTime = o.PaidAt
+	}
+	if orderTime == nil {
+		return false
+	}
+	if now.Before(*sub.DailyWindowStart) || !now.Before(sub.DailyWindowStart.Add(dailyWindowDuration)) {
+		return false
+	}
+	// Paid subscription renewal resets daily_window_start at fulfillment time.
+	// When refunding inside that freshly granted 24h window, do not treat
+	// daily_usage_usd=0 as a fully refundable unused day; the day card has
+	// already started and should only leave future full days refundable.
+	return !sub.DailyWindowStart.Before(*orderTime)
 }
 
 func subscriptionEffectiveDays(sub *UserSubscription) int {

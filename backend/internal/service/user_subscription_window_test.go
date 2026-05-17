@@ -18,20 +18,20 @@ func TestCurrentWindowStart_AnchoredToSubscriptionStart(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestWindowNeedsReset_UsesAnchoredBoundary(t *testing.T) {
+func TestWindowNeedsReset_UsesStoredWindowBoundary(t *testing.T) {
 	anchor := time.Date(2026, 5, 10, 16, 30, 0, 0, time.FixedZone("CST", 8*3600))
 	now := anchor.Add(50 * time.Hour)
 	stale := anchor
 
 	require.True(t, windowNeedsReset(anchor, &stale, now, dailyWindowDuration))
 
-	current := anchor.Add(48 * time.Hour)
-	require.False(t, windowNeedsReset(anchor, &current, now, dailyWindowDuration))
+	fresh := anchor.Add(27 * time.Hour)
+	require.False(t, windowNeedsReset(anchor, &fresh, now, dailyWindowDuration))
 }
 
-func TestDailyResetTime_UsesNextAnchoredBoundary(t *testing.T) {
+func TestDailyResetTime_UsesStoredWindowBoundary(t *testing.T) {
 	anchor := time.Date(2026, 5, 10, 16, 30, 0, 0, time.FixedZone("CST", 8*3600))
-	current := anchor.Add(48 * time.Hour)
+	current := anchor.Add(27 * time.Hour)
 	sub := &UserSubscription{
 		StartsAt:         anchor,
 		DailyWindowStart: &current,
@@ -40,5 +40,5 @@ func TestDailyResetTime_UsesNextAnchoredBoundary(t *testing.T) {
 	got := sub.DailyResetTime()
 
 	require.NotNil(t, got)
-	assert.Equal(t, anchor.Add(24*time.Hour), *got)
+	assert.Equal(t, current.Add(24*time.Hour), *got)
 }
