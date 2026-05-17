@@ -83,20 +83,20 @@ type AffiliateInvitee struct {
 }
 
 type AffiliateDetail struct {
-	UserID          int64   `json:"user_id"`
-	AffCode         string  `json:"aff_code"`
-	InviterID       *int64  `json:"inviter_id,omitempty"`
-	AffCount        int     `json:"aff_count"`
-	AffQuota        float64 `json:"aff_quota"`
-	AffFrozenQuota  float64 `json:"aff_frozen_quota"`
-	AffHistoryQuota float64 `json:"aff_history_quota"`
-	RechargeEnabled bool    `json:"recharge_enabled"`
-	SubscriptionEnabled bool `json:"subscription_enabled"`
+	UserID              int64   `json:"user_id"`
+	AffCode             string  `json:"aff_code"`
+	InviterID           *int64  `json:"inviter_id,omitempty"`
+	AffCount            int     `json:"aff_count"`
+	AffQuota            float64 `json:"aff_quota"`
+	AffFrozenQuota      float64 `json:"aff_frozen_quota"`
+	AffHistoryQuota     float64 `json:"aff_history_quota"`
+	RechargeEnabled     bool    `json:"recharge_enabled"`
+	SubscriptionEnabled bool    `json:"subscription_enabled"`
 	// EffectiveRechargeRebateRatePercent / EffectiveSubscriptionRebateRatePercent
 	// 用于用户端展示按订单类型实际生效的返利比例。
 	EffectiveRechargeRebateRatePercent     float64            `json:"effective_recharge_rebate_rate_percent"`
 	EffectiveSubscriptionRebateRatePercent float64            `json:"effective_subscription_rebate_rate_percent"`
-	Invitees                   []AffiliateInvitee `json:"invitees"`
+	Invitees                               []AffiliateInvitee `json:"invitees"`
 }
 
 type AffiliateRepository interface {

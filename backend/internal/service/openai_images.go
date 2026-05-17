@@ -1654,7 +1654,9 @@ func solveOpenAITurnstileToken(dx string, p string) string {
 	func1 := func(e float64, t float64) {
 		processMap[e] = xorOpenAITurnstileString(turnstileValueToString(processMap[e]), turnstileValueToString(processMap[t]))
 	}
-	func2 := func(e float64, t any) { processMap[e] = t }
+	func2 := func(e float64, t any) {
+		processMap[e] = t
+	}
 	func3 := func(e string) { result = base64.StdEncoding.EncodeToString([]byte(e)) }
 	func5 := func(e float64, t float64) {
 		current := processMap[e]
@@ -1817,94 +1819,117 @@ func solveOpenAITurnstileToken(dx string, p string) string {
 		}
 		switch op {
 		case 1:
-			if len(tokenArr) >= 3 {
-				func1(tokenArr[1].(float64), tokenArr[2].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func1(e, t)
+				}
 			}
 		case 2:
-			if len(tokenArr) >= 3 {
-				func2(tokenArr[1].(float64), tokenArr[2])
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok && len(tokenArr) >= 3 {
+				func2(e, tokenArr[2])
 			}
 		case 3:
 			if len(tokenArr) >= 2 {
 				func3(turnstileValueToString(tokenArr[1]))
 			}
 		case 5:
-			if len(tokenArr) >= 3 {
-				func5(tokenArr[1].(float64), tokenArr[2].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func5(e, t)
+				}
 			}
 		case 6:
-			if len(tokenArr) >= 4 {
-				func6(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					if n, ok := openAITurnstileFloatArg(tokenArr, 3); ok {
+						func6(e, t, n)
+					}
+				}
 			}
 		case 7:
-			if len(tokenArr) >= 2 {
-				args := make([]float64, 0, len(tokenArr)-2)
-				for _, raw := range tokenArr[2:] {
-					if f, ok := raw.(float64); ok {
-						args = append(args, f)
-					}
-				}
-				func7(tokenArr[1].(float64), args...)
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				func7(e, openAITurnstileFloatArgs(tokenArr, 2)...)
 			}
 		case 8:
-			if len(tokenArr) >= 3 {
-				func8(tokenArr[1].(float64), tokenArr[2].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func8(e, t)
+				}
 			}
 		case 14:
-			if len(tokenArr) >= 3 {
-				func14(tokenArr[1].(float64), tokenArr[2].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func14(e, t)
+				}
 			}
 		case 15:
-			if len(tokenArr) >= 3 {
-				func15(tokenArr[1].(float64), tokenArr[2].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func15(e, t)
+				}
 			}
 		case 17:
-			if len(tokenArr) >= 3 {
-				args := make([]float64, 0, len(tokenArr)-3)
-				for _, raw := range tokenArr[3:] {
-					if f, ok := raw.(float64); ok {
-						args = append(args, f)
-					}
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func17(e, t, openAITurnstileFloatArgs(tokenArr, 3)...)
 				}
-				func17(tokenArr[1].(float64), tokenArr[2].(float64), args...)
 			}
 		case 18:
-			if len(tokenArr) >= 2 {
-				func18(tokenArr[1].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				func18(e)
 			}
 		case 19:
-			if len(tokenArr) >= 2 {
-				func19(tokenArr[1].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				func19(e)
 			}
 		case 20:
-			if len(tokenArr) >= 4 {
-				args := make([]float64, 0, len(tokenArr)-4)
-				for _, raw := range tokenArr[4:] {
-					if f, ok := raw.(float64); ok {
-						args = append(args, f)
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					if n, ok := openAITurnstileFloatArg(tokenArr, 3); ok {
+						func20(e, t, n, openAITurnstileFloatArgs(tokenArr, 4)...)
 					}
 				}
-				func20(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64), args...)
 			}
 		case 21:
 			func21()
 		case 23:
-			if len(tokenArr) >= 3 {
-				args := make([]float64, 0, len(tokenArr)-3)
-				for _, raw := range tokenArr[3:] {
-					if f, ok := raw.(float64); ok {
-						args = append(args, f)
-					}
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					func23(e, t, openAITurnstileFloatArgs(tokenArr, 3)...)
 				}
-				func23(tokenArr[1].(float64), tokenArr[2].(float64), args...)
 			}
 		case 24:
-			if len(tokenArr) >= 4 {
-				func24(tokenArr[1].(float64), tokenArr[2].(float64), tokenArr[3].(float64))
+			if e, ok := openAITurnstileFloatArg(tokenArr, 1); ok {
+				if t, ok := openAITurnstileFloatArg(tokenArr, 2); ok {
+					if n, ok := openAITurnstileFloatArg(tokenArr, 3); ok {
+						func24(e, t, n)
+					}
+				}
 			}
 		}
 	}
 	return result
+}
+
+func openAITurnstileFloatArg(args []any, index int) (float64, bool) {
+	if index < 0 || index >= len(args) {
+		return 0, false
+	}
+	v, ok := args[index].(float64)
+	return v, ok
+}
+
+func openAITurnstileFloatArgs(args []any, start int) []float64 {
+	if start < 0 || start >= len(args) {
+		return nil
+	}
+	out := make([]float64, 0, len(args)-start)
+	for _, raw := range args[start:] {
+		if f, ok := raw.(float64); ok {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 func classifyOpenAIFreeImageSetupError(err error, account *Account) error {
@@ -2361,15 +2386,6 @@ func prepareOpenAIFreeImageConversation(
 	return strings.TrimSpace(firstNonEmptyString(result["conduit_token"])), nil
 }
 
-func mapOpenAIImageRequestToFreeConversationModel(model string) string {
-	switch strings.TrimSpace(model) {
-	case "", "gpt-image-2":
-		return openAIFreeImageConversationModel
-	default:
-		return openAIFreeImageConversationModel
-	}
-}
-
 func addUniqueStrings(dst []string, values ...string) []string {
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
@@ -2421,7 +2437,7 @@ func openAIFreeImageAssistantMessageText(message map[string]any) string {
 	var builder strings.Builder
 	for _, part := range parts {
 		if text, ok := part.(string); ok {
-			builder.WriteString(text)
+			_, _ = builder.WriteString(text)
 		}
 	}
 	return strings.TrimSpace(builder.String())
@@ -2501,7 +2517,7 @@ func readOpenAIFreeImageConversationStream(respBody io.Reader) ([]byte, *openAIF
 	for {
 		line, err := reader.ReadString('\n')
 		if line != "" {
-			rawBody.WriteString(line)
+			_, _ = rawBody.WriteString(line)
 			acc.AddLine(strings.TrimRight(line, "\r\n"), func(data []byte) {
 				if !gjson.ValidBytes(data) {
 					return

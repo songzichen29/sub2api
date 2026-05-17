@@ -1046,7 +1046,7 @@ func (s *AccountTestService) ProbeUpstreamModels(ctx context.Context, platform, 
 	if apiKey == "" {
 		return nil, errors.New("api_key is required")
 	}
-	if accountType != AccountTypeAPIKey && !(platform == PlatformGrok && accountType == AccountTypeUpstream) {
+	if accountType != AccountTypeAPIKey && (platform != PlatformGrok || accountType != AccountTypeUpstream) {
 		return nil, fmt.Errorf("unsupported account type for model probing: %s", accountType)
 	}
 

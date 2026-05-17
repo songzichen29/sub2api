@@ -280,12 +280,23 @@
           >
             <!-- Groups -->
             <div>
-              <label class="input-label text-xs">
-                {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
-                <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }, `已选 ${section.group_ids.length} 个`) }})
-                </span>
-              </label>
+              <div class="mb-1 flex items-center justify-between gap-3">
+                <label class="input-label mb-0 text-xs">
+                  {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
+                  <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
+                    ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }, `已选 ${section.group_ids.length} 个`) }})
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  class="text-xs text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  :disabled="importingModelsByPlatform[section.platform] || section.group_ids.length === 0"
+                  @click="importSectionModelsFromAccounts(sIdx)"
+                >
+                  <span v-if="importingModelsByPlatform[section.platform]">导入中…</span>
+                  <span v-else>{{ t('admin.channels.form.importModelsFromAccounts', '导入分组账号模型到映射和定价') }}</span>
+                </button>
+              </div>
               <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
                 <div v-if="groupsLoading" class="py-2 text-center text-xs text-gray-500">
                   {{ t('common.loading', 'Loading...') }}
@@ -594,15 +605,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, ModelDefaultPricing } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AdminGroup, GroupPlatform, Account } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -713,6 +724,9 @@ const groupsLoading = ref(false)
 
 // All channels for group-conflict detection (independent of current page)
 const allChannelsForConflict = ref<Channel[]>([])
+const importingModelsByPlatform = ref<Partial<Record<GroupPlatform, boolean>>>({})
+const defaultPricingCache = ref<Record<string, ModelDefaultPricing>>({})
+
 
 // Form data
 const form = reactive({
@@ -834,6 +848,111 @@ function updatePricingEntry(sectionIdx: number, idx: number, updated: PricingFor
 
 function removePricingEntry(sectionIdx: number, idx: number) {
   form.platforms[sectionIdx].model_pricing.splice(idx, 1)
+}
+
+function mergeModelsIntoPricingEntries(entries: PricingFormEntry[], models: string[]) {
+  const existing = new Set(entries.flatMap(entry => entry.models))
+  for (const model of models) {
+    if (existing.has(model)) continue
+    entries.push({
+      models: [model],
+      billing_mode: 'token',
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      image_output_price: null,
+      per_request_price: null,
+      intervals: []
+    })
+    existing.add(model)
+  }
+}
+
+async function getCachedDefaultPricing(model: string): Promise<ModelDefaultPricing> {
+  const cached = defaultPricingCache.value[model]
+  if (cached) return cached
+  const pricing = await adminAPI.channels.getModelDefaultPricing(model)
+  defaultPricingCache.value[model] = pricing
+  return pricing
+}
+
+function applyDefaultPricingToEntry(entry: PricingFormEntry, pricing: ModelDefaultPricing) {
+  if (!pricing.found) return
+  if (entry.input_price == null || entry.input_price === '') entry.input_price = perTokenToMTok(pricing.input_price)
+  if (entry.output_price == null || entry.output_price === '') entry.output_price = perTokenToMTok(pricing.output_price)
+  if (entry.cache_write_price == null || entry.cache_write_price === '') entry.cache_write_price = perTokenToMTok(pricing.cache_write_price)
+  if (entry.cache_read_price == null || entry.cache_read_price === '') entry.cache_read_price = perTokenToMTok(pricing.cache_read_price)
+  if (entry.image_output_price == null || entry.image_output_price === '') entry.image_output_price = perTokenToMTok(pricing.image_output_price)
+}
+
+function extractAccountModels(accounts: Account[]): string[] {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const account of accounts) {
+    const mapping = account.credentials?.model_mapping as Record<string, unknown> | undefined
+    if (!mapping || typeof mapping !== 'object') continue
+    for (const key of Object.keys(mapping)) {
+      const model = key.trim()
+      if (!model || seen.has(model)) continue
+      seen.add(model)
+      ordered.push(model)
+    }
+  }
+  return ordered.sort((a, b) => a.localeCompare(b))
+}
+
+async function importSectionModelsFromAccounts(sectionIdx: number) {
+  const section = form.platforms[sectionIdx]
+  if (!section || section.group_ids.length === 0) {
+    appStore.showInfo(t('admin.channels.form.selectGroupsBeforeImport', '请先选择分组再导入模型'))
+    return
+  }
+
+  importingModelsByPlatform.value[section.platform] = true
+  try {
+    const accountMap = new Map<number, Account>()
+    for (const groupId of section.group_ids) {
+      const res = await adminAPI.accounts.list(1, 1000, { platform: section.platform, group: String(groupId) })
+      for (const account of res.items) {
+        accountMap.set(account.id, account)
+      }
+    }
+
+    const models = extractAccountModels([...accountMap.values()])
+    if (models.length === 0) {
+      appStore.showInfo(t('admin.channels.form.noImportableAccountModels', '所选分组下没有可导入的账号模型'))
+      return
+    }
+
+    for (const model of models) {
+      if (!(model in section.model_mapping)) {
+        section.model_mapping[model] = model
+      }
+    }
+
+    mergeModelsIntoPricingEntries(section.model_pricing, models)
+
+    await Promise.all(section.model_pricing.map(async (entry) => {
+      if (entry.models.length !== 1) return
+      const model = entry.models[0]
+      if (!models.includes(model)) return
+      const pricing = await getCachedDefaultPricing(model)
+      applyDefaultPricingToEntry(entry, pricing)
+    }))
+
+    appStore.showSuccess(
+      t(
+        'admin.channels.form.importModelsSuccess',
+        { count: models.length },
+        `已导入 ${models.length} 个模型到映射和定价`
+      )
+    )
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.importModelsError', '导入账号模型失败')))
+  } finally {
+    importingModelsByPlatform.value[section.platform] = false
+  }
 }
 
 // ── Model Mapping helpers ──
@@ -1265,7 +1384,19 @@ function resetForm() {
   ruleAccountSearchRunner.clearAll()
   clearAllRuleAccountSearchState()
   ruleAccountNameCache.value = {}
+  importingModelsByPlatform.value = {}
+  defaultPricingCache.value = {}
 }
+
+watch(
+  () => showDialog.value,
+  (visible) => {
+    if (!visible) {
+      importingModelsByPlatform.value = {}
+      defaultPricingCache.value = {}
+    }
+  }
+)
 
 async function openCreateDialog() {
   editingChannel.value = null

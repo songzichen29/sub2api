@@ -118,17 +118,6 @@ func (h *PaymentHandler) RetryFulfillment(c *gin.Context) {
 	response.Success(c, gin.H{"message": "fulfillment retried"})
 }
 
-func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {
-	if len(orders) == 0 {
-		return orders
-	}
-	out := make([]*dbent.PaymentOrder, 0, len(orders))
-	for _, order := range orders {
-		out = append(out, sanitizeAdminPaymentOrderForResponse(order))
-	}
-	return out
-}
-
 func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOrder {
 	if order == nil {
 		return nil
