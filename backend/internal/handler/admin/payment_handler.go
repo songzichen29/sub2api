@@ -442,5 +442,10 @@ func (h *PaymentHandler) UpdateConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"message": "updated"})
+	cfg, err := h.configService.GetPaymentConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
 }

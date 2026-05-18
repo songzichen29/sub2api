@@ -173,6 +173,10 @@
                 <p v-if="selectedPlan.description" class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                   {{ selectedPlan.description }}
                 </p>
+                <div v-if="renewalNotice" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                  <p class="font-medium">{{ renewalNoticeTitle }}</p>
+                  <p class="mt-1 leading-relaxed">{{ renewalNotice }}</p>
+                </div>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
                   <div>
@@ -185,15 +189,19 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.daily_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlan.weekly_limit_usd != null">
+                  <div v-if="getPlanOverdraftLimit(selectedPlan) !== null">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.totalQuota') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ getPlanOverdraftLimit(selectedPlan) }}</div>
+                  </div>
+                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.weekly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.weeklyLimit') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.weekly_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlan.monthly_limit_usd != null">
+                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.monthly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
+                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null && getPlanOverdraftLimit(selectedPlan) === null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -287,7 +295,44 @@
             </button>
             <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.selectPlan') }}</h3>
             <div class="space-y-4">
+              <div v-if="renewalModalNotice" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
+                <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
+              </div>
               <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="renewalModeTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="renewalModeTarget = null">
+          <div class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-lg dark:border-dark-700 dark:bg-dark-900">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.renewalMode.title') }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              {{ t('payment.renewalMode.message') }}
+            </p>
+            <div class="mt-4 space-y-3">
+              <button
+                type="button"
+                class="w-full rounded-lg border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                @click="confirmRenewalMode('extend')"
+              >
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
+              </button>
+              <button
+                type="button"
+                class="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                @click="confirmRenewalMode('restart')"
+              >
+                <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
+                <span class="mt-1 block text-xs text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
+              </button>
+            </div>
+            <div class="mt-4 flex justify-end">
+              <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
             </div>
           </div>
         </div>
@@ -340,6 +385,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import { buildRenewalNoticeText, getRenewalModeLabel } from './renewalNotice'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -368,6 +414,7 @@ const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const selectedDailyResetSubscriptionId = ref<number | null>(null)
+const renewalModeTarget = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -377,6 +424,7 @@ interface CreateOrderOptions {
   wechatResumeToken?: string
   paymentType?: string
   subscriptionId?: number
+  renewalMode?: 'extend' | 'restart'
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -479,7 +527,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; subscriptionId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; subscriptionId?: number; renewalMode?: 'extend' | 'restart'; orderAmount: number },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -504,6 +552,11 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.set('subscription_id', String(context.subscriptionId))
     } else {
       redirectUrl.searchParams.delete('subscription_id')
+    }
+    if (context.renewalMode) {
+      redirectUrl.searchParams.set('renewal_mode', context.renewalMode)
+    } else {
+      redirectUrl.searchParams.delete('renewal_mode')
     }
 
     if (context.orderAmount > 0) {
@@ -715,6 +768,93 @@ const canSubmitDailyReset = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
+function findActiveSubscriptionByGroup(groupId: number | null | undefined): UserSubscription | null {
+  if (!groupId) return null
+  return activeSubscriptions.value.find((sub) =>
+    sub.group_id === groupId
+      && (sub.status === 'active' || sub.status === 'quota_exhausted')
+      && (!sub.expires_at || new Date(sub.expires_at).getTime() > Date.now())
+  ) ?? null
+}
+
+function getOverdraftLimit(sub: UserSubscription | null | undefined): number | null {
+  return sub?.allow_daily_overdraft && typeof sub.overdraft_limit_usd === 'number' && sub.overdraft_limit_usd > 0
+    ? sub.overdraft_limit_usd
+    : null
+}
+
+function getOverdraftUsed(sub: UserSubscription | null | undefined): number {
+  return sub?.overdraft_used_usd ?? 0
+}
+
+function getPlanOverdraftLimit(plan: SubscriptionPlan | null | undefined): number | null {
+  if (!plan?.allow_daily_overdraft || plan.daily_limit_usd == null || plan.daily_limit_usd <= 0) {
+    return null
+  }
+  const days = computePlanValidityDays(plan)
+  if (days == null || days <= 0) return null
+  return plan.daily_limit_usd * days
+}
+
+function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
+  const group = sub.group
+  if (!group) return false
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (overdraftLimit !== null) {
+    return getOverdraftUsed(sub) < overdraftLimit
+  }
+  const dailyRemaining = group.daily_limit_usd != null && group.daily_limit_usd > 0
+    ? Math.max(group.daily_limit_usd - (sub.daily_usage_usd || 0), 0)
+    : 0
+  const weeklyRemaining = group.weekly_limit_usd != null && group.weekly_limit_usd > 0
+    ? Math.max(group.weekly_limit_usd - (sub.weekly_usage_usd || 0), 0)
+    : 0
+  const monthlyRemaining = group.monthly_limit_usd != null && group.monthly_limit_usd > 0
+    ? Math.max(group.monthly_limit_usd - (sub.monthly_usage_usd || 0), 0)
+    : 0
+  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
+    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
+    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
+  return hasUnlimitedQuota || dailyRemaining > 0 || weeklyRemaining > 0 || monthlyRemaining > 0
+}
+
+function computePlanValidityDays(plan: SubscriptionPlan | null | undefined): number | null {
+  if (!plan) return null
+  const days = plan.validity_days || 0
+  switch (plan.validity_unit) {
+    case 'week':
+    case 'weeks':
+      return days * 7
+    case 'month':
+    case 'months':
+      return days * 30
+    default:
+      return days
+  }
+}
+
+function buildRenewalNoticeForSubscription(sub: UserSubscription | null): string {
+  if (!sub || !subscriptionHasRemainingQuota(sub)) return ''
+  const renewalDays = selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null
+  return buildRenewalNoticeText(sub, t, renewalDays)
+}
+
+const renewalNoticeTitle = computed(() =>
+  getRenewalModeLabel(selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null, t)
+)
+
+const selectedPlanActiveSubscription = computed(() =>
+  findActiveSubscriptionByGroup(selectedPlan.value?.group_id)
+)
+
+const renewalNotice = computed(() =>
+  buildRenewalNoticeForSubscription(selectedPlanActiveSubscription.value)
+)
+
+const renewalModalNotice = computed(() =>
+  buildRenewalNoticeForSubscription(findActiveSubscriptionByGroup(renewGroupId.value))
+)
+
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
@@ -782,7 +922,29 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+  if (shouldAskRenewalMode(selectedPlan.value)) {
+    renewalModeTarget.value = selectedPlan.value
+    return
+  }
+  await submitSubscriptionOrder(
+    findActiveSubscriptionByGroup(selectedPlan.value.group_id) ? 'extend' : undefined,
+  )
+}
+
+function shouldAskRenewalMode(plan: SubscriptionPlan): boolean {
+  if (!findActiveSubscriptionByGroup(plan.group_id)) return false
+  const renewalDays = computePlanValidityDays(plan)
+  return renewalDays != null && renewalDays > 1
+}
+
+async function submitSubscriptionOrder(renewalMode?: 'extend' | 'restart') {
+  if (!selectedPlan.value || submitting.value) return
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, { renewalMode })
+}
+
+async function confirmRenewalMode(mode: 'extend' | 'restart') {
+  renewalModeTarget.value = null
+  await submitSubscriptionOrder(mode)
 }
 
 async function confirmDailyLimitReset() {
@@ -809,6 +971,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderType,
       planId,
       subscriptionId: options.subscriptionId,
+      renewalMode: options.renewalMode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: requestIsMobile,
       isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
@@ -859,6 +1022,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         orderType,
         planId,
         subscriptionId: options.subscriptionId,
+        renewalMode: options.renewalMode,
         orderAmount,
       })
       return
@@ -897,6 +1061,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderType,
               planId,
               subscriptionId: options.subscriptionId,
+              renewalMode: options.renewalMode,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -916,6 +1081,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderType,
           planId,
           subscriptionId: options.subscriptionId,
+          renewalMode: options.renewalMode,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -946,6 +1112,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderType,
       planId,
       subscriptionId: options.subscriptionId,
+      renewalMode: options.renewalMode,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -974,6 +1141,7 @@ interface MobileQrFallbackContext {
   orderType: OrderType
   planId?: number
   subscriptionId?: number
+  renewalMode?: 'extend' | 'restart'
   paymentType: string
   attempted: boolean
 }
@@ -1024,6 +1192,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       orderType: context.orderType,
       planId: context.planId,
       subscriptionId: context.subscriptionId,
+      renewalMode: context.renewalMode,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1104,6 +1273,7 @@ async function resumeWechatPaymentFromQuery() {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
       subscriptionId: resume.subscriptionId,
+      renewalMode: resume.renewalMode,
       isResume: true,
     })
     return
@@ -1114,6 +1284,7 @@ async function resumeWechatPaymentFromQuery() {
       openid: resume.openid,
       paymentType: resume.paymentType,
       subscriptionId: resume.subscriptionId,
+      renewalMode: resume.renewalMode,
       isResume: true,
     })
   }

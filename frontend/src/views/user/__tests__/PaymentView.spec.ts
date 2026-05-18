@@ -14,6 +14,7 @@ const routerPush = vi.hoisted(() => vi.fn())
 const routerResolve = vi.hoisted(() => vi.fn(() => ({ href: '/payment/stripe?mock=1' })))
 const createOrder = vi.hoisted(() => vi.fn())
 const refreshUser = vi.hoisted(() => vi.fn())
+const activeSubscriptionsState = vi.hoisted(() => [] as any[])
 const fetchActiveSubscriptions = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const showError = vi.hoisted(() => vi.fn())
 const showInfo = vi.hoisted(() => vi.fn())
@@ -62,7 +63,7 @@ vi.mock('@/stores/payment', () => ({
 
 vi.mock('@/stores/subscriptions', () => ({
   useSubscriptionStore: () => ({
-    activeSubscriptions: [],
+    activeSubscriptions: activeSubscriptionsState,
     fetchActiveSubscriptions,
   }),
 }))
@@ -212,6 +213,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     routerResolve.mockClear()
     createOrder.mockReset()
     refreshUser.mockReset()
+    activeSubscriptionsState.splice(0)
     fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
     showError.mockReset()
     showInfo.mockReset()
@@ -478,5 +480,58 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('https://qr.alipay.com/mobile-saveable-qr')
     expect(wrapper.html()).toContain('payment-status-panel-stub')
     expect(wrapper.text()).not.toContain('payment.desktopAlipayTitle')
+  })
+
+  it('does not ask renewal mode for a new multi-day subscription purchase', async () => {
+    routeState.query = {}
+    getCheckoutInfo.mockResolvedValue(checkoutInfoWithPlansFixture())
+    createOrder.mockResolvedValue({
+      order_id: 990,
+      amount: 128,
+      pay_amount: 128,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'wxpay',
+      qr_code: 'weixin://wxpay/bizpayurl?pr=new-subscription',
+      out_trade_no: 'sub2_new_subscription_990',
+    })
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: {
+            template: '<div><slot /></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    const subscriptionTab = wrapper.findAll('button').find(button => button.text().includes('payment.tabSubscribe'))
+    expect(subscriptionTab).toBeTruthy()
+    await subscriptionTab!.trigger('click')
+    await nextTick()
+
+    const planCard = wrapper.findComponent({ name: 'SubscriptionPlanCard' })
+    expect(planCard.exists()).toBe(true)
+    planCard.vm.$emit('select', checkoutInfoWithPlansFixture().data.plans[0])
+    await nextTick()
+
+    const payButton = wrapper.findAll('button').find(button => button.text().includes('payment.createOrder'))
+    expect(payButton).toBeTruthy()
+    await payButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('payment.renewalMode.title')
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      order_type: 'subscription',
+      plan_id: 7,
+    }))
+    expect(createOrder).toHaveBeenCalledWith(expect.not.objectContaining({
+      renewal_mode: expect.any(String),
+    }))
   })
 })

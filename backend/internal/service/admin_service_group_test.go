@@ -1038,14 +1038,13 @@ func TestAdminService_CreateGroup_DailyOverdraftValidation(t *testing.T) {
 	daily := 80.0
 	weekly := 560.0
 
-	t.Run("requires period pool", func(t *testing.T) {
+	t.Run("requires daily limit", func(t *testing.T) {
 		repo := &groupRepoStubForAdmin{}
 		svc := &adminServiceImpl{groupRepo: repo}
 		_, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
 			Name:                "sub-overdraft-invalid",
 			RateMultiplier:      1,
 			SubscriptionType:    SubscriptionTypeSubscription,
-			DailyLimitUSD:       &daily,
 			AllowDailyOverdraft: true,
 		})
 		require.ErrorContains(t, err, "allow_daily_overdraft requires")
@@ -1090,8 +1089,8 @@ func TestAdminService_UpdateGroup_DailyOverdraftValidation(t *testing.T) {
 	weekly := 560.0
 	allow := true
 
-	t.Run("requires period pool", func(t *testing.T) {
-		existingGroup := &Group{ID: 1, Name: "existing", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily}
+	t.Run("requires daily limit", func(t *testing.T) {
+		existingGroup := &Group{ID: 1, Name: "existing", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 1, SubscriptionType: SubscriptionTypeSubscription}
 		repo := &groupRepoStubForAdmin{getByID: existingGroup}
 		svc := &adminServiceImpl{groupRepo: repo}
 		_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{AllowDailyOverdraft: &allow})

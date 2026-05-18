@@ -94,7 +94,6 @@ func TestGroup_GetImagePrice_PartialConfig(t *testing.T) {
 func TestGroup_AllowsDailyOverdraft(t *testing.T) {
 	daily := 80.0
 	weekly := 560.0
-	monthly := 2400.0
 
 	tests := []struct {
 		name  string
@@ -121,30 +120,20 @@ func TestGroup_AllowsDailyOverdraft(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "requires period pool",
+			name: "daily pool allows",
 			group: &Group{
 				SubscriptionType:    SubscriptionTypeSubscription,
 				DailyLimitUSD:       &daily,
-				AllowDailyOverdraft: true,
-			},
-			want: false,
-		},
-		{
-			name: "weekly pool allows",
-			group: &Group{
-				SubscriptionType:    SubscriptionTypeSubscription,
-				DailyLimitUSD:       &daily,
-				WeeklyLimitUSD:      &weekly,
 				AllowDailyOverdraft: true,
 			},
 			want: true,
 		},
 		{
-			name: "monthly pool allows",
+			name: "weekly field does not control overdraft",
 			group: &Group{
 				SubscriptionType:    SubscriptionTypeSubscription,
 				DailyLimitUSD:       &daily,
-				MonthlyLimitUSD:     &monthly,
+				WeeklyLimitUSD:      &weekly,
 				AllowDailyOverdraft: true,
 			},
 			want: true,
@@ -164,14 +153,17 @@ func TestUserSubscription_CheckLimitsWithDailyOverdraft(t *testing.T) {
 	weekly := 560.0
 	strictGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly}
 	overdraftGroup := &Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly, AllowDailyOverdraft: true}
+	now := time.Now()
+	startsAt := now.Add(-time.Hour)
 
-	sub := &UserSubscription{DailyUsageUSD: 80, WeeklyUsageUSD: 120}
+	sub := &UserSubscription{StartsAt: startsAt, ExpiresAt: startsAt.Add(5 * 24 * time.Hour), DailyUsageUSD: 80, WeeklyUsageUSD: 120}
 	require.False(t, sub.CheckDailyLimit(strictGroup, 0))
 	require.False(t, sub.CheckDailyLimit(overdraftGroup, 0))
 	sub.AllowDailyOverdraft = true
 	require.True(t, sub.CheckDailyLimit(overdraftGroup, 0))
 	require.True(t, sub.CheckWeeklyLimit(overdraftGroup, 0))
 
-	sub.WeeklyUsageUSD = 560
-	require.False(t, sub.CheckWeeklyLimit(overdraftGroup, 0))
+	sub.WeeklyUsageUSD = 400
+	require.False(t, sub.CheckDailyLimit(overdraftGroup, 0))
+	require.True(t, sub.CheckWeeklyLimit(overdraftGroup, 0))
 }

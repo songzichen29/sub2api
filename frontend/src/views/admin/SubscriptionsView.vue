@@ -264,29 +264,29 @@
                 </div>
               </div>
 
-              <!-- Weekly Usage -->
-              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
+              <!-- Overdraft / total pool usage -->
+              <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
-                  <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
+                  <span class="usage-label">{{ t('admin.subscriptions.overdraftTotal') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
+                    :class="getProgressClass((row.overdraft_used_usd ?? 0) || 0, row.overdraft_limit_usd)"
                       :style="{
-                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
+                        width: getProgressWidth((row.overdraft_used_usd ?? 0) || 0, row.overdraft_limit_usd)
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
-                    ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
+                    ${{ ((row.overdraft_used_usd ?? 0) || 0).toFixed(2) }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
+                    ${{ row.overdraft_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
-                <div class="reset-info" v-if="row.weekly_window_start">
-                  <svg
-                    class="h-3 w-3"
-                    fill="none"
+              <div class="reset-info" v-if="row.expires_at">
+                <svg
+                  class="h-3 w-3"
+                  fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     stroke-width="2"
@@ -296,54 +296,40 @@
                       stroke-linejoin="round"
                       d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
-                  </svg>
-                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
-                </div>
+                </svg>
+                <span>{{ formatResetTime(row.expires_at, 'daily') }}</span>
               </div>
-
-              <!-- Monthly Usage -->
-              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
-                <div class="flex items-center gap-2">
-                  <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
-                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
-                    <div
-                      class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
-                      :style="{
-                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
-                      }"
-                    ></div>
-                  </div>
-                  <span class="usage-amount">
-                    ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
-                    <span class="text-gray-400">/</span>
-                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
-                  </span>
-                </div>
-                <div class="reset-info" v-if="row.monthly_window_start">
-                  <svg
-                    class="h-3 w-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
-                </div>
+              <div v-if="row.allow_daily_overdraft && (row.overdraft_days ?? 0) > 0" class="reset-info">
+                <svg
+                  class="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <span>
+                  {{
+                    t('admin.subscriptions.overdraftDays', {
+                      days: row.overdraft_days ?? 0,
+                    })
+                  }}
+                </span>
               </div>
+            </div>
 
               <!-- No Limits - Unlimited badge -->
               <div
                 v-if="
                   !row.group?.daily_limit_usd &&
                   !row.group?.weekly_limit_usd &&
-                  !row.group?.monthly_limit_usd
+                  !row.group?.monthly_limit_usd &&
+                  !row.allow_daily_overdraft
                 "
                 class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
@@ -1599,6 +1585,7 @@ const resetSelection = reactive({ daily: false, weekly: false, monthly: false })
 const isPaidSubscription = (sub: UserSubscription): boolean => sub.source === 'payment'
 
 const hasConfiguredLimit = (sub: UserSubscription, key: ResetWindowKey): boolean => {
+  if (sub.allow_daily_overdraft) return key === 'daily'
   const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
   return typeof limit === 'number' && limit > 0
 }
@@ -1608,8 +1595,9 @@ const hasAnyConfiguredWindow = (sub: UserSubscription): boolean =>
   hasConfiguredLimit(sub, 'weekly') ||
   hasConfiguredLimit(sub, 'monthly')
 
-// 上限档 = 已配置的最长窗口（monthly > weekly > daily），与后端 validateResetTargets 一致
+// 上限档 = 透支模式下只允许 daily；普通模式下按已配置的最长窗口（monthly > weekly > daily）
 const upperBoundWindow = (sub: UserSubscription): ResetWindowKey | null => {
+  if (sub.allow_daily_overdraft) return 'daily'
   if (hasConfiguredLimit(sub, 'monthly')) return 'monthly'
   if (hasConfiguredLimit(sub, 'weekly')) return 'weekly'
   if (hasConfiguredLimit(sub, 'daily')) return 'daily'
@@ -1623,6 +1611,11 @@ const isResetWindowEnabled = (sub: UserSubscription, key: ResetWindowKey): boole
 }
 
 const formatUsageText = (sub: UserSubscription, key: ResetWindowKey): string => {
+  if (sub.allow_daily_overdraft) {
+    const limit = sub.overdraft_limit_usd
+    const used = sub.overdraft_used_usd ?? 0
+    return typeof limit === 'number' ? `$${used.toFixed(2)} / $${limit.toFixed(2)}` : ''
+  }
   const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
   if (typeof limit !== 'number') return ''
   const used = sub[`${key}_usage_usd` as 'daily_usage_usd' | 'weekly_usage_usd' | 'monthly_usage_usd'] ?? 0

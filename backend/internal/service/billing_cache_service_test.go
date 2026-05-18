@@ -114,11 +114,12 @@ func (b *billingCacheSubscriptionStub) GetSubscriptionCache(ctx context.Context,
 
 func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPeriodPool(t *testing.T) {
 	daily := 80.0
-	weekly := 560.0
 	now := time.Now()
+	startsAt := now.Add(-time.Hour)
 	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
 		Status:              SubscriptionStatusActive,
-		ExpiresAt:           now.Add(24 * time.Hour),
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
 		DailyUsage:          80,
 		WeeklyUsage:         120,
 		AllowDailyOverdraft: true,
@@ -126,15 +127,36 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPerio
 	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
 	t.Cleanup(svc.Stop)
 
-	strictGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly}
+	strictGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily}
 	err := svc.checkSubscriptionEligibility(context.Background(), 1, strictGroup, nil)
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 
-	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, WeeklyLimitUSD: &weekly, AllowDailyOverdraft: true}
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
 	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
 	require.NoError(t, err)
 
-	cache.data.WeeklyUsage = weekly
+	cache.data.WeeklyUsage = 400
 	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
-	require.ErrorIs(t, err, ErrWeeklyLimitExceeded)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPassedSubscriptionStartForOldCache(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:              SubscriptionStatusActive,
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+		DailyUsage:          80,
+		WeeklyUsage:         120,
+		AllowDailyOverdraft: true,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	subscription := &UserSubscription{StartsAt: startsAt, ExpiresAt: startsAt.Add(5 * 24 * time.Hour), AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, subscription)
+	require.NoError(t, err)
 }

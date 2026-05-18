@@ -273,6 +273,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 
 	switch action {
 	case redeemActionSkipCompleted:
+		if err := s.applyPaidUserRateForBalanceOrder(ctx, o); err != nil {
+			return err
+		}
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 			return err
 		}
@@ -290,11 +293,49 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if _, err := s.redeemService.Redeem(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
+	if err := s.applyPaidUserRateForBalanceOrder(ctx, o); err != nil {
+		return err
+	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
 	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) applyPaidUserRateForBalanceOrder(ctx context.Context, o *dbent.PaymentOrder) error {
+	if s == nil || o == nil || o.OrderType != payment.OrderTypeBalance || s.userGroupRateRepo == nil || s.configService == nil {
+		return nil
+	}
+	cfg, err := s.configService.GetPaymentConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("get payment config for paid user rate: %w", err)
+	}
+	if cfg == nil || len(cfg.PaidUserRateRules) == 0 {
+		return nil
+	}
+	rates := paidUserRateRulesToRateMap(cfg.PaidUserRateRules)
+	auditRules := make([]map[string]any, 0, len(cfg.PaidUserRateRules))
+	for _, rule := range cfg.PaidUserRateRules {
+		if rule.GroupID <= 0 || rule.RateMultiplier <= 0 {
+			continue
+		}
+		auditRules = append(auditRules, map[string]any{
+			"groupID":        rule.GroupID,
+			"rateMultiplier": rule.RateMultiplier,
+		})
+	}
+	if len(rates) == 0 {
+		return nil
+	}
+	if err := s.userGroupRateRepo.SyncUserGroupRates(ctx, o.UserID, rates); err != nil {
+		return fmt.Errorf("sync paid user group rate: %w", err)
+	}
+	s.writeAuditLog(ctx, o.ID, "PAID_USER_RATE_APPLIED", "system", map[string]any{
+		"userID": o.UserID,
+		"rules":  auditRules,
+	})
+	return nil
 }
 
 func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) error {
@@ -357,12 +398,13 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
 	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
-		UserID:       o.UserID,
-		GroupID:      gid,
-		ValidityDays: days,
-		AssignedBy:   0,
-		Notes:        orderNote,
-		Source:       domain.SubscriptionSourcePayment,
+		UserID:        o.UserID,
+		GroupID:       gid,
+		ValidityDays:  days,
+		AssignedBy:    0,
+		Notes:         orderNote,
+		RestartPeriod: days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,
+		Source:        domain.SubscriptionSourcePayment,
 	})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)
@@ -377,6 +419,33 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	}
 	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
+}
+
+const (
+	SubscriptionRenewalModeExtend  = "extend"
+	SubscriptionRenewalModeRestart = "restart"
+)
+
+func normalizeSubscriptionRenewalMode(mode string) string {
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case SubscriptionRenewalModeExtend:
+		return SubscriptionRenewalModeExtend
+	case SubscriptionRenewalModeRestart:
+		return SubscriptionRenewalModeRestart
+	default:
+		return ""
+	}
+}
+
+func paymentOrderSubscriptionRenewalMode(o *dbent.PaymentOrder) string {
+	if o == nil || o.ProviderSnapshot == nil {
+		return ""
+	}
+	value, ok := o.ProviderSnapshot["subscription_renewal_mode"].(string)
+	if !ok {
+		return ""
+	}
+	return normalizeSubscriptionRenewalMode(value)
 }
 
 func (s *PaymentService) ExecuteDailyLimitResetFulfillment(ctx context.Context, oid int64) error {

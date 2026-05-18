@@ -1491,6 +1491,9 @@ export interface UserSubscription {
   weekly_usage_usd: number
   monthly_usage_usd: number
   allow_daily_overdraft: boolean
+  overdraft_limit_usd?: number
+  overdraft_used_usd?: number
+  overdraft_days?: number
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
@@ -1499,6 +1502,8 @@ export interface UserSubscription {
   expires_at: string | null
   /** 订阅来源：admin（管理员分配）/ redeem（兑换码）/ payment（付费购买，不可重置）。 */
   source?: 'admin' | 'redeem' | 'payment'
+  /** 订阅来源为 payment 时，表示该订阅购买时对应的原始有效期天数。 */
+  validity_days?: number | null
   /** 最近使用时间：服务端从 usage_logs 聚合 MAX(created_at) 填入；从未使用过的订阅返回 null。 */
   last_used_at?: string | null
   user?: User

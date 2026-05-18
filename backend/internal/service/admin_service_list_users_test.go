@@ -96,6 +96,9 @@ func (s *userGroupRateRepoStubForListUsers) GetRPMOverrideByUserAndGroup(_ conte
 func (s *userGroupRateRepoStubForListUsers) SyncUserGroupRates(_ context.Context, userID int64, rates map[int64]*float64) error {
 	panic("unexpected SyncUserGroupRates call")
 }
+func (s *userGroupRateRepoStubForListUsers) UpsertUserGroupRates(context.Context, []BatchUserGroupRateInput) error {
+	panic("unexpected UpsertUserGroupRates call")
+}
 
 func (s *userGroupRateRepoStubForListUsers) GetByGroupID(_ context.Context, _ int64) ([]UserGroupRateEntry, error) {
 	panic("unexpected GetByGroupID call")

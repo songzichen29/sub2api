@@ -51,6 +51,9 @@ func (s *userGroupRateRepoStubForGroupRate) GetByGroupID(_ context.Context, grou
 func (s *userGroupRateRepoStubForGroupRate) SyncUserGroupRates(_ context.Context, _ int64, _ map[int64]*float64) error {
 	panic("unexpected SyncUserGroupRates call")
 }
+func (s *userGroupRateRepoStubForGroupRate) UpsertUserGroupRates(context.Context, []BatchUserGroupRateInput) error {
+	panic("unexpected UpsertUserGroupRates call")
+}
 
 func (s *userGroupRateRepoStubForGroupRate) SyncGroupRateMultipliers(_ context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
 	s.syncedGroupID = groupID

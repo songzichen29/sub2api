@@ -12,6 +12,7 @@ import type {
   ProviderInstance
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
+import type { PaymentPaidUserRateBackfillStatus } from './settings'
 
 /** Admin-facing payment config returned by GET /admin/payment/config */
 export interface AdminPaymentConfig {
@@ -24,6 +25,9 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  paid_user_rate_enabled: boolean
+  paid_user_rate_rules: Array<{ group_id: number; rate_multiplier: number; assigned_users?: number }>
+  paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
@@ -42,6 +46,8 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
+  paid_user_rate_enabled?: boolean
+  paid_user_rate_rules?: Array<{ group_id: number; rate_multiplier: number }>
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
@@ -59,7 +65,7 @@ export const adminPaymentAPI = {
 
   /** Update payment configuration */
   updateConfig(data: UpdatePaymentConfigRequest) {
-    return apiClient.put('/admin/payment/config', data)
+    return apiClient.put<AdminPaymentConfig>('/admin/payment/config', data)
   },
 
   // ==================== Dashboard ====================

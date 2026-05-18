@@ -97,16 +97,15 @@ func (g *Group) HasMonthlyLimit() bool {
 	return g.MonthlyLimitUSD != nil && *g.MonthlyLimitUSD > 0
 }
 
-// AllowsDailyOverdraft reports whether daily usage may exceed the daily limit
-// and continue consuming the configured period pool. It deliberately requires
-// at least one longer-window limit so a misconfigured group cannot become
-// unlimited just because daily overdraft was enabled.
+// AllowsDailyOverdraft reports whether daily usage may exceed the current
+// 24-hour card. Overdraft consumes the subscription-period pool derived from
+// daily_limit_usd × subscription validity days; weekly_usage_usd stores that
+// period-level cumulative usage for backward-compatible persistence.
 func (g *Group) AllowsDailyOverdraft() bool {
 	return g != nil &&
 		g.AllowDailyOverdraft &&
 		g.IsSubscriptionType() &&
-		g.HasDailyLimit() &&
-		(g.HasWeeklyLimit() || g.HasMonthlyLimit())
+		g.HasDailyLimit()
 }
 
 func (g *Group) ShouldEnforceDailyLimit() bool {

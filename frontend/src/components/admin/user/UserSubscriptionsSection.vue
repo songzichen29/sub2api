@@ -131,31 +131,39 @@
             </div>
           </div>
 
-          <!-- Weekly -->
-          <div v-if="sub.group?.weekly_limit_usd" class="usage-row">
+          <!-- Overdraft total pool / Weekly -->
+          <div v-if="getOverdraftLimit(sub) || sub.group?.weekly_limit_usd" class="usage-row">
             <div class="flex items-center gap-2">
-              <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
+              <span class="usage-label">
+                {{ getOverdraftLimit(sub) ? t('admin.subscriptions.overdraftTotal') : t('admin.subscriptions.weekly') }}
+              </span>
               <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
                   class="h-1.5 rounded-full transition-all"
-                  :class="getProgressClass(sub.weekly_usage_usd, sub.group.weekly_limit_usd)"
-                  :style="{ width: getProgressWidth(sub.weekly_usage_usd, sub.group.weekly_limit_usd) }"
+                  :class="getProgressClass(getOverdraftUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null)"
+                  :style="{ width: getProgressWidth(getOverdraftUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null) }"
                 ></div>
               </div>
               <span class="usage-amount">
-                ${{ (sub.weekly_usage_usd ?? 0).toFixed(2) }}
+                ${{ ((getOverdraftUsed(sub) ?? sub.weekly_usage_usd) || 0).toFixed(2) }}
                 <span class="text-gray-400">/</span>
-                ${{ sub.group.weekly_limit_usd.toFixed(2) }}
+                ${{ (getOverdraftLimit(sub) || sub.group!.weekly_limit_usd!).toFixed(2) }}
               </span>
             </div>
-            <div v-if="sub.weekly_window_start" class="reset-info">
+            <div v-if="!getOverdraftLimit(sub) && sub.weekly_window_start" class="reset-info">
               <Icon name="clock" size="xs" />
               <span>{{ formatResetTime(sub.weekly_window_start, 'weekly') }}</span>
+            </div>
+            <div v-if="getOverdraftUsedDays(sub) > 0" class="reset-info">
+              <Icon name="calendar" size="xs" />
+              <span>
+                {{ t('admin.subscriptions.overdraftDays', { days: getOverdraftUsedDays(sub) }) }}
+              </span>
             </div>
           </div>
 
           <!-- Monthly -->
-          <div v-if="sub.group?.monthly_limit_usd" class="usage-row">
+          <div v-if="!getOverdraftLimit(sub) && sub.group?.monthly_limit_usd" class="usage-row">
             <div class="flex items-center gap-2">
               <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
               <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
@@ -182,7 +190,8 @@
             v-if="
               !sub.group?.daily_limit_usd &&
               !sub.group?.weekly_limit_usd &&
-              !sub.group?.monthly_limit_usd
+              !sub.group?.monthly_limit_usd &&
+              !getOverdraftLimit(sub)
             "
             class="flex items-center gap-2 rounded-md bg-gradient-to-r from-emerald-50 to-teal-50 px-2 py-1.5 dark:from-emerald-900/20 dark:to-teal-900/20"
           >
@@ -319,6 +328,26 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+const getOverdraftLimit = (sub: UserSubscription): number | null => {
+  return sub.allow_daily_overdraft
+    && typeof sub.overdraft_limit_usd === 'number'
+    && sub.overdraft_limit_usd > 0
+    ? sub.overdraft_limit_usd
+    : null
+}
+
+const getOverdraftUsed = (sub: UserSubscription): number | null => {
+  return getOverdraftLimit(sub) !== null
+    ? sub.overdraft_used_usd ?? 0
+    : null
+}
+
+const getOverdraftUsedDays = (sub: UserSubscription): number => {
+  return getOverdraftLimit(sub) !== null
+    ? sub.overdraft_days ?? 0
+    : 0
 }
 
 const formatResetTime = (

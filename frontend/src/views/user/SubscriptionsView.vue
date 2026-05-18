@@ -69,7 +69,7 @@
               <button
                 v-if="subscription.status === 'active' || subscription.status === 'quota_exhausted'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })"
+                @click="startRenewal(subscription)"
               >
                 {{ t('payment.renewNow') }}
               </button>
@@ -168,14 +168,14 @@
             </div>
 
             <!-- Weekly Usage -->
-            <div v-if="subscription.group?.weekly_limit_usd" class="space-y-2">
+            <div v-if="getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.weekly') }}
+                  {{ getOverdraftLimit(subscription) ? t('userSubscriptions.overdraftTotal') : t('userSubscriptions.weekly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.weekly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.weekly_limit_usd.toFixed(2)
+                  ${{ ((getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd) || 0).toFixed(2) }} / ${{
+                    (getOverdraftLimit(subscription) || subscription.group!.weekly_limit_usd!).toFixed(2)
                   }}
                 </span>
               </div>
@@ -184,14 +184,14 @@
                   class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
                   :class="
                     getProgressBarClass(
-                      subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                      getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                     )
                   "
                   :style="{
                     width: getProgressWidth(
-                      subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                      getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                     )
                   }"
                 ></div>
@@ -206,10 +206,29 @@
                   })
                 }}
               </p>
+              <div v-if="getOverdraftLimit(subscription)" class="grid gap-2 rounded-lg bg-gray-50 p-2 text-xs dark:bg-dark-700/50 sm:grid-cols-2">
+                <div class="flex items-center justify-between gap-2 text-gray-600 dark:text-dark-300">
+                  <span>{{ t('userSubscriptions.todayOverdraft') }}</span>
+                  <span class="font-medium text-gray-800 dark:text-gray-100">${{ getTodayOverdraftAmount(subscription).toFixed(2) }}</span>
+                </div>
+                <div class="flex items-center justify-between gap-2 text-gray-600 dark:text-dark-300">
+                  <span>{{ t('userSubscriptions.overdraftRemaining') }}</span>
+                  <span class="font-medium text-gray-800 dark:text-gray-100">${{ getOverdraftRemaining(subscription).toFixed(2) }}</span>
+                </div>
+                <div
+                  v-if="getBorrowedFutureQuota(subscription) > 0.005"
+                  class="flex items-center justify-between gap-2 text-gray-600 dark:text-dark-300 sm:col-span-2"
+                >
+                  <span>{{ t('userSubscriptions.borrowedFutureQuota') }}</span>
+                  <span class="font-medium text-amber-700 dark:text-amber-300">
+                    ${{ getBorrowedFutureQuota(subscription).toFixed(2) }}
+                  </span>
+                </div>
+              </div>
             </div>
 
             <!-- Monthly Usage -->
-            <div v-if="subscription.group?.monthly_limit_usd" class="space-y-2">
+            <div v-if="!getOverdraftLimit(subscription) && subscription.group?.monthly_limit_usd" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.monthly') }}
@@ -254,7 +273,8 @@
               v-if="
                 !subscription.group?.daily_limit_usd &&
                 !subscription.group?.weekly_limit_usd &&
-                !subscription.group?.monthly_limit_usd
+                !subscription.group?.monthly_limit_usd &&
+                !getOverdraftLimit(subscription)
               "
               class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
             >
@@ -274,6 +294,15 @@
         </div>
       </div>
     </div>
+    <ConfirmDialog
+      :show="!!renewalTarget"
+      :title="t('payment.renewalNoticeTitle')"
+      :message="renewalTarget ? buildRenewalNotice(renewalTarget) : ''"
+      :confirm-text="t('payment.continueRenewal')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmRenewal"
+      @cancel="renewalTarget = null"
+    />
   </AppLayout>
 </template>
 
@@ -285,9 +314,11 @@ import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly, formatRemainingDuration } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
+import { buildRenewalNoticeText } from './renewalNotice'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -306,6 +337,7 @@ const appStore = useAppStore()
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
 const overdraftUpdatingId = ref<number | null>(null)
+const renewalTarget = ref<UserSubscription | null>(null)
 
 async function loadSubscriptions() {
   try {
@@ -333,13 +365,52 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   return 'bg-green-500'
 }
 
+function getOverdraftLimit(subscription: UserSubscription): number | null {
+  return subscription.allow_daily_overdraft
+    && typeof subscription.overdraft_limit_usd === 'number'
+    && subscription.overdraft_limit_usd > 0
+    ? subscription.overdraft_limit_usd
+    : null
+}
+
+function getOverdraftUsed(subscription: UserSubscription): number | null {
+  return getOverdraftLimit(subscription) !== null
+    ? subscription.overdraft_used_usd ?? 0
+    : null
+}
+
+function getTodayOverdraftAmount(subscription: UserSubscription): number {
+  const dailyLimit = subscription.group?.daily_limit_usd
+  if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(subscription) === null) return 0
+  return Math.max((subscription.daily_usage_usd || 0) - dailyLimit, 0)
+}
+
+function getBorrowedFutureQuota(subscription: UserSubscription): number {
+  const dailyLimit = subscription.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(subscription)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
+  const startsAt = subscription.starts_at ? new Date(subscription.starts_at).getTime() : NaN
+  if (!Number.isFinite(startsAt)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(1, Math.ceil((Date.now() - startsAt) / dayMs))
+  const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
+  const arrivedQuota = dailyLimit * Math.min(elapsedDays, validityDays)
+  return Math.max((getOverdraftUsed(subscription) ?? 0) - arrivedQuota, 0)
+}
+
+function getOverdraftRemaining(subscription: UserSubscription): number {
+  const limit = getOverdraftLimit(subscription)
+  if (limit === null) return 0
+  return Math.max(limit - (getOverdraftUsed(subscription) ?? 0), 0)
+}
 
 function canConfigureDailyOverdraft(subscription: UserSubscription): boolean {
   return subscription.status === 'active'
     && !!subscription.group?.allow_daily_overdraft
     && !!subscription.group?.daily_limit_usd
     && subscription.group.daily_limit_usd > 0
-    && (!!subscription.group?.weekly_limit_usd || !!subscription.group?.monthly_limit_usd)
 }
 
 async function toggleDailyOverdraft(subscription: UserSubscription, enabled: boolean) {
@@ -380,6 +451,51 @@ function resetDailyLimit(subscription: UserSubscription) {
       subscription_id: String(subscription.id),
     },
   })
+}
+
+function getQuotaRemaining(subscription: UserSubscription, key: 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd', used: number): number | null {
+  const limit = subscription.group?.[key]
+  if (limit == null || limit <= 0) return null
+  return Math.max(limit - (used || 0), 0)
+}
+
+function subscriptionHasRenewalWarning(subscription: UserSubscription): boolean {
+  const group = subscription.group
+  if (!group) return true
+  const overdraftLimit = getOverdraftLimit(subscription)
+  if (overdraftLimit !== null) {
+    return (overdraftLimit - (getOverdraftUsed(subscription) ?? 0)) > 0
+  }
+  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
+    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
+    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
+  if (hasUnlimitedQuota) return true
+  return (getQuotaRemaining(subscription, 'daily_limit_usd', subscription.daily_usage_usd) ?? 0) > 0
+    || (getQuotaRemaining(subscription, 'weekly_limit_usd', subscription.weekly_usage_usd) ?? 0) > 0
+    || (getQuotaRemaining(subscription, 'monthly_limit_usd', subscription.monthly_usage_usd) ?? 0) > 0
+}
+
+function buildRenewalNotice(subscription: UserSubscription): string {
+  return buildRenewalNoticeText(subscription, t, subscription.validity_days ?? null)
+}
+
+function goRenewal(subscription: UserSubscription) {
+  router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })
+}
+
+function startRenewal(subscription: UserSubscription) {
+  if (!subscriptionHasRenewalWarning(subscription)) {
+    goRenewal(subscription)
+    return
+  }
+  renewalTarget.value = subscription
+}
+
+function confirmRenewal() {
+  if (!renewalTarget.value) return
+  const target = renewalTarget.value
+  renewalTarget.value = null
+  goRenewal(target)
 }
 
 function formatExpirationDate(expiresAt: string): string {

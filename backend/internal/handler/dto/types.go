@@ -513,9 +513,14 @@ type UserSubscription struct {
 	WeeklyUsageUSD      float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD     float64 `json:"monthly_usage_usd"`
 	AllowDailyOverdraft bool    `json:"allow_daily_overdraft"`
+	OverdraftLimitUSD   float64 `json:"overdraft_limit_usd,omitempty"`
+	OverdraftUsedUSD    float64 `json:"overdraft_used_usd,omitempty"`
+	OverdraftDays       int     `json:"overdraft_days,omitempty"`
 
 	// Source 标识订阅来源（admin/redeem/payment），前端据此决定能否重置配额。
 	Source string `json:"source"`
+	// 订阅来源对应的原始卡型有效期天数；支付生成的订阅会携带，普通历史订阅可能为空。
+	ValidityDays *int `json:"validity_days,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

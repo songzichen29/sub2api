@@ -339,13 +339,181 @@ func TestAssignOrExtendSubscription_PaidRenewalResetsDailyUsage(t *testing.T) {
 	require.WithinDuration(t, after.Add(24*time.Hour), *sub.DailyResetTime(), 3*time.Second)
 }
 
-func TestSubscriptionService_ValidateAndCheckLimits_DailyOverdraftUsesPeriodPool(t *testing.T) {
+func TestAssignOrExtendSubscription_MultiDayPaidRenewalKeepsDailyUsage(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-paid-renew-keep-daily@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-paid-renew-keep-daily-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	group, err := client.Group.Create().
+		SetName("sub-paid-renew-keep-daily-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-2 * time.Hour)
+	expiresAt := time.Now().Add(22 * time.Hour)
+	dailyStart := startsAt
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:           user.ID,
+		GroupID:          group.ID,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		Status:           SubscriptionStatusActive,
+		DailyWindowStart: &dailyStart,
+		DailyUsageUSD:    61.96,
+		Source:           "payment",
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:               group.ID,
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &dailyLimit,
+		},
+	}, repo, nil, client, nil)
+
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 5,
+		Notes:        "renew-note",
+		Source:       "payment",
+	})
+
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub)
+	require.Equal(t, 61.96, sub.DailyUsageUSD)
+	require.NotNil(t, sub.DailyWindowStart)
+	require.Equal(t, dailyStart.Unix(), sub.DailyWindowStart.Unix())
+	require.WithinDuration(t, expiresAt.AddDate(0, 0, 5), sub.ExpiresAt, time.Second)
+}
+
+func TestAssignOrExtendSubscription_MultiDayPaidRestartResetsPeriod(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-paid-restart-period@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-paid-restart-period-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	weeklyLimit := 560.0
+	group, err := client.Group.Create().
+		SetName("sub-paid-restart-period-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetWeeklyLimitUsd(weeklyLimit).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-6 * 24 * time.Hour)
+	expiresAt := time.Now().Add(3 * time.Hour)
+	dailyStart := time.Now().Add(-21 * time.Hour)
+	weeklyStart := startsAt
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:            user.ID,
+		GroupID:           group.ID,
+		StartsAt:          startsAt,
+		ExpiresAt:         expiresAt,
+		Status:            SubscriptionStatusActive,
+		DailyWindowStart:  &dailyStart,
+		WeeklyWindowStart: &weeklyStart,
+		DailyUsageUSD:     dailyLimit,
+		WeeklyUsageUSD:    weeklyLimit,
+		Source:            "payment",
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:               group.ID,
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &dailyLimit,
+			WeeklyLimitUSD:   &weeklyLimit,
+		},
+	}, repo, nil, client, nil)
+
+	before := time.Now()
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:        user.ID,
+		GroupID:       group.ID,
+		ValidityDays:  7,
+		Notes:         "restart-note",
+		Source:        "payment",
+		RestartPeriod: true,
+	})
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub)
+	require.WithinDuration(t, before, sub.StartsAt, 3*time.Second)
+	require.True(t, !sub.ExpiresAt.Before(before.AddDate(0, 0, 7)))
+	require.True(t, !sub.ExpiresAt.After(after.AddDate(0, 0, 7).Add(3*time.Second)))
+	require.Nil(t, sub.DailyWindowStart)
+	require.Nil(t, sub.WeeklyWindowStart)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.Equal(t, 0.0, sub.WeeklyUsageUSD)
+}
+
+func TestCanRestartSubscriptionPeriod_UsesPlanUnitLimit(t *testing.T) {
+	now := time.Now()
+	daily := 80.0
+	weekly := 560.0
+	monthly := 2400.0
+	sub := &UserSubscription{
+		StartsAt:        now.Add(-29 * 24 * time.Hour),
+		ExpiresAt:       now.Add(2 * time.Hour),
+		Status:          SubscriptionStatusActive,
+		DailyUsageUSD:   daily,
+		WeeklyUsageUSD:  weekly - 1,
+		MonthlyUsageUSD: monthly - 1,
+	}
+	group := &Group{
+		SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD:    &daily,
+		WeeklyLimitUSD:   &weekly,
+		MonthlyLimitUSD:  &monthly,
+	}
+
+	require.True(t, canRestartSubscriptionPeriod(now, sub, group, "days"), "day-unit cards may restart when a configured limit is exhausted")
+	require.False(t, canRestartSubscriptionPeriod(now, sub, group, "weeks"), "week cards require weekly limit exhaustion")
+	require.False(t, canRestartSubscriptionPeriod(now, sub, group, "months"), "month cards require monthly limit exhaustion")
+
+	sub.WeeklyUsageUSD = weekly
+	require.True(t, canRestartSubscriptionPeriod(now, sub, group, "weeks"))
+
+	sub.MonthlyUsageUSD = monthly
+	require.True(t, canRestartSubscriptionPeriod(now, sub, group, "months"))
+}
+
+func TestSubscriptionService_ValidateAndCheckLimits_DailyOverdraftUsesValidityDays(t *testing.T) {
 	daily := 80.0
 	weekly := 560.0
 	now := time.Now()
+	startsAt := now.Add(-time.Hour)
 	sub := &UserSubscription{
-		StartsAt:            now.Add(-time.Hour),
-		ExpiresAt:           now.Add(24 * time.Hour),
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
 		Status:              SubscriptionStatusActive,
 		DailyUsageUSD:       80,
 		WeeklyUsageUSD:      120,
@@ -361,7 +529,7 @@ func TestSubscriptionService_ValidateAndCheckLimits_DailyOverdraftUsesPeriodPool
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, overdraftGroup)
 	require.NoError(t, err)
 
-	sub.WeeklyUsageUSD = weekly
+	sub.WeeklyUsageUSD = 400
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, overdraftGroup)
-	require.ErrorIs(t, err, ErrWeeklyLimitExceeded)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }

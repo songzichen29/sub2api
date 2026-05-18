@@ -215,7 +215,7 @@ type CreateGroupInput struct {
 	DailyLimitResetPrice *float64 // 用户自助重置日额度价格 (CNY)
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
-	AllowDailyOverdraft  bool     // allow daily quota overdraft into weekly/monthly pool
+	AllowDailyOverdraft  bool     // allow daily quota overdraft into subscription validity-day pool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -257,7 +257,7 @@ type UpdateGroupInput struct {
 	DailyLimitResetPrice *float64 // 用户自助重置日额度价格 (CNY)
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
-	AllowDailyOverdraft  *bool    // allow daily quota overdraft into weekly/monthly pool
+	AllowDailyOverdraft  *bool    // allow daily quota overdraft into subscription validity-day pool
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -887,7 +887,10 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	if user.Balance < 0 {
-		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance)
+		return nil, infraerrors.BadRequest(
+			"BALANCE_NEGATIVE",
+			fmt.Sprintf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance),
+		)
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
@@ -1615,8 +1618,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		dailyLimitResetPrice = nil
 		allowDailyOverdraft = false
 	}
-	if allowDailyOverdraft && (dailyLimit == nil || (weeklyLimit == nil && monthlyLimit == nil)) {
-		return nil, errors.New("allow_daily_overdraft requires a daily limit and at least one weekly or monthly limit")
+	if allowDailyOverdraft && dailyLimit == nil {
+		return nil, errors.New("allow_daily_overdraft requires a daily limit")
 	}
 
 	// 图片价格：负数表示清除（使用默认价格），0 保留（表示免费）
@@ -1893,8 +1896,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.DailyLimitResetPrice = nil
 		group.AllowDailyOverdraft = false
 	}
-	if group.AllowDailyOverdraft && (group.DailyLimitUSD == nil || (group.WeeklyLimitUSD == nil && group.MonthlyLimitUSD == nil)) {
-		return nil, errors.New("allow_daily_overdraft requires a daily limit and at least one weekly or monthly limit")
+	if group.AllowDailyOverdraft && group.DailyLimitUSD == nil {
+		return nil, errors.New("allow_daily_overdraft requires a daily limit")
 	}
 	// 图片生成计费配置：负数表示清除（使用默认价格）
 	if input.AllowImageGeneration != nil {

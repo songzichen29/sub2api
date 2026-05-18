@@ -14,6 +14,21 @@ export interface DefaultSubscriptionSetting {
   mode?: "days" | "range";
 }
 
+export interface PaymentPaidUserRateRule {
+  group_id: number;
+  rate_multiplier: number;
+  assigned_users?: number;
+}
+
+export interface PaymentPaidUserRateBackfillStatus {
+  total_paid_users: number;
+  assigned_users: number;
+  rule_count: number;
+  status: string;
+  error?: string;
+  updated_at?: string;
+}
+
 export interface AccountImportApplyTemplate {
   id: string
   name: string
@@ -513,6 +528,9 @@ export interface SystemSettings {
   payment_enabled_types: string[];
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
+  payment_paid_user_rate_enabled: boolean;
+  payment_paid_user_rate_rules: PaymentPaidUserRateRule[];
+  payment_paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus;
   payment_recharge_fee_rate: number;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
@@ -687,6 +705,8 @@ export interface UpdateSettingsRequest {
   payment_enabled_types?: string[];
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
+  payment_paid_user_rate_enabled?: boolean;
+  payment_paid_user_rate_rules?: PaymentPaidUserRateRule[];
   payment_recharge_fee_rate?: number;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;

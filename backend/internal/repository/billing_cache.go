@@ -50,6 +50,7 @@ func billingSubKey(userID, groupID int64) string {
 
 const (
 	subFieldStatus              = "status"
+	subFieldStartsAt            = "starts_at"
 	subFieldExpiresAt           = "expires_at"
 	subFieldDailyUsage          = "daily_usage"
 	subFieldWeeklyUsage         = "weekly_usage"
@@ -200,6 +201,13 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		}
 	}
 
+	if startsStr, ok := data[subFieldStartsAt]; ok {
+		startsAt, err := strconv.ParseInt(startsStr, 10, 64)
+		if err == nil {
+			result.StartsAt = time.Unix(startsAt, 0)
+		}
+	}
+
 	if dailyStr, ok := data[subFieldDailyUsage]; ok {
 		result.DailyUsage, _ = strconv.ParseFloat(dailyStr, 64)
 	}
@@ -232,6 +240,7 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 
 	fields := map[string]any{
 		subFieldStatus:              data.Status,
+		subFieldStartsAt:            data.StartsAt.Unix(),
 		subFieldExpiresAt:           data.ExpiresAt.Unix(),
 		subFieldDailyUsage:          data.DailyUsage,
 		subFieldWeeklyUsage:         data.WeeklyUsage,

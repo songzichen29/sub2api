@@ -2,38 +2,45 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
-	SettingPaymentEnabled      = "payment_enabled"
-	SettingMinRechargeAmount   = "MIN_RECHARGE_AMOUNT"
-	SettingMaxRechargeAmount   = "MAX_RECHARGE_AMOUNT"
-	SettingDailyRechargeLimit  = "DAILY_RECHARGE_LIMIT"
-	SettingOrderTimeoutMinutes = "ORDER_TIMEOUT_MINUTES"
-	SettingMaxPendingOrders    = "MAX_PENDING_ORDERS"
-	SettingEnabledPaymentTypes = "ENABLED_PAYMENT_TYPES"
-	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
-	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
-	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
-	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText            = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingPaymentEnabled       = "payment_enabled"
+	SettingMinRechargeAmount    = "MIN_RECHARGE_AMOUNT"
+	SettingMaxRechargeAmount    = "MAX_RECHARGE_AMOUNT"
+	SettingDailyRechargeLimit   = "DAILY_RECHARGE_LIMIT"
+	SettingOrderTimeoutMinutes  = "ORDER_TIMEOUT_MINUTES"
+	SettingMaxPendingOrders     = "MAX_PENDING_ORDERS"
+	SettingEnabledPaymentTypes  = "ENABLED_PAYMENT_TYPES"
+	SettingLoadBalanceStrategy  = "LOAD_BALANCE_STRATEGY"
+	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
+	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingPaidUserRateEnabled  = "PAID_USER_RATE_ENABLED"
+	SettingPaidUserRateRules    = "PAID_USER_RATE_RULES"
+	SettingPaidUserRateBackfill = "PAID_USER_RATE_BACKFILL"
+	SettingRechargeFeeRate      = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix    = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix    = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL         = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText             = "PAYMENT_HELP_TEXT"
+	SettingCancelRateLimitOn    = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax   = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize     = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit     = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode     = "CANCEL_RATE_LIMIT_WINDOW_MODE"
 )
 
 // Default values for payment configuration settings.
@@ -42,24 +49,42 @@ const (
 	defaultMaxPendingOrders = 3
 )
 
+type PaymentPaidUserRateRule struct {
+	GroupID        int64   `json:"group_id"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	AssignedUsers  int     `json:"assigned_users,omitempty"`
+}
+
+type PaymentPaidUserRateBackfillStatus struct {
+	TotalPaidUsers int    `json:"total_paid_users"`
+	AssignedUsers  int    `json:"assigned_users"`
+	RuleCount      int    `json:"rule_count"`
+	Status         string `json:"status"`
+	Error          string `json:"error,omitempty"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
+}
+
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	Enabled                   bool                              `json:"enabled"`
+	MinAmount                 float64                           `json:"min_amount"`
+	MaxAmount                 float64                           `json:"max_amount"`
+	DailyLimit                float64                           `json:"daily_limit"`
+	OrderTimeoutMin           int                               `json:"order_timeout_minutes"`
+	MaxPendingOrders          int                               `json:"max_pending_orders"`
+	EnabledTypes              []string                          `json:"enabled_payment_types"`
+	BalanceDisabled           bool                              `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64                           `json:"balance_recharge_multiplier"`
+	PaidUserRateEnabled       bool                              `json:"paid_user_rate_enabled"`
+	PaidUserRateRules         []PaymentPaidUserRateRule         `json:"paid_user_rate_rules"`
+	PaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"paid_user_rate_backfill"`
+	RechargeFeeRate           float64                           `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       string                            `json:"load_balance_strategy"`
+	ProductNamePrefix         string                            `json:"product_name_prefix"`
+	ProductNameSuffix         string                            `json:"product_name_suffix"`
+	HelpImageURL              string                            `json:"help_image_url"`
+	HelpText                  string                            `json:"help_text"`
+	StripePublishableKey      string                            `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -71,21 +96,23 @@ type PaymentConfig struct {
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool                     `json:"enabled"`
+	MinAmount                 *float64                  `json:"min_amount"`
+	MaxAmount                 *float64                  `json:"max_amount"`
+	DailyLimit                *float64                  `json:"daily_limit"`
+	OrderTimeoutMin           *int                      `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int                      `json:"max_pending_orders"`
+	EnabledTypes              []string                  `json:"enabled_payment_types"`
+	BalanceDisabled           *bool                     `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64                  `json:"balance_recharge_multiplier"`
+	PaidUserRateEnabled       *bool                     `json:"paid_user_rate_enabled"`
+	PaidUserRateRules         []PaymentPaidUserRateRule `json:"paid_user_rate_rules"`
+	RechargeFeeRate           *float64                  `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       *string                   `json:"load_balance_strategy"`
+	ProductNamePrefix         *string                   `json:"product_name_prefix"`
+	ProductNameSuffix         *string                   `json:"product_name_suffix"`
+	HelpImageURL              *string                   `json:"help_image_url"`
+	HelpText                  *string                   `json:"help_text"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -172,14 +199,15 @@ type UpdatePlanRequest struct {
 // PaymentConfigService manages payment configuration and CRUD for
 // provider instances, channels, and subscription plans.
 type PaymentConfigService struct {
-	entClient     *dbent.Client
-	settingRepo   SettingRepository
-	encryptionKey []byte
+	entClient         *dbent.Client
+	settingRepo       SettingRepository
+	userGroupRateRepo UserGroupRateRepository
+	encryptionKey     []byte
 }
 
 // NewPaymentConfigService creates a new PaymentConfigService.
-func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, encryptionKey []byte) *PaymentConfigService {
-	return &PaymentConfigService{entClient: entClient, settingRepo: settingRepo, encryptionKey: encryptionKey}
+func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, userGroupRateRepo UserGroupRateRepository, encryptionKey []byte) *PaymentConfigService {
+	return &PaymentConfigService{entClient: entClient, settingRepo: settingRepo, userGroupRateRepo: userGroupRateRepo, encryptionKey: encryptionKey}
 }
 
 // IsPaymentEnabled returns whether the payment system is enabled.
@@ -197,6 +225,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingPaidUserRateEnabled, SettingPaidUserRateRules, SettingPaidUserRateBackfill,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
@@ -209,9 +238,29 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		return nil, fmt.Errorf("get payment config settings: %w", err)
 	}
 	cfg := s.parsePaymentConfig(vals)
+	s.attachPaidUserRateRuleStats(ctx, cfg.PaidUserRateRules)
 	// Load Stripe publishable key from the first enabled Stripe provider instance
 	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
 	return cfg, nil
+}
+
+func (s *PaymentConfigService) attachPaidUserRateRuleStats(ctx context.Context, rules []PaymentPaidUserRateRule) {
+	if s == nil || s.userGroupRateRepo == nil || len(rules) == 0 {
+		return
+	}
+	for i := range rules {
+		entries, err := s.userGroupRateRepo.GetByGroupID(ctx, rules[i].GroupID)
+		if err != nil {
+			continue
+		}
+		count := 0
+		for _, entry := range entries {
+			if entry.RateMultiplier != nil {
+				count++
+			}
+		}
+		rules[i].AssignedUsers = count
+	}
 }
 
 func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *PaymentConfig {
@@ -224,6 +273,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		PaidUserRateEnabled:       vals[SettingPaidUserRateEnabled] == "true",
+		PaidUserRateRules:         parsePaidUserRateRules(vals[SettingPaidUserRateRules]),
+		PaidUserRateBackfill:      parsePaidUserRateBackfillStatus(vals[SettingPaidUserRateBackfill]),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
 		ProductNamePrefix:         vals[SettingProductNamePrefix],
@@ -283,6 +335,13 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
 		}
 	}
+	paidUserRateRules, err := normalizePaidUserRateRules(req.PaidUserRateRules)
+	if err != nil {
+		return err
+	}
+	if err := s.validatePaidUserRateRuleGroups(ctx, paidUserRateRules); err != nil {
+		return err
+	}
 	if req.RechargeFeeRate != nil {
 		v := *req.RechargeFeeRate
 		if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
@@ -302,6 +361,8 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingPaidUserRateEnabled:               formatBoolOrEmpty(req.PaidUserRateEnabled),
+		SettingPaidUserRateRules:                 formatPaidUserRateRules(paidUserRateRules),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),
 		SettingLoadBalanceStrategy:               derefStr(req.LoadBalanceStrategy),
 		SettingProductNamePrefix:                 derefStr(req.ProductNamePrefix),
@@ -323,7 +384,129 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	} else {
 		m[SettingEnabledPaymentTypes] = ""
 	}
-	return s.settingRepo.SetMultiple(ctx, m)
+	if err := s.settingRepo.SetMultiple(ctx, m); err != nil {
+		return err
+	}
+	if len(paidUserRateRules) > 0 {
+		result, err := s.backfillPaidUserRates(ctx, paidUserRateRules)
+		if persistErr := s.persistPaidUserRateBackfillStatus(ctx, result); persistErr != nil && err == nil {
+			err = persistErr
+		}
+		if err != nil {
+			return fmt.Errorf("backfill paid user rates: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) validatePaidUserRateRuleGroups(ctx context.Context, rules []PaymentPaidUserRateRule) error {
+	if s == nil || s.entClient == nil || len(rules) == 0 {
+		return nil
+	}
+	groupIDs := make([]int64, 0, len(rules))
+	for _, rule := range rules {
+		groupIDs = append(groupIDs, rule.GroupID)
+	}
+	activeIDs, err := s.entClient.Group.Query().
+		Where(group.IDIn(groupIDs...), group.StatusEQ(StatusActive)).
+		IDs(ctx)
+	if err != nil {
+		return fmt.Errorf("validate paid user rate groups: %w", err)
+	}
+	active := make(map[int64]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		active[id] = struct{}{}
+	}
+	for _, id := range groupIDs {
+		if _, ok := active[id]; !ok {
+			return infraerrors.BadRequest("INVALID_PAID_USER_RATE_RULES", "paid user rate rule group_id must reference an active group")
+		}
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) backfillPaidUserRates(ctx context.Context, rules []PaymentPaidUserRateRule) (PaymentPaidUserRateBackfillStatus, error) {
+	result := PaymentPaidUserRateBackfillStatus{
+		RuleCount: len(rules),
+		Status:    "skipped",
+		UpdatedAt: paymentPaidUserRateBackfillNow(),
+	}
+	if s == nil || s.entClient == nil || s.userGroupRateRepo == nil || len(rules) == 0 {
+		return result, nil
+	}
+	rates := paidUserRateRulesToRateMap(rules)
+	if len(rates) == 0 {
+		return result, nil
+	}
+
+	var rows []struct {
+		UserID int64 `json:"user_id"`
+	}
+	if err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+			paymentorder.StatusEQ(OrderStatusCompleted),
+			paymentorder.UserIDNEQ(0),
+		).
+		GroupBy(paymentorder.FieldUserID).
+		Scan(ctx, &rows); err != nil {
+		result.Status = "failed"
+		result.Error = err.Error()
+		return result, err
+	}
+	result.TotalPaidUsers = len(rows)
+
+	entries := make([]BatchUserGroupRateInput, 0, len(rows)*len(rates))
+	for _, row := range rows {
+		if row.UserID <= 0 {
+			continue
+		}
+		for _, rule := range rules {
+			if rule.GroupID <= 0 || rule.RateMultiplier <= 0 {
+				continue
+			}
+			entries = append(entries, BatchUserGroupRateInput{
+				UserID:         row.UserID,
+				GroupID:        rule.GroupID,
+				RateMultiplier: rule.RateMultiplier,
+			})
+		}
+	}
+	if err := s.userGroupRateRepo.UpsertUserGroupRates(ctx, entries); err != nil {
+		result.Status = "failed"
+		result.Error = err.Error()
+		return result, err
+	}
+	result.AssignedUsers = len(rows)
+	result.Status = "success"
+	return result, nil
+}
+
+func (s *PaymentConfigService) persistPaidUserRateBackfillStatus(ctx context.Context, status PaymentPaidUserRateBackfillStatus) error {
+	if s == nil || s.settingRepo == nil || status.UpdatedAt == "" {
+		return nil
+	}
+	data, err := json.Marshal(status)
+	if err != nil {
+		return err
+	}
+	return s.settingRepo.Set(ctx, SettingPaidUserRateBackfill, string(data))
+}
+
+func paymentPaidUserRateBackfillNow() string {
+	return time.Now().Format(time.RFC3339)
+}
+
+func paidUserRateRulesToRateMap(rules []PaymentPaidUserRateRule) map[int64]*float64 {
+	rates := make(map[int64]*float64, len(rules))
+	for _, rule := range rules {
+		if rule.GroupID <= 0 || rule.RateMultiplier <= 0 {
+			continue
+		}
+		rate := rule.RateMultiplier
+		rates[rule.GroupID] = &rate
+	}
+	return rates
 }
 
 func formatBoolOrEmpty(v *bool) string {
@@ -400,6 +583,70 @@ func pcParseInt(s string, defaultVal int) int {
 		return defaultVal
 	}
 	return v
+}
+
+func parsePaidUserRateRules(raw string) []PaymentPaidUserRateRule {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var rules []PaymentPaidUserRateRule
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		return nil
+	}
+	normalized, err := normalizePaidUserRateRules(rules)
+	if err != nil {
+		return nil
+	}
+	return normalized
+}
+
+func parsePaidUserRateBackfillStatus(raw string) PaymentPaidUserRateBackfillStatus {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return PaymentPaidUserRateBackfillStatus{}
+	}
+	var status PaymentPaidUserRateBackfillStatus
+	if err := json.Unmarshal([]byte(raw), &status); err != nil {
+		return PaymentPaidUserRateBackfillStatus{}
+	}
+	return status
+}
+
+func normalizePaidUserRateRules(rules []PaymentPaidUserRateRule) ([]PaymentPaidUserRateRule, error) {
+	if rules == nil {
+		return nil, nil
+	}
+	normalized := make([]PaymentPaidUserRateRule, 0, len(rules))
+	seen := make(map[int64]struct{}, len(rules))
+	for _, rule := range rules {
+		if rule.GroupID <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_PAID_USER_RATE_RULES", "paid user rate rule group_id must be greater than 0")
+		}
+		if math.IsNaN(rule.RateMultiplier) || math.IsInf(rule.RateMultiplier, 0) || rule.RateMultiplier <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_PAID_USER_RATE_RULES", "paid user rate rule rate_multiplier must be greater than 0")
+		}
+		if _, ok := seen[rule.GroupID]; ok {
+			return nil, infraerrors.BadRequest("INVALID_PAID_USER_RATE_RULES", "paid user rate rules contain duplicate group_id")
+		}
+		seen[rule.GroupID] = struct{}{}
+		normalized = append(normalized, PaymentPaidUserRateRule{
+			GroupID:        rule.GroupID,
+			RateMultiplier: rule.RateMultiplier,
+		})
+	}
+	return normalized, nil
+}
+
+func formatPaidUserRateRules(rules []PaymentPaidUserRateRule) string {
+	if len(rules) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(rules)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 
 func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {

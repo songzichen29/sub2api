@@ -557,15 +557,26 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
-      const limits = [
-        { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
-        { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
-        { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
-      ]
-      for (const l of limits) {
-        if (l.limit != null && l.limit > 0) {
-          const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
+        const used = sub.overdraft_used_usd ?? 0
+        const pct = Math.min(Math.round((used / sub.overdraft_limit_usd) * 100), 100)
+        items.push({
+          title: t('keyUsage.totalQuota'),
+          pct,
+          amount: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`,
+          iconType: 'calendar',
+        })
+      } else {
+        const limits = [
+          { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
+          { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
+          { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
+        ]
+        for (const l of limits) {
+          if (l.limit != null && l.limit > 0) {
+            const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
+            items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+          }
         }
       }
     }
@@ -655,26 +666,35 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.daily_limit_usd > 0) {
-        const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
+      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
+        const used = sub.overdraft_used_usd ?? 0
+        const pct = (used / sub.overdraft_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '总' : 'T'})`, value: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`, valueClass: getUsageColor(pct),
         })
-      }
-      if (sub.weekly_limit_usd > 0) {
-        const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.monthly_limit_usd > 0) {
-        const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
+      } else {
+        if (sub.daily_limit_usd > 0) {
+          const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
+        if (sub.weekly_limit_usd > 0) {
+          const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
+        if (sub.monthly_limit_usd > 0) {
+          const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
       }
       if (sub.expires_at) {
         rows.push({

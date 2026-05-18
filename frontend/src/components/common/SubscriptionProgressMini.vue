@@ -100,35 +100,55 @@
                   </span>
                 </div>
 
-                <div v-if="subscription.group?.weekly_limit_usd" class="flex items-center gap-2">
+                <div v-if="getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
-                    t('subscriptionProgress.weekly')
+                    getOverdraftLimit(subscription)
+                      ? t('subscriptionProgress.overdraftTotal')
+                      : t('subscriptionProgress.weekly')
                   }}</span>
                   <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
                       :class="
                         getProgressBarClass(
-                          subscription.weekly_usage_usd,
-                          subscription.group?.weekly_limit_usd
+                          getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                          getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                         )
                       "
                       :style="{
                         width: getProgressWidth(
-                          subscription.weekly_usage_usd,
-                          subscription.group?.weekly_limit_usd
+                          getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                          getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                         )
                       }"
                     ></div>
                   </div>
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
-                      formatUsage(subscription.weekly_usage_usd, subscription.group?.weekly_limit_usd)
+                      formatUsage(
+                        getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                        getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
+                      )
                     }}
                   </span>
                 </div>
 
-                <div v-if="subscription.group?.monthly_limit_usd" class="flex items-center gap-2">
+                <div
+                  v-if="getOverdraftLimit(subscription)"
+                  class="flex items-center justify-between gap-2 rounded-md bg-gray-50 px-2 py-1 dark:bg-dark-700/50"
+                >
+                  <span class="text-[10px] text-gray-500 dark:text-dark-400">
+                    {{ t('subscriptionProgress.todayOverdraft') }}
+                  </span>
+                  <span
+                    class="text-[10px] font-medium"
+                    :class="getTodayOverdraftAmount(subscription) > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'"
+                  >
+                    ${{ getTodayOverdraftAmount(subscription).toFixed(2) }}
+                  </span>
+                </div>
+
+                <div v-if="!getOverdraftLimit(subscription) && subscription.group?.monthly_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.monthly')
                   }}</span>
@@ -210,10 +230,13 @@ function getMaxUsagePercentage(sub: UserSubscription): number {
   if (sub.group?.daily_limit_usd) {
     percentages.push(((sub.daily_usage_usd || 0) / sub.group.daily_limit_usd) * 100)
   }
-  if (sub.group?.weekly_limit_usd) {
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (overdraftLimit) {
+    percentages.push(((getOverdraftUsed(sub) || 0) / overdraftLimit) * 100)
+  } else if (sub.group?.weekly_limit_usd) {
     percentages.push(((sub.weekly_usage_usd || 0) / sub.group.weekly_limit_usd) * 100)
   }
-  if (sub.group?.monthly_limit_usd) {
+  if (!overdraftLimit && sub.group?.monthly_limit_usd) {
     percentages.push(((sub.monthly_usage_usd || 0) / sub.group.monthly_limit_usd) * 100)
   }
   return percentages.length > 0 ? Math.max(...percentages) : 0
@@ -222,9 +245,28 @@ function getMaxUsagePercentage(sub: UserSubscription): number {
 function isUnlimited(sub: UserSubscription): boolean {
   return (
     !sub.group?.daily_limit_usd &&
+    !getOverdraftLimit(sub) &&
     !sub.group?.weekly_limit_usd &&
     !sub.group?.monthly_limit_usd
   )
+}
+
+function getOverdraftLimit(sub: UserSubscription): number | null {
+  return sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0
+    ? sub.overdraft_limit_usd
+    : null
+}
+
+function getOverdraftUsed(sub: UserSubscription): number | null {
+  return getOverdraftLimit(sub) !== null
+    ? sub.overdraft_used_usd ?? 0
+    : null
+}
+
+function getTodayOverdraftAmount(sub: UserSubscription): number {
+  const dailyLimit = sub.group?.daily_limit_usd
+  if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
+  return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
 }
 
 function getProgressDotClass(sub: UserSubscription): string {

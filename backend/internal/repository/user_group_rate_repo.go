@@ -251,6 +251,44 @@ func (r *userGroupRateRepository) SyncUserGroupRates(ctx context.Context, userID
 	return nil
 }
 
+// UpsertUserGroupRates 批量写入多用户、多分组专属 rate_multiplier，保留已有 rpm_override。
+func (r *userGroupRateRepository) UpsertUserGroupRates(ctx context.Context, entries []service.BatchUserGroupRateInput) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	now := time.Now()
+	const batchSize = 500
+	for start := 0; start < len(entries); start += batchSize {
+		end := start + batchSize
+		if end > len(entries) {
+			end = len(entries)
+		}
+		batch := entries[start:end]
+		values := make([]string, 0, len(batch))
+		args := make([]any, 0, len(batch)*5)
+		for _, entry := range batch {
+			if entry.UserID <= 0 || entry.GroupID <= 0 || entry.RateMultiplier <= 0 {
+				continue
+			}
+			values = append(values, "(?, ?, ?, ?, ?)")
+			args = append(args, entry.UserID, entry.GroupID, entry.RateMultiplier, now, now)
+		}
+		if len(values) == 0 {
+			continue
+		}
+		if _, err := r.sql.ExecContext(ctx, `
+			INSERT INTO user_group_rate_multipliers (user_id, group_id, rate_multiplier, created_at, updated_at)
+			VALUES `+strings.Join(values, ",")+`
+			ON DUPLICATE KEY UPDATE
+				rate_multiplier = VALUES(rate_multiplier),
+				updated_at = VALUES(updated_at)
+		`, args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // SyncGroupRateMultipliers 同步分组的 rate_multiplier 部分（不触动 rpm_override）。
 // 语义：
 //   - 未出现在 entries 中的用户行：rate_multiplier 归 NULL；若 rpm_override 也为 NULL 则整行删除。

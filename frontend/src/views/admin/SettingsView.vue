@@ -5406,6 +5406,114 @@
             </div>
           </div>
 
+          <div
+            v-if="form.payment_enabled"
+            class="rounded-xl border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+          >
+            <div class="flex items-start justify-between gap-3 border-b border-gray-200 px-6 py-4 dark:border-dark-700">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.payment.paidUserRateTitle") }}
+                </h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.payment.paidUserRateHint") }}
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm shrink-0 whitespace-nowrap"
+                :disabled="availablePaidUserRateGroups.length === 0"
+                @click="addPaidUserRateRule"
+              >
+                {{ t("admin.settings.payment.addPaidUserRateRule") }}
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/40">
+                    <th class="px-6 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.payment.paidUserRateGroup") }}
+                    </th>
+                    <th class="w-48 px-6 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.payment.paidUserRateMultiplier") }}
+                    </th>
+                    <th class="w-36 px-6 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.payment.paidUserRateAssignedUsers") }}
+                    </th>
+                    <th class="w-24 px-6 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                  <tr v-if="form.payment_paid_user_rate_rules.length === 0">
+                    <td colspan="4" class="px-6 py-5 text-center text-gray-400">
+                      {{ t("admin.settings.payment.noPaidUserRateRules") }}
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="(rule, index) in form.payment_paid_user_rate_rules"
+                    :key="index"
+                  >
+                    <td class="px-6 py-3">
+                      <select v-model.number="rule.group_id" class="input">
+                        <option :value="0">
+                          {{ t("admin.settings.payment.selectGroup") }}
+                        </option>
+                        <option
+                          v-for="group in activeGroups"
+                          :key="group.id"
+                          :value="group.id"
+                          :disabled="isPaidUserRateGroupSelected(group.id, index)"
+                        >
+                          {{ group.name }} — {{ group.platform }} (×{{ group.rate_multiplier }})
+                        </option>
+                      </select>
+                    </td>
+                    <td class="px-6 py-3">
+                      <input
+                        v-model.number="rule.rate_multiplier"
+                        type="number"
+                        step="0.001"
+                        min="0.001"
+                        class="input"
+                        placeholder="1.0"
+                      />
+                    </td>
+                    <td class="px-6 py-3 text-gray-600 dark:text-gray-300">
+                      {{ rule.assigned_users ?? 0 }}
+                    </td>
+                    <td class="px-6 py-3 text-right">
+                      <button
+                        type="button"
+                        class="text-sm font-medium text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                        @click="removePaidUserRateRule(index)"
+                      >
+                        {{ t("common.delete") }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div
+              v-if="paidUserRateBackfillSummary"
+              class="border-t border-gray-200 px-6 py-3 text-sm dark:border-dark-700"
+              :class="
+                form.payment_paid_user_rate_backfill.status === 'failed'
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-gray-500 dark:text-gray-400'
+              "
+            >
+              {{ paidUserRateBackfillSummary }}
+              <span
+                v-if="form.payment_paid_user_rate_backfill.updated_at"
+                class="ml-2 text-gray-400"
+              >
+                {{ form.payment_paid_user_rate_backfill.updated_at }}
+              </span>
+            </div>
+          </div>
+
           <!-- Provider Management -->
           <PaymentProviderList
             v-if="form.payment_enabled"
@@ -6001,6 +6109,8 @@ import type {
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
   OpenAIFastPolicyRule,
+  PaymentPaidUserRateBackfillStatus,
+  PaymentPaidUserRateRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -6095,6 +6205,43 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+const activeGroups = ref<AdminGroup[]>([]);
+
+const emptyPaidUserRateBackfill = (): PaymentPaidUserRateBackfillStatus => ({
+  total_paid_users: 0,
+  assigned_users: 0,
+  rule_count: 0,
+  status: "",
+});
+
+const availablePaidUserRateGroups = computed(() => {
+  const selected = new Set(
+    form.payment_paid_user_rate_rules
+      .map((rule) => Number(rule.group_id) || 0)
+      .filter((id) => id > 0),
+  );
+  return activeGroups.value.filter((group) => !selected.has(group.id));
+});
+
+const paidUserRateBackfillSummary = computed(() => {
+  const status = form.payment_paid_user_rate_backfill;
+  if (!status?.status) return "";
+  if (status.status === "success") {
+    return t("admin.settings.payment.paidUserRateBackfillSuccess", {
+      total: status.total_paid_users ?? 0,
+      assigned: status.assigned_users ?? 0,
+      rules: status.rule_count ?? 0,
+    });
+  }
+  if (status.status === "failed") {
+    return t("admin.settings.payment.paidUserRateBackfillFailed", {
+      total: status.total_paid_users ?? 0,
+      assigned: status.assigned_users ?? 0,
+      error: status.error || "-",
+    });
+  }
+  return t("admin.settings.payment.paidUserRateBackfillSkipped");
+});
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -6234,6 +6381,9 @@ const form = reactive<SettingsForm>({
   payment_order_timeout_minutes: 30,
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
+  payment_paid_user_rate_enabled: false,
+  payment_paid_user_rate_rules: [],
+  payment_paid_user_rate_backfill: emptyPaidUserRateBackfill(),
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -6956,6 +7106,11 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.payment_paid_user_rate_rules = normalizePaidUserRateRules(
+      settings.payment_paid_user_rate_rules,
+    );
+    form.payment_paid_user_rate_backfill =
+      settings.payment_paid_user_rate_backfill || emptyPaidUserRateBackfill();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.backend_mode_enabled = settings.backend_mode_enabled;
     refreshDefaultSubscriptionDisplayState(settings.default_subscriptions);
@@ -7062,11 +7217,13 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
+    activeGroups.value = groups.filter((group) => group.status === "active");
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
+    activeGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -7076,6 +7233,44 @@ function findNextAvailableSubscriptionGroup(
 ): AdminGroup | undefined {
   const existing = new Set(existingGroupIDs);
   return subscriptionGroups.value.find((group) => !existing.has(group.id));
+}
+
+function isPaidUserRateGroupSelected(groupID: number, currentIndex: number): boolean {
+  return form.payment_paid_user_rate_rules.some(
+    (rule, index) => index !== currentIndex && Number(rule.group_id) === groupID,
+  );
+}
+
+function addPaidUserRateRule() {
+  const candidate = availablePaidUserRateGroups.value[0];
+  form.payment_paid_user_rate_rules.push({
+    group_id: candidate?.id ?? 0,
+    rate_multiplier: candidate?.rate_multiplier ?? 1,
+  });
+}
+
+function removePaidUserRateRule(index: number) {
+  form.payment_paid_user_rate_rules.splice(index, 1);
+}
+
+function normalizePaidUserRateRules(
+  rules: PaymentPaidUserRateRule[] | undefined,
+): PaymentPaidUserRateRule[] {
+  if (!Array.isArray(rules)) return [];
+  const seen = new Set<number>();
+  const normalized: PaymentPaidUserRateRule[] = [];
+  for (const rule of rules) {
+    const groupID = Math.floor(Number(rule.group_id) || 0);
+    const rate = Number(rule.rate_multiplier) || 0;
+    if (groupID <= 0 || rate <= 0 || seen.has(groupID)) continue;
+    seen.add(groupID);
+    normalized.push({
+      group_id: groupID,
+      rate_multiplier: rate,
+      assigned_users: Number(rule.assigned_users) || 0,
+    });
+  }
+  return normalized;
 }
 
 async function loadOpsEmailConfig() {
@@ -7437,6 +7632,9 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
+      payment_paid_user_rate_rules: normalizePaidUserRateRules(
+        form.payment_paid_user_rate_rules,
+      ),
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
@@ -7540,6 +7738,8 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.payment_paid_user_rate_backfill =
+      updated.payment_paid_user_rate_backfill || emptyPaidUserRateBackfill();
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     refreshDefaultSubscriptionDisplayState(
       updated.default_subscriptions as DefaultSubscriptionSetting[] | undefined,

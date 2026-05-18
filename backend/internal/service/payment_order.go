@@ -13,6 +13,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -124,6 +125,10 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if req.PlanID == 0 {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "subscription order requires a plan")
 	}
+	renewalMode := normalizeSubscriptionRenewalMode(req.RenewalMode)
+	if strings.TrimSpace(req.RenewalMode) != "" && renewalMode == "" {
+		return nil, infraerrors.BadRequest("INVALID_RENEWAL_MODE", "unsupported subscription renewal mode")
+	}
 	plan, err := s.configService.GetPlan(ctx, req.PlanID)
 	if err != nil || !plan.ForSale {
 		return nil, infraerrors.NotFound("PLAN_NOT_AVAILABLE", "plan not found or not for sale")
@@ -135,7 +140,48 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if !group.IsSubscriptionType() {
 		return nil, infraerrors.BadRequest("GROUP_TYPE_MISMATCH", "group is not a subscription type")
 	}
+	if renewalMode != "" {
+		hasActiveSub, err := s.hasRenewableSubscription(ctx, req.UserID, plan.GroupID)
+		if err != nil {
+			return nil, fmt.Errorf("check active subscription for renewal: %w", err)
+		}
+		if !hasActiveSub {
+			return nil, infraerrors.BadRequest("RENEWAL_ACTIVE_SUBSCRIPTION_REQUIRED", "subscription renewal requires an active subscription")
+		}
+	}
+	if renewalMode == SubscriptionRenewalModeRestart {
+		days := psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit)
+		if days <= 1 {
+			return nil, infraerrors.BadRequest("RENEWAL_RESTART_NOT_AVAILABLE", "subscription restart is not available for this order")
+		}
+	}
 	return plan, nil
+}
+
+func (s *PaymentService) hasRenewableSubscription(ctx context.Context, userID, groupID int64) (bool, error) {
+	if s == nil || s.entClient == nil {
+		return false, nil
+	}
+	now := time.Now()
+	return s.entClient.UserSubscription.Query().
+		Where(
+			usersubscription.UserIDEQ(userID),
+			usersubscription.GroupIDEQ(groupID),
+			usersubscription.StatusIn(SubscriptionStatusActive, SubscriptionStatusQuotaExhausted),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
+		).
+		Exist(ctx)
+}
+
+func canRestartSubscriptionPeriod(now time.Time, sub *UserSubscription, group *Group, validityUnit string) bool {
+	switch strings.TrimSpace(strings.ToLower(validityUnit)) {
+	case validityUnitWeek, validityUnitWeeks:
+		return true
+	case validityUnitMonth, validityUnitMonths:
+		return true
+	}
+	return false
 }
 
 func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
@@ -160,6 +206,14 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, err
 	}
 	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
+	if req.OrderType == payment.OrderTypeSubscription {
+		if mode := normalizeSubscriptionRenewalMode(req.RenewalMode); mode != "" {
+			if providerSnapshot == nil {
+				providerSnapshot = map[string]any{"schema_version": 2}
+			}
+			providerSnapshot["subscription_renewal_mode"] = mode
+		}
+	}
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -293,7 +347,6 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		snapshot["daily_limit_reset_subscription_id"] = req.SubscriptionID
 		snapshot["daily_limit_reset_price_cny"] = req.Amount
 	}
-
 	if len(snapshot) == 1 {
 		return nil
 	}
@@ -656,6 +709,9 @@ func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (stri
 	}
 	if req.SubscriptionID > 0 {
 		q.Set("subscription_id", strconv.FormatInt(req.SubscriptionID, 10))
+	}
+	if mode := normalizeSubscriptionRenewalMode(req.RenewalMode); mode != "" {
+		q.Set("renewal_mode", mode)
 	}
 	if scope = strings.TrimSpace(scope); scope != "" {
 		q.Set("scope", scope)

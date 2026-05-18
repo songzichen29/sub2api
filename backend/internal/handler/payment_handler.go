@@ -234,6 +234,7 @@ type CreateOrderRequest struct {
 	OrderType         string  `json:"order_type"`
 	PlanID            int64   `json:"plan_id"`
 	SubscriptionID    int64   `json:"subscription_id"`
+	RenewalMode       string  `json:"renewal_mode"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -284,6 +285,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
 		SubscriptionID:  req.SubscriptionID,
+		RenewalMode:     req.RenewalMode,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -329,6 +331,9 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	}
 	if claims.SubscriptionID > 0 {
 		req.SubscriptionID = claims.SubscriptionID
+	}
+	if strings.TrimSpace(claims.RenewalMode) != "" {
+		req.RenewalMode = strings.TrimSpace(claims.RenewalMode)
 	}
 	return nil
 }

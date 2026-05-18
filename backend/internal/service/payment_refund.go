@@ -572,17 +572,11 @@ func capDailyOverdraftSubscriptionRefund(refundAmount, orderAmount float64, sub 
 		return refundAmount
 	}
 
-	var limit, used float64
-	if sub.Group.HasWeeklyLimit() {
-		limit = *sub.Group.WeeklyLimitUSD
-		used = sub.WeeklyUsageUSD
-	} else if sub.Group.HasMonthlyLimit() {
-		limit = *sub.Group.MonthlyLimitUSD
-		used = sub.MonthlyUsageUSD
-	}
-	if limit <= 0 {
+	limit, ok := sub.DailyOverdraftLimitUSD(sub.Group)
+	if !ok || limit <= 0 {
 		return refundAmount
 	}
+	used := sub.DailyOverdraftUsedUSD(sub.Group)
 
 	remainingRatio := (limit - used) / limit
 	if remainingRatio < 0 {

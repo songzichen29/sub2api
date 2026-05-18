@@ -397,6 +397,8 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 		subscription := mustCreateSubscription(t, client, &service.UserSubscription{
 			UserID:              user.ID,
 			GroupID:             group.ID,
+			StartsAt:            time.Now().Add(-time.Hour),
+			ExpiresAt:           time.Now().Add(5 * 24 * time.Hour),
 			DailyUsageUSD:       dailyUsage,
 			WeeklyUsageUSD:      weeklyUsage,
 			AllowDailyOverdraft: allowOverdraft,
@@ -415,7 +417,7 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
 	})
 
-	t.Run("overdraft daily uses weekly pool", func(t *testing.T) {
+	t.Run("overdraft daily uses validity day pool", func(t *testing.T) {
 		apiKeyID, subscriptionID := newFixture(t, true, 80, 120)
 		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:        uuid.NewString(),
@@ -430,8 +432,8 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 		require.InDelta(t, 125, weeklyUsage, 0.000001)
 	})
 
-	t.Run("overdraft rejects once weekly already full", func(t *testing.T) {
-		apiKeyID, subscriptionID := newFixture(t, true, 80, 560)
+	t.Run("overdraft rejects once validity day pool already full", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, true, 80, 400)
 		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:        uuid.NewString(),
 			APIKeyID:         apiKeyID,
@@ -442,12 +444,12 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 	})
 
 	t.Run("allow over limit permits final crossing but rejects next", func(t *testing.T) {
-		apiKeyID, subscriptionID := newFixture(t, true, 80, 559)
+		apiKeyID, subscriptionID := newFixture(t, true, 80, 399)
 		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:                  uuid.NewString(),
 			APIKeyID:                   apiKeyID,
 			SubscriptionID:             &subscriptionID,
-			SubscriptionCost:           5,
+			SubscriptionCost:           1,
 			AllowSubscriptionOverLimit: true,
 		})
 		require.NoError(t, err)

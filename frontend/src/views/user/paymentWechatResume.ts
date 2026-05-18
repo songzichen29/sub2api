@@ -8,6 +8,7 @@ export interface ParsedWechatResumeRoute {
   paymentType: string
   planId?: number
   subscriptionId?: number
+  renewalMode?: 'extend' | 'restart'
   openid?: string
   wechatResumeToken?: string
 }
@@ -44,6 +45,8 @@ export function parseWechatResumeRoute(
   const subscriptionId = Number.parseInt(readQueryString(query, 'subscription_id'), 10)
   const hasSubscriptionId = Number.isFinite(subscriptionId) && subscriptionId > 0
   const rawOrderType = readQueryString(query, 'order_type')
+  const rawRenewalMode = readQueryString(query, 'renewal_mode')
+  const renewalMode = rawRenewalMode === 'restart' ? 'restart' : rawRenewalMode === 'extend' ? 'extend' : undefined
   const orderType = rawOrderType === 'daily_limit_reset' || hasSubscriptionId
     ? 'daily_limit_reset'
     : rawOrderType === 'subscription' || hasPlanId
@@ -58,6 +61,7 @@ export function parseWechatResumeRoute(
       orderAmount: 0,
       planId: hasPlanId ? planId : undefined,
       subscriptionId: hasSubscriptionId ? subscriptionId : undefined,
+      renewalMode,
     }
   }
 
@@ -80,6 +84,7 @@ export function parseWechatResumeRoute(
     orderAmount,
     planId: hasPlanId ? planId : undefined,
     subscriptionId: hasSubscriptionId ? subscriptionId : undefined,
+    renewalMode,
   }
 }
 
@@ -95,5 +100,6 @@ export function stripWechatResumeQuery(query: LocationQuery): LocationQueryRaw {
   delete nextQuery.order_type
   delete nextQuery.plan_id
   delete nextQuery.subscription_id
+  delete nextQuery.renewal_mode
   return nextQuery
 }

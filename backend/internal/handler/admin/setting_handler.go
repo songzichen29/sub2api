@@ -271,6 +271,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    paymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 paymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       paymentCfg.BalanceRechargeMultiplier,
+		PaymentPaidUserRateEnabled:             paymentCfg.PaidUserRateEnabled,
+		PaymentPaidUserRateRules:               paymentPaidUserRateRulesToDTO(paymentCfg.PaidUserRateRules),
+		PaymentPaidUserRateBackfill:            paymentPaidUserRateBackfillToDTO(paymentCfg.PaidUserRateBackfill),
 		PaymentRechargeFeeRate:                 paymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                paymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               paymentCfg.ProductNamePrefix,
@@ -309,6 +312,47 @@ func openaiFastPolicySettingsToDTO(s *service.OpenAIFastPolicySettings) *dto.Ope
 		rules[i] = dto.OpenAIFastPolicyRule(r)
 	}
 	return &dto.OpenAIFastPolicySettings{Rules: rules}
+}
+
+func paymentPaidUserRateRulesToDTO(rules []service.PaymentPaidUserRateRule) []dto.PaymentPaidUserRateRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]dto.PaymentPaidUserRateRule, len(rules))
+	for i, rule := range rules {
+		out[i] = dto.PaymentPaidUserRateRule{
+			GroupID:        rule.GroupID,
+			RateMultiplier: rule.RateMultiplier,
+			AssignedUsers:  rule.AssignedUsers,
+		}
+	}
+	return out
+}
+
+func paymentPaidUserRateRulesFromDTO(rules []dto.PaymentPaidUserRateRule) []service.PaymentPaidUserRateRule {
+	if rules == nil {
+		return nil
+	}
+	out := make([]service.PaymentPaidUserRateRule, len(rules))
+	for i, rule := range rules {
+		out[i] = service.PaymentPaidUserRateRule{
+			GroupID:        rule.GroupID,
+			RateMultiplier: rule.RateMultiplier,
+			AssignedUsers:  rule.AssignedUsers,
+		}
+	}
+	return out
+}
+
+func paymentPaidUserRateBackfillToDTO(status service.PaymentPaidUserRateBackfillStatus) dto.PaymentPaidUserRateBackfillStatus {
+	return dto.PaymentPaidUserRateBackfillStatus{
+		TotalPaidUsers: status.TotalPaidUsers,
+		AssignedUsers:  status.AssignedUsers,
+		RuleCount:      status.RuleCount,
+		Status:         status.Status,
+		Error:          status.Error,
+		UpdatedAt:      status.UpdatedAt,
+	}
 }
 
 // openaiFastPolicySettingsFromDTO converts dto -> service for OpenAI fast policy.
@@ -509,21 +553,23 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEmails    *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
-	PaymentEnabled                   *bool    `json:"payment_enabled"`
-	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
-	PaymentMaxAmount                 *float64 `json:"payment_max_amount"`
-	PaymentDailyLimit                *float64 `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           *int     `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          *int     `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           *bool    `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
-	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
-	PaymentHelpText                  *string  `json:"payment_help_text"`
+	PaymentEnabled                   *bool                         `json:"payment_enabled"`
+	PaymentMinAmount                 *float64                      `json:"payment_min_amount"`
+	PaymentMaxAmount                 *float64                      `json:"payment_max_amount"`
+	PaymentDailyLimit                *float64                      `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin           *int                          `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders          *int                          `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes              []string                      `json:"payment_enabled_types"`
+	PaymentBalanceDisabled           *bool                         `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier *float64                      `json:"payment_balance_recharge_multiplier"`
+	PaymentPaidUserRateEnabled       *bool                         `json:"payment_paid_user_rate_enabled"`
+	PaymentPaidUserRateRules         []dto.PaymentPaidUserRateRule `json:"payment_paid_user_rate_rules"`
+	PaymentRechargeFeeRate           *float64                      `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat          *string                       `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix         *string                       `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix         *string                       `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL              *string                       `json:"payment_help_image_url"`
+	PaymentHelpText                  *string                       `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -1507,6 +1553,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			EnabledTypes:              req.PaymentEnabledTypes,
 			BalanceDisabled:           req.PaymentBalanceDisabled,
 			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
+			PaidUserRateEnabled:       req.PaymentPaidUserRateEnabled,
+			PaidUserRateRules:         paymentPaidUserRateRulesFromDTO(req.PaymentPaidUserRateRules),
 			RechargeFeeRate:           req.PaymentRechargeFeeRate,
 			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
 			ProductNamePrefix:         req.PaymentProductNamePrefix,
@@ -1690,6 +1738,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentEnabledTypes:                    updatedPaymentCfg.EnabledTypes,
 		PaymentBalanceDisabled:                 updatedPaymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:       updatedPaymentCfg.BalanceRechargeMultiplier,
+		PaymentPaidUserRateEnabled:             updatedPaymentCfg.PaidUserRateEnabled,
+		PaymentPaidUserRateRules:               paymentPaidUserRateRulesToDTO(updatedPaymentCfg.PaidUserRateRules),
+		PaymentPaidUserRateBackfill:            paymentPaidUserRateBackfillToDTO(updatedPaymentCfg.PaidUserRateBackfill),
 		PaymentRechargeFeeRate:                 updatedPaymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                updatedPaymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:               updatedPaymentCfg.ProductNamePrefix,
@@ -1722,6 +1773,7 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentRechargeFeeRate != nil ||
+		req.PaymentPaidUserRateEnabled != nil || req.PaymentPaidUserRateRules != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
 		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||

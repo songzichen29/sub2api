@@ -28,6 +28,7 @@ var (
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
 	Status              string
+	StartsAt            time.Time
 	ExpiresAt           time.Time
 	DailyUsage          float64
 	WeeklyUsage         float64
@@ -422,6 +423,7 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
 		Status:              data.Status,
+		StartsAt:            data.StartsAt,
 		ExpiresAt:           data.ExpiresAt,
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
@@ -434,6 +436,7 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
 		Status:              data.Status,
+		StartsAt:            data.StartsAt,
 		ExpiresAt:           data.ExpiresAt,
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
@@ -452,6 +455,7 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 
 	return &subscriptionCacheData{
 		Status:              sub.Status,
+		StartsAt:            sub.StartsAt,
 		ExpiresAt:           sub.ExpiresAt,
 		DailyUsage:          sub.DailyUsageUSD,
 		WeeklyUsage:         sub.WeeklyUsageUSD,
@@ -834,16 +838,39 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 
 	// 检查限额（使用传入的Group限额配置）
-	subAllowsOverdraft := (&UserSubscription{AllowDailyOverdraft: subData.AllowDailyOverdraft}).AllowsDailyOverdraft(group)
-	if group.HasDailyLimit() && !subAllowsOverdraft && subData.DailyUsage >= *group.DailyLimitUSD {
-		return ErrDailyLimitExceeded
+	cacheSub := &UserSubscription{
+		StartsAt:            subData.StartsAt,
+		ExpiresAt:           subData.ExpiresAt,
+		DailyUsageUSD:       subData.DailyUsage,
+		WeeklyUsageUSD:      subData.WeeklyUsage,
+		MonthlyUsageUSD:     subData.MonthlyUsage,
+		AllowDailyOverdraft: subData.AllowDailyOverdraft,
+	}
+	subAllowsOverdraft := cacheSub.AllowsDailyOverdraft(group)
+	if subAllowsOverdraft && subData.StartsAt.IsZero() && subscription != nil && !subscription.StartsAt.IsZero() {
+		cacheSub.StartsAt = subscription.StartsAt
+		cacheSub.ExpiresAt = subscription.ExpiresAt
+		subData.StartsAt = subscription.StartsAt
+		subData.ExpiresAt = subscription.ExpiresAt
+	}
+	if group.HasDailyLimit() {
+		if !subAllowsOverdraft && subData.DailyUsage >= *group.DailyLimitUSD {
+			return ErrDailyLimitExceeded
+		}
+		if subAllowsOverdraft {
+			limit, ok := cacheSub.DailyOverdraftLimitUSD(group)
+			used := cacheSub.DailyOverdraftUsedUSD(group)
+			if !ok || used >= limit {
+				return ErrDailyLimitExceeded
+			}
+		}
 	}
 
-	if group.HasWeeklyLimit() && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+	if group.HasWeeklyLimit() && !subAllowsOverdraft && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
 		return ErrWeeklyLimitExceeded
 	}
 
-	if group.HasMonthlyLimit() && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+	if group.HasMonthlyLimit() && !subAllowsOverdraft && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
 		return ErrMonthlyLimitExceeded
 	}
 

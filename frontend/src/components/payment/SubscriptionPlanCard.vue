@@ -46,19 +46,23 @@
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
         </div>
-        <div v-if="plan.daily_limit_usd != null" class="flex items-center justify-between">
+        <div v-if="plan.daily_limit_usd != null && plan.daily_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
         </div>
-        <div v-if="plan.weekly_limit_usd != null" class="flex items-center justify-between">
+        <div v-if="overdraftPoolLimit !== null" class="flex items-center justify-between">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.totalQuota') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ overdraftPoolLimit }}</span>
+        </div>
+        <div v-else-if="plan.weekly_limit_usd != null && plan.weekly_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.weeklyLimit') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
         </div>
-        <div v-if="plan.monthly_limit_usd != null" class="flex items-center justify-between">
+        <div v-else-if="plan.monthly_limit_usd != null && plan.monthly_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.monthlyLimit') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
         </div>
-        <div v-if="plan.daily_limit_usd == null && plan.weekly_limit_usd == null && plan.monthly_limit_usd == null" class="flex items-center justify-between">
+        <div v-if="(plan.daily_limit_usd == null || plan.daily_limit_usd <= 0) && (plan.weekly_limit_usd == null || plan.weekly_limit_usd <= 0) && (plan.monthly_limit_usd == null || plan.monthly_limit_usd <= 0)" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
         </div>
@@ -141,6 +145,18 @@ const discountText = computed(() => {
 const rateDisplay = computed(() => {
   const rate = props.plan.rate_multiplier ?? 1
   return `×${Number(rate.toPrecision(10))}`
+})
+
+const overdraftPoolLimit = computed(() => {
+  if (!props.plan.allow_daily_overdraft || props.plan.daily_limit_usd == null || props.plan.daily_limit_usd <= 0) {
+    return null
+  }
+  const unit = (props.plan.validity_unit || 'day').trim().toLowerCase()
+  let days = props.plan.validity_days || 0
+  if (unit === 'week' || unit === 'weeks') days *= 7
+  if (unit === 'month' || unit === 'months') days *= 30
+  if (days <= 0) return null
+  return props.plan.daily_limit_usd * days
 })
 
 const MODEL_SCOPE_LABELS: Record<string, string> = {

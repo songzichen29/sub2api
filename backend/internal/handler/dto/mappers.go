@@ -720,7 +720,7 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 }
 
 func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscription {
-	return UserSubscription{
+	out := UserSubscription{
 		ID:                  sub.ID,
 		UserID:              sub.UserID,
 		GroupID:             sub.GroupID,
@@ -735,12 +735,24 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		MonthlyUsageUSD:     sub.MonthlyUsageUSD,
 		AllowDailyOverdraft: sub.AllowDailyOverdraft,
 		Source:              sub.Source,
+		ValidityDays:        nil,
 		CreatedAt:           sub.CreatedAt,
 		UpdatedAt:           sub.UpdatedAt,
 		LastUsedAt:          sub.LastUsedAt,
 		User:                UserFromServiceShallow(sub.User),
 		Group:               GroupFromServiceShallow(sub.Group),
 	}
+	if sub.Source == "payment" {
+		if days := sub.EffectiveValidityDays(); days > 0 {
+			out.ValidityDays = &days
+		}
+	}
+	if limit, ok := sub.DailyOverdraftLimitUSD(sub.Group); ok && sub.AllowsDailyOverdraft(sub.Group) {
+		out.OverdraftLimitUSD = limit
+		out.OverdraftUsedUSD = sub.DailyOverdraftConsumedUSD(sub.Group, time.Now())
+		out.OverdraftDays = sub.DailyOverdraftBorrowedDays(sub.Group, time.Now())
+	}
+	return out
 }
 
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {

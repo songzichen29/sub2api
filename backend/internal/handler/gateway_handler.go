@@ -1275,22 +1275,34 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度
 // 逻辑：
-// 1. 如果日/周/月任一限额达到100%，返回0
-// 2. 否则返回所有已配置周期中剩余额度的最小值
+// 1. 非透支订阅：如果日/周/月任一限额达到100%，返回0，否则返回最小剩余额度。
+// 2. 透支订阅：日限额变成单日基础卡，剩余额度按“有效天数×日限额”的订阅期总池计算。
 func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, sub *service.UserSubscription) float64 {
 	var remainingValues []float64
 
 	// 检查日限额
 	if group.HasDailyLimit() {
-		remaining := *group.DailyLimitUSD - sub.DailyUsageUSD
-		if remaining <= 0 {
-			return 0
+		if sub.AllowsDailyOverdraft(group) {
+			limit, ok := sub.DailyOverdraftLimitUSD(group)
+			if !ok {
+				return 0
+			}
+			remaining := limit - sub.DailyOverdraftUsedUSD(group)
+			if remaining <= 0 {
+				return 0
+			}
+			remainingValues = append(remainingValues, remaining)
+		} else {
+			remaining := *group.DailyLimitUSD - sub.DailyUsageUSD
+			if remaining <= 0 {
+				return 0
+			}
+			remainingValues = append(remainingValues, remaining)
 		}
-		remainingValues = append(remainingValues, remaining)
 	}
 
 	// 检查周限额
-	if group.HasWeeklyLimit() {
+	if group.HasWeeklyLimit() && !sub.AllowsDailyOverdraft(group) {
 		remaining := *group.WeeklyLimitUSD - sub.WeeklyUsageUSD
 		if remaining <= 0 {
 			return 0

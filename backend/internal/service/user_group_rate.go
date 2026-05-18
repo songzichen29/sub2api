@@ -27,6 +27,12 @@ type GroupRPMOverrideInput struct {
 	RPMOverride *int  `json:"rpm_override"`
 }
 
+type BatchUserGroupRateInput struct {
+	UserID         int64
+	GroupID        int64
+	RateMultiplier float64
+}
+
 // UserGroupRateRepository 用户专属分组倍率/RPM 仓储接口。
 // 允许管理员为特定用户设置分组的专属计费倍率与 RPM 上限，覆盖分组默认值。
 type UserGroupRateRepository interface {
@@ -44,6 +50,9 @@ type UserGroupRateRepository interface {
 
 	// SyncUserGroupRates 同步用户的分组专属倍率；nil 表示清空该分组的 rate_multiplier
 	SyncUserGroupRates(ctx context.Context, userID int64, rates map[int64]*float64) error
+
+	// UpsertUserGroupRates 批量写入多用户、多分组专属倍率（覆盖已有 rate_multiplier，保留 rpm_override）。
+	UpsertUserGroupRates(ctx context.Context, entries []BatchUserGroupRateInput) error
 
 	// SyncGroupRateMultipliers 批量同步分组的用户专属倍率（替换整组 rate 部分）
 	SyncGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error

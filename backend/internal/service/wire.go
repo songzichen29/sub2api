@@ -531,8 +531,8 @@ var ProviderSet = wire.NewSet(
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
-func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
-	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
+func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, userGroupRateRepo UserGroupRateRepository, key payment.EncryptionKey) *PaymentConfigService {
+	return NewPaymentConfigService(entClient, settingRepo, userGroupRateRepo, []byte(key))
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService

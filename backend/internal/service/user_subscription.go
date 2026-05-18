@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 const (
 	dailyWindowDuration   = 24 * time.Hour
@@ -60,6 +63,94 @@ func (s *UserSubscription) DaysRemaining() int {
 		return 0
 	}
 	return int(time.Until(s.ExpiresAt).Hours() / 24)
+}
+
+// EffectiveValidityDays returns the subscription's billable validity length in
+// days, rounded up so partial-day subscriptions still own at least one daily
+// quota card. The value is derived from the persisted start/end anchors because
+// historical subscriptions do not store the original plan unit.
+func (s *UserSubscription) EffectiveValidityDays() int {
+	if s == nil || !s.ExpiresAt.After(s.StartsAt) {
+		return 0
+	}
+	days := int(math.Ceil(s.ExpiresAt.Sub(s.StartsAt).Hours() / 24))
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
+func (s *UserSubscription) DailyOverdraftLimitUSD(group *Group) (float64, bool) {
+	if s == nil || group == nil || !group.HasDailyLimit() {
+		return 0, false
+	}
+	days := s.EffectiveValidityDays()
+	if days <= 0 {
+		return 0, false
+	}
+	return *group.DailyLimitUSD * float64(days), true
+}
+
+// DailyOverdraftConsumedUSD returns the actual cumulative spend inside the
+// subscription pool. It is used by the UI to render the total-pool usage bar.
+func (s *UserSubscription) DailyOverdraftConsumedUSD(group *Group, now time.Time) float64 {
+	if s == nil || group == nil || !s.AllowsDailyOverdraft(group) || !group.HasDailyLimit() {
+		return 0
+	}
+	return s.DailyOverdraftUsedUSD(group)
+}
+
+// DailyOverdraftUsedUSD returns the actual cumulative spend in the subscription
+// pool. Runtime checks and display paths should both use the true request cost
+// rather than elapsed time.
+func (s *UserSubscription) DailyOverdraftUsedUSD(group *Group) float64 {
+	if s == nil {
+		return 0
+	}
+	return s.WeeklyUsageUSD
+}
+
+func (s *UserSubscription) dailyOverdraftNormalDays(now time.Time) int {
+	if s == nil || s.StartsAt.IsZero() || !s.ExpiresAt.After(s.StartsAt) || now.Before(s.StartsAt) {
+		return 0
+	}
+	days := int(now.Sub(s.StartsAt)/dailyWindowDuration) + 1
+	maxDays := s.EffectiveValidityDays()
+	if maxDays <= 0 {
+		return 0
+	}
+	if days > maxDays {
+		days = maxDays
+	}
+	return days
+}
+
+// DailyOverdraftBorrowedDays returns how many future daily cards have already
+// been borrowed relative to the days that have normally arrived so far.
+func (s *UserSubscription) DailyOverdraftBorrowedDays(group *Group, now time.Time) int {
+	if s == nil || group == nil || !s.AllowsDailyOverdraft(group) || !group.HasDailyLimit() {
+		return 0
+	}
+	limit := *group.DailyLimitUSD
+	if limit <= 0 {
+		return 0
+	}
+	used := s.DailyOverdraftUsedUSD(group)
+	if used <= 0 {
+		return 0
+	}
+	totalDays := int(math.Ceil(used/limit - 1e-9))
+	if totalDays < 0 {
+		totalDays = 0
+	}
+	borrowedDays := totalDays - s.dailyOverdraftNormalDays(now)
+	if maxBorrowed := s.EffectiveValidityDays() - s.dailyOverdraftNormalDays(now); borrowedDays > maxBorrowed {
+		borrowedDays = maxBorrowed
+	}
+	if borrowedDays < 0 {
+		return 0
+	}
+	return borrowedDays
 }
 
 func (s *UserSubscription) IsWindowActivated() bool {
@@ -125,8 +216,19 @@ func (s *UserSubscription) AllowsDailyOverdraft(group *Group) bool {
 }
 
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
-	if group == nil || !group.HasDailyLimit() || s.AllowsDailyOverdraft(group) {
+	if group == nil || !group.HasDailyLimit() {
 		return true
+	}
+	if s.AllowsDailyOverdraft(group) {
+		limit, ok := s.DailyOverdraftLimitUSD(group)
+		if !ok {
+			return false
+		}
+		used := s.DailyOverdraftUsedUSD(group)
+		if additionalCost <= 0 {
+			return used < limit
+		}
+		return used+additionalCost <= limit
 	}
 	if additionalCost <= 0 {
 		return s.DailyUsageUSD < *group.DailyLimitUSD
@@ -135,7 +237,7 @@ func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64)
 }
 
 func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64) bool {
-	if group == nil || !group.HasWeeklyLimit() {
+	if group == nil || !group.HasWeeklyLimit() || s.AllowsDailyOverdraft(group) {
 		return true
 	}
 	if additionalCost <= 0 {
@@ -145,7 +247,7 @@ func (s *UserSubscription) CheckWeeklyLimit(group *Group, additionalCost float64
 }
 
 func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float64) bool {
-	if group == nil || !group.HasMonthlyLimit() {
+	if group == nil || !group.HasMonthlyLimit() || s.AllowsDailyOverdraft(group) {
 		return true
 	}
 	if additionalCost <= 0 {

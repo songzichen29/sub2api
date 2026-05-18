@@ -438,6 +438,11 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
 			us.monthly_usage_usd = us.monthly_usage_usd + ?,
 			us.status = CASE
+				WHEN g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = TRUE
+					AND COALESCE(g.daily_limit_usd, 0) > 0
+					AND us.weekly_usage_usd + ? >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					THEN ?
 				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
 				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
 				ELSE us.status
@@ -450,32 +455,42 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 				OR (
 					g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
-					AND COALESCE(g.weekly_limit_usd, 0) > 0
-					AND us.weekly_usage_usd < g.weekly_limit_usd
+					AND us.weekly_usage_usd + ? <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
 				OR (
-					g.allow_daily_overdraft = TRUE
+					us.weekly_usage_usd < g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
-					AND COALESCE(g.monthly_limit_usd, 0) > 0
-					AND us.monthly_usage_usd < g.monthly_limit_usd
 				)
 				OR us.daily_usage_usd + ? <= g.daily_limit_usd
 				OR us.daily_usage_usd < g.daily_limit_usd
 			)
 			AND (
 				COALESCE(g.weekly_limit_usd, 0) <= 0
+				OR (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
 				OR us.weekly_usage_usd + ? <= g.weekly_limit_usd
 				OR us.weekly_usage_usd < g.weekly_limit_usd
 			)
 			AND (
 				COALESCE(g.monthly_limit_usd, 0) <= 0
+				OR (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
 				OR us.monthly_usage_usd + ? <= g.monthly_limit_usd
 				OR us.monthly_usage_usd < g.monthly_limit_usd
 			)
 	`
 
 	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(ctx, updateSQL, costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted, costUSD, service.SubscriptionStatusQuotaExhausted, id, costUSD, costUSD, costUSD)
+	result, err := client.ExecContext(ctx, updateSQL,
+		costUSD, costUSD, costUSD,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
+		id,
+		costUSD,
+		costUSD,
+		costUSD,
+		costUSD,
+	)
 	if err != nil {
 		return err
 	}

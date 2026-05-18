@@ -168,6 +168,9 @@ type AssignSubscriptionInput struct {
 	ExpiresAt    *time.Time
 	AssignedBy   int64
 	Notes        string
+	// RestartPeriod 为 true 时，已有未过期订阅会从当前时间重新开一个新周期：
+	// starts_at=now、expires_at=now+validityDays，并重置已配置窗口的用量。
+	RestartPeriod bool
 	// Source 标识订阅来源（admin/redeem/payment）。
 	// 留空时按 AssignedBy 推断：>0 → admin，==0 → redeem。
 	// payment 入口必须显式传 SubscriptionSourcePayment。
@@ -247,9 +250,16 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 
 		wasExpired := !existingSub.ExpiresAt.After(now)
 
-		// Reactivating an expired subscription must move the billing-window anchor
-		// to this purchase time; otherwise old windows keep using stale starts_at.
-		if wasExpired {
+		// Reactivating an expired subscription or explicitly restarting a card must
+		// move the billing-window anchor to this purchase time; otherwise old
+		// windows keep using stale starts_at.
+		if wasExpired || input.RestartPeriod {
+			if input.RestartPeriod && !wasExpired {
+				newExpiresAt = now.AddDate(0, 0, validityDays)
+				if newExpiresAt.After(MaxExpiresAt) {
+					newExpiresAt = MaxExpiresAt
+				}
+			}
 			existingSub.StartsAt = now
 			existingSub.ExpiresAt = newExpiresAt
 			existingSub.Status = SubscriptionStatusActive
@@ -264,10 +274,11 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("reset expired subscription window anchor: %w", err)
 			}
-		} else if input.Source == domain.SubscriptionSourcePayment && group.HasDailyLimit() {
-			// Paid renewal grants a fresh daily card window immediately while the
-			// overall subscription expiry is still extended cumulatively. This avoids
-			// renewing a fully-used day card but still hitting DAILY_LIMIT_EXCEEDED.
+		} else if input.Source == domain.SubscriptionSourcePayment && validityDays == 1 && group.HasDailyLimit() {
+			// A paid 1-day renewal behaves like opening a fresh day card: grant a
+			// fresh daily window immediately while the overall subscription expiry is
+			// still extended cumulatively. Multi-day renewals only extend the current
+			// subscription and must not reset in-period usage.
 			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, now); err != nil {
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
@@ -794,6 +805,9 @@ func (s *SubscriptionService) SetUserDailyOverdraft(ctx context.Context, userID,
 		if sub.Group == nil || !sub.Group.AllowsDailyOverdraft() {
 			return nil, ErrDailyOverdraftNotAvailable
 		}
+		if _, ok := sub.DailyOverdraftLimitUSD(sub.Group); !ok {
+			return nil, ErrDailyOverdraftNotAvailable
+		}
 	}
 	if sub.AllowDailyOverdraft == enabled {
 		return sub, nil
@@ -861,13 +875,16 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 func normalizeExpiredWindows(subs []UserSubscription) {
 	for i := range subs {
 		sub := &subs[i]
+		overdraftMode := sub.Group != nil && sub.AllowsDailyOverdraft(sub.Group)
 		// 日窗口过期：清零展示数据
 		if sub.NeedsDailyReset() {
 			sub.DailyWindowStart = nil
 			sub.DailyUsageUSD = 0
 		}
-		// 周窗口过期：清零展示数据
-		if sub.NeedsWeeklyReset() {
+		// 周窗口过期：清零展示数据。日额度透支模式下 weekly_usage_usd
+		// 被复用为“订阅有效期累计用量”，不能按自然周清零，否则后续天
+		// 会重新获得已透支掉的未来日额度。
+		if !overdraftMode && sub.NeedsWeeklyReset() {
 			sub.WeeklyWindowStart = nil
 			sub.WeeklyUsageUSD = 0
 		}
@@ -943,6 +960,9 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		}
 	}
 	if resetWeekly {
+		if sub.AllowsDailyOverdraft(sub.Group) {
+			return nil, ErrInvalidResetTarget
+		}
 		windowStart := sub.CurrentWeeklyWindowStart(now)
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
@@ -1130,8 +1150,9 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		needsInvalidateCache = true
 	}
 
-	// 周窗口重置（订阅锚点滚动 7 天）
-	if sub.NeedsWeeklyReset() {
+	// 周窗口重置（订阅锚点滚动 7 天）。日额度透支模式下 weekly_usage_usd
+	// 承载订阅周期累计用量，必须一直保留到订阅过期/续期，不能每周重置。
+	if sub.NeedsWeeklyReset() && !(sub.Group != nil && sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentWeeklyWindowStart(now)
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
@@ -1175,6 +1196,13 @@ func (s *SubscriptionService) MarkQuotaExhausted(ctx context.Context, sub *UserS
 		return
 	}
 	if err := s.userSubRepo.UpdateStatus(ctx, sub.ID, SubscriptionStatusQuotaExhausted); err != nil {
+		return
+	}
+	s.afterSubscriptionQuotaExhausted(ctx, sub)
+}
+
+func (s *SubscriptionService) afterSubscriptionQuotaExhausted(ctx context.Context, sub *UserSubscription) {
+	if s == nil || sub == nil {
 		return
 	}
 	s.InvalidateSubCache(sub.UserID, sub.GroupID)
@@ -1233,7 +1261,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 		sub.DailyUsageUSD = 0
 		needsMaintenance = true
 	}
-	if sub.NeedsWeeklyReset() {
+	if sub.NeedsWeeklyReset() && !(group != nil && sub.AllowsDailyOverdraft(group)) {
 		sub.WeeklyUsageUSD = 0
 		needsMaintenance = true
 	}
@@ -1247,6 +1275,9 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 
 	// 3. 检查用量限额
 	if !sub.CheckDailyLimit(group, 0) {
+		if sub.AllowsDailyOverdraft(group) {
+			s.MarkQuotaExhausted(ctx, sub)
+		}
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
 	if !sub.CheckWeeklyLimit(group, 0) {
@@ -1385,9 +1416,18 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 	}
 
 weeklyProgress:
-	// 周进度
-	if group.HasWeeklyLimit() && sub.WeeklyWindowStart != nil {
-		limit := *group.WeeklyLimitUSD
+	// 周进度；日额度透支模式下复用此进度展示订阅有效期总额度。
+	if (group.HasWeeklyLimit() || sub.AllowsDailyOverdraft(group)) && sub.WeeklyWindowStart != nil {
+		var limit float64
+		if sub.AllowsDailyOverdraft(group) {
+			if overdraftLimit, ok := sub.DailyOverdraftLimitUSD(group); ok {
+				limit = overdraftLimit
+			} else {
+				goto monthlyProgress
+			}
+		} else {
+			limit = *group.WeeklyLimitUSD
+		}
 		resetsAt := sub.WeeklyResetTime()
 		if resetsAt == nil {
 			goto monthlyProgress
