@@ -271,7 +271,7 @@ func TestAssignOrExtendSubscription_ExpiredSubscriptionResetsStartAnchor(t *test
 	require.Contains(t, sub.Notes, "renew-note")
 }
 
-func TestAssignOrExtendSubscription_PaidRenewalResetsDailyUsage(t *testing.T) {
+func TestAssignOrExtendSubscription_PaidOneDayRenewalResetsDailyUsageAndRestartsOneDayPeriod(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 
@@ -332,11 +332,12 @@ func TestAssignOrExtendSubscription_PaidRenewalResetsDailyUsage(t *testing.T) {
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 	require.NotNil(t, sub.DailyWindowStart)
 	require.WithinDuration(t, before, *sub.DailyWindowStart, 3*time.Second)
-	require.True(t, sub.ExpiresAt.After(expiresAt))
+	require.WithinDuration(t, after.Add(24*time.Hour), sub.ExpiresAt, 3*time.Second)
+	require.True(t, sub.ExpiresAt.Before(expiresAt.Add(23*time.Hour)), "1-day renewal should restart one fresh day instead of cumulative expiry plus a reset")
 	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit}
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
 	require.NoError(t, err)
-	require.WithinDuration(t, after.Add(24*time.Hour), *sub.DailyResetTime(), 3*time.Second)
+	require.WithinDuration(t, sub.ExpiresAt, *sub.DailyResetTime(), 3*time.Second)
 }
 
 func TestAssignOrExtendSubscription_MultiDayPaidRenewalKeepsDailyUsage(t *testing.T) {

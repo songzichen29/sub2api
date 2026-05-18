@@ -275,10 +275,21 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				return nil, false, fmt.Errorf("reset expired subscription window anchor: %w", err)
 			}
 		} else if input.Source == domain.SubscriptionSourcePayment && validityDays == 1 && group.HasDailyLimit() {
-			// A paid 1-day renewal behaves like opening a fresh day card: grant a
-			// fresh daily window immediately while the overall subscription expiry is
-			// still extended cumulatively. Multi-day renewals only extend the current
-			// subscription and must not reset in-period usage.
+			// A paid 1-day renewal behaves like opening one fresh day card: reset the
+			// daily window immediately and cap the renewed period to now+1 day. If we
+			// both reset usage and cumulatively extend the old expiry, users can receive
+			// an extra automatic daily reset before the extended expiry. Multi-day
+			// renewals only extend the current subscription and must not reset in-period
+			// usage.
+			newExpiresAt = now.AddDate(0, 0, validityDays)
+			if newExpiresAt.After(MaxExpiresAt) {
+				newExpiresAt = MaxExpiresAt
+			}
+			existingSub.ExpiresAt = newExpiresAt
+			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
+				_ = tx.Rollback()
+				return nil, false, fmt.Errorf("cap 1-day renewal expiry: %w", err)
+			}
 			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, now); err != nil {
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
