@@ -111,13 +111,13 @@
                       class="h-1.5 rounded-full transition-all"
                       :class="
                         getProgressBarClass(
-                          getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                          getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd,
                           getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                         )
                       "
                       :style="{
                         width: getProgressWidth(
-                          getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                          getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd,
                           getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                         )
                       }"
@@ -126,7 +126,7 @@
                   <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
                     {{
                       formatUsage(
-                        getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                        getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd,
                         getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                       )
                     }}
@@ -232,7 +232,7 @@ function getMaxUsagePercentage(sub: UserSubscription): number {
   }
   const overdraftLimit = getOverdraftLimit(sub)
   if (overdraftLimit) {
-    percentages.push(((getOverdraftUsed(sub) || 0) / overdraftLimit) * 100)
+    percentages.push(((getOverdraftDisplayUsed(sub) || 0) / overdraftLimit) * 100)
   } else if (sub.group?.weekly_limit_usd) {
     percentages.push(((sub.weekly_usage_usd || 0) / sub.group.weekly_limit_usd) * 100)
   }
@@ -263,10 +263,39 @@ function getOverdraftUsed(sub: UserSubscription): number | null {
     : null
 }
 
+function getOverdraftDisplayUsed(sub: UserSubscription): number | null {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return null
+  return Math.min(getElapsedOverdraftQuota(sub) + getBorrowedFutureQuota(sub), limit)
+}
+
 function getTodayOverdraftAmount(sub: UserSubscription): number {
   const dailyLimit = sub.group?.daily_limit_usd
   if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
   return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
+}
+
+function getElapsedOverdraftQuota(sub: UserSubscription): number {
+  const dailyLimit = sub.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
+  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
+  if (!Number.isFinite(startsAt)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(1, Math.floor((Date.now() - startsAt) / dayMs) + 1)
+  const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
+  return Math.min(dailyLimit * Math.min(elapsedDays, validityDays), overdraftLimit)
+}
+
+function getBorrowedFutureQuota(sub: UserSubscription): number {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return 0
+  const arrivedQuota = getElapsedOverdraftQuota(sub)
+  const actualBorrowed = Math.max((getOverdraftUsed(sub) ?? 0) - arrivedQuota, 0)
+  const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(sub))
+  return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }
 
 function getProgressDotClass(sub: UserSubscription): string {

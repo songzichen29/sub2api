@@ -174,7 +174,7 @@
                   {{ getOverdraftLimit(subscription) ? t('userSubscriptions.overdraftTotal') : t('userSubscriptions.weekly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ ((getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd) || 0).toFixed(2) }} / ${{
+                  ${{ ((getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd) || 0).toFixed(2) }} / ${{
                     (getOverdraftLimit(subscription) || subscription.group!.weekly_limit_usd!).toFixed(2)
                   }}
                 </span>
@@ -184,13 +184,13 @@
                   class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
                   :class="
                     getProgressBarClass(
-                      getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                      getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd,
                       getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                     )
                   "
                   :style="{
                     width: getProgressWidth(
-                      getOverdraftUsed(subscription) ?? subscription.weekly_usage_usd,
+                      getOverdraftDisplayUsed(subscription) ?? subscription.weekly_usage_usd,
                       getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd
                     )
                   }"
@@ -379,13 +379,19 @@ function getOverdraftUsed(subscription: UserSubscription): number | null {
     : null
 }
 
+function getOverdraftDisplayUsed(subscription: UserSubscription): number | null {
+  const limit = getOverdraftLimit(subscription)
+  if (limit === null) return null
+  return Math.min(getElapsedOverdraftQuota(subscription) + getBorrowedFutureQuota(subscription), limit)
+}
+
 function getTodayOverdraftAmount(subscription: UserSubscription): number {
   const dailyLimit = subscription.group?.daily_limit_usd
   if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(subscription) === null) return 0
   return Math.max((subscription.daily_usage_usd || 0) - dailyLimit, 0)
 }
 
-function getBorrowedFutureQuota(subscription: UserSubscription): number {
+function getElapsedOverdraftQuota(subscription: UserSubscription): number {
   const dailyLimit = subscription.group?.daily_limit_usd
   const overdraftLimit = getOverdraftLimit(subscription)
   if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
@@ -394,16 +400,25 @@ function getBorrowedFutureQuota(subscription: UserSubscription): number {
   if (!Number.isFinite(startsAt)) return 0
 
   const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(1, Math.ceil((Date.now() - startsAt) / dayMs))
+  const elapsedDays = Math.max(1, Math.floor((Date.now() - startsAt) / dayMs) + 1)
   const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
   const arrivedQuota = dailyLimit * Math.min(elapsedDays, validityDays)
-  return Math.max((getOverdraftUsed(subscription) ?? 0) - arrivedQuota, 0)
+  return Math.min(arrivedQuota, overdraftLimit)
+}
+
+function getBorrowedFutureQuota(subscription: UserSubscription): number {
+  const limit = getOverdraftLimit(subscription)
+  if (limit === null) return 0
+  const arrivedQuota = getElapsedOverdraftQuota(subscription)
+  const actualBorrowed = Math.max((getOverdraftUsed(subscription) ?? 0) - arrivedQuota, 0)
+  const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(subscription))
+  return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }
 
 function getOverdraftRemaining(subscription: UserSubscription): number {
   const limit = getOverdraftLimit(subscription)
   if (limit === null) return 0
-  return Math.max(limit - (getOverdraftUsed(subscription) ?? 0), 0)
+  return Math.max(limit - (getOverdraftDisplayUsed(subscription) ?? 0), 0)
 }
 
 function canConfigureDailyOverdraft(subscription: UserSubscription): boolean {
@@ -464,7 +479,7 @@ function subscriptionHasRenewalWarning(subscription: UserSubscription): boolean 
   if (!group) return true
   const overdraftLimit = getOverdraftLimit(subscription)
   if (overdraftLimit !== null) {
-    return (overdraftLimit - (getOverdraftUsed(subscription) ?? 0)) > 0
+    return (overdraftLimit - (getOverdraftDisplayUsed(subscription) ?? 0)) > 0
   }
   const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
     && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
