@@ -155,10 +155,12 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // empty/nil and there are tool_calls, only function_call items are emitted.
 func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
-	content := ""
+	var content strings.Builder
 
 	if m.ReasoningContent != "" {
-		content = "<thinking>" + m.ReasoningContent + "</thinking>"
+		content.WriteString("<thinking>")
+		content.WriteString(m.ReasoningContent)
+		content.WriteString("</thinking>")
 	}
 
 	// Emit assistant message with output_text if content is non-empty.
@@ -168,15 +170,15 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 			return nil, err
 		}
 		if s != "" {
-			if content != "" {
-				content += "\n"
+			if content.Len() > 0 {
+				content.WriteByte('\n')
 			}
-			content += s
+			content.WriteString(s)
 		}
 	}
 
-	if content != "" {
-		parts := []ResponsesContentPart{{Type: "output_text", Text: content}}
+	if content.Len() > 0 {
+		parts := []ResponsesContentPart{{Type: "output_text", Text: content.String()}}
 		partsJSON, err := json.Marshal(parts)
 		if err != nil {
 			return nil, err
