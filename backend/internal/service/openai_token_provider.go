@@ -160,6 +160,16 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 
 		result, err := p.refreshAPI.RefreshIfNeeded(ctx, account, p.executor, openAITokenRefreshSkew)
 		if err != nil {
+			if isOpenAINonRetryableRefreshError(account, err) {
+				errorMsg := "Token refresh failed (non-retryable): " + err.Error()
+				if p.accountRepo != nil {
+					if setErr := p.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
+						slog.Warn("openai_token_refresh_set_error_failed", "account_id", account.ID, "error", setErr)
+					}
+				}
+				p.metrics.refreshFailure.Add(1)
+				return "", err
+			}
 			if p.refreshPolicy.OnRefreshError == ProviderRefreshErrorReturn {
 				return "", err
 			}

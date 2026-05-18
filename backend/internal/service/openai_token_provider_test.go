@@ -86,11 +86,13 @@ func (s *openAITokenCacheStub) ReleaseRefreshLock(ctx context.Context, cacheKey 
 
 // openAIAccountRepoStub is a minimal stub implementing only the methods used by OpenAITokenProvider
 type openAIAccountRepoStub struct {
-	account      *Account
-	getErr       error
-	updateErr    error
-	getCalled    int32
-	updateCalled int32
+	account        *Account
+	getErr         error
+	updateErr      error
+	getCalled      int32
+	updateCalled   int32
+	setErrorCalled int32
+	lastErrorMsg   string
 }
 
 func (r *openAIAccountRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -107,6 +109,12 @@ func (r *openAIAccountRepoStub) Update(ctx context.Context, account *Account) er
 		return r.updateErr
 	}
 	r.account = account
+	return nil
+}
+
+func (r *openAIAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
+	atomic.AddInt32(&r.setErrorCalled, 1)
+	r.lastErrorMsg = errorMsg
 	return nil
 }
 
@@ -923,4 +931,34 @@ func TestOpenAITokenProvider_RuntimeMetrics_LockAcquireFailure(t *testing.T) {
 	metrics := provider.SnapshotRuntimeMetrics()
 	require.GreaterOrEqual(t, metrics.LockAcquireFailure, int64(1))
 	require.GreaterOrEqual(t, metrics.RefreshRequests, int64(1))
+}
+
+func TestOpenAITokenProvider_NonRetryableRefreshErrorSetsError(t *testing.T) {
+	cache := newOpenAITokenCacheStub()
+	expiresAt := time.Now().Add(-time.Minute).Format(time.RFC3339)
+	account := &Account{
+		ID:       211,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "stale-token",
+			"refresh_token": "reused-refresh-token",
+			"expires_at":    expiresAt,
+		},
+	}
+	repo := &tokenRefreshAccountRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}}
+	refreshAPI := NewOAuthRefreshAPI(repo, nil)
+	executor := &tokenRefresherStub{err: errors.New("OPENAI_OAUTH_TOKEN_REFRESH_FAILED: refresh_token_reused: refresh token has already been used to generate a new access token. Please try signing in again")}
+
+	provider := NewOpenAITokenProvider(repo, cache, nil)
+	provider.SetRefreshAPI(refreshAPI, executor)
+
+	_, err := provider.GetAccessToken(context.Background(), account)
+
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Contains(t, repo.lastErrorMsg, "non-retryable")
+	require.Contains(t, repo.lastErrorMsg, "refresh_token_reused")
+	metrics := provider.SnapshotRuntimeMetrics()
+	require.Equal(t, int64(1), metrics.RefreshFailure)
 }

@@ -287,8 +287,10 @@ func (s *TokenRefreshService) refreshWithRetry(ctx context.Context, account *Acc
 			return nil
 		}
 
-		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
-		if isNonRetryableRefreshError(err) {
+		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回。
+		// OpenAI OAuth 的 refresh_token_reused/token_expired 也属于需要重新登录的永久凭证错误，
+		// 不能仅临时不可调度后继续漂绿。
+		if isNonRetryableRefreshError(err) || isOpenAINonRetryableRefreshError(account, err) {
 			errorMsg := fmt.Sprintf("Token refresh failed (non-retryable): %v", err)
 			if setErr := s.accountRepo.SetError(ctx, account.ID, errorMsg); setErr != nil {
 				slog.Error("token_refresh.set_error_status_failed",
@@ -431,6 +433,27 @@ func isNonRetryableRefreshError(err error) bool {
 		"access_denied",       // 访问被拒绝
 		"missing_project_id",  // 缺少 project_id
 		"no refresh token available",
+	}
+	for _, needle := range nonRetryable {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOpenAINonRetryableRefreshError(account *Account, err error) bool {
+	if account == nil || err == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	nonRetryable := []string{
+		"refresh_token_reused",
+		"refresh token has already been used",
+		"token_expired",
+		"provided authentication token is expired",
+		"please try signing in again",
 	}
 	for _, needle := range nonRetryable {
 		if strings.Contains(msg, needle) {

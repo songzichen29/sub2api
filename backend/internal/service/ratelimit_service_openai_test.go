@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -307,6 +308,52 @@ func TestRateLimitService_HandleUpstreamError_403FallsBackToRawBody(t *testing.T
 	require.Contains(t, repo.lastErrorMsg, `"access_denied"`)
 	require.Contains(t, repo.lastErrorMsg, `"ip_blocked"`)
 	require.NotContains(t, repo.lastErrorMsg, "account may be suspended or lack permissions")
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAIAPIKeyQuotaExhaustedSetsError(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       203,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		429,
+		http.Header{},
+		[]byte(`{"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}`),
+	)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Contains(t, repo.lastErrorMsg, "OpenAI API key quota exhausted")
+	require.Contains(t, repo.lastErrorMsg, "current quota")
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAIOAuthUsageLimitStillRateLimited(t *testing.T) {
+	repo := &openAI429SnapshotRepo{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       204,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+	resetAt := time.Now().Add(2 * time.Hour).Unix()
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		429,
+		http.Header{},
+		[]byte(`{"error":{"message":"The usage limit has been reached","type":"usage_limit_reached","resets_at":`+strconv.FormatInt(resetAt, 10)+`}}`),
+	)
+
+	require.False(t, shouldDisable)
+	require.Equal(t, account.ID, repo.rateLimitedID)
 }
 
 func TestNormalizedCodexLimits_OnlySecondaryData(t *testing.T) {

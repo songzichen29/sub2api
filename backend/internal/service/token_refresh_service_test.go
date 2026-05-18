@@ -21,6 +21,7 @@ type tokenRefreshAccountRepo struct {
 	clearTempCalls         int
 	setTempUnschedCalls    int
 	lastAccount            *Account
+	lastErrorMsg           string
 	updateErr              error
 }
 
@@ -51,6 +52,7 @@ func (r *tokenRefreshAccountRepo) UpdateCredentials(ctx context.Context, id int6
 
 func (r *tokenRefreshAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
+	r.lastErrorMsg = errorMsg
 	return nil
 }
 
@@ -545,6 +547,61 @@ func TestIsNonRetryableRefreshError(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestIsOpenAINonRetryableRefreshError(t *testing.T) {
+	openAIAccount := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	geminiAccount := &Account{ID: 2, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	apiKeyAccount := &Account{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+
+	tests := []struct {
+		name     string
+		account  *Account
+		err      error
+		expected bool
+	}{
+		{name: "refresh_token_reused", account: openAIAccount, err: errors.New("OPENAI_OAUTH_TOKEN_REFRESH_FAILED: refresh_token_reused"), expected: true},
+		{name: "refresh_token_already_used", account: openAIAccount, err: errors.New("refresh token has already been used to generate a new access token"), expected: true},
+		{name: "token_expired", account: openAIAccount, err: errors.New("token_expired: Provided authentication token is expired. Please try signing in again"), expected: true},
+		{name: "network_error", account: openAIAccount, err: errors.New("network timeout"), expected: false},
+		{name: "other_platform", account: geminiAccount, err: errors.New("refresh_token_reused"), expected: false},
+		{name: "apikey", account: apiKeyAccount, err: errors.New("refresh_token_reused"), expected: false},
+		{name: "nil_error", account: openAIAccount, err: nil, expected: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, isOpenAINonRetryableRefreshError(tt.account, tt.err))
+		})
+	}
+}
+
+func TestTokenRefreshService_RefreshWithRetry_OpenAINonRetryableRefreshErrorSetsError(t *testing.T) {
+	repo := &tokenRefreshAccountRepo{}
+	cfg := &config.Config{
+		TokenRefresh: config.TokenRefreshConfig{
+			MaxRetries:          1,
+			RetryBackoffSeconds: 0,
+		},
+	}
+	service := NewTokenRefreshService(repo, nil, nil, nil, nil, nil, nil, cfg, nil)
+	account := &Account{
+		ID:       910,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "old-token",
+		},
+	}
+	refresher := &tokenRefresherStub{
+		err: errors.New("OPENAI_OAUTH_TOKEN_REFRESH_FAILED: refresh_token_reused: Provided authentication token is expired. Please try signing in again"),
+	}
+
+	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
+
+	require.Error(t, err)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 0, repo.setTempUnschedCalls)
 }
 
 // ========== Path A (refreshAPI) 测试用例 ==========

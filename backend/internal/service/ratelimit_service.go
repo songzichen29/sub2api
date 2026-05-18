@@ -153,7 +153,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 
 	// 先尝试临时不可调度规则（401除外）
 	// 如果匹配成功，直接返回，不执行后续禁用逻辑
-	if statusCode != 401 {
+	if statusCode != 401 && !isOpenAIAPIKeyQuotaExhausted(account, "", responseBody) {
 		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
 		}
@@ -163,6 +163,15 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 	if upstreamMsg != "" {
 		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	if isOpenAIAPIKeyQuotaExhausted(account, upstreamMsg, responseBody) {
+		msg := "OpenAI API key quota exhausted"
+		if upstreamMsg != "" {
+			msg += ": " + upstreamMsg
+		}
+		s.handleAuthError(ctx, account, msg)
+		return true
 	}
 
 	switch statusCode {
@@ -826,6 +835,36 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 		return
 	}
 	slog.Warn("account_disabled_custom_error", "account_id", account.ID, "status_code", statusCode, "error", errorMsg)
+}
+
+func isOpenAIAPIKeyQuotaExhausted(account *Account, upstreamMsg string, responseBody []byte) bool {
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
+		return false
+	}
+
+	text := strings.ToLower(strings.TrimSpace(upstreamMsg + " " + string(responseBody)))
+	if text == "" {
+		return false
+	}
+
+	quotaExhaustedSignals := []string{
+		"insufficient_quota",
+		"billing_hard_limit_reached",
+		"quota_exceeded",
+		"exceeded your current quota",
+		"not enough quota",
+		"quota exhausted",
+		"balance exhausted",
+		"credit balance",
+		"余额不足",
+		"额度不足",
+	}
+	for _, needle := range quotaExhaustedSignals {
+		if strings.Contains(text, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // handle429 处理429限流错误
