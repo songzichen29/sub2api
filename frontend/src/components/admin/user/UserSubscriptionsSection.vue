@@ -140,12 +140,12 @@
               <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                 <div
                   class="h-1.5 rounded-full transition-all"
-                  :class="getProgressClass(getOverdraftUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null)"
-                  :style="{ width: getProgressWidth(getOverdraftUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null) }"
+                  :class="getProgressClass(getOverdraftDisplayUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null)"
+                  :style="{ width: getProgressWidth(getOverdraftDisplayUsed(sub) ?? sub.weekly_usage_usd, getOverdraftLimit(sub) || sub.group?.weekly_limit_usd || null) }"
                 ></div>
               </div>
               <span class="usage-amount">
-                ${{ ((getOverdraftUsed(sub) ?? sub.weekly_usage_usd) || 0).toFixed(2) }}
+                ${{ ((getOverdraftDisplayUsed(sub) ?? sub.weekly_usage_usd) || 0).toFixed(2) }}
                 <span class="text-gray-400">/</span>
                 ${{ (getOverdraftLimit(sub) || sub.group!.weekly_limit_usd!).toFixed(2) }}
               </span>
@@ -342,6 +342,42 @@ const getOverdraftUsed = (sub: UserSubscription): number | null => {
   return getOverdraftLimit(sub) !== null
     ? sub.overdraft_used_usd ?? 0
     : null
+}
+
+const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return null
+  return Math.min(getElapsedOverdraftQuota(sub) + getBorrowedFutureQuota(sub), limit)
+}
+
+const getTodayOverdraftAmount = (sub: UserSubscription): number => {
+  const dailyLimit = sub.group?.daily_limit_usd
+  if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
+  return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
+}
+
+const getElapsedOverdraftQuota = (sub: UserSubscription): number => {
+  const dailyLimit = sub.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
+  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
+  if (!Number.isFinite(startsAt)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(1, Math.floor((Date.now() - startsAt) / dayMs) + 1)
+  const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
+  const arrivedQuota = dailyLimit * Math.min(elapsedDays, validityDays)
+  return Math.min(arrivedQuota, overdraftLimit)
+}
+
+const getBorrowedFutureQuota = (sub: UserSubscription): number => {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return 0
+  const arrivedQuota = getElapsedOverdraftQuota(sub)
+  const actualBorrowed = Math.max((getOverdraftUsed(sub) ?? 0) - arrivedQuota, 0)
+  const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(sub))
+  return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }
 
 const getOverdraftUsedDays = (sub: UserSubscription): number => {

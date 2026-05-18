@@ -271,14 +271,14 @@
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                    :class="getProgressClass((row.overdraft_used_usd ?? 0) || 0, row.overdraft_limit_usd)"
+                      :class="getProgressClass(getOverdraftDisplayUsed(row) ?? 0, row.overdraft_limit_usd)"
                       :style="{
-                        width: getProgressWidth((row.overdraft_used_usd ?? 0) || 0, row.overdraft_limit_usd)
+                        width: getProgressWidth(getOverdraftDisplayUsed(row) ?? 0, row.overdraft_limit_usd)
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
-                    ${{ ((row.overdraft_used_usd ?? 0) || 0).toFixed(2) }}
+                    ${{ ((getOverdraftDisplayUsed(row) ?? 0) || 0).toFixed(2) }}
                     <span class="text-gray-400">/</span>
                     ${{ row.overdraft_limit_usd?.toFixed(2) }}
                   </span>
@@ -1613,7 +1613,7 @@ const isResetWindowEnabled = (sub: UserSubscription, key: ResetWindowKey): boole
 const formatUsageText = (sub: UserSubscription, key: ResetWindowKey): string => {
   if (sub.allow_daily_overdraft) {
     const limit = sub.overdraft_limit_usd
-    const used = sub.overdraft_used_usd ?? 0
+    const used = getOverdraftDisplayUsed(sub) ?? 0
     return typeof limit === 'number' ? `$${used.toFixed(2)} / $${limit.toFixed(2)}` : ''
   }
   const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
@@ -1695,6 +1695,56 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+const getOverdraftLimit = (sub: UserSubscription): number | null => {
+  return sub.allow_daily_overdraft
+    && typeof sub.overdraft_limit_usd === 'number'
+    && sub.overdraft_limit_usd > 0
+    ? sub.overdraft_limit_usd
+    : null
+}
+
+const getOverdraftUsed = (sub: UserSubscription): number | null => {
+  return getOverdraftLimit(sub) !== null
+    ? sub.overdraft_used_usd ?? 0
+    : null
+}
+
+const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return null
+  return Math.min(getElapsedOverdraftQuota(sub) + getBorrowedFutureQuota(sub), limit)
+}
+
+const getTodayOverdraftAmount = (sub: UserSubscription): number => {
+  const dailyLimit = sub.group?.daily_limit_usd
+  if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
+  return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
+}
+
+const getElapsedOverdraftQuota = (sub: UserSubscription): number => {
+  const dailyLimit = sub.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
+  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
+  if (!Number.isFinite(startsAt)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(1, Math.floor((Date.now() - startsAt) / dayMs) + 1)
+  const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
+  const arrivedQuota = dailyLimit * Math.min(elapsedDays, validityDays)
+  return Math.min(arrivedQuota, overdraftLimit)
+}
+
+const getBorrowedFutureQuota = (sub: UserSubscription): number => {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return 0
+  const arrivedQuota = getElapsedOverdraftQuota(sub)
+  const actualBorrowed = Math.max((getOverdraftUsed(sub) ?? 0) - arrivedQuota, 0)
+  const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(sub))
+  return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }
 
 // Format reset time based on window start and period type
