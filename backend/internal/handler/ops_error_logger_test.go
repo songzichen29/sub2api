@@ -760,7 +760,6 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		})
 	}
 }
-
 func TestClassifyOpsIPRestrictionAccessDeniedExcludedFromSLA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -792,7 +791,6 @@ func TestClassifyOpsClientBusinessLimitedMarkerExcludesCustomPolicyDenialFromSLA
 	require.Equal(t, "client", errorOwner)
 	require.Equal(t, "client_request", errorSource)
 }
-
 func TestClassifyOpsOtherErrorsStillCountForSLA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
