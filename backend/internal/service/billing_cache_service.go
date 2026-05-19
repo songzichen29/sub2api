@@ -853,6 +853,33 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		subData.StartsAt = subscription.StartsAt
 		subData.ExpiresAt = subscription.ExpiresAt
 	}
+	if subAllowsOverdraft && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt)) {
+		if freshSub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, group.ID); err == nil && freshSub != nil {
+			cacheSub.StartsAt = freshSub.StartsAt
+			cacheSub.ExpiresAt = freshSub.ExpiresAt
+			cacheSub.DailyUsageUSD = freshSub.DailyUsageUSD
+			cacheSub.WeeklyUsageUSD = freshSub.WeeklyUsageUSD
+			cacheSub.MonthlyUsageUSD = freshSub.MonthlyUsageUSD
+			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
+			subData.StartsAt = freshSub.StartsAt
+			subData.ExpiresAt = freshSub.ExpiresAt
+			subData.DailyUsage = freshSub.DailyUsageUSD
+			subData.WeeklyUsage = freshSub.WeeklyUsageUSD
+			subData.MonthlyUsage = freshSub.MonthlyUsageUSD
+			subData.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
+			s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
+				Status:              freshSub.Status,
+				StartsAt:            freshSub.StartsAt,
+				ExpiresAt:           freshSub.ExpiresAt,
+				DailyUsage:          freshSub.DailyUsageUSD,
+				WeeklyUsage:         freshSub.WeeklyUsageUSD,
+				MonthlyUsage:        freshSub.MonthlyUsageUSD,
+				AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
+				Version:             freshSub.UpdatedAt.Unix(),
+			})
+			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
+		}
+	}
 	if group.HasDailyLimit() {
 		if !subAllowsOverdraft && subData.DailyUsage >= *group.DailyLimitUSD {
 			return ErrDailyLimitExceeded

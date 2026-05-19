@@ -280,8 +280,15 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			// both reset usage and cumulatively extend the old expiry, users can receive
 			// an extra automatic daily reset before the extended expiry. Multi-day
 			// renewals only extend the current subscription and must not reset in-period
-			// usage.
-			newExpiresAt = now.AddDate(0, 0, validityDays)
+			// usage. In daily-overdraft mode, the period pool is derived from
+			// expires_at-starts_at, so never shrink an active subscription's expiry
+			// while opening the fresh daily card.
+			cappedExpiresAt := now.AddDate(0, 0, validityDays)
+			if existingSub.AllowsDailyOverdraft(group) && cappedExpiresAt.Before(existingSub.ExpiresAt) {
+				newExpiresAt = existingSub.ExpiresAt
+			} else {
+				newExpiresAt = cappedExpiresAt
+			}
 			if newExpiresAt.After(MaxExpiresAt) {
 				newExpiresAt = MaxExpiresAt
 			}
@@ -899,8 +906,9 @@ func normalizeExpiredWindows(subs []UserSubscription) {
 			sub.WeeklyWindowStart = nil
 			sub.WeeklyUsageUSD = 0
 		}
-		// 月窗口过期：清零展示数据
-		if sub.NeedsMonthlyReset() {
+		// 月窗口过期：清零展示数据。日额度透支模式下 monthly_usage_usd
+		// 同样表示订阅周期内累计消耗，不能按月窗口清零。
+		if !overdraftMode && sub.NeedsMonthlyReset() {
 			sub.MonthlyWindowStart = nil
 			sub.MonthlyUsageUSD = 0
 		}
@@ -980,6 +988,9 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		}
 	}
 	if resetMonthly {
+		if sub.AllowsDailyOverdraft(sub.Group) {
+			return nil, ErrInvalidResetTarget
+		}
 		windowStart := sub.CurrentMonthlyWindowStart(now)
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
 			return nil, err
@@ -1173,8 +1184,9 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 		needsInvalidateCache = true
 	}
 
-	// 月窗口重置（订阅锚点滚动 30 天）
-	if sub.NeedsMonthlyReset() {
+	// 月窗口重置（订阅锚点滚动 30 天）。日额度透支模式下 monthly_usage_usd
+	// 表示订阅周期累计用量，不能按月窗口清零。
+	if sub.NeedsMonthlyReset() && !(sub.Group != nil && sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentMonthlyWindowStart(now)
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
@@ -1276,7 +1288,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 		sub.WeeklyUsageUSD = 0
 		needsMaintenance = true
 	}
-	if sub.NeedsMonthlyReset() {
+	if sub.NeedsMonthlyReset() && !(group != nil && sub.AllowsDailyOverdraft(group)) {
 		sub.MonthlyUsageUSD = 0
 		needsMaintenance = true
 	}

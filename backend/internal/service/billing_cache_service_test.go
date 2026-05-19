@@ -105,11 +105,30 @@ func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 
 type billingCacheSubscriptionStub struct {
 	billingCacheWorkerStub
-	data *SubscriptionCacheData
+	data        *SubscriptionCacheData
+	lastSetData *SubscriptionCacheData
 }
 
 func (b *billingCacheSubscriptionStub) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
 	return b.data, nil
+}
+
+func (b *billingCacheSubscriptionStub) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error {
+	b.lastSetData = data
+	return b.billingCacheWorkerStub.SetSubscriptionCache(ctx, userID, groupID, data)
+}
+
+type billingCacheSubscriptionRepoStub struct {
+	userSubRepoNoop
+	sub *UserSubscription
+}
+
+func (r *billingCacheSubscriptionRepoStub) GetActiveByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
+	if r.sub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	cp := *r.sub
+	return &cp, nil
 }
 
 func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPeriodPool(t *testing.T) {
@@ -159,4 +178,33 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPasse
 	subscription := &UserSubscription{StartsAt: startsAt, ExpiresAt: startsAt.Add(5 * 24 * time.Hour), AllowDailyOverdraft: true}
 	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, subscription)
 	require.NoError(t, err)
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftBackfillsMissingCacheAnchors(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:              SubscriptionStatusActive,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+		DailyUsage:          80,
+		WeeklyUsage:         120,
+		AllowDailyOverdraft: true,
+	}}
+	repo := &billingCacheSubscriptionRepoStub{sub: &UserSubscription{
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+		DailyUsageUSD:       80,
+		WeeklyUsageUSD:      120,
+		AllowDailyOverdraft: true,
+	}}
+	svc := NewBillingCacheService(cache, nil, repo, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	require.NoError(t, err)
+	require.Greater(t, atomic.LoadInt64(&cache.subscriptionUpdates), int64(0))
+	require.NotNil(t, cache.lastSetData)
+	require.Equal(t, startsAt.Unix(), cache.lastSetData.StartsAt.Unix())
 }

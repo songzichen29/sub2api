@@ -19,18 +19,18 @@ type resetQuotaUserSubRepoStub struct {
 
 	sub *UserSubscription
 
-	activateDailyStart   *time.Time
-	activateWeeklyStart  *time.Time
-	activateMonthlyStart *time.Time
+	activateDailyStart    *time.Time
+	activateWeeklyStart   *time.Time
+	activateMonthlyStart  *time.Time
 	lastResetDailyStart   *time.Time
 	lastResetWeeklyStart  *time.Time
 	lastResetMonthlyStart *time.Time
-	resetDailyCalled   bool
-	resetWeeklyCalled  bool
-	resetMonthlyCalled bool
-	resetDailyErr      error
-	resetWeeklyErr     error
-	resetMonthlyErr    error
+	resetDailyCalled      bool
+	resetWeeklyCalled     bool
+	resetMonthlyCalled    bool
+	resetDailyErr         error
+	resetWeeklyErr        error
+	resetMonthlyErr       error
 }
 
 func (r *resetQuotaUserSubRepoStub) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
@@ -417,4 +417,35 @@ func TestAdminResetQuota_UsesAnchoredWindowForEachDimension(t *testing.T) {
 	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *stub.lastResetDailyStart, 2*time.Second)
 	require.WithinDuration(t, sub.CurrentWeeklyWindowStart(time.Now()), *stub.lastResetWeeklyStart, 2*time.Second)
 	require.WithinDuration(t, sub.CurrentMonthlyWindowStart(time.Now()), *stub.lastResetMonthlyStart, 2*time.Second)
+}
+
+func TestCheckAndResetWindows_DailyOverdraftSkipsPeriodUsageResets(t *testing.T) {
+	startsAt := time.Now().Add(-(35 * 24 * time.Hour))
+	dailyStart := startsAt
+	weeklyStart := startsAt
+	monthlyStart := startsAt
+	sub := newAdminSub(103)
+	sub.StartsAt = startsAt
+	sub.ExpiresAt = time.Now().Add(24 * time.Hour)
+	sub.DailyWindowStart = &dailyStart
+	sub.WeeklyWindowStart = &weeklyStart
+	sub.MonthlyWindowStart = &monthlyStart
+	sub.DailyUsageUSD = 1
+	sub.WeeklyUsageUSD = 2
+	sub.MonthlyUsageUSD = 3
+	sub.AllowDailyOverdraft = true
+	sub.Group.AllowDailyOverdraft = true
+	sub.Group.SubscriptionType = SubscriptionTypeSubscription
+
+	stub := &resetQuotaUserSubRepoStub{sub: sub}
+	svc := newResetQuotaSvc(stub)
+
+	err := svc.CheckAndResetWindows(context.Background(), sub)
+
+	require.NoError(t, err)
+	require.True(t, stub.resetDailyCalled)
+	require.False(t, stub.resetWeeklyCalled)
+	require.False(t, stub.resetMonthlyCalled)
+	require.Equal(t, 2.0, sub.WeeklyUsageUSD)
+	require.Equal(t, 3.0, sub.MonthlyUsageUSD)
 }
