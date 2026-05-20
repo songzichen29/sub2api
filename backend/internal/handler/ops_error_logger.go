@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
+	"net/http"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -19,6 +21,7 @@ import (
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 const (
@@ -358,6 +361,81 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 		c.Set(opsUpstreamModelKey, upstreamModel)
 	}
 	c.Set(opsRequestTypeKey, requestType)
+}
+
+func setOpsRequestContextFromBodyIfMissing(c *gin.Context) {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return
+	}
+	if _, ok := c.Get(opsRequestBodyKey); ok {
+		return
+	}
+	if c.Request.ContentLength == 0 {
+		if model := inferOpsRequestModel(c, nil); model != "" {
+			setOpsRequestContext(c, model, false, nil)
+		}
+		return
+	}
+	raw, ok := peekOpsRequestBody(c)
+	if !ok || len(raw) == 0 {
+		if model := inferOpsRequestModel(c, nil); model != "" {
+			setOpsRequestContext(c, model, false, nil)
+		}
+		return
+	}
+	model := inferOpsRequestModel(c, raw)
+	stream := inferOpsRequestStream(raw)
+	setOpsRequestContext(c, model, stream, raw)
+	if _, ok := c.Get(opsRequestTypeKey); !ok {
+		requestType := service.RequestTypeFromLegacy(stream, false)
+		c.Set(opsRequestTypeKey, int16(requestType))
+	}
+}
+
+func peekOpsRequestBody(c *gin.Context) ([]byte, bool) {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return nil, false
+	}
+	if c.Request.Body == http.NoBody {
+		return nil, false
+	}
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil || len(body) == 0 {
+		if c.Request.Body != nil {
+			c.Request.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		return nil, false
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	return body, true
+}
+
+func inferOpsRequestModel(c *gin.Context, body []byte) string {
+	if len(body) > 0 {
+		if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
+			return model
+		}
+		if model := strings.TrimSpace(gjson.GetBytes(body, "session.model").String()); model != "" {
+			return model
+		}
+	}
+	if c != nil && c.Request != nil && c.Request.URL != nil {
+		path := c.Request.URL.Path
+		if idx := strings.Index(path, "/models/"); idx >= 0 {
+			rest := strings.TrimPrefix(path[idx+len("/models/"):], "/")
+			if i := strings.IndexAny(rest, ":/"); i > 0 {
+				return strings.TrimSpace(rest[:i])
+			}
+		}
+	}
+	return ""
+}
+
+func inferOpsRequestStream(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	return gjson.GetBytes(body, "stream").Bool()
 }
 
 func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
@@ -731,6 +809,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		body := w.buf.Bytes()
 		parsed := parseOpsErrorResponse(body)
+		setOpsRequestContextFromBodyIfMissing(c)
 
 		// Skip logging if a passthrough rule with skip_monitoring=true matched.
 		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
@@ -1038,18 +1117,27 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 				msg, _ = v.(string)
 			}
 		}
-		if t == "" {
-			// Gemini error does not have "type" field.
-			t = "api_error"
-		}
-		// For gemini error, capture numeric code as string for business-limited mapping if needed.
+		// Capture both OpenAI/Responses string codes (e.g. "billing_error") and
+		// Gemini numeric codes so classification can preserve gateway-generated
+		// billing/subscription errors.
 		var code string
 		if v, ok := errObj["code"]; ok {
 			switch n := v.(type) {
+			case string:
+				code = strings.TrimSpace(n)
 			case float64:
 				code = strconvItoa(int(n))
 			case int:
 				code = strconvItoa(n)
+			}
+		}
+		if t == "" {
+			// Gemini error does not have "type" field.  Responses-style errors
+			// may also omit type and put the protocol type in error.code instead.
+			if isKnownOpsErrorType(code) {
+				t = code
+			} else {
+				t = "api_error"
 			}
 		}
 		return parsedOpsError{ErrorType: t, Message: msg, Code: code}

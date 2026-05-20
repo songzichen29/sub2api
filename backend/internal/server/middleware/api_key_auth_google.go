@@ -56,15 +56,12 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
+		// 基础鉴权通过后立即写入上下文，保证后续订阅/余额限额在本中间件内拦截时，
+		// 外层 OpsErrorLogger 仍可记录 user/api_key/group 归属。
+		setAuthenticatedAPIKeyContext(c, apiKey)
+
 		// 简易模式：跳过余额和订阅检查
 		if cfg.RunMode == config.RunModeSimple {
-			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
-			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
-			setGroupContext(c, apiKey.Group)
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
 			return
@@ -82,6 +79,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				return
 			}
 
+			c.Set(string(ContextKeySubscription), subscription)
+
 			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(c.Request.Context(), subscription, apiKey.Group)
 			if err != nil {
 				status := 403
@@ -94,8 +93,6 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				return
 			}
 
-			c.Set(string(ContextKeySubscription), subscription)
-
 			if needsMaintenance {
 				maintenanceCopy := *subscription
 				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
@@ -107,13 +104,6 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			}
 		}
 
-		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
-		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
-		setGroupContext(c, apiKey.Group)
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 		c.Next()
 	}

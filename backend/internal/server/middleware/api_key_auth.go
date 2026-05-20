@@ -120,16 +120,14 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			return
 		}
 
+		// 从这里开始，Key、用户和分组已经完成基础鉴权。
+		// 先写入上下文，再执行订阅/余额/配额检查，确保这些检查在中间件内拦截时，
+		// 外层 OpsErrorLogger 仍能把 403 错误归属到具体 user/api_key/group。
+		setAuthenticatedAPIKeyContext(c, apiKey)
+
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
 		if cfg.RunMode == config.RunModeSimple {
-			c.Set(string(ContextKeyAPIKey), apiKey)
-			c.Set(string(ContextKeyUser), AuthSubject{
-				UserID:      apiKey.User.ID,
-				Concurrency: apiKey.User.Concurrency,
-			})
-			c.Set(string(ContextKeyUserRole), apiKey.User.Role)
-			setGroupContext(c, apiKey.Group)
 			_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 			c.Next()
 			return
@@ -164,6 +162,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				// skipBilling: 订阅不存在也放行，handler 会返回可用的数据
 			} else {
 				subscription = sub
+				c.Set(string(ContextKeySubscription), subscription)
 			}
 		}
 
@@ -229,17 +228,23 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if subscription != nil {
 			c.Set(string(ContextKeySubscription), subscription)
 		}
-		c.Set(string(ContextKeyAPIKey), apiKey)
-		c.Set(string(ContextKeyUser), AuthSubject{
-			UserID:      apiKey.User.ID,
-			Concurrency: apiKey.User.Concurrency,
-		})
-		c.Set(string(ContextKeyUserRole), apiKey.User.Role)
-		setGroupContext(c, apiKey.Group)
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
 	}
+}
+
+func setAuthenticatedAPIKeyContext(c *gin.Context, apiKey *service.APIKey) {
+	if c == nil || apiKey == nil || apiKey.User == nil {
+		return
+	}
+	c.Set(string(ContextKeyAPIKey), apiKey)
+	c.Set(string(ContextKeyUser), AuthSubject{
+		UserID:      apiKey.User.ID,
+		Concurrency: apiKey.User.Concurrency,
+	})
+	c.Set(string(ContextKeyUserRole), apiKey.User.Role)
+	setGroupContext(c, apiKey.Group)
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -99,7 +101,7 @@ func TestExtractOpsRetryRequestHeaders_IncludesAuthFailureMetadata(t *testing.T)
 	c.Set(string(middleware2.ContextKeyAPIKeyAuthFailure), middleware2.APIKeyAuthFailureInfo{
 		Source:      "authorization",
 		Fingerprint: "sha256:deadbeefcafebabe12345678",
-		Hint:        "sk-…(len=48)",
+		Hint:        "sk-inv…7890(len=48)",
 	})
 
 	raw := extractOpsRetryRequestHeaders(c)
@@ -110,8 +112,46 @@ func TestExtractOpsRetryRequestHeaders_IncludesAuthFailureMetadata(t *testing.T)
 	require.Equal(t, "2023-06-01", headers["anthropic-version"])
 	require.Equal(t, "authorization", headers["auth_failure_key_source"])
 	require.Equal(t, "sha256:deadbeefcafebabe12345678", headers["auth_failure_key_fingerprint"])
-	require.Equal(t, "sk-…(len=48)", headers["auth_failure_key_hint"])
+	require.Equal(t, "sk-inv…7890(len=48)", headers["auth_failure_key_hint"])
 	require.NotContains(t, *raw, "sk-invalid-raw-secret")
+}
+
+func TestSetOpsRequestContextFromBodyIfMissing_InfersModelAndRestoresBody(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"gpt-5.4","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+
+	setOpsRequestContextFromBodyIfMissing(c)
+
+	model, _ := c.Get(opsModelKey)
+	require.Equal(t, "gpt-5.4", model)
+	stream, _ := c.Get(opsStreamKey)
+	require.Equal(t, true, stream)
+	rt, _ := c.Get(opsRequestTypeKey)
+	require.Equal(t, int16(service.RequestTypeStream), rt)
+
+	restored, err := io.ReadAll(c.Request.Body)
+	require.NoError(t, err)
+	require.Equal(t, body, restored)
+}
+
+func TestSetOpsRequestContextFromBodyIfMissing_InfersGeminiModelFromPath(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", bytes.NewReader(body))
+
+	setOpsRequestContextFromBodyIfMissing(c)
+
+	model, _ := c.Get(opsModelKey)
+	require.Equal(t, "gemini-2.5-pro", model)
 }
 
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
@@ -300,6 +340,15 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestParseOpsErrorResponse_PreservesResponsesBillingErrorCode(t *testing.T) {
+	parsed := parseOpsErrorResponse([]byte(`{"error":{"code":"billing_error","message":"已超过每日使用限额"}}`))
+
+	require.Equal(t, "billing_error", parsed.ErrorType)
+	require.Equal(t, "billing_error", parsed.Code)
+	require.Equal(t, "已超过每日使用限额", parsed.Message)
+	require.Equal(t, "billing_error", normalizeOpsErrorType(parsed.ErrorType, parsed.Code))
 }
 
 func TestSetOpsEndpointContext_SetsContextKeys(t *testing.T) {

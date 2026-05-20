@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 )
@@ -58,9 +59,25 @@ func buildAPIKeyHint(key string) string {
 	if key == "" {
 		return ""
 	}
-	prefixLen := 3
-	if len(key) < prefixLen {
-		prefixLen = len(key)
+	runes := []rune(key)
+	prefixLen := 6
+	if len(runes) < prefixLen {
+		prefixLen = len(runes)
 	}
-	return key[:prefixLen] + "…(len=" + strconv.Itoa(len(key)) + ")"
+	suffixLen := 4
+	if len(runes)-prefixLen < suffixLen {
+		suffixLen = len(runes) - prefixLen
+	}
+	if suffixLen < 0 {
+		suffixLen = 0
+	}
+	prefix := string(runes[:prefixLen])
+	suffix := ""
+	if suffixLen > 0 {
+		suffix = string(runes[len(runes)-suffixLen:])
+	}
+	if suffix != "" {
+		return prefix + "…" + suffix + "(len=" + strconv.Itoa(utf8.RuneCountInString(key)) + ")"
+	}
+	return prefix + "…(len=" + strconv.Itoa(utf8.RuneCountInString(key)) + ")"
 }

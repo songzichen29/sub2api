@@ -1293,7 +1293,17 @@ func (r *accountRepository) ClearAntigravityQuotaScopes(ctx context.Context, id 
 		return err
 	}
 	if affected == 0 {
-		return service.ErrAccountNotFound
+		// 清理型操作必须保持幂等：当账号存在但 extra 中本来就没有
+		// antigravity_quota_scopes 时，MySQL 可能返回 0 rows affected。
+		// 这不应被当成账号不存在，否则“重置状态/恢复状态”会在无可清理字段时误报错。
+		exists, existsErr := client.Account.Query().Where(dbaccount.IDEQ(id)).Exist(ctx)
+		if existsErr != nil {
+			return existsErr
+		}
+		if !exists {
+			return service.ErrAccountNotFound
+		}
+		return nil
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear quota scopes failed: account=%d err=%v", id, err)
@@ -1317,7 +1327,17 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 		return err
 	}
 	if affected == 0 {
-		return service.ErrAccountNotFound
+		// 清理型操作必须保持幂等：当账号存在但 extra 中本来就没有
+		// model_rate_limits 时，MySQL 可能返回 0 rows affected。
+		// 这不应被当成账号不存在，否则“重置状态/恢复状态”会在无可清理字段时误报错。
+		exists, existsErr := client.Account.Query().Where(dbaccount.IDEQ(id)).Exist(ctx)
+		if existsErr != nil {
+			return existsErr
+		}
+		if !exists {
+			return service.ErrAccountNotFound
+		}
+		return nil
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear model rate limit failed: account=%d err=%v", id, err)

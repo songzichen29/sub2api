@@ -13,6 +13,8 @@ import (
 type accountRepoStubForClearAccountError struct {
 	mockAccountRepoForGemini
 	account                  *Account
+	clearAntigravityErr      error
+	clearModelRateLimitErr   error
 	clearErrorCalls          int
 	clearRateLimitCalls      int
 	clearAntigravityCalls    int
@@ -40,12 +42,12 @@ func (r *accountRepoStubForClearAccountError) ClearRateLimit(ctx context.Context
 
 func (r *accountRepoStubForClearAccountError) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
 	r.clearAntigravityCalls++
-	return nil
+	return r.clearAntigravityErr
 }
 
 func (r *accountRepoStubForClearAccountError) ClearModelRateLimits(ctx context.Context, id int64) error {
 	r.clearModelRateLimitCalls++
-	return nil
+	return r.clearModelRateLimitErr
 }
 
 func (r *accountRepoStubForClearAccountError) ClearTempUnschedulable(ctx context.Context, id int64) error {
@@ -83,4 +85,27 @@ func TestAdminService_ClearAccountError_AlsoClearsRecoverableRuntimeState(t *tes
 	require.Nil(t, updated.RateLimitResetAt)
 	require.Nil(t, updated.TempUnschedulableUntil)
 	require.Empty(t, updated.TempUnschedulableReason)
+}
+
+func TestAdminService_ClearAccountError_IgnoresAlreadyEmptyRuntimeExtra(t *testing.T) {
+	repo := &accountRepoStubForClearAccountError{
+		account: &Account{
+			ID:           32,
+			Platform:     PlatformOpenAI,
+			Type:         AccountTypeOAuth,
+			Status:       StatusError,
+			ErrorMessage: "temporary error",
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.ClearAccountError(context.Background(), 32)
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, StatusActive, updated.Status)
+	require.Equal(t, 1, repo.clearErrorCalls)
+	require.Equal(t, 1, repo.clearRateLimitCalls)
+	require.Equal(t, 1, repo.clearAntigravityCalls)
+	require.Equal(t, 1, repo.clearModelRateLimitCalls)
+	require.Equal(t, 1, repo.clearTempUnschedCalls)
 }

@@ -694,3 +694,110 @@ func TestApiKeyAuthWithSubscriptionGoogle_SubscriptionLimitExceededReturns403(t 
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
 	require.Equal(t, "已超过每日使用限额", resp.Error.Message)
 }
+
+func TestApiKeyAuthWithSubscriptionGoogle_LimitErrorKeepsAuthContextForOpsLogger(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	limit := 1.0
+	group := &service.Group{
+		ID:                  6002,
+		Name:                "gemini-sub",
+		Status:              service.StatusActive,
+		Hydrated:            true,
+		Platform:            service.PlatformGemini,
+		SubscriptionType:    service.SubscriptionTypeSubscription,
+		DailyLimitUSD:       &limit,
+		AllowDailyOverdraft: true,
+	}
+	user := &service.User{
+		ID:          6003,
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     10,
+		Concurrency: 2,
+	}
+	apiKey := &service.APIKey{
+		ID:     6004,
+		UserID: user.ID,
+		Key:    "gemini-limit-key",
+		Status: service.StatusActive,
+		User:   user,
+		Group:  group,
+	}
+	apiKey.GroupID = &group.ID
+
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			if key != apiKey.Key {
+				return nil, service.ErrAPIKeyNotFound
+			}
+			clone := *apiKey
+			return &clone, nil
+		},
+	})
+
+	now := time.Now()
+	sub := &service.UserSubscription{
+		ID:                  6005,
+		UserID:              user.ID,
+		GroupID:             group.ID,
+		Status:              service.SubscriptionStatusActive,
+		StartsAt:            now.Add(-time.Hour),
+		ExpiresAt:           now.Add(24 * time.Hour),
+		ValidityUnit:        "day",
+		DailyWindowStart:    &now,
+		DailyUsageUSD:       10,
+		WeeklyUsageUSD:      10,
+		AllowDailyOverdraft: true,
+	}
+	subscriptionService := service.NewSubscriptionService(nil, fakeGoogleSubscriptionRepo{
+		getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+			if userID != user.ID || groupID != group.ID {
+				return nil, service.ErrSubscriptionNotFound
+			}
+			clone := *sub
+			return &clone, nil
+		},
+		updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
+		activateWindow: func(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error { return nil },
+		resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
+		resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
+	}, nil, nil, &config.Config{RunMode: config.RunModeStandard})
+
+	var captured *gin.Context
+	r := gin.New()
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		captured = c
+	})
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, subscriptionService, &config.Config{RunMode: config.RunModeStandard}))
+	r.GET("/v1beta/test", func(c *gin.Context) {
+		t.Fatal("handler should not run when subscription limit is exceeded")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("x-goog-api-key", apiKey.Key)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.NotNil(t, captured)
+
+	gotKey, ok := GetAPIKeyFromContext(captured)
+	require.True(t, ok)
+	require.Equal(t, apiKey.ID, gotKey.ID)
+
+	subject, ok := GetAuthSubjectFromContext(captured)
+	require.True(t, ok)
+	require.Equal(t, user.ID, subject.UserID)
+
+	gotSub, ok := GetSubscriptionFromContext(captured)
+	require.True(t, ok)
+	require.Equal(t, sub.ID, gotSub.ID)
+
+	groupFromCtx, ok := captured.Request.Context().Value(ctxkey.Group).(*service.Group)
+	require.True(t, ok)
+	require.NotNil(t, groupFromCtx)
+	require.Equal(t, group.ID, groupFromCtx.ID)
+}

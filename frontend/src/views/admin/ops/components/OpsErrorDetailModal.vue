@@ -120,10 +120,43 @@
         </div>
       </div>
 
+      <div
+        v-if="authFailureInfo"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20"
+      >
+        <div class="text-sm font-bold text-amber-900 dark:text-amber-100">
+          {{ t('admin.ops.errorDetail.authFailure') }}
+        </div>
+        <div class="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <div class="text-xs font-medium text-amber-700/80 dark:text-amber-200/80">{{ t('admin.ops.errorDetail.keySource') }}</div>
+            <div class="mt-1 font-mono text-amber-950 dark:text-amber-50">{{ authFailureInfo.source || '—' }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-amber-700/80 dark:text-amber-200/80">{{ t('admin.ops.errorDetail.keyHint') }}</div>
+            <div class="mt-1 font-mono text-amber-950 dark:text-amber-50">{{ authFailureInfo.hint || '—' }}</div>
+          </div>
+          <div>
+            <div class="text-xs font-medium text-amber-700/80 dark:text-amber-200/80">{{ t('admin.ops.errorDetail.keyFingerprint') }}</div>
+            <div class="mt-1 break-all font-mono text-amber-950 dark:text-amber-50">{{ authFailureInfo.fingerprint || '—' }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Response content (client request -> error_body; upstream -> upstream_error_detail/message) -->
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.responseBody') }}</h3>
         <pre class="mt-4 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ prettyJSON(primaryResponseBody || '') }}</code></pre>
+      </div>
+
+      <div v-if="detail.request_body" class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
+        <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.requestBody') }}</h3>
+        <pre class="mt-4 max-h-[360px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ prettyJSON(detail.request_body || '') }}</code></pre>
+      </div>
+
+      <div v-if="detail.request_headers" class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
+        <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.requestHeaders') }}</h3>
+        <pre class="mt-4 max-h-[260px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ prettyJSON(detail.request_headers || '') }}</code></pre>
       </div>
 
       <!-- Upstream errors list (only for request errors) -->
@@ -238,8 +271,26 @@ const primaryResponseBody = computed(() => {
   return resolvePrimaryResponseBody(detail.value, props.errorType)
 })
 
+type AuthFailureInfo = {
+  source: string
+  hint: string
+  fingerprint: string
+}
 
-
+const authFailureInfo = computed<AuthFailureInfo | null>(() => {
+  const raw = String(detail.value?.request_headers || '').trim()
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    const source = String(parsed.auth_failure_key_source || '').trim()
+    const hint = String(parsed.auth_failure_key_hint || '').trim()
+    const fingerprint = String(parsed.auth_failure_key_fingerprint || '').trim()
+    if (!source && !hint && !fingerprint) return null
+    return { source, hint, fingerprint }
+  } catch {
+    return null
+  }
+})
 
 const title = computed(() => {
   if (!props.errorId) return t('admin.ops.errorDetail.title')

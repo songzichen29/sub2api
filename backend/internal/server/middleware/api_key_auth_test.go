@@ -27,6 +27,7 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		ID:               42,
 		Name:             "sub",
 		Status:           service.StatusActive,
+		Platform:         service.PlatformAnthropic,
 		Hydrated:         true,
 		SubscriptionType: service.SubscriptionTypeSubscription,
 		DailyLimitUSD:    &limit,
@@ -176,6 +177,74 @@ func TestSimpleModeBypassesQuotaCheck(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, w.Code)
 		require.Contains(t, w.Body.String(), "USAGE_LIMIT_EXCEEDED")
 	})
+
+	t.Run("standard_mode_limit_error_keeps_auth_context_for_ops_logger", func(t *testing.T) {
+		cfg := &config.Config{RunMode: config.RunModeStandard}
+		apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
+
+		now := time.Now()
+		sub := &service.UserSubscription{
+			ID:               56,
+			UserID:           user.ID,
+			GroupID:          group.ID,
+			Status:           service.SubscriptionStatusActive,
+			StartsAt:         now.Add(-time.Hour),
+			ExpiresAt:        now.Add(24 * time.Hour),
+			DailyWindowStart: &now,
+			DailyUsageUSD:    10,
+		}
+		subscriptionRepo := &stubUserSubscriptionRepo{
+			getActive: func(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
+				if userID != sub.UserID || groupID != sub.GroupID {
+					return nil, service.ErrSubscriptionNotFound
+				}
+				clone := *sub
+				return &clone, nil
+			},
+			updateStatus:   func(ctx context.Context, subscriptionID int64, status string) error { return nil },
+			activateWindow: func(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error { return nil },
+			resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
+			resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
+			resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
+		}
+		subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+
+		var captured *gin.Context
+		router := gin.New()
+		router.Use(func(c *gin.Context) {
+			c.Next()
+			captured = c
+		})
+		router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
+		router.GET("/t", func(c *gin.Context) {
+			t.Fatal("handler should not run when subscription limit is exceeded")
+		})
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/t", nil)
+		req.Header.Set("x-api-key", apiKey.Key)
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Code)
+		require.NotNil(t, captured)
+
+		gotKey, ok := GetAPIKeyFromContext(captured)
+		require.True(t, ok)
+		require.Equal(t, apiKey.ID, gotKey.ID)
+
+		subject, ok := GetAuthSubjectFromContext(captured)
+		require.True(t, ok)
+		require.Equal(t, user.ID, subject.UserID)
+
+		gotSub, ok := GetSubscriptionFromContext(captured)
+		require.True(t, ok)
+		require.Equal(t, sub.ID, gotSub.ID)
+
+		groupFromCtx, ok := captured.Request.Context().Value(ctxkey.Group).(*service.Group)
+		require.True(t, ok)
+		require.NotNil(t, groupFromCtx)
+		require.Equal(t, group.ID, groupFromCtx.ID)
+	})
 }
 
 func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
@@ -260,7 +329,7 @@ func TestAPIKeyAuthInvalidKeySetsAuthFailureContext(t *testing.T) {
 	info, ok := GetAPIKeyAuthFailureInfo(c)
 	require.True(t, ok)
 	require.Equal(t, "authorization", info.Source)
-	require.Equal(t, "sk-…(len=17)", info.Hint)
+	require.Equal(t, "sk-inv…3456(len=17)", info.Hint)
 	require.NotEmpty(t, info.Fingerprint)
 	require.NotContains(t, info.Fingerprint, "sk-invalid-123456")
 }
