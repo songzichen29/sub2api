@@ -2,26 +2,21 @@ package handler
 
 import (
 	"context"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
-
-	"github.com/gin-gonic/gin"
 )
 
 const customPageProbeTimeout = 4 * time.Second
 
 // SettingHandler 公开设置处理器（无需认证）
 type SettingHandler struct {
-	settingService *service.SettingService
-	version        string
+	settingService           *service.SettingService
+	notificationEmailService *service.NotificationEmailService
+	version                  string
 }
 
 type customPageStatusResponse struct {
@@ -36,6 +31,12 @@ func NewSettingHandler(settingService *service.SettingService, version string) *
 		settingService: settingService,
 		version:        version,
 	}
+}
+
+// SetNotificationEmailService attaches the public notification email service without
+// changing the constructor signature used by existing tests.
+func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
+	h.notificationEmailService = notificationEmailService
 }
 
 // GetPublicSettings 获取公开设置
@@ -96,6 +97,27 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 	})
 }
 
+// UnsubscribeNotificationEmail handles optional notification email opt-outs.
+// GET /api/v1/settings/email-unsubscribe?token=...
+func (h *SettingHandler) UnsubscribeNotificationEmail(c *gin.Context) {
+	if h.notificationEmailService == nil {
+		response.InternalError(c, "notification email service is not configured")
+		return
+	}
+	token := strings.TrimSpace(c.Query("token"))
+	if token == "" {
+		response.BadRequest(c, "token is required")
+		return
+	}
+	result, err := h.notificationEmailService.Unsubscribe(c.Request.Context(), token)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	body := `<!doctype html><html><head><meta charset="utf-8"><title>Unsubscribed</title></head><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:32px;"><h1>Unsubscribed</h1><p>You have unsubscribed <strong>` + html.EscapeString(result.Email) + `</strong> from <strong>` + html.EscapeString(result.Event) + `</strong> emails.</p></body></html>`
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(body))
+}
+
 // GetCustomPageStatus checks whether an authenticated user's configured custom page target is reachable.
 // GET /api/v1/settings/custom-pages/:id/status
 func (h *SettingHandler) GetCustomPageStatus(c *gin.Context) {
@@ -104,7 +126,6 @@ func (h *SettingHandler) GetCustomPageStatus(c *gin.Context) {
 		response.BadRequest(c, "custom page id is required")
 		return
 	}
-
 	settings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
