@@ -296,11 +296,15 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("cap 1-day renewal expiry: %w", err)
 			}
-			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, now); err != nil {
+			dailyWindowStart := now
+			if existingSub.AllowsDailyOverdraft(group) {
+				dailyWindowStart = existingSub.CurrentDailyWindowStart(now)
+			}
+			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, dailyWindowStart); err != nil {
 				_ = tx.Rollback()
 				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
 			}
-			existingSub.DailyWindowStart = &now
+			existingSub.DailyWindowStart = &dailyWindowStart
 			existingSub.DailyUsageUSD = 0
 		} else {
 			// 普通续期只延长过期时间，同时保存本次订阅来源的原始有效单位。后者只影响日透支
@@ -1423,6 +1427,7 @@ func (s *SubscriptionService) GetSubscriptionProgress(ctx context.Context, subsc
 
 // calculateProgress 根据已加载的订阅和分组数据计算使用进度（纯内存计算，无 DB 查询）
 func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Group) *SubscriptionProgress {
+	now := time.Now()
 	progress := &SubscriptionProgress{
 		ID:            sub.ID,
 		GroupName:     group.Name,
@@ -1461,27 +1466,34 @@ weeklyProgress:
 	// 周进度；日额度透支模式下复用此进度展示订阅有效期总额度。
 	if (group.HasWeeklyLimit() || sub.AllowsDailyOverdraft(group)) && sub.WeeklyWindowStart != nil {
 		var limit float64
+		var used float64
+		windowStart := *sub.WeeklyWindowStart
+		var resetsAt *time.Time
 		if sub.AllowsDailyOverdraft(group) {
 			if overdraftLimit, ok := sub.DailyOverdraftLimitUSD(group); ok {
 				limit = overdraftLimit
 			} else {
 				goto monthlyProgress
 			}
+			used = sub.DailyOverdraftUsedUSDAt(group, now)
+			windowStart = sub.StartsAt
+			resetsAt = &sub.ExpiresAt
 		} else {
 			limit = *group.WeeklyLimitUSD
+			used = sub.WeeklyUsageUSD
+			resetsAt = sub.WeeklyResetTime()
 		}
-		resetsAt := sub.WeeklyResetTime()
 		if resetsAt == nil {
 			goto monthlyProgress
 		}
 		progress.Weekly = &UsageWindowProgress{
 			LimitUSD:        limit,
-			UsedUSD:         sub.WeeklyUsageUSD,
-			RemainingUSD:    limit - sub.WeeklyUsageUSD,
-			Percentage:      (sub.WeeklyUsageUSD / limit) * 100,
-			WindowStart:     *sub.WeeklyWindowStart,
+			UsedUSD:         used,
+			RemainingUSD:    limit - used,
+			Percentage:      (used / limit) * 100,
+			WindowStart:     windowStart,
 			ResetsAt:        *resetsAt,
-			ResetsInSeconds: int64(time.Until(*resetsAt).Seconds()),
+			ResetsInSeconds: int64(resetsAt.Sub(now).Seconds()),
 		}
 		if progress.Weekly.RemainingUSD < 0 {
 			progress.Weekly.RemainingUSD = 0

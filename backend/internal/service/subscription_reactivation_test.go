@@ -404,6 +404,8 @@ func TestAssignOrExtendSubscription_PaidOneDayRenewalDoesNotShrinkOverdraftPool(
 	require.True(t, reused)
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 	require.False(t, sub.ExpiresAt.Before(expiresAt), "overdraft renewal must not shrink the period pool")
+	require.NotNil(t, sub.DailyWindowStart)
+	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *sub.DailyWindowStart, 3*time.Second)
 	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, AllowDailyOverdraft: true}
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
 	require.NoError(t, err)

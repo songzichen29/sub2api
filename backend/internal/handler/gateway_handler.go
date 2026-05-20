@@ -1067,6 +1067,33 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, modelStats)
 }
 
+// UsageModelStats handles refreshing only model statistics for API Key usage page.
+// GET /v1/usage/model-stats
+func (h *GatewayHandler) UsageModelStats(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+
+	startTime, endTime := h.parseUsageDateRange(c)
+
+	var modelStats any
+	if h.usageService != nil {
+		if stats, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), apiKey.ID, startTime, endTime); err == nil {
+			modelStats = stats
+		}
+	}
+
+	if modelStats == nil {
+		modelStats = []any{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"model_stats": modelStats,
+	})
+}
+
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
 func (h *GatewayHandler) parseUsageDateRange(c *gin.Context) (time.Time, time.Time) {
 	now := timezone.Now()
@@ -1228,15 +1255,28 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if ok {
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
-			resp["subscription"] = gin.H{
-				"daily_usage_usd":   subscription.DailyUsageUSD,
-				"weekly_usage_usd":  subscription.WeeklyUsageUSD,
-				"monthly_usage_usd": subscription.MonthlyUsageUSD,
-				"daily_limit_usd":   apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":  apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd": apiKey.Group.MonthlyLimitUSD,
-				"expires_at":        subscription.ExpiresAt,
+			subscriptionData := gin.H{
+				"daily_usage_usd":             subscription.DailyUsageUSD,
+				"weekly_usage_usd":            subscription.WeeklyUsageUSD,
+				"monthly_usage_usd":           subscription.MonthlyUsageUSD,
+				"daily_limit_usd":             apiKey.Group.DailyLimitUSD,
+				"weekly_limit_usd":            apiKey.Group.WeeklyLimitUSD,
+				"monthly_limit_usd":           apiKey.Group.MonthlyLimitUSD,
+				"expires_at":                  subscription.ExpiresAt,
+				"starts_at":                   subscription.StartsAt,
+				"validity_unit":               subscription.ValidityUnit,
+				"daily_window_start":          subscription.DailyWindowStart,
+				"allow_daily_overdraft":       subscription.AllowDailyOverdraft,
+				"group_allow_daily_overdraft": apiKey.Group.AllowDailyOverdraft,
 			}
+			if subscription.AllowsDailyOverdraft(apiKey.Group) {
+				if overdraftLimit, ok := subscription.DailyOverdraftLimitUSD(apiKey.Group); ok {
+					subscriptionData["overdraft_limit_usd"] = overdraftLimit
+					subscriptionData["overdraft_used_usd"] = subscription.DailyOverdraftConsumedUSD(apiKey.Group, time.Now())
+					subscriptionData["overdraft_days"] = subscription.DailyOverdraftBorrowedDays(apiKey.Group, time.Now())
+				}
+			}
+			resp["subscription"] = subscriptionData
 		}
 
 		if usageData != nil {
@@ -1311,7 +1351,7 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	}
 
 	// 检查月限额
-	if group.HasMonthlyLimit() {
+	if group.HasMonthlyLimit() && !sub.AllowsDailyOverdraft(group) {
 		remaining := *group.MonthlyLimitUSD - sub.MonthlyUsageUSD
 		if remaining <= 0 {
 			return 0

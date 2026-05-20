@@ -77,3 +77,19 @@ func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
 		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
 	}
 }
+
+func TestGatewayRoutesUsageModelStatsPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, path := range []string{
+		"/v1/usage/model-stats",
+		"/antigravity/v1/usage/model-stats",
+		"/grok/v1/usage/model-stats",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path+"?start_date=2026-05-01&end_date=2026-05-20", nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit usage model stats handler", path)
+	}
+}

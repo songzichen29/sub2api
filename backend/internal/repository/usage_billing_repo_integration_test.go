@@ -375,6 +375,10 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 		t.Helper()
 		daily := 80.0
 		weekly := 560.0
+		startsAt := time.Now().Add(-time.Hour)
+		dailyStart := startsAt
+		weeklyStart := startsAt
+		monthlyStart := startsAt
 		user := mustCreateUser(t, client, &service.User{
 			Email:        fmt.Sprintf("usage-billing-overdraft-%d-%s@example.com", time.Now().UnixNano(), uuid.NewString()),
 			PasswordHash: "hash",
@@ -397,8 +401,11 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 		subscription := mustCreateSubscription(t, client, &service.UserSubscription{
 			UserID:              user.ID,
 			GroupID:             group.ID,
-			StartsAt:            time.Now().Add(-time.Hour),
-			ExpiresAt:           time.Now().Add(5 * 24 * time.Hour),
+			StartsAt:            startsAt,
+			ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+			DailyWindowStart:    &dailyStart,
+			WeeklyWindowStart:   &weeklyStart,
+			MonthlyWindowStart:  &monthlyStart,
 			DailyUsageUSD:       dailyUsage,
 			WeeklyUsageUSD:      weeklyUsage,
 			ValidityUnit:        validityUnit,
@@ -455,6 +462,26 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			SET starts_at = ?, expires_at = ?, daily_window_start = ?, daily_usage_usd = 10, weekly_usage_usd = 10
 			WHERE id = ?
 		`, startsAt, startsAt.Add(5*24*time.Hour), startsAt.Add(4*24*time.Hour), subscriptionID)
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 1,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+
+	t.Run("overdraft counts current daily usage after anchored reset", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixtureWithUnit(t, true, 0, 0, "day")
+		startsAt := time.Now().Add(-4 * 24 * time.Hour)
+		currentDailyStart := startsAt.Add(4 * 24 * time.Hour)
+		_, err := integrationDB.ExecContext(ctx, `
+			UPDATE user_subscriptions
+			SET starts_at = ?, expires_at = ?, daily_window_start = ?, daily_usage_usd = 70, weekly_usage_usd = 390
+			WHERE id = ?
+		`, startsAt, startsAt.Add(5*24*time.Hour), currentDailyStart, subscriptionID)
 		require.NoError(t, err)
 
 		_, err = repo.Apply(ctx, &service.UsageBillingCommand{

@@ -264,3 +264,38 @@ func TestCalculateProgress_DailyResetAnchoredToSubscriptionStart(t *testing.T) {
 	expectedResetAt := startsAt.Add(72 * time.Hour)
 	assert.WithinDuration(t, expectedResetAt, progress.Daily.ResetsAt, 2*time.Second)
 }
+
+func TestCalculateProgress_DailyOverdraftUsesEffectivePeriodUsage(t *testing.T) {
+	svc := newTestSubscriptionService()
+	now := time.Now()
+	dailyLimit := 10.0
+	startsAt := now.Add(-3*24*time.Hour - time.Hour)
+	currentDailyStart := startsAt.Add(3 * 24 * time.Hour)
+
+	sub := &UserSubscription{
+		ID:                  8,
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(10 * 24 * time.Hour),
+		DailyUsageUSD:       4,
+		WeeklyUsageUSD:      20,
+		DailyWindowStart:    ptrTime(currentDailyStart),
+		WeeklyWindowStart:   ptrTime(startsAt),
+		AllowDailyOverdraft: true,
+		ValidityUnit:        "day",
+	}
+	group := &Group{
+		Name:                "Overdraft",
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       ptrFloat64(dailyLimit),
+		AllowDailyOverdraft: true,
+	}
+
+	progress := svc.calculateProgress(sub, group)
+
+	require.NotNil(t, progress.Weekly)
+	assert.Equal(t, 100.0, progress.Weekly.LimitUSD)
+	assert.InDelta(t, 34.0, progress.Weekly.UsedUSD, 0.0001)
+	assert.InDelta(t, 66.0, progress.Weekly.RemainingUSD, 0.0001)
+	assert.Equal(t, sub.StartsAt, progress.Weekly.WindowStart)
+	assert.Equal(t, sub.ExpiresAt, progress.Weekly.ResetsAt)
+}

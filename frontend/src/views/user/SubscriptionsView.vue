@@ -197,7 +197,7 @@
                 ></div>
               </div>
               <p
-                v-if="subscription.weekly_window_start"
+                v-if="!getOverdraftLimit(subscription) && subscription.weekly_window_start"
                 class="text-xs text-gray-500 dark:text-dark-400"
               >
                 {{
@@ -214,15 +214,6 @@
                 <div class="flex items-center justify-between gap-2 text-gray-600 dark:text-dark-300">
                   <span>{{ t('userSubscriptions.overdraftRemaining') }}</span>
                   <span class="font-medium text-gray-800 dark:text-gray-100">${{ getOverdraftRemaining(subscription).toFixed(2) }}</span>
-                </div>
-                <div
-                  v-if="getBorrowedFutureQuota(subscription) > 0.005"
-                  class="flex items-center justify-between gap-2 text-gray-600 dark:text-dark-300 sm:col-span-2"
-                >
-                  <span>{{ t('userSubscriptions.borrowedFutureQuota') }}</span>
-                  <span class="font-medium text-amber-700 dark:text-amber-300">
-                    ${{ getBorrowedFutureQuota(subscription).toFixed(2) }}
-                  </span>
                 </div>
               </div>
             </div>
@@ -438,15 +429,6 @@ function getCurrentDailyWindowUsage(subscription: UserSubscription): number {
   if (dailyWindowStart !== currentWindowStart) return 0
 
   return Math.max(subscription.daily_usage_usd || 0, 0)
-}
-
-function getBorrowedFutureQuota(subscription: UserSubscription): number {
-  const limit = getOverdraftLimit(subscription)
-  if (limit === null) return 0
-  const arrivedQuota = getElapsedOverdraftQuota(subscription)
-  const actualBorrowed = Math.max((getOverdraftDisplayUsed(subscription) ?? 0) - arrivedQuota, 0)
-  const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(subscription))
-  return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }
 
 function getOverdraftRemaining(subscription: UserSubscription): number {

@@ -204,6 +204,10 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 		SetSchedulable(a.Schedulable).
 		SetErrorMessage(a.ErrorMessage)
 
+	if a.Tags != nil {
+		create.SetTags(a.Tags)
+	}
+
 	if a.ProxyID != nil {
 		create.SetProxyID(*a.ProxyID)
 	}
@@ -398,6 +402,15 @@ func mustCreateSubscription(t *testing.T, client *dbent.Client, s *service.UserS
 		SetMonthlyUsageUsd(s.MonthlyUsageUSD).
 		SetAllowDailyOverdraft(s.AllowDailyOverdraft)
 
+	if s.DailyWindowStart != nil {
+		create.SetDailyWindowStart(*s.DailyWindowStart)
+	}
+	if s.WeeklyWindowStart != nil {
+		create.SetWeeklyWindowStart(*s.WeeklyWindowStart)
+	}
+	if s.MonthlyWindowStart != nil {
+		create.SetMonthlyWindowStart(*s.MonthlyWindowStart)
+	}
 	if s.AssignedBy != nil {
 		create.SetAssignedBy(*s.AssignedBy)
 	}

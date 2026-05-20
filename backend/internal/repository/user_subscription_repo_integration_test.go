@@ -382,6 +382,31 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_DisabledDayOverdraftRepay
 	s.Require().ErrorIs(s.repo.IncrementUsage(s.ctx, sub.ID, 0.01), service.ErrUsageBillingSubscriptionLimitExceeded)
 }
 
+func (s *UserSubscriptionRepoSuite) TestIncrementUsage_DailyOverdraftCountsCurrentDailyUsage() {
+	user := s.mustCreateUser("overdraft-current-day@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-overdraft-current-day")
+	daily := 80.0
+	_, err := s.client.Group.UpdateOneID(group.ID).
+		SetDailyLimitUsd(daily).
+		SetAllowDailyOverdraft(true).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	startsAt := time.Now().Add(-4 * 24 * time.Hour)
+	dailyStart := startsAt.Add(4 * 24 * time.Hour)
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStartsAt(startsAt).
+			SetExpiresAt(startsAt.Add(5 * 24 * time.Hour)).
+			SetDailyWindowStart(dailyStart).
+			SetDailyUsageUsd(70).
+			SetWeeklyUsageUsd(390).
+			SetValidityUnit("day").
+			SetAllowDailyOverdraft(true)
+	})
+
+	s.Require().ErrorIs(s.repo.IncrementUsage(s.ctx, sub.ID, 1), service.ErrUsageBillingSubscriptionLimitExceeded)
+}
+
 func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 	user := s.mustCreateUser("activate@test.com", service.RoleUser)
 	group := s.mustCreateGroup("g-activate")

@@ -429,6 +429,134 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 	}
 }
 
+// TestListWithFilters_TagsCombined 验证标签筛选与其他条件组合时 SQL 正确生成。
+// 回归测试：标签 OR 语义不应覆盖/干扰其他 AND 条件。
+func (s *AccountRepoSuite) TestListWithFilters_TagsCombined() {
+	tests := []struct {
+		name      string
+		setup     func(client *dbent.Client)
+		platform  string
+		status    string
+		tags      []string
+		wantCount int
+		validate  func(accounts []service.Account)
+	}{
+		{
+			name: "tags_single_with_platform",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a1", Platform: service.PlatformAnthropic, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a2", Platform: service.PlatformOpenAI, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a3", Platform: service.PlatformAnthropic, Tags: []string{"prod"}})
+			},
+			platform:  service.PlatformAnthropic,
+			tags:      []string{"vip"},
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("a1", accounts[0].Name)
+			},
+		},
+		{
+			name: "tags_multi_with_platform",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a1", Platform: service.PlatformAnthropic, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a2", Platform: service.PlatformAnthropic, Tags: []string{"prod"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a3", Platform: service.PlatformAnthropic, Tags: []string{"staging"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "a4", Platform: service.PlatformOpenAI, Tags: []string{"vip", "prod"}})
+			},
+			platform:  service.PlatformAnthropic,
+			tags:      []string{"vip", "prod"},
+			wantCount: 2,
+			validate: func(accounts []service.Account) {
+				names := []string{accounts[0].Name, accounts[1].Name}
+				s.ElementsMatch([]string{"a1", "a2"}, names)
+			},
+		},
+		{
+			name: "tags_with_status",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-vip", Status: service.StatusActive, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "disabled-vip", Status: service.StatusDisabled, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-prod", Status: service.StatusActive, Tags: []string{"prod"}})
+			},
+			status:    service.StatusActive,
+			tags:      []string{"vip"},
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("active-vip", accounts[0].Name)
+			},
+		},
+		{
+			name: "tags_multi_with_status_active",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-vip", Status: service.StatusActive, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-prod", Status: service.StatusActive, Tags: []string{"prod"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "disabled-vip", Status: service.StatusDisabled, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "active-staging", Status: service.StatusActive, Tags: []string{"staging"}})
+			},
+			status:    service.StatusActive,
+			tags:      []string{"vip", "prod"},
+			wantCount: 2,
+			validate: func(accounts []service.Account) {
+				names := []string{accounts[0].Name, accounts[1].Name}
+				s.ElementsMatch([]string{"active-vip", "active-prod"}, names)
+			},
+		},
+		{
+			name: "tags_multi_or_semantics",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "only-vip", Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "only-prod", Tags: []string{"prod"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "both", Tags: []string{"vip", "prod"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "neither", Tags: []string{"staging"}})
+			},
+			tags:      []string{"vip", "prod"},
+			wantCount: 3,
+			validate: func(accounts []service.Account) {
+				names := make([]string, len(accounts))
+				for i, a := range accounts {
+					names[i] = a.Name
+				}
+				s.ElementsMatch([]string{"only-vip", "only-prod", "both"}, names)
+			},
+		},
+		{
+			name: "tags_with_platform_and_status",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-active-vip", Platform: service.PlatformAnthropic, Status: service.StatusActive, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-disabled-vip", Platform: service.PlatformAnthropic, Status: service.StatusDisabled, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-active-vip", Platform: service.PlatformOpenAI, Status: service.StatusActive, Tags: []string{"vip"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-active-prod", Platform: service.PlatformAnthropic, Status: service.StatusActive, Tags: []string{"prod"}})
+			},
+			platform:  service.PlatformAnthropic,
+			status:    service.StatusActive,
+			tags:      []string{"vip", "prod"},
+			wantCount: 2,
+			validate: func(accounts []service.Account) {
+				names := []string{accounts[0].Name, accounts[1].Name}
+				s.ElementsMatch([]string{"anthropic-active-vip", "anthropic-active-prod"}, names)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			tx := testEntTx(s.T())
+			client := tx.Client()
+			repo := newAccountRepositoryWithSQL(client, tx, nil)
+			ctx := context.Background()
+
+			tt.setup(client)
+
+			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, "", tt.status, "", 0, "", tt.tags)
+			s.Require().NoError(err)
+			s.Require().Len(accounts, tt.wantCount)
+			if tt.validate != nil {
+				tt.validate(accounts)
+			}
+		})
+	}
+}
+
 // --- ListByGroup / ListActive / ListByPlatform ---
 
 func (s *AccountRepoSuite) TestListByGroup() {

@@ -207,6 +207,46 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPasse
 	require.NoError(t, err)
 }
 
+func TestBillingCacheServiceCheckSubscriptionEligibility_BackfillsOverdraftFlagFromSubscription(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:      SubscriptionStatusActive,
+		StartsAt:    time.Time{},
+		ExpiresAt:   startsAt.Add(5 * 24 * time.Hour),
+		DailyUsage:  80,
+		WeeklyUsage: 120,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	subscription := &UserSubscription{StartsAt: startsAt, ExpiresAt: startsAt.Add(5 * 24 * time.Hour), AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, subscription)
+	require.NoError(t, err)
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_BackfillsOverdraftFlagWithExistingStartsAt(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:      SubscriptionStatusActive,
+		StartsAt:    startsAt,
+		ExpiresAt:   startsAt.Add(5 * 24 * time.Hour),
+		DailyUsage:  80,
+		WeeklyUsage: 120,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	subscription := &UserSubscription{StartsAt: startsAt, ExpiresAt: startsAt.Add(5 * 24 * time.Hour), AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, subscription)
+	require.NoError(t, err)
+}
+
 func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftBackfillsMissingCacheAnchors(t *testing.T) {
 	daily := 80.0
 	now := time.Now()

@@ -64,6 +64,7 @@ func RegisterGatewayRoutes(
 		})
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+		gateway.GET("/usage/model-stats", h.Gateway.UsageModelStats)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
@@ -197,6 +198,7 @@ func RegisterGatewayRoutes(
 		antigravityV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
 		antigravityV1.GET("/models", h.Gateway.AntigravityModels)
 		antigravityV1.GET("/usage", h.Gateway.Usage)
+		antigravityV1.GET("/usage/model-stats", h.Gateway.UsageModelStats)
 	}
 
 	antigravityV1Beta := r.Group("/antigravity/v1beta")
@@ -228,6 +230,7 @@ func RegisterGatewayRoutes(
 		grokV1.POST("/messages/count_tokens", h.Gateway.CountTokens)
 		grokV1.GET("/models", h.Gateway.Models)
 		grokV1.GET("/usage", h.Gateway.Usage)
+		grokV1.GET("/usage/model-stats", h.Gateway.UsageModelStats)
 	}
 
 }

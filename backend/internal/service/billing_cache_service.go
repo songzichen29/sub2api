@@ -858,15 +858,27 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 	subAllowsOverdraft := cacheSub.AllowsDailyOverdraft(group)
 	needsDayOverdraftAccounting := group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
-	if needsDayOverdraftAccounting && subData.StartsAt.IsZero() && subscription != nil && !subscription.StartsAt.IsZero() {
-		cacheSub.StartsAt = subscription.StartsAt
-		cacheSub.ExpiresAt = subscription.ExpiresAt
-		cacheSub.ValidityUnit = normalizeSubscriptionValidityUnit(subscription.ValidityUnit)
-		cacheSub.DailyWindowStart = subscription.DailyWindowStart
-		subData.StartsAt = subscription.StartsAt
-		subData.ExpiresAt = subscription.ExpiresAt
-		subData.ValidityUnit = cacheSub.ValidityUnit
-		subData.DailyWindowStart = subscription.DailyWindowStart
+	if group != nil && group.AllowsDailyOverdraft() && subscription != nil {
+		cacheSub.AllowDailyOverdraft = subscription.AllowDailyOverdraft
+		subData.AllowDailyOverdraft = subscription.AllowDailyOverdraft
+		if subData.ValidityUnit == "" && subscription.ValidityUnit != "" {
+			cacheSub.ValidityUnit = normalizeSubscriptionValidityUnit(subscription.ValidityUnit)
+			subData.ValidityUnit = cacheSub.ValidityUnit
+		}
+		if subData.StartsAt.IsZero() && !subscription.StartsAt.IsZero() {
+			cacheSub.StartsAt = subscription.StartsAt
+			cacheSub.ExpiresAt = subscription.ExpiresAt
+			cacheSub.DailyWindowStart = subscription.DailyWindowStart
+			subData.StartsAt = subscription.StartsAt
+			subData.ExpiresAt = subscription.ExpiresAt
+			subData.DailyWindowStart = subscription.DailyWindowStart
+		}
+		if cacheSub.DailyWindowStart == nil && subscription.DailyWindowStart != nil {
+			cacheSub.DailyWindowStart = subscription.DailyWindowStart
+			subData.DailyWindowStart = subscription.DailyWindowStart
+		}
+		subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
+		needsDayOverdraftAccounting = group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
 	}
 	if needsDayOverdraftAccounting && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt) || cacheSub.DailyWindowStart == nil) {
 		if freshSub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, group.ID); err == nil && freshSub != nil {

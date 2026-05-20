@@ -28,6 +28,19 @@
         <AnnouncementBell v-if="user" />
 
         <router-link
+          to="/key-usage"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
+          :class="
+            route.path === '/key-usage'
+              ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/25 dark:text-primary-300'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white'
+          "
+        >
+          <Icon name="chart" size="sm" />
+          <span class="hidden sm:inline">{{ t('nav.keyUsage') }}</span>
+        </router-link>
+
+        <router-link
           v-if="showMarketplaceEntry"
           to="/model-marketplace"
           class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"

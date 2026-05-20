@@ -283,10 +283,10 @@
                     ${{ row.overdraft_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
-              <div class="reset-info" v-if="row.expires_at">
-                <svg
-                  class="h-3 w-3"
-                  fill="none"
+                <div v-if="row.allow_daily_overdraft" class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                     stroke-width="2"
@@ -294,53 +294,37 @@
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                     />
-                </svg>
-                <span>{{ formatResetTime(row.expires_at, 'daily') }}</span>
+                  </svg>
+                  <span>
+                    {{
+                      t('admin.subscriptions.todayOverdraftAmount', {
+                        amount: getTodayOverdraftAmount(row).toFixed(2),
+                      })
+                    }}
+                  </span>
+                </div>
+                <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
+                    />
+                  </svg>
+                  <span>
+                    {{ t('admin.subscriptions.overdraftRemaining') }}:
+                    ${{ getOverdraftRemaining(row).toFixed(2) }}
+                  </span>
+                </div>
               </div>
-              <div v-if="row.allow_daily_overdraft" class="reset-info">
-                <svg
-                  class="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                  />
-                </svg>
-                <span>
-                  {{
-                    t('admin.subscriptions.todayOverdraftAmount', {
-                      amount: getTodayOverdraftAmount(row).toFixed(2),
-                    })
-                  }}
-                </span>
-              </div>
-              <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="reset-info">
-                <svg
-                  class="h-3 w-3"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
-                  />
-                </svg>
-                <span>
-                  {{ t('admin.subscriptions.overdraftRemaining') }}:
-                  ${{ getOverdraftRemaining(row).toFixed(2) }}
-                </span>
-              </div>
-            </div>
 
               <!-- No Limits - Unlimited badge -->
               <div
