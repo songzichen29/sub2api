@@ -428,7 +428,6 @@ func ensureOpenAIImagesResponsesRequestInvariant(body []byte, parsed *OpenAIImag
 	}
 	return body, modified, nil
 }
-
 func shouldPassOpenAIImagesN(model string, n int) bool {
 	if n <= 1 {
 		return false
