@@ -392,6 +392,26 @@ func (_u *PaymentOrderUpdate) ClearSubscriptionDays() *PaymentOrderUpdate {
 	return _u
 }
 
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (_u *PaymentOrderUpdate) SetSubscriptionValidityUnit(v string) *PaymentOrderUpdate {
+	_u.mutation.SetSubscriptionValidityUnit(v)
+	return _u
+}
+
+// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetSubscriptionValidityUnit(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
+func (_u *PaymentOrderUpdate) ClearSubscriptionValidityUnit() *PaymentOrderUpdate {
+	_u.mutation.ClearSubscriptionValidityUnit()
+	return _u
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_u *PaymentOrderUpdate) SetProviderInstanceID(v string) *PaymentOrderUpdate {
 	_u.mutation.SetProviderInstanceID(v)
@@ -830,6 +850,11 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionValidityUnit(); ok {
+		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -976,6 +1001,12 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
+	}
+	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
+	}
+	if _u.mutation.SubscriptionValidityUnitCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1491,6 +1522,26 @@ func (_u *PaymentOrderUpdateOne) ClearSubscriptionDays() *PaymentOrderUpdateOne 
 	return _u
 }
 
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (_u *PaymentOrderUpdateOne) SetSubscriptionValidityUnit(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetSubscriptionValidityUnit(v)
+	return _u
+}
+
+// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionValidityUnit(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
+func (_u *PaymentOrderUpdateOne) ClearSubscriptionValidityUnit() *PaymentOrderUpdateOne {
+	_u.mutation.ClearSubscriptionValidityUnit()
+	return _u
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_u *PaymentOrderUpdateOne) SetProviderInstanceID(v string) *PaymentOrderUpdateOne {
 	_u.mutation.SetProviderInstanceID(v)
@@ -1942,6 +1993,11 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SubscriptionValidityUnit(); ok {
+		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -2105,6 +2161,12 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
+	}
+	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
+	}
+	if _u.mutation.SubscriptionValidityUnitCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)

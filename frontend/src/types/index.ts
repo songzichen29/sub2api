@@ -1487,6 +1487,7 @@ export interface UserSubscription {
   group_id: number
   starts_at?: string | null
   status: 'active' | 'expired' | 'revoked' | 'quota_exhausted'
+  validity_unit?: string | null
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number

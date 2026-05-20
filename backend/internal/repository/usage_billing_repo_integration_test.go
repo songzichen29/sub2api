@@ -371,7 +371,7 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 	client := testEntClient(t)
 	repo := NewUsageBillingRepository(client, integrationDB)
 
-	newFixture := func(t *testing.T, allowOverdraft bool, dailyUsage, weeklyUsage float64) (int64, int64) {
+	newFixtureWithUnit := func(t *testing.T, allowOverdraft bool, dailyUsage, weeklyUsage float64, validityUnit string) (int64, int64) {
 		t.Helper()
 		daily := 80.0
 		weekly := 560.0
@@ -401,9 +401,13 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			ExpiresAt:           time.Now().Add(5 * 24 * time.Hour),
 			DailyUsageUSD:       dailyUsage,
 			WeeklyUsageUSD:      weeklyUsage,
+			ValidityUnit:        validityUnit,
 			AllowDailyOverdraft: allowOverdraft,
 		})
 		return apiKey.ID, subscription.ID
+	}
+	newFixture := func(t *testing.T, allowOverdraft bool, dailyUsage, weeklyUsage float64) (int64, int64) {
+		return newFixtureWithUnit(t, allowOverdraft, dailyUsage, weeklyUsage, "day")
 	}
 
 	t.Run("strict daily rejects", func(t *testing.T) {
@@ -439,6 +443,71 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			APIKeyID:         apiKeyID,
 			SubscriptionID:   &subscriptionID,
 			SubscriptionCost: 1,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+
+	t.Run("day unit counts elapsed daily quota", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixtureWithUnit(t, true, 0, 0, "day")
+		startsAt := time.Now().Add(-4 * 24 * time.Hour)
+		_, err := integrationDB.ExecContext(ctx, `
+			UPDATE user_subscriptions
+			SET starts_at = ?, expires_at = ?, daily_window_start = ?, daily_usage_usd = 10, weekly_usage_usd = 10
+			WHERE id = ?
+		`, startsAt, startsAt.Add(5*24*time.Hour), startsAt.Add(4*24*time.Hour), subscriptionID)
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 1,
+		})
+		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+	})
+
+	t.Run("month unit keeps actual usage accounting", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixtureWithUnit(t, true, 0, 0, "month")
+		startsAt := time.Now().Add(-4 * 24 * time.Hour)
+		_, err := integrationDB.ExecContext(ctx, `
+			UPDATE user_subscriptions
+			SET starts_at = ?, expires_at = ?, daily_window_start = ?, daily_usage_usd = 10, weekly_usage_usd = 10
+			WHERE id = ?
+		`, startsAt, startsAt.Add(5*24*time.Hour), startsAt.Add(4*24*time.Hour), subscriptionID)
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 1,
+		})
+		require.NoError(t, err)
+	})
+
+	t.Run("disabled day overdraft repays historical debt", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixtureWithUnit(t, true, 0, 0, "day")
+		startsAt := time.Now().Add(-4 * 24 * time.Hour)
+		_, err := integrationDB.ExecContext(ctx, `
+			UPDATE user_subscriptions
+			SET starts_at = ?, expires_at = ?, daily_window_start = ?, daily_usage_usd = 0, weekly_usage_usd = 330, allow_daily_overdraft = FALSE
+			WHERE id = ?
+		`, startsAt, startsAt.Add(5*24*time.Hour), startsAt.Add(4*24*time.Hour), subscriptionID)
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 70,
+		})
+		require.NoError(t, err)
+
+		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 0.01,
 		})
 		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
 	})

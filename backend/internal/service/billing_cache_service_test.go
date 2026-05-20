@@ -159,6 +159,33 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPerio
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }
 
+func TestBillingCacheServiceCheckSubscriptionEligibility_WeekMonthOverdraftUsesActualUsage(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-4 * 24 * time.Hour)
+	dailyStart := startsAt.Add(4 * 24 * time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:              SubscriptionStatusActive,
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(30 * 24 * time.Hour),
+		ValidityUnit:        "month",
+		DailyWindowStart:    &dailyStart,
+		DailyUsage:          20,
+		WeeklyUsage:         120,
+		AllowDailyOverdraft: true,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	require.NoError(t, err)
+
+	cache.data.WeeklyUsage = 2400
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+}
+
 func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPassedSubscriptionStartForOldCache(t *testing.T) {
 	daily := 80.0
 	now := time.Now()
@@ -207,4 +234,31 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftBackfills
 	require.Greater(t, atomic.LoadInt64(&cache.subscriptionUpdates), int64(0))
 	require.NotNil(t, cache.lastSetData)
 	require.Equal(t, startsAt.Unix(), cache.lastSetData.StartsAt.Unix())
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_DisabledDayOverdraftRepaysDebt(t *testing.T) {
+	daily := 40.0
+	startsAt := time.Now().Add(-29 * 24 * time.Hour)
+	dailyStart := startsAt.Add(29 * 24 * time.Hour)
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:              SubscriptionStatusActive,
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(30 * 24 * time.Hour),
+		ValidityUnit:        "day",
+		DailyWindowStart:    &dailyStart,
+		DailyUsage:          0,
+		WeeklyUsage:         1160 + 15,
+		AllowDailyOverdraft: false,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+
+	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	require.NoError(t, err)
+
+	cache.data.DailyUsage = 25
+	cache.data.WeeklyUsage = 1160 + 15 + 25
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }

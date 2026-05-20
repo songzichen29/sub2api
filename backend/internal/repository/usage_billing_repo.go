@@ -165,7 +165,27 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 				WHEN g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
 					AND COALESCE(g.daily_limit_usd, 0) > 0
-					AND us.weekly_usage_usd + ? >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd + ?,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd + ?
+									ELSE ?
+								END
+							)
+							ELSE us.weekly_usage_usd + ?
+						END
+					) >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 					THEN ?
 				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
 				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
@@ -179,15 +199,103 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 				OR (
 					g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
-					AND us.weekly_usage_usd + ? <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd + ?,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd + ?
+									ELSE ?
+								END
+							)
+							ELSE us.weekly_usage_usd + ?
+						END
+					) <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
 				OR (
 					? AND g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
-					AND us.weekly_usage_usd < g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd
+									ELSE 0
+								END
+							)
+							ELSE us.weekly_usage_usd
+						END
+					) < g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
-				OR us.daily_usage_usd + ? <= g.daily_limit_usd
-				OR (? AND us.daily_usage_usd < g.daily_limit_usd)
+				OR (
+					NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
+					AND us.daily_usage_usd + ? <= g.daily_limit_usd
+				)
+				OR (
+					? AND NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
+					AND us.daily_usage_usd < g.daily_limit_usd
+				)
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = FALSE
+					AND COALESCE(us.validity_unit, 'day') IN ('day', 'days')
+					AND us.daily_usage_usd + GREATEST(
+						0,
+						us.weekly_usage_usd - CASE
+							WHEN us.daily_window_start IS NOT NULL
+								AND us.daily_window_start = TIMESTAMPADD(
+									SECOND,
+									FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+									us.starts_at
+								)
+								THEN us.daily_usage_usd
+							ELSE 0
+						END - g.daily_limit_usd * LEAST(
+							GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+							GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+						)
+					) + ? <= g.daily_limit_usd
+				)
+				OR (
+					? AND g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = FALSE
+					AND COALESCE(us.validity_unit, 'day') IN ('day', 'days')
+					AND us.daily_usage_usd + GREATEST(
+						0,
+						us.weekly_usage_usd - CASE
+							WHEN us.daily_window_start IS NOT NULL
+								AND us.daily_window_start = TIMESTAMPADD(
+									SECOND,
+									FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+									us.starts_at
+								)
+								THEN us.daily_usage_usd
+							ELSE 0
+						END - g.daily_limit_usd * LEAST(
+							GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+							GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+						)
+					) < g.daily_limit_usd
+				)
 			)
 			AND (
 				COALESCE(g.weekly_limit_usd, 0) <= 0
@@ -204,13 +312,13 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 	`
 	res, err := tx.ExecContext(ctx, updateSQL,
 		costUSD, costUSD, costUSD,
-		costUSD, service.SubscriptionStatusQuotaExhausted,
+		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		subscriptionID,
-		costUSD,
+		costUSD, costUSD, costUSD, costUSD,
 		allowOverLimit,
-		costUSD, allowOverLimit,
+		costUSD, allowOverLimit, costUSD, allowOverLimit,
 		costUSD, allowOverLimit,
 		costUSD, allowOverLimit,
 	)

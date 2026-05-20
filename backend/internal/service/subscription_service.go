@@ -164,6 +164,9 @@ type AssignSubscriptionInput struct {
 	UserID       int64
 	GroupID      int64
 	ValidityDays int
+	// ValidityUnit is the original unit from the subscription plan/card.
+	// Empty means day for backward compatibility with admin/redeem/manual grants.
+	ValidityUnit string
 	StartsAt     *time.Time
 	ExpiresAt    *time.Time
 	AssignedBy   int64
@@ -242,13 +245,9 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		}
 		txCtx := dbent.NewTxContext(ctx, tx)
 
-		// 更新过期时间
-		if err := s.userSubRepo.ExtendExpiry(txCtx, existingSub.ID, newExpiresAt); err != nil {
-			_ = tx.Rollback()
-			return nil, false, fmt.Errorf("extend subscription: %w", err)
-		}
-
 		wasExpired := !existingSub.ExpiresAt.After(now)
+		existingSub.ExpiresAt = newExpiresAt
+		existingSub.ValidityUnit = resolveSubscriptionValidityUnit(input.ValidityUnit, existingSub.ValidityUnit)
 
 		// Reactivating an expired subscription or explicitly restarting a card must
 		// move the billing-window anchor to this purchase time; otherwise old
@@ -303,6 +302,13 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			}
 			existingSub.DailyWindowStart = &now
 			existingSub.DailyUsageUSD = 0
+		} else {
+			// 普通续期只延长过期时间，同时保存本次订阅来源的原始有效单位。后者只影响日透支
+			// 统计口径：day 按每日额度到期计入，week/month 继续按真实累计用量。
+			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
+				_ = tx.Rollback()
+				return nil, false, fmt.Errorf("extend subscription: %w", err)
+			}
 		}
 
 		// Restore active status when a non-active subscription is renewed.
@@ -376,16 +382,17 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 	}
 
 	sub := &UserSubscription{
-		UserID:     input.UserID,
-		GroupID:    input.GroupID,
-		StartsAt:   startsAt,
-		ExpiresAt:  expiresAt,
-		Status:     SubscriptionStatusActive,
-		AssignedAt: now,
-		Notes:      input.Notes,
-		Source:     resolveSubscriptionSource(input.Source, input.AssignedBy),
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		UserID:       input.UserID,
+		GroupID:      input.GroupID,
+		StartsAt:     startsAt,
+		ExpiresAt:    expiresAt,
+		Status:       SubscriptionStatusActive,
+		ValidityUnit: normalizeSubscriptionValidityUnit(input.ValidityUnit),
+		AssignedAt:   now,
+		Notes:        input.Notes,
+		Source:       resolveSubscriptionSource(input.Source, input.AssignedBy),
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	// 只有当 AssignedBy > 0 时才设置（0 表示系统分配，如兑换码）
 	if input.AssignedBy > 0 {
@@ -405,6 +412,7 @@ type BulkAssignSubscriptionInput struct {
 	UserIDs      []int64
 	GroupID      int64
 	ValidityDays int
+	ValidityUnit string
 	AssignedBy   int64
 	Notes        string
 	// Source 同 AssignSubscriptionInput.Source；批量场景默认 admin。
@@ -435,6 +443,7 @@ func (s *SubscriptionService) BulkAssignSubscription(ctx context.Context, input 
 			UserID:       userID,
 			GroupID:      input.GroupID,
 			ValidityDays: input.ValidityDays,
+			ValidityUnit: input.ValidityUnit,
 			AssignedBy:   input.AssignedBy,
 			Notes:        input.Notes,
 			Source:       input.Source,
@@ -1120,6 +1129,16 @@ func resolveSubscriptionSource(explicit string, assignedBy int64) string {
 		return domain.SubscriptionSourceAdmin
 	}
 	return domain.SubscriptionSourceRedeem
+}
+
+func resolveSubscriptionValidityUnit(inputUnit, existingUnit string) string {
+	if normalized := normalizeSubscriptionValidityUnit(inputUnit); normalized != "day" || inputUnit != "" {
+		return normalized
+	}
+	if existingUnit != "" {
+		return normalizeSubscriptionValidityUnit(existingUnit)
+	}
+	return "day"
 }
 
 // validateResetTargets 校验请求的重置档位组合是否合法。

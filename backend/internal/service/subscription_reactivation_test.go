@@ -29,6 +29,7 @@ func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription)
 		SetStartsAt(sub.StartsAt).
 		SetExpiresAt(sub.ExpiresAt).
 		SetStatus(sub.Status).
+		SetValidityUnit(normalizeSubscriptionValidityUnit(sub.ValidityUnit)).
 		SetNillableDailyWindowStart(sub.DailyWindowStart).
 		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
 		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
@@ -84,6 +85,7 @@ func (r *subscriptionEntRepo) Update(ctx context.Context, sub *UserSubscription)
 		SetStartsAt(sub.StartsAt).
 		SetExpiresAt(sub.ExpiresAt).
 		SetStatus(sub.Status).
+		SetValidityUnit(normalizeSubscriptionValidityUnit(sub.ValidityUnit)).
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
@@ -183,6 +185,7 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 		StartsAt:            m.StartsAt,
 		ExpiresAt:           m.ExpiresAt,
 		Status:              m.Status,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(m.ValidityUnit),
 		DailyWindowStart:    m.DailyWindowStart,
 		WeeklyWindowStart:   m.WeeklyWindowStart,
 		MonthlyWindowStart:  m.MonthlyWindowStart,
@@ -562,7 +565,7 @@ func TestCanRestartSubscriptionPeriod_UsesPlanUnitLimit(t *testing.T) {
 		MonthlyLimitUSD:  &monthly,
 	}
 
-	require.True(t, canRestartSubscriptionPeriod(now, sub, group, "days"), "day-unit cards may restart when a configured limit is exhausted")
+	require.False(t, canRestartSubscriptionPeriod(now, sub, group, "days"), "day-unit cards should not restart based on daily exhaustion")
 	require.False(t, canRestartSubscriptionPeriod(now, sub, group, "weeks"), "week cards require weekly limit exhaustion")
 	require.False(t, canRestartSubscriptionPeriod(now, sub, group, "months"), "month cards require monthly limit exhaustion")
 

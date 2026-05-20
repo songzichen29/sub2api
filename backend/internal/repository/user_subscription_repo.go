@@ -32,6 +32,7 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetUserID(sub.UserID).
 		SetGroupID(sub.GroupID).
 		SetExpiresAt(sub.ExpiresAt).
+		SetValidityUnit(normalizeRepoSubscriptionValidityUnit(sub.ValidityUnit)).
 		SetNillableDailyWindowStart(sub.DailyWindowStart).
 		SetNillableWeeklyWindowStart(sub.WeeklyWindowStart).
 		SetNillableMonthlyWindowStart(sub.MonthlyWindowStart).
@@ -121,6 +122,7 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetStartsAt(sub.StartsAt).
 		SetExpiresAt(sub.ExpiresAt).
 		SetStatus(sub.Status).
+		SetValidityUnit(normalizeRepoSubscriptionValidityUnit(sub.ValidityUnit)).
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
@@ -441,7 +443,27 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 				WHEN g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
 					AND COALESCE(g.daily_limit_usd, 0) > 0
-					AND us.weekly_usage_usd + ? >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd + ?,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd + ?
+									ELSE ?
+								END
+							)
+							ELSE us.weekly_usage_usd + ?
+						END
+					) >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 					THEN ?
 				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
 				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
@@ -455,15 +477,103 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 				OR (
 					g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
-					AND us.weekly_usage_usd + ? <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd + ?,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd + ?
+									ELSE ?
+								END
+							)
+							ELSE us.weekly_usage_usd + ?
+						END
+					) <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
 				OR (
-					us.weekly_usage_usd < g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
-					AND g.allow_daily_overdraft = TRUE
+					g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
+					AND (
+						CASE
+							WHEN COALESCE(us.validity_unit, 'day') IN ('day', 'days') THEN GREATEST(
+								us.weekly_usage_usd,
+								g.daily_limit_usd * LEAST(
+									GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+									GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+								) + CASE
+									WHEN us.daily_window_start IS NOT NULL
+										AND us.daily_window_start = TIMESTAMPADD(
+											SECOND,
+											FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+											us.starts_at
+										)
+										THEN us.daily_usage_usd
+									ELSE 0
+								END
+							)
+							ELSE us.weekly_usage_usd
+						END
+					) < g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
-				OR us.daily_usage_usd + ? <= g.daily_limit_usd
-				OR us.daily_usage_usd < g.daily_limit_usd
+				OR (
+					NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
+					AND us.daily_usage_usd + ? <= g.daily_limit_usd
+				)
+				OR (
+					NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
+					AND us.daily_usage_usd < g.daily_limit_usd
+				)
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = FALSE
+					AND COALESCE(us.validity_unit, 'day') IN ('day', 'days')
+					AND us.daily_usage_usd + GREATEST(
+						0,
+						us.weekly_usage_usd - CASE
+							WHEN us.daily_window_start IS NOT NULL
+								AND us.daily_window_start = TIMESTAMPADD(
+									SECOND,
+									FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+									us.starts_at
+								)
+								THEN us.daily_usage_usd
+							ELSE 0
+						END - g.daily_limit_usd * LEAST(
+							GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+							GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+						)
+					) + ? <= g.daily_limit_usd
+				)
+				OR (
+					g.allow_daily_overdraft = TRUE
+					AND us.allow_daily_overdraft = FALSE
+					AND COALESCE(us.validity_unit, 'day') IN ('day', 'days')
+					AND us.daily_usage_usd + GREATEST(
+						0,
+						us.weekly_usage_usd - CASE
+							WHEN us.daily_window_start IS NOT NULL
+								AND us.daily_window_start = TIMESTAMPADD(
+									SECOND,
+									FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400) * 86400,
+									us.starts_at
+								)
+								THEN us.daily_usage_usd
+							ELSE 0
+						END - g.daily_limit_usd * LEAST(
+							GREATEST(0, FLOOR(TIMESTAMPDIFF(SECOND, us.starts_at, NOW()) / 86400)),
+							GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
+						)
+					) < g.daily_limit_usd
+				)
 			)
 			AND (
 				COALESCE(g.weekly_limit_usd, 0) <= 0
@@ -482,10 +592,11 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(ctx, updateSQL,
 		costUSD, costUSD, costUSD,
-		costUSD, service.SubscriptionStatusQuotaExhausted,
+		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		id,
+		costUSD, costUSD, costUSD, costUSD,
 		costUSD,
 		costUSD,
 		costUSD,
@@ -631,6 +742,7 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		StartsAt:            m.StartsAt,
 		ExpiresAt:           m.ExpiresAt,
 		Status:              m.Status,
+		ValidityUnit:        normalizeRepoSubscriptionValidityUnit(m.ValidityUnit),
 		DailyWindowStart:    m.DailyWindowStart,
 		WeeklyWindowStart:   m.WeeklyWindowStart,
 		MonthlyWindowStart:  m.MonthlyWindowStart,
@@ -672,6 +784,20 @@ func applyUserSubscriptionEntityToService(dst *service.UserSubscription, src *db
 		return
 	}
 	dst.ID = src.ID
+	dst.ValidityUnit = normalizeRepoSubscriptionValidityUnit(src.ValidityUnit)
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+}
+
+func normalizeRepoSubscriptionValidityUnit(unit string) string {
+	switch strings.TrimSpace(strings.ToLower(unit)) {
+	case "", "day", "days":
+		return "day"
+	case "week", "weeks":
+		return "week"
+	case "month", "months":
+		return "month"
+	default:
+		return strings.TrimSpace(strings.ToLower(unit))
+	}
 }

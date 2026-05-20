@@ -269,7 +269,7 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 			sub, err := s.resolveRefundSubscription(ctx, o)
 			if err == nil && sub != nil {
 				p.SubscriptionID = sub.ID
-				p.SubDaysToDeduct = subscriptionRemainingDays(sub, time.Now())
+				p.SubDaysToDeduct = subscriptionRefundDeductionDays(o, sub, time.Now())
 			} else if !force {
 				return &RefundResult{Success: false, Warning: "cannot find active subscription for deduction, use force", RequireForce: true}
 			} else {
@@ -557,6 +557,7 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 	}
 
 	refundAmount := o.Amount * refundableDaysEquivalent / float64(totalDays)
+	refundAmount = capAdjustedRangeSubscriptionRefund(refundAmount, o.Amount, orderDays, totalDays)
 	refundAmount = capDailyOverdraftSubscriptionRefund(refundAmount, o.Amount, sub)
 	if refundAmount < 0 {
 		refundAmount = 0
@@ -565,6 +566,17 @@ func (s *PaymentService) calculateSubscriptionRefundAmount(ctx context.Context, 
 		refundAmount = o.Amount
 	}
 	return math.Round(refundAmount*100) / 100, nil
+}
+
+func capAdjustedRangeSubscriptionRefund(refundAmount, orderAmount float64, orderDays, effectiveDays int) float64 {
+	if orderDays <= 0 || effectiveDays <= 0 || effectiveDays >= orderDays {
+		return refundAmount
+	}
+	rangeCap := orderAmount * float64(effectiveDays) / float64(orderDays)
+	if refundAmount > rangeCap {
+		return rangeCap
+	}
+	return refundAmount
 }
 
 func capDailyOverdraftSubscriptionRefund(refundAmount, orderAmount float64, sub *UserSubscription) float64 {
@@ -685,6 +697,7 @@ func paymentRefundEntSubscriptionToService(sub *dbent.UserSubscription) *UserSub
 		StartsAt:            sub.StartsAt,
 		ExpiresAt:           sub.ExpiresAt,
 		Status:              sub.Status,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(sub.ValidityUnit),
 		DailyWindowStart:    sub.DailyWindowStart,
 		WeeklyWindowStart:   sub.WeeklyWindowStart,
 		MonthlyWindowStart:  sub.MonthlyWindowStart,
@@ -752,6 +765,9 @@ func subscriptionEffectiveDays(sub *UserSubscription) int {
 	if sub == nil {
 		return 0
 	}
+	if !sub.IsDayValidityUnit() {
+		return sub.EffectiveValidityDays()
+	}
 	duration := sub.ExpiresAt.Sub(sub.StartsAt)
 	if duration <= 0 {
 		return 0
@@ -772,4 +788,19 @@ func subscriptionRemainingDays(sub *UserSubscription, now time.Time) int {
 		return 0
 	}
 	return days
+}
+
+func subscriptionRefundDeductionDays(o *dbent.PaymentOrder, sub *UserSubscription, now time.Time) int {
+	if o == nil || o.SubscriptionDays == nil || *o.SubscriptionDays <= 0 {
+		return 0
+	}
+	orderDays := *o.SubscriptionDays
+	if sub == nil {
+		return orderDays
+	}
+	effectiveDays := subscriptionEffectiveDays(sub)
+	if effectiveDays > 0 && effectiveDays < orderDays {
+		return subscriptionRemainingDays(sub, now)
+	}
+	return orderDays
 }

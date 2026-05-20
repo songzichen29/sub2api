@@ -95,6 +95,11 @@ func Status(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStatus, v))
 }
 
+// ValidityUnit applies equality check predicate on the "validity_unit" field. It's identical to ValidityUnitEQ.
+func ValidityUnit(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldValidityUnit, v))
+}
+
 // DailyWindowStart applies equality check predicate on the "daily_window_start" field. It's identical to DailyWindowStartEQ.
 func DailyWindowStart(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldDailyWindowStart, v))
@@ -463,6 +468,71 @@ func StatusEqualFold(v string) predicate.UserSubscription {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ValidityUnitEQ applies the EQ predicate on the "validity_unit" field.
+func ValidityUnitEQ(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldValidityUnit, v))
+}
+
+// ValidityUnitNEQ applies the NEQ predicate on the "validity_unit" field.
+func ValidityUnitNEQ(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldValidityUnit, v))
+}
+
+// ValidityUnitIn applies the In predicate on the "validity_unit" field.
+func ValidityUnitIn(vs ...string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldValidityUnit, vs...))
+}
+
+// ValidityUnitNotIn applies the NotIn predicate on the "validity_unit" field.
+func ValidityUnitNotIn(vs ...string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldValidityUnit, vs...))
+}
+
+// ValidityUnitGT applies the GT predicate on the "validity_unit" field.
+func ValidityUnitGT(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldValidityUnit, v))
+}
+
+// ValidityUnitGTE applies the GTE predicate on the "validity_unit" field.
+func ValidityUnitGTE(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldValidityUnit, v))
+}
+
+// ValidityUnitLT applies the LT predicate on the "validity_unit" field.
+func ValidityUnitLT(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldValidityUnit, v))
+}
+
+// ValidityUnitLTE applies the LTE predicate on the "validity_unit" field.
+func ValidityUnitLTE(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldValidityUnit, v))
+}
+
+// ValidityUnitContains applies the Contains predicate on the "validity_unit" field.
+func ValidityUnitContains(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldContains(FieldValidityUnit, v))
+}
+
+// ValidityUnitHasPrefix applies the HasPrefix predicate on the "validity_unit" field.
+func ValidityUnitHasPrefix(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldHasPrefix(FieldValidityUnit, v))
+}
+
+// ValidityUnitHasSuffix applies the HasSuffix predicate on the "validity_unit" field.
+func ValidityUnitHasSuffix(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldHasSuffix(FieldValidityUnit, v))
+}
+
+// ValidityUnitEqualFold applies the EqualFold predicate on the "validity_unit" field.
+func ValidityUnitEqualFold(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEqualFold(FieldValidityUnit, v))
+}
+
+// ValidityUnitContainsFold applies the ContainsFold predicate on the "validity_unit" field.
+func ValidityUnitContainsFold(v string) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldContainsFold(FieldValidityUnit, v))
 }
 
 // DailyWindowStartEQ applies the EQ predicate on the "daily_window_start" field.

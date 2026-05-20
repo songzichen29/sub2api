@@ -30,6 +30,8 @@ type subscriptionCacheData struct {
 	Status              string
 	StartsAt            time.Time
 	ExpiresAt           time.Time
+	ValidityUnit        string
+	DailyWindowStart    *time.Time
 	DailyUsage          float64
 	WeeklyUsage         float64
 	MonthlyUsage        float64
@@ -425,6 +427,8 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 		Status:              data.Status,
 		StartsAt:            data.StartsAt,
 		ExpiresAt:           data.ExpiresAt,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(data.ValidityUnit),
+		DailyWindowStart:    data.DailyWindowStart,
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
 		MonthlyUsage:        data.MonthlyUsage,
@@ -438,6 +442,8 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 		Status:              data.Status,
 		StartsAt:            data.StartsAt,
 		ExpiresAt:           data.ExpiresAt,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(data.ValidityUnit),
+		DailyWindowStart:    data.DailyWindowStart,
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
 		MonthlyUsage:        data.MonthlyUsage,
@@ -457,6 +463,8 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 		Status:              sub.Status,
 		StartsAt:            sub.StartsAt,
 		ExpiresAt:           sub.ExpiresAt,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(sub.ValidityUnit),
+		DailyWindowStart:    sub.DailyWindowStart,
 		DailyUsage:          sub.DailyUsageUSD,
 		WeeklyUsage:         sub.WeeklyUsageUSD,
 		MonthlyUsage:        sub.MonthlyUsageUSD,
@@ -841,28 +849,39 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	cacheSub := &UserSubscription{
 		StartsAt:            subData.StartsAt,
 		ExpiresAt:           subData.ExpiresAt,
+		ValidityUnit:        normalizeSubscriptionValidityUnit(subData.ValidityUnit),
+		DailyWindowStart:    subData.DailyWindowStart,
 		DailyUsageUSD:       subData.DailyUsage,
 		WeeklyUsageUSD:      subData.WeeklyUsage,
 		MonthlyUsageUSD:     subData.MonthlyUsage,
 		AllowDailyOverdraft: subData.AllowDailyOverdraft,
 	}
 	subAllowsOverdraft := cacheSub.AllowsDailyOverdraft(group)
-	if subAllowsOverdraft && subData.StartsAt.IsZero() && subscription != nil && !subscription.StartsAt.IsZero() {
+	needsDayOverdraftAccounting := group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
+	if needsDayOverdraftAccounting && subData.StartsAt.IsZero() && subscription != nil && !subscription.StartsAt.IsZero() {
 		cacheSub.StartsAt = subscription.StartsAt
 		cacheSub.ExpiresAt = subscription.ExpiresAt
+		cacheSub.ValidityUnit = normalizeSubscriptionValidityUnit(subscription.ValidityUnit)
+		cacheSub.DailyWindowStart = subscription.DailyWindowStart
 		subData.StartsAt = subscription.StartsAt
 		subData.ExpiresAt = subscription.ExpiresAt
+		subData.ValidityUnit = cacheSub.ValidityUnit
+		subData.DailyWindowStart = subscription.DailyWindowStart
 	}
-	if subAllowsOverdraft && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt)) {
+	if needsDayOverdraftAccounting && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt) || cacheSub.DailyWindowStart == nil) {
 		if freshSub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, group.ID); err == nil && freshSub != nil {
 			cacheSub.StartsAt = freshSub.StartsAt
 			cacheSub.ExpiresAt = freshSub.ExpiresAt
+			cacheSub.ValidityUnit = normalizeSubscriptionValidityUnit(freshSub.ValidityUnit)
+			cacheSub.DailyWindowStart = freshSub.DailyWindowStart
 			cacheSub.DailyUsageUSD = freshSub.DailyUsageUSD
 			cacheSub.WeeklyUsageUSD = freshSub.WeeklyUsageUSD
 			cacheSub.MonthlyUsageUSD = freshSub.MonthlyUsageUSD
 			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			subData.StartsAt = freshSub.StartsAt
 			subData.ExpiresAt = freshSub.ExpiresAt
+			subData.ValidityUnit = cacheSub.ValidityUnit
+			subData.DailyWindowStart = freshSub.DailyWindowStart
 			subData.DailyUsage = freshSub.DailyUsageUSD
 			subData.WeeklyUsage = freshSub.WeeklyUsageUSD
 			subData.MonthlyUsage = freshSub.MonthlyUsageUSD
@@ -871,6 +890,8 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				Status:              freshSub.Status,
 				StartsAt:            freshSub.StartsAt,
 				ExpiresAt:           freshSub.ExpiresAt,
+				ValidityUnit:        cacheSub.ValidityUnit,
+				DailyWindowStart:    freshSub.DailyWindowStart,
 				DailyUsage:          freshSub.DailyUsageUSD,
 				WeeklyUsage:         freshSub.WeeklyUsageUSD,
 				MonthlyUsage:        freshSub.MonthlyUsageUSD,
@@ -878,10 +899,11 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				Version:             freshSub.UpdatedAt.Unix(),
 			})
 			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
+			needsDayOverdraftAccounting = group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
 		}
 	}
 	if group.HasDailyLimit() {
-		if !subAllowsOverdraft && subData.DailyUsage >= *group.DailyLimitUSD {
+		if !subAllowsOverdraft && subData.DailyUsage+cacheSub.DailyOverdraftDebtUSD(group, time.Now()) >= *group.DailyLimitUSD {
 			return ErrDailyLimitExceeded
 		}
 		if subAllowsOverdraft {

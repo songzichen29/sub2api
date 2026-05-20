@@ -45,6 +45,10 @@ func (UserSubscription) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.SubscriptionStatusActive),
+		field.String("validity_unit").
+			MaxLen(10).
+			Default("day").
+			Comment("Original validity unit for overdraft accounting: day/week/month"),
 
 		field.Time("daily_window_start").
 			Optional().

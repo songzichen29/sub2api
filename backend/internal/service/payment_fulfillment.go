@@ -386,6 +386,15 @@ func (s *PaymentService) ExecuteSubscriptionFulfillment(ctx context.Context, oid
 func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error {
 	gid := *o.SubscriptionGroupID
 	days := *o.SubscriptionDays
+	validityUnit := ""
+	if o.SubscriptionValidityUnit != nil {
+		validityUnit = *o.SubscriptionValidityUnit
+	}
+	if strings.TrimSpace(validityUnit) == "" && o.PlanID != nil && s.configService != nil {
+		if plan, err := s.configService.GetPlan(ctx, *o.PlanID); err == nil && plan != nil {
+			validityUnit = plan.ValidityUnit
+		}
+	}
 	g, err := s.groupRepo.GetByID(ctx, gid)
 	if err != nil || g.Status != payment.EntityStatusActive {
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
@@ -401,6 +410,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		UserID:        o.UserID,
 		GroupID:       gid,
 		ValidityDays:  days,
+		ValidityUnit:  validityUnit,
 		AssignedBy:    0,
 		Notes:         orderNote,
 		RestartPeriod: days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,

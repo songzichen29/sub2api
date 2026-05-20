@@ -2589,6 +2589,7 @@ export default {
       totalQuota: '总额度',
       overdraftTotal: '总额度',
       overdraftDays: '透支天数：{days} 天',
+      todayOverdraftAmount: '今日透支额度：${amount}',
       noLimits: '未配置限额',
       unlimited: '无限制',
       resetNow: '即将重置',

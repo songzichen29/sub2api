@@ -90,6 +90,11 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		field.String("subscription_validity_unit").
+			Optional().
+			Nillable().
+			MaxLen(10).
+			Comment("Original subscription plan validity unit at order creation"),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().

@@ -52,6 +52,8 @@ const (
 	subFieldStatus              = "status"
 	subFieldStartsAt            = "starts_at"
 	subFieldExpiresAt           = "expires_at"
+	subFieldValidityUnit        = "validity_unit"
+	subFieldDailyWindowStart    = "daily_window_start"
 	subFieldDailyUsage          = "daily_usage"
 	subFieldWeeklyUsage         = "weekly_usage"
 	subFieldMonthlyUsage        = "monthly_usage"
@@ -208,6 +210,18 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		}
 	}
 
+	if unitStr, ok := data[subFieldValidityUnit]; ok {
+		result.ValidityUnit = normalizeBillingCacheValidityUnit(unitStr)
+	}
+
+	if dailyWindowStr, ok := data[subFieldDailyWindowStart]; ok {
+		dailyWindowUnix, err := strconv.ParseInt(dailyWindowStr, 10, 64)
+		if err == nil && dailyWindowUnix > 0 {
+			t := time.Unix(dailyWindowUnix, 0)
+			result.DailyWindowStart = &t
+		}
+	}
+
 	if dailyStr, ok := data[subFieldDailyUsage]; ok {
 		result.DailyUsage, _ = strconv.ParseFloat(dailyStr, 64)
 	}
@@ -242,11 +256,15 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		subFieldStatus:              data.Status,
 		subFieldStartsAt:            data.StartsAt.Unix(),
 		subFieldExpiresAt:           data.ExpiresAt.Unix(),
+		subFieldValidityUnit:        normalizeBillingCacheValidityUnit(data.ValidityUnit),
 		subFieldDailyUsage:          data.DailyUsage,
 		subFieldWeeklyUsage:         data.WeeklyUsage,
 		subFieldMonthlyUsage:        data.MonthlyUsage,
 		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
 		subFieldVersion:             data.Version,
+	}
+	if data.DailyWindowStart != nil && !data.DailyWindowStart.IsZero() {
+		fields[subFieldDailyWindowStart] = data.DailyWindowStart.Unix()
 	}
 
 	pipe := c.rdb.Pipeline()
@@ -254,6 +272,19 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	pipe.Expire(ctx, key, jitteredTTL())
 	_, err := pipe.Exec(ctx)
 	return err
+}
+
+func normalizeBillingCacheValidityUnit(unit string) string {
+	switch strings.TrimSpace(strings.ToLower(unit)) {
+	case "", "day", "days":
+		return "day"
+	case "week", "weeks":
+		return "week"
+	case "month", "months":
+		return "month"
+	default:
+		return strings.TrimSpace(strings.ToLower(unit))
+	}
 }
 
 func (c *billingCache) UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error {

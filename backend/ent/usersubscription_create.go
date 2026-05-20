@@ -105,6 +105,20 @@ func (_c *UserSubscriptionCreate) SetNillableStatus(v *string) *UserSubscription
 	return _c
 }
 
+// SetValidityUnit sets the "validity_unit" field.
+func (_c *UserSubscriptionCreate) SetValidityUnit(v string) *UserSubscriptionCreate {
+	_c.mutation.SetValidityUnit(v)
+	return _c
+}
+
+// SetNillableValidityUnit sets the "validity_unit" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableValidityUnit(v *string) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetValidityUnit(*v)
+	}
+	return _c
+}
+
 // SetDailyWindowStart sets the "daily_window_start" field.
 func (_c *UserSubscriptionCreate) SetDailyWindowStart(v time.Time) *UserSubscriptionCreate {
 	_c.mutation.SetDailyWindowStart(v)
@@ -358,6 +372,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.ValidityUnit(); !ok {
+		v := usersubscription.DefaultValidityUnit
+		_c.mutation.SetValidityUnit(v)
+	}
 	if _, ok := _c.mutation.DailyUsageUsd(); !ok {
 		v := usersubscription.DefaultDailyUsageUsd
 		_c.mutation.SetDailyUsageUsd(v)
@@ -414,6 +432,14 @@ func (_c *UserSubscriptionCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := usersubscription.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ValidityUnit(); !ok {
+		return &ValidationError{Name: "validity_unit", err: errors.New(`ent: missing required field "UserSubscription.validity_unit"`)}
+	}
+	if v, ok := _c.mutation.ValidityUnit(); ok {
+		if err := usersubscription.ValidityUnitValidator(v); err != nil {
+			return &ValidationError{Name: "validity_unit", err: fmt.Errorf(`ent: validator failed for field "UserSubscription.validity_unit": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.DailyUsageUsd(); !ok {
@@ -495,6 +521,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(usersubscription.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.ValidityUnit(); ok {
+		_spec.SetField(usersubscription.FieldValidityUnit, field.TypeString, value)
+		_node.ValidityUnit = value
 	}
 	if value, ok := _c.mutation.DailyWindowStart(); ok {
 		_spec.SetField(usersubscription.FieldDailyWindowStart, field.TypeTime, value)
@@ -742,6 +772,18 @@ func (u *UserSubscriptionUpsert) SetStatus(v string) *UserSubscriptionUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateStatus() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldStatus)
+	return u
+}
+
+// SetValidityUnit sets the "validity_unit" field.
+func (u *UserSubscriptionUpsert) SetValidityUnit(v string) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldValidityUnit, v)
+	return u
+}
+
+// UpdateValidityUnit sets the "validity_unit" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateValidityUnit() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldValidityUnit)
 	return u
 }
 
@@ -1072,6 +1114,20 @@ func (u *UserSubscriptionUpsertOne) SetStatus(v string) *UserSubscriptionUpsertO
 func (u *UserSubscriptionUpsertOne) UpdateStatus() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetValidityUnit sets the "validity_unit" field.
+func (u *UserSubscriptionUpsertOne) SetValidityUnit(v string) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetValidityUnit(v)
+	})
+}
+
+// UpdateValidityUnit sets the "validity_unit" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateValidityUnit() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateValidityUnit()
 	})
 }
 
@@ -1598,6 +1654,20 @@ func (u *UserSubscriptionUpsertBulk) SetStatus(v string) *UserSubscriptionUpsert
 func (u *UserSubscriptionUpsertBulk) UpdateStatus() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetValidityUnit sets the "validity_unit" field.
+func (u *UserSubscriptionUpsertBulk) SetValidityUnit(v string) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetValidityUnit(v)
+	})
+}
+
+// UpdateValidityUnit sets the "validity_unit" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateValidityUnit() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateValidityUnit()
 	})
 }
 

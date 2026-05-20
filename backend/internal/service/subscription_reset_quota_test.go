@@ -398,9 +398,12 @@ func TestFulfillPaidDailyQuotaReset_IgnoresLatestGroupResetSwitch(t *testing.T) 
 	require.Equal(t, 0.0, result.DailyUsageUSD)
 }
 
-func TestAdminResetQuota_UsesAnchoredWindowForEachDimension(t *testing.T) {
+func TestAdminResetQuota_UsesAnchoredDailyWindow(t *testing.T) {
 	startsAt := time.Now().Add(-(8*24 + 6) * time.Hour)
 	sub := newAdminSub(102)
+	weekly := 210.0
+	sub.Group.WeeklyLimitUSD = &weekly
+	sub.Group.MonthlyLimitUSD = nil
 	sub.StartsAt = startsAt
 	sub.DailyUsageUSD = 1
 	sub.WeeklyUsageUSD = 2
@@ -408,15 +411,11 @@ func TestAdminResetQuota_UsesAnchoredWindowForEachDimension(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{sub: sub}
 	svc := newResetQuotaSvc(stub)
 
-	_, err := svc.AdminResetQuota(context.Background(), sub.ID, true, true, true)
+	_, err := svc.AdminResetQuota(context.Background(), sub.ID, true, false, false)
 
 	require.NoError(t, err)
 	require.NotNil(t, stub.lastResetDailyStart)
-	require.NotNil(t, stub.lastResetWeeklyStart)
-	require.NotNil(t, stub.lastResetMonthlyStart)
 	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *stub.lastResetDailyStart, 2*time.Second)
-	require.WithinDuration(t, sub.CurrentWeeklyWindowStart(time.Now()), *stub.lastResetWeeklyStart, 2*time.Second)
-	require.WithinDuration(t, sub.CurrentMonthlyWindowStart(time.Now()), *stub.lastResetMonthlyStart, 2*time.Second)
 }
 
 func TestCheckAndResetWindows_DailyOverdraftSkipsPeriodUsageResets(t *testing.T) {

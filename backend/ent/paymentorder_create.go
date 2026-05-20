@@ -225,6 +225,20 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderC
 	return _c
 }
 
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (_c *PaymentOrderCreate) SetSubscriptionValidityUnit(v string) *PaymentOrderCreate {
+	_c.mutation.SetSubscriptionValidityUnit(v)
+	return _c
+}
+
+// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetSubscriptionValidityUnit(*v)
+	}
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -631,6 +645,11 @@ func (_c *PaymentOrderCreate) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.SubscriptionValidityUnit(); ok {
+		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
+			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
+		}
+	}
 	if v, ok := _c.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -786,6 +805,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.SubscriptionDays(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
+	}
+	if value, ok := _c.mutation.SubscriptionValidityUnit(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
+		_node.SubscriptionValidityUnit = &value
 	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1255,6 +1278,24 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
+	return u
+}
+
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsert) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldSubscriptionValidityUnit, v)
+	return u
+}
+
+// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateSubscriptionValidityUnit() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldSubscriptionValidityUnit)
+	return u
+}
+
+// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsert) ClearSubscriptionValidityUnit() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldSubscriptionValidityUnit)
 	return u
 }
 
@@ -1995,6 +2036,27 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsertOne) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionValidityUnit(v)
+	})
+}
+
+// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateSubscriptionValidityUnit() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionValidityUnit()
+	})
+}
+
+// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsertOne) ClearSubscriptionValidityUnit() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionValidityUnit()
 	})
 }
 
@@ -2955,6 +3017,27 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsertBulk) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionValidityUnit(v)
+	})
+}
+
+// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateSubscriptionValidityUnit() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionValidityUnit()
+	})
+}
+
+// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
+func (u *PaymentOrderUpsertBulk) ClearSubscriptionValidityUnit() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionValidityUnit()
 	})
 }
 

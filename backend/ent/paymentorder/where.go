@@ -150,6 +150,11 @@ func SubscriptionDays(v int) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionDays, v))
 }
 
+// SubscriptionValidityUnit applies equality check predicate on the "subscription_validity_unit" field. It's identical to SubscriptionValidityUnitEQ.
+func SubscriptionValidityUnit(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionValidityUnit, v))
+}
+
 // ProviderInstanceID applies equality check predicate on the "provider_instance_id" field. It's identical to ProviderInstanceIDEQ.
 func ProviderInstanceID(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))
@@ -1343,6 +1348,81 @@ func SubscriptionDaysIsNil() predicate.PaymentOrder {
 // SubscriptionDaysNotNil applies the NotNil predicate on the "subscription_days" field.
 func SubscriptionDaysNotNil() predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionDays))
+}
+
+// SubscriptionValidityUnitEQ applies the EQ predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitNEQ applies the NEQ predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitNEQ(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitIn applies the In predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldSubscriptionValidityUnit, vs...))
+}
+
+// SubscriptionValidityUnitNotIn applies the NotIn predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitNotIn(vs ...string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldSubscriptionValidityUnit, vs...))
+}
+
+// SubscriptionValidityUnitGT applies the GT predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitGT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitGTE applies the GTE predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitGTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitLT applies the LT predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitLT(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitLTE applies the LTE predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitLTE(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitContains applies the Contains predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitContains(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContains(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitHasPrefix applies the HasPrefix predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitHasPrefix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasPrefix(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitHasSuffix applies the HasSuffix predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitHasSuffix(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldHasSuffix(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitIsNil applies the IsNil predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldSubscriptionValidityUnit))
+}
+
+// SubscriptionValidityUnitNotNil applies the NotNil predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionValidityUnit))
+}
+
+// SubscriptionValidityUnitEqualFold applies the EqualFold predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitEqualFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEqualFold(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionValidityUnitContainsFold applies the ContainsFold predicate on the "subscription_validity_unit" field.
+func SubscriptionValidityUnitContainsFold(v string) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldContainsFold(FieldSubscriptionValidityUnit, v))
 }
 
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.

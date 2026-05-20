@@ -2512,6 +2512,7 @@ export default {
       totalQuota: 'Total quota',
       overdraftTotal: 'Total quota',
       overdraftDays: 'Overdraft days: {days}',
+      todayOverdraftAmount: 'Today overdraft: ${amount}',
       noLimits: 'No limits configured',
       unlimited: 'Unlimited',
       resetNow: 'Resetting soon',

@@ -177,9 +177,9 @@ func (s *PaymentService) hasRenewableSubscription(ctx context.Context, userID, g
 func canRestartSubscriptionPeriod(now time.Time, sub *UserSubscription, group *Group, validityUnit string) bool {
 	switch strings.TrimSpace(strings.ToLower(validityUnit)) {
 	case validityUnitWeek, validityUnitWeeks:
-		return true
+		return sub != nil && group != nil && group.HasWeeklyLimit() && sub.WeeklyUsageUSD >= *group.WeeklyLimitUSD
 	case validityUnitMonth, validityUnitMonths:
-		return true
+		return sub != nil && group != nil && group.HasMonthlyLimit() && sub.MonthlyUsageUSD >= *group.MonthlyLimitUSD
 	}
 	return false
 }
@@ -250,7 +250,10 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		b.SetProviderSnapshot(providerSnapshot)
 	}
 	if plan != nil {
-		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
+		b.SetPlanID(plan.ID).
+			SetSubscriptionGroupID(plan.GroupID).
+			SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit)).
+			SetSubscriptionValidityUnit(normalizeSubscriptionValidityUnit(plan.ValidityUnit))
 	}
 	if req.SubscriptionID > 0 {
 		b.SetSubscriptionID(req.SubscriptionID)

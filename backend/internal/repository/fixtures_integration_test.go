@@ -390,6 +390,7 @@ func mustCreateSubscription(t *testing.T, client *dbent.Client, s *service.UserS
 		SetStartsAt(s.StartsAt).
 		SetExpiresAt(s.ExpiresAt).
 		SetStatus(s.Status).
+		SetValidityUnit(normalizeRepoSubscriptionValidityUnit(s.ValidityUnit)).
 		SetAssignedAt(s.AssignedAt).
 		SetNotes(s.Notes).
 		SetDailyUsageUsd(s.DailyUsageUSD).

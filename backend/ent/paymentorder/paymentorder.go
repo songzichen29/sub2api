@@ -52,6 +52,8 @@ const (
 	FieldSubscriptionID = "subscription_id"
 	// FieldSubscriptionDays holds the string denoting the subscription_days field in the database.
 	FieldSubscriptionDays = "subscription_days"
+	// FieldSubscriptionValidityUnit holds the string denoting the subscription_validity_unit field in the database.
+	FieldSubscriptionValidityUnit = "subscription_validity_unit"
 	// FieldProviderInstanceID holds the string denoting the provider_instance_id field in the database.
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldProviderKey holds the string denoting the provider_key field in the database.
@@ -129,6 +131,7 @@ var Columns = []string{
 	FieldSubscriptionGroupID,
 	FieldSubscriptionID,
 	FieldSubscriptionDays,
+	FieldSubscriptionValidityUnit,
 	FieldProviderInstanceID,
 	FieldProviderKey,
 	FieldProviderSnapshot,
@@ -183,6 +186,8 @@ var (
 	DefaultOrderType string
 	// OrderTypeValidator is a validator for the "order_type" field. It is called by the builders before save.
 	OrderTypeValidator func(string) error
+	// SubscriptionValidityUnitValidator is a validator for the "subscription_validity_unit" field. It is called by the builders before save.
+	SubscriptionValidityUnitValidator func(string) error
 	// ProviderInstanceIDValidator is a validator for the "provider_instance_id" field. It is called by the builders before save.
 	ProviderInstanceIDValidator func(string) error
 	// ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
@@ -310,6 +315,11 @@ func BySubscriptionID(opts ...sql.OrderTermOption) OrderOption {
 // BySubscriptionDays orders the results by the subscription_days field.
 func BySubscriptionDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscriptionDays, opts...).ToFunc()
+}
+
+// BySubscriptionValidityUnit orders the results by the subscription_validity_unit field.
+func BySubscriptionValidityUnit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSubscriptionValidityUnit, opts...).ToFunc()
 }
 
 // ByProviderInstanceID orders the results by the provider_instance_id field.
