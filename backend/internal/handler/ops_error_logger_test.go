@@ -424,6 +424,7 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 			status:  http.StatusUnauthorized,
 		},
 		{
+<<<<<<< HEAD
 			name:    "deleted local API key group",
 			errType: "api_error",
 			message: "API Key 所属分组已删除",
@@ -452,6 +453,8 @@ func TestClassifyOpsAuthClientErrorsExcludedFromSLA(t *testing.T) {
 			status:  http.StatusForbidden,
 		},
 		{
+=======
+>>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 			name:    "google invalid API key",
 			errType: "api_error",
 			message: "Invalid API key",
@@ -553,6 +556,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantPhase:   "request",
 		},
 		{
+<<<<<<< HEAD
 			name:        "gateway subscription invalid cache recheck",
 			errType:     "billing_error",
 			message:     "subscription is invalid or expired",
@@ -562,6 +566,8 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantPhase:   "request",
 		},
 		{
+=======
+>>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 			name:        "google insufficient account balance",
 			errType:     "api_error",
 			message:     "Insufficient account balance",
@@ -615,6 +621,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantErrType: "api_error",
 			wantPhase:   "request",
 		},
+<<<<<<< HEAD
 		{
 			name:        "user platform daily quota exhausted",
 			errType:     "api_error",
@@ -741,6 +748,8 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 			wantErrType: "forbidden_error",
 			wantPhase:   "request",
 		},
+=======
+>>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 	}
 
 	for _, tt := range tests {
@@ -897,6 +906,7 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 			code:    "API_KEY_QUOTA_EXHAUSTED",
 			status:  http.StatusTooManyRequests,
 		},
+<<<<<<< HEAD
 		{
 			name:    "provider deleted group shaped error",
 			message: "API Key 所属分组已删除",
@@ -969,6 +979,8 @@ func TestClassifyOpsUpstreamAuthTextStillCountsForSLA(t *testing.T) {
 			code:    "403",
 			status:  http.StatusForbidden,
 		},
+=======
+>>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 	}
 
 	for _, tt := range tests {
