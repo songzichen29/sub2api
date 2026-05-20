@@ -44,6 +44,8 @@ type contentModerationConfigRequest struct {
 	HitRetentionDays     *int      `json:"hit_retention_days"`
 	NonHitRetentionDays  *int      `json:"non_hit_retention_days"`
 	PreHashCheckEnabled  *bool     `json:"pre_hash_check_enabled"`
+	BlockedKeywords      *[]string `json:"blocked_keywords"`
+	KeywordBlockingMode  *string   `json:"keyword_blocking_mode"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -99,6 +101,8 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		HitRetentionDays:     req.HitRetentionDays,
 		NonHitRetentionDays:  req.NonHitRetentionDays,
 		PreHashCheckEnabled:  req.PreHashCheckEnabled,
+		BlockedKeywords:      req.BlockedKeywords,
+		KeywordBlockingMode:  req.KeywordBlockingMode,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
