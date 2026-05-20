@@ -94,9 +94,10 @@ type SMTPConfig struct {
 
 // EmailService 邮件服务
 type EmailService struct {
-	settingRepo SettingRepository
-	cache       EmailCache
-	sendFunc    func(ctx context.Context, to, subject, body string) error
+	settingRepo              SettingRepository
+	cache                    EmailCache
+	sendFunc                 func(ctx context.Context, to, subject, body string) error
+	notificationEmailService *NotificationEmailService
 }
 
 // NewEmailService 创建邮件服务实例
@@ -105,6 +106,28 @@ func NewEmailService(settingRepo SettingRepository, cache EmailCache) *EmailServ
 		settingRepo: settingRepo,
 		cache:       cache,
 	}
+}
+
+func (s *EmailService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
+	s.notificationEmailService = notificationEmailService
+}
+
+func firstEmailLocale(locales []string) string {
+	if len(locales) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(locales[0])
+}
+
+func emailRecipientName(email string) string {
+	trimmed := strings.TrimSpace(email)
+	if trimmed == "" {
+		return ""
+	}
+	if at := strings.Index(trimmed, "@"); at > 0 {
+		return trimmed[:at]
+	}
+	return trimmed
 }
 
 // GetSMTPConfig 从数据库获取SMTP配置
@@ -305,7 +328,7 @@ func (s *EmailService) GenerateVerifyCode() (string, error) {
 }
 
 // SendVerifyCode 发送验证码邮件
-func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName string) error {
+func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName string, locale ...string) error {
 	// 检查是否在冷却期内
 	existing, err := s.cache.GetVerificationCode(ctx, email)
 	if err == nil && existing != nil {
@@ -473,7 +496,7 @@ func (s *EmailService) GeneratePasswordResetToken() (string, error) {
 }
 
 // SendPasswordResetEmail sends a password reset email with a reset link
-func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteName, resetURL string) error {
+func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteName, resetURL string, locale ...string) error {
 	var token string
 	var needSaveToken bool
 
@@ -520,7 +543,7 @@ func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteNa
 
 // SendPasswordResetEmailWithCooldown sends password reset email with cooldown check (called by queue worker)
 // This method wraps SendPasswordResetEmail with email cooldown to prevent email bombing
-func (s *EmailService) SendPasswordResetEmailWithCooldown(ctx context.Context, email, siteName, resetURL string) error {
+func (s *EmailService) SendPasswordResetEmailWithCooldown(ctx context.Context, email, siteName, resetURL string, locale ...string) error {
 	// Check email cooldown to prevent email bombing
 	if s.cache.IsPasswordResetEmailInCooldown(ctx, email) {
 		slog.Info("password reset email skipped due to cooldown", "email", email)
@@ -528,7 +551,7 @@ func (s *EmailService) SendPasswordResetEmailWithCooldown(ctx context.Context, e
 	}
 
 	// Send email using core method
-	if err := s.SendPasswordResetEmail(ctx, email, siteName, resetURL); err != nil {
+	if err := s.SendPasswordResetEmail(ctx, email, siteName, resetURL, firstEmailLocale(locale)); err != nil {
 		return err
 	}
 
