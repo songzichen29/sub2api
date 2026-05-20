@@ -321,6 +321,25 @@
                   }}
                 </span>
               </div>
+              <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="reset-info">
+                <svg
+                  class="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
+                  />
+                </svg>
+                <span>
+                  {{ t('admin.subscriptions.overdraftRemaining') }}:
+                  ${{ getOverdraftRemaining(row).toFixed(2) }}
+                </span>
+              </div>
             </div>
 
               <!-- No Limits - Unlimited badge -->
@@ -1721,6 +1740,12 @@ const getTodayOverdraftAmount = (sub: UserSubscription): number => {
   const dailyLimit = sub.group?.daily_limit_usd
   if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
   return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
+}
+
+const getOverdraftRemaining = (sub: UserSubscription): number => {
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return 0
+  return Math.max(limit - (getOverdraftDisplayUsed(sub) ?? 0), 0)
 }
 
 const getElapsedOverdraftQuota = (sub: UserSubscription): number => {

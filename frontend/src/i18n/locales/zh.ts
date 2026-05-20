@@ -6238,6 +6238,7 @@ export default {
     monthly: '每月',
     overdraftTotal: '总额度',
     todayOverdraft: '今日透支额度',
+    overdraftRemaining: '透支剩余额度',
     daysRemaining: '剩余 {days} 天',
     expired: '已过期',
     expiresToday: '今天到期',

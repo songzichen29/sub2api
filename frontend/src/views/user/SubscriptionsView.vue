@@ -373,16 +373,16 @@ function getOverdraftLimit(subscription: UserSubscription): number | null {
     : null
 }
 
-function getOverdraftUsed(subscription: UserSubscription): number | null {
-  return getOverdraftLimit(subscription) !== null
-    ? subscription.overdraft_used_usd ?? 0
-    : null
+function getOverdraftDisplayUsed(subscription: UserSubscription): number | null {
+  if (getOverdraftLimit(subscription) === null) return null
+  return isDayValidityUnit(subscription.validity_unit)
+    ? getDayValidityOverdraftUsed(subscription)
+    : (subscription.overdraft_used_usd ?? subscription.weekly_usage_usd ?? 0)
 }
 
-function getOverdraftDisplayUsed(subscription: UserSubscription): number | null {
-  const limit = getOverdraftLimit(subscription)
-  if (limit === null) return null
-  return Math.min(getElapsedOverdraftQuota(subscription) + getBorrowedFutureQuota(subscription), limit)
+function isDayValidityUnit(unit?: string | null): boolean {
+  const normalized = (unit || 'day').trim().toLowerCase()
+  return normalized === '' || normalized === 'day' || normalized === 'days'
 }
 
 function getTodayOverdraftAmount(subscription: UserSubscription): number {
@@ -396,21 +396,55 @@ function getElapsedOverdraftQuota(subscription: UserSubscription): number {
   const overdraftLimit = getOverdraftLimit(subscription)
   if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
 
+  return Math.min(dailyLimit * getElapsedFullOverdraftDays(subscription), overdraftLimit)
+}
+
+function getDayValidityOverdraftUsed(subscription: UserSubscription): number {
+  const dailyLimit = subscription.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(subscription)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
+  const expiredQuota = getElapsedOverdraftQuota(subscription)
+  const currentDailyUsage = getCurrentDailyWindowUsage(subscription)
+  const effectiveUsed = expiredQuota + currentDailyUsage
+  const actualUsed = subscription.weekly_usage_usd ?? subscription.overdraft_used_usd ?? 0
+  return Math.min(Math.max(actualUsed, effectiveUsed), overdraftLimit)
+}
+
+function getElapsedFullOverdraftDays(subscription: UserSubscription): number {
+  const dailyLimit = subscription.group?.daily_limit_usd
+  const overdraftLimit = getOverdraftLimit(subscription)
+  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
+
   const startsAt = subscription.starts_at ? new Date(subscription.starts_at).getTime() : NaN
   if (!Number.isFinite(startsAt)) return 0
 
   const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(1, Math.floor((Date.now() - startsAt) / dayMs) + 1)
+  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
   const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
-  const arrivedQuota = dailyLimit * Math.min(elapsedDays, validityDays)
-  return Math.min(arrivedQuota, overdraftLimit)
+  return Math.min(elapsedDays, validityDays)
+}
+
+function getCurrentDailyWindowUsage(subscription: UserSubscription): number {
+  if (!subscription.daily_window_start || !subscription.starts_at) return 0
+
+  const startsAt = new Date(subscription.starts_at).getTime()
+  const dailyWindowStart = new Date(subscription.daily_window_start).getTime()
+  if (!Number.isFinite(startsAt) || !Number.isFinite(dailyWindowStart)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
+  const currentWindowStart = startsAt + elapsedDays * dayMs
+  if (dailyWindowStart !== currentWindowStart) return 0
+
+  return Math.max(subscription.daily_usage_usd || 0, 0)
 }
 
 function getBorrowedFutureQuota(subscription: UserSubscription): number {
   const limit = getOverdraftLimit(subscription)
   if (limit === null) return 0
   const arrivedQuota = getElapsedOverdraftQuota(subscription)
-  const actualBorrowed = Math.max((getOverdraftUsed(subscription) ?? 0) - arrivedQuota, 0)
+  const actualBorrowed = Math.max((getOverdraftDisplayUsed(subscription) ?? 0) - arrivedQuota, 0)
   const borrowed = Math.max(actualBorrowed, getTodayOverdraftAmount(subscription))
   return Math.min(Math.max(limit - arrivedQuota, 0), borrowed)
 }

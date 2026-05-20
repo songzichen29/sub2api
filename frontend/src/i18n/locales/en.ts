@@ -6079,6 +6079,7 @@ export default {
     monthly: 'Monthly',
     overdraftTotal: 'Total quota',
     todayOverdraft: 'Today overdraft',
+    overdraftRemaining: 'Overdraft remaining',
     daysRemaining: '{days} days left',
     expired: 'Expired',
     expiresToday: 'Expires today',
