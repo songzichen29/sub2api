@@ -356,12 +356,15 @@ const (
 	// SettingKeyEnableAnthropicCacheTTL1hInjection 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
 	SettingKeyEnableAnthropicCacheTTL1hInjection = "enable_anthropic_cache_ttl_1h_injection"
 
-	// Balance Low Notification
+	// 余额不足提醒
 	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关
 	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD）
 	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页面 URL
 
-	// Account Quota Notification
+	// 订阅到期提醒
+	SettingKeySubscriptionExpiryNotifyEnabled = "subscription_expiry_notify_enabled" // 订阅到期提醒全局开关，默认开启
+
+	// 账号限额通知
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 

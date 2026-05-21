@@ -5812,6 +5812,35 @@
             </div>
           </div>
 
+          <!-- 订阅到期提醒 -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t("admin.settings.subscriptionExpiryNotify.title") }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.subscriptionExpiryNotify.description") }}
+              </p>
+            </div>
+            <div class="px-6 py-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label
+                    class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabled") }}
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.subscriptionExpiryNotify.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.subscription_expiry_notify_enabled" />
+              </div>
+            </div>
+          </div>
+
           <EmailTemplateEditor />
 
           <!-- Balance Low Notification -->
@@ -6532,10 +6561,11 @@ const form = reactive<SettingsForm>({
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_anthropic_cache_ttl_1h_injection: false,
-  // Balance & quota notification
+  // ??????????????
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
+  subscription_expiry_notify_enabled: true,
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[],
   // Channel Monitor feature switch
@@ -7684,12 +7714,14 @@ async function saveSettings() {
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
-      // Balance & quota notification
+      // 余额、订阅到期与账号限额通知
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold:
         Number(form.balance_low_notify_threshold) || 0,
       balance_low_notify_recharge_url: (form.balance_low_notify_recharge_url =
         form.balance_low_notify_recharge_url || currentOrigin),
+      subscription_expiry_notify_enabled:
+        form.subscription_expiry_notify_enabled,
       account_quota_notify_enabled: form.account_quota_notify_enabled,
       account_quota_notify_emails: (
         form.account_quota_notify_emails || []

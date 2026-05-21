@@ -193,12 +193,13 @@ type SystemSettings struct {
 	PaymentCancelRateLimitUnit    string `json:"payment_cancel_rate_limit_unit"`
 	PaymentCancelRateLimitMode    string `json:"payment_cancel_rate_limit_window_mode"`
 
-	// Balance low notification
-	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`
-	BalanceLowNotifyThreshold   float64            `json:"balance_low_notify_threshold"`
-	BalanceLowNotifyRechargeURL string             `json:"balance_low_notify_recharge_url"`
-	AccountQuotaNotifyEnabled   bool               `json:"account_quota_notify_enabled"`
-	AccountQuotaNotifyEmails    []NotifyEmailEntry `json:"account_quota_notify_emails"`
+	// Balance low, subscription expiry, and account quota notification
+	BalanceLowNotifyEnabled         bool               `json:"balance_low_notify_enabled"`
+	BalanceLowNotifyThreshold       float64            `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL     string             `json:"balance_low_notify_recharge_url"`
+	SubscriptionExpiryNotifyEnabled bool               `json:"subscription_expiry_notify_enabled"`
+	AccountQuotaNotifyEnabled       bool               `json:"account_quota_notify_enabled"`
+	AccountQuotaNotifyEmails        []NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
@@ -351,11 +352,13 @@ type OpenAIFastPolicySettings struct {
 	Rules []OpenAIFastPolicyRule `json:"rules"`
 }
 
-// EmailTemplateEventOption describes an editable notification email event.
+// EmailTemplateEventOption 描述可编辑的通知邮件事件。
 type EmailTemplateEventOption struct {
 	Value       string `json:"value"`
 	Label       string `json:"label,omitempty"`
 	Description string `json:"description,omitempty"`
+	Category    string `json:"category,omitempty"`
+	Optional    bool   `json:"optional,omitempty"`
 }
 
 // EmailTemplateSummary is shown in the admin email template list.
