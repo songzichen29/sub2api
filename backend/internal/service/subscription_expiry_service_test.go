@@ -71,8 +71,16 @@ func (r *subscriptionExpiryRepoStub) UpdateNotes(context.Context, int64, string)
 	return nil
 }
 
-func (r *subscriptionExpiryRepoStub) ActivateWindows(context.Context, int64, time.Time) error {
+func (r *subscriptionExpiryRepoStub) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	return nil
+}
+
+func (r *subscriptionExpiryRepoStub) UpdateDailyOverdraft(context.Context, int64, bool) error {
+	return nil
+}
+
+func (r *subscriptionExpiryRepoStub) GetLatestUsedAtBySubscriptionIDs(context.Context, []int64) (map[int64]*time.Time, error) {
+	return nil, nil
 }
 
 func (r *subscriptionExpiryRepoStub) ResetDailyUsage(context.Context, int64, time.Time) error {
