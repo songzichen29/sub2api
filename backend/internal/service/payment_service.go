@@ -179,20 +179,19 @@ type TopUserStat struct {
 // --- Service ---
 
 type PaymentService struct {
-	providerMu               sync.Mutex
-	providersLoaded          bool
-	entClient                *dbent.Client
-	registry                 *payment.Registry
-	loadBalancer             payment.LoadBalancer
-	redeemService            *RedeemService
-	subscriptionSvc          *SubscriptionService
-	configService            *PaymentConfigService
-	userRepo                 UserRepository
-	groupRepo                GroupRepository
-	userGroupRateRepo        UserGroupRateRepository
-	resumeService            *PaymentResumeService
-	affiliateService         *AffiliateService
-	notificationEmailService *NotificationEmailService
+	providerMu        sync.Mutex
+	providersLoaded   bool
+	entClient         *dbent.Client
+	registry          *payment.Registry
+	loadBalancer      payment.LoadBalancer
+	redeemService     *RedeemService
+	subscriptionSvc   *SubscriptionService
+	configService     *PaymentConfigService
+	userRepo          UserRepository
+	groupRepo         GroupRepository
+	userGroupRateRepo UserGroupRateRepository
+	resumeService     *PaymentResumeService
+	affiliateService  *AffiliateService
 }
 
 func (s *PaymentService) GetEntClient() *dbent.Client {
@@ -203,10 +202,6 @@ func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, load
 	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, userGroupRateRepo: userGroupRateRepo, affiliateService: affiliateService}
 	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
-}
-
-func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
-	s.notificationEmailService = notificationEmailService
 }
 
 // --- Provider Registry ---
