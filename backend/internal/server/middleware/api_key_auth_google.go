@@ -55,6 +55,10 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			abortWithGoogleError(c, 401, "用户账号未激活")
 			return
 		}
+		if _, message, ok := validateAPIKeyGroupAvailable(apiKey); !ok {
+			abortWithGoogleError(c, 403, message)
+			return
+		}
 
 		// 基础鉴权通过后立即写入上下文，保证后续订阅/余额限额在本中间件内拦截时，
 		// 外层 OpsErrorLogger 仍可记录 user/api_key/group 归属。

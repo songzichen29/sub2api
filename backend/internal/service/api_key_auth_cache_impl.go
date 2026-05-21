@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 8 // v8: added group image generation controls
+const apiKeyAuthSnapshotVersion = 10 // v10: reload snapshots for group availability checks
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
