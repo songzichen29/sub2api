@@ -267,7 +267,7 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI base URL", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildUpstreamOpenAIModelsURL(normalizedBaseURL), nil)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI model list URL", err)
 	}
@@ -382,7 +382,7 @@ func buildV1ModelsURL(base string) string {
 	return normalized + "/v1/models"
 }
 
-func buildOpenAIModelsURL(base string) string {
+func buildUpstreamOpenAIModelsURL(base string) string {
 	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
 	if strings.HasSuffix(normalized, "/v1/models") {
 		return normalized
