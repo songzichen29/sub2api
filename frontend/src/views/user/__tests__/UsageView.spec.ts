@@ -334,6 +334,7 @@ describe('user UsageView tooltip', () => {
           EmptyState: true,
           Select: true,
           DateRangePicker: true,
+          DataTable: DataTableStub,
           Icon: true,
           Teleport: true,
         },
