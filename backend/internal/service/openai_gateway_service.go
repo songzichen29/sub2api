@@ -3274,6 +3274,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if account.Type == AccountTypeOAuth && !openai.IsCodexCLIRequest(req.Header.Get("user-agent")) {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
+	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
+	// （Chrome/Firefox/Safari/Edge 等），替换为 Codex UA，避免 Cloudflare 触发 JS 质询。
+	overrideOpenAIBrowserUserAgent(account, req)
 
 	if req.Header.Get("content-type") == "" {
 		req.Header.Set("content-type", "application/json")
@@ -3981,6 +3984,9 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if s.cfg != nil && s.cfg.Gateway.ForceCodexCLI {
 		req.Header.Set("user-agent", codexCLIUserAgent)
 	}
+	// 浏览器型 UA 兜底：仅 OAuth（ChatGPT 内部接口）账号生效，若最终 user-agent 仍为浏览器
+	// （Chrome/Firefox/Safari/Edge 等），替换为 Codex UA，避免 Cloudflare 触发 JS 质询。
+	overrideOpenAIBrowserUserAgent(account, req)
 
 	// Ensure required headers exist
 	if req.Header.Get("content-type") == "" {
@@ -3988,6 +3994,19 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	return req, nil
+}
+
+// overrideOpenAIBrowserUserAgent 检查请求的最终 user-agent，若为浏览器 UA 则替换为 Codex UA。
+// 影响范围严格限定：仅 OAuth（Codex/ChatGPT 内部接口）账号生效；API Key 等其他账号原样透传。
+// 仅在识别为浏览器（Mozilla/...）时改写，其他 CLI/工具 UA 不动。
+func overrideOpenAIBrowserUserAgent(account *Account, req *http.Request) {
+	if req == nil || account == nil || account.Type != AccountTypeOAuth {
+		return
+	}
+	if !openai.IsBrowserUserAgent(req.Header.Get("user-agent")) {
+		return
+	}
+	req.Header.Set("user-agent", codexCLIUserAgent)
 }
 
 func (s *OpenAIGatewayService) handleErrorResponse(
