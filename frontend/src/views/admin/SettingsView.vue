@@ -9068,9 +9068,6 @@ watch(
 .settings-tabs-scroll:hover {
   scrollbar-color: rgb(0 0 0 / 0.15) transparent;
 }
-:root.dark .settings-tabs-scroll:hover {
-  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
-}
 .settings-tabs-scroll::-webkit-scrollbar {
   height: 3px;
 }
@@ -9083,9 +9080,6 @@ watch(
 }
 .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
   background: rgb(0 0 0 / 0.15);
-}
-:root.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.2);
 }
 
 .settings-tabs {
@@ -9116,8 +9110,8 @@ watch(
   background: rgb(0 0 0 / 0.03);
 }
 
-:root.dark .settings-tab:hover:not(.settings-tab-active) {
-  background: rgb(255 255 255 / 0.04);
+.settings-tab:focus-visible {
+  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
 }
 
 .settings-tab-active {
@@ -9130,15 +9124,6 @@ watch(
   box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
 }
 
-:root.dark .settings-tab-active {
-  background: linear-gradient(
-    135deg,
-    rgba(45, 212, 191, 0.12),
-    rgba(45, 212, 191, 0.05)
-  );
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
-}
-
 .settings-tab-icon {
   @apply flex h-6 w-6 items-center justify-center rounded-lg
          transition-all duration-200;
@@ -9147,5 +9132,30 @@ watch(
 .settings-tab-active .settings-tab-icon {
   @apply bg-primary-500/15 text-primary-600
          dark:bg-primary-400/15 dark:text-primary-400;
+}
+</style>
+
+<style>
+/* Dark-mode overrides for Settings tabs. Kept UNSCOPED so they survive Vue's
+   scoped-CSS transform and keep inactive tabs readable in production dark mode. */
+.dark .settings-tabs-scroll:hover {
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
+}
+
+.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.2);
+}
+
+.dark .settings-tab:hover:not(.settings-tab-active) {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.dark .settings-tab-active {
+  background: linear-gradient(
+    135deg,
+    rgba(45, 212, 191, 0.12),
+    rgba(45, 212, 191, 0.05)
+  );
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
 }
 </style>
