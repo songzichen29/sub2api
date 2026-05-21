@@ -276,6 +276,30 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
 }
 
+func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	cfg := &config.Config{}
+	svc := NewSettingService(repo, cfg)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		APIKeyACLTrustForwardedIP: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyAPIKeyACLTrustForwardedIP])
+	require.True(t, cfg.Security.TrustForwardedIPForAPIKeyACL)
+	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
+}
+
+func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfigWhenMissing(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Security.TrustForwardedIPForAPIKeyACL = true
+	svc := NewSettingService(&settingUpdateRepoStub{}, cfg)
+
+	got := svc.parseSettings(map[string]string{})
+
+	require.True(t, got.APIKeyACLTrustForwardedIP)
+}
+
 func TestSettingService_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})
