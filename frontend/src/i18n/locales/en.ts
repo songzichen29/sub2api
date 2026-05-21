@@ -3060,6 +3060,12 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        responsesMode: 'Responses API support',
+        responsesModeDesc:
+          'Only applies to OpenAI API Key accounts. Auto follows probe results; force modes override probing.',
+        responsesModeAuto: 'Auto',
+        responsesModeForceResponses: 'Force Responses',
+        responsesModeForceChatCompletions: 'Force Chat Completions',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',

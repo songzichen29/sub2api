@@ -799,7 +799,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: (CodexUsageSnapshot & OpenAICompactState & {
+  extra?: (CodexUsageSnapshot & OpenAICompactState & OpenAIResponsesState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     usage_query?: AccountUsageQueryConfig
@@ -1009,6 +1009,13 @@ export interface OpenAICompactState {
   openai_compact_checked_at?: string
   openai_compact_last_status?: number
   openai_compact_last_error?: string
+}
+
+export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
+
+export interface OpenAIResponsesState {
+  openai_responses_mode?: OpenAIResponsesMode
+  openai_responses_supported?: boolean
 }
 
 export interface CreateAccountRequest {

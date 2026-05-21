@@ -3236,6 +3236,12 @@ export default {
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
+        responsesMode: 'Responses API 支持',
+        responsesModeDesc:
+          '仅对 OpenAI API Key 生效。自动跟随探测结果，强制模式会覆盖自动探测。',
+        responsesModeAuto: '自动',
+        responsesModeForceResponses: '强制 Responses',
+        responsesModeForceChatCompletions: '强制 Chat Completions',
         compactMode: 'Compact 模式',
         compactModeDesc:
           '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',
