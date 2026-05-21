@@ -3242,6 +3242,11 @@ export default {
         responsesModeAuto: '自动',
         responsesModeForceResponses: '强制 Responses',
         responsesModeForceChatCompletions: '强制 Chat Completions',
+        responsesStatusAutoSupported: '自动探测：Responses',
+        responsesStatusAutoUnsupported: '自动探测：Chat Completions',
+        responsesStatusAutoUnknown: '自动探测：未探测',
+        responsesStatusForcedResponses: '已强制 Responses',
+        responsesStatusForcedChatCompletions: '已强制 Chat Completions',
         compactMode: 'Compact 模式',
         compactModeDesc:
           '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',

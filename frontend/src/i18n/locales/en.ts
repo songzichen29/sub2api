@@ -3066,6 +3066,11 @@ export default {
         responsesModeAuto: 'Auto',
         responsesModeForceResponses: 'Force Responses',
         responsesModeForceChatCompletions: 'Force Chat Completions',
+        responsesStatusAutoSupported: 'Auto probe: Responses',
+        responsesStatusAutoUnsupported: 'Auto probe: Chat Completions',
+        responsesStatusAutoUnknown: 'Auto probe: unknown',
+        responsesStatusForcedResponses: 'Forced Responses',
+        responsesStatusForcedChatCompletions: 'Forced Chat Completions',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
