@@ -231,6 +231,8 @@ type UpdateContentModerationConfigInput struct {
 	Model                *string   `json:"model"`
 	APIKey               *string   `json:"api_key"`
 	APIKeys              *[]string `json:"api_keys"`
+	APIKeysMode          string    `json:"api_keys_mode"`
+	DeleteAPIKeyHashes   *[]string `json:"delete_api_key_hashes"`
 	ClearAPIKey          bool      `json:"clear_api_key"`
 	TimeoutMS            *int      `json:"timeout_ms"`
 	SampleRate           *int      `json:"sample_rate"`
@@ -589,8 +591,17 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 		cfg.APIKey = ""
 		cfg.APIKeys = []string{}
 	} else {
+		apiKeysMode := normalizeContentModerationAPIKeysMode(input.APIKeysMode)
+		if input.DeleteAPIKeyHashes != nil && apiKeysMode != contentModerationAPIKeysModeReplace {
+			cfg.APIKeys = deleteModerationAPIKeysByHash(cfg.apiKeys(), *input.DeleteAPIKeyHashes)
+			cfg.APIKey = ""
+		}
 		if input.APIKeys != nil {
-			cfg.APIKeys = normalizeModerationAPIKeys(*input.APIKeys)
+			if apiKeysMode == contentModerationAPIKeysModeReplace {
+				cfg.APIKeys = normalizeModerationAPIKeys(*input.APIKeys)
+			} else {
+				cfg.APIKeys = normalizeModerationAPIKeys(append(cfg.apiKeys(), *input.APIKeys...))
+			}
 			cfg.APIKey = ""
 		}
 		if input.APIKey != nil && strings.TrimSpace(*input.APIKey) != "" {
@@ -2049,6 +2060,37 @@ func normalizeModerationAPIKeys(keys []string) []string {
 		out = append(out, key)
 	}
 	return out
+}
+
+func deleteModerationAPIKeysByHash(keys []string, hashes []string) []string {
+	keys = normalizeModerationAPIKeys(keys)
+	deleteHashes := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		hash = normalizeContentModerationHash(hash)
+		if hash != "" {
+			deleteHashes[hash] = struct{}{}
+		}
+	}
+	if len(deleteHashes) == 0 {
+		return keys
+	}
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if _, ok := deleteHashes[moderationAPIKeyHash(key)]; ok {
+			continue
+		}
+		out = append(out, key)
+	}
+	return out
+}
+
+func normalizeContentModerationAPIKeysMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case contentModerationAPIKeysModeReplace:
+		return contentModerationAPIKeysModeReplace
+	default:
+		return contentModerationAPIKeysModeAppend
+	}
 }
 
 func normalizeContentModerationHash(inputHash string) string {

@@ -2,6 +2,7 @@ import { apiClient } from '../client'
 
 export type ModerationMode = 'off' | 'observe' | 'pre_block'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
+export type ContentModerationAPIKeysMode = 'append' | 'replace'
 
 export interface ContentModerationConfig {
   enabled: boolean
@@ -83,6 +84,8 @@ export interface UpdateContentModerationConfig {
   model?: string
   api_key?: string
   api_keys?: string[]
+  api_keys_mode?: ContentModerationAPIKeysMode
+  delete_api_key_hashes?: string[]
   clear_api_key?: boolean
   timeout_ms?: number
   sample_rate?: number

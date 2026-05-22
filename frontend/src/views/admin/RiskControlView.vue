@@ -865,7 +865,6 @@ type ModerationScoreRow = {
 
 const maxModerationTestImages = 4
 const maxModerationTestImageSize = 8 * 1024 * 1024
-const maxVisibleApiKeyRows: number = 3
 const blockedKeywordMax = 10000
 
 const { t } = useI18n()
@@ -1075,22 +1074,6 @@ const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).l
 const blockedKeywordList = computed(() => parseBlockedKeywords(configForm.blocked_keywords_text))
 
 const blockedKeywordCount = computed(() => blockedKeywordList.value.length)
-
-const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
-
-const effectiveStoredApiKeyCount = computed(() => Math.max(0, configForm.api_key_count - pendingDeletedApiKeyCount.value))
-
-const apiKeysPlaceholder = computed(() => (
-  configForm.api_keys_mode === 'replace'
-    ? t('admin.riskControl.apiKeysPlaceholderReplace')
-    : t('admin.riskControl.apiKeysPlaceholder')
-))
-
-const apiKeysModeHint = computed(() => (
-  configForm.api_keys_mode === 'replace'
-    ? t('admin.riskControl.apiKeysModeReplaceHint')
-    : t('admin.riskControl.apiKeysModeAppendHint')
-))
 
 const hasModerationAuditInput = computed(() => {
   return moderationTestPrompt.value.trim() !== '' || moderationTestImages.value.length > 0
@@ -1341,6 +1324,7 @@ async function saveConfig() {
     const keys = parseApiKeys(configForm.api_keys_text)
     if (keys.length > 0) {
       payload.api_keys = keys
+      payload.api_keys_mode = 'replace'
       payload.clear_api_key = false
     }
 
