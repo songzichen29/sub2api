@@ -90,6 +90,7 @@ type cachedGatewayForwardingSettings struct {
 	metadataPassthrough          bool
 	cchSigning                   bool
 	anthropicCacheTTL1hInjection bool
+	rewriteMessageCacheControl   bool
 	expiresAt                    int64 // unix nano
 }
 
@@ -99,6 +100,18 @@ var gatewayForwardingSF singleflight.Group
 const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
+
+// DefaultOpenAICodexUserAgent OpenAI Codex 默认 User-Agent（用于规避 Cloudflare 对浏览器 UA 的质询）。
+const DefaultOpenAICodexUserAgent = "codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)"
+
+type cachedOpenAICodexUserAgent struct {
+	value     string
+	expiresAt int64 // unix nano
+}
+
+const openAICodexUserAgentCacheTTL = 60 * time.Second
+const openAICodexUserAgentErrorTTL = 5 * time.Second
+const openAICodexUserAgentDBTimeout = 5 * time.Second
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
@@ -118,6 +131,8 @@ type SettingService struct {
 	onUpdate                func() // Callback when settings are updated (for cache invalidation)
 	version                 string // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
+	openAICodexUACache      atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF         singleflight.Group
 }
 
 type AccountImportApplyTemplate struct {
@@ -700,6 +715,55 @@ func (s *SettingService) GetAvailableChannelsRuntime(ctx context.Context) Availa
 	return AvailableChannelsRuntime{
 		Enabled: vals[SettingKeyAvailableChannelsEnabled] == "true",
 	}
+}
+
+// GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
+// 后台设置优先；为空、缺失或出错时回退到内置默认值。
+func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
+	fallback := DefaultOpenAICodexUserAgent
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if cached, ok := s.openAICodexUACache.Load().(*cachedOpenAICodexUserAgent); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+
+	result, _, _ := s.openAICodexUASF.Do("openai_codex_user_agent", func() (any, error) {
+		if cached, ok := s.openAICodexUACache.Load().(*cachedOpenAICodexUserAgent); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAICodexUserAgentDBTimeout)
+		defer cancel()
+		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexUserAgent)
+		if err != nil && !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get openai codex user agent setting", "error", err)
+			s.openAICodexUACache.Store(&cachedOpenAICodexUserAgent{
+				value:     fallback,
+				expiresAt: time.Now().Add(openAICodexUserAgentErrorTTL).UnixNano(),
+			})
+			return fallback, nil
+		}
+		ua := strings.TrimSpace(value)
+		if ua == "" {
+			ua = fallback
+		}
+		s.openAICodexUACache.Store(&cachedOpenAICodexUserAgent{
+			value:     ua,
+			expiresAt: time.Now().Add(openAICodexUserAgentCacheTTL).UnixNano(),
+		})
+		return ua, nil
+	})
+	if ua, ok := result.(string); ok && ua != "" {
+		return ua
+	}
+	return fallback
 }
 
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
@@ -1349,6 +1413,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
 	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
+	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -1417,7 +1483,17 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		metadataPassthrough:          settings.EnableMetadataPassthrough,
 		cchSigning:                   settings.EnableCCHSigning,
 		anthropicCacheTTL1hInjection: settings.EnableAnthropicCacheTTL1hInjection,
+		rewriteMessageCacheControl:   settings.RewriteMessageCacheControl,
 		expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
+	})
+	s.openAICodexUASF.Forget("openai_codex_user_agent")
+	codexUA := strings.TrimSpace(settings.OpenAICodexUserAgent)
+	if codexUA == "" {
+		codexUA = DefaultOpenAICodexUserAgent
+	}
+	s.openAICodexUACache.Store(&cachedOpenAICodexUserAgent{
+		value:     codexUA,
+		expiresAt: time.Now().Add(openAICodexUserAgentCacheTTL).UnixNano(),
 	})
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -1430,6 +1506,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}
+}
+
+func (s *SettingService) defaultRewriteMessageCacheControl() bool {
+	return false
 }
 
 func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, items []DefaultSubscriptionSetting) error {
@@ -1528,17 +1608,18 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
-	fp, mp, cch, cacheTTL1h bool
+	fp, mp, cch, cacheTTL1h, rewriteMessageCacheControl bool
 }
 
 func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context) gatewayForwardingSettingsResult {
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
-				fp:         cached.fingerprintUnification,
-				mp:         cached.metadataPassthrough,
-				cch:        cached.cchSigning,
-				cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+				fp:                         cached.fingerprintUnification,
+				mp:                         cached.metadataPassthrough,
+				cch:                        cached.cchSigning,
+				cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+				rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 			}
 		}
 	}
@@ -1546,10 +1627,11 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
-					fp:         cached.fingerprintUnification,
-					mp:         cached.metadataPassthrough,
-					cch:        cached.cchSigning,
-					cacheTTL1h: cached.anthropicCacheTTL1hInjection,
+					fp:                         cached.fingerprintUnification,
+					mp:                         cached.metadataPassthrough,
+					cch:                        cached.cchSigning,
+					cacheTTL1h:                 cached.anthropicCacheTTL1hInjection,
+					rewriteMessageCacheControl: cached.rewriteMessageCacheControl,
 				}, nil
 			}
 		}
@@ -1560,6 +1642,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyEnableMetadataPassthrough,
 			SettingKeyEnableCCHSigning,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
+			SettingKeyRewriteMessageCacheControl,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -1568,9 +1651,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				metadataPassthrough:          false,
 				cchSigning:                   false,
 				anthropicCacheTTL1hInjection: false,
+				rewriteMessageCacheControl:   s.defaultRewriteMessageCacheControl(),
 				expiresAt:                    time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true}, nil
+			return gatewayForwardingSettingsResult{fp: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -1579,14 +1663,25 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
 		cch := values[SettingKeyEnableCCHSigning] == "true"
 		cacheTTL1h := values[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+		rewriteMessageCacheControl := s.defaultRewriteMessageCacheControl()
+		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+			rewriteMessageCacheControl = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:       fp,
 			metadataPassthrough:          mp,
 			cchSigning:                   cch,
 			anthropicCacheTTL1hInjection: cacheTTL1h,
+			rewriteMessageCacheControl:   rewriteMessageCacheControl,
 			expiresAt:                    time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
-		return gatewayForwardingSettingsResult{fp: fp, mp: mp, cch: cch, cacheTTL1h: cacheTTL1h}, nil
+		return gatewayForwardingSettingsResult{
+			fp:                         fp,
+			mp:                         mp,
+			cch:                        cch,
+			cacheTTL1h:                 cacheTTL1h,
+			rewriteMessageCacheControl: rewriteMessageCacheControl,
+		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
@@ -1605,6 +1700,11 @@ func (s *SettingService) GetGatewayForwardingSettings(ctx context.Context) (fing
 // IsAnthropicCacheTTL1hInjectionEnabled 检查是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl。
 func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).cacheTTL1h
+}
+
+// IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
+func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
 }
 
 // IsEmailVerifyEnabled 检查是否开启邮件验证
@@ -2066,6 +2166,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
+		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyOpenAICodexUserAgent:               "",
 		SettingPaymentVisibleMethodAlipaySource:      "",
 		SettingPaymentVisibleMethodWxpaySource:       "",
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
@@ -2442,6 +2544,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
 	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
 	result.EnableAnthropicCacheTTL1hInjection = settings[SettingKeyEnableAnthropicCacheTTL1hInjection] == "true"
+	if v, ok := settings[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
+		result.RewriteMessageCacheControl = v == "true"
+	} else {
+		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
+	}
+	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

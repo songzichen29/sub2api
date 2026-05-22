@@ -501,8 +501,13 @@ type ForwardResult struct {
 	ReasoningEffort  *string
 
 	// 图片生成计费字段（图片生成模型使用）
-	ImageCount int    // 生成的图片数量
-	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
+	ImageCount         int    // 生成的图片数量
+	ImageSize          string // 最终计费尺寸 "1K", "2K", "4K"
+	ImageInputSize     string // 请求中的原始图片尺寸
+	ImageOutputSize    string // 上游响应中的图片尺寸
+	ImageOutputSizes   []string
+	ImageSizeSource    string
+	ImageSizeBreakdown map[string]int
 }
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -1251,13 +1256,11 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	body, _ = normalizeClaudeOAuthRequestBody(body, model, normalizeOpts)
 
 	// Phase D+E+F: messages cache 策略 + 工具名混淆 + tools[-1] 断点
-	// 对齐 Parrot transform_request 里剩余的字段级改写。三步顺序有语义约束：
-	//   1) strip：先清除客户端的 messages[*].cache_control（多轮稳定性）
-	//   2) breakpoints：再注入 2 个断点（最后一条 + 倒数第二个 user turn）
-	//   3) tool rewrite：最后改 tools[*].name / tool_choice.name 并在 tools[-1]
+	// 对齐 Parrot transform_request 里剩余的字段级改写。顺序有语义约束：
+	//   1) messages cache：仅在配置开启时清除客户端断点并注入代理断点
+	//   2) tool rewrite：最后改 tools[*].name / tool_choice.name 并在 tools[-1]
 	//      上打断点；mapping 存入 gin.Context 供响应侧 bytes.Replace 还原。
-	body = stripMessageCacheControl(body)
-	body = addMessageCacheBreakpoints(body)
+	body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 
 	if rw := buildToolNameRewriteFromBody(body); rw != nil {
 		body = applyToolNameRewriteToBody(body, rw)
@@ -4108,7 +4111,7 @@ type cacheControlPath struct {
 	log  string
 }
 
-func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, messagePaths []string, systemPaths []string) {
+func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, messagePaths []string, toolPaths []string, systemPaths []string) {
 	system := gjson.GetBytes(body, "system")
 	if system.IsArray() {
 		sysIndex := 0
@@ -4157,17 +4160,29 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 		})
 	}
 
-	return invalidThinking, messagePaths, systemPaths
+	tools := gjson.GetBytes(body, "tools")
+	if tools.IsArray() {
+		toolIndex := 0
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			if tool.Get("cache_control").Exists() {
+				toolPaths = append(toolPaths, fmt.Sprintf("tools.%d.cache_control", toolIndex))
+			}
+			toolIndex++
+			return true
+		})
+	}
+
+	return invalidThinking, messagePaths, toolPaths, systemPaths
 }
 
 // enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
-// 超限时优先从 messages 中移除 cache_control，保护 system 中的缓存控制
+// 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
 func enforceCacheControlLimit(body []byte) []byte {
 	if len(body) == 0 {
 		return body
 	}
 
-	invalidThinking, messagePaths, systemPaths := collectCacheControlPaths(body)
+	invalidThinking, messagePaths, toolPaths, systemPaths := collectCacheControlPaths(body)
 	out := body
 	modified := false
 
@@ -4185,7 +4200,7 @@ func enforceCacheControlLimit(body []byte) []byte {
 		logger.LegacyPrintf("service.gateway", "%s", item.log)
 	}
 
-	count := len(messagePaths) + len(systemPaths)
+	count := len(messagePaths) + len(toolPaths) + len(systemPaths)
 	if count <= maxCacheControlBlocks {
 		if modified {
 			return out
@@ -4193,8 +4208,22 @@ func enforceCacheControlLimit(body []byte) []byte {
 		return body
 	}
 
-	// 超限：优先从 messages 中移除，再从 system 中移除
+	// 超限：优先从 tools 中移除，再从 messages 中移除，最后才从 system 中移除。
 	remaining := count - maxCacheControlBlocks
+	for i := len(toolPaths) - 1; i >= 0 && remaining > 0; i-- {
+		path := toolPaths[i]
+		if !gjson.GetBytes(out, path).Exists() {
+			continue
+		}
+		next, ok := deleteJSONPathBytes(out, path)
+		if !ok {
+			continue
+		}
+		out = next
+		modified = true
+		remaining--
+	}
+
 	for _, path := range messagePaths {
 		if remaining <= 0 {
 			break
@@ -4324,6 +4353,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
+	// Bedrock CC 兼容：在转发之前对请求体做 CC 兼容处理。
+	// 只修改 body 内容（thinking 类型、tool_use ID），不影响后续的透传/Bedrock 转发路径。
+	if account != nil && s.isBedrockCCCompatEnabled(ctx, account, parsed.GroupID) {
+		parsed.Body = sanitizeBedrockThinking(parsed.Body, parsed.Model)
+		parsed.Body = sanitizeBedrockToolUseIDs(parsed.Body)
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		passthroughModel := parsed.Model
@@ -4418,11 +4454,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 
-		// D/E/F: messages cache 策略 + 工具名混淆 + tools[-1] 断点
+		// D/E/F: 可选 messages cache 策略 + 工具名混淆 + tools[-1] 断点
 		// 与 forward_as_chat_completions / forward_as_responses 路径对齐，
-		// 保证原生 /v1/messages 路径也经过完整的 Parrot 字段级改写。
-		body = stripMessageCacheControl(body)
-		body = addMessageCacheBreakpoints(body)
+		// 原生 /v1/messages 路径也走同一套可配置字段级改写。
+		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
 			body = applyToolNameRewriteToBody(body, rw)
 			c.Set(toolNameRewriteKey, rw)
@@ -5359,6 +5394,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					flusher.Flush()
 				}
 				if !sawTerminalEvent {
+					if clientDisconnected && streamInterval > 0 {
+						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
+						if time.Since(lastRead) >= streamInterval {
+							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+						}
+					}
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
@@ -5610,6 +5651,18 @@ func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, 
 	}
 }
 
+// isBedrockCCCompatEnabled 检查渠道是否启用了 Bedrock CC 兼容模式
+func (s *GatewayService) isBedrockCCCompatEnabled(ctx context.Context, account *Account, groupID *int64) bool {
+	if groupID == nil || s.channelService == nil {
+		return false
+	}
+	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
+	if err != nil || ch == nil {
+		return false
+	}
+	return ch.IsBedrockCCCompatEnabled(account.Platform)
+}
+
 // forwardBedrock 转发请求到 AWS Bedrock
 func (s *GatewayService) forwardBedrock(
 	ctx context.Context,
@@ -5642,7 +5695,7 @@ func (s *GatewayService) forwardBedrock(
 		return nil, err
 	}
 
-	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(body, mappedModel, betaTokens)
+	bedrockBody, err := PrepareBedrockRequestBodyWithTokens(body, mappedModel, betaTokens, false)
 	if err != nil {
 		return nil, fmt.Errorf("prepare bedrock request body: %w", err)
 	}
@@ -8426,6 +8479,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	ApplyForwardImageBillingResolution(result)
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -8571,6 +8625,7 @@ func (s *GatewayService) calculateImageCost(
 	billingModel string,
 	multiplier float64,
 ) *CostBreakdown {
+	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
@@ -8584,7 +8639,7 @@ func (s *GatewayService) calculateImageCost(
 			GroupID:        &gid,
 			Tokens:         tokens,
 			RequestCount:   result.ImageCount,
-			SizeTier:       result.ImageSize,
+			SizeTier:       sizeTier,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
@@ -8604,7 +8659,7 @@ func (s *GatewayService) calculateImageCost(
 			Price4K: apiKey.Group.ImagePrice4K,
 		}
 	}
-	return s.billingService.CalculateImageCost(billingModel, result.ImageSize, result.ImageCount, groupConfig, multiplier)
+	return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 }
 
 // calculateTokenCost 计算 Token 计费：根据 opts 决定走普通/长上下文/渠道统一计费。
@@ -8705,6 +8760,10 @@ func (s *GatewayService) buildRecordUsageLog(
 		FirstTokenMs:          result.FirstTokenMs,
 		ImageCount:            result.ImageCount,
 		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
+		ImageInputSize:        optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageOutputSize:       optionalTrimmedStringPtr(result.ImageOutputSize),
+		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageSizeBreakdown:    result.ImageSizeBreakdown,
 		CacheTTLOverridden:    cacheTTLOverridden,
 		ChannelID:             optionalInt64Ptr(input.ChannelID),
 		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
@@ -8907,8 +8966,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: true}
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 
-		body = stripMessageCacheControl(body)
-		body = addMessageCacheBreakpoints(body)
+		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
 		if rw := buildToolNameRewriteFromBody(body); rw != nil {
 			body = applyToolNameRewriteToBody(body, rw)
 		} else {
