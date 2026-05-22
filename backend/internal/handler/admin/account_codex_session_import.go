@@ -18,6 +18,7 @@ type CodexSessionImportRequest struct {
 	Content             string `json:"content" binding:"required"`
 	Name                string `json:"name"`
 	GroupIDs            []int64 `json:"group_ids" binding:"required"`
+	Tags                []string `json:"tags"`
 	ProxyID             *int64 `json:"proxy_id"`
 	Priority            int `json:"priority"`
 	ExpiresAt           *int64 `json:"expires_at"`
@@ -95,6 +96,10 @@ func (h *AccountHandler) importCodexSession(ctx context.Context, req CodexSessio
 	}
 
 	credentials, extra := buildCodexSessionAccountPayload(session)
+	normalizedTags, tagsErr := service.NormalizeAccountTags(req.Tags)
+	if tagsErr != nil {
+		return CodexSessionImportResult{Total: 1}, infraerrors.BadRequest("INVALID_TAGS", tagsErr.Error())
+	}
 	item := DataAccount{
 		Name:               accountName,
 		Platform:           service.PlatformOpenAI,
@@ -104,6 +109,7 @@ func (h *AccountHandler) importCodexSession(ctx context.Context, req CodexSessio
 		Concurrency:        10,
 		Priority:           req.Priority,
 		GroupIDs:           normalizePositiveInt64s(req.GroupIDs),
+		Tags:               normalizedTags,
 		ExpiresAt:          req.ExpiresAt,
 		AutoPauseOnExpired: req.AutoPauseOnExpired,
 	}
@@ -170,6 +176,7 @@ func (h *AccountHandler) importCodexSession(ctx context.Context, req CodexSessio
 		Concurrency:          item.Concurrency,
 		Priority:             item.Priority,
 		GroupIDs:             item.GroupIDs,
+		Tags:                 item.Tags,
 		ExpiresAt:            item.ExpiresAt,
 		AutoPauseOnExpired:   item.AutoPauseOnExpired,
 		SkipDefaultGroupBind: true,
@@ -224,6 +231,7 @@ func (h *AccountHandler) tryUpdateExistingCodexSessionAccount(ctx context.Contex
 	}
 
 	groupIDs := append([]int64(nil), item.GroupIDs...)
+	tags := append([]string(nil), item.Tags...)
 	concurrency := item.Concurrency
 	priority := item.Priority
 	updateInput := &service.UpdateAccountInput{
@@ -235,6 +243,7 @@ func (h *AccountHandler) tryUpdateExistingCodexSessionAccount(ctx context.Contex
 		Concurrency:        &concurrency,
 		Priority:           &priority,
 		GroupIDs:           &groupIDs,
+		Tags:               &tags,
 		ExpiresAt:          item.ExpiresAt,
 		AutoPauseOnExpired: item.AutoPauseOnExpired,
 		SkipMixedChannelCheck: true,
