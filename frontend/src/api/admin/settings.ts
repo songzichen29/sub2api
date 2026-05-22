@@ -523,6 +523,7 @@ export interface SystemSettings {
 
   // Payment configuration
   payment_enabled: boolean;
+  risk_control_enabled: boolean;
   payment_min_amount: number;
   payment_max_amount: number;
   payment_daily_limit: number;
@@ -704,6 +705,7 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   // Payment configuration
   payment_enabled?: boolean;
+  risk_control_enabled?: boolean;
   payment_min_amount?: number;
   payment_max_amount?: number;
   payment_daily_limit?: number;

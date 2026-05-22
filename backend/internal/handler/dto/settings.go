@@ -210,6 +210,9 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// 风控中心功能开关
+	RiskControlEnabled bool `json:"risk_control_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -290,6 +293,7 @@ type PublicSettings struct {
 	AffiliateEnabled             bool `json:"affiliate_enabled"`
 	AffiliateRechargeEnabled     bool `json:"affiliate_recharge_enabled"`
 	AffiliateSubscriptionEnabled bool `json:"affiliate_subscription_enabled"`
+	RiskControlEnabled           bool `json:"risk_control_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

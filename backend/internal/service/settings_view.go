@@ -110,6 +110,7 @@ type SystemSettings struct {
 
 	DefaultConcurrency              int
 	DefaultBalance                  float64
+	RiskControlEnabled              bool
 	AffiliateEnabled                bool
 	AffiliateRebateRate             float64
 	AffiliateRechargeEnabled        bool
@@ -252,6 +253,9 @@ type PublicSettings struct {
 	AffiliateEnabled             bool `json:"affiliate_enabled"`
 	AffiliateRechargeEnabled     bool `json:"affiliate_recharge_enabled"`
 	AffiliateSubscriptionEnabled bool `json:"affiliate_subscription_enabled"`
+
+	// ????????
+	RiskControlEnabled bool `json:"risk_control_enabled"`
 }
 
 type WeChatConnectOAuthConfig struct {
