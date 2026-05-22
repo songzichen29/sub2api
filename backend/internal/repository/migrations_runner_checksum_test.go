@@ -50,6 +50,21 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		}
 	})
 
+	t.Run("015 usage log image metadata历史checksum可兼容", func(t *testing.T) {
+		for _, fileChecksum := range []string{
+			"5e332af35c5bfcd9ec285536ad90029a0d30a09820b7b7baadf2a798169d44d0",
+			"dc56bf1b8e89710fd262de0110edb366498b7c6f953f70c00f5a1ddbdc676d3c",
+			"ee099bd31e8a60eb4f45a47443a1b6d47e7ca3ed9c1988e135fd5742adb629a0",
+		} {
+			ok := isMigrationChecksumCompatible(
+				"015_usage_log_image_size_metadata.sql",
+				"257f5b52afce019b2738b8ecc8936d558e4cb9b1369898ee462661d904a540ce",
+				fileChecksum,
+			)
+			require.True(t, ok, fileChecksum)
+		}
+	})
+
 	t.Run("054历史checksum可兼容", func(t *testing.T) {
 		ok := isMigrationChecksumCompatible(
 			"054_drop_legacy_cache_columns.sql",

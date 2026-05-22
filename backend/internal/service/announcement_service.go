@@ -356,15 +356,16 @@ func (s *AnnouncementService) ListUserReadStatus(
 	}
 
 	out := make([]AnnouncementUserReadStatus, 0, len(users))
+	now := time.Now()
 	for i := range users {
 		u := users[i]
-		subs, err := s.userSubRepo.ListActiveByUserID(ctx, u.ID)
-		if err != nil {
-			return nil, nil, fmt.Errorf("list active subscriptions: %w", err)
-		}
-		activeGroupIDs := make(map[int64]struct{}, len(subs))
-		for j := range subs {
-			activeGroupIDs[subs[j].GroupID] = struct{}{}
+		activeGroupIDs := make(map[int64]struct{}, len(u.Subscriptions))
+		for j := range u.Subscriptions {
+			sub := u.Subscriptions[j]
+			if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
+				continue
+			}
+			activeGroupIDs[sub.GroupID] = struct{}{}
 		}
 
 		readAt, ok := readMap[u.ID]

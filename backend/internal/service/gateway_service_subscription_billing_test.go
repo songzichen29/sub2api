@@ -17,44 +17,49 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 	subID := int64(42)
 
 	tests := []struct {
-		name           string
-		totalCost      float64
-		actualCost     float64
-		isSubscription bool
-		wantSub        float64
-		wantBalance    float64
+		name            string
+		totalCost       float64
+		actualCost      float64
+		isSubscription  bool
+		wantSub         float64
+		wantBalance     float64
+		wantAPIKeyQuota float64
 	}{
 		{
-			name:           "subscription with 2x multiplier consumes 2x quota",
-			totalCost:      1.0,
-			actualCost:     2.0,
-			isSubscription: true,
-			wantSub:        2.0,
-			wantBalance:    0,
+			name:            "subscription with 2x multiplier consumes 2x quota",
+			totalCost:       1.0,
+			actualCost:      2.0,
+			isSubscription:  true,
+			wantSub:         2.0,
+			wantBalance:     0,
+			wantAPIKeyQuota: 0,
 		},
 		{
-			name:           "subscription with 0.5x multiplier consumes 0.5x quota",
-			totalCost:      1.0,
-			actualCost:     0.5,
-			isSubscription: true,
-			wantSub:        0.5,
-			wantBalance:    0,
+			name:            "subscription with 0.5x multiplier consumes 0.5x quota",
+			totalCost:       1.0,
+			actualCost:      0.5,
+			isSubscription:  true,
+			wantSub:         0.5,
+			wantBalance:     0,
+			wantAPIKeyQuota: 0,
 		},
 		{
-			name:           "free subscription (multiplier 0) consumes no quota",
-			totalCost:      1.0,
-			actualCost:     0,
-			isSubscription: true,
-			wantSub:        0,
-			wantBalance:    0,
+			name:            "free subscription (multiplier 0) consumes no quota",
+			totalCost:       1.0,
+			actualCost:      0,
+			isSubscription:  true,
+			wantSub:         0,
+			wantBalance:     0,
+			wantAPIKeyQuota: 0,
 		},
 		{
-			name:           "balance billing keeps using ActualCost (regression)",
-			totalCost:      1.0,
-			actualCost:     2.0,
-			isSubscription: false,
-			wantSub:        0,
-			wantBalance:    2.0,
+			name:            "balance billing keeps using ActualCost and key quota (regression)",
+			totalCost:       1.0,
+			actualCost:      2.0,
+			isSubscription:  false,
+			wantSub:         0,
+			wantBalance:     2.0,
+			wantAPIKeyQuota: 2.0,
 		},
 	}
 
@@ -64,10 +69,11 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			p := &postUsageBillingParams{
 				Cost:               &CostBreakdown{TotalCost: tt.totalCost, ActualCost: tt.actualCost},
 				User:               &User{ID: 1},
-				APIKey:             &APIKey{ID: 2, GroupID: &groupID},
+				APIKey:             &APIKey{ID: 2, GroupID: &groupID, Quota: 100},
 				Account:            &Account{ID: 3},
 				Subscription:       &UserSubscription{ID: subID},
 				IsSubscriptionBill: tt.isSubscription,
+				APIKeyService:      &openAIRecordUsageAPIKeyQuotaStub{},
 			}
 
 			cmd := buildUsageBillingCommand("req-1", nil, p)
@@ -79,6 +85,9 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			}
 			if cmd.BalanceCost != tt.wantBalance {
 				t.Errorf("BalanceCost = %v, want %v", cmd.BalanceCost, tt.wantBalance)
+			}
+			if cmd.APIKeyQuotaCost != tt.wantAPIKeyQuota {
+				t.Errorf("APIKeyQuotaCost = %v, want %v", cmd.APIKeyQuotaCost, tt.wantAPIKeyQuota)
 			}
 		})
 	}
