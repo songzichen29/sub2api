@@ -7,6 +7,49 @@ import (
 )
 
 func TestIsMigrationChecksumCompatible(t *testing.T) {
+	t.Run("001 MySQL baseline历史checksum可兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"001_baseline.sql",
+			"6e6be968868f5f71045f1ae98809994e1bb3b5dbc35aa37bc1d7a159492775fd",
+			"e5f2aca8139d8639798bab6e01917f0d85794e4307e48692a0a2f63ec6a24071",
+		)
+		require.True(t, ok)
+	})
+
+	t.Run("001 MySQL baseline未知checksum不兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"001_baseline.sql",
+			"6e6be968868f5f71045f1ae98809994e1bb3b5dbc35aa37bc1d7a159492775fd",
+			"0000000000000000000000000000000000000000000000000000000000000000",
+		)
+		require.False(t, ok)
+	})
+
+	t.Run("MySQL early baseline历史checksum可兼容", func(t *testing.T) {
+		cases := []struct {
+			name string
+			db   string
+			file string
+		}{
+			{"002_auth_profile_followup.sql", "8809d39ce4f322350ea17fe9e92382af3713e0988232f358afde0eaa10764c27", "d7a4fd85315d20f99d168e8e205a249ae8e360a67719d8bb0527ad44d119dee5"},
+			{"003_runtime_schema_parity.sql", "a1357af4ee207fd7786585b21c19e2a671ea4a776c25f307346184d88c7fe81a", "f8b805bfdf2269a8e67a905b8db4bd7a26cf94af01b816c15de5770264627451"},
+			{"004_add_user_subscription_source.sql", "99941c83582447cb7546345759b4207a90061fcbb77772f3c48ea6eedeac206d", "a7ab8da86d7de0def3847ec8ca415db0b32d57ee9739a9fd4071a12a33b626db"},
+			{"005_add_account_tags.sql", "8528cd9f411d797506545b66169ded42e2da207c2e110647d86ba717c8b81009", "490962553e69756a500bad22e2ba1cf38650ec764bfa23cd44d42d90fccb2cf3"},
+			{"006_affiliate_custom_settings.sql", "cf719754e77d206f9145725fbcb843650486bf0dee4b49b06ed50da598fccfc6", "449d10b5241f19e1e3257eaac0a98d9ef7b48690a95fc17204b8c3dee8b444d6"},
+			{"007_affiliate_custom_kind_rates.sql", "52d3e049281e7d1eef0b75434d801b0fc77066aeee80de70cc237ea7b2670642", "90baca551732d592199a8cc7b9e48df2d0d5d1f0e3b6ebbb7835213dcb7e904c"},
+			{"007_affiliate_rebate_freeze.sql", "91e4750b3af5c6f4aa30ab9858b90dd25c30a1341cd376c7a7ee2267f54d293e", "ab685e380a2958abeae44b95ec4d8499d4d554041d8a5f6d0b121b5b4cf1c93e"},
+			{"008_affiliate_ledger_audit_snapshots.sql", "322f59fa3f74206783996538ae6f1c811263ab57936413aebe0f76d0b26620bd", "5b1fcbef2113a709e25789404831485431963652db3db920da67335c357f2d3f"},
+			{"009_image_generation_group_controls.sql", "005a6e56de37e030a5228d00d805f1626beb7d4aea56461a81ea59002bdd1bc0", "00d659f4fa3a367f8dbd4858344ee1b5912254460f1e66ae6568e9714d568202"},
+			{"010_daily_limit_reset_payment.sql", "c1cca2f9d3be263e8014c9fa76882b7eab729534f5ea9ecdd498c2adbe3ff5b6", "23428614a6195599230a93bf4bed6a73888a868b6e4d4f013d15d76321cab933"},
+			{"013_add_user_subscription_validity_unit.sql", "768b7d6b71bb6b3bd58b2f4216c00b320c0fe59c7d95a7af6c84b93422833105", "37c42ec7071234ef0366e8a87f734dc60545995249f5b7da61bfcdf26342053a"},
+			{"014_add_payment_order_subscription_validity_unit.sql", "3b24cc5074ed8900a2a58084ba116374f07d348125e3f82c77999763d06b2446", "dbac228db8d83f33456bffd78f645de3f9202d650c6442b3b0993c1c58484a22"},
+		}
+		for _, tc := range cases {
+			require.True(t, isMigrationChecksumCompatible(tc.name, tc.db, tc.file), tc.name)
+			require.False(t, isMigrationChecksumCompatible(tc.name, tc.db, "0000000000000000000000000000000000000000000000000000000000000000"), tc.name)
+		}
+	})
+
 	t.Run("054历史checksum可兼容", func(t *testing.T) {
 		ok := isMigrationChecksumCompatible(
 			"054_drop_legacy_cache_columns.sql",
