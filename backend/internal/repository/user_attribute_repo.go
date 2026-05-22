@@ -220,7 +220,7 @@ func (r *userAttributeValueRepository) UpsertBatch(ctx context.Context, userID i
 	defer func() { _ = tx.Rollback() }()
 
 	for _, input := range inputs {
-		// Use upsert (ON CONFLICT DO UPDATE)
+		// Use upsert via Ent; it maps to the active dialect (MySQL uses ON DUPLICATE KEY UPDATE).
 		err := tx.UserAttributeValue.Create().
 			SetUserID(userID).
 			SetAttributeID(input.AttributeID).

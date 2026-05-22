@@ -432,7 +432,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 
 // ListRecentHistoryForMonitors 为多个 monitor 批量取各自"指定模型"最近 N 条历史（按 checked_at DESC，最新在前）。
 // primaryModels[monitorID] 指定该监控要过滤的模型名；monitor 不在 primaryModels 中的记录不返回。
-// 通过 CTE + unnest(两个 int8/text 数组) 构造 (monitor_id, model) 白名单，
+// 通过 CTE + UNION ALL 构造 (monitor_id, model) 白名单，
 // 再用 ROW_NUMBER() OVER (PARTITION BY monitor_id) 取各自前 N 条。
 //
 // 返回值：map[monitorID] -> []*ChannelMonitorHistoryEntry（不含 message，减少网络开销）。
@@ -496,7 +496,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 }
 
 // buildMonitorModelPairs 基于 ids 过滤出有效的 (monitor_id, model) 对，model 为空时跳过。
-// 保证两个数组长度一致且一一对应，供 unnest 展开。
+// 保证两个切片长度一致且一一对应，供批量白名单构造复用。
 func buildMonitorModelPairs(ids []int64, primaryModels map[int64]string) ([]int64, []string) {
 	if len(ids) == 0 || len(primaryModels) == 0 {
 		return nil, nil
@@ -585,7 +585,7 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 
 // UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）的明细
 // 按 (monitor_id, model, bucket_date) 聚合写入 channel_monitor_daily_rollups。
-//   - 用 ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE 实现幂等回填，
+//   - 用 ON DUPLICATE KEY UPDATE 实现幂等回填，
 //     重复执行只会用最新统计覆盖；
 //   - targetDate 在 SQL 侧按 DATE(?) 归一到 UTC 日期，调用方不需要预处理。
 func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error) {

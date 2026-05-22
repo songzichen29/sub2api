@@ -96,6 +96,7 @@ func provideCleanup(
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
+	paymentNotificationEmailBridge *service.PaymentNotificationEmailBridge,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	channelMonitorRunner *service.ChannelMonitorRunner,
 ) func() {
@@ -237,6 +238,12 @@ func provideCleanup(
 			{"PaymentOrderExpiryService", func() error {
 				if paymentOrderExpiry != nil {
 					paymentOrderExpiry.Stop()
+				}
+				return nil
+			}},
+			{"PaymentNotificationEmailBridge", func() error {
+				if paymentNotificationEmailBridge != nil {
+					paymentNotificationEmailBridge.Stop()
 				}
 				return nil
 			}},
