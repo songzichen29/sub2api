@@ -473,6 +473,92 @@ func TestAssignOrExtendSubscription_MultiDayPaidRenewalKeepsDailyUsage(t *testin
 	require.WithinDuration(t, expiresAt.AddDate(0, 0, 5), sub.ExpiresAt, time.Second)
 }
 
+func TestAssignOrExtendSubscription_QuotaExhaustedRenewalRestartsPeriodAndRestoresUsability(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-paid-renew-quota-exhausted@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-paid-renew-quota-exhausted-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	weeklyLimit := 560.0
+	group, err := client.Group.Create().
+		SetName("sub-paid-renew-quota-exhausted-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetWeeklyLimitUsd(weeklyLimit).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-6 * 24 * time.Hour)
+	expiresAt := time.Now().Add(3 * time.Hour)
+	dailyStart := time.Now().Add(-12 * time.Hour)
+	weeklyStart := startsAt
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:            user.ID,
+		GroupID:           group.ID,
+		StartsAt:          startsAt,
+		ExpiresAt:         expiresAt,
+		Status:            SubscriptionStatusQuotaExhausted,
+		DailyWindowStart:  &dailyStart,
+		WeeklyWindowStart: &weeklyStart,
+		DailyUsageUSD:     dailyLimit,
+		WeeklyUsageUSD:    weeklyLimit,
+		MonthlyUsageUSD:   weeklyLimit,
+		Source:            "payment",
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:               group.ID,
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &dailyLimit,
+			WeeklyLimitUSD:   &weeklyLimit,
+		},
+	}, repo, nil, client, nil)
+
+	before := time.Now()
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 7,
+		Notes:        "renew-note",
+		Source:       "payment",
+	})
+	after := time.Now()
+
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.WithinDuration(t, before, sub.StartsAt, 3*time.Second)
+	require.True(t, !sub.ExpiresAt.Before(before.AddDate(0, 0, 7)))
+	require.True(t, !sub.ExpiresAt.After(after.AddDate(0, 0, 7).Add(3*time.Second)))
+	require.Nil(t, sub.DailyWindowStart)
+	require.Nil(t, sub.WeeklyWindowStart)
+	require.Nil(t, sub.MonthlyWindowStart)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.Equal(t, 0.0, sub.WeeklyUsageUSD)
+	require.Equal(t, 0.0, sub.MonthlyUsageUSD)
+
+	sub.Group = &Group{
+		ID:               group.ID,
+		SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD:    &dailyLimit,
+		WeeklyLimitUSD:   &weeklyLimit,
+	}
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
+	require.NoError(t, err)
+}
+
 func TestAssignOrExtendSubscription_MultiDayPaidRestartResetsPeriod(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

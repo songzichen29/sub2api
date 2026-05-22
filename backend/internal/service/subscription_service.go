@@ -246,14 +246,16 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		txCtx := dbent.NewTxContext(ctx, tx)
 
 		wasExpired := !existingSub.ExpiresAt.After(now)
+		wasQuotaExhausted := existingSub.Status == SubscriptionStatusQuotaExhausted
 		existingSub.ExpiresAt = newExpiresAt
 		existingSub.ValidityUnit = resolveSubscriptionValidityUnit(input.ValidityUnit, existingSub.ValidityUnit)
 
-		// Reactivating an expired subscription or explicitly restarting a card must
-		// move the billing-window anchor to this purchase time; otherwise old
-		// windows keep using stale starts_at.
-		if wasExpired || input.RestartPeriod {
-			if input.RestartPeriod && !wasExpired {
+		// Reactivating an expired / quota-exhausted subscription or explicitly
+		// restarting a card must move the billing-window anchor to this purchase
+		// time; otherwise old windows keep using stale starts_at and the renewed
+		// subscription can remain immediately unusable.
+		if wasExpired || wasQuotaExhausted || input.RestartPeriod {
+			if (input.RestartPeriod || wasQuotaExhausted) && !wasExpired {
 				newExpiresAt = now.AddDate(0, 0, validityDays)
 				if newExpiresAt.After(MaxExpiresAt) {
 					newExpiresAt = MaxExpiresAt
