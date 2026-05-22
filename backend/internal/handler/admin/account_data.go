@@ -228,6 +228,13 @@ func (h *AccountHandler) ImportData(c *gin.Context) {
 	})
 }
 
+func (h *AccountHandler) ImportDataPayload(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
+	if err := validateDataHeader(req.Data); err != nil {
+		return DataImportResult{}, infraerrors.BadRequest("INVALID_IMPORT_DATA", err.Error())
+	}
+	return h.importData(ctx, req)
+}
+
 func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) (DataImportResult, error) {
 	skipDefaultGroupBind := true
 	if req.SkipDefaultGroupBind != nil {

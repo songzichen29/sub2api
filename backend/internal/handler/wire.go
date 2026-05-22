@@ -112,6 +112,7 @@ func ProvideHandlers(
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	modelMarketplaceHandler *ModelMarketplaceHandler,
+	accountImportHandler *AccountImportHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -133,6 +134,7 @@ func ProvideHandlers(
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		ModelMarketplace: modelMarketplaceHandler,
+		AccountImport:    accountImportHandler,
 	}
 }
 
@@ -155,6 +157,7 @@ var ProviderSet = wire.NewSet(
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelMarketplaceHandler,
+	NewAccountImportHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,

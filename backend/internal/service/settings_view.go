@@ -188,6 +188,11 @@ type SystemSettings struct {
 	// 账号限额通知
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
+
+	// 独立账号导入入口
+	StandaloneAccountImportEnabled            bool
+	StandaloneAccountImportPasswordHash       string
+	StandaloneAccountImportPasswordConfigured bool
 }
 
 type DefaultSubscriptionSetting struct {

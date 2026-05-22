@@ -148,9 +148,14 @@ apiClient.interceptors.response.use(
         })
       }
 
+      // Standalone account import uses its own short-lived token/password flow.
+      // Do not treat its 401 responses as app-session expiry, otherwise a wrong
+      // import password or expired import token would redirect the public page to login.
+      const isStandaloneAccountImportEndpoint = url.includes('/account-import/')
+
       // 401: Try to refresh the token if we have a refresh token
       // This handles TOKEN_EXPIRED, INVALID_TOKEN, TOKEN_REVOKED, etc.
-      if (status === 401 && !originalRequest._retry) {
+      if (status === 401 && !originalRequest._retry && !isStandaloneAccountImportEndpoint) {
         const refreshToken = localStorage.getItem('refresh_token')
         const isAuthEndpoint =
           url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh')

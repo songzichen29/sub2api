@@ -182,6 +182,20 @@ export default {
     queryFailedRetry: '查询失败，请稍后重试',
   },
 
+  accountImport: {
+    title: '账号导入',
+    description: '通过独立密码验证后导入账号数据。',
+    password: '访问密码',
+    passwordPlaceholder: '输入导入密码',
+    verify: '验证',
+    verifying: '验证中...',
+    disabled: '独立账号导入入口未启用。',
+    passwordNotConfigured: '独立账号导入密码尚未配置。',
+    loadFailed: '加载导入入口失败',
+    invalidPassword: '密码错误或验证已过期',
+    verified: '验证成功'
+  },
+
   // Setup Wizard
   setup: {
     title: 'Sub2API 安装向导',
@@ -5574,6 +5588,18 @@ export default {
         totpHint: '允许用户使用 Google Authenticator 等应用进行二次验证',
         totpKeyNotConfigured:
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
+      },
+      standaloneAccountImport: {
+        title: '独立账号导入',
+        description: '开启后可通过独立路由输入密码并导入账号 JSON。',
+        enabled: '启用独立导入入口',
+        enabledHint: '开启后 /account-import 路由生效，不需要管理员登录。',
+        password: '导入访问密码',
+        passwordPlaceholder: '留空则保留当前密码',
+        passwordConfiguredHint: '密码已配置，留空以保留当前值。',
+        passwordMissingHint: '启用前必须设置访问密码。',
+        route: '访问路由',
+        routeHint: '保存设置后，可把该路由提供给需要执行账号导入的人。'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',

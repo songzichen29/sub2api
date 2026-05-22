@@ -1340,6 +1340,73 @@
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
         <div v-show="activeTab === 'security'" class="space-y-6">
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.standaloneAccountImport.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.standaloneAccountImport.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.standaloneAccountImport.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.standaloneAccountImport.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.standalone_account_import_enabled" />
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label class="input-label">
+                  {{ t("admin.settings.standaloneAccountImport.password") }}
+                </label>
+                <input
+                  v-model="form.standalone_account_import_password"
+                  type="password"
+                  class="input"
+                  autocomplete="new-password"
+                  :placeholder="
+                    t('admin.settings.standaloneAccountImport.passwordPlaceholder')
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    form.standalone_account_import_password_configured
+                      ? t(
+                          "admin.settings.standaloneAccountImport.passwordConfiguredHint",
+                        )
+                      : t(
+                          "admin.settings.standaloneAccountImport.passwordMissingHint",
+                        )
+                  }}
+                </p>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <label class="input-label">
+                  {{ t("admin.settings.standaloneAccountImport.route") }}
+                </label>
+                <router-link
+                  to="/account-import"
+                  class="text-sm font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                >
+                  /account-import
+                </router-link>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.standaloneAccountImport.routeHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- Registration Settings -->
           <div class="card">
             <div
@@ -6484,6 +6551,7 @@ type SettingsForm = Omit<
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  standalone_account_import_password: string;
 };
 
 const form = reactive<SettingsForm>({
@@ -6643,6 +6711,9 @@ const form = reactive<SettingsForm>({
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
+  standalone_account_import_enabled: false,
+  standalone_account_import_password_configured: false,
+  standalone_account_import_password: "",
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
@@ -7276,6 +7347,7 @@ async function loadSettings() {
     );
     registrationEmailSuffixWhitelistDraft.value = "";
     form.smtp_password = "";
+    form.standalone_account_import_password = "";
     smtpPasswordManuallyEdited.value = false;
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
@@ -7806,6 +7878,10 @@ async function saveSettings() {
       payment_cancel_rate_limit_window_mode:
         form.payment_cancel_rate_limit_window_mode,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
+      standalone_account_import_enabled:
+        form.standalone_account_import_enabled,
+      standalone_account_import_password:
+        form.standalone_account_import_password || undefined,
       // 余额、订阅到期与账号限额通知
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold:

@@ -143,6 +143,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Key Usage',
     }
   },
+  {
+    path: '/account-import',
+    name: 'StandaloneAccountImport',
+    component: () => import('@/views/AccountImportView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Account Import',
+      titleKey: 'accountImport.title'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -651,7 +661,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/account-import', '/setup', '/payment/result']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

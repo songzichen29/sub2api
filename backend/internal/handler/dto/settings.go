@@ -168,6 +168,10 @@ type SystemSettings struct {
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
 
+	// Standalone account import
+	StandaloneAccountImportEnabled            bool `json:"standalone_account_import_enabled"`
+	StandaloneAccountImportPasswordConfigured bool `json:"standalone_account_import_password_configured"`
+
 	// Payment configuration
 	PaymentEnabled                   bool                              `json:"payment_enabled"`
 	PaymentMinAmount                 float64                           `json:"payment_min_amount"`

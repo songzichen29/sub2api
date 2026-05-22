@@ -1435,6 +1435,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySubscriptionExpiryNotifyEnabled] = strconv.FormatBool(settings.SubscriptionExpiryNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
+	updates[SettingKeyStandaloneAccountImportEnabled] = strconv.FormatBool(settings.StandaloneAccountImportEnabled)
+	if strings.TrimSpace(settings.StandaloneAccountImportPasswordHash) != "" {
+		updates[SettingKeyStandaloneAccountImportPasswordHash] = strings.TrimSpace(settings.StandaloneAccountImportPasswordHash)
+	}
 
 	return updates, nil
 }
@@ -2174,15 +2178,17 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:        "false",
-		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
-		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
-		SettingKeyOpenAICodexUserAgent:               "",
-		SettingPaymentVisibleMethodAlipaySource:      "",
-		SettingPaymentVisibleMethodWxpaySource:       "",
-		SettingPaymentVisibleMethodAlipayEnabled:     "false",
-		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		SettingKeyAllowUngroupedKeyScheduling:         "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection:  "false",
+		SettingKeyRewriteMessageCacheControl:          strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyOpenAICodexUserAgent:                "",
+		SettingPaymentVisibleMethodAlipaySource:       "",
+		SettingPaymentVisibleMethodWxpaySource:        "",
+		SettingPaymentVisibleMethodAlipayEnabled:      "false",
+		SettingPaymentVisibleMethodWxpayEnabled:       "false",
+		openAIAdvancedSchedulerSettingKey:             "false",
+		SettingKeyStandaloneAccountImportEnabled:      "false",
+		SettingKeyStandaloneAccountImportPasswordHash: "",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2593,6 +2599,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if result.AccountQuotaNotifyEmails == nil {
 		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{}
 	}
+	result.StandaloneAccountImportEnabled = settings[SettingKeyStandaloneAccountImportEnabled] == "true"
+	result.StandaloneAccountImportPasswordHash = strings.TrimSpace(settings[SettingKeyStandaloneAccountImportPasswordHash])
+	result.StandaloneAccountImportPasswordConfigured = result.StandaloneAccountImportPasswordHash != ""
 
 	return result
 }

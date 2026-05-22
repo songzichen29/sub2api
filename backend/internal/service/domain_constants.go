@@ -379,6 +379,10 @@ const (
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig    = "web_search_emulation_config"    // JSON 配置
 	SettingKeyAccountImportApplyTemplates = "account_import_apply_templates" // 账号导入 Apply 模板（JSON）
+
+	// 独立账号导入入口
+	SettingKeyStandaloneAccountImportEnabled      = "standalone_account_import_enabled"       // 是否启用独立账号导入路由
+	SettingKeyStandaloneAccountImportPasswordHash = "standalone_account_import_password_hash" // 独立账号导入访问密码 bcrypt hash
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

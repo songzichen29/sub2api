@@ -182,6 +182,20 @@ export default {
     queryFailedRetry: 'Query failed, please try again later',
   },
 
+  accountImport: {
+    title: 'Account Import',
+    description: 'Import account data after standalone password verification.',
+    password: 'Access Password',
+    passwordPlaceholder: 'Enter import password',
+    verify: 'Verify',
+    verifying: 'Verifying...',
+    disabled: 'Standalone account import is not enabled.',
+    passwordNotConfigured: 'Standalone account import password is not configured.',
+    loadFailed: 'Failed to load import entry',
+    invalidPassword: 'Invalid password or verification expired',
+    verified: 'Verified'
+  },
+
   // Setup Wizard
   setup: {
     title: 'Sub2API Setup',
@@ -5411,6 +5425,18 @@ export default {
         totpHint: 'Allow users to use authenticator apps like Google Authenticator',
         totpKeyNotConfigured:
           'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
+      },
+      standaloneAccountImport: {
+        title: 'Standalone Account Import',
+        description: 'When enabled, users can open a standalone route, enter a password, and import account JSON.',
+        enabled: 'Enable standalone import entry',
+        enabledHint: 'Enables the /account-import route without requiring admin login.',
+        password: 'Import access password',
+        passwordPlaceholder: 'Leave empty to keep current password',
+        passwordConfiguredHint: 'A password is configured. Leave empty to keep it.',
+        passwordMissingHint: 'Set a password before enabling this entry.',
+        route: 'Route',
+        routeHint: 'After saving, share this route with the person who needs to import accounts.'
       },
       turnstile: {
         title: 'Cloudflare Turnstile',
