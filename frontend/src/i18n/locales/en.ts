@@ -5410,7 +5410,7 @@ export default {
         emailSuffixWhitelist: 'Email Domain Whitelist',
         emailSuffixWhitelistHint:
           "Only email addresses from the specified domains can register (for example, {'@'}qq.com, {'@'}gmail.com)",
-        emailSuffixWhitelistPlaceholder: 'example.com',
+        emailSuffixWhitelistPlaceholder: "{'@'}example.com",
         emailSuffixWhitelistInputHint: 'Leave empty for no restriction',
         promoCode: 'Promo Code',
         promoCodeHint: 'Allow users to use promo codes during registration',

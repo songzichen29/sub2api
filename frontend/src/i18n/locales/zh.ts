@@ -5573,7 +5573,7 @@ export default {
         emailSuffixWhitelist: '邮箱域名白名单',
         emailSuffixWhitelistHint:
           "仅允许使用指定域名的邮箱注册账号（例如 {'@'}qq.com, {'@'}gmail.com）",
-        emailSuffixWhitelistPlaceholder: 'example.com',
+        emailSuffixWhitelistPlaceholder: "{'@'}example.com",
         emailSuffixWhitelistInputHint: '留空则不限制',
         promoCode: '优惠码',
         promoCodeHint: '允许用户在注册时使用优惠码',
