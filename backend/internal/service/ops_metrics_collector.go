@@ -588,7 +588,8 @@ SELECT
   COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
   COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
 FROM ops_error_logs
-WHERE created_at >= ? AND created_at < ?`
+WHERE created_at >= ? AND created_at < ?
+  AND is_count_tokens = FALSE`
 
 	if err := c.db.QueryRowContext(ctx, q, start, end).Scan(
 		&errorTotal,
