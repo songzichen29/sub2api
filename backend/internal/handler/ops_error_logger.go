@@ -51,6 +51,15 @@ const (
 	opsCodeSubscriptionNotFound = "SUBSCRIPTION_NOT_FOUND"
 	opsCodeSubscriptionInvalid  = "SUBSCRIPTION_INVALID"
 	opsCodeUserInactive         = "USER_INACTIVE"
+	opsCodeInvalidAPIKey         = "INVALID_API_KEY"
+	opsCodeAPIKeyRequired        = "API_KEY_REQUIRED"
+	opsCodeAPIKeyExpired         = "API_KEY_EXPIRED"
+	opsCodeAPIKeyDisabled        = "API_KEY_DISABLED"
+	opsCodeUserNotFound          = "USER_NOT_FOUND"
+	opsCodeAPIKeyQuotaExhausted  = "API_KEY_QUOTA_EXHAUSTED"
+	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
+	opsCodeGroupDeleted          = "GROUP_DELETED"
+	opsCodeGroupDisabled         = "GROUP_DISABLED"
 )
 
 const (
@@ -1333,6 +1342,93 @@ func classifyOpsIsBusinessLimited(errType, phase, code string, status int, messa
 	return false
 }
 
+func isOpsClientAuthError(code string, msg string) bool {
+	switch strings.TrimSpace(code) {
+	case opsCodeInvalidAPIKey,
+		opsCodeAPIKeyRequired,
+		opsCodeAPIKeyExpired,
+		opsCodeAPIKeyDisabled,
+		opsCodeUserNotFound,
+		opsCodeUserInactive,
+		opsCodeGroupDeleted,
+		opsCodeGroupDisabled:
+		return true
+	}
+	return strings.Contains(msg, "invalid api key") ||
+		strings.Contains(msg, "api key is required") ||
+		strings.Contains(msg, "api key is disabled") ||
+		strings.Contains(msg, "user associated with api key not found") ||
+		strings.Contains(msg, "user account is not active") ||
+		strings.Contains(msg, "api key 所属分组已删除") ||
+		strings.Contains(msg, "api key 所属分组已停用") ||
+		strings.Contains(msg, "api key is not assigned to any group")
+}
+
+func isOpsLocalBusinessLimitError(code string, msg string) bool {
+	switch strings.TrimSpace(code) {
+	case opsCodeInsufficientBalance,
+		opsCodeUsageLimitExceeded,
+		opsCodeSubscriptionNotFound,
+		opsCodeSubscriptionInvalid,
+		opsCodeAPIKeyQuotaExhausted,
+		opsCodeAPIKeyQueryDeprecated:
+		return true
+	}
+	return strings.Contains(msg, "api key in query parameter is deprecated") ||
+		strings.Contains(msg, "query parameter api_key is deprecated") ||
+		strings.Contains(msg, "no active subscription found for this group") ||
+		strings.Contains(msg, "subscription is invalid or expired") ||
+		strings.Contains(msg, opsErrInsufficientBalance) ||
+		strings.Contains(msg, "insufficient account balance") ||
+		strings.Contains(msg, "api key group platform is not gemini") ||
+		strings.Contains(msg, "api key 额度已用完") ||
+		strings.Contains(msg, "api key 5小时限额已用完") ||
+		strings.Contains(msg, "api key 日限额已用完") ||
+		strings.Contains(msg, "api key 7天限额已用完") ||
+		strings.Contains(msg, "daily usage limit exceeded") ||
+		strings.Contains(msg, "weekly usage limit exceeded") ||
+		strings.Contains(msg, "monthly usage limit exceeded") ||
+		strings.Contains(msg, "usage quota exhausted for this platform") ||
+		strings.Contains(msg, "requests-per-minute limit exceeded") ||
+		strings.Contains(msg, "too many pending requests") ||
+		strings.Contains(msg, "concurrency limit exceeded") ||
+		strings.Contains(msg, "image generation concurrency limit exceeded") ||
+		strings.Contains(msg, "this group is restricted to claude code clients") ||
+		strings.Contains(msg, "this group does not allow /v1/messages dispatch") ||
+		strings.Contains(msg, "image generation is not enabled for this group") ||
+		strings.Contains(msg, "token counting is not supported for this platform") ||
+		strings.Contains(msg, "images api is not supported for this platform") ||
+		(strings.Contains(msg, "model ") && strings.Contains(msg, " not in whitelist")) ||
+		(strings.Contains(msg, "beta feature ") && strings.Contains(msg, " is not allowed")) ||
+		(strings.Contains(msg, "openai service_tier=") && strings.Contains(msg, " is not allowed for model")) ||
+		strings.Contains(msg, "this account only allows codex official clients") ||
+		strings.Contains(msg, "openai wsv1 is temporarily unsupported") ||
+		strings.Contains(msg, "openai codex passthrough requires a non-empty instructions field")
+}
+
+func hasOpsUpstreamErrorContext(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	if v, ok := c.Get(service.OpsUpstreamStatusCodeKey); ok {
+		switch code := v.(type) {
+		case int:
+			if code > 0 {
+				return true
+			}
+		case int64:
+			if code > 0 {
+				return true
+			}
+		}
+	}
+	if v, ok := c.Get(service.OpsUpstreamErrorsKey); ok {
+		if events, ok := v.([]*service.OpsUpstreamErrorEvent); ok && len(events) > 0 {
+			return true
+		}
+	}
+	return false
+}
 func isOpsNoAvailableAccountMessage(message string) bool {
 	msg := strings.ToLower(message)
 	return strings.Contains(msg, opsErrNoAvailableAccounts) ||
