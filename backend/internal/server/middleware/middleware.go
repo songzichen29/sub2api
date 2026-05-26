@@ -221,6 +221,7 @@ func RequireGroupAssignment(settingService *service.SettingService, writeError G
 			c.Next()
 			return
 		}
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned)
 		writeError(c, http.StatusForbidden, "该 API Key 未分配分组，当前不可使用。请联系管理员分配分组后再试。")
 		c.Abort()
 	}
