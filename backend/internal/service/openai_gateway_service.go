@@ -1674,7 +1674,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return excluded
 	}
 
-	// ============ Layer 1: Sticky session =====	if sessionHash != "" {
+	// ============ Layer 1: Sticky session =====
+	if sessionHash != "" {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, err := s.getSchedulableAccount(ctx, accountID)
@@ -1711,7 +1712,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 	}
 
-	// ============ Layer 2: Load-aware selection =====	baseCandidateCount := 0
+	// ============ Layer 2: Load-aware selection =====
+	baseCandidateCount := 0
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1852,7 +1854,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 	}
 
-	// ============ Layer 3: Fallback wait =====	sortAccountsByPriorityAndLastUsed(candidates, false)
+	// ============ Layer 3: Fallback wait =====
+	sortAccountsByPriorityAndLastUsed(candidates, false)
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}

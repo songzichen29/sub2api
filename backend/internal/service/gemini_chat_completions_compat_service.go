@@ -429,6 +429,10 @@ func (s *GeminiMessagesCompatService) buildGeminiChatCompletionsUpstreamRequestF
 	}
 }
 
+func (s *GeminiMessagesCompatService) extractImageSize(body []byte) string {
+	return normalizeOpenAIImageSizeTier(s.extractImageInputSize(body))
+}
+
 func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseFromGemini(
 	c *gin.Context,
 	resp *http.Response,
