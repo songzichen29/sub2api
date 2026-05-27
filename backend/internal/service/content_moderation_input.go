@@ -40,7 +40,6 @@ func ExtractContentModerationInput(protocol string, body []byte) ContentModerati
 		Text:   normalizeContentModerationText(strings.Join(parts, "\n")),
 		Images: normalizeModerationImages(images),
 	}
-	out.Normalize()
 	return out
 }
 

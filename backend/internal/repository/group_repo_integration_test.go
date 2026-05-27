@@ -726,6 +726,84 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
 	s.Require().Zero(count)
 }
 
+func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
+	g := &service.Group{
+		Name:             "g-rate-limited",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		IsExclusive:      false,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, g))
+
+	var normalID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?) RETURNING id",
+		[]any{"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&normalID))
+
+	var rateLimitedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR) RETURNING id",
+		[]any{"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&rateLimitedID))
+
+	var overloadedID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, overload_until) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR) RETURNING id",
+		[]any{"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&overloadedID))
+
+	var tempUnschedulableID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR) RETURNING id",
+		[]any{"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&tempUnschedulableID))
+
+	var expiredID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES (?, ?, ?, NOW() - INTERVAL 1 HOUR, TRUE) RETURNING id",
+		[]any{"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth},
+		&expiredID))
+
+	for priority, accountID := range []int64{normalID, rateLimitedID, overloadedID, tempUnschedulableID, expiredID} {
+		_, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())",
+			accountID, g.ID, priority+1)
+		s.Require().NoError(err)
+	}
+
+	isExclusive := false
+	groups, _, err := s.repo.ListWithFilters(s.ctx,
+		pagination.PaginationParams{Page: 1, PageSize: 20},
+		service.PlatformAnthropic, "", nil, nil, &isExclusive, "", "", "sort_order", "asc")
+	s.Require().NoError(err)
+
+	var found *service.Group
+	for i := range groups {
+		if groups[i].ID == g.ID {
+			found = &groups[i]
+			break
+		}
+	}
+	s.Require().NotNil(found, "created group must appear in ListWithFilters result")
+	s.Assert().Equal(int64(5), found.AccountCount, "AccountCount must include all linked accounts")
+	s.Assert().Equal(int64(1), found.ActiveAccountCount, "ActiveAccountCount must include only currently schedulable accounts")
+	s.Assert().Equal(int64(3), found.RateLimitedAccountCount, "RateLimitedAccountCount must include temporarily limited accounts")
+
+	total, active, err := s.repo.GetAccountCount(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, total, "GetAccountCount total must match ListWithFilters AccountCount")
+	s.Assert().Equal(found.ActiveAccountCount, active, "GetAccountCount active must match ListWithFilters ActiveAccountCount")
+
+	detail, err := s.repo.GetByID(s.ctx, g.ID)
+	s.Require().NoError(err)
+	s.Assert().Equal(found.AccountCount, detail.AccountCount, "GetByID AccountCount must match ListWithFilters")
+	s.Assert().Equal(found.ActiveAccountCount, detail.ActiveAccountCount, "GetByID ActiveAccountCount must match ListWithFilters")
+	s.Assert().Equal(found.RateLimitedAccountCount, detail.RateLimitedAccountCount, "GetByID RateLimitedAccountCount must match ListWithFilters")
+}
+
 // --- 软删除过滤测试 ---
 
 func (s *GroupRepoSuite) TestDelete_SoftDelete_NotVisibleInList() {

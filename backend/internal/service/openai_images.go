@@ -1380,7 +1380,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuthFree(
 		account.OpenAIPlanType(),
 	)
 
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, parsed.Stream)
+	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	defer releaseUpstreamCtx()
 
 	requirements, err := fetchOpenAIFreeImageRequirements(upstreamCtx, client, account)

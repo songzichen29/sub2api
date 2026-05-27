@@ -107,9 +107,13 @@ func (r *groupRepository) GetByID(ctx context.Context, id int64) (*service.Group
 	if err != nil {
 		return nil, err
 	}
-	total, active, _ := r.GetAccountCount(ctx, out.ID)
-	out.AccountCount = total
-	out.ActiveAccountCount = active
+	counts, err := r.loadAccountCounts(ctx, []int64{out.ID})
+	if err == nil {
+		c := counts[out.ID]
+		out.AccountCount = c.Total
+		out.ActiveAccountCount = c.Active
+		out.RateLimitedAccountCount = c.RateLimited
+	}
 	return out, nil
 }
 
@@ -559,15 +563,12 @@ func (r *groupRepository) ExistsByIDs(ctx context.Context, ids []int64) (map[int
 func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (total int64, active int64, err error) {
 	var rateLimited int64
 	err = scanSingleRow(ctx, r.sql,
-		`SELECT COUNT(*),
-			SUM(CASE WHEN a.status = 'active' AND a.schedulable = true THEN 1 ELSE 0 END),
-			SUM(CASE WHEN a.status = 'active' AND (
-				a.rate_limit_reset_at > NOW() OR
-				a.overload_until > NOW() OR
-				a.temp_unschedulable_until > NOW()
-			) THEN 1 ELSE 0 END)
+		fmt.Sprintf(`SELECT
+			SUM(CASE WHEN a.deleted_at IS NULL THEN 1 ELSE 0 END),
+			SUM(CASE WHEN %s THEN 1 ELSE 0 END),
+			SUM(CASE WHEN %s THEN 1 ELSE 0 END)
 		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
-		WHERE ag.group_id = ?`,
+		WHERE ag.group_id = ?`, groupAccountAvailableSQL, groupAccountTemporarilyLimitedSQL),
 		[]any{groupID}, &total, &active, &rateLimited)
 	return
 }
@@ -691,6 +692,26 @@ type groupAccountCounts struct {
 	RateLimited int64
 }
 
+const (
+	groupAccountAvailableSQL = `a.deleted_at IS NULL
+				AND a.status = 'active'
+				AND a.schedulable = true
+				AND (a.expires_at IS NULL OR a.expires_at > NOW() OR a.auto_pause_on_expired = FALSE)
+				AND (a.rate_limit_reset_at IS NULL OR a.rate_limit_reset_at <= NOW())
+				AND (a.overload_until IS NULL OR a.overload_until <= NOW())
+				AND (a.temp_unschedulable_until IS NULL OR a.temp_unschedulable_until <= NOW())`
+
+	groupAccountTemporarilyLimitedSQL = `a.deleted_at IS NULL
+				AND a.status = 'active'
+				AND a.schedulable = true
+				AND (a.expires_at IS NULL OR a.expires_at > NOW() OR a.auto_pause_on_expired = FALSE)
+				AND (
+					a.rate_limit_reset_at > NOW() OR
+					a.overload_until > NOW() OR
+					a.temp_unschedulable_until > NOW()
+				)`
+)
+
 func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int64) (counts map[int64]groupAccountCounts, err error) {
 	counts = make(map[int64]groupAccountCounts, len(groupIDs))
 	if len(groupIDs) == 0 {
@@ -701,17 +722,13 @@ func (r *groupRepository) loadAccountCounts(ctx context.Context, groupIDs []int6
 	rows, err := r.sql.QueryContext(
 		ctx,
 		fmt.Sprintf(`SELECT ag.group_id,
-			COUNT(*) AS total,
-			SUM(CASE WHEN a.status = 'active' AND a.schedulable = true THEN 1 ELSE 0 END) AS active,
-			SUM(CASE WHEN a.status = 'active' AND (
-				a.rate_limit_reset_at > NOW() OR
-				a.overload_until > NOW() OR
-				a.temp_unschedulable_until > NOW()
-			) THEN 1 ELSE 0 END) AS rate_limited
+			SUM(CASE WHEN a.deleted_at IS NULL THEN 1 ELSE 0 END) AS total,
+			SUM(CASE WHEN %s THEN 1 ELSE 0 END) AS active,
+			SUM(CASE WHEN %s THEN 1 ELSE 0 END) AS rate_limited
 		FROM account_groups ag
 		JOIN accounts a ON a.id = ag.account_id
 		WHERE ag.group_id IN (%s)
-		GROUP BY ag.group_id`, inClause),
+		GROUP BY ag.group_id`, groupAccountAvailableSQL, groupAccountTemporarilyLimitedSQL, inClause),
 		inArgs...,
 	)
 	if err != nil {
