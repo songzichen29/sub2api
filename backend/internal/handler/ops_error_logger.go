@@ -1,4 +1,4 @@
-package handler
+﻿package handler
 
 import (
 	"bytes"
@@ -46,19 +46,11 @@ const (
 	opsErrInsufficientQuota          = "insufficient_quota"
 
 	// 上游错误码常量 — 错误分类 (normalizeOpsErrorType / classifyOpsPhase / classifyOpsIsBusinessLimited)
-<<<<<<< HEAD
-	opsCodeInsufficientBalance  = "INSUFFICIENT_BALANCE"
-	opsCodeUsageLimitExceeded   = "USAGE_LIMIT_EXCEEDED"
-	opsCodeSubscriptionNotFound = "SUBSCRIPTION_NOT_FOUND"
-	opsCodeSubscriptionInvalid  = "SUBSCRIPTION_INVALID"
-	opsCodeUserInactive         = "USER_INACTIVE"
-=======
 	opsCodeInsufficientBalance   = "INSUFFICIENT_BALANCE"
 	opsCodeUsageLimitExceeded    = "USAGE_LIMIT_EXCEEDED"
 	opsCodeSubscriptionNotFound  = "SUBSCRIPTION_NOT_FOUND"
 	opsCodeSubscriptionInvalid   = "SUBSCRIPTION_INVALID"
 	opsCodeUserInactive          = "USER_INACTIVE"
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 	opsCodeInvalidAPIKey         = "INVALID_API_KEY"
 	opsCodeAPIKeyRequired        = "API_KEY_REQUIRED"
 	opsCodeAPIKeyExpired         = "API_KEY_EXPIRED"
@@ -66,11 +58,8 @@ const (
 	opsCodeUserNotFound          = "USER_NOT_FOUND"
 	opsCodeAPIKeyQuotaExhausted  = "API_KEY_QUOTA_EXHAUSTED"
 	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
-<<<<<<< HEAD
 	opsCodeGroupDeleted          = "GROUP_DELETED"
 	opsCodeGroupDisabled         = "GROUP_DISABLED"
-=======
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 )
 
 const (
@@ -1272,16 +1261,9 @@ func classifyOpsPhase(errType, message, code string) string {
 		return "auth"
 	}
 	if isOpsLocalBusinessLimitError(code, msg) {
-<<<<<<< HEAD
 		return "request"
 	}
 
-	switch strings.TrimSpace(code) {
-	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
-=======
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
-		return "request"
-	}
 
 	switch errType {
 	case "authentication_error":
@@ -1370,13 +1352,6 @@ func classifyOpsIsBusinessLimited(errType, phase, code string, status int, messa
 		return true
 	}
 	if isOpsLocalBusinessLimitError(code, strings.ToLower(message)) {
-<<<<<<< HEAD
-		return true
-	}
-	switch strings.TrimSpace(code) {
-	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid, opsCodeUserInactive:
-=======
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 		return true
 	}
 	if phase == "billing" || phase == "concurrency" {
@@ -1398,27 +1373,19 @@ func isOpsClientAuthError(code string, msg string) bool {
 		opsCodeAPIKeyExpired,
 		opsCodeAPIKeyDisabled,
 		opsCodeUserNotFound,
-<<<<<<< HEAD
 		opsCodeUserInactive,
 		opsCodeGroupDeleted,
 		opsCodeGroupDisabled:
-=======
-		opsCodeUserInactive:
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 		return true
 	}
 	return strings.Contains(msg, "invalid api key") ||
 		strings.Contains(msg, "api key is required") ||
 		strings.Contains(msg, "api key is disabled") ||
 		strings.Contains(msg, "user associated with api key not found") ||
-<<<<<<< HEAD
 		strings.Contains(msg, "user account is not active") ||
 		strings.Contains(msg, "api key 所属分组已删除") ||
 		strings.Contains(msg, "api key 所属分组已停用") ||
 		strings.Contains(msg, "api key is not assigned to any group")
-=======
-		strings.Contains(msg, "user account is not active")
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 }
 
 func isOpsLocalBusinessLimitError(code string, msg string) bool {
@@ -1434,10 +1401,7 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 	return strings.Contains(msg, "api key in query parameter is deprecated") ||
 		strings.Contains(msg, "query parameter api_key is deprecated") ||
 		strings.Contains(msg, "no active subscription found for this group") ||
-<<<<<<< HEAD
 		strings.Contains(msg, "subscription is invalid or expired") ||
-=======
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 		strings.Contains(msg, opsErrInsufficientBalance) ||
 		strings.Contains(msg, "insufficient account balance") ||
 		strings.Contains(msg, "api key group platform is not gemini") ||
@@ -1448,7 +1412,6 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, "daily usage limit exceeded") ||
 		strings.Contains(msg, "weekly usage limit exceeded") ||
 		strings.Contains(msg, "monthly usage limit exceeded") ||
-<<<<<<< HEAD
 		strings.Contains(msg, "usage quota exhausted for this platform") ||
 		strings.Contains(msg, "requests-per-minute limit exceeded") ||
 		strings.Contains(msg, "too many pending requests") ||
@@ -1465,9 +1428,6 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		strings.Contains(msg, "this account only allows codex official clients") ||
 		strings.Contains(msg, "openai wsv1 is temporarily unsupported") ||
 		strings.Contains(msg, "openai codex passthrough requires a non-empty instructions field")
-=======
-		strings.Contains(msg, "requests-per-minute limit exceeded")
->>>>>>> 69305a60 (fix(ops): 排除本地客户端限制错误的 SLA 计数)
 }
 
 func hasOpsUpstreamErrorContext(c *gin.Context) bool {
