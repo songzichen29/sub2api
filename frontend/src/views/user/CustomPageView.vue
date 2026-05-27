@@ -226,10 +226,20 @@ onMounted(async () => {
     })
   }
 
-  if (appStore.publicSettingsLoaded) return
+  if (appStore.publicSettingsLoaded && (!authStore.isAdmin || adminSettingsStore.loaded)) return
+
   loading.value = true
   try {
-    await appStore.fetchPublicSettings()
+    const tasks: Array<Promise<unknown>> = []
+    if (!appStore.publicSettingsLoaded) {
+      tasks.push(appStore.fetchPublicSettings())
+    }
+    if (authStore.isAdmin && !adminSettingsStore.loaded) {
+      tasks.push(adminSettingsStore.fetch())
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
+    }
   } finally {
     loading.value = false
   }
