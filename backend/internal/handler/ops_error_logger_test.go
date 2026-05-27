@@ -350,6 +350,7 @@ func TestParseOpsErrorResponse_PreservesResponsesBillingErrorCode(t *testing.T) 
 	require.Equal(t, "billing_error", parsed.Code)
 	require.Equal(t, "已超过每日使用限额", parsed.Message)
 	require.Equal(t, "billing_error", normalizeOpsErrorType(parsed.ErrorType, parsed.Code))
+}
 
 func TestClassifyOpsRoutingCapacityMarkerExcludesMaskedSelectionFailureFromSLA(t *testing.T) {
 	gin.SetMode(gin.TestMode)

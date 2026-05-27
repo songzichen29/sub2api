@@ -902,11 +902,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		normalizedType := normalizeOpsErrorType(parsed.ErrorType, parsed.Code)
 
-		phase := classifyOpsPhase(normalizedType, parsed.Message, parsed.Code)
-		isBusinessLimited := classifyOpsIsBusinessLimited(normalizedType, phase, parsed.Code, status, parsed.Message)
-
-		errorOwner := classifyOpsErrorOwner(phase, parsed.Message)
-		errorSource := classifyOpsErrorSource(phase, parsed.Message)
+		phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, normalizedType, parsed.Message, parsed.Code, status)
 
 		entry := &service.OpsInsertErrorLogInput{
 			RequestID:       requestID,
@@ -1261,6 +1257,13 @@ func classifyOpsPhase(errType, message, code string) string {
 	msg := strings.ToLower(message)
 	// Standardized phases: request|auth|routing|upstream|network|internal
 	// Map billing/concurrency/response => request; scheduling => routing.
+	if isOpsClientAuthError(code, msg) {
+		return "auth"
+	}
+	if isOpsLocalBusinessLimitError(code, msg) {
+		return "request"
+	}
+
 	switch strings.TrimSpace(code) {
 	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
 		return "request"
@@ -1325,12 +1328,41 @@ func classifyOpsIsRetryable(errType string, statusCode int) bool {
 	}
 }
 
-func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string) bool {
+func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status int) (phase string, isBusinessLimited bool, errorOwner string, errorSource string) {
+	phase = classifyOpsPhase(errType, message, code)
+	routingCapacityLimited := isOpsRoutingCapacityLimited(c)
+	clientBusinessLimited := service.HasOpsClientBusinessLimited(c)
+	upstreamError := hasOpsUpstreamErrorContext(c)
+	if upstreamError && !routingCapacityLimited {
+		phase = "upstream"
+	}
+	if clientBusinessLimited && !upstreamError && !routingCapacityLimited {
+		phase = "auth"
+	}
+	if routingCapacityLimited {
+		phase = "routing"
+	}
+	msg := strings.ToLower(message)
+	localClientAuthError := !upstreamError && phase == "auth" && isOpsClientAuthError(code, msg)
+	localBusinessLimited := !upstreamError && classifyOpsIsBusinessLimited(errType, phase, code, status, message, localClientAuthError)
+	isBusinessLimited = routingCapacityLimited || (clientBusinessLimited && !upstreamError) || localBusinessLimited
+	errorOwner = classifyOpsErrorOwner(phase, message)
+	errorSource = classifyOpsErrorSource(phase, message)
+	return phase, isBusinessLimited, errorOwner, errorSource
+}
+
+func classifyOpsIsBusinessLimited(errType, phase, code string, status int, message string, localClientAuthError ...bool) bool {
+	if len(localClientAuthError) > 0 && localClientAuthError[0] {
+		return true
+	}
+	if isOpsLocalBusinessLimitError(code, strings.ToLower(message)) {
+		return true
+	}
 	switch strings.TrimSpace(code) {
 	case opsCodeInsufficientBalance, opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid, opsCodeUserInactive:
 		return true
 	}
-	if phase == "billing" || phase == "concurrency" || phase == "routing" {
+	if phase == "billing" || phase == "concurrency" {
 		// SLA/错误率排除“用户级业务限制”
 		return true
 	}
@@ -1429,6 +1461,7 @@ func hasOpsUpstreamErrorContext(c *gin.Context) bool {
 	}
 	return false
 }
+
 func isOpsNoAvailableAccountMessage(message string) bool {
 	msg := strings.ToLower(message)
 	return strings.Contains(msg, opsErrNoAvailableAccounts) ||
