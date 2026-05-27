@@ -5885,7 +5885,7 @@ export default {
       },
       customMenu: {
         title: '自定义菜单页面',
-        description: '添加自定义 iframe 页面到侧边栏导航。每个页面可以设置为普通用户或管理员可见。',
+        description: '添加自定义 iframe 页面到侧边栏导航。每个页面可以设置为普通用户或管理员可见。嵌入页仅会收到主题、语言、来源地址等 UI 上下文，不会附带用户访问令牌。',
         itemLabel: '菜单项 #{n}',
         name: '菜单名称',
         namePlaceholder: '如：帮助中心',

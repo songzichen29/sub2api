@@ -25,7 +25,7 @@ describe('embedded-url', () => {
     vi.restoreAllMocks()
   })
 
-  it('adds embedded query parameters including locale and source context', () => {
+  it('adds non-secret embedded query parameters including locale and source context', () => {
     const result = buildEmbeddedUrl(
       'https://pay.example.com/checkout?plan=pro',
       42,
@@ -36,13 +36,13 @@ describe('embedded-url', () => {
 
     const url = new URL(result)
     expect(url.searchParams.get('plan')).toBe('pro')
-    expect(url.searchParams.get('user_id')).toBe('42')
-    expect(url.searchParams.get('token')).toBe('token-123')
     expect(url.searchParams.get('theme')).toBe('dark')
     expect(url.searchParams.get('lang')).toBe('zh-CN')
     expect(url.searchParams.get('ui_mode')).toBe('embedded')
     expect(url.searchParams.get('src_host')).toBe('https://app.example.com')
     expect(url.searchParams.get('src_url')).toBe('https://app.example.com/user/purchase')
+    expect(url.searchParams.has('user_id')).toBe(false)
+    expect(url.searchParams.has('token')).toBe(false)
   })
 
   it('omits optional params when they are empty', () => {

@@ -1,11 +1,13 @@
 /**
- * Shared URL builder for iframe-embedded pages.
- * Used by PurchaseSubscriptionView and CustomPageView to build consistent URLs
- * with user_id, token, theme, lang, ui_mode, src_host, and src parameters.
+ * Shared URL builder for iframe-embedded custom pages.
+ * Appends non-secret UI context only: theme, lang, ui_mode, src_host, src_url.
+ *
+ * Important:
+ * - Do not append access tokens or internal user IDs to arbitrary admin-configured
+ *   external iframe URLs.
+ * - Treat custom menu iframe targets as third-party destinations by default.
  */
 
-const EMBEDDED_USER_ID_QUERY_KEY = 'user_id'
-const EMBEDDED_AUTH_TOKEN_QUERY_KEY = 'token'
 const EMBEDDED_THEME_QUERY_KEY = 'theme'
 const EMBEDDED_LANG_QUERY_KEY = 'lang'
 const EMBEDDED_UI_MODE_QUERY_KEY = 'ui_mode'
@@ -15,20 +17,14 @@ const EMBEDDED_SRC_QUERY_KEY = 'src_url'
 
 export function buildEmbeddedUrl(
   baseUrl: string,
-  userId?: number,
-  authToken?: string | null,
+  _userId?: number,
+  _authToken?: string | null,
   theme: 'light' | 'dark' = 'light',
   lang?: string,
 ): string {
   if (!baseUrl) return baseUrl
   try {
     const url = new URL(baseUrl)
-    if (userId) {
-      url.searchParams.set(EMBEDDED_USER_ID_QUERY_KEY, String(userId))
-    }
-    if (authToken) {
-      url.searchParams.set(EMBEDDED_AUTH_TOKEN_QUERY_KEY, authToken)
-    }
     url.searchParams.set(EMBEDDED_THEME_QUERY_KEY, theme)
     if (lang) {
       url.searchParams.set(EMBEDDED_LANG_QUERY_KEY, lang)
