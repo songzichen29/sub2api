@@ -179,6 +179,15 @@ const isValidUrl = computed(() => {
   return url.startsWith('http://') || url.startsWith('https://')
 })
 
+watch(
+  () => [menuItem.value?.label, appStore.siteName] as const,
+  ([label, siteName]) => {
+    if (!label || typeof document === 'undefined') return
+    document.title = `${label} - ${siteName || 'Sub2API'}`
+  },
+  { immediate: true },
+)
+
 async function checkPageAvailability() {
   const seq = ++availabilityCheckSeq
   unavailableStatusCode.value = null
