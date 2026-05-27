@@ -5,6 +5,7 @@
  * Important:
  * - Do not append access tokens or internal user IDs to arbitrary admin-configured
  *   external iframe URLs.
+ * - Do not append the full current URL with query/hash; only share origin + pathname.
  * - Treat custom menu iframe targets as third-party destinations by default.
  */
 
@@ -33,7 +34,10 @@ export function buildEmbeddedUrl(
     // Source tracking: let the embedded page know where it's being loaded from
     if (typeof window !== 'undefined') {
       url.searchParams.set(EMBEDDED_SRC_HOST_QUERY_KEY, window.location.origin)
-      url.searchParams.set(EMBEDDED_SRC_QUERY_KEY, window.location.href)
+      url.searchParams.set(
+        EMBEDDED_SRC_QUERY_KEY,
+        `${window.location.origin}${window.location.pathname}`
+      )
     }
     return url.toString()
   } catch {

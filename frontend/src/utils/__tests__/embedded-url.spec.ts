@@ -8,7 +8,8 @@ describe('embedded-url', () => {
     Object.defineProperty(window, 'location', {
       value: {
         origin: 'https://app.example.com',
-        href: 'https://app.example.com/user/purchase',
+        href: 'https://app.example.com/user/purchase?resume_token=secret#done',
+        pathname: '/user/purchase',
       },
       writable: true,
       configurable: true,
