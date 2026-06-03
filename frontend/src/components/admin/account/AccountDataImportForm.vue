@@ -779,22 +779,13 @@ const buildApplyPayload = (): AdminDataImportApply | undefined => {
   }
 
   if (enableModelRestriction.value) {
-    if (modelRestrictionMode.value === 'whitelist') {
-      // 白名单：转换为 model_mapping 格式（key === value）
-      const mapping: Record<string, string> = {}
-      for (const m of allowedModels.value) {
-        if (!m.includes('*')) {
-          mapping[m] = m
-        }
-      }
-      apply.model_mapping = mapping
-    } else {
-      apply.model_mapping = buildModelMappingObject(
-        'mapping',
-        [],
-        modelMappings.value
-      ) ?? {}
-    }
+    // 合并白名单和映射（combined 模式）——用户可能在模板里同时填了两者，
+    // 之前按 mode 二选一会导致只有一侧生效（#issue: 模板白名单和映射都有值但导入账号只有一个生效）
+    apply.model_mapping = buildModelMappingObject(
+      'combined',
+      allowedModels.value,
+      modelMappings.value
+    ) ?? {}
   }
 
   return Object.keys(apply).length > 0 ? apply : undefined
