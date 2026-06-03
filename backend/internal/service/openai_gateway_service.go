@@ -1928,6 +1928,13 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if !isOpenAIAccountEligibleForRequest(fresh, requestedModel, requireCompact) {
 		return nil
 	}
+
+	// OAuth 额度预检查：当速率限制使用率超过阈值时跳过该账号，
+	// 避免请求到上游后才发现额度不足。
+	if s.isOAuthQuotaNearLimit(fresh) {
+		return nil
+	}
+
 	return fresh
 }
 
@@ -1939,6 +1946,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		if !isOpenAIAccountEligibleForRequest(account, requestedModel, requireCompact) {
 			return nil
 		}
+		if s.isOAuthQuotaNearLimit(account) {
+			return nil
+		}
 		return account
 	}
 
@@ -1947,6 +1957,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if !isOpenAIAccountEligibleForRequest(latest, requestedModel, requireCompact) {
+		return nil
+	}
+	if s.isOAuthQuotaNearLimit(latest) {
 		return nil
 	}
 	return latest
@@ -1996,17 +2009,62 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 }
 
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
-	if s.cfg != nil {
-		return s.cfg.Gateway.Scheduling
+	if s == nil || s.cfg == nil {
+		return config.GatewaySchedulingConfig{
+			StickySessionMaxWaiting:    3,
+			StickySessionWaitTimeout:   45 * time.Second,
+			FallbackWaitTimeout:        30 * time.Second,
+			FallbackMaxWaiting:         100,
+			LoadBatchEnabled:           true,
+			SlotCleanupInterval:        30 * time.Second,
+			OpenAIOAuthQuotaThreshold:  0, // 默认关闭
+		}
 	}
-	return config.GatewaySchedulingConfig{
-		StickySessionMaxWaiting:  3,
-		StickySessionWaitTimeout: 45 * time.Second,
-		FallbackWaitTimeout:      30 * time.Second,
-		FallbackMaxWaiting:       100,
-		LoadBatchEnabled:         true,
-		SlotCleanupInterval:      30 * time.Second,
+	return s.cfg.Gateway.Scheduling
+}
+
+// isOAuthQuotaNearLimit checks whether an OAuth account's Codex rate limit
+// usage is approaching its quota ceiling. When enabled, the scheduler skips
+// such accounts before forwarding a request, reducing unnecessary upstream
+// 429/403 failovers.
+//
+// It consults both the 5h (secondary) and 7d (primary) windows. If either
+// exceeds the configured threshold, the account is considered near-limit.
+// Returns false when pre-check is disabled (threshold == 0) or when usage
+// data is missing / stale (older than 5 minutes).
+func (s *OpenAIGatewayService) isOAuthQuotaNearLimit(account *Account) bool {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
 	}
+	cfg := s.schedulingConfig()
+	if cfg.OpenAIOAuthQuotaThreshold <= 0 {
+		return false
+	}
+	threshold := cfg.OpenAIOAuthQuotaThreshold
+
+	// Check data freshness: skip stale data (> 5 min) to avoid acting on
+	// outdated numbers.
+	if updatedAt := account.getExtraString("codex_usage_updated_at"); updatedAt != "" {
+		if t, err := time.Parse(time.RFC3339, updatedAt); err == nil && time.Since(t) > 5*time.Minute {
+			return false
+		}
+	}
+
+	// Check 5h window (secondary)
+	if secondary := account.getExtraFloat64("codex_secondary_used_percent"); secondary > 0 {
+		if secondary >= threshold {
+			return true
+		}
+	}
+
+	// Check 7d window (primary)
+	if primary := account.getExtraFloat64("codex_primary_used_percent"); primary > 0 {
+		if primary >= threshold {
+			return true
+		}
+	}
+
+	return false
 }
 
 // GetAccessToken gets the access token for an OpenAI account

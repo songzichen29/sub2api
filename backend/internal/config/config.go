@@ -1005,6 +1005,12 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+
+	// OAuth 账号额度预检查：当账号的 Codex 速率限制使用率超过此阈值时，
+	// 在调度阶段直接跳过该账号，避免请求到上游后才发现额度不足。
+	// 适用于 OpenAI OAuth（ChatGPT）账号，基于响应头被动采集的数据。
+	// 0 表示禁用预检查。建议值 90（即使用率 >= 90% 时跳过）。
+	OpenAIOAuthQuotaThreshold float64 `mapstructure:"openai_oauth_quota_threshold"`
 }
 
 func (s *ServerConfig) Address() string {

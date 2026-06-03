@@ -436,7 +436,12 @@ gateway:
     # outbox 积压触发重建阈值（行数）
     outbox_backlog_rebuild_rows: 10000
     # 全量重建周期（秒），0 表示禁用
-    full_rebuild_interval_seconds: 300
+    # full_rebuild_interval_seconds: 300
+    # OAuth 账号额度预检查：当 OAuth 账号的 Codex 速率限制使用率超过此阈值时，
+    # 在调度阶段直接跳过该账号，避免请求到上游后才发现额度不足。
+    # 适用于 OpenAI OAuth（ChatGPT）账号，基于响应头被动采集的数据。
+    # 0 表示禁用预检查。建议值 90（即使用率 >= 90% 时跳过）。
+    openai_oauth_quota_threshold: 0
   # TLS fingerprint simulation / TLS 指纹伪装
   # Default profile "claude_cli_v2" simulates Node.js 20.x
   # 默认模板 "claude_cli_v2" 模拟 Node.js 20.x 指纹
