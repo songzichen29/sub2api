@@ -18,6 +18,7 @@ tags:
 - Grok 的 `/v1/responses` 分支现在会先把 Responses 请求转换成 Chat Completions 请求，再发往 grok2api `/v1/chat/completions`。
 - Grok 的 Anthropic Messages 入口现在复用已有协议转换链路：Anthropic → Responses → Chat Completions，返回再转回 Anthropic。
 - Grok 的 `/v1/responses` 流式输出现在按 Responses SSE 格式写出 `event: ...` + `data: ...`，Codex TUI 可识别增量文本事件。
+- Grok Chat Completions → Responses 流式转换的 `response.output_item.added` 现在带合法 message `content`，Codex CLI 能先建立 active message，再展示后续 `response.output_text.delta`。
 - Grok 上游 `base_url` 兼容 `https://host`、`https://host/v1`、`https://host/v1/chat/completions`，避免拼成 `/v1/v1/chat/completions`。
 - Grok 相关单测已同步到新的 `/v1/chat/completions` 路径。
 
@@ -28,6 +29,7 @@ tags:
 后续排查发现同一路径还有两个流式展示相关问题：
 
 - Grok Responses 流式转换后只写了 `data: {...}`，缺少 Responses SSE 的 `event: response.output_text.delta` 等事件名；Codex TUI 会收到 token/usage，但不识别文本事件。
+- Codex CLI 0.137 会先把 `response.output_item.added.item` 解析成 `ResponseItem::Message` 作为 active item；旧转换里的 message item 省略了必填的 `content`，解析失败后后续 `response.output_text.delta` 没有 active item，因此界面仍不展示。
 - `base_url` 若配置为带版本段的 `/v1`，旧逻辑会继续追加 `/v1/chat/completions`。
 
 ## 修改内容
@@ -37,13 +39,14 @@ tags:
   - 修正模型映射、stream usage、响应转换和 usage/reasoning 记录。
   - `ForwardAsCC` 改为复用现有 apicompat 转换链路，减少手写工具调用/SSE 转换风险。
   - `ForwardAsResponses` 流式事件统一用 `apicompat.ResponsesEventToSSE` 输出，保留最终 `data: [DONE]`。
+  - `response.output_item.added` 的 message item 补齐 `content:[{"type":"output_text","text":""}]`，并确保 text 类 content part 即使为空也序列化 `text` 字段。
   - Grok 上游 URL 改用 OpenAI-compatible endpoint builder，正确处理带 `/v1` 的 base URL。
 
 - `backend/internal/service/grok_gateway_service_test.go`
   - 更新 Grok 默认上游响应为 Chat Completions 格式。
   - 更新 Anthropic 入口测试预期为 `/v1/chat/completions`。
   - 新增 Responses → Chat Completions 转换回归测试。
-  - 新增 Responses 流式 SSE 事件名与 `/v1` base URL 回归测试。
+  - 新增 Responses 流式 SSE 事件名、active message item content 与 `/v1` base URL 回归测试。
 
 ## 验证
 

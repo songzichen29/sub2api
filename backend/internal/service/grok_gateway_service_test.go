@@ -396,6 +396,8 @@ func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *
 
 	out := recorder.Body.String()
 	require.Contains(t, out, "event: response.created\n")
+	require.Contains(t, out, "event: response.output_item.added\n")
+	require.Contains(t, out, `"content":[{"type":"output_text","text":""}]`)
 	require.Contains(t, out, "event: response.output_text.delta\n")
 	require.Contains(t, out, `"delta":"hello"`)
 	require.Contains(t, out, "event: response.completed\n")

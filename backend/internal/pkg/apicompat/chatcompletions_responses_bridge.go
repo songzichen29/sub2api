@@ -629,10 +629,11 @@ func ensureChatToResponsesMessageItem(state *ChatCompletionsToResponsesStreamSta
 	return []ResponsesStreamEvent{chatToResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
 		OutputIndex: 0,
 		Item: &ResponsesOutput{
-			Type:   "message",
-			ID:     state.MessageItemID,
-			Role:   "assistant",
-			Status: "in_progress",
+			Type:    "message",
+			ID:      state.MessageItemID,
+			Role:    "assistant",
+			Content: []ResponsesContentPart{{Type: "output_text", Text: ""}},
+			Status:  "in_progress",
 		},
 	})}
 }

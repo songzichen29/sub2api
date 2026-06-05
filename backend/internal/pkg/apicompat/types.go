@@ -246,6 +246,22 @@ type ResponsesContentPart struct {
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
 }
 
+func (p ResponsesContentPart) MarshalJSON() ([]byte, error) {
+	type alias ResponsesContentPart
+	if p.Type == "input_text" || p.Type == "output_text" || p.Type == "text" {
+		return json.Marshal(struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			ImageURL string `json:"image_url,omitempty"`
+		}{
+			Type:     p.Type,
+			Text:     p.Text,
+			ImageURL: p.ImageURL,
+		})
+	}
+	return json.Marshal(alias(p))
+}
+
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
 	Type        string          `json:"type"` // "function" | "web_search" | "local_shell" etc.
