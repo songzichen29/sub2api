@@ -9,7 +9,7 @@ SET @col_exists := (
 );
 
 SET @ddl := IF(@col_exists = 0,
-    'ALTER TABLE `subscription_plans` ADD COLUMN `expires_at` datetime(6) NULL COMMENT ''Fixed subscription plan end time; purchases expire at this timestamp when set'' AFTER `validity_unit`',
+    'ALTER TABLE `subscription_plans` ADD COLUMN `expires_at` datetime(6) NULL COMMENT ''Fixed subscription plan end time, purchases expire at this timestamp when set'' AFTER `validity_unit`',
     'SELECT 1'
 );
 PREPARE stmt FROM @ddl;
