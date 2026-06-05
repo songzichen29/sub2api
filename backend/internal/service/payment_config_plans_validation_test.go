@@ -255,3 +255,33 @@ func TestPsPlanSubscriptionDaysUsesFixedExpiry(t *testing.T) {
 		ExpiresAt:    &expiresAt,
 	}, now))
 }
+
+func TestPsPaymentOrderExpiresAtCapsToFixedPlanExpiry(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	planExpiresAt := now.Add(3 * time.Minute)
+
+	got := psPaymentOrderExpiresAt(&PaymentConfig{OrderTimeoutMin: 30}, &dbent.SubscriptionPlan{
+		ExpiresAt: &planExpiresAt,
+	}, now)
+
+	require.Equal(t, planExpiresAt, got)
+}
+
+func TestPsPaymentOrderExpiresAtKeepsShorterOrderTimeout(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	planExpiresAt := now.Add(30 * time.Minute)
+
+	got := psPaymentOrderExpiresAt(&PaymentConfig{OrderTimeoutMin: 5}, &dbent.SubscriptionPlan{
+		ExpiresAt: &planExpiresAt,
+	}, now)
+
+	require.Equal(t, now.Add(5*time.Minute), got)
+}
+
+func TestPsPaymentOrderExpiresAtUsesDefaultTimeoutWithoutFixedExpiry(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+
+	got := psPaymentOrderExpiresAt(&PaymentConfig{}, nil, now)
+
+	require.Equal(t, now.Add(defaultOrderTimeoutMin*time.Minute), got)
+}

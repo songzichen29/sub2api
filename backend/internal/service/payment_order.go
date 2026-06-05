@@ -199,11 +199,11 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err := s.checkDailyLimit(ctx, tx, req.UserID, limitAmount, cfg.DailyLimit); err != nil {
 		return nil, err
 	}
-	tm := cfg.OrderTimeoutMin
-	if tm <= 0 {
-		tm = defaultOrderTimeoutMin
+	now := time.Now()
+	if plan != nil && plan.ExpiresAt != nil && !plan.ExpiresAt.After(now) {
+		return nil, infraerrors.NotFound("PLAN_NOT_AVAILABLE", "plan not found or not for sale")
 	}
-	exp := time.Now().Add(time.Duration(tm) * time.Minute)
+	exp := psPaymentOrderExpiresAt(cfg, plan, now)
 	outTradeNo, err := s.allocateOutTradeNo(ctx, tx)
 	if err != nil {
 		return nil, err
@@ -253,7 +253,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		b.SetProviderSnapshot(providerSnapshot)
 	}
 	if plan != nil {
-		subscriptionDays := psPlanSubscriptionDays(plan, time.Now())
+		subscriptionDays := psPlanSubscriptionDays(plan, now)
 		b.SetPlanID(plan.ID).
 			SetSubscriptionGroupID(plan.GroupID).
 			SetSubscriptionDays(subscriptionDays).
@@ -278,6 +278,18 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, fmt.Errorf("commit order transaction: %w", err)
 	}
 	return order, nil
+}
+
+func psPaymentOrderExpiresAt(cfg *PaymentConfig, plan *dbent.SubscriptionPlan, now time.Time) time.Time {
+	tm := defaultOrderTimeoutMin
+	if cfg != nil && cfg.OrderTimeoutMin > 0 {
+		tm = cfg.OrderTimeoutMin
+	}
+	expiresAt := now.Add(time.Duration(tm) * time.Minute)
+	if plan != nil && plan.ExpiresAt != nil && plan.ExpiresAt.After(now) && plan.ExpiresAt.Before(expiresAt) {
+		expiresAt = *plan.ExpiresAt
+	}
+	return expiresAt
 }
 
 func (s *PaymentService) allocateOutTradeNo(ctx context.Context, tx *dbent.Tx) (string, error) {
