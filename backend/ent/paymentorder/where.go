@@ -155,6 +155,11 @@ func SubscriptionValidityUnit(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionValidityUnit, v))
 }
 
+// SubscriptionPlanExpiresAt applies equality check predicate on the "subscription_plan_expires_at" field. It's identical to SubscriptionPlanExpiresAtEQ.
+func SubscriptionPlanExpiresAt(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionPlanExpiresAt, v))
+}
+
 // ProviderInstanceID applies equality check predicate on the "provider_instance_id" field. It's identical to ProviderInstanceIDEQ.
 func ProviderInstanceID(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))
@@ -1423,6 +1428,56 @@ func SubscriptionValidityUnitEqualFold(v string) predicate.PaymentOrder {
 // SubscriptionValidityUnitContainsFold applies the ContainsFold predicate on the "subscription_validity_unit" field.
 func SubscriptionValidityUnitContainsFold(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldContainsFold(FieldSubscriptionValidityUnit, v))
+}
+
+// SubscriptionPlanExpiresAtEQ applies the EQ predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtEQ(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldEQ(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtNEQ applies the NEQ predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtNEQ(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNEQ(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtIn applies the In predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtIn(vs ...time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIn(FieldSubscriptionPlanExpiresAt, vs...))
+}
+
+// SubscriptionPlanExpiresAtNotIn applies the NotIn predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtNotIn(vs ...time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotIn(FieldSubscriptionPlanExpiresAt, vs...))
+}
+
+// SubscriptionPlanExpiresAtGT applies the GT predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtGT(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGT(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtGTE applies the GTE predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtGTE(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldGTE(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtLT applies the LT predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtLT(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLT(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtLTE applies the LTE predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtLTE(v time.Time) predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldLTE(FieldSubscriptionPlanExpiresAt, v))
+}
+
+// SubscriptionPlanExpiresAtIsNil applies the IsNil predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldSubscriptionPlanExpiresAt))
+}
+
+// SubscriptionPlanExpiresAtNotNil applies the NotNil predicate on the "subscription_plan_expires_at" field.
+func SubscriptionPlanExpiresAtNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionPlanExpiresAt))
 }
 
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.

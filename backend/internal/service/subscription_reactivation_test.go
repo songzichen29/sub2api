@@ -7,6 +7,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -272,6 +273,82 @@ func TestAssignOrExtendSubscription_ExpiredSubscriptionResetsStartAnchor(t *test
 	require.Equal(t, float64(0), sub.MonthlyUsageUSD)
 	require.Contains(t, sub.Notes, "old-note")
 	require.Contains(t, sub.Notes, "renew-note")
+}
+
+func TestAssignOrExtendSubscription_FixedExpiryDoesNotShortenActiveSubscription(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-fixed-expiry-active@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-fixed-expiry-active-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	group, err := client.Group.Create().
+		SetName("sub-fixed-expiry-active-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	now := time.Now()
+	originalStart := now.Add(-24 * time.Hour)
+	originalExpires := now.Add(72 * time.Hour)
+
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		StartsAt:     originalStart,
+		ExpiresAt:    originalExpires,
+		Status:       SubscriptionStatusActive,
+		Notes:        "old-note",
+		ValidityUnit: "day",
+		Source:       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription},
+	}, repo, nil, client, nil)
+
+	earlyStart := now
+	earlyExpires := now.Add(24 * time.Hour)
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 1,
+		StartsAt:     &earlyStart,
+		ExpiresAt:    &earlyExpires,
+		Notes:        "early-fixed-order",
+		Source:       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.WithinDuration(t, originalStart, sub.StartsAt, time.Second)
+	require.WithinDuration(t, originalExpires, sub.ExpiresAt, time.Second)
+	require.Equal(t, "day", sub.ValidityUnit)
+	require.Contains(t, sub.Notes, "early-fixed-order")
+
+	laterStart := now
+	laterExpires := now.Add(5 * 24 * time.Hour)
+	sub, reused, err = svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 5,
+		StartsAt:     &laterStart,
+		ExpiresAt:    &laterExpires,
+		Notes:        "later-fixed-order",
+		Source:       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.WithinDuration(t, originalStart, sub.StartsAt, time.Second)
+	require.WithinDuration(t, laterExpires, sub.ExpiresAt, time.Second)
+	require.Contains(t, sub.Notes, "later-fixed-order")
 }
 
 func TestAssignOrExtendSubscription_PaidOneDayRenewalResetsDailyUsageAndRestartsOneDayPeriod(t *testing.T) {

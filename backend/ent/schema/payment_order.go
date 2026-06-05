@@ -95,6 +95,11 @@ func (PaymentOrder) Fields() []ent.Field {
 			Nillable().
 			MaxLen(10).
 			Comment("Original subscription plan validity unit at order creation"),
+		field.Time("subscription_plan_expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("Fixed subscription plan end time frozen at order creation"),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().

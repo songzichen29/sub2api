@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"os"
 	"strings"
@@ -356,6 +357,23 @@ func psComputeValidityDays(days int, unit string) int {
 	default:
 		return days
 	}
+}
+
+func psPlanSubscriptionDays(plan *dbent.SubscriptionPlan, now time.Time) int {
+	if plan == nil {
+		return 0
+	}
+	if plan.ExpiresAt != nil {
+		if !plan.ExpiresAt.After(now) {
+			return 0
+		}
+		days := int(math.Ceil(plan.ExpiresAt.Sub(now).Hours() / 24))
+		if days < 1 {
+			return 1
+		}
+		return days
+	}
+	return psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit)
 }
 
 func psStartOfDayUTC(t time.Time) time.Time {

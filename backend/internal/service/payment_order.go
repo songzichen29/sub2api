@@ -133,6 +133,9 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if err != nil || !plan.ForSale {
 		return nil, infraerrors.NotFound("PLAN_NOT_AVAILABLE", "plan not found or not for sale")
 	}
+	if plan.ExpiresAt != nil && !plan.ExpiresAt.After(time.Now()) {
+		return nil, infraerrors.NotFound("PLAN_NOT_AVAILABLE", "plan not found or not for sale")
+	}
 	group, err := s.groupRepo.GetByID(ctx, plan.GroupID)
 	if err != nil || group.Status != payment.EntityStatusActive {
 		return nil, infraerrors.NotFound("GROUP_NOT_FOUND", "subscription group is no longer available")
@@ -150,7 +153,7 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 		}
 	}
 	if renewalMode == SubscriptionRenewalModeRestart {
-		days := psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit)
+		days := psPlanSubscriptionDays(plan, time.Now())
 		if days <= 1 {
 			return nil, infraerrors.BadRequest("RENEWAL_RESTART_NOT_AVAILABLE", "subscription restart is not available for this order")
 		}
@@ -250,10 +253,14 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		b.SetProviderSnapshot(providerSnapshot)
 	}
 	if plan != nil {
+		subscriptionDays := psPlanSubscriptionDays(plan, time.Now())
 		b.SetPlanID(plan.ID).
 			SetSubscriptionGroupID(plan.GroupID).
-			SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit)).
+			SetSubscriptionDays(subscriptionDays).
 			SetSubscriptionValidityUnit(normalizeSubscriptionValidityUnit(plan.ValidityUnit))
+		if plan.ExpiresAt != nil {
+			b.SetSubscriptionPlanExpiresAt(*plan.ExpiresAt)
+		}
 	}
 	if req.SubscriptionID > 0 {
 		b.SetSubscriptionID(req.SubscriptionID)

@@ -57,21 +57,22 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 	}
 	// Enrich plans with group platform for frontend color coding
 	type planWithPlatform struct {
-		ID            int64    `json:"id"`
-		GroupID       int64    `json:"group_id"`
-		GroupPlatform string   `json:"group_platform"`
-		GroupName     string   `json:"group_name"`
-		Name          string   `json:"name"`
-		Description   string   `json:"description"`
-		Price         float64  `json:"price"`
-		OriginalPrice *float64 `json:"original_price,omitempty"`
-		ValidityDays  int      `json:"validity_days"`
-		ValidityUnit  string   `json:"validity_unit"`
-		Features      string   `json:"features"`
-		ProductName   string   `json:"product_name"`
-		ForSale       bool     `json:"for_sale"`
-		SortOrder     int      `json:"sort_order"`
-		SalesCount    int      `json:"sales_count"`
+		ID            int64      `json:"id"`
+		GroupID       int64      `json:"group_id"`
+		GroupPlatform string     `json:"group_platform"`
+		GroupName     string     `json:"group_name"`
+		Name          string     `json:"name"`
+		Description   string     `json:"description"`
+		Price         float64    `json:"price"`
+		OriginalPrice *float64   `json:"original_price,omitempty"`
+		ValidityDays  int        `json:"validity_days"`
+		ValidityUnit  string     `json:"validity_unit"`
+		ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+		Features      string     `json:"features"`
+		ProductName   string     `json:"product_name"`
+		ForSale       bool       `json:"for_sale"`
+		SortOrder     int        `json:"sort_order"`
+		SalesCount    int        `json:"sales_count"`
 	}
 	platformMap := h.configService.GetGroupPlatformMap(c.Request.Context(), plans)
 	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
@@ -86,7 +87,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		result = append(result, planWithPlatform{
 			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID], GroupName: gi.Name,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, ExpiresAt: p.ExpiresAt, Features: p.Features,
 			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder, SalesCount: salesMap[p.ID],
 		})
 	}
@@ -142,7 +143,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, ExpiresAt: p.ExpiresAt, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName, SalesCount: salesMap[p.ID],
 		})
 	}
@@ -175,24 +176,25 @@ type checkoutInfoResponse struct {
 }
 
 type checkoutPlan struct {
-	ID              int64    `json:"id"`
-	GroupID         int64    `json:"group_id"`
-	GroupPlatform   string   `json:"group_platform"`
-	GroupName       string   `json:"group_name"`
-	RateMultiplier  float64  `json:"rate_multiplier"`
-	DailyLimitUSD   *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD  *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD *float64 `json:"monthly_limit_usd"`
-	ModelScopes     []string `json:"supported_model_scopes"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	Price           float64  `json:"price"`
-	OriginalPrice   *float64 `json:"original_price,omitempty"`
-	ValidityDays    int      `json:"validity_days"`
-	ValidityUnit    string   `json:"validity_unit"`
-	Features        []string `json:"features"`
-	ProductName     string   `json:"product_name"`
-	SalesCount      int      `json:"sales_count"`
+	ID              int64      `json:"id"`
+	GroupID         int64      `json:"group_id"`
+	GroupPlatform   string     `json:"group_platform"`
+	GroupName       string     `json:"group_name"`
+	RateMultiplier  float64    `json:"rate_multiplier"`
+	DailyLimitUSD   *float64   `json:"daily_limit_usd"`
+	WeeklyLimitUSD  *float64   `json:"weekly_limit_usd"`
+	MonthlyLimitUSD *float64   `json:"monthly_limit_usd"`
+	ModelScopes     []string   `json:"supported_model_scopes"`
+	Name            string     `json:"name"`
+	Description     string     `json:"description"`
+	Price           float64    `json:"price"`
+	OriginalPrice   *float64   `json:"original_price,omitempty"`
+	ValidityDays    int        `json:"validity_days"`
+	ValidityUnit    string     `json:"validity_unit"`
+	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
+	Features        []string   `json:"features"`
+	ProductName     string     `json:"product_name"`
+	SalesCount      int        `json:"sales_count"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
@@ -503,6 +505,7 @@ type PublicOrderResult struct {
 	SubscriptionGroupID       *int64     `json:"subscription_group_id,omitempty"`
 	SubscriptionID            *int64     `json:"subscription_id,omitempty"`
 	SubscriptionDays          *int       `json:"subscription_days,omitempty"`
+	SubscriptionPlanExpiresAt *time.Time `json:"subscription_plan_expires_at,omitempty"`
 	CanRefund                 bool       `json:"can_refund"`
 	SubscriptionExpiresAt     *time.Time `json:"subscription_expires_at,omitempty"`
 	SubscriptionRemainingDays *int       `json:"subscription_remaining_days,omitempty"`
@@ -536,6 +539,7 @@ func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 		SubscriptionGroupID:       order.SubscriptionGroupID,
 		SubscriptionID:            order.SubscriptionID,
 		SubscriptionDays:          order.SubscriptionDays,
+		SubscriptionPlanExpiresAt: order.SubscriptionPlanExpiresAt,
 		CanRefund:                 order.CanRefund,
 		SubscriptionExpiresAt:     order.SubscriptionExpiresAt,
 		SubscriptionRemainingDays: order.SubscriptionRemainingDays,

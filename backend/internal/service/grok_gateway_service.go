@@ -15,6 +15,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 )
 
 // GrokGatewayService 处理 Grok 平台请求,通过 type=upstream 账号透传到 grok2api 网关。
@@ -397,7 +399,7 @@ func (s *GrokGatewayService) handleUpstreamError(
 }
 
 // TestConnection 测试 grok upstream 账号到 grok2api 网关的连通性。
-// 用最小 payload 调一次非流式 /v1/messages，鉴权方式与 ForwardUpstream 一致（双 header）。
+// 用最小 payload 调一次非流式 /v1/chat/completions，使用 Bearer 鉴权。
 // 返回响应中提取的首条 text，供管理后台 SSE 测试输出展示。
 func (s *GrokGatewayService) TestConnection(ctx context.Context, account *Account, modelID string) (*TestConnectionResult, error) {
 	if account.Type != AccountTypeUpstream {
@@ -430,14 +432,12 @@ func (s *GrokGatewayService) TestConnection(ctx context.Context, account *Accoun
 	}
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/messages", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create test request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -456,15 +456,16 @@ func (s *GrokGatewayService) TestConnection(ctx context.Context, account *Accoun
 
 	text := ""
 	var parsed struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
 	}
 	if json.Unmarshal(respBody, &parsed) == nil {
-		for _, blk := range parsed.Content {
-			if blk.Type == "text" && blk.Text != "" {
-				text = blk.Text
+		for _, choice := range parsed.Choices {
+			if choice.Message.Content != "" {
+				text = choice.Message.Content
 				break
 			}
 		}
@@ -497,6 +498,186 @@ func (s *GrokGatewayService) ListUpstreamModels(ctx context.Context, account *Ac
 // 供新增/编辑账号表单在账号未保存时直接调用。
 func FetchGrokUpstreamModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
 	return FetchOpenAICompatibleUpstreamModels(ctx, baseURL, apiKey)
+}
+
+// ForwardAsChatCompletions receives an OpenAI Chat Completions request and directly
+// passes it through to the grok2api gateway's /v1/chat/completions endpoint.
+// grok2api's /v1/messages (Anthropic protocol) endpoint does not support some newer
+// models (returns "Invalid request"), so we use OpenAI protocol passthrough to avoid
+// protocol conversion issues.
+func (s *GrokGatewayService) ForwardAsChatCompletions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) (*ForwardResult, error) {
+	startTime := time.Now()
+
+	// 1. Get upstream credentials
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 2. Model mapping
+	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	if originalModel == "" {
+		return nil, fmt.Errorf("missing model in request")
+	}
+	mappedModel := originalModel
+	if resolved, matched := account.ResolveMappedModel(originalModel); matched {
+		mappedModel = resolved
+	}
+	if mappedModel != originalModel {
+		body = ReplaceModelInBody(body, mappedModel)
+	}
+
+	clientStream := gjson.GetBytes(body, "stream").Bool()
+	reasoningEffort := extractCCReasoningEffortFromBody(body)
+
+	logger.L().Debug("grok forward_as_chat_completions: direct passthrough",
+		zap.Int64("account_id", account.ID),
+		zap.String("original_model", originalModel),
+		zap.String("mapped_model", mappedModel),
+		zap.Bool("client_stream", clientStream),
+	)
+
+	// 3. Build upstream request -> /v1/chat/completions
+	upstreamURL := baseURL + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// 4. Send request
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		logger.LegacyPrintf("service.grok_gateway", "forward_as_cc upstream request failed: %v", err)
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 5. Handle error response
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			prefix := logPrefix(getSessionID(c), account.Name)
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
+		}
+
+		if grokShouldFailover(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{
+				StatusCode:   resp.StatusCode,
+				ResponseBody: respBody,
+			}
+		}
+
+		writeGatewayCCError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	}
+
+	// 6. Handle success response
+	var usage ClaudeUsage
+	var firstTokenMs *int
+
+	if clientStream {
+		// Streaming: passthrough SSE lines, extract usage from last chunk
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+		firstChunk := true
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+
+			if firstChunk && strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
+				firstChunk = false
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+
+			// Extract usage from streaming chunks that contain it
+			if strings.HasPrefix(line, "data: ") && strings.Contains(line, `"usage"`) {
+				payload := strings.TrimPrefix(line, "data: ")
+				if payload != "[DONE]" {
+					s.extractCCUsage([]byte(payload), &usage)
+				}
+			}
+
+			fmt.Fprintf(c.Writer, "%s\n", line)
+			c.Writer.Flush()
+		}
+	} else {
+		// Non-streaming: passthrough JSON, extract usage
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+		}
+
+		s.extractCCUsage(respBody, &usage)
+
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write(respBody)
+	}
+
+	duration := time.Since(startTime)
+	logger.LegacyPrintf("service.grok_gateway", "forward_as_cc status=success model=%s duration_ms=%d", originalModel, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:           originalModel,
+		UpstreamModel:   mappedModel,
+		Stream:          clientStream,
+		Duration:        duration,
+		FirstTokenMs:    firstTokenMs,
+		Usage:           usage,
+		ReasoningEffort: reasoningEffort,
+	}, nil
+}
+
+// extractCCUsage extracts prompt_tokens and completion_tokens from an OpenAI CC response.
+func (s *GrokGatewayService) extractCCUsage(data []byte, usage *ClaudeUsage) {
+	var wrapper struct {
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if json.Unmarshal(data, &wrapper) == nil && wrapper.Usage != nil {
+		usage.InputTokens = wrapper.Usage.PromptTokens
+		usage.OutputTokens = wrapper.Usage.CompletionTokens
+	}
+}
+
+// grokShouldFailover determines if a Grok upstream HTTP status code should trigger account failover.
+func grokShouldFailover(statusCode int) bool {
+	switch statusCode {
+	case 401, 403, 429, 529:
+		return true
+	default:
+		return statusCode >= 500
+	}
 }
 
 func buildOpenAIModelsURL(base string) string {

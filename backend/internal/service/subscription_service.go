@@ -223,6 +223,13 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
 		now := time.Now()
+		if input.StartsAt != nil || input.ExpiresAt != nil {
+			startsAt, expiresAt, err := resolveAssignTimeRange(input, now)
+			if err != nil {
+				return nil, false, err
+			}
+			return s.assignExistingSubscriptionTimeRange(ctx, input, existingSub, startsAt, expiresAt, now)
+		}
 		var newExpiresAt time.Time
 
 		if existingSub.ExpiresAt.After(now) {
@@ -377,6 +384,74 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 	}
 
 	return sub, false, nil // false 表示是新建
+}
+
+func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Context, input *AssignSubscriptionInput, existingSub *UserSubscription, startsAt, expiresAt, now time.Time) (*UserSubscription, bool, error) {
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, false, fmt.Errorf("begin transaction: %w", err)
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+
+	wasExpired := !existingSub.ExpiresAt.After(now)
+	wasQuotaExhausted := existingSub.Status == SubscriptionStatusQuotaExhausted
+	nextValidityUnit := resolveSubscriptionValidityUnit(input.ValidityUnit, existingSub.ValidityUnit)
+	if wasExpired || wasQuotaExhausted || input.RestartPeriod {
+		existingSub.StartsAt = startsAt
+		existingSub.ExpiresAt = expiresAt
+		existingSub.Status = SubscriptionStatusActive
+		existingSub.ValidityUnit = nextValidityUnit
+		existingSub.DailyWindowStart = nil
+		existingSub.WeeklyWindowStart = nil
+		existingSub.MonthlyWindowStart = nil
+		existingSub.DailyUsageUSD = 0
+		existingSub.WeeklyUsageUSD = 0
+		existingSub.MonthlyUsageUSD = 0
+	} else if expiresAt.After(existingSub.ExpiresAt) {
+		existingSub.ExpiresAt = expiresAt
+		existingSub.ValidityUnit = nextValidityUnit
+	}
+	existingSub.UpdatedAt = now
+	if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
+		_ = tx.Rollback()
+		return nil, false, fmt.Errorf("adjust subscription time range: %w", err)
+	}
+
+	if existingSub.ExpiresAt.After(now) && existingSub.Status != SubscriptionStatusActive {
+		if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
+			_ = tx.Rollback()
+			return nil, false, fmt.Errorf("update subscription status: %w", err)
+		}
+	}
+
+	if input.Notes != "" {
+		newNotes := existingSub.Notes
+		if newNotes != "" {
+			newNotes += "\n"
+		}
+		newNotes += input.Notes
+		if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
+			_ = tx.Rollback()
+			return nil, false, fmt.Errorf("update subscription notes: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, false, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	s.InvalidateSubCache(input.UserID, input.GroupID)
+	if s.billingCacheService != nil {
+		userID, groupID := input.UserID, input.GroupID
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+
+	sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
+	return sub, true, err
 }
 
 // createSubscription 创建新订阅（内部方法）

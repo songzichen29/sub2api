@@ -239,6 +239,20 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionValidityUnit(v *string) *Pa
 	return _c
 }
 
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (_c *PaymentOrderCreate) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderCreate {
+	_c.mutation.SetSubscriptionPlanExpiresAt(v)
+	return _c
+}
+
+// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetSubscriptionPlanExpiresAt(*v)
+	}
+	return _c
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_c *PaymentOrderCreate) SetProviderInstanceID(v string) *PaymentOrderCreate {
 	_c.mutation.SetProviderInstanceID(v)
@@ -810,6 +824,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
 		_node.SubscriptionValidityUnit = &value
 	}
+	if value, ok := _c.mutation.SubscriptionPlanExpiresAt(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
+		_node.SubscriptionPlanExpiresAt = &value
+	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
 		_node.ProviderInstanceID = &value
@@ -1296,6 +1314,24 @@ func (u *PaymentOrderUpsert) UpdateSubscriptionValidityUnit() *PaymentOrderUpser
 // ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionValidityUnit() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionValidityUnit)
+	return u
+}
+
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsert) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldSubscriptionPlanExpiresAt, v)
+	return u
+}
+
+// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldSubscriptionPlanExpiresAt)
+	return u
+}
+
+// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsert) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldSubscriptionPlanExpiresAt)
 	return u
 }
 
@@ -2057,6 +2093,27 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionValidityUnit() *PaymentOrderUp
 func (u *PaymentOrderUpsertOne) ClearSubscriptionValidityUnit() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionValidityUnit()
+	})
+}
+
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsertOne) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionPlanExpiresAt(v)
+	})
+}
+
+// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionPlanExpiresAt()
+	})
+}
+
+// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsertOne) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionPlanExpiresAt()
 	})
 }
 
@@ -3038,6 +3095,27 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionValidityUnit() *PaymentOrderU
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionValidityUnit() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionValidityUnit()
+	})
+}
+
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsertBulk) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionPlanExpiresAt(v)
+	})
+}
+
+// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionPlanExpiresAt()
+	})
+}
+
+// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
+func (u *PaymentOrderUpsertBulk) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionPlanExpiresAt()
 	})
 }
 

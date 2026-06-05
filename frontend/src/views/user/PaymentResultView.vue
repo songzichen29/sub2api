@@ -173,6 +173,9 @@ const orderContentLabel = computed(() => {
   if (!order.value) return ''
   if (order.value.order_type === 'subscription') {
     const name = order.value.product_name || order.value.group_name
+    const fixedExpiresAt = formatFixedSubscriptionExpiresAt(order.value.subscription_plan_expires_at)
+    if (name && fixedExpiresAt) return `${name} · ${t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })}`
+    if (fixedExpiresAt) return t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })
     if (name && order.value.subscription_days) return `${name} · ${order.value.subscription_days}${t('payment.admin.days')}`
     if (name) return name
     if (order.value.subscription_days) return `${order.value.subscription_days}${t('payment.admin.days')}`
@@ -183,6 +186,12 @@ const orderContentLabel = computed(() => {
   }
   return ''
 })
+
+function formatFixedSubscriptionExpiresAt(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+}
 
 const statusTitle = computed(() => {
   if (isSuccess.value) {

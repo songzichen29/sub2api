@@ -43,6 +43,11 @@
         <div><label class="input-label">{{ t('payment.admin.validityUnit') }} <span class="text-red-500">*</span></label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="input-label">{{ t('payment.admin.fixedExpiresAt') }}</label>
+          <input v-model="planForm.expires_at_local" type="datetime-local" class="input" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.fixedExpiresAtHint') }}</p>
+        </div>
         <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
       </div>
       <div>
@@ -105,7 +110,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', expires_at_local: '', sort_order: 0, for_sale: true })
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -129,14 +134,39 @@ const selectedGroupInfo = computed(() => {
   return props.groups.find(g => g.id === planForm.group_id) || null
 })
 
+function padDatePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function toDateTimeLocal(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return [
+    date.getFullYear(),
+    padDatePart(date.getMonth() + 1),
+    padDatePart(date.getDate()),
+  ].join('-') + `T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`
+}
+
+function parseLocalDateTime(value: string): Date | null {
+  if (!value.trim()) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function localDateTimeToRFC3339(value: string): string | null {
+  return parseLocalDateTime(value)?.toISOString() ?? null
+}
+
 // Reset form when dialog opens
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', expires_at_local: toDateTimeLocal(props.plan.expires_at), sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', expires_at_local: '', sort_order: 0, for_sale: true })
     planFeaturesText.value = ''
   }
 })
@@ -144,6 +174,7 @@ watch(() => props.show, (visible) => {
 /** Build request payload with snake_case keys matching backend JSON tags */
 function buildPlanPayload() {
   const features = planFeaturesText.value.split('\n').map(f => f.trim()).filter(Boolean).join('\n')
+  const expiresAt = localDateTimeToRFC3339(planForm.expires_at_local)
   return {
     name: planForm.name,
     group_id: planForm.group_id,
@@ -152,6 +183,7 @@ function buildPlanPayload() {
     original_price: planForm.original_price || 0,
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
+    expires_at: expiresAt,
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,
@@ -170,6 +202,13 @@ async function handleSavePlan() {
   if (!planForm.validity_days || planForm.validity_days < 1) {
     appStore.showError(t('payment.admin.validityDaysRequired'))
     return
+  }
+  if (planForm.expires_at_local) {
+    const expiresAt = parseLocalDateTime(planForm.expires_at_local)
+    if (!expiresAt || expiresAt.getTime() <= Date.now()) {
+      appStore.showError(t('payment.admin.fixedExpiresAtInvalid'))
+      return
+    }
   }
   saving.value = true
   try {

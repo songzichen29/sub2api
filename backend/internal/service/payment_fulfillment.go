@@ -406,11 +406,19 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 	}
 	orderNote := fmt.Sprintf("payment order %d", o.ID)
+	var startsAt, expiresAt *time.Time
+	if o.SubscriptionPlanExpiresAt != nil {
+		now := time.Now()
+		startsAt = &now
+		expiresAt = o.SubscriptionPlanExpiresAt
+	}
 	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
 		UserID:        o.UserID,
 		GroupID:       gid,
 		ValidityDays:  days,
 		ValidityUnit:  validityUnit,
+		StartsAt:      startsAt,
+		ExpiresAt:     expiresAt,
 		AssignedBy:    0,
 		Notes:         orderNote,
 		RestartPeriod: days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,

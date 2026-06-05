@@ -820,6 +820,12 @@ function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
 
 function computePlanValidityDays(plan: SubscriptionPlan | null | undefined): number | null {
   if (!plan) return null
+  if (plan.expires_at) {
+    const expiresAt = new Date(plan.expires_at)
+    const diffMs = expiresAt.getTime() - Date.now()
+    if (Number.isNaN(diffMs) || diffMs <= 0) return 0
+    return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
+  }
   const days = plan.validity_days || 0
   switch (plan.validity_unit) {
     case 'week':
@@ -892,6 +898,12 @@ const renewalPlans = computed(() => {
 
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
+  if (selectedPlan.value.expires_at) {
+    const expiresAt = new Date(selectedPlan.value.expires_at)
+    if (!Number.isNaN(expiresAt.getTime())) {
+      return t('payment.planCard.untilDate', { date: expiresAt.toLocaleString() })
+    }
+  }
   const u = selectedPlan.value.validity_unit || 'day'
   if (u === 'month') return t('payment.perMonth')
   if (u === 'year') return t('payment.perYear')

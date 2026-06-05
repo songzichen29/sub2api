@@ -151,10 +151,7 @@ const overdraftPoolLimit = computed(() => {
   if (!props.plan.allow_daily_overdraft || props.plan.daily_limit_usd == null || props.plan.daily_limit_usd <= 0) {
     return null
   }
-  const unit = (props.plan.validity_unit || 'day').trim().toLowerCase()
-  let days = props.plan.validity_days || 0
-  if (unit === 'week' || unit === 'weeks') days *= 7
-  if (unit === 'month' || unit === 'months') days *= 30
+  const days = planValidityDays.value
   if (days <= 0) return null
   return props.plan.daily_limit_usd * days
 })
@@ -172,7 +169,33 @@ const modelScopeLabels = computed(() => {
   return scopes.map(s => MODEL_SCOPE_LABELS[s] || s)
 })
 
+const fixedExpiresAtText = computed(() => {
+  if (!props.plan.expires_at) return ''
+  const date = new Date(props.plan.expires_at)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString()
+})
+
+const planValidityDays = computed(() => {
+  if (props.plan.expires_at) {
+    const expiresAt = new Date(props.plan.expires_at)
+    const diffMs = expiresAt.getTime() - Date.now()
+    if (!Number.isNaN(diffMs) && diffMs > 0) {
+      return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
+    }
+    return 0
+  }
+  const unit = (props.plan.validity_unit || 'day').trim().toLowerCase()
+  let days = props.plan.validity_days || 0
+  if (unit === 'week' || unit === 'weeks') days *= 7
+  if (unit === 'month' || unit === 'months') days *= 30
+  return days
+})
+
 const validitySuffix = computed(() => {
+  if (fixedExpiresAtText.value) {
+    return t('payment.planCard.untilDate', { date: fixedExpiresAtText.value })
+  }
   const u = props.plan.validity_unit || 'day'
   if (u === 'month') return t('payment.perMonth')
   if (u === 'year') return t('payment.perYear')

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -11,6 +13,37 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// OptionalPlanExpiresAt preserves patch semantics for subscription plan expiry:
+// omitted means "do not change"; null or empty string means "clear".
+type OptionalPlanExpiresAt struct {
+	Set   bool
+	Value *time.Time
+}
+
+func (f *OptionalPlanExpiresAt) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		f.Value = nil
+		return nil
+	}
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		f.Value = nil
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return fmt.Errorf("invalid expires_at: %w", err)
+	}
+	f.Value = &t
+	return nil
+}
 
 // validatePlanRequired checks that all required fields for a plan are provided.
 func validatePlanRequired(name string, groupID int64, price float64, validityDays int, validityUnit string, originalPrice *float64) error {
@@ -35,6 +68,19 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	return nil
 }
 
+func validatePlanExpiresAt(expiresAt *time.Time, now time.Time) error {
+	if expiresAt == nil {
+		return nil
+	}
+	if !expiresAt.After(now) {
+		return infraerrors.BadRequest("PLAN_EXPIRES_AT_INVALID", "plan expires_at must be later than now")
+	}
+	if expiresAt.After(MaxExpiresAt) {
+		return infraerrors.BadRequest("PLAN_EXPIRES_AT_INVALID", "plan expires_at exceeds supported maximum (2099-12-31T23:59:59Z)")
+	}
+	return nil
+}
+
 // validatePlanPatch validates only the non-nil fields in a patch update.
 func validatePlanPatch(req UpdatePlanRequest) error {
 	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
@@ -54,6 +100,11 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	}
 	if req.OriginalPrice != nil && *req.OriginalPrice < 0 {
 		return infraerrors.BadRequest("PLAN_ORIGINAL_PRICE_INVALID", "original price must be >= 0")
+	}
+	if req.ExpiresAt.Set {
+		if err := validatePlanExpiresAt(req.ExpiresAt.Value, time.Now()); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -118,7 +169,17 @@ func (s *PaymentConfigService) ListPlans(ctx context.Context) ([]*dbent.Subscrip
 }
 
 func (s *PaymentConfigService) ListPlansForSale(ctx context.Context) ([]*dbent.SubscriptionPlan, error) {
-	return s.entClient.SubscriptionPlan.Query().Where(subscriptionplan.ForSaleEQ(true)).Order(subscriptionplan.BySortOrder()).All(ctx)
+	now := time.Now()
+	return s.entClient.SubscriptionPlan.Query().
+		Where(
+			subscriptionplan.ForSaleEQ(true),
+			subscriptionplan.Or(
+				subscriptionplan.ExpiresAtIsNil(),
+				subscriptionplan.ExpiresAtGT(now),
+			),
+		).
+		Order(subscriptionplan.BySortOrder()).
+		All(ctx)
 }
 
 func (s *PaymentConfigService) GetPlanSalesCountMap(ctx context.Context, planIDs []int64) (map[int64]int, error) {
@@ -156,6 +217,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
 	}
+	if err := validatePlanExpiresAt(req.ExpiresAt, time.Now()); err != nil {
+		return nil, err
+	}
 	b := s.entClient.SubscriptionPlan.Create().
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).
@@ -163,6 +227,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		SetForSale(req.ForSale).SetSortOrder(req.SortOrder)
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
+	}
+	if req.ExpiresAt != nil {
+		b.SetExpiresAt(*req.ExpiresAt)
 	}
 	return b.Save(ctx)
 }
@@ -195,6 +262,13 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	}
 	if req.ValidityUnit != nil {
 		u.SetValidityUnit(*req.ValidityUnit)
+	}
+	if req.ExpiresAt.Set {
+		if req.ExpiresAt.Value == nil {
+			u.ClearExpiresAt()
+		} else {
+			u.SetExpiresAt(*req.ExpiresAt.Value)
+		}
 	}
 	if req.Features != nil {
 		u.SetFeatures(*req.Features)

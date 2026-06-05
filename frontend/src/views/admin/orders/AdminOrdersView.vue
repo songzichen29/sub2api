@@ -271,6 +271,9 @@ function orderTypeLabel(order: PaymentOrder): string {
 function orderContentLabel(order: PaymentOrder): string {
   if (order.order_type === 'subscription') {
     const name = order.product_name || order.group_name
+    const fixedExpiresAt = formatFixedSubscriptionExpiresAt(order.subscription_plan_expires_at)
+    if (name && fixedExpiresAt) return `${name} · ${t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })}`
+    if (fixedExpiresAt) return t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })
     if (name && order.subscription_days) return `${name} · ${order.subscription_days}${t('payment.admin.days')}`
     if (name) return name
     if (order.subscription_days) return `${order.subscription_days}${t('payment.admin.days')}`
@@ -280,6 +283,12 @@ function orderContentLabel(order: PaymentOrder): string {
     return order.group_name || t('payment.admin.dailyLimitResetOrder')
   }
   return ''
+}
+
+function formatFixedSubscriptionExpiresAt(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
 }
 
 onMounted(() => loadOrders())

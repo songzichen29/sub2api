@@ -3,8 +3,11 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/stretchr/testify/require"
 )
 
@@ -190,4 +193,65 @@ func TestValidatePlanPatch_ValidValidityUnit(t *testing.T) {
 func TestValidatePlanPatch_AllNil(t *testing.T) {
 	err := validatePlanPatch(UpdatePlanRequest{})
 	require.NoError(t, err)
+}
+
+func TestOptionalPlanExpiresAt_UnmarshalPatchSemantics(t *testing.T) {
+	var omitted UpdatePlanRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"name":"Pro"}`), &omitted))
+	require.False(t, omitted.ExpiresAt.Set)
+	require.Nil(t, omitted.ExpiresAt.Value)
+
+	var clearedByNull UpdatePlanRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"expires_at":null}`), &clearedByNull))
+	require.True(t, clearedByNull.ExpiresAt.Set)
+	require.Nil(t, clearedByNull.ExpiresAt.Value)
+
+	var clearedByEmpty UpdatePlanRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"expires_at":""}`), &clearedByEmpty))
+	require.True(t, clearedByEmpty.ExpiresAt.Set)
+	require.Nil(t, clearedByEmpty.ExpiresAt.Value)
+
+	var set UpdatePlanRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"expires_at":"2030-01-02T03:04:05Z"}`), &set))
+	require.True(t, set.ExpiresAt.Set)
+	require.NotNil(t, set.ExpiresAt.Value)
+	require.Equal(t, "2030-01-02T03:04:05Z", set.ExpiresAt.Value.UTC().Format(time.RFC3339))
+}
+
+func TestValidatePlanExpiresAt(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, validatePlanExpiresAt(nil, now))
+
+	future := now.Add(time.Hour)
+	require.NoError(t, validatePlanExpiresAt(&future, now))
+
+	past := now.Add(-time.Second)
+	require.Error(t, validatePlanExpiresAt(&past, now))
+
+	tooFar := MaxExpiresAt.Add(time.Second)
+	require.Error(t, validatePlanExpiresAt(&tooFar, now))
+}
+
+func TestPsPlanSubscriptionDaysUsesFixedExpiry(t *testing.T) {
+	now := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
+	expiresAt := now.Add(25 * time.Hour)
+	require.Equal(t, 2, psPlanSubscriptionDays(&dbent.SubscriptionPlan{
+		ValidityDays: 30,
+		ValidityUnit: "days",
+		ExpiresAt:    &expiresAt,
+	}, now))
+
+	expiresAt = now.Add(30 * time.Minute)
+	require.Equal(t, 1, psPlanSubscriptionDays(&dbent.SubscriptionPlan{
+		ValidityDays: 30,
+		ValidityUnit: "days",
+		ExpiresAt:    &expiresAt,
+	}, now))
+
+	expiresAt = now.Add(-time.Second)
+	require.Equal(t, 0, psPlanSubscriptionDays(&dbent.SubscriptionPlan{
+		ValidityDays: 30,
+		ValidityUnit: "days",
+		ExpiresAt:    &expiresAt,
+	}, now))
 }

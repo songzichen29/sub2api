@@ -445,6 +445,76 @@ func TestDoSubPersistsSubscriptionIDToOrder(t *testing.T) {
 	}
 }
 
+func TestDoSubUsesFrozenPlanExpiry(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("fulfill-fixed-expiry@example.com").
+		SetPasswordHash("hash").
+		SetUsername("fulfill-fixed-expiry-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupEntity, err := client.Group.Create().
+		SetName("fulfill-fixed-expiry-group").
+		SetPlatform(PlatformAnthropic).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		Save(ctx)
+	require.NoError(t, err)
+
+	fixedExpiresAt := time.Now().Add(36 * time.Hour).UTC()
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(99).
+		SetPayAmount(99).
+		SetFeeRate(0).
+		SetRechargeCode("FULFILL-FIXED-EXPIRY").
+		SetOutTradeNo("sub2_fulfill_fixed_expiry").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-fulfill-fixed-expiry").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetSubscriptionGroupID(groupEntity.ID).
+		SetSubscriptionDays(2).
+		SetSubscriptionPlanExpiresAt(fixedExpiresAt).
+		SetStatus(OrderStatusPaid).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	groupRepo := &groupRepoStubForDoSub{
+		group: &Group{
+			ID:               groupEntity.ID,
+			Status:           StatusActive,
+			SubscriptionType: SubscriptionTypeSubscription,
+		},
+	}
+	subRepo := newUserSubRepoForDoSub(client)
+	subSvc := NewSubscriptionService(groupRepo, subRepo, nil, client, nil)
+	svc := &PaymentService{
+		entClient:       client,
+		groupRepo:       groupRepo,
+		subscriptionSvc: subSvc,
+	}
+
+	err = svc.ExecuteSubscriptionFulfillment(ctx, order.ID)
+	require.NoError(t, err)
+
+	updatedOrder, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.NotNil(t, updatedOrder.SubscriptionID)
+
+	sub, err := client.UserSubscription.Get(ctx, *updatedOrder.SubscriptionID)
+	require.NoError(t, err)
+	require.WithinDuration(t, fixedExpiresAt, sub.ExpiresAt, time.Second)
+	require.WithinDuration(t, time.Now(), sub.StartsAt, 5*time.Second)
+}
+
 type groupRepoStubForDoSub struct {
 	group *Group
 }

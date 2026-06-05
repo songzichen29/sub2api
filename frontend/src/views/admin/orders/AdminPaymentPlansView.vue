@@ -34,7 +34,12 @@
           </div>
         </template>
         <template #cell-validity_days="{ value, row }">
-          <span class="text-sm">{{ value }} {{ t('payment.admin.' + (row.validity_unit || 'days')) }}</span>
+          <div class="text-sm">
+            <div>{{ value }} {{ t('payment.admin.' + (row.validity_unit || 'days')) }}</div>
+            <div v-if="row.expires_at" class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('payment.admin.fixedExpiresAtShort', { time: formatPlanExpiresAt(row.expires_at) }) }}
+            </div>
+          </div>
         </template>
         <template #cell-for_sale="{ value, row }">
           <button
@@ -115,6 +120,11 @@ function isGroupMissing(id: number): boolean {
 function getPlanNameClass(groupId: number): string {
   const group = getGroup(groupId)
   return group ? platformTextClass(group.platform) : 'text-gray-900 dark:text-white'
+}
+
+function formatPlanExpiresAt(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 
 

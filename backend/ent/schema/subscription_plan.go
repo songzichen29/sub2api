@@ -48,6 +48,11 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("validity_unit").
 			MaxLen(10).
 			Default("day"),
+		field.Time("expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("Fixed subscription end time; when set, purchases expire at this timestamp instead of now + validity_days"),
 		field.String("features").
 			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Default(""),

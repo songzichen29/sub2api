@@ -412,6 +412,26 @@ func (_u *PaymentOrderUpdate) ClearSubscriptionValidityUnit() *PaymentOrderUpdat
 	return _u
 }
 
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (_u *PaymentOrderUpdate) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpdate {
+	_u.mutation.SetSubscriptionPlanExpiresAt(v)
+	return _u
+}
+
+// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetSubscriptionPlanExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
+func (_u *PaymentOrderUpdate) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpdate {
+	_u.mutation.ClearSubscriptionPlanExpiresAt()
+	return _u
+}
+
 // SetProviderInstanceID sets the "provider_instance_id" field.
 func (_u *PaymentOrderUpdate) SetProviderInstanceID(v string) *PaymentOrderUpdate {
 	_u.mutation.SetProviderInstanceID(v)
@@ -1008,6 +1028,12 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.SubscriptionValidityUnitCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
 	}
+	if value, ok := _u.mutation.SubscriptionPlanExpiresAt(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.SubscriptionPlanExpiresAtCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
 	}
@@ -1539,6 +1565,26 @@ func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionValidityUnit(v *string) 
 // ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
 func (_u *PaymentOrderUpdateOne) ClearSubscriptionValidityUnit() *PaymentOrderUpdateOne {
 	_u.mutation.ClearSubscriptionValidityUnit()
+	return _u
+}
+
+// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
+func (_u *PaymentOrderUpdateOne) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpdateOne {
+	_u.mutation.SetSubscriptionPlanExpiresAt(v)
+	return _u
+}
+
+// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionPlanExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
+func (_u *PaymentOrderUpdateOne) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpdateOne {
+	_u.mutation.ClearSubscriptionPlanExpiresAt()
 	return _u
 }
 
@@ -2167,6 +2213,12 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.SubscriptionValidityUnitCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
+	}
+	if value, ok := _u.mutation.SubscriptionPlanExpiresAt(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.SubscriptionPlanExpiresAtCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
