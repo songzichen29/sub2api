@@ -83,7 +83,7 @@ func (s *GrokGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context
 	}
 	originalModel := claudeReq.Model
 
-	upstreamURL := baseURL + "/v1/messages"
+	upstreamURL := buildOpenAIEndpointURL(baseURL, "/v1/messages")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
@@ -243,7 +243,7 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 	)
 
 	// 4. Send to /v1/chat/completions.
-	upstreamURL := baseURL + "/v1/chat/completions"
+	upstreamURL := buildOpenAIChatCompletionsURL(baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(ccBody))
 	if err != nil {
 		return nil, fmt.Errorf("create upstream request: %w", err)
@@ -653,7 +653,7 @@ func (s *GrokGatewayService) TestConnection(ctx context.Context, account *Accoun
 	}
 	body, _ := json.Marshal(payload)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, buildOpenAIChatCompletionsURL(baseURL), bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create test request: %w", err)
 	}
@@ -766,7 +766,7 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 	)
 
 	// 3. Build upstream request -> /v1/chat/completions
-	upstreamURL := baseURL + "/v1/chat/completions"
+	upstreamURL := buildOpenAIChatCompletionsURL(baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create upstream request: %w", err)
@@ -953,7 +953,7 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	)
 
 	// 5. Build upstream request -> /v1/chat/completions
-	upstreamURL := baseURL + "/v1/chat/completions"
+	upstreamURL := buildOpenAIChatCompletionsURL(baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(chatBody))
 	if err != nil {
 		return nil, fmt.Errorf("create upstream request: %w", err)
@@ -1013,6 +1013,19 @@ func (s *GrokGatewayService) ForwardAsResponses(
 		state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
 		firstChunk := true
 		sawDone := false
+		writeResponsesEvents := func(events []apicompat.ResponsesStreamEvent) {
+			for _, evt := range events {
+				sse, err := apicompat.ResponsesEventToSSE(evt)
+				if err != nil {
+					logger.L().Warn("grok forward_as_responses: failed to marshal stream event",
+						zap.Error(err),
+						zap.String("event_type", evt.Type),
+					)
+					continue
+				}
+				_, _ = fmt.Fprint(c.Writer, sse)
+			}
+		}
 
 		for scanner.Scan() {
 			payload, ok := extractOpenAISSEDataLine(scanner.Text())
@@ -1032,33 +1045,22 @@ func (s *GrokGatewayService) ForwardAsResponses(
 			if strings.Contains(payload, "\"usage\"") {
 				s.extractCCUsage([]byte(payload), &usage)
 			}
-			if isOpenAIChatUsageOnlyStreamChunk(payload) {
-				continue
-			}
 
 			var ccChunk apicompat.ChatCompletionsChunk
 			if json.Unmarshal([]byte(payload), &ccChunk) == nil {
-				if firstChunk {
+				if firstChunk && chatChunkStartsResponsesOutput(&ccChunk) {
 					firstChunk = false
 					ms := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &ms
 				}
-				events := apicompat.ChatCompletionsChunkToResponsesEvents(&ccChunk, state)
-				for _, evt := range events {
-					evtBytes, _ := json.Marshal(evt)
-					fmt.Fprintf(c.Writer, "data: %s\n\n", string(evtBytes))
-				}
+				writeResponsesEvents(apicompat.ChatCompletionsChunkToResponsesEvents(&ccChunk, state))
 			}
 			c.Writer.Flush()
 		}
 		if err := scanner.Err(); err != nil {
 			logger.L().Warn("grok forward_as_responses: stream read error", zap.Error(err))
 		}
-		finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
-		for _, evt := range finalEvents {
-			evtBytes, _ := json.Marshal(evt)
-			fmt.Fprintf(c.Writer, "data: %s\n\n", string(evtBytes))
-		}
+		writeResponsesEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
 		fmt.Fprint(c.Writer, "data: [DONE]\n\n")
 		c.Writer.Flush()
 		if !sawDone {

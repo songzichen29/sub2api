@@ -328,3 +328,77 @@ func TestGrokGatewayService_ForwardAsResponses_ConvertsRequestToChatCompletions(
 	require.Contains(t, recorder.Body.String(), `"model":"grok-client"`)
 	require.Contains(t, recorder.Body.String(), `"output_text"`)
 }
+
+func TestGrokGatewayService_ForwardAsResponses_VersionedBaseURL(t *testing.T) {
+	upstream := &grokOKUpstream{}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, _ := makeTestGinContext()
+	account := &Account{
+		ID:       9,
+		Name:     "responses-versioned-base-url-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "https://api.dwai.cloud/v1",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","input":"hello","stream":false}`)
+
+	_, err := s.ForwardAsResponses(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.dwai.cloud/v1/chat/completions", upstream.capturedURL)
+}
+
+func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *testing.T) {
+	upstream := &grokOKUpstream{
+		response: strings.Join([]string{
+			`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+			"",
+			`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}`,
+			"",
+			`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+			"",
+			`data: {"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}`,
+			"",
+			`data: [DONE]`,
+			"",
+		}, "\n"),
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       8,
+		Name:     "responses-stream-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","input":"hello","stream":true}`)
+
+	result, err := s.ForwardAsResponses(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+
+	require.Equal(t, "http://grok2api.local:8000/v1/chat/completions", upstream.capturedURL)
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	require.Equal(t, true, sent["stream"])
+	require.Contains(t, sent, "stream_options")
+
+	out := recorder.Body.String()
+	require.Contains(t, out, "event: response.created\n")
+	require.Contains(t, out, "event: response.output_text.delta\n")
+	require.Contains(t, out, `"delta":"hello"`)
+	require.Contains(t, out, "event: response.completed\n")
+	require.Contains(t, out, `"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}`)
+	require.Contains(t, out, "data: [DONE]\n\n")
+}
