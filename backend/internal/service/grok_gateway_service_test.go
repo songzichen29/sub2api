@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+const grokChatCompletionResponse = `{"id":"chatcmpl_test","object":"chat.completion","model":"grok-3","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`
 
 // grokOKUpstream 是 grok 测试专用的 HTTPUpstream stub，记录请求并返回固定 200 响应。
 type grokOKUpstream struct {
@@ -42,7 +45,7 @@ func (s *grokOKUpstream) Do(req *http.Request, proxyURL string, accountID int64,
 	}
 	body := s.response
 	if body == "" {
-		body = `{"id":"msg_test","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":5,"output_tokens":3}}`
+		body = grokChatCompletionResponse
 	}
 	header := http.Header{"Content-Type": []string{"application/json"}}
 	return &http.Response{
@@ -204,11 +207,17 @@ func TestGrokGatewayService_ForwardUpstream_HappyPath(t *testing.T) {
 	require.Equal(t, "grok-3", result.Model)
 	require.False(t, result.Stream)
 
-	// 验证发往 upstream 的请求构造正确
-	require.Equal(t, "http://grok2api.local:8000/v1/messages", upstream.capturedURL)
+	// 验证发往 upstream 的请求构造正确：Anthropic 请求会转换成 Chat Completions
+	require.Equal(t, "http://grok2api.local:8000/v1/chat/completions", upstream.capturedURL)
 	require.Equal(t, "Bearer sk-grok-test", upstream.capturedAuth)
-	require.Equal(t, "sk-grok-test", upstream.capturedAPIKey)
-	require.Equal(t, "2023-06-01", upstream.capturedAnthropicVersion)
+	require.Empty(t, upstream.capturedAPIKey)
+	require.Empty(t, upstream.capturedAnthropicVersion)
+
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	require.Equal(t, "grok-3", sent["model"])
+	require.NotContains(t, sent, "stream")
+	require.Contains(t, upstream.capturedBody, `"messages"`)
 
 	// 验证 usage 正确解析
 	require.Equal(t, 5, result.Usage.InputTokens)
@@ -216,7 +225,8 @@ func TestGrokGatewayService_ForwardUpstream_HappyPath(t *testing.T) {
 
 	// 验证响应已透传到 client
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "msg_test")
+	require.Contains(t, recorder.Body.String(), `"type":"message"`)
+	require.Contains(t, recorder.Body.String(), `"text":"hi"`)
 }
 
 func TestGrokGatewayService_ForwardUpstream_TrimsTrailingSlash(t *testing.T) {
@@ -237,10 +247,10 @@ func TestGrokGatewayService_ForwardUpstream_TrimsTrailingSlash(t *testing.T) {
 	body := []byte(`{"model":"grok-3","messages":[]}`)
 	_, err := s.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
-	require.Equal(t, "http://localhost:8000/v1/messages", upstream.capturedURL)
+	require.Equal(t, "http://localhost:8000/v1/chat/completions", upstream.capturedURL)
 }
 
-func TestGrokGatewayService_ForwardUpstream_TransparentlyForwardsErrorStatus(t *testing.T) {
+func TestGrokGatewayService_ForwardAsCC_FailoverOnUnauthorized(t *testing.T) {
 	upstream := &grokOKUpstream{
 		statusCode: http.StatusUnauthorized,
 		response:   `{"error":{"type":"authentication_error","message":"bad api key"}}`,
@@ -261,11 +271,60 @@ func TestGrokGatewayService_ForwardUpstream_TransparentlyForwardsErrorStatus(t *
 	body := []byte(`{"model":"grok-3","messages":[]}`)
 
 	result, err := s.Forward(context.Background(), c, account, body)
-	require.NoError(t, err) // 上游错误透传不算 forward 失败
-	require.NotNil(t, result)
-	require.Equal(t, "grok-3", result.Model)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusUnauthorized, failoverErr.StatusCode)
 
-	// 客户端应该看到上游的 401 状态和原始 body
-	require.Equal(t, http.StatusUnauthorized, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "bad api key")
+	// failover 错误不在 service 层提前写响应，交给 handler 切账号或兜底输出。
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestGrokGatewayService_ForwardAsResponses_ConvertsRequestToChatCompletions(t *testing.T) {
+	upstream := &grokOKUpstream{}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       7,
+		Name:     "responses-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+			"model_mapping": map[string]any{
+				"grok-client": "grok-upstream",
+			},
+		},
+	}
+	body := []byte(`{"model":"grok-client","input":"hello","max_output_tokens":50,"stream":false,"reasoning":{"effort":"high"}}`)
+
+	result, err := s.ForwardAsResponses(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "grok-client", result.Model)
+	require.Equal(t, "grok-upstream", result.UpstreamModel)
+	require.NotNil(t, result.ReasoningEffort)
+	require.Equal(t, "high", *result.ReasoningEffort)
+	require.Equal(t, 5, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.OutputTokens)
+
+	require.Equal(t, "http://grok2api.local:8000/v1/chat/completions", upstream.capturedURL)
+	require.Equal(t, "Bearer sk-grok-test", upstream.capturedAuth)
+
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	require.Equal(t, "grok-upstream", sent["model"])
+	require.Contains(t, sent, "messages")
+	require.NotContains(t, sent, "input")
+	require.NotContains(t, sent, "stream")
+	require.Equal(t, "high", sent["reasoning_effort"])
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"object":"response"`)
+	require.Contains(t, recorder.Body.String(), `"model":"grok-client"`)
+	require.Contains(t, recorder.Body.String(), `"output_text"`)
 }

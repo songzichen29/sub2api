@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -49,11 +50,13 @@ func NewGrokGatewayService(
 
 // Forward 是 grok 平台请求的统一入口。
 // 仅支持 type=upstream 账号(透传到 grok2api 网关),其他类型直接拒绝。
+// grok2api 的 /v1/messages（Anthropic 协议）对部分新模型返回 "Invalid request"，
+// 所以统一走 /v1/chat/completions 协议转换路径，确保所有模型兼容。
 func (s *GrokGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	if account.Type != AccountTypeUpstream {
 		return nil, fmt.Errorf("grok platform only supports type=upstream account, got type=%s", account.Type)
 	}
-	return s.ForwardUpstream(ctx, c, account, body)
+	return s.ForwardAsCC(ctx, c, account, body)
 }
 
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 鉴权透传上游 Claude 请求。
@@ -169,6 +172,224 @@ func (s *GrokGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context
 			CacheReadInputTokens:     usage.CacheReadInputTokens,
 			CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		},
+	}, nil
+}
+
+// ForwardAsCC is a compatibility path that converts Anthropic Messages format
+// to Chat Completions format, sends to grok2api /v1/chat/completions, and
+// converts the CC response back to Anthropic format. This is needed because
+// grok2api's /v1/messages (Anthropic protocol) endpoint does not support some
+// newer models (returns "Invalid request").
+func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	startTime := time.Now()
+	sessionID := getSessionID(c)
+	prefix := logPrefix(sessionID, account.Name)
+
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 1. Parse Anthropic request.
+	var anthropicReq apicompat.AnthropicRequest
+	if err := json.Unmarshal(body, &anthropicReq); err != nil {
+		return nil, fmt.Errorf("parse claude request: %w", err)
+	}
+	originalModel := strings.TrimSpace(anthropicReq.Model)
+	if originalModel == "" {
+		return nil, fmt.Errorf("missing model")
+	}
+	clientStream := anthropicReq.Stream
+
+	// 2. Apply model mapping.
+	mappedModel := originalModel
+	if resolved, matched := account.ResolveMappedModel(originalModel); matched {
+		mappedModel = resolved
+	}
+
+	// 3. Convert Anthropic -> Responses -> Chat Completions.
+	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
+	if err != nil {
+		return nil, fmt.Errorf("convert anthropic to responses: %w", err)
+	}
+	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(responsesReq)
+	if err != nil {
+		return nil, fmt.Errorf("convert responses to chat completions: %w", err)
+	}
+	chatReq.Model = mappedModel
+	chatReq.Stream = clientStream
+	if chatReq.MaxTokens == nil && chatReq.MaxCompletionTokens != nil {
+		chatReq.MaxTokens = chatReq.MaxCompletionTokens
+	}
+	if anthropicReq.OutputConfig == nil || strings.TrimSpace(anthropicReq.OutputConfig.Effort) == "" {
+		chatReq.ReasoningEffort = ""
+	}
+	if clientStream {
+		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
+	}
+
+	ccBody, err := json.Marshal(chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+
+	logger.L().Debug("grok forward_as_cc: anthropic->chat_completions conversion",
+		zap.Int64("account_id", account.ID),
+		zap.String("original_model", originalModel),
+		zap.String("mapped_model", mappedModel),
+		zap.Bool("client_stream", clientStream),
+	)
+
+	// 4. Send to /v1/chat/completions.
+	upstreamURL := baseURL + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(ccBody))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if clientStream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		logger.LegacyPrintf("service.grok_gateway", "%s forward_as_cc upstream failed: %v", prefix, err)
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 5. Handle error response.
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if resp.StatusCode == http.StatusTooManyRequests {
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
+		}
+		if grokShouldFailover(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{
+				StatusCode:   resp.StatusCode,
+				ResponseBody: respBody,
+			}
+		}
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Status(resp.StatusCode)
+		_, _ = c.Writer.Write(respBody)
+		return &ForwardResult{Model: originalModel, UpstreamModel: mappedModel}, nil
+	}
+
+	// 6. Handle success response.
+	var usage ClaudeUsage
+	var firstTokenMs *int
+
+	if clientStream {
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		responsesState := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
+		anthropicState := apicompat.NewResponsesEventToAnthropicState()
+		anthropicState.Model = originalModel
+
+		writeAnthropicEvents := func(events []apicompat.AnthropicStreamEvent) {
+			for _, evt := range events {
+				sse, err := apicompat.ResponsesAnthropicEventToSSE(evt)
+				if err != nil {
+					logger.L().Warn("grok forward_as_cc: marshal anthropic stream event failed", zap.Error(err))
+					continue
+				}
+				fmt.Fprint(c.Writer, sse)
+			}
+		}
+		writeResponsesEvents := func(events []apicompat.ResponsesStreamEvent) {
+			for i := range events {
+				writeAnthropicEvents(apicompat.ResponsesEventToAnthropicEvents(&events[i], anthropicState))
+			}
+		}
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+		for scanner.Scan() {
+			payload, ok := extractOpenAISSEDataLine(scanner.Text())
+			if !ok {
+				continue
+			}
+			payload = strings.TrimSpace(payload)
+			if payload == "" {
+				continue
+			}
+			if payload == "[DONE]" {
+				break
+			}
+
+			if strings.Contains(payload, "\"usage\"") {
+				s.extractCCUsage([]byte(payload), &usage)
+			}
+			if isOpenAIChatUsageOnlyStreamChunk(payload) {
+				continue
+			}
+
+			var chunk apicompat.ChatCompletionsChunk
+			if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+				logger.L().Warn("grok forward_as_cc: parse chat completions stream chunk failed", zap.Error(err))
+				continue
+			}
+			if firstTokenMs == nil && !isOpenAIChatUsageOnlyStreamChunk(payload) && chatChunkStartsResponsesOutput(&chunk) {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			writeResponsesEvents(apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, responsesState))
+			c.Writer.Flush()
+		}
+		if err := scanner.Err(); err != nil {
+			logger.L().Warn("grok forward_as_cc: stream read error", zap.Error(err))
+		}
+
+		writeResponsesEvents(apicompat.FinalizeChatCompletionsResponsesStream(responsesState))
+		writeAnthropicEvents(apicompat.FinalizeResponsesAnthropicStream(anthropicState))
+		c.Writer.Flush()
+	} else {
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+		}
+		s.extractCCUsage(respBody, &usage)
+
+		var ccResp apicompat.ChatCompletionsResponse
+		if err := json.Unmarshal(respBody, &ccResp); err != nil {
+			return nil, fmt.Errorf("parse upstream CC response: %w", err)
+		}
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+		anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
+		anthropicBytes, err := json.Marshal(anthropicResp)
+		if err != nil {
+			return nil, fmt.Errorf("marshal anthropic response: %w", err)
+		}
+		c.Header("Content-Type", "application/json")
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.Write(anthropicBytes)
+	}
+
+	duration := time.Since(startTime)
+	logger.LegacyPrintf("service.grok_gateway", "%s forward_as_cc status=success model=%s duration_ms=%d", prefix, originalModel, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:            originalModel,
+		UpstreamModel:    mappedModel,
+		Stream:           clientStream,
+		Duration:         duration,
+		FirstTokenMs:     firstTokenMs,
+		Usage:            usage,
+		ClientDisconnect: false,
 	}, nil
 }
 
@@ -668,6 +889,218 @@ func (s *GrokGatewayService) extractCCUsage(data []byte, usage *ClaudeUsage) {
 		usage.InputTokens = wrapper.Usage.PromptTokens
 		usage.OutputTokens = wrapper.Usage.CompletionTokens
 	}
+}
+
+// ForwardAsResponses accepts an OpenAI Responses API request body, converts it
+// to Chat Completions format, sends it to grok2api /v1/chat/completions, and
+// converts the Chat Completions response back to Responses format.
+// grok2api's native /v1/responses endpoint does not support some newer models,
+// so we use /v1/chat/completions with bidirectional protocol conversion.
+func (s *GrokGatewayService) ForwardAsResponses(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) (*ForwardResult, error) {
+	startTime := time.Now()
+
+	// 1. Get upstream credentials
+	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("upstream account missing base_url or api_key")
+	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
+
+	// 2. Parse Responses request
+	var responsesReq apicompat.ResponsesRequest
+	if err := json.Unmarshal(body, &responsesReq); err != nil {
+		return nil, fmt.Errorf("parse responses request: %w", err)
+	}
+	originalModel := responsesReq.Model
+	clientStream := responsesReq.Stream
+
+	// 3. Convert Responses -> Chat Completions
+	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
+	if err != nil {
+		return nil, fmt.Errorf("convert responses to chat completions: %w", err)
+	}
+
+	// 4. Model mapping
+	mappedModel := originalModel
+	if resolved, matched := account.ResolveMappedModel(originalModel); matched {
+		mappedModel = resolved
+	}
+	chatReq.Model = mappedModel
+	if chatReq.MaxTokens == nil && chatReq.MaxCompletionTokens != nil {
+		chatReq.MaxTokens = chatReq.MaxCompletionTokens
+	}
+	if clientStream {
+		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
+	}
+
+	chatBody, err := json.Marshal(chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body)
+
+	logger.L().Debug("grok forward_as_responses: responses->chat_completions conversion",
+		zap.Int64("account_id", account.ID),
+		zap.String("original_model", originalModel),
+		zap.String("mapped_model", mappedModel),
+		zap.Bool("client_stream", clientStream),
+	)
+
+	// 5. Build upstream request -> /v1/chat/completions
+	upstreamURL := baseURL + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(chatBody))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// 6. Send request
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		logger.LegacyPrintf("service.grok_gateway", "forward_as_responses upstream request failed: %v", err)
+		writeResponsesError(c, http.StatusBadGateway, "server_error", "Upstream request failed")
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// 7. Handle error response
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
+		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			prefix := logPrefix(getSessionID(c), account.Name)
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
+		}
+
+		if grokShouldFailover(resp.StatusCode) {
+			return nil, &UpstreamFailoverError{
+				StatusCode:   resp.StatusCode,
+				ResponseBody: respBody,
+			}
+		}
+
+		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
+		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
+	}
+
+	// 8. Handle success response
+	var usage ClaudeUsage
+	var firstTokenMs *int
+
+	if clientStream {
+		// Streaming: convert CC SSE chunks to Responses SSE events
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+		state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
+		firstChunk := true
+		sawDone := false
+
+		for scanner.Scan() {
+			payload, ok := extractOpenAISSEDataLine(scanner.Text())
+			if !ok {
+				continue
+			}
+			payload = strings.TrimSpace(payload)
+			if payload == "" {
+				continue
+			}
+			if payload == "[DONE]" {
+				sawDone = true
+				break
+			}
+
+			// Extract usage
+			if strings.Contains(payload, "\"usage\"") {
+				s.extractCCUsage([]byte(payload), &usage)
+			}
+			if isOpenAIChatUsageOnlyStreamChunk(payload) {
+				continue
+			}
+
+			var ccChunk apicompat.ChatCompletionsChunk
+			if json.Unmarshal([]byte(payload), &ccChunk) == nil {
+				if firstChunk {
+					firstChunk = false
+					ms := int(time.Since(startTime).Milliseconds())
+					firstTokenMs = &ms
+				}
+				events := apicompat.ChatCompletionsChunkToResponsesEvents(&ccChunk, state)
+				for _, evt := range events {
+					evtBytes, _ := json.Marshal(evt)
+					fmt.Fprintf(c.Writer, "data: %s\n\n", string(evtBytes))
+				}
+			}
+			c.Writer.Flush()
+		}
+		if err := scanner.Err(); err != nil {
+			logger.L().Warn("grok forward_as_responses: stream read error", zap.Error(err))
+		}
+		finalEvents := apicompat.FinalizeChatCompletionsResponsesStream(state)
+		for _, evt := range finalEvents {
+			evtBytes, _ := json.Marshal(evt)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", string(evtBytes))
+		}
+		fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+		c.Writer.Flush()
+		if !sawDone {
+			logger.L().Debug("grok forward_as_responses: upstream stream ended without done sentinel")
+		}
+	} else {
+		// Non-streaming: read CC response, convert to Responses
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		if err != nil {
+			return nil, fmt.Errorf("read upstream response: %w", err)
+		}
+
+		var ccResp apicompat.ChatCompletionsResponse
+		if err := json.Unmarshal(respBody, &ccResp); err != nil {
+			return nil, fmt.Errorf("parse upstream CC response: %w", err)
+		}
+		s.extractCCUsage(respBody, &usage)
+
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+		if respBytes, err := json.Marshal(responsesResp); err == nil {
+			c.Header("Content-Type", "application/json")
+			c.Status(http.StatusOK)
+			_, _ = c.Writer.Write(respBytes)
+		} else {
+			c.Header("Content-Type", "application/json")
+			c.Status(http.StatusOK)
+			_, _ = c.Writer.Write(respBody)
+		}
+	}
+
+	duration := time.Since(startTime)
+	logger.LegacyPrintf("service.grok_gateway", "forward_as_responses status=success model=%s duration_ms=%d", originalModel, duration.Milliseconds())
+
+	return &ForwardResult{
+		Model:           originalModel,
+		UpstreamModel:   mappedModel,
+		Stream:          clientStream,
+		Duration:        duration,
+		FirstTokenMs:    firstTokenMs,
+		Usage:           usage,
+		ReasoningEffort: reasoningEffort,
+	}, nil
 }
 
 // grokShouldFailover determines if a Grok upstream HTTP status code should trigger account failover.

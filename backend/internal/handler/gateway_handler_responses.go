@@ -239,7 +239,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.ForwardAsResponses(c.Request.Context(), c, account, forwardBody, parsedReq)
+		var result *service.ForwardResult
+		if account.Platform == service.PlatformGrok {
+			if h.grokGatewayService == nil {
+				h.responsesErrorResponse(c, http.StatusBadGateway, "server_error", "Grok gateway service is not configured")
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				return
+			}
+			result, err = h.grokGatewayService.ForwardAsResponses(c.Request.Context(), c, account, forwardBody)
+		} else {
+			result, err = h.gatewayService.ForwardAsResponses(c.Request.Context(), c, account, forwardBody, parsedReq)
+		}
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
