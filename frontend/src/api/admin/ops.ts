@@ -847,6 +847,10 @@ export interface OpsAdvancedSettings {
   display_alert_events: boolean
   auto_refresh_enabled: boolean
   auto_refresh_interval_seconds: number
+  openai_account_quota_auto_pause: {
+    default_threshold_5h: number
+    default_threshold_7d: number
+  }
 }
 
 export interface OpsDataRetentionSettings {
@@ -963,6 +967,10 @@ export interface OpsErrorLog {
   user_id?: number | null
   user_email: string
   api_key_id?: number | null
+  api_key_prefix?: string | null
+  attempted_key_prefix?: string | null
+  deleted_key_name?: string | null
+  deleted_key_owner_email?: string | null
   account_id?: number | null
   account_name: string
   group_id?: number | null

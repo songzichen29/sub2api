@@ -30,14 +30,18 @@ export type PaymentLaunchKind =
 
 export interface PaymentRecoverySnapshot {
   orderId: number
+  intentId?: string
   amount: number
   qrCode: string
   expiresAt: string
   paymentType: string
+  paymentEnv?: string
   payUrl: string
   outTradeNo: string
   clientSecret: string
   payAmount: number
+  currency?: string
+  countryCode?: string
   orderType: OrderType | ''
   paymentMode: string
   resumeToken: string

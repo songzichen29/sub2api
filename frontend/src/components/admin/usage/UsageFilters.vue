@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, toRef, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -223,7 +223,7 @@ const accountResults = ref<SimpleAccount[]>([])
 const showAccountDropdown = ref(false)
 let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-const modelOptions = computed<SelectOption[]>(() => [
+const modelOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allModels') },
   ...(props.modelOptions ?? []).map((m) => ({ value: m, label: m })),
 ])
@@ -413,6 +413,17 @@ const onDocumentClick = (e: MouseEvent) => {
   if (!clickedInsideApiKey) showApiKeyDropdown.value = false
   if (!clickedInsideAccount) showAccountDropdown.value = false
 }
+
+watch(
+  () => props.modelOptions,
+  (values) => {
+    modelOptions.value = [
+      { value: null, label: t('admin.usage.allModels') },
+      ...(values ?? []).map((m) => ({ value: m, label: m })),
+    ]
+  },
+  { immediate: true }
+)
 
 watch(
   () => props.startDate,

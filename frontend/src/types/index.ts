@@ -34,7 +34,7 @@ export interface NotifyEmailEntry {
 
 // ==================== User & Auth Types ====================
 
-export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat'
+export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat' | 'github' | 'google' | 'dingtalk'
 
 export interface UserAuthBindingStatus {
   bound?: boolean
@@ -97,6 +97,7 @@ export interface User {
   last_active_at?: string | null
   created_at: string
   updated_at: string
+  deleted_at?: string | null
 }
 
 export interface AdminUser extends User {
@@ -182,6 +183,12 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface LoginAgreementDocument {
+  id: string
+  title: string
+  content_md: string
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -190,6 +197,11 @@ export interface PublicSettings {
   promo_code_enabled: boolean
   password_reset_enabled: boolean
   invitation_code_enabled: boolean
+  login_agreement_enabled?: boolean
+  login_agreement_mode?: 'modal' | 'checkbox' | string
+  login_agreement_updated_at?: string
+  login_agreement_revision?: string
+  login_agreement_documents?: LoginAgreementDocument[]
   turnstile_enabled: boolean
   turnstile_site_key: string
   site_name: string
@@ -207,12 +219,15 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
+  dingtalk_oauth_enabled?: boolean
   wechat_oauth_enabled: boolean
   wechat_oauth_open_enabled?: boolean
   wechat_oauth_mp_enabled?: boolean
   wechat_oauth_mobile_enabled?: boolean
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string
+  github_oauth_enabled: boolean
+  google_oauth_enabled: boolean
   backend_mode_enabled: boolean
   version: string
   balance_low_notify_enabled: boolean
@@ -224,6 +239,7 @@ export interface PublicSettings {
   affiliate_enabled: boolean
   affiliate_recharge_enabled: boolean
   affiliate_subscription_enabled: boolean
+  allow_user_view_error_requests?: boolean
 }
 
 export interface AuthResponse {
@@ -1296,11 +1312,13 @@ export interface RedeemCode {
   code: string
   type: RedeemCodeType
   value: number
-  status: 'active' | 'used' | 'expired' | 'unused'
+  status: 'active' | 'used' | 'expired' | 'unused' | 'disabled'
   used_by: number | null
   used_at: string | null
   created_at: string
+  expires_at?: string | null
   updated_at?: string
+  notes?: string
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
   user?: User
@@ -1313,6 +1331,20 @@ export interface GenerateRedeemCodesRequest {
   value: number
   group_id?: number | null // 订阅类型专用
   validity_days?: number // 订阅类型专用
+  expires_at?: string | null
+  expires_in_days?: number
+}
+
+export interface BatchUpdateRedeemCodeFields {
+  status?: 'unused' | 'disabled'
+  expires_at?: string | null
+  notes?: string
+  group_id?: number | null
+}
+
+export interface BatchUpdateRedeemCodesRequest {
+  ids: number[]
+  fields: BatchUpdateRedeemCodeFields
 }
 
 export interface RedeemCodeRequest {
@@ -1575,6 +1607,36 @@ export interface ExtendSubscriptionRequest {
 }
 
 // ==================== Query Parameters ====================
+
+export interface UserErrorRequest {
+  id: number
+  created_at: string
+  model: string
+  inbound_endpoint: string
+  status_code: number
+  category: string
+  platform: string
+  message: string
+  key_name: string
+  key_deleted: boolean
+}
+
+export interface UserErrorRequestDetail extends UserErrorRequest {
+  error_body: string
+  upstream_status_code?: number
+}
+
+export interface UserErrorListParams {
+  page?: number
+  page_size?: number
+  start_date?: string
+  end_date?: string
+  timezone?: string
+  model?: string
+  status_code?: number
+  category?: string
+  api_key_id?: number
+}
 
 export interface UsageQueryParams {
   page?: number
@@ -1860,3 +1922,11 @@ export interface UpdateScheduledTestPlanRequest {
 
 // Payment types
 export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'
+
+export type {
+  PlatformQuotaItem,
+  PlatformQuotaUpdateItem,
+  PlatformQuotaPlatform,
+  PlatformQuotaWindow,
+  PlatformQuotasResponse,
+} from '@/api/admin/users'
