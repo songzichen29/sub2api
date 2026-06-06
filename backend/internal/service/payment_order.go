@@ -71,13 +71,35 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 	}
 	feeRate := cfg.RechargeFeeRate
-	payAmountStr := payment.CalculatePayAmount(limitAmount, feeRate)
-	payAmount, _ := strconv.ParseFloat(payAmountStr, 64)
+	methodCurrency := payment.DefaultPaymentCurrency
+	if s.configService != nil {
+		methodCurrency, err = s.configService.ValidateMethodCurrencyConsistency(ctx, req.PaymentType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, feeRate, methodCurrency)
+	if err != nil {
+		return nil, err
+	}
 	sel, err := s.selectCreateOrderInstance(ctx, req, cfg, payAmount)
 	if err != nil {
 		return nil, err
 	}
 	if err := s.validateSelectedCreateOrderInstance(ctx, req, sel); err != nil {
+		return nil, err
+	}
+	selectedCurrency := payment.DefaultPaymentCurrency
+	if sel != nil {
+		selectedCurrency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
+	}
+	if selectedCurrency != methodCurrency {
+		payAmountStr, payAmount, err = calculateCreateOrderPayAmount(limitAmount, feeRate, selectedCurrency)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := validateSelectedCreateOrderAmountCurrency(payAmountStr, sel); err != nil {
 		return nil, err
 	}
 	oauthResp, err := s.maybeBuildWeChatOAuthRequiredResponseForSelection(ctx, req, limitAmount, payAmount, feeRate, sel)
@@ -483,7 +505,7 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_PROVIDER_MISCONFIGURED", "provider_misconfigured").
 			WithMetadata(map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceID})
 	}
-	subject := s.buildPaymentSubject(req, plan, limitAmount, cfg)
+	subject := s.buildPaymentSubject(plan, limitAmount, cfg, sel, req.OrderType)
 	outTradeNo := order.OutTradeNo
 	canonicalReturnURL, err := CanonicalizeReturnURL(req.ReturnURL, req.SrcHost, req.SrcURL)
 	if err != nil {
@@ -572,23 +594,55 @@ func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {
 	return sel.SupportedTypes
 }
 
-func (s *PaymentService) buildPaymentSubject(req CreateOrderRequest, plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig) string {
+func (s *PaymentService) buildPaymentSubject(plan *dbent.SubscriptionPlan, limitAmount float64, cfg *PaymentConfig, sel *payment.InstanceSelection, orderTypes ...string) string {
 	if plan != nil {
-		if plan.ProductName != "" {
-			return plan.ProductName
+		productName := plan.ProductName
+		if productName == "" {
+			productName = "Sub2API Subscription " + plan.Name
 		}
-		return "Sub2API Subscription " + plan.Name
+		return applyPaymentProductNameAffix(productName, cfg)
 	}
-	if req.OrderType == payment.OrderTypeDailyLimitReset {
-		return "Sub2API Daily Limit Reset"
+	if len(orderTypes) > 0 && orderTypes[0] == payment.OrderTypeDailyLimitReset {
+		return applyPaymentProductNameAffix("Sub2API Daily Limit Reset", cfg)
 	}
-	amountStr := strconv.FormatFloat(limitAmount, 'f', 2, 64)
+	currency := payment.DefaultPaymentCurrency
+	if sel != nil {
+		currency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
+	}
+	amountStr := payment.FormatAmountForCurrency(limitAmount, currency)
+	if hasPaymentProductNameAffix(cfg) {
+		return applyPaymentProductNameAffix(amountStr, cfg)
+	}
+	return "Sub2API " + amountStr + " " + currency
+}
+
+func hasPaymentProductNameAffix(cfg *PaymentConfig) bool {
+	if cfg == nil {
+		return false
+	}
 	pf := strings.TrimSpace(cfg.ProductNamePrefix)
 	sf := strings.TrimSpace(cfg.ProductNameSuffix)
-	if pf != "" || sf != "" {
-		return strings.TrimSpace(pf + " " + amountStr + " " + sf)
+	return pf != "" || sf != ""
+}
+
+func applyPaymentProductNameAffix(name string, cfg *PaymentConfig) string {
+	name = strings.TrimSpace(name)
+	if cfg == nil {
+		return name
 	}
-	return "Sub2API " + amountStr + " CNY"
+	pf := strings.TrimSpace(cfg.ProductNamePrefix)
+	sf := strings.TrimSpace(cfg.ProductNameSuffix)
+	parts := make([]string, 0, 3)
+	if pf != "" {
+		parts = append(parts, pf)
+	}
+	if name != "" {
+		parts = append(parts, name)
+	}
+	if sf != "" {
+		parts = append(parts, sf)
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *PaymentService) maybeBuildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
@@ -645,6 +699,44 @@ func (s *PaymentService) validateSelectedCreateOrderInstance(ctx context.Context
 	selectedAppID := provider.ResolveWxpayJSAPIAppID(sel.Config)
 	if selectedAppID == "" || selectedAppID != expectedAppID {
 		return infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "selected payment instance is not compatible with the current WeChat OAuth app")
+	}
+	return nil
+}
+
+func calculateCreateOrderPayAmount(limitAmount, feeRate float64, currency string) (string, float64, error) {
+	if err := validateCreateOrderAmountCurrency(limitAmount, currency); err != nil {
+		return "", 0, err
+	}
+	payAmountStr := payment.CalculatePayAmountForCurrency(limitAmount, feeRate, currency)
+	if _, err := payment.AmountToMinorUnit(payAmountStr, currency); err != nil {
+		return "", 0, infraerrors.BadRequest("INVALID_AMOUNT", err.Error()).
+			WithMetadata(map[string]string{"currency": currency})
+	}
+	payAmount, err := strconv.ParseFloat(payAmountStr, 64)
+	if err != nil {
+		return "", 0, infraerrors.BadRequest("INVALID_AMOUNT", "invalid payment amount").
+			WithMetadata(map[string]string{"currency": currency})
+	}
+	return payAmountStr, payAmount, nil
+}
+
+func validateCreateOrderAmountCurrency(amount float64, currency string) error {
+	amountStr := strconv.FormatFloat(amount, 'f', -1, 64)
+	if _, err := payment.AmountToMinorUnit(amountStr, currency); err != nil {
+		return infraerrors.BadRequest("INVALID_AMOUNT", err.Error()).
+			WithMetadata(map[string]string{"currency": currency})
+	}
+	return nil
+}
+
+func validateSelectedCreateOrderAmountCurrency(payAmount string, sel *payment.InstanceSelection) error {
+	if sel == nil {
+		return nil
+	}
+	currency := paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
+	if _, err := payment.AmountToMinorUnit(payAmount, currency); err != nil {
+		return infraerrors.BadRequest("INVALID_AMOUNT", err.Error()).
+			WithMetadata(map[string]string{"currency": currency})
 	}
 	return nil
 }

@@ -164,9 +164,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// Parse request for session hash
-	parsedReq, _ := service.ParseGatewayRequest(body, "chat_completions")
+	parsedReq, _ := service.ParseGatewayRequest(service.NewRequestBodyRef(body), "chat_completions")
 	if parsedReq == nil {
-		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: body}
+		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: service.NewRequestBodyRef(body)}
 	}
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),

@@ -35,7 +35,7 @@
               @click="selectUser(u)"
               class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <span>{{ u.email }}</span>
+              <span>{{ u.email }}<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') }}）</span></span>
               <span class="ml-2 text-xs text-gray-400">#{{ u.id }}</span>
             </button>
           </div>
@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, toRef, watch } from 'vue'
+import { ref, onMounted, onUnmounted, toRef, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
@@ -182,6 +182,7 @@ interface Props {
   startDate: string
   endDate: string
   showActions?: boolean
+  modelOptions?: string[]
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -222,7 +223,10 @@ const accountResults = ref<SimpleAccount[]>([])
 const showAccountDropdown = ref(false)
 let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-const modelOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allModels') }])
+const modelOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allModels') },
+  ...(props.modelOptions ?? []).map((m) => ({ value: m, label: m })),
+])
 const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allGroups') }])
 
 // 模型下拉框选项随当前查询时间范围动态刷新——历史 bug：原实现仅在 onMounted 时取一次，
@@ -292,7 +296,8 @@ const debounceUserSearch = () => {
       return
     }
     try {
-      userResults.value = await adminAPI.usage.searchUsers(userKeyword.value)
+      const results = await adminAPI.usage.searchUsers(userKeyword.value)
+      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
     } catch {
       userResults.value = []
     }
@@ -476,7 +481,6 @@ watch(
 
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
-
   try {
     const gs = await adminAPI.groups.list(1, 1000)
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))

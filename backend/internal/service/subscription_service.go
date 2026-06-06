@@ -245,12 +245,12 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			newExpiresAt = MaxExpiresAt
 		}
 
-		// 开启事务：ExtendExpiry + UpdateStatus + UpdateNotes 在同一事务中完成
-		tx, err := s.entClient.Tx(ctx)
+		// 开启事务：Update/UpdateStatus/UpdateNotes 在同一事务中完成。
+		// 单元测试和部分非 ent 场景会用 nil entClient，此时直接复用原 ctx。
+		txCtx, rollbackTx, commitTx, err := s.beginSubscriptionUpdateTx(ctx)
 		if err != nil {
 			return nil, false, fmt.Errorf("begin transaction: %w", err)
 		}
-		txCtx := dbent.NewTxContext(ctx, tx)
 
 		wasExpired := !existingSub.ExpiresAt.After(now)
 		wasQuotaExhausted := existingSub.Status == SubscriptionStatusQuotaExhausted
@@ -274,12 +274,16 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			existingSub.DailyWindowStart = nil
 			existingSub.WeeklyWindowStart = nil
 			existingSub.MonthlyWindowStart = nil
+			if validityDays == 1 {
+				windowStart := startOfDay(now)
+				existingSub.DailyWindowStart = &windowStart
+			}
 			existingSub.DailyUsageUSD = 0
 			existingSub.WeeklyUsageUSD = 0
 			existingSub.MonthlyUsageUSD = 0
 			existingSub.UpdatedAt = now
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("reset expired subscription window anchor: %w", err)
 			}
 		} else if input.Source == domain.SubscriptionSourcePayment && validityDays == 1 && group.HasDailyLimit() {
@@ -302,7 +306,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			}
 			existingSub.ExpiresAt = newExpiresAt
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("cap 1-day renewal expiry: %w", err)
 			}
 			dailyWindowStart := now
@@ -310,7 +314,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				dailyWindowStart = existingSub.CurrentDailyWindowStart(now)
 			}
 			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, dailyWindowStart); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
 			}
 			existingSub.DailyWindowStart = &dailyWindowStart
@@ -319,7 +323,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			// 普通续期只延长过期时间，同时保存本次订阅来源的原始有效单位。后者只影响日透支
 			// 统计口径：day 按每日额度到期计入，week/month 继续按真实累计用量。
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("extend subscription: %w", err)
 			}
 		}
@@ -327,7 +331,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		// Restore active status when a non-active subscription is renewed.
 		if existingSub.ExpiresAt.After(now) && existingSub.Status != SubscriptionStatusActive {
 			if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("update subscription status: %w", err)
 			}
 		}
@@ -340,13 +344,13 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			}
 			newNotes += input.Notes
 			if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
-				_ = tx.Rollback()
+				rollbackTx()
 				return nil, false, fmt.Errorf("update subscription notes: %w", err)
 			}
 		}
 
 		// 提交事务
-		if err := tx.Commit(); err != nil {
+		if err := commitTx(); err != nil {
 			return nil, false, fmt.Errorf("commit transaction: %w", err)
 		}
 
@@ -387,11 +391,10 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 }
 
 func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Context, input *AssignSubscriptionInput, existingSub *UserSubscription, startsAt, expiresAt, now time.Time) (*UserSubscription, bool, error) {
-	tx, err := s.entClient.Tx(ctx)
+	txCtx, rollbackTx, commitTx, err := s.beginSubscriptionUpdateTx(ctx)
 	if err != nil {
 		return nil, false, fmt.Errorf("begin transaction: %w", err)
 	}
-	txCtx := dbent.NewTxContext(ctx, tx)
 
 	wasExpired := !existingSub.ExpiresAt.After(now)
 	wasQuotaExhausted := existingSub.Status == SubscriptionStatusQuotaExhausted
@@ -413,13 +416,13 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 	}
 	existingSub.UpdatedAt = now
 	if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
-		_ = tx.Rollback()
+		rollbackTx()
 		return nil, false, fmt.Errorf("adjust subscription time range: %w", err)
 	}
 
 	if existingSub.ExpiresAt.After(now) && existingSub.Status != SubscriptionStatusActive {
 		if err := s.userSubRepo.UpdateStatus(txCtx, existingSub.ID, SubscriptionStatusActive); err != nil {
-			_ = tx.Rollback()
+			rollbackTx()
 			return nil, false, fmt.Errorf("update subscription status: %w", err)
 		}
 	}
@@ -431,12 +434,12 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 		}
 		newNotes += input.Notes
 		if err := s.userSubRepo.UpdateNotes(txCtx, existingSub.ID, newNotes); err != nil {
-			_ = tx.Rollback()
+			rollbackTx()
 			return nil, false, fmt.Errorf("update subscription notes: %w", err)
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := commitTx(); err != nil {
 		return nil, false, fmt.Errorf("commit transaction: %w", err)
 	}
 
@@ -452,6 +455,21 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 
 	sub, err := s.userSubRepo.GetByID(ctx, existingSub.ID)
 	return sub, true, err
+}
+
+func (s *SubscriptionService) beginSubscriptionUpdateTx(ctx context.Context) (context.Context, func(), func() error, error) {
+	if s.entClient == nil {
+		return ctx, func() {}, func() error { return nil }, nil
+	}
+
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return dbent.NewTxContext(ctx, tx), func() {
+		_ = tx.Rollback()
+	}, tx.Commit, nil
 }
 
 // createSubscription 创建新订阅（内部方法）
@@ -1015,6 +1033,11 @@ func normalizeSubscriptionStatus(subs []UserSubscription) {
 			sub.Status = SubscriptionStatusExpired
 		}
 	}
+}
+
+// startOfDay 返回给定时间所在时区的当天 00:00:00。
+func startOfDay(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
 }
 
 // CheckAndActivateWindow 检查并激活窗口（首次使用时）

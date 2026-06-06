@@ -304,6 +304,12 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
+	// MySQL fork keeps the current soft-delete behaviour here; audit-table specific
+	// upstream changes are deferred to avoid widening delete semantics during this merge.
+	return r.Delete(ctx, id)
+}
+
 func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	q := r.activeQuery().Where(apikey.UserIDEQ(userID))
 

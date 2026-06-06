@@ -22,6 +22,8 @@ const (
 	ContextKeyUserRole ContextKey = "user_role"
 	// ContextKeyAPIKey API密钥上下文键
 	ContextKeyAPIKey ContextKey = "api_key"
+	// ContextKeyOpsFallbackAPIKey Ops 错误日志专用回退 API Key（不代表已通过鉴权）
+	ContextKeyOpsFallbackAPIKey ContextKey = "ops_fallback_api_key"
 	// ContextKeyAPIKeyAuthFailure API Key 认证失败观测信息（仅用于日志/排障）
 	ContextKeyAPIKeyAuthFailure ContextKey = "api_key_auth_failure"
 	// ContextKeySubscription 订阅上下文键

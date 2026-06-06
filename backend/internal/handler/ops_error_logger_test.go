@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -47,113 +44,6 @@ func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	opsErrorLogDrained.Store(false)
 }
 
-func TestAttachOpsRequestBodyToEntry_SanitizeAndTrim(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-
-	raw := []byte(`{"access_token":"secret-token","messages":[{"role":"user","content":"hello"}]}`)
-	setOpsRequestContext(c, "claude-3", false, raw)
-
-	entry := &service.OpsInsertErrorLogInput{}
-	attachOpsRequestBodyToEntry(c, entry)
-
-	require.NotNil(t, entry.RequestBodyBytes)
-	require.Equal(t, len(raw), *entry.RequestBodyBytes)
-	require.NotNil(t, entry.RequestBodyJSON)
-	require.NotContains(t, *entry.RequestBodyJSON, "secret-token")
-	require.Contains(t, *entry.RequestBodyJSON, "[REDACTED]")
-	require.Equal(t, int64(1), OpsErrorLogSanitizedTotal())
-}
-
-func TestAttachOpsRequestBodyToEntry_InvalidJSONKeepsSize(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-
-	raw := []byte("not-json")
-	setOpsRequestContext(c, "claude-3", false, raw)
-
-	entry := &service.OpsInsertErrorLogInput{}
-	attachOpsRequestBodyToEntry(c, entry)
-
-	require.Nil(t, entry.RequestBodyJSON)
-	require.NotNil(t, entry.RequestBodyBytes)
-	require.Equal(t, len(raw), *entry.RequestBodyBytes)
-	require.False(t, entry.RequestBodyTruncated)
-	require.Equal(t, int64(1), OpsErrorLogSanitizedTotal())
-}
-
-func TestExtractOpsRetryRequestHeaders_IncludesAuthFailureMetadata(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	c.Request.Header.Set("anthropic-version", "2023-06-01")
-	c.Set(string(middleware2.ContextKeyAPIKeyAuthFailure), middleware2.APIKeyAuthFailureInfo{
-		Source:      "authorization",
-		Fingerprint: "sha256:deadbeefcafebabe12345678",
-		Hint:        "sk-inv…7890(len=48)",
-	})
-
-	raw := extractOpsRetryRequestHeaders(c)
-	require.NotNil(t, raw)
-
-	var headers map[string]string
-	require.NoError(t, json.Unmarshal([]byte(*raw), &headers))
-	require.Equal(t, "2023-06-01", headers["anthropic-version"])
-	require.Equal(t, "authorization", headers["auth_failure_key_source"])
-	require.Equal(t, "sha256:deadbeefcafebabe12345678", headers["auth_failure_key_fingerprint"])
-	require.Equal(t, "sk-inv…7890(len=48)", headers["auth_failure_key_hint"])
-	require.NotContains(t, *raw, "sk-invalid-raw-secret")
-}
-
-func TestSetOpsRequestContextFromBodyIfMissing_InfersModelAndRestoresBody(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	body := []byte(`{"model":"gpt-5.4","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-
-	setOpsRequestContextFromBodyIfMissing(c)
-
-	model, _ := c.Get(opsModelKey)
-	require.Equal(t, "gpt-5.4", model)
-	stream, _ := c.Get(opsStreamKey)
-	require.Equal(t, true, stream)
-	rt, _ := c.Get(opsRequestTypeKey)
-	require.Equal(t, int16(service.RequestTypeStream), rt)
-
-	restored, err := io.ReadAll(c.Request.Body)
-	require.NoError(t, err)
-	require.Equal(t, body, restored)
-}
-
-func TestSetOpsRequestContextFromBodyIfMissing_InfersGeminiModelFromPath(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`)
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-2.5-pro:generateContent", bytes.NewReader(body))
-
-	setOpsRequestContextFromBodyIfMissing(c)
-
-	model, _ := c.Get(opsModelKey)
-	require.Equal(t, "gemini-2.5-pro", model)
-}
-
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
 	resetOpsErrorLoggerStateForTest(t)
 
@@ -173,39 +63,6 @@ func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {
 	require.Equal(t, int64(1), OpsErrorLogEnqueuedTotal())
 	require.Equal(t, int64(1), OpsErrorLogDroppedTotal())
 	require.Equal(t, int64(1), OpsErrorLogQueueLength())
-}
-
-func TestAttachOpsRequestBodyToEntry_EarlyReturnBranches(t *testing.T) {
-	resetOpsErrorLoggerStateForTest(t)
-	gin.SetMode(gin.TestMode)
-
-	entry := &service.OpsInsertErrorLogInput{}
-	attachOpsRequestBodyToEntry(nil, entry)
-	attachOpsRequestBodyToEntry(&gin.Context{}, nil)
-
-	rec := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-
-	// 无请求体 key
-	attachOpsRequestBodyToEntry(c, entry)
-	require.Nil(t, entry.RequestBodyJSON)
-	require.Nil(t, entry.RequestBodyBytes)
-	require.False(t, entry.RequestBodyTruncated)
-
-	// 错误类型
-	c.Set(opsRequestBodyKey, "not-bytes")
-	attachOpsRequestBodyToEntry(c, entry)
-	require.Nil(t, entry.RequestBodyJSON)
-	require.Nil(t, entry.RequestBodyBytes)
-
-	// 空 bytes
-	c.Set(opsRequestBodyKey, []byte{})
-	attachOpsRequestBodyToEntry(c, entry)
-	require.Nil(t, entry.RequestBodyJSON)
-	require.Nil(t, entry.RequestBodyBytes)
-
-	require.Equal(t, int64(0), OpsErrorLogSanitizedTotal())
 }
 
 func TestEnqueueOpsErrorLog_EarlyReturnBranches(t *testing.T) {
@@ -342,14 +199,22 @@ func TestNormalizeOpsErrorType(t *testing.T) {
 	}
 }
 
-func TestParseOpsErrorResponse_PreservesResponsesBillingErrorCode(t *testing.T) {
-	parsed := parseOpsErrorResponse([]byte(`{"error":{"code":"billing_error","message":"已超过每日使用限额"}}`))
+func TestClassifyOpsNoAvailableAccountsExcludedFromSLA(t *testing.T) {
+	const message = "No available accounts"
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
 
+	markOpsRoutingCapacityLimited(c)
 
-	require.Equal(t, "billing_error", parsed.ErrorType)
-	require.Equal(t, "billing_error", parsed.Code)
-	require.Equal(t, "已超过每日使用限额", parsed.Message)
-	require.Equal(t, "billing_error", normalizeOpsErrorType(parsed.ErrorType, parsed.Code))
+	errType := normalizeOpsErrorType("api_error", "")
+	phase, isBusinessLimited, errorOwner, errorSource := classifyOpsErrorLog(c, errType, message, "", http.StatusServiceUnavailable)
+
+	require.Equal(t, "api_error", errType)
+	require.Equal(t, "routing", phase)
+	require.True(t, isBusinessLimited)
+	require.Equal(t, "platform", errorOwner)
+	require.Equal(t, "gateway", errorSource)
 }
 
 func TestClassifyOpsRoutingCapacityMarkerExcludesMaskedSelectionFailureFromSLA(t *testing.T) {
@@ -760,6 +625,7 @@ func TestClassifyOpsLocalBusinessLimitErrorsExcludedFromSLA(t *testing.T) {
 		})
 	}
 }
+
 func TestClassifyOpsIPRestrictionAccessDeniedExcludedFromSLA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -791,6 +657,7 @@ func TestClassifyOpsClientBusinessLimitedMarkerExcludesCustomPolicyDenialFromSLA
 	require.Equal(t, "client", errorOwner)
 	require.Equal(t, "client_request", errorSource)
 }
+
 func TestClassifyOpsOtherErrorsStillCountForSLA(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -1010,7 +877,6 @@ func TestClassifyOpsUpstreamNoAvailableTextStillCountsForSLA(t *testing.T) {
 	require.False(t, isBusinessLimited)
 	require.Equal(t, "provider", errorOwner)
 	require.Equal(t, "upstream_http", errorSource)
-
 }
 
 func TestParseOpsErrorResponsePreservesNestedStringCode(t *testing.T) {
@@ -1064,4 +930,46 @@ func TestSetOpsEndpointContext_NilContext(t *testing.T) {
 	require.NotPanics(t, func() {
 		setOpsEndpointContext(nil, "model", int16(1))
 	})
+}
+
+func TestGetOpsAPIKeyFallsBackToOpsFallbackKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	// 主 key 缺席（鉴权早退场景）：返回 nil。
+	require.Nil(t, getOpsAPIKey(c))
+
+	// 写入 ops 专用 fallback key 后应能取到，且带齐 user/group。
+	groupID := int64(55)
+	apiKey := &service.APIKey{
+		ID:      100,
+		GroupID: &groupID,
+		User:    &service.User{ID: 7},
+		Group:   &service.Group{ID: groupID, Platform: service.PlatformAnthropic},
+	}
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), apiKey)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(100), got.ID)
+	require.NotNil(t, got.User)
+	require.Equal(t, int64(7), got.User.ID)
+	require.NotNil(t, got.Group)
+	require.Equal(t, service.PlatformAnthropic, got.Group.Platform)
+}
+
+func TestGetOpsAPIKeyPrefersPrimaryContextKey(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	primary := &service.APIKey{ID: 1}
+	fallback := &service.APIKey{ID: 2}
+	c.Set(string(middleware2.ContextKeyAPIKey), primary)
+	c.Set(string(middleware2.ContextKeyOpsFallbackAPIKey), fallback)
+
+	got := getOpsAPIKey(c)
+	require.NotNil(t, got)
+	require.Equal(t, int64(1), got.ID, "已鉴权请求应优先使用正式 api key")
 }

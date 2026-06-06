@@ -121,6 +121,10 @@ func (r *contentModerationTestUserRepo) GetByID(ctx context.Context, id int64) (
 	return &clone, nil
 }
 
+func (r *contentModerationTestUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error) {
+	return r.GetByID(ctx, id)
+}
+
 func (r *contentModerationTestUserRepo) GetByEmail(ctx context.Context, email string) (*User, error) {
 	panic("unexpected GetByEmail call")
 }
@@ -137,6 +141,14 @@ func (r *contentModerationTestUserRepo) Update(ctx context.Context, user *User) 
 	r.updated = append(r.updated, clone)
 	r.user = &clone
 	return nil
+}
+
+func (r *contentModerationTestUserRepo) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
+	return len(userIDs), nil
+}
+
+func (r *contentModerationTestUserRepo) BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error) {
+	return len(userIDs), nil
 }
 
 func (r *contentModerationTestUserRepo) Delete(ctx context.Context, id int64) error {
@@ -312,7 +324,6 @@ func TestContentModerationConfigNormalize_NonHitRetentionMaxThreeDays(t *testing
 
 	require.Equal(t, 3, cfg.NonHitRetentionDays)
 }
-
 
 func TestNormalizeBlockedKeywords_TrimsDedupesAndCaps(t *testing.T) {
 	out := normalizeBlockedKeywords([]string{"  foo ", "FOO", "", "bar", "baz", "bar"})

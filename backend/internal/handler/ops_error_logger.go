@@ -1,13 +1,11 @@
-﻿package handler
+package handler
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log"
-	"net/http"
 	"runtime"
 	"runtime/debug"
 	"strconv"
@@ -22,19 +20,16 @@ import (
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 )
 
 const (
-	opsModelKey       = "ops_model"
-	opsStreamKey      = "ops_stream"
-	opsRequestBodyKey = "ops_request_body"
-	opsAccountIDKey   = "ops_account_id"
+	opsModelKey                  = "ops_model"
+	opsStreamKey                 = "ops_stream"
+	opsAccountIDKey              = "ops_account_id"
+	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
 	opsUpstreamModelKey = "ops_upstream_model"
 	opsRequestTypeKey   = "ops_request_type"
-
-	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
 	opsErrContextCanceled            = "context canceled"
@@ -75,6 +70,49 @@ const (
 	opsErrorLogMaxQueueSize       = 8192
 	opsErrorLogBatchSize          = 32
 )
+
+// looksLikeSystemKey 粗筛"形似本系统 key"的输入:长度 16-128 且仅含 [a-zA-Z0-9_-]。
+// 不用前缀匹配(APIKeyPrefix 可配置)。用于反查审计表前挡掉随机扫描的乱码输入。
+func looksLikeSystemKey(key string) bool {
+	if len(key) < 16 || len(key) > 128 {
+		return false
+	}
+	for _, c := range key {
+		allowed := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+			(c >= '0' && c <= '9') || c == '_' || c == '-'
+		if !allowed {
+			return false
+		}
+	}
+	return true
+}
+
+// keyPrefix 返回脱敏前缀(前 n 个字符);不足 n 则原样返回。
+func keyPrefix(key string, n int) string {
+	if len(key) <= n {
+		return key
+	}
+	return key[:n]
+}
+
+// extractAttemptedKey 按认证中间件同样的顺序从请求头提取提交的 key 明文。
+// 与 api_key_auth.go:43-59 一致:Authorization 仅取 Bearer scheme,非 Bearer 则忽略并继续 x-api-key → x-goog-api-key。
+func extractAttemptedKey(c *gin.Context) string {
+	if h := c.GetHeader("Authorization"); h != "" {
+		parts := strings.SplitN(h, " ", 2)
+		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+			return strings.TrimSpace(parts[1])
+		}
+		// 非 Bearer:与中间件一致,忽略 Authorization,继续尝试其它 header(不在此 return)。
+	}
+	if k := c.GetHeader("x-api-key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	if k := c.GetHeader("x-goog-api-key"); k != "" {
+		return strings.TrimSpace(k)
+	}
+	return ""
+}
 
 type opsErrorLogJob struct {
 	ops   *service.OpsService
@@ -347,15 +385,15 @@ func opsErrorLogConfig() (workerCount int, queueSize int) {
 	return workerCount, queueSize
 }
 
-func setOpsRequestContext(c *gin.Context, model string, stream bool, requestBody []byte) {
+func setOpsRequestContext(c *gin.Context, model string, stream bool, bodies ...[]byte) {
 	if c == nil {
 		return
 	}
 	model = strings.TrimSpace(model)
 	c.Set(opsModelKey, model)
 	c.Set(opsStreamKey, stream)
-	if len(requestBody) > 0 {
-		c.Set(opsRequestBodyKey, requestBody)
+	if len(bodies) > 0 && len(bodies[0]) > 0 {
+		c.Set(service.OpsUpstreamRequestBodyKey, bodies[0])
 	}
 	if c.Request != nil && model != "" {
 		ctx := context.WithValue(c.Request.Context(), ctxkey.Model, model)
@@ -373,97 +411,6 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 		c.Set(opsUpstreamModelKey, upstreamModel)
 	}
 	c.Set(opsRequestTypeKey, requestType)
-}
-
-func setOpsRequestContextFromBodyIfMissing(c *gin.Context) {
-	if c == nil || c.Request == nil || c.Request.Body == nil {
-		return
-	}
-	if _, ok := c.Get(opsRequestBodyKey); ok {
-		return
-	}
-	if c.Request.ContentLength == 0 {
-		if model := inferOpsRequestModel(c, nil); model != "" {
-			setOpsRequestContext(c, model, false, nil)
-		}
-		return
-	}
-	raw, ok := peekOpsRequestBody(c)
-	if !ok || len(raw) == 0 {
-		if model := inferOpsRequestModel(c, nil); model != "" {
-			setOpsRequestContext(c, model, false, nil)
-		}
-		return
-	}
-	model := inferOpsRequestModel(c, raw)
-	stream := inferOpsRequestStream(raw)
-	setOpsRequestContext(c, model, stream, raw)
-	if _, ok := c.Get(opsRequestTypeKey); !ok {
-		requestType := service.RequestTypeFromLegacy(stream, false)
-		c.Set(opsRequestTypeKey, int16(requestType))
-	}
-}
-
-func peekOpsRequestBody(c *gin.Context) ([]byte, bool) {
-	if c == nil || c.Request == nil || c.Request.Body == nil {
-		return nil, false
-	}
-	if c.Request.Body == http.NoBody {
-		return nil, false
-	}
-	body, err := io.ReadAll(c.Request.Body)
-	if err != nil || len(body) == 0 {
-		if c.Request.Body != nil {
-			c.Request.Body = io.NopCloser(bytes.NewReader(body))
-		}
-		return nil, false
-	}
-	c.Request.Body = io.NopCloser(bytes.NewReader(body))
-	return body, true
-}
-
-func inferOpsRequestModel(c *gin.Context, body []byte) string {
-	if len(body) > 0 {
-		if model := strings.TrimSpace(gjson.GetBytes(body, "model").String()); model != "" {
-			return model
-		}
-		if model := strings.TrimSpace(gjson.GetBytes(body, "session.model").String()); model != "" {
-			return model
-		}
-	}
-	if c != nil && c.Request != nil && c.Request.URL != nil {
-		path := c.Request.URL.Path
-		if idx := strings.Index(path, "/models/"); idx >= 0 {
-			rest := strings.TrimPrefix(path[idx+len("/models/"):], "/")
-			if i := strings.IndexAny(rest, ":/"); i > 0 {
-				return strings.TrimSpace(rest[:i])
-			}
-		}
-	}
-	return ""
-}
-
-func inferOpsRequestStream(body []byte) bool {
-	if len(body) == 0 {
-		return false
-	}
-	return gjson.GetBytes(body, "stream").Bool()
-}
-
-func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
-	if c == nil || entry == nil {
-		return
-	}
-	v, ok := c.Get(opsRequestBodyKey)
-	if !ok {
-		return
-	}
-	raw, ok := v.([]byte)
-	if !ok || len(raw) == 0 {
-		return
-	}
-	entry.RequestBodyJSON, entry.RequestBodyTruncated, entry.RequestBodyBytes = service.PrepareOpsRequestBodyForQueue(raw)
-	opsErrorLogSanitized.Add(1)
 }
 
 func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
@@ -645,7 +592,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				return
 			}
 
-			apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+			apiKey := getOpsAPIKey(c)
 			clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 
 			model, _ := c.Get(opsModelKey)
@@ -797,7 +744,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 				ErrorPhase: "upstream",
 				ErrorType:  "upstream_error",
-				// Severity/retryability should reflect the upstream failure, not the final client status (200).
+				// Severity should reflect the upstream failure, not the final client status (200).
 				Severity:          classifyOpsSeverity("upstream_error", effectiveUpstreamStatus),
 				StatusCode:        status,
 				IsBusinessLimited: false,
@@ -814,14 +761,13 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				UpstreamErrorDetail:  upstreamErrorDetail,
 				UpstreamErrors:       events,
 
-				IsRetryable: classifyOpsIsRetryable("upstream_error", effectiveUpstreamStatus),
-				RetryCount:  0,
-				CreatedAt:   time.Now(),
+				CreatedAt: time.Now(),
 			}
 			applyOpsLatencyFieldsFromContext(c, entry)
 
 			if apiKey != nil {
 				entry.APIKeyID = &apiKey.ID
+				entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
 				if apiKey.User != nil {
 					entry.UserID = &apiKey.User.ID
 				}
@@ -840,10 +786,6 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				entry.ClientIP = &clientIP
 			}
 
-			// Store request headers/body only when an upstream error occurred to keep overhead minimal.
-			entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
-			attachOpsRequestBodyToEntry(c, entry)
-
 			// Skip logging if a passthrough rule with skip_monitoring=true matched.
 			if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
 				if skip, _ := v.(bool); skip {
@@ -857,7 +799,6 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		body := w.buf.Bytes()
 		parsed := parseOpsErrorResponse(body)
-		setOpsRequestContextFromBodyIfMissing(c)
 
 		// Skip logging if a passthrough rule with skip_monitoring=true matched.
 		if v, ok := c.Get(service.OpsSkipPassthroughKey); ok {
@@ -871,7 +812,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			return
 		}
 
-		apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+		apiKey := getOpsAPIKey(c)
 
 		clientRequestID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
 
@@ -957,9 +898,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			ErrorSource: errorSource,
 			ErrorOwner:  errorOwner,
 
-			IsRetryable: classifyOpsIsRetryable(normalizedType, status),
-			RetryCount:  0,
-			CreatedAt:   time.Now(),
+			CreatedAt: time.Now(),
 		}
 		applyOpsLatencyFieldsFromContext(c, entry)
 
@@ -1019,6 +958,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
+			// 有效(未删除)key 报错时快照前缀,key 之后被删也保留;与 INVALID_API_KEY 的 attempted_key_prefix 互斥。
+			entry.APIKeyPrefix = keyPrefix(apiKey.Key, 8)
 			if apiKey.User != nil {
 				entry.UserID = &apiKey.User.ID
 			}
@@ -1037,18 +978,24 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 		}
 
-		// Persist only a minimal, whitelisted set of request headers to improve retry fidelity.
-		// Do NOT store Authorization/Cookie/etc.
-		entry.RequestHeadersJSON = extractOpsRetryRequestHeaders(c)
-		attachOpsRequestBodyToEntry(c, entry)
+		// 已删除 key 归因:仅 INVALID_API_KEY 才尝试。响应已写出,此处不阻塞客户端。
+		if parsed.Code == opsCodeInvalidAPIKey {
+			if attemptedKey := extractAttemptedKey(c); attemptedKey != "" {
+				entry.AttemptedKeyPrefix = keyPrefix(attemptedKey, 8)
+				if looksLikeSystemKey(attemptedKey) {
+					if res, lookupErr := ops.LookupDeletedKeyAudit(c.Request.Context(), attemptedKey); lookupErr != nil {
+						log.Printf("[OpsErrorLogger] LookupDeletedKeyAudit failed: %v", lookupErr)
+					} else if res != nil {
+						owner := res.UserID
+						entry.DeletedKeyOwnerUserID = &owner
+						entry.DeletedKeyName = res.KeyName
+					}
+				}
+			}
+		}
 
 		enqueueOpsErrorLog(ops, entry)
 	}
-}
-
-var opsRetryRequestHeaderAllowlist = []string{
-	"anthropic-beta",
-	"anthropic-version",
 }
 
 // isCountTokensRequest checks if the request is a count_tokens request
@@ -1057,43 +1004,6 @@ func isCountTokensRequest(c *gin.Context) bool {
 		return false
 	}
 	return strings.Contains(c.Request.URL.Path, "/count_tokens")
-}
-
-func extractOpsRetryRequestHeaders(c *gin.Context) *string {
-	if c == nil || c.Request == nil {
-		return nil
-	}
-
-	headers := make(map[string]string, 7)
-	for _, key := range opsRetryRequestHeaderAllowlist {
-		v := strings.TrimSpace(c.GetHeader(key))
-		if v == "" {
-			continue
-		}
-		// Keep headers small even if a client sends something unexpected.
-		headers[key] = truncateString(v, 512)
-	}
-	if info, ok := middleware2.GetAPIKeyAuthFailureInfo(c); ok {
-		if v := strings.TrimSpace(info.Source); v != "" {
-			headers["auth_failure_key_source"] = truncateString(v, 64)
-		}
-		if v := strings.TrimSpace(info.Fingerprint); v != "" {
-			headers["auth_failure_key_fingerprint"] = truncateString(v, 128)
-		}
-		if v := strings.TrimSpace(info.Hint); v != "" {
-			headers["auth_failure_key_hint"] = truncateString(v, 64)
-		}
-	}
-	if len(headers) == 0 {
-		return nil
-	}
-
-	raw, err := json.Marshal(headers)
-	if err != nil {
-		return nil
-	}
-	s := string(raw)
-	return &s
 }
 
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
@@ -1161,9 +1071,11 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 				msg, _ = v.(string)
 			}
 		}
-		// Capture both OpenAI/Responses string codes (e.g. "billing_error") and
-		// Gemini numeric codes so classification can preserve gateway-generated
-		// billing/subscription errors.
+		if t == "" {
+			// Gemini error does not have "type" field.
+			t = "api_error"
+		}
+		// For gemini error, capture numeric code as string for business-limited mapping if needed.
 		var code string
 		if v, ok := errObj["code"]; ok {
 			switch n := v.(type) {
@@ -1173,15 +1085,6 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 				code = strconvItoa(int(n))
 			case int:
 				code = strconvItoa(n)
-			}
-		}
-		if t == "" {
-			// Gemini error does not have "type" field.  Responses-style errors
-			// may also omit type and put the protocol type in error.code instead.
-			if isKnownOpsErrorType(code) {
-				t = code
-			} else {
-				t = "api_error"
 			}
 		}
 		return parsedOpsError{ErrorType: t, Message: msg, Code: code}
@@ -1195,6 +1098,20 @@ func parseOpsErrorResponse(body []byte) parsedOpsError {
 	}
 
 	return parsedOpsError{Message: truncateString(string(body), 1024)}
+}
+
+// getOpsAPIKey 返回用于 Ops 错误日志的 API Key：优先取已鉴权写入的正式 key；
+// 鉴权早退（分组停用/删除、Key 停用/过期/额度、用户停用、IP 限制等）时，
+// 正式 key 尚未写入，回退到 middleware 写入的 ops fallback key
+// （含 User/Group/Platform），从而让日志能展示 用户/分组/平台。
+func getOpsAPIKey(c *gin.Context) *service.APIKey {
+	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil {
+		return apiKey
+	}
+	if apiKey, ok := middleware2.GetOpsFallbackAPIKey(c); ok && apiKey != nil {
+		return apiKey
+	}
+	return nil
 }
 
 func resolveOpsPlatform(apiKey *service.APIKey, fallback string) string {
@@ -1264,7 +1181,6 @@ func classifyOpsPhase(errType, message, code string) string {
 		return "request"
 	}
 
-
 	switch errType {
 	case "authentication_error":
 		return "auth"
@@ -1280,7 +1196,7 @@ func classifyOpsPhase(errType, message, code string) string {
 	case "upstream_error", "overloaded_error":
 		return "upstream"
 	case "api_error":
-		if strings.Contains(msg, opsErrNoAvailableAccounts) {
+		if isOpsNoAvailableAccountMessage(msg) {
 			return "routing"
 		}
 		return "internal"
@@ -1304,24 +1220,6 @@ func classifyOpsSeverity(errType string, status int) string {
 		return "P2"
 	}
 	return "P3"
-}
-
-func classifyOpsIsRetryable(errType string, statusCode int) bool {
-	switch errType {
-	case "authentication_error", "invalid_request_error":
-		return false
-	case "timeout_error":
-		return true
-	case "rate_limit_error":
-		// May be transient (upstream or queue); retry can help.
-		return true
-	case "billing_error", "subscription_error":
-		return false
-	case "upstream_error", "overloaded_error":
-		return statusCode >= 500 || statusCode == 429 || statusCode == 529
-	default:
-		return statusCode >= 500
-	}
 }
 
 func classifyOpsErrorLog(c *gin.Context, errType, message, code string, status int) (phase string, isBusinessLimited bool, errorOwner string, errorSource string) {

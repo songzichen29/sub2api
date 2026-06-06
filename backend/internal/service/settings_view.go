@@ -20,6 +20,10 @@ type SystemSettings struct {
 	FrontendURL                      string
 	InvitationCodeEnabled            bool
 	TotpEnabled                      bool // TOTP 双因素认证
+	LoginAgreementEnabled            bool
+	LoginAgreementMode               string
+	LoginAgreementUpdatedAt          string
+	LoginAgreementDocuments          []LoginAgreementDocument
 
 	SMTPHost               string
 	SMTPPort               int
@@ -42,6 +46,25 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecret           string
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
+
+	// DingTalk Connect OAuth 登录
+	DingTalkConnectEnabled                 bool
+	DingTalkConnectClientID                string
+	DingTalkConnectClientSecret            string
+	DingTalkConnectClientSecretConfigured  bool
+	DingTalkConnectRedirectURL             string
+	DingTalkConnectCorpRestrictionPolicy   string
+	DingTalkConnectInternalCorpID          string
+	DingTalkConnectBypassRegistration      bool
+	DingTalkConnectSyncCorpEmail           bool
+	DingTalkConnectSyncDisplayName         bool
+	DingTalkConnectSyncDept                bool
+	DingTalkConnectSyncCorpEmailAttrKey    string
+	DingTalkConnectSyncDisplayNameAttrKey  string
+	DingTalkConnectSyncDeptAttrKey         string
+	DingTalkConnectSyncCorpEmailAttrName   string
+	DingTalkConnectSyncDisplayNameAttrName string
+	DingTalkConnectSyncDeptAttrName        string
 
 	// WeChat Connect OAuth 登录
 	WeChatConnectEnabled                   bool
@@ -89,6 +112,20 @@ type SystemSettings struct {
 	OIDCConnectUserInfoEmailPath      string
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
+
+	// GitHub / Google 邮箱快捷登录
+	GitHubOAuthEnabled                bool
+	GitHubOAuthClientID               string
+	GitHubOAuthClientSecret           string
+	GitHubOAuthClientSecretConfigured bool
+	GitHubOAuthRedirectURL            string
+	GitHubOAuthFrontendRedirectURL    string
+	GoogleOAuthEnabled                bool
+	GoogleOAuthClientID               string
+	GoogleOAuthClientSecret           string
+	GoogleOAuthClientSecretConfigured bool
+	GoogleOAuthRedirectURL            string
+	GoogleOAuthFrontendRedirectURL    string
 
 	SiteName                               string
 	SiteLogo                               string
@@ -163,7 +200,9 @@ type SystemSettings struct {
 	EnableCCHSigning                   bool   // 是否对 billing header cch 进行签名（默认 false）
 	EnableAnthropicCacheTTL1hInjection bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
 	RewriteMessageCacheControl         bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
+	AntigravityUserAgentVersion        string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	OpenAICodexUserAgent               string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
+	OpenAIAllowClaudeCodeCodexPlugin   bool   // 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认 false）
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
@@ -189,7 +228,13 @@ type SystemSettings struct {
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
 
-	// 独立账号导入入口
+	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
+	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+
+	// 允许终端用户在用量页查看自己的失败请求
+	AllowUserViewErrorRequests bool
+
+	// 独立账号导入
 	StandaloneAccountImportEnabled            bool
 	StandaloneAccountImportPasswordHash       string
 	StandaloneAccountImportPasswordConfigured bool
@@ -197,7 +242,7 @@ type SystemSettings struct {
 
 type DefaultSubscriptionSetting struct {
 	GroupID      int64   `json:"group_id"`
-	ValidityDays int     `json:"validity_days,omitempty"`
+	ValidityDays int     `json:"validity_days"`
 	StartsAt     *string `json:"starts_at,omitempty"`
 	ExpiresAt    *string `json:"expires_at,omitempty"`
 }
@@ -211,6 +256,11 @@ type PublicSettings struct {
 	PasswordResetEnabled                   bool
 	InvitationCodeEnabled                  bool
 	TotpEnabled                            bool // TOTP 双因素认证
+	LoginAgreementEnabled                  bool
+	LoginAgreementMode                     string
+	LoginAgreementUpdatedAt                string
+	LoginAgreementRevision                 string
+	LoginAgreementDocuments                []LoginAgreementDocument
 	TurnstileEnabled                       bool
 	TurnstileSiteKey                       string
 	SiteName                               string
@@ -218,6 +268,7 @@ type PublicSettings struct {
 	SiteSubtitle                           string
 	APIBaseURL                             string
 	OpenAIFreeImageBridgeURL               string
+	OpenAIFreeImageBridgeAuthKey           string
 	OpenAIFreeImageBridgeAuthKeyConfigured bool
 	ContactInfo                            string
 	DocURL                                 string
@@ -232,6 +283,7 @@ type PublicSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled      bool
+	DingTalkOAuthEnabled     bool
 	WeChatOAuthEnabled       bool
 	WeChatOAuthOpenEnabled   bool
 	WeChatOAuthMPEnabled     bool
@@ -240,6 +292,8 @@ type PublicSettings struct {
 	PaymentEnabled           bool
 	OIDCOAuthEnabled         bool
 	OIDCOAuthProviderName    string
+	GitHubOAuthEnabled       bool
+	GoogleOAuthEnabled       bool
 	Version                  string
 
 	BalanceLowNotifyEnabled     bool
@@ -259,8 +313,17 @@ type PublicSettings struct {
 	AffiliateRechargeEnabled     bool `json:"affiliate_recharge_enabled"`
 	AffiliateSubscriptionEnabled bool `json:"affiliate_subscription_enabled"`
 
-	// ????????
+	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+
+	// 允许终端用户在用量页查看自己的失败请求
+	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+}
+
+type LoginAgreementDocument struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	ContentMD string `json:"content_md"`
 }
 
 type WeChatConnectOAuthConfig struct {

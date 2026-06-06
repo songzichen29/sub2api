@@ -255,11 +255,25 @@ func (s *UserSubscription) IsWindowActivated() bool {
 	return s.DailyWindowStart != nil || s.WeeklyWindowStart != nil || s.MonthlyWindowStart != nil
 }
 
+func (s *UserSubscription) HasOneTimeDailyQuota() bool {
+	if s == nil || s.StartsAt.IsZero() || s.ExpiresAt.IsZero() {
+		return false
+	}
+	return !s.ExpiresAt.After(s.StartsAt.AddDate(0, 0, 1))
+}
+
 func (s *UserSubscription) NeedsDailyReset() bool {
+	return s.NeedsDailyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
 	if s.DailyWindowStart == nil {
 		return false
 	}
-	return windowNeedsReset(s.StartsAt, s.DailyWindowStart, time.Now(), dailyWindowDuration)
+	if s.HasOneTimeDailyQuota() {
+		return false
+	}
+	return windowNeedsReset(s.StartsAt, s.DailyWindowStart, now, dailyWindowDuration)
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
@@ -279,6 +293,10 @@ func (s *UserSubscription) NeedsMonthlyReset() bool {
 func (s *UserSubscription) DailyResetTime() *time.Time {
 	if s.DailyWindowStart == nil {
 		return nil
+	}
+	if s.HasOneTimeDailyQuota() {
+		t := s.ExpiresAt
+		return &t
 	}
 	return windowResetTime(s.StartsAt, s.DailyWindowStart, time.Now(), dailyWindowDuration)
 }
@@ -381,11 +399,7 @@ func effectiveStoredWindowStart(anchor time.Time, storedStart *time.Time) *time.
 	if storedStart == nil {
 		return nil
 	}
-	start := *storedStart
-	if start.Before(anchor) {
-		start = anchor
-	}
-	return &start
+	return storedStart
 }
 
 func windowNeedsReset(anchor time.Time, storedStart *time.Time, now time.Time, duration time.Duration) bool {

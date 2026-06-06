@@ -74,11 +74,16 @@ type UserListFilters struct {
 	// For large datasets this can be expensive; admin list pages should enable it on demand.
 	// nil means not specified (default: load subscriptions for backward compatibility).
 	IncludeSubscriptions *bool
+	// IncludeDeleted 为 true 时绕过软删除过滤，返回含已删除（deleted_at 非空）的用户。
+	// 仅供 /admin/usage 的 SearchUsers 端点使用，其他列表调用方不要设置。
+	IncludeDeleted bool
 }
 
 type UserRepository interface {
 	Create(ctx context.Context, user *User) error
 	GetByID(ctx context.Context, id int64) (*User, error)
+	// GetByIDIncludeDeleted 绕过软删除过滤按 ID 取用户（含已删）。仅供管理员审计/usage 点击使用。
+	GetByIDIncludeDeleted(ctx context.Context, id int64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetFirstAdmin(ctx context.Context) (*User, error)
 	Update(ctx context.Context, user *User) error
@@ -96,6 +101,8 @@ type UserRepository interface {
 	UpdateBalance(ctx context.Context, id int64, amount float64) error
 	DeductBalance(ctx context.Context, id int64, amount float64) error
 	UpdateConcurrency(ctx context.Context, id int64, amount int) error
+	BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error)
+	BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error)
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error)
 	// AddGroupToAllowedGroups 将指定分组增量添加到用户的 allowed_groups（幂等，冲突忽略）
@@ -139,10 +146,11 @@ type UserIdentitySummary struct {
 }
 
 type UserIdentitySummarySet struct {
-	Email   UserIdentitySummary `json:"email"`
-	LinuxDo UserIdentitySummary `json:"linuxdo"`
-	OIDC    UserIdentitySummary `json:"oidc"`
-	WeChat  UserIdentitySummary `json:"wechat"`
+	Email    UserIdentitySummary `json:"email"`
+	LinuxDo  UserIdentitySummary `json:"linuxdo"`
+	OIDC     UserIdentitySummary `json:"oidc"`
+	WeChat   UserIdentitySummary `json:"wechat"`
+	DingTalk UserIdentitySummary `json:"dingtalk"`
 }
 
 type StartUserIdentityBindingRequest struct {
@@ -258,10 +266,11 @@ func (s *UserService) GetProfileIdentitySummaries(ctx context.Context, userID in
 	}
 
 	summaries := UserIdentitySummarySet{
-		Email:   s.buildEmailIdentitySummary(user, records),
-		LinuxDo: s.buildProviderIdentitySummary("linuxdo", user, records),
-		OIDC:    s.buildProviderIdentitySummary("oidc", user, records),
-		WeChat:  s.buildProviderIdentitySummary("wechat", user, records),
+		Email:    s.buildEmailIdentitySummary(user, records),
+		LinuxDo:  s.buildProviderIdentitySummary("linuxdo", user, records),
+		OIDC:     s.buildProviderIdentitySummary("oidc", user, records),
+		WeChat:   s.buildProviderIdentitySummary("wechat", user, records),
+		DingTalk: s.buildProviderIdentitySummary("dingtalk", user, records),
 	}
 
 	s.applyExplicitProviderAvailability(ctx, &summaries)
@@ -281,6 +290,7 @@ func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, sum
 		SettingKeyWeChatConnectMPEnabled,
 		SettingKeyWeChatConnectMobileEnabled,
 		SettingKeyWeChatConnectMode,
+		SettingKeyDingTalkConnectEnabled,
 	})
 	if err != nil {
 		return
@@ -288,6 +298,9 @@ func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, sum
 
 	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
 		disableIdentityBindAction(&summaries.LinuxDo)
+	}
+	if raw, ok := settings[SettingKeyDingTalkConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
+		disableIdentityBindAction(&summaries.DingTalk)
 	}
 	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
 		disableIdentityBindAction(&summaries.OIDC)
@@ -694,7 +707,7 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 		return true
 	}
 
-	for _, candidate := range []string{"linuxdo", "oidc", "wechat"} {
+	for _, candidate := range []string{"linuxdo", "oidc", "wechat", "dingtalk"} {
 		if candidate == provider {
 			continue
 		}
@@ -770,6 +783,8 @@ func buildUserIdentityBindAuthorizeURL(provider, redirectTo string) (string, err
 		path = "/api/v1/auth/oauth/oidc/bind/start"
 	case "wechat":
 		path = "/api/v1/auth/oauth/wechat/bind/start"
+	case "dingtalk":
+		path = "/api/v1/auth/oauth/dingtalk/bind/start"
 	default:
 		return "", ErrIdentityProviderInvalid
 	}
@@ -788,6 +803,8 @@ func normalizeUserIdentityProvider(provider string) string {
 		return "oidc"
 	case "wechat":
 		return "wechat"
+	case "dingtalk":
+		return "dingtalk"
 	case "email":
 		return "email"
 	default:

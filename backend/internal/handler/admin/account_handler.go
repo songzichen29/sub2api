@@ -76,8 +76,12 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
-	secretEncryptor service.SecretEncryptor,
+	secretEncryptors ...service.SecretEncryptor,
 ) *AccountHandler {
+	var secretEncryptor service.SecretEncryptor
+	if len(secretEncryptors) > 0 {
+		secretEncryptor = secretEncryptors[0]
+	}
 	return &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,

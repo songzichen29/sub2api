@@ -109,6 +109,14 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 }
 
+func paymentAmountToleranceForCurrency(currency string) float64 {
+	minorUnit := payment.CurrencyMinorUnit(currency)
+	if minorUnit <= 2 {
+		return amountToleranceCNY
+	}
+	return math.Pow10(-minorUnit) / 2
+}
+
 func isValidProviderAmount(amount float64) bool {
 	return amount > 0 && !math.IsNaN(amount) && !math.IsInf(amount, 0)
 }
