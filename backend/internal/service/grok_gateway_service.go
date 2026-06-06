@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +34,30 @@ type GrokGatewayService struct {
 	rateLimitService *RateLimitService
 	httpUpstream     HTTPUpstream
 	settingService   *SettingService
+
+	responsesSessionMu     sync.Mutex
+	responsesContinuations map[string]grokResponsesContinuation
+}
+
+const grokResponsesContinuationTTL = 30 * time.Minute
+const grokResponsesContinuationMaxEntries = 2048
+
+type grokResponsesContinuation struct {
+	Messages  []apicompat.ChatMessage
+	ExpiresAt time.Time
+}
+
+type GrokResponsesClientError struct {
+	StatusCode int
+	Code       string
+	Message    string
+}
+
+func (e *GrokResponsesClientError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
 }
 
 func NewGrokGatewayService(
@@ -757,6 +783,13 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 	reasoningEffort := extractCCReasoningEffortFromBody(body)
+	if clientStream {
+		var ok bool
+		body, ok = setJSONValueBytes(body, "stream_options.include_usage", true)
+		if !ok {
+			return nil, fmt.Errorf("enable stream usage")
+		}
+	}
 
 	logger.L().Debug("grok forward_as_chat_completions: direct passthrough",
 		zap.Int64("account_id", account.ID),
@@ -773,6 +806,11 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if clientStream {
+		req.Header.Set("Accept", "text/event-stream")
+	} else {
+		req.Header.Set("Accept", "application/json")
+	}
 
 	// 4. Send request
 	proxyURL := ""
@@ -812,6 +850,7 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 	// 6. Handle success response
 	var usage ClaudeUsage
 	var firstTokenMs *int
+	sawUsage := false
 
 	if clientStream {
 		// Streaming: passthrough SSE lines, extract usage from last chunk
@@ -828,25 +867,32 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {
+				fmt.Fprint(c.Writer, "\n")
+				c.Writer.Flush()
 				continue
 			}
 
-			if firstChunk && strings.HasPrefix(line, "data: ") && line != "data: [DONE]" {
-				firstChunk = false
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
+			if payload, ok := extractOpenAISSEDataLine(line); ok {
+				payload = strings.TrimSpace(payload)
+				if payload != "" && payload != "[DONE]" {
+					if firstChunk {
+						firstChunk = false
+						ms := int(time.Since(startTime).Milliseconds())
+						firstTokenMs = &ms
+					}
 
-			// Extract usage from streaming chunks that contain it
-			if strings.HasPrefix(line, "data: ") && strings.Contains(line, `"usage"`) {
-				payload := strings.TrimPrefix(line, "data: ")
-				if payload != "[DONE]" {
-					s.extractCCUsage([]byte(payload), &usage)
+					// Extract usage from streaming chunks that contain it.
+					if s.extractCCUsage([]byte(payload), &usage) {
+						sawUsage = true
+					}
 				}
 			}
 
 			fmt.Fprintf(c.Writer, "%s\n", line)
 			c.Writer.Flush()
+		}
+		if err := scanner.Err(); err != nil {
+			logger.L().Warn("grok forward_as_chat_completions: stream read error", zap.Error(err))
 		}
 	} else {
 		// Non-streaming: passthrough JSON, extract usage
@@ -855,7 +901,7 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 			return nil, fmt.Errorf("read upstream response: %w", err)
 		}
 
-		s.extractCCUsage(respBody, &usage)
+		sawUsage = s.extractCCUsage(respBody, &usage)
 
 		c.Header("Content-Type", resp.Header.Get("Content-Type"))
 		c.Status(http.StatusOK)
@@ -864,6 +910,7 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 
 	duration := time.Since(startTime)
 	logger.LegacyPrintf("service.grok_gateway", "forward_as_cc status=success model=%s duration_ms=%d", originalModel, duration.Milliseconds())
+	logGrokZeroUsageIfNeeded(account, originalModel, mappedModel, clientStream, false, sawUsage, usage)
 
 	return &ForwardResult{
 		Model:           originalModel,
@@ -876,19 +923,248 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 	}, nil
 }
 
-// extractCCUsage extracts prompt_tokens and completion_tokens from an OpenAI CC response.
-func (s *GrokGatewayService) extractCCUsage(data []byte, usage *ClaudeUsage) {
-	var wrapper struct {
-		Usage *struct {
-			PromptTokens     int `json:"prompt_tokens"`
-			CompletionTokens int `json:"completion_tokens"`
-			TotalTokens      int `json:"total_tokens"`
-		} `json:"usage"`
+// extractCCUsage extracts token usage from OpenAI Chat Completions style
+// responses and Grok-compatible variants. It returns true when an upstream
+// usage object is present. Zero values never overwrite previously extracted
+// non-zero values because some streaming chunks may carry partial/empty usage.
+func (s *GrokGatewayService) extractCCUsage(data []byte, usage *ClaudeUsage) bool {
+	if usage == nil {
+		return false
 	}
-	if json.Unmarshal(data, &wrapper) == nil && wrapper.Usage != nil {
-		usage.InputTokens = wrapper.Usage.PromptTokens
-		usage.OutputTokens = wrapper.Usage.CompletionTokens
+
+	root := gjson.ParseBytes(data)
+	sawUsage := false
+	for _, path := range []string{"usage", "response.usage"} {
+		node := root.Get(path)
+		if !node.Exists() || !node.IsObject() {
+			continue
+		}
+		sawUsage = true
+		applyGrokCCUsageNode(node, usage)
 	}
+	return sawUsage
+}
+
+func applyGrokCCUsageNode(node gjson.Result, usage *ClaudeUsage) {
+	if v := firstPositiveGrokUsageInt(node, "prompt_tokens", "input_tokens"); v > 0 {
+		usage.InputTokens = v
+	}
+	if v := firstPositiveGrokUsageInt(node, "completion_tokens", "output_tokens"); v > 0 {
+		usage.OutputTokens = v
+	}
+	if v := firstPositiveGrokUsageInt(node, "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens"); v > 0 {
+		usage.CacheReadInputTokens = v
+	}
+}
+
+func firstPositiveGrokUsageInt(node gjson.Result, paths ...string) int {
+	for _, path := range paths {
+		result := node.Get(path)
+		if result.Exists() {
+			if v := int(result.Int()); v > 0 {
+				return v
+			}
+		}
+	}
+	return 0
+}
+
+func (u ClaudeUsage) totalTokens() int {
+	return u.InputTokens + u.OutputTokens + u.CacheCreationInputTokens + u.CacheReadInputTokens + u.CacheCreation5mTokens + u.CacheCreation1hTokens + u.ImageOutputTokens
+}
+
+func (s *GrokGatewayService) grokContinuationScope(c *gin.Context, account *Account) string {
+	platform := ""
+	if account != nil {
+		platform = account.Platform
+	}
+	apiKeyID := int64(0)
+	userID := int64(0)
+	groupID := int64(0)
+	if apiKey := getAPIKeyFromContext(c); apiKey != nil {
+		apiKeyID = apiKey.ID
+		userID = apiKey.UserID
+		if apiKey.GroupID != nil {
+			groupID = *apiKey.GroupID
+		}
+	}
+	return fmt.Sprintf("platform=%s:user=%d:key=%d:group=%d", platform, userID, apiKeyID, groupID)
+}
+
+func (s *GrokGatewayService) grokContinuationKey(scope, responseID string) string {
+	return scope + ":response=" + strings.TrimSpace(responseID)
+}
+
+func cloneGrokChatMessages(messages []apicompat.ChatMessage) []apicompat.ChatMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]apicompat.ChatMessage, len(messages))
+	copy(out, messages)
+	for i := range out {
+		if len(messages[i].Content) > 0 {
+			out[i].Content = append(json.RawMessage(nil), messages[i].Content...)
+		}
+		if len(messages[i].ToolCalls) > 0 {
+			out[i].ToolCalls = append([]apicompat.ChatToolCall(nil), messages[i].ToolCalls...)
+		}
+		if messages[i].FunctionCall != nil {
+			fc := *messages[i].FunctionCall
+			out[i].FunctionCall = &fc
+		}
+	}
+	return out
+}
+
+func grokAssistantMessageFromChatResponse(resp *apicompat.ChatCompletionsResponse) (apicompat.ChatMessage, bool) {
+	if resp == nil || len(resp.Choices) == 0 {
+		return apicompat.ChatMessage{}, false
+	}
+	message := resp.Choices[0].Message
+	if strings.TrimSpace(message.Role) == "" {
+		message.Role = "assistant"
+	}
+	return message, true
+}
+
+func grokAssistantMessageFromResponsesStreamState(state *apicompat.ChatCompletionsToResponsesStreamState) (apicompat.ChatMessage, bool) {
+	if state == nil {
+		return apicompat.ChatMessage{}, false
+	}
+	content, _ := json.Marshal(state.Text.String())
+	message := apicompat.ChatMessage{
+		Role:    "assistant",
+		Content: content,
+	}
+	if state.Reasoning.Len() > 0 {
+		message.ReasoningContent = state.Reasoning.String()
+	}
+	if len(state.ToolCalls) > 0 {
+		for i := 0; i < len(state.ToolCalls); i++ {
+			toolCall := state.ToolCalls[i]
+			if toolCall == nil {
+				continue
+			}
+			copyCall := *toolCall
+			if strings.TrimSpace(copyCall.Type) == "" {
+				copyCall.Type = "function"
+			}
+			message.ToolCalls = append(message.ToolCalls, copyCall)
+		}
+	}
+	if state.Text.Len() == 0 && state.Reasoning.Len() == 0 && len(message.ToolCalls) == 0 {
+		return apicompat.ChatMessage{}, false
+	}
+	return message, true
+}
+
+func (s *GrokGatewayService) prependGrokContinuationMessages(scope string, req *apicompat.ResponsesRequest, chatReq *apicompat.ChatCompletionsRequest) (bool, error) {
+	if req == nil || chatReq == nil {
+		return false, nil
+	}
+	previousResponseID := strings.TrimSpace(req.PreviousResponseID)
+	if previousResponseID == "" {
+		return false, nil
+	}
+	if ClassifyOpenAIPreviousResponseIDKind(previousResponseID) != OpenAIPreviousResponseIDKindResponseID {
+		return false, &GrokResponsesClientError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "invalid_request_error",
+			Message:    "previous_response_id must be a response.id (resp_*)",
+		}
+	}
+
+	key := s.grokContinuationKey(scope, previousResponseID)
+	now := time.Now()
+
+	s.responsesSessionMu.Lock()
+	defer s.responsesSessionMu.Unlock()
+	s.pruneExpiredGrokContinuationsLocked(now)
+
+	entry, ok := s.responsesContinuations[key]
+	if !ok || now.After(entry.ExpiresAt) {
+		if ok {
+			delete(s.responsesContinuations, key)
+		}
+		return false, &GrokResponsesClientError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "invalid_request_error",
+			Message:    "previous_response_id not found or expired for Grok Responses chat fallback",
+		}
+	}
+
+	history := cloneGrokChatMessages(entry.Messages)
+	current := cloneGrokChatMessages(chatReq.Messages)
+	chatReq.Messages = append(history, current...)
+	return true, nil
+}
+
+func (s *GrokGatewayService) storeGrokContinuation(scope, responseID string, messages []apicompat.ChatMessage) {
+	responseID = strings.TrimSpace(responseID)
+	if responseID == "" || len(messages) == 0 {
+		return
+	}
+
+	now := time.Now()
+	key := s.grokContinuationKey(scope, responseID)
+	entry := grokResponsesContinuation{
+		Messages:  cloneGrokChatMessages(messages),
+		ExpiresAt: now.Add(grokResponsesContinuationTTL),
+	}
+
+	s.responsesSessionMu.Lock()
+	defer s.responsesSessionMu.Unlock()
+	if s.responsesContinuations == nil {
+		s.responsesContinuations = make(map[string]grokResponsesContinuation)
+	}
+	s.pruneExpiredGrokContinuationsLocked(now)
+	if len(s.responsesContinuations) >= grokResponsesContinuationMaxEntries {
+		s.evictOldestGrokContinuationLocked()
+	}
+	s.responsesContinuations[key] = entry
+}
+
+func (s *GrokGatewayService) pruneExpiredGrokContinuationsLocked(now time.Time) {
+	if len(s.responsesContinuations) == 0 {
+		return
+	}
+	for key, entry := range s.responsesContinuations {
+		if now.After(entry.ExpiresAt) {
+			delete(s.responsesContinuations, key)
+		}
+	}
+}
+
+func (s *GrokGatewayService) evictOldestGrokContinuationLocked() {
+	oldestKey := ""
+	var oldestTime time.Time
+	for key, entry := range s.responsesContinuations {
+		if oldestKey == "" || entry.ExpiresAt.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = entry.ExpiresAt
+		}
+	}
+	if oldestKey != "" {
+		delete(s.responsesContinuations, oldestKey)
+	}
+}
+
+func logGrokZeroUsageIfNeeded(account *Account, originalModel, mappedModel string, stream bool, hasPreviousResponseID bool, sawUsage bool, usage ClaudeUsage) {
+	if usage.totalTokens() != 0 {
+		return
+	}
+	accountID := int64(0)
+	if account != nil {
+		accountID = account.ID
+	}
+	logger.L().Warn("grok gateway: zero token usage from chat completions upstream",
+		zap.Int64("account_id", accountID),
+		zap.String("original_model", originalModel),
+		zap.String("mapped_model", mappedModel),
+		zap.Bool("stream", stream),
+		zap.Bool("has_previous_response_id", hasPreviousResponseID),
+		zap.Bool("saw_upstream_usage", sawUsage),
+	)
 }
 
 // ForwardAsResponses accepts an OpenAI Responses API request body, converts it
@@ -919,6 +1195,8 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	}
 	originalModel := responsesReq.Model
 	clientStream := responsesReq.Stream
+	hasPreviousResponseID := strings.TrimSpace(responsesReq.PreviousResponseID) != ""
+	continuationScope := s.grokContinuationScope(c, account)
 
 	// 3. Convert Responses -> Chat Completions
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequest(&responsesReq)
@@ -938,6 +1216,14 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
+	continuationAttached, err := s.prependGrokContinuationMessages(continuationScope, &responsesReq, chatReq)
+	if err != nil {
+		var clientErr *GrokResponsesClientError
+		if errors.As(err, &clientErr) {
+			return nil, clientErr
+		}
+		return nil, err
+	}
 
 	chatBody, err := json.Marshal(chatReq)
 	if err != nil {
@@ -950,6 +1236,8 @@ func (s *GrokGatewayService) ForwardAsResponses(
 		zap.String("original_model", originalModel),
 		zap.String("mapped_model", mappedModel),
 		zap.Bool("client_stream", clientStream),
+		zap.Bool("has_previous_response_id", hasPreviousResponseID),
+		zap.Bool("continuation_attached", continuationAttached),
 	)
 
 	// 5. Build upstream request -> /v1/chat/completions
@@ -999,6 +1287,7 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	// 8. Handle success response
 	var usage ClaudeUsage
 	var firstTokenMs *int
+	sawUsage := false
 
 	if clientStream {
 		// Streaming: convert CC SSE chunks to Responses SSE events
@@ -1043,6 +1332,7 @@ func (s *GrokGatewayService) ForwardAsResponses(
 
 			// Extract usage
 			if strings.Contains(payload, "\"usage\"") {
+				sawUsage = true
 				s.extractCCUsage([]byte(payload), &usage)
 			}
 
@@ -1061,6 +1351,11 @@ func (s *GrokGatewayService) ForwardAsResponses(
 			logger.L().Warn("grok forward_as_responses: stream read error", zap.Error(err))
 		}
 		writeResponsesEvents(apicompat.FinalizeChatCompletionsResponsesStream(state))
+		conversation := cloneGrokChatMessages(chatReq.Messages)
+		if assistantMessage, ok := grokAssistantMessageFromResponsesStreamState(state); ok {
+			conversation = append(conversation, assistantMessage)
+		}
+		s.storeGrokContinuation(continuationScope, state.ResponseID, conversation)
 		fmt.Fprint(c.Writer, "data: [DONE]\n\n")
 		c.Writer.Flush()
 		if !sawDone {
@@ -1077,9 +1372,15 @@ func (s *GrokGatewayService) ForwardAsResponses(
 		if err := json.Unmarshal(respBody, &ccResp); err != nil {
 			return nil, fmt.Errorf("parse upstream CC response: %w", err)
 		}
+		sawUsage = ccResp.Usage != nil
 		s.extractCCUsage(respBody, &usage)
 
 		responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+		conversation := cloneGrokChatMessages(chatReq.Messages)
+		if assistantMessage, ok := grokAssistantMessageFromChatResponse(&ccResp); ok {
+			conversation = append(conversation, assistantMessage)
+		}
+		s.storeGrokContinuation(continuationScope, responsesResp.ID, conversation)
 		if respBytes, err := json.Marshal(responsesResp); err == nil {
 			c.Header("Content-Type", "application/json")
 			c.Status(http.StatusOK)
@@ -1093,6 +1394,7 @@ func (s *GrokGatewayService) ForwardAsResponses(
 
 	duration := time.Since(startTime)
 	logger.LegacyPrintf("service.grok_gateway", "forward_as_responses status=success model=%s duration_ms=%d", originalModel, duration.Milliseconds())
+	logGrokZeroUsageIfNeeded(account, originalModel, mappedModel, clientStream, hasPreviousResponseID, sawUsage, usage)
 
 	return &ForwardResult{
 		Model:           originalModel,

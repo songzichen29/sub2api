@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -25,6 +26,7 @@ type grokOKUpstream struct {
 	capturedAPIKey           string
 	capturedAnthropicVersion string
 	capturedBody             string
+	capturedBodies           []string
 	response                 string
 	statusCode               int
 }
@@ -37,6 +39,7 @@ func (s *grokOKUpstream) Do(req *http.Request, proxyURL string, accountID int64,
 	if req.Body != nil {
 		buf, _ := io.ReadAll(req.Body)
 		s.capturedBody = string(buf)
+		s.capturedBodies = append(s.capturedBodies, s.capturedBody)
 	}
 
 	statusCode := s.statusCode
@@ -327,6 +330,11 @@ func TestGrokGatewayService_ForwardAsResponses_ConvertsRequestToChatCompletions(
 	require.Contains(t, recorder.Body.String(), `"object":"response"`)
 	require.Contains(t, recorder.Body.String(), `"model":"grok-client"`)
 	require.Contains(t, recorder.Body.String(), `"output_text"`)
+
+	var responsesResp apicompat.ResponsesResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responsesResp))
+	require.True(t, strings.HasPrefix(responsesResp.ID, "resp_"), "Grok Responses id must be resp_*, got %q", responsesResp.ID)
+	require.NotEqual(t, "chatcmpl_test", responsesResp.ID)
 }
 
 func TestGrokGatewayService_ForwardAsResponses_VersionedBaseURL(t *testing.T) {
@@ -349,6 +357,85 @@ func TestGrokGatewayService_ForwardAsResponses_VersionedBaseURL(t *testing.T) {
 	_, err := s.ForwardAsResponses(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.Equal(t, "https://api.dwai.cloud/v1/chat/completions", upstream.capturedURL)
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamExtractsResponsesStyleUsage(t *testing.T) {
+	upstream := &grokOKUpstream{
+		response: `{"id":"chatcmpl_test","object":"chat.completion","model":"grok-3","choices":[{"index":0,"message":{"role":"assistant","content":"hi"},"finish_reason":"stop"}],"usage":{"input_tokens":11,"output_tokens":4,"input_tokens_details":{"cached_tokens":3}}}`,
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       12,
+		Name:     "chat-completions-usage-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Stream)
+	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
+
+	require.Equal(t, "http://grok2api.local:8000/v1/chat/completions", upstream.capturedURL)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"content":"hi"`)
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_StreamInjectsIncludeUsageAndExtractsUsage(t *testing.T) {
+	upstream := &grokOKUpstream{
+		response: strings.Join([]string{
+			`data:{"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[{"index":0,"delta":{"content":"hello"},"finish_reason":null}]}`,
+			"",
+			`data:{"id":"chatcmpl_test","object":"chat.completion.chunk","model":"grok-3","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":5}}}`,
+			"",
+			`data:[DONE]`,
+			"",
+		}, "\n"),
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       13,
+		Name:     "chat-completions-stream-usage-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, 5, result.Usage.CacheReadInputTokens)
+
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	streamOptions, ok := sent["stream_options"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, streamOptions["include_usage"])
+
+	out := recorder.Body.String()
+	require.Contains(t, out, "data:{")
+	require.Contains(t, out, `"content":"hello"`)
+	require.Contains(t, out, `"usage":{"prompt_tokens":10,"completion_tokens":2`)
+	require.Contains(t, out, "\n\n")
 }
 
 func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *testing.T) {
@@ -396,6 +483,8 @@ func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *
 
 	out := recorder.Body.String()
 	require.Contains(t, out, "event: response.created\n")
+	require.Contains(t, out, `"id":"resp_`)
+	require.NotContains(t, out, `"id":"chatcmpl_test"`)
 	require.Contains(t, out, "event: response.output_item.added\n")
 	require.Contains(t, out, `"content":[{"type":"output_text","text":""}]`)
 	require.Contains(t, out, "event: response.output_text.delta\n")
@@ -403,4 +492,73 @@ func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *
 	require.Contains(t, out, "event: response.completed\n")
 	require.Contains(t, out, `"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}`)
 	require.Contains(t, out, "data: [DONE]\n\n")
+}
+
+func TestGrokGatewayService_ForwardAsResponses_PreviousResponseIDReplaysLocalConversation(t *testing.T) {
+	upstream := &grokOKUpstream{}
+	s := &GrokGatewayService{httpUpstream: upstream}
+	account := &Account{
+		ID:       10,
+		Name:     "responses-continuation-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+
+	c1, recorder1 := makeTestGinContext()
+	firstBody := []byte(`{"model":"grok-3","input":"hello","stream":false}`)
+	_, err := s.ForwardAsResponses(context.Background(), c1, account, firstBody)
+	require.NoError(t, err)
+
+	var firstResp apicompat.ResponsesResponse
+	require.NoError(t, json.Unmarshal(recorder1.Body.Bytes(), &firstResp))
+	require.True(t, strings.HasPrefix(firstResp.ID, "resp_"))
+
+	c2, _ := makeTestGinContext()
+	secondBody := []byte(`{"model":"grok-3","previous_response_id":"` + firstResp.ID + `","input":"again","stream":false}`)
+	_, err = s.ForwardAsResponses(context.Background(), c2, account, secondBody)
+	require.NoError(t, err)
+	require.Len(t, upstream.capturedBodies, 2)
+
+	var sent struct {
+		Messages []apicompat.ChatMessage `json:"messages"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBodies[1]), &sent))
+	require.Len(t, sent.Messages, 3)
+	require.Equal(t, "user", sent.Messages[0].Role)
+	require.JSONEq(t, `"hello"`, string(sent.Messages[0].Content))
+	require.Equal(t, "assistant", sent.Messages[1].Role)
+	require.JSONEq(t, `"hi"`, string(sent.Messages[1].Content))
+	require.Equal(t, "user", sent.Messages[2].Role)
+	require.JSONEq(t, `"again"`, string(sent.Messages[2].Content))
+}
+
+func TestGrokGatewayService_ForwardAsResponses_UnknownPreviousResponseIDReturnsClientError(t *testing.T) {
+	upstream := &grokOKUpstream{}
+	s := &GrokGatewayService{httpUpstream: upstream}
+	account := &Account{
+		ID:       11,
+		Name:     "responses-missing-continuation-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+
+	c, _ := makeTestGinContext()
+	body := []byte(`{"model":"grok-3","previous_response_id":"resp_missing","input":"again","stream":false}`)
+	result, err := s.ForwardAsResponses(context.Background(), c, account, body)
+
+	require.Error(t, err)
+	require.Nil(t, result)
+	var clientErr *GrokResponsesClientError
+	require.ErrorAs(t, err, &clientErr)
+	require.Equal(t, http.StatusBadRequest, clientErr.StatusCode)
+	require.Contains(t, clientErr.Message, "previous_response_id")
+	require.Empty(t, upstream.capturedBody)
 }

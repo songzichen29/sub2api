@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -71,6 +72,52 @@ func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *
 	assert.JSONEq(t, `"Use concise answers."`, string(out.Messages[0].Content))
 	assert.JSONEq(t, `"Prefer JSON."`, string(out.Messages[1].Content))
 	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
+}
+
+func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testing.T) {
+	resp := &ChatCompletionsResponse{
+		ID:     "chatcmpl_test",
+		Object: "chat.completion",
+		Model:  "grok-upstream",
+		Choices: []ChatChoice{{
+			Index:        0,
+			Message:      ChatMessage{Role: "assistant", Content: json.RawMessage(`"hello"`)},
+			FinishReason: "stop",
+		}},
+	}
+
+	out := ChatCompletionsResponseToResponses(resp, "grok-client")
+
+	require.NotNil(t, out)
+	assert.True(t, strings.HasPrefix(out.ID, "resp_"), "responses id must be resp_*, got %q", out.ID)
+	assert.NotEqual(t, "chatcmpl_test", out.ID)
+}
+
+func TestChatCompletionsChunkToResponsesEvents_KeepsGeneratedResponseIDForChatCompletionChunks(t *testing.T) {
+	state := NewChatCompletionsToResponsesStreamState("grok-client")
+	initialID := state.ResponseID
+	content := "hello"
+
+	events := ChatCompletionsChunkToResponsesEvents(&ChatCompletionsChunk{
+		ID:     "chatcmpl_stream",
+		Object: "chat.completion.chunk",
+		Model:  "grok-upstream",
+		Choices: []ChatChunkChoice{{
+			Index: 0,
+			Delta: ChatDelta{Content: &content},
+		}},
+	}, state)
+	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
+
+	require.True(t, strings.HasPrefix(state.ResponseID, "resp_"), "stream response id must be resp_*, got %q", state.ResponseID)
+	assert.Equal(t, initialID, state.ResponseID)
+	require.NotEmpty(t, events)
+	for _, event := range events {
+		if event.Response != nil {
+			assert.Equal(t, state.ResponseID, event.Response.ID)
+			assert.NotEqual(t, "chatcmpl_stream", event.Response.ID)
+		}
+	}
 }
 
 func chatMessageRoles(messages []ChatMessage) []string {

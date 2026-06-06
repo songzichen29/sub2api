@@ -258,6 +258,27 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 
 		if err != nil {
+			var grokClientErr *service.GrokResponsesClientError
+			if errors.As(err, &grokClientErr) {
+				if c.Writer.Size() != writerSizeBeforeForward {
+					h.ensureForwardErrorResponse(c, streamStarted)
+				} else {
+					statusCode := grokClientErr.StatusCode
+					if statusCode == 0 {
+						statusCode = http.StatusBadRequest
+					}
+					code := grokClientErr.Code
+					if code == "" {
+						code = "invalid_request_error"
+					}
+					h.responsesErrorResponse(c, statusCode, code, grokClientErr.Message)
+				}
+				reqLog.Warn("gateway.responses.grok_client_error",
+					zap.Int64("account_id", account.ID),
+					zap.Error(err),
+				)
+				return
+			}
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
