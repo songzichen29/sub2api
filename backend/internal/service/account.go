@@ -851,7 +851,7 @@ func matchWildcardMappingResult(mapping map[string]string, requestedModel string
 }
 
 func (a *Account) IsCustomErrorCodesEnabled() bool {
-	if a.Type != AccountTypeAPIKey || a.Credentials == nil {
+	if !a.SupportsPoolModeAndCustomErrors() || a.Credentials == nil {
 		return false
 	}
 	if v, ok := a.Credentials["custom_error_codes_enabled"]; ok {
@@ -865,7 +865,7 @@ func (a *Account) IsCustomErrorCodesEnabled() bool {
 // IsPoolMode 检查 API Key 账号是否启用池模式。
 // 池模式下，上游错误不标记本地账号状态，而是在同一账号上重试。
 func (a *Account) IsPoolMode() bool {
-	if !a.IsAPIKeyOrBedrock() || a.Credentials == nil {
+	if !a.SupportsPoolModeAndCustomErrors() || a.Credentials == nil {
 		return false
 	}
 	if v, ok := a.Credentials["pool_mode"]; ok {
@@ -942,9 +942,36 @@ func (a *Account) GetCustomErrorCodes() []int {
 	if arr, ok := raw.([]any); ok {
 		result := make([]int, 0, len(arr))
 		for _, v := range arr {
-			if f, ok := v.(float64); ok {
-				result = append(result, int(f))
+			switch n := v.(type) {
+			case float64:
+				result = append(result, int(n))
+			case int:
+				result = append(result, n)
+			case int64:
+				result = append(result, int(n))
+			case json.Number:
+				if i, err := n.Int64(); err == nil {
+					result = append(result, int(i))
+				}
+			case string:
+				if i, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+					result = append(result, i)
+				}
 			}
+		}
+		return result
+	}
+	if arr, ok := raw.([]int); ok {
+		result := make([]int, 0, len(arr))
+		for _, v := range arr {
+			result = append(result, v)
+		}
+		return result
+	}
+	if arr, ok := raw.([]float64); ok {
+		result := make([]int, 0, len(arr))
+		for _, f := range arr {
+			result = append(result, int(f))
 		}
 		return result
 	}
@@ -990,6 +1017,16 @@ func (a *Account) IsBedrockAPIKey() bool {
 // IsAPIKeyOrBedrock 返回账号类型是否支持配额和池模式等特性
 func (a *Account) IsAPIKeyOrBedrock() bool {
 	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock
+}
+
+// SupportsPoolModeAndCustomErrors 返回账号类型是否支持池模式与自定义错误码。
+// Grok 账号以 upstream 类型接入 grok2api，但在 sub2api 侧仍需要按账号池语义处理
+// 429/403/401 等上游错误，否则 grok2api 内部号池暂时不可用时会直接耗尽账号。
+func (a *Account) SupportsPoolModeAndCustomErrors() bool {
+	if a == nil {
+		return false
+	}
+	return a.IsAPIKeyOrBedrock() || (a.Platform == PlatformGrok && a.Type == AccountTypeUpstream)
 }
 
 func (a *Account) IsOpenAI() bool {

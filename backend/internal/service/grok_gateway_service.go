@@ -143,7 +143,7 @@ func (s *GrokGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && s.accountRepo != nil {
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
 		}
 
@@ -311,8 +311,9 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 		}
 		if grokShouldFailover(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: grokShouldRetryOnSameAccount(account, resp.StatusCode),
 			}
 		}
 		c.Header("Content-Type", resp.Header.Get("Content-Type"))
@@ -874,15 +875,16 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && s.accountRepo != nil {
 			prefix := logPrefix(getSessionID(c), account.Name)
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
 		}
 
 		if grokShouldFailover(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: grokShouldRetryOnSameAccount(account, resp.StatusCode),
 			}
 		}
 
@@ -1128,7 +1130,7 @@ func (s *GrokGatewayService) grokSSEErrorAsFailover(ctx context.Context, c *gin.
 	return &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           streamErr.Body,
-		RetryableOnSameAccount: account != nil && account.IsPoolMode() && isPoolModeRetryableStatus(statusCode),
+		RetryableOnSameAccount: grokShouldRetryOnSameAccount(account, statusCode),
 	}
 }
 
@@ -1576,15 +1578,16 @@ func (s *GrokGatewayService) ForwardAsResponses(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests && s.accountRepo != nil {
 			prefix := logPrefix(getSessionID(c), account.Name)
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody)
 		}
 
 		if grokShouldFailover(resp.StatusCode) {
 			return nil, &UpstreamFailoverError{
-				StatusCode:   resp.StatusCode,
-				ResponseBody: respBody,
+				StatusCode:             resp.StatusCode,
+				ResponseBody:           respBody,
+				RetryableOnSameAccount: grokShouldRetryOnSameAccount(account, resp.StatusCode),
 			}
 		}
 
@@ -1736,6 +1739,16 @@ func grokShouldFailover(statusCode int) bool {
 	default:
 		return statusCode >= 500
 	}
+}
+
+func grokShouldRetryOnSameAccount(account *Account, statusCode int) bool {
+	if account == nil || !account.IsPoolMode() {
+		return false
+	}
+	return isPoolModeRetryableStatus(statusCode) ||
+		statusCode == http.StatusBadGateway ||
+		statusCode == http.StatusServiceUnavailable ||
+		statusCode == 529
 }
 
 func buildOpenAIModelsURL(base string) string {

@@ -554,6 +554,57 @@ func TestGrokGatewayService_ForwardAsChatCompletions_SSEErrorReturnsFailover(t *
 	require.Empty(t, recorder.Body.String())
 }
 
+func TestGrokGatewayService_GrokUpstreamSupportsPoolModeAndCustomErrorCodes(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"pool_mode":                  true,
+			"pool_mode_retry_count":      4,
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(429), "503"},
+		},
+	}
+
+	require.True(t, account.SupportsPoolModeAndCustomErrors())
+	require.True(t, account.IsPoolMode())
+	require.Equal(t, 4, account.GetPoolModeRetryCount())
+	require.True(t, account.IsCustomErrorCodesEnabled())
+	require.ElementsMatch(t, []int{429, 503}, account.GetCustomErrorCodes())
+	require.True(t, account.ShouldHandleErrorCode(429))
+	require.False(t, account.ShouldHandleErrorCode(403))
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_PoolModeMarksFailoverRetryable(t *testing.T) {
+	upstream := &grokOKUpstream{
+		statusCode: http.StatusTooManyRequests,
+		response:   `{"error":{"message":"rate limited"}}`,
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, _ := makeTestGinContext()
+	account := &Account{
+		ID:       18,
+		Name:     "grok-pool-mode-retryable-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url":  "http://grok2api.local:8000",
+			"api_key":   "sk-grok-test",
+			"pool_mode": true,
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+}
+
 func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *testing.T) {
 	upstream := &grokOKUpstream{
 		response: strings.Join([]string{
