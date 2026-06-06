@@ -29,6 +29,7 @@ type grokOKUpstream struct {
 	capturedBodies           []string
 	response                 string
 	statusCode               int
+	contentType              string
 }
 
 func (s *grokOKUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -50,7 +51,11 @@ func (s *grokOKUpstream) Do(req *http.Request, proxyURL string, accountID int64,
 	if body == "" {
 		body = grokChatCompletionResponse
 	}
-	header := http.Header{"Content-Type": []string{"application/json"}}
+	contentType := s.contentType
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	header := http.Header{"Content-Type": []string{contentType}}
 	return &http.Response{
 		StatusCode: statusCode,
 		Header:     header,
@@ -219,7 +224,7 @@ func TestGrokGatewayService_ForwardUpstream_HappyPath(t *testing.T) {
 	var sent map[string]any
 	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
 	require.Equal(t, "grok-3", sent["model"])
-	require.NotContains(t, sent, "stream")
+	require.Equal(t, false, sent["stream"])
 	require.Contains(t, upstream.capturedBody, `"messages"`)
 
 	// 验证 usage 正确解析
@@ -323,7 +328,7 @@ func TestGrokGatewayService_ForwardAsResponses_ConvertsRequestToChatCompletions(
 	require.Equal(t, "grok-upstream", sent["model"])
 	require.Contains(t, sent, "messages")
 	require.NotContains(t, sent, "input")
-	require.NotContains(t, sent, "stream")
+	require.Equal(t, false, sent["stream"])
 	require.Equal(t, "high", sent["reasoning_effort"])
 
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -387,8 +392,38 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamExtractsResponsesS
 	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
 
 	require.Equal(t, "http://grok2api.local:8000/v1/chat/completions", upstream.capturedURL)
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	require.Equal(t, false, sent["stream"])
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Contains(t, recorder.Body.String(), `"content":"hi"`)
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamWithoutStreamFieldForcesFalse(t *testing.T) {
+	upstream := &grokOKUpstream{}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, _ := makeTestGinContext()
+	account := &Account{
+		ID:       17,
+		Name:     "chat-completions-stream-default-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}]}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.Stream)
+
+	var sent map[string]any
+	require.NoError(t, json.Unmarshal([]byte(upstream.capturedBody), &sent))
+	require.Equal(t, false, sent["stream"])
 }
 
 func TestGrokGatewayService_ForwardAsChatCompletions_StreamInjectsIncludeUsageAndExtractsUsage(t *testing.T) {
@@ -436,6 +471,87 @@ func TestGrokGatewayService_ForwardAsChatCompletions_StreamInjectsIncludeUsageAn
 	require.Contains(t, out, `"content":"hello"`)
 	require.Contains(t, out, `"usage":{"prompt_tokens":10,"completion_tokens":2`)
 	require.Contains(t, out, "\n\n")
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamCollectsSSEBody(t *testing.T) {
+	upstream := &grokOKUpstream{
+		contentType: "text/event-stream",
+		response: strings.Join([]string{
+			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[{"index":0,"delta":{"content":"O"},"finish_reason":null}]}`,
+			"",
+			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}`,
+			"",
+			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}`,
+			"",
+			`data: [DONE]`,
+			"",
+		}, "\n"),
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       14,
+		Name:     "chat-completions-nonstream-sse-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+
+	var out apicompat.ChatCompletionsResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &out))
+	require.Equal(t, "chatcmpl_sse", out.ID)
+	require.Len(t, out.Choices, 1)
+	require.JSONEq(t, `"OK"`, string(out.Choices[0].Message.Content))
+	require.NotNil(t, out.Usage)
+	require.Equal(t, 7, out.Usage.PromptTokens)
+	require.Equal(t, 2, out.Usage.CompletionTokens)
+}
+
+func TestGrokGatewayService_ForwardAsChatCompletions_SSEErrorReturnsFailover(t *testing.T) {
+	upstream := &grokOKUpstream{
+		contentType: "text/event-stream",
+		response: strings.Join([]string{
+			`event: error`,
+			`data: {"error":{"message":"Console API returned 429","type":"upstream_error","code":"upstream_error"}}`,
+			"",
+		}, "\n"),
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       15,
+		Name:     "chat-completions-sse-error-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+
+	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "Console API returned 429")
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *testing.T) {
@@ -492,6 +608,41 @@ func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *
 	require.Contains(t, out, "event: response.completed\n")
 	require.Contains(t, out, `"usage":{"input_tokens":10,"output_tokens":2,"total_tokens":12}`)
 	require.Contains(t, out, "data: [DONE]\n\n")
+}
+
+func TestGrokGatewayService_ForwardAsResponses_NonStreamSSEErrorReturnsFailover(t *testing.T) {
+	upstream := &grokOKUpstream{
+		contentType: "text/event-stream",
+		response: strings.Join([]string{
+			`event: error`,
+			`data: {"error":{"message":"Console API returned 429","type":"upstream_error","code":"upstream_error"}}`,
+			"",
+		}, "\n"),
+	}
+	s := &GrokGatewayService{httpUpstream: upstream}
+
+	c, recorder := makeTestGinContext()
+	account := &Account{
+		ID:       16,
+		Name:     "responses-sse-error-test",
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"base_url": "http://grok2api.local:8000",
+			"api_key":  "sk-grok-test",
+		},
+	}
+	body := []byte(`{"model":"grok-3","input":"hello","stream":false}`)
+
+	result, err := s.ForwardAsResponses(context.Background(), c, account, body)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusTooManyRequests, failoverErr.StatusCode)
+	require.Contains(t, string(failoverErr.ResponseBody), "Console API returned 429")
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestGrokGatewayService_ForwardAsResponses_PreviousResponseIDReplaysLocalConversation(t *testing.T) {

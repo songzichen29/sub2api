@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -254,11 +255,20 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 	}
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
+	} else {
+		chatReq.Stream = false
 	}
 
 	ccBody, err := json.Marshal(chatReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+	if !clientStream {
+		var ok bool
+		ccBody, ok = setJSONValueBytes(ccBody, "stream", false)
+		if !ok {
+			return nil, fmt.Errorf("set stream false")
+		}
 	}
 
 	logger.L().Debug("grok forward_as_cc: anthropic->chat_completions conversion",
@@ -344,8 +354,19 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+		currentEvent := ""
 		for scanner.Scan() {
-			payload, ok := extractOpenAISSEDataLine(scanner.Text())
+			line := scanner.Text()
+			if line == "" {
+				currentEvent = ""
+				continue
+			}
+			if eventName, ok := extractOpenAISSEEventLine(line); ok {
+				currentEvent = strings.TrimSpace(eventName)
+				continue
+			}
+
+			payload, ok := extractOpenAISSEDataLine(line)
 			if !ok {
 				continue
 			}
@@ -356,9 +377,13 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 			if payload == "[DONE]" {
 				break
 			}
+			if streamErr := detectGrokSSEError(currentEvent, payload); streamErr != nil {
+				return nil, s.grokSSEErrorAsFailover(ctx, c, account, resp.Header, streamErr)
+			}
 
-			if strings.Contains(payload, "\"usage\"") {
-				s.extractCCUsage([]byte(payload), &usage)
+			if s.extractCCUsage([]byte(payload), &usage) {
+				// usage is captured for billing, but usage-only chunks should not
+				// create empty output blocks in Anthropic conversion.
 			}
 			if isOpenAIChatUsageOnlyStreamChunk(payload) {
 				continue
@@ -388,13 +413,25 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 		if err != nil {
 			return nil, fmt.Errorf("read upstream response: %w", err)
 		}
-		s.extractCCUsage(respBody, &usage)
 
-		var ccResp apicompat.ChatCompletionsResponse
-		if err := json.Unmarshal(respBody, &ccResp); err != nil {
-			return nil, fmt.Errorf("parse upstream CC response: %w", err)
+		var ccResp *apicompat.ChatCompletionsResponse
+		if grokLooksLikeSSE(resp.Header.Get("Content-Type"), respBody) {
+			var sawUsage bool
+			ccResp, usage, sawUsage, err = s.collectGrokChatCompletionsSSE(ctx, c, account, resp.Header, bytes.NewReader(respBody), originalModel)
+			if err != nil {
+				return nil, err
+			}
+			_ = sawUsage
+		} else {
+			s.extractCCUsage(respBody, &usage)
+
+			var parsed apicompat.ChatCompletionsResponse
+			if err := json.Unmarshal(respBody, &parsed); err != nil {
+				return nil, fmt.Errorf("parse upstream CC response: %w", err)
+			}
+			ccResp = &parsed
 		}
-		responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel)
 		anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
 		anthropicBytes, err := json.Marshal(anthropicResp)
 		if err != nil {
@@ -789,6 +826,12 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 		if !ok {
 			return nil, fmt.Errorf("enable stream usage")
 		}
+	} else {
+		var ok bool
+		body, ok = setJSONValueBytes(body, "stream", false)
+		if !ok {
+			return nil, fmt.Errorf("set stream false")
+		}
 	}
 
 	logger.L().Debug("grok forward_as_chat_completions: direct passthrough",
@@ -863,11 +906,22 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
 		firstChunk := true
+		currentEvent := ""
 
 		for scanner.Scan() {
 			line := scanner.Text()
 			if line == "" {
+				currentEvent = ""
 				fmt.Fprint(c.Writer, "\n")
+				c.Writer.Flush()
+				continue
+			}
+			if eventName, ok := extractOpenAISSEEventLine(line); ok {
+				currentEvent = strings.TrimSpace(eventName)
+				if strings.EqualFold(currentEvent, "error") {
+					continue
+				}
+				fmt.Fprintf(c.Writer, "%s\n", line)
 				c.Writer.Flush()
 				continue
 			}
@@ -875,6 +929,9 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 			if payload, ok := extractOpenAISSEDataLine(line); ok {
 				payload = strings.TrimSpace(payload)
 				if payload != "" && payload != "[DONE]" {
+					if streamErr := detectGrokSSEError(currentEvent, payload); streamErr != nil {
+						return nil, s.grokSSEErrorAsFailover(ctx, c, account, resp.Header, streamErr)
+					}
 					if firstChunk {
 						firstChunk = false
 						ms := int(time.Since(startTime).Milliseconds())
@@ -901,9 +958,27 @@ func (s *GrokGatewayService) ForwardAsChatCompletions(
 			return nil, fmt.Errorf("read upstream response: %w", err)
 		}
 
-		sawUsage = s.extractCCUsage(respBody, &usage)
+		wasSSE := grokLooksLikeSSE(resp.Header.Get("Content-Type"), respBody)
+		if wasSSE {
+			ccResp, sseUsage, sseSawUsage, err := s.collectGrokChatCompletionsSSE(ctx, c, account, resp.Header, bytes.NewReader(respBody), originalModel)
+			if err != nil {
+				return nil, err
+			}
+			respBody, err = json.Marshal(ccResp)
+			if err != nil {
+				return nil, fmt.Errorf("marshal collected SSE chat response: %w", err)
+			}
+			usage = sseUsage
+			sawUsage = sseSawUsage
+		} else {
+			sawUsage = s.extractCCUsage(respBody, &usage)
+		}
 
-		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		if wasSSE {
+			c.Header("Content-Type", "application/json")
+		} else {
+			c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		}
 		c.Status(http.StatusOK)
 		_, _ = c.Writer.Write(respBody)
 	}
@@ -967,6 +1042,230 @@ func firstPositiveGrokUsageInt(node gjson.Result, paths ...string) int {
 		}
 	}
 	return 0
+}
+
+type grokSSEError struct {
+	StatusCode int
+	Message    string
+	Body       []byte
+}
+
+func detectGrokSSEError(eventName, payload string) *grokSSEError {
+	payload = strings.TrimSpace(payload)
+	if payload == "" || payload == "[DONE]" {
+		return nil
+	}
+
+	isErrorEvent := strings.EqualFold(strings.TrimSpace(eventName), "error")
+	hasErrorObject := gjson.Get(payload, "error").Exists()
+	isTypedError := strings.EqualFold(strings.TrimSpace(gjson.Get(payload, "type").String()), "error")
+	if !isErrorEvent && !hasErrorObject && !isTypedError {
+		return nil
+	}
+
+	body := []byte(payload)
+	message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	if message == "" {
+		message = strings.TrimSpace(gjson.Get(payload, "error").String())
+	}
+	if message == "" {
+		message = "upstream stream error"
+	}
+
+	return &grokSSEError{
+		StatusCode: inferGrokSSEErrorStatus(payload, message),
+		Message:    sanitizeUpstreamErrorMessage(message),
+		Body:       body,
+	}
+}
+
+func inferGrokSSEErrorStatus(payload, message string) int {
+	for _, path := range []string{"error.status", "error.status_code", "error.code", "status", "status_code", "code"} {
+		raw := strings.TrimSpace(gjson.Get(payload, path).String())
+		if raw == "" {
+			continue
+		}
+		if code, err := strconv.Atoi(raw); err == nil && code >= 400 && code <= 599 {
+			return code
+		}
+	}
+
+	lower := strings.ToLower(message + " " + payload)
+	switch {
+	case strings.Contains(lower, "429") || strings.Contains(lower, "rate_limit"):
+		return http.StatusTooManyRequests
+	case strings.Contains(lower, "529") || strings.Contains(lower, "overloaded"):
+		return 529
+	case strings.Contains(lower, "503"):
+		return http.StatusServiceUnavailable
+	case strings.Contains(lower, "502"):
+		return http.StatusBadGateway
+	case strings.Contains(lower, "500"):
+		return http.StatusInternalServerError
+	case strings.Contains(lower, "403") || strings.Contains(lower, "forbidden"):
+		return http.StatusForbidden
+	case strings.Contains(lower, "401") || strings.Contains(lower, "unauthorized"):
+		return http.StatusUnauthorized
+	case strings.Contains(lower, "400"):
+		return http.StatusBadRequest
+	default:
+		return http.StatusBadGateway
+	}
+}
+
+func (s *GrokGatewayService) grokSSEErrorAsFailover(ctx context.Context, c *gin.Context, account *Account, header http.Header, streamErr *grokSSEError) error {
+	if streamErr == nil {
+		return nil
+	}
+	statusCode := streamErr.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusBadGateway
+	}
+	if statusCode == http.StatusTooManyRequests && s != nil && account != nil && s.accountRepo != nil {
+		prefix := logPrefix(getSessionID(c), account.Name)
+		s.handleUpstreamError(ctx, prefix, account, statusCode, header, streamErr.Body)
+	}
+	return &UpstreamFailoverError{
+		StatusCode:             statusCode,
+		ResponseBody:           streamErr.Body,
+		RetryableOnSameAccount: account != nil && account.IsPoolMode() && isPoolModeRetryableStatus(statusCode),
+	}
+}
+
+func grokLooksLikeSSE(contentType string, body []byte) bool {
+	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+		return true
+	}
+	trimmed := bytes.TrimSpace(body)
+	return bytes.HasPrefix(trimmed, []byte("data:")) || bytes.HasPrefix(trimmed, []byte("event:"))
+}
+
+func (s *GrokGatewayService) collectGrokChatCompletionsSSE(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	header http.Header,
+	reader io.Reader,
+	model string,
+) (*apicompat.ChatCompletionsResponse, ClaudeUsage, bool, error) {
+	var usage ClaudeUsage
+	sawUsage := false
+	state := apicompat.NewChatCompletionsToResponsesStreamState(model)
+	responseID := ""
+	created := int64(0)
+	upstreamModel := model
+	finishReason := ""
+	currentEvent := ""
+
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 64*1024), defaultMaxLineSize)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "" {
+			currentEvent = ""
+			continue
+		}
+		if eventName, ok := extractOpenAISSEEventLine(line); ok {
+			currentEvent = strings.TrimSpace(eventName)
+			continue
+		}
+		payload, ok := extractOpenAISSEDataLine(line)
+		if !ok {
+			continue
+		}
+		payload = strings.TrimSpace(payload)
+		if payload == "" {
+			continue
+		}
+		if payload == "[DONE]" {
+			break
+		}
+		if streamErr := detectGrokSSEError(currentEvent, payload); streamErr != nil {
+			return nil, usage, sawUsage, s.grokSSEErrorAsFailover(ctx, c, account, header, streamErr)
+		}
+		if s.extractCCUsage([]byte(payload), &usage) {
+			sawUsage = true
+		}
+		if isOpenAIChatUsageOnlyStreamChunk(payload) {
+			continue
+		}
+
+		var chunk apicompat.ChatCompletionsChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			logger.L().Warn("grok collect chat completions SSE: parse chunk failed", zap.Error(err))
+			continue
+		}
+		if responseID == "" && strings.TrimSpace(chunk.ID) != "" {
+			responseID = strings.TrimSpace(chunk.ID)
+		}
+		if created == 0 && chunk.Created > 0 {
+			created = chunk.Created
+		}
+		if strings.TrimSpace(chunk.Model) != "" {
+			upstreamModel = strings.TrimSpace(chunk.Model)
+		}
+		for _, choice := range chunk.Choices {
+			if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+				finishReason = strings.TrimSpace(*choice.FinishReason)
+			}
+		}
+		_ = apicompat.ChatCompletionsChunkToResponsesEvents(&chunk, state)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, usage, sawUsage, fmt.Errorf("read upstream SSE response: %w", err)
+	}
+
+	if responseID == "" {
+		responseID = fmt.Sprintf("chatcmpl-%d", time.Now().UnixNano())
+	}
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	if finishReason == "" {
+		finishReason = state.FinishReason
+	}
+	if finishReason == "" {
+		finishReason = "stop"
+	}
+
+	message, ok := grokAssistantMessageFromResponsesStreamState(state)
+	if !ok {
+		message = apicompat.ChatMessage{
+			Role:    "assistant",
+			Content: json.RawMessage(`""`),
+		}
+	}
+
+	resp := &apicompat.ChatCompletionsResponse{
+		ID:      responseID,
+		Object:  "chat.completion",
+		Created: created,
+		Model:   upstreamModel,
+		Choices: []apicompat.ChatChoice{{
+			Index:        0,
+			Message:      message,
+			FinishReason: finishReason,
+		}},
+	}
+	if sawUsage {
+		resp.Usage = grokClaudeUsageToChatUsage(usage)
+	}
+	return resp, usage, sawUsage, nil
+}
+
+func grokClaudeUsageToChatUsage(usage ClaudeUsage) *apicompat.ChatUsage {
+	total := usage.InputTokens + usage.OutputTokens
+	out := &apicompat.ChatUsage{
+		PromptTokens:     usage.InputTokens,
+		CompletionTokens: usage.OutputTokens,
+		TotalTokens:      total,
+	}
+	if usage.CacheReadInputTokens > 0 {
+		out.PromptTokensDetails = &apicompat.ChatTokenDetails{
+			CachedTokens: usage.CacheReadInputTokens,
+		}
+	}
+	return out
 }
 
 func (u ClaudeUsage) totalTokens() int {
@@ -1215,6 +1514,8 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	}
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
+	} else {
+		chatReq.Stream = false
 	}
 	continuationAttached, err := s.prependGrokContinuationMessages(continuationScope, &responsesReq, chatReq)
 	if err != nil {
@@ -1228,6 +1529,13 @@ func (s *GrokGatewayService) ForwardAsResponses(
 	chatBody, err := json.Marshal(chatReq)
 	if err != nil {
 		return nil, fmt.Errorf("marshal chat completions request: %w", err)
+	}
+	if !clientStream {
+		var ok bool
+		chatBody, ok = setJSONValueBytes(chatBody, "stream", false)
+		if !ok {
+			return nil, fmt.Errorf("set stream false")
+		}
 	}
 	reasoningEffort := ExtractResponsesReasoningEffortFromBody(body)
 
@@ -1368,16 +1676,29 @@ func (s *GrokGatewayService) ForwardAsResponses(
 			return nil, fmt.Errorf("read upstream response: %w", err)
 		}
 
-		var ccResp apicompat.ChatCompletionsResponse
-		if err := json.Unmarshal(respBody, &ccResp); err != nil {
-			return nil, fmt.Errorf("parse upstream CC response: %w", err)
+		var ccResp *apicompat.ChatCompletionsResponse
+		if grokLooksLikeSSE(resp.Header.Get("Content-Type"), respBody) {
+			var sseUsage ClaudeUsage
+			var sseSawUsage bool
+			ccResp, sseUsage, sseSawUsage, err = s.collectGrokChatCompletionsSSE(ctx, c, account, resp.Header, bytes.NewReader(respBody), originalModel)
+			if err != nil {
+				return nil, err
+			}
+			usage = sseUsage
+			sawUsage = sseSawUsage
+		} else {
+			var parsed apicompat.ChatCompletionsResponse
+			if err := json.Unmarshal(respBody, &parsed); err != nil {
+				return nil, fmt.Errorf("parse upstream CC response: %w", err)
+			}
+			ccResp = &parsed
+			sawUsage = ccResp.Usage != nil
+			s.extractCCUsage(respBody, &usage)
 		}
-		sawUsage = ccResp.Usage != nil
-		s.extractCCUsage(respBody, &usage)
 
-		responsesResp := apicompat.ChatCompletionsResponseToResponses(&ccResp, originalModel)
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel)
 		conversation := cloneGrokChatMessages(chatReq.Messages)
-		if assistantMessage, ok := grokAssistantMessageFromChatResponse(&ccResp); ok {
+		if assistantMessage, ok := grokAssistantMessageFromChatResponse(ccResp); ok {
 			conversation = append(conversation, assistantMessage)
 		}
 		s.storeGrokContinuation(continuationScope, responsesResp.ID, conversation)

@@ -24,6 +24,8 @@ tags:
 - 追加修复 Grok Responses 多轮对话：Chat Completions 上游的 `chatcmpl_*` 不再作为 Responses `id` 返回，统一对客户端暴露 `resp_*`；本地缓存 30 分钟续链上下文，下一轮带 `previous_response_id` 时会补齐历史 messages。
 - 对 Grok Responses 上游未返回 usage 的 0 token 场景增加诊断日志，保留真实 usage，不伪造 token。
 - 追加修复 Grok `/v1/chat/completions` 直通路径 usage 记录：流式请求会强制上游返回 usage；同步/流式都支持识别 `prompt_tokens/completion_tokens` 和 `input_tokens/output_tokens` 两类 usage 字段。
+- 追加兼容 dwai/grok2api 的异常返回形态：同步请求如果收到 `text/event-stream` 会收集 SSE chunk 还原成 Chat Completions JSON；如果 SSE 内是 `event: error`，即使 HTTP 200 也按上游错误/failover 处理。
+- 追加根因修复：客户端未显式 `stream:true` 时，sub2api 转发给 grok2api 会强制补 `stream:false`，避免 grok2api 按自身默认配置走流式导致 sub2api 非流式分支解析不到 usage。
 
 ## 根因
 
@@ -48,6 +50,9 @@ tags:
   - Grok Responses usage 为 0 时记录 account/model/stream/previous_response_id/上游 usage 信号，方便区分上游未给 usage 和真实 0 token。
   - `ForwardAsChatCompletions` 流式直通时注入 `stream_options.include_usage=true`，并兼容 `data:` 无空格 SSE 行。
   - Grok Chat Completions usage 提取兼容 `usage.prompt_tokens/completion_tokens`、`usage.input_tokens/output_tokens`、`response.usage.*` 以及 cached token 明细；上游没给 usage 时只记诊断日志，不伪造 token。
+  - 增加 Grok SSE error 识别：`event: error`、`data.error` 或 `type=error` 会转换为 `UpstreamFailoverError`，可触发同账号重试/换号，不再作为 200 成功订单记录。
+  - 增加同步请求收到 SSE 的收集器，把 `data: {"choices":[{"delta":...}]}` 拼回普通 Chat Completions JSON，避免客户端按 JSON 解析时看到“空输出/格式不对”。
+  - 在 `ForwardAsCC`、`ForwardAsChatCompletions`、`ForwardAsResponses` 三条发往 grok2api `/v1/chat/completions` 的非流式路径上显式写入 `stream:false`，保持 OpenAI Chat Completions 的默认语义。
 
 - `backend/internal/pkg/apicompat/chatcompletions_responses_bridge.go`
   - Chat Completions → Responses 非流式响应统一输出 `resp_*`。
@@ -60,6 +65,9 @@ tags:
   - 新增 Responses 流式 SSE 事件名、active message item content 与 `/v1` base URL 回归测试。
   - 新增 Grok Responses 多轮 `previous_response_id` 续链回归测试。
   - 新增 Grok `/v1/chat/completions` 同步 Responses 风格 usage、流式 include_usage 注入和 usage 提取回归测试。
+  - 新增 Grok `/v1/chat/completions` 同步返回 SSE 时的内容/usage 收集测试，以及 `HTTP 200 + event:error + Console API returned 429` 的 failover 测试。
+  - 新增 Grok `/v1/responses` 非流式 fallback 遇到 `HTTP 200 + event:error` 的 failover 测试。
+  - 新增 Grok `/v1/chat/completions` 未带 `stream` 字段时上游请求必须包含 `stream:false` 的回归测试，并更新 Responses/Anthropic 转换路径预期。
 
 - `backend/internal/pkg/apicompat/chatcompletions_responses_bridge_test.go`
   - 新增 `chatcmpl_*` 转 `resp_*` 的非流式/流式回归测试。
