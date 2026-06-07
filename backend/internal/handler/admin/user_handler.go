@@ -286,6 +286,24 @@ func (h *UserHandler) Create(c *gin.Context) {
 	response.Success(c, dto.UserFromServiceAdmin(user))
 }
 
+// PromoteToAdmin handles promoting a user to admin.
+// POST /api/v1/admin/users/:id/promote-admin
+func (h *UserHandler) PromoteToAdmin(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+
+	user, err := h.adminService.PromoteUserToAdmin(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.UserFromServiceAdmin(user))
+}
+
 // Update handles updating a user
 // PUT /api/v1/admin/users/:id
 func (h *UserHandler) Update(c *gin.Context) {

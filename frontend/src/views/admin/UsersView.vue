@@ -725,6 +725,16 @@
 
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
+              <!-- Promote to admin (not for admin) -->
+              <button
+                v-if="user.role !== 'admin' && user.status === 'active'"
+                @click="handlePromoteToAdmin(user); closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
+              >
+                <Icon name="shield" size="sm" :stroke-width="2" />
+                {{ t('admin.users.promoteToAdmin') }}
+              </button>
+
               <!-- Delete (not for admin) -->
               <button
                 v-if="user.role !== 'admin'"
@@ -741,6 +751,7 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showPromoteDialog" :title="t('admin.users.promoteToAdmin')" :message="t('admin.users.promoteConfirm', { email: promotingUser?.email })" :confirm-text="t('admin.users.promoteConfirmAction')" @confirm="confirmPromoteToAdmin" @cancel="cancelPromoteToAdmin" />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <UserPlatformQuotaModal
@@ -1309,11 +1320,13 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const showPromoteDialog = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
 const deletingUser = ref<AdminUser | null>(null)
+const promotingUser = ref<AdminUser | null>(null)
 const viewingUser = ref<AdminUser | null>(null)
 const platformQuotaUser = ref<AdminUser | null>(null)
 
@@ -1429,7 +1442,7 @@ const openActionMenu = (user: AdminUser, e: MouseEvent) => {
 
     const rect = target.getBoundingClientRect()
     const menuWidth = 200
-    const menuHeight = 240
+    const menuHeight = 280
     const padding = 8
     const viewportWidth = window.innerWidth
     const viewportHeight = window.innerHeight
@@ -1710,6 +1723,30 @@ const handleToggleStatus = async (user: AdminUser) => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
     console.error('Error toggling user status:', error)
+  }
+}
+
+const handlePromoteToAdmin = (user: AdminUser) => {
+  promotingUser.value = user
+  showPromoteDialog.value = true
+}
+
+const cancelPromoteToAdmin = () => {
+  showPromoteDialog.value = false
+  promotingUser.value = null
+}
+
+const confirmPromoteToAdmin = async () => {
+  if (!promotingUser.value) return
+  try {
+    await adminAPI.users.promoteToAdmin(promotingUser.value.id)
+    appStore.showSuccess(t('admin.users.userPromotedToAdmin'))
+    showPromoteDialog.value = false
+    promotingUser.value = null
+    loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.failedToPromote'))
+    console.error('Error promoting user to admin:', error)
   }
 }
 

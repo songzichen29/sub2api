@@ -322,8 +322,15 @@ export default {
     noGroupsAvailable: '无可用分组',
     unknownError: '发生未知错误',
     saving: '保存中...',
+    sending: '发送中...',
+    creating: '创建中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    retry: '重试',
+    tryAgain: '重试',
+    clear: '清空',
+    apply: '应用',
+    required: '必填',
     autoRefresh: {
       title: '自动刷新',
       enable: '启用自动刷新',
@@ -558,8 +565,27 @@ export default {
       callbackHint: '按需将授权码和状态值复制回后台授权流程。',
       code: '授权码',
       state: '状态',
-      fullUrl: '完整URL'
+      fullUrl: '完整URL',
+      invalidCallbackTitle: 'OAuth 回调无效',
+      invalidCallbackHint: '当前回调缺少必要参数或已失效，请返回登录页重新发起登录。'
     },
+    dingtalk: {
+      signIn: '使用钉钉登录',
+      callbackTitle: '正在完成钉钉登录',
+      callbackProcessing: '正在验证钉钉登录信息，请稍候...',
+      callbackHint: '如果页面未自动跳转，请返回登录页重试。',
+      callbackMissingToken: '登录信息缺失，请返回重试。',
+      invitationRequired: '该钉钉账号尚未注册，站点已开启邀请码注册，请输入邀请码以完成注册。',
+      completeRegistration: '完成注册',
+      completing: '正在完成注册...',
+      completeRegistrationFailed: '注册失败，请检查邀请码后重试。',
+      createAccountTitle: '创建钉钉登录账户',
+      registrationDisabledRedirectToBind: '注册功能已关闭，请绑定已有账户继续。'
+    },
+    emailOAuth: {
+      signIn: '使用 {providerName} 登录'
+    },
+    emailSuffixAllowedMore: '等 {count} 个',
     // 忘记密码
     forgotPassword: '忘记密码？',
     forgotPasswordTitle: '重置密码',
@@ -635,7 +661,18 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    platformBreakdown: '平台明细',
+    platformCount: '{count} 个平台',
+    platformOther: '其他',
+    platformQuota: {
+      title: '平台限额',
+      daily: '日',
+      weekly: '周',
+      monthly: '月',
+      disabled: '未配置',
+      resetsAt: '{time} 重置'
+    }
   },
 
   // Groups (shared)
@@ -807,6 +844,7 @@ export default {
     status: {
       active: '活跃',
       inactive: '已停用',
+      disabled: '已禁用',
       quota_exhausted: '额度耗尽',
       expired: '已过期'
     }
@@ -1821,6 +1859,7 @@ export default {
       leaveEmptyToKeep: '留空则保持原密码不变',
       generatePassword: '生成随机密码',
       copyPassword: '复制密码',
+      passwordCopied: '密码已复制',
       creating: '创建中...',
       updating: '更新中...',
       columns: {
@@ -1833,7 +1872,12 @@ export default {
         groups: '分组',
         subscriptions: '订阅分组',
         balance: '余额',
+        balancePlatformQuota: '余额平台限额',
         usage: '用量',
+        usageAnthropic: 'Claude 用量',
+        usageOpenAI: 'OpenAI 用量',
+        usageGemini: 'Gemini 用量',
+        usageAntigravity: 'Antigravity 用量',
         concurrency: '并发数',
         status: '状态',
         activityStatus: '活跃度',
@@ -1849,6 +1893,8 @@ export default {
       viewUsageRecords: '查看该用户今日使用记录',
       today: '今日',
       total: '近30天',
+      platformBreakdown: '平台明细',
+      platformOther: '其他',
       noSubscription: '暂无订阅',
       publicGroupCount: '+{count} 公开',
       exclusiveLabel: '专属',
@@ -1876,11 +1922,16 @@ export default {
       userDeleted: '用户删除成功',
       userEnabled: '用户已启用',
       userDisabled: '用户已禁用',
+      promoteToAdmin: '设为管理员',
+      promoteConfirm: "确定要将用户 '{email}' 升级为管理员吗？升级后该用户将获得完整管理权限。",
+      promoteConfirmAction: '确认升级',
+      userPromotedToAdmin: '用户已升级为管理员',
       failedToLoad: '加载用户列表失败',
       failedToCreate: '创建用户失败',
       failedToUpdate: '更新用户失败',
       failedToDelete: '删除用户失败',
       failedToToggle: '更新用户状态失败',
+      failedToPromote: '升级管理员失败',
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
       roles: {
@@ -1974,6 +2025,41 @@ export default {
       failedToDeposit: '充值失败',
       failedToWithdraw: '退款失败',
       useDepositWithdrawButtons: '请使用充值/退款按钮调整余额',
+      platformQuota: {
+        title: '平台限额配置',
+        menuItem: '平台限额',
+        subtitle: '为 {email} 配置按平台维度的余额消费限额。',
+        subscriptionWarning: '该用户存在有效订阅；订阅请求会优先使用订阅配额，此处仅影响余额按量计费请求。',
+        columns: {
+          platform: '平台',
+          daily: '日限额',
+          weekly: '周限额',
+          monthly: '月限额',
+          usage: '已用（日 / 周 / 月）'
+        },
+        placeholder: '不限制',
+        hint: '留空表示不限制；保存会全量替换该用户各平台限额。用量列依次为日 / 周 / 月已用金额。',
+        clearAll: '清空全部限额',
+        clearAllConfirm: '确定清空所有平台的日/周/月限额吗？保存后将变为不限制。',
+        cancel: '取消',
+        save: '保存',
+        saving: '保存中...',
+        loadFailed: '加载平台限额失败',
+        updateSuccess: '平台限额已更新',
+        updateFailed: '更新平台限额失败',
+        invalidNumber: '限额输入无效，请检查：{fields}',
+        cellNotConfigured: '未配置',
+        cellColumnTooltip: '点击配置平台限额',
+        windowDaily: '日',
+        windowWeekly: '周',
+        windowMonthly: '月',
+        reset: {
+          button: '重置该窗口用量',
+          confirm: '确定要重置 {platform} 的{window}用量吗？',
+          success: '{platform} {window}用量已重置',
+          failed: '重置用量失败'
+        }
+      },
       // 余额变动记录
       balanceHistory: '充值记录',
       balanceHistoryTip: '点击查看充值记录',
@@ -1996,7 +2082,10 @@ export default {
       // Settings Dropdowns
       filterSettings: '筛选设置',
       columnSettings: '列设置',
+      columnAlwaysVisible: '该列始终显示',
       filterValue: '输入值',
+      sortBy: '排序方式',
+      sortCurrentPageOnly: '仅对当前页排序',
       // User Attributes
       attributes: {
         title: '用户属性配置',
@@ -3011,10 +3100,10 @@ export default {
       dataExported: '数据导出成功',
       dataExportFailed: '数据导出失败',
       dataImportTitle: '导入数据',
-      dataImportHint: '上传一个或多个导出的 JSON 文件以批量导入账号与代理。',
+      dataImportHint: '上传一个或多个导出的 JSON 或 ZIP 文件以批量导入账号与代理。',
       dataImportWarning: '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
       dataImportFile: '数据文件',
-      dataImportMultiHint: '支持选择多个 JSON 文件（.json）',
+      dataImportMultiHint: '支持选择多个 JSON 文件或包含 JSON 的 ZIP 压缩包（.json / .zip）',
       dataImportFilesSelected: '已选择 {count} 个文件',
       dataImportButton: '开始导入',
       dataImporting: '导入中...',

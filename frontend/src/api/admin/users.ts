@@ -129,6 +129,16 @@ export async function create(userData: {
 }
 
 /**
+ * Promote a user to administrator
+ * @param id - User ID
+ * @returns Updated user
+ */
+export async function promoteToAdmin(id: number): Promise<AdminUser> {
+  const { data } = await apiClient.post<AdminUser>(`/admin/users/${id}/promote-admin`)
+  return data
+}
+
+/**
  * Update user
  * @param id - User ID
  * @param updates - Fields to update
@@ -378,6 +388,7 @@ export const usersAPI = {
   list,
   getById,
   create,
+  promoteToAdmin,
   update,
   delete: deleteUser,
   updateBalance,

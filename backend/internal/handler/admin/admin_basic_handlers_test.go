@@ -24,6 +24,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.GET("/api/v1/admin/users", userHandler.List)
 	router.GET("/api/v1/admin/users/:id", userHandler.GetByID)
 	router.POST("/api/v1/admin/users/:id/auth-identities", userHandler.BindAuthIdentity)
+	router.POST("/api/v1/admin/users/:id/promote-admin", userHandler.PromoteToAdmin)
 	router.POST("/api/v1/admin/users", userHandler.Create)
 	router.PUT("/api/v1/admin/users/:id", userHandler.Update)
 	router.DELETE("/api/v1/admin/users/:id", userHandler.Delete)
@@ -92,6 +93,11 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/1/auth-identities", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/1/promote-admin", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 

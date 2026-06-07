@@ -173,6 +173,16 @@ func (s *stubAdminService) CreateUser(ctx context.Context, input *service.Create
 	return &user, nil
 }
 
+func (s *stubAdminService) PromoteUserToAdmin(ctx context.Context, id int64) (*service.User, error) {
+	user, err := s.GetUser(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	user.Role = service.RoleAdmin
+	user.Status = service.StatusActive
+	return user, nil
+}
+
 func (s *stubAdminService) UpdateUser(ctx context.Context, id int64, input *service.UpdateUserInput) (*service.User, error) {
 	user := service.User{ID: id, Email: "updated@example.com", Status: service.StatusActive}
 	return &user, nil

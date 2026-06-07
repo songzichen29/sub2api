@@ -32,6 +32,7 @@ type AdminService interface {
 	GetUser(ctx context.Context, id int64) (*User, error)
 	GetUserIncludeDeleted(ctx context.Context, id int64) (*User, error)
 	CreateUser(ctx context.Context, input *CreateUserInput) (*User, error)
+	PromoteUserToAdmin(ctx context.Context, id int64) (*User, error)
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
@@ -732,6 +733,29 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		return nil, err
 	}
 	s.assignDefaultSubscriptions(ctx, user.ID)
+	return user, nil
+}
+
+func (s *adminServiceImpl) PromoteUserToAdmin(ctx context.Context, id int64) (*User, error) {
+	user, err := s.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user.Role == RoleAdmin {
+		return user, nil
+	}
+	if user.Status != StatusActive {
+		return nil, infraerrors.BadRequest("USER_NOT_ACTIVE", "cannot promote disabled user")
+	}
+
+	user.Role = RoleAdmin
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return nil, err
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
+	}
+
 	return user, nil
 }
 

@@ -92,7 +92,7 @@
           ref="fileInput"
           type="file"
           class="hidden"
-          accept="application/json,.json"
+          accept="application/json,application/zip,application/x-zip-compressed,.json,.zip"
           multiple
           @change="handleFileChange"
         />
@@ -420,6 +420,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { AccountImportApplyTemplate } from '@/api/admin/settings'
 import { useAppStore } from '@/stores/app'
 import { buildModelMappingObject } from '@/composables/useModelWhitelist'
+import { mergeDataPayloads, parseImportFiles } from './accountDataImportFiles'
 import type {
   AdminDataPayload,
   AdminDataImportApply,
@@ -469,8 +470,6 @@ const emit = defineEmits<Emits>()
 const { t } = useI18n()
 const appStore = useAppStore()
 const templatesSaver = computed(() => props.templatesSaver)
-const SUPPORTED_DATA_TYPES = new Set(['sub2api-data', 'sub2api-bundle'])
-const SUPPORTED_DATA_VERSION = 1
 
 const importing = ref(false)
 const files = ref<File[]>([])
@@ -669,81 +668,6 @@ const handleCancel = () => {
   emit('cancel')
 }
 
-const readFileAsText = async (sourceFile: File): Promise<string> => {
-  if (typeof sourceFile.text === 'function') {
-    return sourceFile.text()
-  }
-
-  if (typeof sourceFile.arrayBuffer === 'function') {
-    const buffer = await sourceFile.arrayBuffer()
-    return new TextDecoder().decode(buffer)
-  }
-
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result ?? ''))
-    reader.onerror = () => reject(reader.error || new Error('Failed to read file'))
-    reader.readAsText(sourceFile)
-  })
-}
-
-type ImportDataPayloadCandidate = Partial<AdminDataPayload> & Record<string, unknown>
-
-function validateDataPayload(
-  payload: unknown,
-  sourceFileName: string
-): asserts payload is ImportDataPayloadCandidate {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new Error(`${sourceFileName}: invalid data payload`)
-  }
-
-  const candidate = payload as ImportDataPayloadCandidate
-
-  const type = typeof candidate.type === 'string' ? candidate.type : ''
-  if (type !== '' && !SUPPORTED_DATA_TYPES.has(type)) {
-    throw new Error(`${sourceFileName}: unsupported data type: ${type}`)
-  }
-
-  if (
-    candidate.version !== undefined &&
-    candidate.version !== 0 &&
-    candidate.version !== SUPPORTED_DATA_VERSION
-  ) {
-    throw new Error(`${sourceFileName}: unsupported data version: ${String(candidate.version)}`)
-  }
-
-  if (!Array.isArray(candidate.proxies)) {
-    throw new Error(`${sourceFileName}: proxies is required`)
-  }
-
-  if (!Array.isArray(candidate.accounts)) {
-    throw new Error(`${sourceFileName}: accounts is required`)
-  }
-}
-
-const parseImportFile = async (sourceFile: File): Promise<AdminDataPayload> => {
-  const text = await readFileAsText(sourceFile)
-  const payload = JSON.parse(text)
-  validateDataPayload(payload, sourceFile.name)
-
-  return {
-    type: typeof payload.type === 'string' ? payload.type : undefined,
-    version: typeof payload.version === 'number' ? payload.version : undefined,
-    exported_at:
-      typeof payload.exported_at === 'string' ? payload.exported_at : '',
-    proxies: payload.proxies ?? [],
-    accounts: payload.accounts ?? []
-  }
-}
-
-const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => ({
-  type: 'sub2api-data',
-  version: SUPPORTED_DATA_VERSION,
-  exported_at: new Date().toISOString(),
-  proxies: payloads.flatMap((item) => item.proxies),
-  accounts: payloads.flatMap((item) => item.accounts)
-})
-
 /**
  * 构造导入应用块（Apply）的 payload。
  *
@@ -799,7 +723,7 @@ const handleImport = async () => {
 
   importing.value = true
   try {
-    const payloads = await Promise.all(files.value.map(parseImportFile))
+    const payloads = await parseImportFiles(files.value)
     const dataPayload = mergeDataPayloads(payloads)
 
     const apply = buildApplyPayload()

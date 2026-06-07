@@ -322,8 +322,15 @@ export default {
     noGroupsAvailable: 'No groups available',
     unknownError: 'Unknown error occurred',
     saving: 'Saving...',
+    sending: 'Sending...',
+    creating: 'Creating...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    retry: 'Retry',
+    tryAgain: 'Try again',
+    clear: 'Clear',
+    apply: 'Apply',
+    required: 'required',
     autoRefresh: {
       title: 'Auto Refresh',
       enable: 'Enable auto refresh',
@@ -560,8 +567,27 @@ export default {
       callbackHint: 'Copy the code and state back to the admin authorization flow when needed.',
       code: 'Code',
       state: 'State',
-      fullUrl: 'Full URL'
+      fullUrl: 'Full URL',
+      invalidCallbackTitle: 'Invalid OAuth callback',
+      invalidCallbackHint: 'This callback is missing required parameters or has expired. Please return to login and try again.'
     },
+    dingtalk: {
+      signIn: 'Sign in with DingTalk',
+      callbackTitle: 'Completing DingTalk sign-in',
+      callbackProcessing: 'Verifying DingTalk sign-in information...',
+      callbackHint: 'If the page does not redirect automatically, return to login and try again.',
+      callbackMissingToken: 'Sign-in information is missing. Please return and try again.',
+      invitationRequired: 'This DingTalk account is not registered yet. Invitation registration is enabled; enter an invitation code to continue.',
+      completeRegistration: 'Complete registration',
+      completing: 'Completing registration...',
+      completeRegistrationFailed: 'Registration failed. Please check the invitation code and try again.',
+      createAccountTitle: 'Create DingTalk sign-in account',
+      registrationDisabledRedirectToBind: 'Registration is disabled. Please bind an existing account to continue.'
+    },
+    emailOAuth: {
+      signIn: 'Sign in with {providerName}'
+    },
+    emailSuffixAllowedMore: 'and {count} more',
     // Forgot password
     forgotPassword: 'Forgot password?',
     forgotPasswordTitle: 'Reset Your Password',
@@ -636,7 +662,18 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    platformBreakdown: 'Platform breakdown',
+    platformCount: '{count} platforms',
+    platformOther: 'Other',
+    platformQuota: {
+      title: 'Platform quotas',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      disabled: 'Not configured',
+      resetsAt: 'Resets at {time}'
+    }
   },
 
   // Groups (shared)
@@ -803,6 +840,7 @@ export default {
     status: {
       active: 'Active',
       inactive: 'Inactive',
+      disabled: 'Disabled',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
     },
@@ -1795,6 +1833,7 @@ export default {
       leaveEmptyToKeep: 'Leave empty to keep current password',
       generatePassword: 'Generate random password',
       copyPassword: 'Copy password',
+      passwordCopied: 'Password copied',
       creating: 'Creating...',
       updating: 'Updating...',
       form: {
@@ -1812,7 +1851,12 @@ export default {
         groups: 'Groups',
         subscriptions: 'Subscriptions',
         balance: 'Balance',
+        balancePlatformQuota: 'Balance Platform Quotas',
         usage: 'Usage',
+        usageAnthropic: 'Claude Usage',
+        usageOpenAI: 'OpenAI Usage',
+        usageGemini: 'Gemini Usage',
+        usageAntigravity: 'Antigravity Usage',
         concurrency: 'Concurrency',
         status: 'Status',
         activityStatus: 'Activity',
@@ -1828,6 +1872,8 @@ export default {
       viewUsageRecords: "View this user's usage records for today",
       today: 'Today',
       total: 'Last 30d',
+      platformBreakdown: 'Platform breakdown',
+      platformOther: 'Other',
       noSubscription: 'No subscription',
       publicGroupCount: '+{count} public',
       exclusiveLabel: 'exclusive',
@@ -1855,11 +1901,16 @@ export default {
       userDeleted: 'User deleted successfully',
       userEnabled: 'User enabled successfully',
       userDisabled: 'User disabled successfully',
+      promoteToAdmin: 'Promote to Admin',
+      promoteConfirm: "Are you sure you want to promote '{email}' to administrator? This user will receive full admin permissions.",
+      promoteConfirmAction: 'Promote',
+      userPromotedToAdmin: 'User promoted to administrator',
       failedToLoad: 'Failed to load users',
       failedToCreate: 'Failed to create user',
       failedToUpdate: 'Failed to update user',
       failedToDelete: 'Failed to delete user',
       failedToToggle: 'Failed to update user status',
+      failedToPromote: 'Failed to promote user',
       failedToLoadApiKeys: 'Failed to load user API keys',
       emailRequired: 'Please enter email',
       concurrencyMin: 'Concurrency must be at least 1',
@@ -1917,6 +1968,41 @@ export default {
       failedToDeposit: 'Failed to deposit',
       failedToWithdraw: 'Failed to withdraw',
       useDepositWithdrawButtons: 'Please use deposit/withdraw buttons to adjust balance',
+      platformQuota: {
+        title: 'Platform Quotas',
+        menuItem: 'Platform Quotas',
+        subtitle: 'Configure balance spending quotas by platform for {email}.',
+        subscriptionWarning: 'This user has an active subscription. Subscription requests use subscription quota first; these limits only affect balance pay-as-you-go requests.',
+        columns: {
+          platform: 'Platform',
+          daily: 'Daily Limit',
+          weekly: 'Weekly Limit',
+          monthly: 'Monthly Limit',
+          usage: 'Used (D / W / M)'
+        },
+        placeholder: 'Unlimited',
+        hint: 'Leave empty for unlimited. Saving replaces all platform quota limits for this user. Usage is shown as daily / weekly / monthly spent.',
+        clearAll: 'Clear all limits',
+        clearAllConfirm: 'Clear daily/weekly/monthly limits for all platforms? After saving, they will be unlimited.',
+        cancel: 'Cancel',
+        save: 'Save',
+        saving: 'Saving...',
+        loadFailed: 'Failed to load platform quotas',
+        updateSuccess: 'Platform quotas updated',
+        updateFailed: 'Failed to update platform quotas',
+        invalidNumber: 'Invalid quota input. Please check: {fields}',
+        cellNotConfigured: 'Not configured',
+        cellColumnTooltip: 'Click to configure platform quotas',
+        windowDaily: 'D',
+        windowWeekly: 'W',
+        windowMonthly: 'M',
+        reset: {
+          button: 'Reset this usage window',
+          confirm: 'Reset {platform} {window} usage?',
+          success: '{platform} {window} usage reset',
+          failed: 'Failed to reset usage'
+        }
+      },
       // Balance History
       balanceHistory: 'Recharge History',
       balanceHistoryTip: 'Click to open recharge history',
@@ -1943,7 +2029,10 @@ export default {
       // Settings Dropdowns
       filterSettings: 'Filter Settings',
       columnSettings: 'Column Settings',
+      columnAlwaysVisible: 'This column is always visible',
       filterValue: 'Enter value',
+      sortBy: 'Sort by',
+      sortCurrentPageOnly: 'Sorts current page only',
       // User Attributes
       attributes: {
         title: 'User Attributes',
@@ -2935,10 +3024,10 @@ export default {
       dataExported: 'Data exported successfully',
       dataExportFailed: 'Failed to export data',
       dataImportTitle: 'Import Data',
-      dataImportHint: 'Upload one or more exported JSON files to import accounts and proxies.',
+      dataImportHint: 'Upload one or more exported JSON or ZIP files to import accounts and proxies.',
       dataImportWarning: 'Import will create new accounts/proxies; groups must be bound manually. Ensure existing data does not conflict.',
       dataImportFile: 'Data file',
-      dataImportMultiHint: 'Supports selecting multiple JSON files (.json)',
+      dataImportMultiHint: 'Supports multiple JSON files or ZIP archives containing JSON (.json / .zip)',
       dataImportFilesSelected: '{count} files selected',
       dataImportButton: 'Start Import',
       dataImporting: 'Importing...',

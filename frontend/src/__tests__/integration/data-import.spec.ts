@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import JSZip from 'jszip'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
 
 const showError = vi.fn()
@@ -82,6 +83,26 @@ const attachJsonFiles = async (
     return file
   })
   Object.defineProperty(input.element, 'files', { value: files })
+  await input.trigger('change')
+}
+
+const attachZipFile = async (
+  wrapper: ReturnType<typeof mountModal>,
+  entries: Array<{ name: string; payload: Record<string, unknown> }>
+) => {
+  const input = wrapper.find('input[type="file"]')
+  const zip = new JSZip()
+  for (const { name, payload } of entries) {
+    zip.file(name, JSON.stringify(payload))
+  }
+  zip.file('README.txt', 'ignored')
+
+  const buffer = await zip.generateAsync({ type: 'arraybuffer' })
+  const file = new File([buffer], 'bundle.zip', { type: 'application/zip' })
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => Promise.resolve(buffer)
+  })
+  Object.defineProperty(input.element, 'files', { value: [file] })
   await input.trigger('change')
 }
 
@@ -191,9 +212,7 @@ describe('ImportDataModal', () => {
     ])
 
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
-
+    await flushPromises()
     expect(importDataMock).toHaveBeenCalledTimes(1)
     expect(importDataMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -206,6 +225,77 @@ describe('ImportDataModal', () => {
           accounts: expect.arrayContaining([
             expect.objectContaining({ name: 'acc-1' }),
             expect.objectContaining({ name: 'acc-2' })
+          ])
+        })
+      })
+    )
+  })
+
+  it('支持选择 ZIP 文件并导入其中所有 JSON 文件', async () => {
+    const wrapper = mountModal()
+
+    await attachZipFile(wrapper, [
+      {
+        name: 'exports/part-1.json',
+        payload: {
+          ...sampleData,
+          proxies: [
+            {
+              proxy_key: 'http|10.0.0.1|8080||',
+              name: 'zip-px-1',
+              protocol: 'http',
+              host: '10.0.0.1',
+              port: 8080,
+              status: 'active'
+            }
+          ],
+          accounts: [
+            {
+              name: 'zip-acc-1',
+              platform: 'anthropic',
+              type: 'oauth',
+              credentials: { access_token: 'zip-tok-1' },
+              concurrency: 3,
+              priority: 50
+            }
+          ]
+        }
+      },
+      {
+        name: 'part-2.json',
+        payload: {
+          ...sampleData,
+          proxies: [],
+          accounts: [
+            {
+              name: 'zip-acc-2',
+              platform: 'openai',
+              type: 'apikey',
+              credentials: { api_key: 'zip-tok-2' },
+              concurrency: 1,
+              priority: 10
+            }
+          ]
+        }
+      }
+    ])
+
+    await wrapper.find('form').trigger('submit')
+
+    await vi.waitFor(() => {
+      expect(importDataMock).toHaveBeenCalledTimes(1)
+    })
+    expect(importDataMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'sub2api-data',
+          version: 1,
+          proxies: expect.arrayContaining([
+            expect.objectContaining({ name: 'zip-px-1' })
+          ]),
+          accounts: expect.arrayContaining([
+            expect.objectContaining({ name: 'zip-acc-1' }),
+            expect.objectContaining({ name: 'zip-acc-2' })
           ])
         })
       })
@@ -226,8 +316,7 @@ describe('ImportDataModal', () => {
     const wrapper = mountModal()
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as Record<string, unknown>
@@ -242,8 +331,7 @@ describe('ImportDataModal', () => {
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
@@ -257,8 +345,7 @@ describe('ImportDataModal', () => {
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
@@ -277,8 +364,7 @@ describe('ImportDataModal', () => {
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
@@ -292,8 +378,7 @@ describe('ImportDataModal', () => {
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
@@ -309,8 +394,7 @@ describe('ImportDataModal', () => {
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')
-    await Promise.resolve()
-    await Promise.resolve()
+    await flushPromises()
 
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
