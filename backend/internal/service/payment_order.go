@@ -386,6 +386,14 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 			snapshot["merchant_id"] = merchantID
 		}
 	}
+	if providerKey == payment.TypeStripe || providerKey == payment.TypeAirwallex {
+		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)
+	}
+	if providerKey == payment.TypeAirwallex {
+		if merchantID := strings.TrimSpace(sel.Config["accountId"]); merchantID != "" {
+			snapshot["merchant_id"] = merchantID
+		}
+	}
 
 	if req.OrderType == payment.OrderTypeDailyLimitReset && req.SubscriptionID > 0 {
 		snapshot["daily_limit_reset_subscription_id"] = req.SubscriptionID
@@ -797,6 +805,10 @@ func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest,
 		PayURL:       pr.PayURL,
 		QRCode:       pr.QRCode,
 		ClientSecret: pr.ClientSecret,
+		IntentID:     pr.IntentID,
+		Currency:     pr.Currency,
+		CountryCode:  pr.CountryCode,
+		PaymentEnv:   pr.PaymentEnv,
 		OAuth:        pr.OAuth,
 		JSAPI:        pr.JSAPI,
 		JSAPIPayload: pr.JSAPI,

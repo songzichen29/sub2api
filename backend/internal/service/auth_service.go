@@ -220,7 +220,48 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		Status:       StatusActive,
 	}
 
-	if err := s.userRepo.Create(ctx, user); err != nil {
+	handledInviteAffiliate := false
+	if s.entClient != nil && (invitationRedeemCode != nil || strings.TrimSpace(affiliateCode) != "") {
+		tx, txErr := s.entClient.Tx(ctx)
+		if txErr != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to begin registration transaction: %v", txErr)
+			return "", nil, ErrServiceUnavailable
+		}
+		defer func() { _ = tx.Rollback() }()
+		txCtx := dbent.NewTxContext(ctx, tx)
+
+		if err := s.userRepo.Create(txCtx, user); err != nil {
+			// 优先检查邮箱冲突错误（竞态条件下可能发生）
+			if errors.Is(err, ErrEmailExists) {
+				return "", nil, ErrEmailExists
+			}
+			logger.LegacyPrintf("service.auth", "[Auth] Database error creating user: %v", err)
+			return "", nil, ErrServiceUnavailable
+		}
+		if s.affiliateService != nil {
+			if _, err := s.affiliateService.EnsureUserAffiliate(txCtx, user.ID); err != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", user.ID, err)
+				return "", nil, ErrServiceUnavailable
+			}
+			if code := strings.TrimSpace(affiliateCode); code != "" {
+				if err := s.affiliateService.BindInviterByCode(txCtx, user.ID, code); err != nil {
+					logger.LegacyPrintf("service.auth", "[Auth] Failed to bind affiliate inviter for user %d: %v", user.ID, err)
+					return "", nil, err
+				}
+			}
+		}
+		if invitationRedeemCode != nil {
+			if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, user.ID); err != nil {
+				logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)
+				return "", nil, ErrInvitationCodeInvalid
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			logger.LegacyPrintf("service.auth", "[Auth] Failed to commit registration transaction: %v", err)
+			return "", nil, ErrServiceUnavailable
+		}
+		handledInviteAffiliate = true
+	} else if err := s.userRepo.Create(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
@@ -232,7 +273,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 	// snapshot user × platform quota（fail-open）
 	_ = s.snapshotPlatformQuotaDefaults(ctx, user.ID, &grantPlan)
-	if s.affiliateService != nil {
+	if s.affiliateService != nil && !handledInviteAffiliate {
 		if _, err := s.affiliateService.EnsureUserAffiliate(ctx, user.ID); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to initialize affiliate profile for user %d: %v", user.ID, err)
 		}
@@ -245,7 +286,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	}
 
 	// 标记邀请码为已使用（如果使用了邀请码）
-	if invitationRedeemCode != nil {
+	if invitationRedeemCode != nil && !handledInviteAffiliate {
 		if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
 			// 邀请码标记失败不影响注册，只记录日志
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to mark invitation code as used for user %d: %v", user.ID, err)

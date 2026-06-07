@@ -489,6 +489,7 @@ type PublicOrderResult struct {
 	Amount                    float64    `json:"amount"`
 	PayAmount                 float64    `json:"pay_amount"`
 	FeeRate                   float64    `json:"fee_rate"`
+	Currency                  string     `json:"currency"`
 	PaymentType               string     `json:"payment_type"`
 	OrderType                 string     `json:"order_type"`
 	Status                    string     `json:"status"`
@@ -523,6 +524,7 @@ func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 		Amount:                    order.Amount,
 		PayAmount:                 order.PayAmount,
 		FeeRate:                   order.FeeRate,
+		Currency:                  order.Currency,
 		PaymentType:               order.PaymentType,
 		OrderType:                 order.OrderType,
 		Status:                    order.Status,
@@ -616,6 +618,7 @@ func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOr
 
 type paymentOrderResponse struct {
 	*dbent.PaymentOrder
+	Currency                  string     `json:"currency"`
 	ProductName               string     `json:"product_name,omitempty"`
 	GroupName                 string     `json:"group_name,omitempty"`
 	CanRefund                 bool       `json:"can_refund"`
@@ -679,7 +682,10 @@ func enrichPaymentOrdersForResponse(ctx context.Context, paymentService *service
 		if sanitized == nil {
 			continue
 		}
-		item := &paymentOrderResponse{PaymentOrder: sanitized}
+		item := &paymentOrderResponse{
+			PaymentOrder: sanitized,
+			Currency:     service.PaymentOrderCurrency(order),
+		}
 		if sanitized.PlanID != nil {
 			item.ProductName = planMap[*sanitized.PlanID]
 		}

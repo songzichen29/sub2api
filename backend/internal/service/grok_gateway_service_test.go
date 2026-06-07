@@ -653,7 +653,7 @@ func TestGrokGatewayService_ForwardAsResponses_StreamEmitsResponsesSSEEvents(t *
 	require.Contains(t, out, `"id":"resp_`)
 	require.NotContains(t, out, `"id":"chatcmpl_test"`)
 	require.Contains(t, out, "event: response.output_item.added\n")
-	require.Contains(t, out, `"content":[{"type":"output_text","text":""}]`)
+	require.Contains(t, out, `"content":[{"text":"","type":"output_text"}]`)
 	require.Contains(t, out, "event: response.output_text.delta\n")
 	require.Contains(t, out, `"delta":"hello"`)
 	require.Contains(t, out, "event: response.completed\n")

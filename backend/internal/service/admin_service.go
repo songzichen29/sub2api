@@ -876,11 +876,47 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
 	}
-	if err := s.userRepo.Delete(ctx, id); err != nil {
+
+	opCtx := ctx
+	var tx *dbent.Tx
+	if s.entClient != nil && s.apiKeyRepo != nil {
+		var txErr error
+		tx, txErr = s.entClient.Tx(ctx)
+		if txErr != nil {
+			return fmt.Errorf("begin delete user transaction: %w", txErr)
+		}
+		defer func() { _ = tx.Rollback() }()
+		opCtx = dbent.NewTxContext(ctx, tx)
+	}
+
+	var ownedKeys []APIKey
+	if s.apiKeyRepo != nil {
+		ownedKeys, _, err = s.apiKeyRepo.ListByUserID(opCtx, id, pagination.PaginationParams{Page: 1, PageSize: 1000, SortOrder: pagination.SortOrderAsc}, APIKeyListFilters{})
+		if err != nil {
+			return fmt.Errorf("list user api keys: %w", err)
+		}
+		for _, key := range ownedKeys {
+			if err := s.apiKeyRepo.DeleteWithAudit(opCtx, key.ID); err != nil {
+				return fmt.Errorf("delete user api key: %w", err)
+			}
+		}
+	}
+
+	if err := s.userRepo.Delete(opCtx, id); err != nil {
 		logger.LegacyPrintf("service.admin", "delete user failed: user_id=%d err=%v", id, err)
 		return err
 	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit delete user transaction: %w", err)
+		}
+	}
 	if s.authCacheInvalidator != nil {
+		for _, key := range ownedKeys {
+			if strings.TrimSpace(key.Key) != "" {
+				s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key.Key)
+			}
+		}
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
 	}
 	return nil
@@ -2502,6 +2538,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		NormalizeFixedQuotaWindows(account.Extra)
 		ComputeQuotaResetAt(account.Extra)
 	}
 	if input.ExpiresAt != nil && *input.ExpiresAt > 0 {
@@ -2789,6 +2826,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		NormalizeFixedQuotaWindows(account.Extra)
 		ComputeQuotaResetAt(account.Extra)
 	}
 	if input.ProxyID != nil {

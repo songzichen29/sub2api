@@ -476,9 +476,7 @@ func ChatCompletionsResponseToResponses(resp *ChatCompletionsResponse, model str
 	if resp != nil {
 		id = resp.ID
 	}
-	if id == "" {
-		id = generateResponsesID()
-	}
+	id = normalizeResponsesID(id)
 
 	out := &ResponsesResponse{
 		ID:     id,
@@ -672,6 +670,19 @@ func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 	return idx
 }
 
+// normalizeResponsesID ensures Responses-shaped output always exposes a
+// response.id. Chat Completions upstreams return chatcmpl_* IDs, but Responses
+// clients use previous_response_id=resp_* for continuation. Returning chatcmpl_*
+// as response.id makes the next turn look like a chat-completion ID and breaks
+// clients that validate the prefix.
+func normalizeResponsesID(id string) string {
+	id = strings.TrimSpace(id)
+	if strings.HasPrefix(id, "resp_") {
+		return id
+	}
+	return generateResponsesID()
+}
+
 // ChatCompletionsChunkToResponsesEvents converts one Chat Completions stream
 // chunk into zero or more Responses stream events.
 func ChatCompletionsChunkToResponsesEvents(
@@ -681,8 +692,8 @@ func ChatCompletionsChunkToResponsesEvents(
 	if chunk == nil || state == nil {
 		return nil
 	}
-	if chunk.ID != "" {
-		state.ResponseID = chunk.ID
+	if strings.HasPrefix(strings.TrimSpace(chunk.ID), "resp_") && !state.CreatedSent {
+		state.ResponseID = strings.TrimSpace(chunk.ID)
 	}
 	if state.Model == "" && chunk.Model != "" {
 		state.Model = chunk.Model

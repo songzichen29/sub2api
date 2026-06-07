@@ -505,14 +505,6 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 		}
 	}
 
-	// notify cleanup service to reload schedule/enabled.
-	if s.cleanupReloader != nil {
-		if rerr := s.cleanupReloader.Reload(ctx); rerr != nil {
-			logger.LegacyPrintf("service.ops_settings",
-				"[OpsSettings] cleanup reload after advanced-settings update failed: %v", rerr)
-		}
-	}
-
 	updated := &OpsAdvancedSettings{}
 	_ = json.Unmarshal(raw, updated)
 	return updated, nil

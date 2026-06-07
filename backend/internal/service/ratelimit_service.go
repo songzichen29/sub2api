@@ -63,9 +63,9 @@ const (
 )
 
 const (
-	openAI403CooldownMinutesDefault = 10
-	openAI403DisableThreshold       = 3
-	openAI403CounterWindowMinutes   = 180
+	openAI403CooldownMinutesDefault     = 10
+	openAI403DisableThreshold           = 3
+	openAI403CounterWindowMinutes       = 180
 	openAIImageRateLimitDefaultCooldown = time.Minute
 	openAIImageRateLimitReason          = "openai_image_rate_limited"
 )
@@ -140,7 +140,7 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
-func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -154,6 +154,12 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	if !account.ShouldHandleErrorCode(statusCode) {
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
+	}
+
+	if len(requestedModel) > 0 && strings.TrimSpace(requestedModel[0]) != "" {
+		if s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+			return true
+		}
 	}
 
 	// 先尝试临时不可调度规则（401除外）
@@ -240,17 +246,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 				shouldDisable = true
 				break
 			}
-			// 2. 设置 expires_at 为当前时间，强制下次请求刷新 token
-			if account.Credentials == nil {
-				account.Credentials = make(map[string]any)
-			}
-			account.Credentials["expires_at"] = time.Now().Format(time.RFC3339)
-			if err := persistAccountCredentials(ctx, s.accountRepo, account, account.Credentials); err != nil {
-				slog.Warn("oauth_401_force_refresh_update_failed", "account_id", account.ID, "error", err)
-			} else {
-				slog.Info("oauth_401_force_refresh_set", "account_id", account.ID, "platform", account.Platform)
-			}
-			// 3. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）
+			// 2. 临时不可调度，替代 SetError（保持 status=active 让刷新服务能拾取）。
+			// 注意：此处不再写回 account.Credentials/expires_at，避免用请求开始时的
+			// credentials 快照整列覆盖另一个 worker 刚刷新出的新 refresh_token。
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "OAuth 401: " + upstreamMsg

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -548,11 +549,32 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
+		"codex_usage_updated_at",
+		"auto_pause_5h_threshold",
+		"auto_pause_7d_threshold",
+		"auto_pause_5h_disabled",
+		"auto_pause_7d_disabled",
+		"model_rate_limits",
+	}
+	prefixes := []string{
+		"codex_5h_",
+		"codex_7d_",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := extra[key]; ok && value != nil {
 			filtered[key] = value
+		}
+	}
+	for key, value := range extra {
+		if value == nil {
+			continue
+		}
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(key, prefix) {
+				filtered[key] = value
+				break
+			}
 		}
 	}
 	if len(filtered) == 0 {

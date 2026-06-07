@@ -14,8 +14,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 
 	"entgo.io/ent/dialect"
@@ -89,7 +89,9 @@ type redeemRepoRegisterStub struct {
 	usedUser int64
 }
 
-func (s *redeemRepoRegisterStub) Create(context.Context, *RedeemCode) error { panic("unexpected Create call") }
+func (s *redeemRepoRegisterStub) Create(context.Context, *RedeemCode) error {
+	panic("unexpected Create call")
+}
 func (s *redeemRepoRegisterStub) CreateBatch(context.Context, []RedeemCode) error {
 	panic("unexpected CreateBatch call")
 }
@@ -106,11 +108,15 @@ func (s *redeemRepoRegisterStub) GetByCode(_ context.Context, code string) (*Red
 		return nil, ErrRedeemCodeNotFound
 	}
 }
-func (s *redeemRepoRegisterStub) Update(context.Context, *RedeemCode) error { panic("unexpected Update call") }
+func (s *redeemRepoRegisterStub) Update(context.Context, *RedeemCode) error {
+	panic("unexpected Update call")
+}
 func (s *redeemRepoRegisterStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
 	panic("unexpected BatchUpdate call")
 }
-func (s *redeemRepoRegisterStub) Delete(context.Context, int64) error       { panic("unexpected Delete call") }
+func (s *redeemRepoRegisterStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
 func (s *redeemRepoRegisterStub) Use(_ context.Context, id, userID int64) error {
 	s.usedID = id
 	s.usedUser = userID
@@ -182,14 +188,14 @@ func (r *registerUserRepoWithEnt) GetByID(ctx context.Context, id int64) (*User,
 		return nil, ErrUserNotFound
 	}
 	return &User{
-		ID:          entity.ID,
-		Email:       entity.Email,
-		Username:    entity.Username,
+		ID:           entity.ID,
+		Email:        entity.Email,
+		Username:     entity.Username,
 		PasswordHash: entity.PasswordHash,
-		Role:        entity.Role,
-		Balance:     entity.Balance,
-		Concurrency: entity.Concurrency,
-		Status:      entity.Status,
+		Role:         entity.Role,
+		Balance:      entity.Balance,
+		Concurrency:  entity.Concurrency,
+		Status:       entity.Status,
 		SignupSource: entity.SignupSource,
 	}, nil
 }
@@ -200,14 +206,14 @@ func (r *registerUserRepoWithEnt) GetByEmail(ctx context.Context, email string) 
 		return nil, ErrUserNotFound
 	}
 	return &User{
-		ID:          entity.ID,
-		Email:       entity.Email,
-		Username:    entity.Username,
+		ID:           entity.ID,
+		Email:        entity.Email,
+		Username:     entity.Username,
 		PasswordHash: entity.PasswordHash,
-		Role:        entity.Role,
-		Balance:     entity.Balance,
-		Concurrency: entity.Concurrency,
-		Status:      entity.Status,
+		Role:         entity.Role,
+		Balance:      entity.Balance,
+		Concurrency:  entity.Concurrency,
+		Status:       entity.Status,
 		SignupSource: entity.SignupSource,
 	}, nil
 }
@@ -216,9 +222,15 @@ func (r *registerUserRepoWithEnt) ExistsByEmail(ctx context.Context, email strin
 	return r.entClient(ctx).User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
 }
 
-func (r *registerUserRepoWithEnt) GetFirstAdmin(context.Context) (*User, error) { panic("unexpected GetFirstAdmin call") }
-func (r *registerUserRepoWithEnt) Update(context.Context, *User) error { panic("unexpected Update call") }
-func (r *registerUserRepoWithEnt) Delete(context.Context, int64) error { panic("unexpected Delete call") }
+func (r *registerUserRepoWithEnt) GetFirstAdmin(context.Context) (*User, error) {
+	panic("unexpected GetFirstAdmin call")
+}
+func (r *registerUserRepoWithEnt) Update(context.Context, *User) error {
+	panic("unexpected Update call")
+}
+func (r *registerUserRepoWithEnt) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
 func (r *registerUserRepoWithEnt) GetUserAvatar(context.Context, int64) (*UserAvatar, error) {
 	panic("unexpected GetUserAvatar call")
 }
@@ -279,8 +291,12 @@ func (r *registerUserRepoWithEnt) UnbindUserAuthProvider(context.Context, int64,
 func (r *registerUserRepoWithEnt) UpdateTotpSecret(context.Context, int64, *string) error {
 	panic("unexpected UpdateTotpSecret call")
 }
-func (r *registerUserRepoWithEnt) EnableTotp(context.Context, int64) error { panic("unexpected EnableTotp call") }
-func (r *registerUserRepoWithEnt) DisableTotp(context.Context, int64) error { panic("unexpected DisableTotp call") }
+func (r *registerUserRepoWithEnt) EnableTotp(context.Context, int64) error {
+	panic("unexpected EnableTotp call")
+}
+func (r *registerUserRepoWithEnt) DisableTotp(context.Context, int64) error {
+	panic("unexpected DisableTotp call")
+}
 
 func newRegisterAuthServiceWithEnt(
 	t *testing.T,
@@ -299,7 +315,7 @@ func newRegisterAuthServiceWithEnt(
 	t.Cleanup(func() { _ = client.Close() })
 
 	cfg := &config.Config{
-		JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
+		JWT:     config.JWTConfig{Secret: "test-secret", ExpireHour: 1},
 		Default: config.DefaultConfig{UserBalance: 3.5, UserConcurrency: 2},
 	}
 	settingSvc := NewSettingService(&settingRepoStub{values: settings}, cfg)
@@ -364,7 +380,9 @@ func (s *affiliateRepoRegisterStub) TransferQuotaToBalance(context.Context, int6
 func (s *affiliateRepoRegisterStub) ListInvitees(context.Context, int64, int) ([]AffiliateInvitee, error) {
 	panic("unexpected ListInvitees call")
 }
-func (s *affiliateRepoRegisterStub) UpdateUserAffCode(context.Context, int64, string) error { panic("unexpected UpdateUserAffCode call") }
+func (s *affiliateRepoRegisterStub) UpdateUserAffCode(context.Context, int64, string) error {
+	panic("unexpected UpdateUserAffCode call")
+}
 func (s *affiliateRepoRegisterStub) ResetUserAffCode(context.Context, int64) (string, error) {
 	panic("unexpected ResetUserAffCode call")
 }
@@ -495,7 +513,7 @@ func (s *emailCacheStub) IncrNotifyCodeUserRate(ctx context.Context, userID int6
 	return 0, nil
 }
 
-func newAuthService(repo *userRepoStub, settings map[string]string, emailCache EmailCache) *AuthService {
+func newAuthService(repo *userRepoStub, settings map[string]string, emailCache EmailCache, quotaRepos ...UserPlatformQuotaRepository) *AuthService {
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
 			Secret:     "test-secret",
@@ -517,6 +535,11 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 		emailService = NewEmailService(&settingRepoStub{values: settings}, emailCache)
 	}
 
+	var quotaRepo UserPlatformQuotaRepository
+	if len(quotaRepos) > 0 {
+		quotaRepo = quotaRepos[0]
+	}
+
 	return NewAuthService(
 		nil, // entClient
 		repo,
@@ -527,10 +550,10 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 		emailService,
 		nil,
 		nil,
-		nil, // promoService
-		nil, // defaultSubAssigner
-		nil, // affiliateService
-		nil, // userPlatformQuotaRepo
+		nil,       // promoService
+		nil,       // defaultSubAssigner
+		nil,       // affiliateService
+		quotaRepo, // userPlatformQuotaRepo
 	)
 }
 
@@ -962,7 +985,7 @@ func TestAuthService_Register_GrantOnSignupMergesSourceOverridesWithGlobalDefaul
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, 9.5, user.Balance)
-	require.Equal(t, 2, user.Concurrency)
+	require.Equal(t, 5, user.Concurrency)
 	require.Len(t, assigner.calls, 1)
 	require.Equal(t, int64(31), assigner.calls[0].GroupID)
 	require.Equal(t, 5, assigner.calls[0].ValidityDays)

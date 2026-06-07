@@ -987,6 +987,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: requestIsMobile,
       isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      forceQRCode: !!(checkout.value.alipay_force_qrcode && requestVisibleMethod === 'alipay'),
     })
     if (options.openid) {
       payload.openid = options.openid
@@ -1008,7 +1009,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     const stripeMethod = visibleMethod === 'stripe'
       ? ''
       : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
-    const stripeRouteUrl = result.client_secret
+    const stripeRouteUrl = result.client_secret && visibleMethod !== 'airwallex'
       ? router.resolve({
         path: '/payment/stripe',
         query: {
@@ -1019,13 +1020,25 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         },
       }).href
       : ''
+    const airwallexRouteUrl = result.client_secret && result.intent_id
+      ? router.resolve({
+        path: '/payment/airwallex',
+        query: {
+          order_id: String(result.order_id),
+          out_trade_no: result.out_trade_no || undefined,
+          resume_token: result.resume_token || undefined,
+        },
+      }).href
+      : ''
     const decision = decidePaymentLaunch(result, {
       visibleMethod,
       orderType,
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      forceQRCode: !!(checkout.value.alipay_force_qrcode && visibleMethod === 'alipay'),
       stripePopupUrl: stripeRouteUrl,
       stripeRouteUrl,
+      airwallexRouteUrl,
     })
 
     if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
@@ -1054,6 +1067,10 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       return
     }
     if (decision.kind === 'stripe_route') {
+      window.location.href = decision.paymentState.payUrl
+      return
+    }
+    if (decision.kind === 'airwallex_route') {
       window.location.href = decision.paymentState.payUrl
       return
     }
