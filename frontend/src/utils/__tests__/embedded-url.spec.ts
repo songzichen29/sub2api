@@ -57,6 +57,14 @@ describe('embedded-url', () => {
     expect(url.searchParams.has('lang')).toBe(false)
   })
 
+  it('forwards token only to trusted internal bridge origins', () => {
+    const trusted = buildEmbeddedUrl('https://image.dwai.cloud/', 42, 'token-123', 'light')
+    const untrusted = buildEmbeddedUrl('https://image.dwai.cloud.evil.example/', 42, 'token-123', 'light')
+
+    expect(new URL(trusted).searchParams.get('token')).toBe('token-123')
+    expect(new URL(untrusted).searchParams.has('token')).toBe(false)
+  })
+
   it('returns original string for invalid url input', () => {
     expect(buildEmbeddedUrl('not a url', 1, 'token')).toBe('not a url')
   })

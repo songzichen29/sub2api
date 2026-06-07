@@ -1,10 +1,11 @@
 /**
  * Shared URL builder for iframe-embedded custom pages.
  * Appends non-secret UI context only: theme, lang, ui_mode, src_host, src_url.
+ * Trusted internal bridge origins may also receive the current access token for SSO.
  *
  * Important:
  * - Do not append access tokens or internal user IDs to arbitrary admin-configured
- *   external iframe URLs.
+ *   external iframe URLs. Token forwarding is limited to exact allowlisted origins.
  * - Do not append the full current URL with query/hash; only share origin + pathname.
  * - Treat custom menu iframe targets as third-party destinations by default.
  */
@@ -15,6 +16,11 @@ const EMBEDDED_UI_MODE_QUERY_KEY = 'ui_mode'
 const EMBEDDED_UI_MODE_VALUE = 'embedded'
 const EMBEDDED_SRC_HOST_QUERY_KEY = 'src_host'
 const EMBEDDED_SRC_QUERY_KEY = 'src_url'
+const EMBEDDED_TOKEN_QUERY_KEY = 'token'
+
+const TOKEN_FORWARD_ORIGINS = new Set([
+  'https://image.dwai.cloud',
+])
 
 export function buildEmbeddedUrl(
   baseUrl: string,
@@ -26,6 +32,9 @@ export function buildEmbeddedUrl(
   if (!baseUrl) return baseUrl
   try {
     const url = new URL(baseUrl)
+    if (_authToken && TOKEN_FORWARD_ORIGINS.has(url.origin)) {
+      url.searchParams.set(EMBEDDED_TOKEN_QUERY_KEY, _authToken)
+    }
     url.searchParams.set(EMBEDDED_THEME_QUERY_KEY, theme)
     if (lang) {
       url.searchParams.set(EMBEDDED_LANG_QUERY_KEY, lang)
