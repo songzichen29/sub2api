@@ -24,6 +24,7 @@ func UserFromServiceShallow(u *service.User) *User {
 		LastActiveAt:               u.LastActiveAt,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
+		DeletedAt:                  u.DeletedAt,
 		BalanceNotifyEnabled:       u.BalanceNotifyEnabled,
 		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType,
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,

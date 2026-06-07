@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -533,7 +534,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
-			h.submitUsageRecordTask(func(ctx context.Context) {
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
 					ParsedRequest:      parsedReq,
@@ -929,7 +930,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
-			h.submitUsageRecordTask(func(ctx context.Context) {
+			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
 					ParsedRequest:      parsedReq,
@@ -1884,6 +1885,34 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 	c.JSON(http.StatusOK, response)
 }
 
+// extractQuotaResetSeconds 从 quota 错误的 metadata 中提取 window_resets_at 并计算
+// 距重置剩余秒数。fallback 返回 60 秒，避免客户端立即重试进入抖动循环。
+func extractQuotaResetSeconds(err error) int {
+	const fallback = 60
+	appErr := pkgerrors.FromError(err)
+	if appErr == nil {
+		return fallback
+	}
+	raw, ok := appErr.Metadata["window_resets_at"]
+	if !ok || raw == "" {
+		return fallback
+	}
+	resetAt, parseErr := time.Parse(time.RFC3339, raw)
+	if parseErr != nil {
+		logger.L().With(
+			zap.String("component", "handler.gateway.billing"),
+			zap.String("raw", raw),
+			zap.Error(parseErr),
+		).Warn("quota.invalid_window_resets_at_format")
+		return fallback
+	}
+	secs := time.Until(resetAt).Seconds()
+	if secs <= 0 {
+		return fallback
+	}
+	return int(math.Ceil(secs))
+}
+
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
@@ -1910,6 +1939,12 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 		msg := pkgerrors.Message(err)
 		retrySeconds := 60 - int(time.Now().Unix()%60)
 		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, retrySeconds
+	}
+	if errors.Is(err, service.ErrUserPlatformDailyQuotaExhausted) ||
+		errors.Is(err, service.ErrUserPlatformWeeklyQuotaExhausted) ||
+		errors.Is(err, service.ErrUserPlatformMonthlyQuotaExhausted) {
+		msg := pkgerrors.Message(err)
+		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
 	}
 	msg := pkgerrors.Message(err)
 	if msg == "" {
@@ -1967,10 +2002,11 @@ func (h *GatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64
 	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
 }
 
-func (h *GatewayHandler) submitUsageRecordTask(task service.UsageRecordTask) {
+func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
 	if task == nil {
 		return
 	}
+	task = wrapUsageRecordTaskContext(parent, task)
 	if h.usageRecordWorkerPool != nil {
 		h.usageRecordWorkerPool.Submit(task)
 		return

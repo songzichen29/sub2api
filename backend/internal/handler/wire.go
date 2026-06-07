@@ -93,6 +93,53 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+// ProvideAdminUserHandler wraps admin.NewUserHandler's variadic optional dependencies
+// so Wire can inject the concrete quota repository and billing cache explicitly.
+func ProvideAdminUserHandler(
+	adminService service.AdminService,
+	concurrencyService *service.ConcurrencyService,
+	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
+	billingCache service.BillingCache,
+) *admin.UserHandler {
+	return admin.NewUserHandler(adminService, concurrencyService, userPlatformQuotaRepo, billingCache)
+}
+
+// ProvideAdminAccountHandler wraps admin.NewAccountHandler's variadic encryptor
+// so Wire can inject the concrete SecretEncryptor explicitly.
+func ProvideAdminAccountHandler(
+	adminService service.AdminService,
+	oauthService *service.OAuthService,
+	openaiOAuthService *service.OpenAIOAuthService,
+	geminiOAuthService *service.GeminiOAuthService,
+	antigravityOAuthService *service.AntigravityOAuthService,
+	rateLimitService *service.RateLimitService,
+	accountUsageService *service.AccountUsageService,
+	accountTestService *service.AccountTestService,
+	concurrencyService *service.ConcurrencyService,
+	crsSyncService *service.CRSSyncService,
+	sessionLimitCache service.SessionLimitCache,
+	rpmCache service.RPMCache,
+	tokenCacheInvalidator service.TokenCacheInvalidator,
+	secretEncryptor service.SecretEncryptor,
+) *admin.AccountHandler {
+	return admin.NewAccountHandler(
+		adminService,
+		oauthService,
+		openaiOAuthService,
+		geminiOAuthService,
+		antigravityOAuthService,
+		rateLimitService,
+		accountUsageService,
+		accountTestService,
+		concurrencyService,
+		crsSyncService,
+		sessionLimitCache,
+		rpmCache,
+		tokenCacheInvalidator,
+		secretEncryptor,
+	)
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -161,9 +208,9 @@ var ProviderSet = wire.NewSet(
 
 	// Admin handlers
 	admin.NewDashboardHandler,
-	admin.NewUserHandler,
+	ProvideAdminUserHandler,
 	admin.NewGroupHandler,
-	admin.NewAccountHandler,
+	ProvideAdminAccountHandler,
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,

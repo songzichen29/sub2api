@@ -380,8 +380,12 @@ func (r *oauthEmailAffiliateRepoStub) SetUserRebateRate(context.Context, int64, 
 	panic("unexpected SetUserRebateRate call")
 }
 
-func (r *oauthEmailAffiliateRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
-	panic("unexpected BatchSetUserRebateRate call")
+func (r *oauthEmailAffiliateRepoStub) SetUserRebateRates(context.Context, int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected SetUserRebateRates call")
+}
+
+func (r *oauthEmailAffiliateRepoStub) BatchSetUserRebateRates(context.Context, []int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected BatchSetUserRebateRates call")
 }
 
 func (r *oauthEmailAffiliateRepoStub) ListUsersWithCustomSettings(context.Context, service.AffiliateAdminFilter) ([]service.AffiliateAdminEntry, int64, error) {
