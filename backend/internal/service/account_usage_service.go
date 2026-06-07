@@ -319,7 +319,7 @@ func NewAccountUsageService(
 // GetUsage 获取账号使用量
 // OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
-// API Key??: ??????? extra.usage_query.enabled ? true?????????newapi ????
+// API Key账号: 当 extra.usage_query.enabled = true 时通过 newapi 查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
 	forceProbe := len(force) > 0 && force[0]
 

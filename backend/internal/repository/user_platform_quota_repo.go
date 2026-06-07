@@ -97,8 +97,8 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 	var sb strings.Builder
 	_, _ = sb.WriteString("INSERT INTO user_platform_quotas (user_id, platform, daily_limit_usd, weekly_limit_usd, monthly_limit_usd, daily_usage_usd, weekly_usage_usd, monthly_usage_usd, created_at, updated_at) VALUES ")
 	args := make([]any, 0, len(records)*6)
-	// ????????????? time.Now() ??????? created_at/updated_at
-	// ?????????? UpsertForUser ? now := time.Now() ??????
+	// 统一时间戳：避免循环内多次 time.Now() 让同一批记录的 created_at/updated_at
+	// 出现亚毫秒级偏差（与 UpsertForUser 的 now := time.Now() 风格一致）。
 	now := time.Now()
 	for i, rec := range records {
 		if i > 0 {
@@ -111,9 +111,9 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 			now, now,
 		)
 	}
-	// MySQL ?? generated column active_platform + UNIQUE(user_id, active_platform)
-	// ?? PostgreSQL partial unique index (deleted_at IS NULL)????????
-	// limit ? NULL ????????????????????
+	// MySQL 用 generated column active_platform + UNIQUE(user_id, active_platform)
+	// 等效 PostgreSQL partial unique index（deleted_at IS NULL）的作用域。
+	// limit 为 NULL 时才写入 EXCLUDED，否则保留现有非 NULL 值。
 	_, _ = sb.WriteString(` ON DUPLICATE KEY UPDATE
 		daily_limit_usd   = COALESCE(daily_limit_usd, VALUES(daily_limit_usd)),
 		weekly_limit_usd  = COALESCE(weekly_limit_usd, VALUES(weekly_limit_usd)),
