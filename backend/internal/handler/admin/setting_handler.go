@@ -1263,6 +1263,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
+	req.OpenAIFreeImageBridgeURL = strings.TrimSpace(req.OpenAIFreeImageBridgeURL)
+	if req.OpenAIFreeImageBridgeURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(req.OpenAIFreeImageBridgeURL); err != nil {
+			response.BadRequest(c, "OpenAI Free Image Bridge URL must be an absolute http(s) URL")
+			return
+		}
+	}
+
 	// 自定义菜单项验证
 	const (
 		maxCustomMenuItems    = 20
@@ -2312,6 +2320,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.APIBaseURL != after.APIBaseURL {
 		changed = append(changed, "api_base_url")
+	}
+	if before.OpenAIFreeImageBridgeURL != after.OpenAIFreeImageBridgeURL {
+		changed = append(changed, "openai_free_image_bridge_url")
+	}
+	if before.OpenAIFreeImageBridgeAuthKeyConfigured != after.OpenAIFreeImageBridgeAuthKeyConfigured {
+		changed = append(changed, "openai_free_image_bridge_auth_key")
 	}
 	if before.ContactInfo != after.ContactInfo {
 		changed = append(changed, "contact_info")
