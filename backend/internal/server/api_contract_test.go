@@ -1136,16 +1136,16 @@ func newContractDeps(t *testing.T) *contractDeps {
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 
-	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil)
+	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil, nil)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
 	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
+	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
-	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
+	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
 	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)
 	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
@@ -1305,6 +1305,23 @@ func (r *stubUserRepo) DeductBalance(ctx context.Context, id int64, amount float
 
 func (r *stubUserRepo) UpdateConcurrency(ctx context.Context, id int64, amount int) error {
 	return errors.New("not implemented")
+}
+
+func (r *stubUserRepo) BatchSetConcurrency(ctx context.Context, userIDs []int64, value int) (int, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) BatchAddConcurrency(ctx context.Context, userIDs []int64, delta int) (int, error) {
+	return 0, errors.New("not implemented")
+}
+
+func (r *stubUserRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.User, error) {
+	user, ok := r.users[id]
+	if !ok {
+		return nil, service.ErrUserNotFound
+	}
+	clone := *user
+	return &clone, nil
 }
 
 func (r *stubUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, error) {
@@ -1600,7 +1617,7 @@ func (s *stubAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt 
 	return errors.New("not implemented")
 }
 
-func (s *stubAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+func (s *stubAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	return errors.New("not implemented")
 }
 
@@ -1736,6 +1753,10 @@ func (stubRedeemCodeRepo) GetByCode(ctx context.Context, code string) (*service.
 
 func (stubRedeemCodeRepo) Update(ctx context.Context, code *service.RedeemCode) error {
 	return errors.New("not implemented")
+}
+
+func (stubRedeemCodeRepo) BatchUpdate(ctx context.Context, ids []int64, fields service.RedeemCodeBatchUpdateFields) (int64, error) {
+	return 0, errors.New("not implemented")
 }
 
 func (stubRedeemCodeRepo) Delete(ctx context.Context, id int64) error {
@@ -1965,6 +1986,10 @@ func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	delete(r.byID, id)
 	delete(r.byKey, key.Key)
 	return nil
+}
+
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return r.Delete(ctx, id)
 }
 
 func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {

@@ -149,7 +149,7 @@ func (r *inMemoryAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Co
 func (r *inMemoryAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	panic("unexpected")
 }
-func (r *inMemoryAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time) error {
+func (r *inMemoryAccountRepo) SetModelRateLimit(ctx context.Context, id int64, scope string, resetAt time.Time, reason ...string) error {
 	panic("unexpected")
 }
 func (r *inMemoryAccountRepo) SetOverloaded(ctx context.Context, id int64, until time.Time) error {

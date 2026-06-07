@@ -39,9 +39,9 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 
 	var b strings.Builder
 	b.Grow(256 + len(message) + len(model))
-	b.WriteString(`{"type":"response.failed","response":{`)
-	b.WriteString(`"id":`)
-	b.WriteString(strconv.Quote(rid))
+	_, _ = b.WriteString(`{"type":"response.failed","response":{`)
+	_, _ = b.WriteString(`"id":`)
+	_, _ = b.WriteString(strconv.Quote(rid))
 	b.WriteString(`,"object":"response"`)
 	if model != "" {
 		b.WriteString(`,"model":`)

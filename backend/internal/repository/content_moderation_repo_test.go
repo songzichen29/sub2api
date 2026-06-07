@@ -16,7 +16,7 @@ func TestContentModerationRepositoryListLogs_UsesMySQLPlaceholders(t *testing.T)
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := &contentModerationRepository{db: db}
 	filter := service.ContentModerationLogFilter{
@@ -70,7 +70,7 @@ func TestContentModerationRepositoryCreateLog_UsesExecInsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := &contentModerationRepository{db: db}
 	logEntry := &service.ContentModerationLog{
@@ -134,7 +134,7 @@ func TestContentModerationRepositoryCountFlaggedByUserSince_UsesMySQLFallbackTim
 	if err != nil {
 		t.Fatalf("sqlmock.New: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	repo := &contentModerationRepository{db: db}
 	since := time.Date(2026, 5, 22, 0, 0, 0, 0, time.UTC)

@@ -960,7 +960,6 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				Version:             freshSub.UpdatedAt.Unix(),
 			})
 			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
-			needsDayOverdraftAccounting = group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
 		}
 	}
 	if group.HasDailyLimit() {

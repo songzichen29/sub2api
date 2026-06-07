@@ -107,6 +107,9 @@ func (s *redeemRepoRegisterStub) GetByCode(_ context.Context, code string) (*Red
 	}
 }
 func (s *redeemRepoRegisterStub) Update(context.Context, *RedeemCode) error { panic("unexpected Update call") }
+func (s *redeemRepoRegisterStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	panic("unexpected BatchUpdate call")
+}
 func (s *redeemRepoRegisterStub) Delete(context.Context, int64) error       { panic("unexpected Delete call") }
 func (s *redeemRepoRegisterStub) Use(_ context.Context, id, userID int64) error {
 	s.usedID = id
@@ -249,6 +252,15 @@ func (r *registerUserRepoWithEnt) DeductBalance(context.Context, int64, float64)
 func (r *registerUserRepoWithEnt) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected UpdateConcurrency call")
 }
+func (r *registerUserRepoWithEnt) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
+	panic("unexpected BatchSetConcurrency call")
+}
+func (r *registerUserRepoWithEnt) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
+	panic("unexpected BatchAddConcurrency call")
+}
+func (r *registerUserRepoWithEnt) GetByIDIncludeDeleted(context.Context, int64) (*User, error) {
+	panic("unexpected GetByIDIncludeDeleted call")
+}
 func (r *registerUserRepoWithEnt) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	panic("unexpected RemoveGroupFromAllowedGroups call")
 }
@@ -293,7 +305,7 @@ func newRegisterAuthServiceWithEnt(
 	settingSvc := NewSettingService(&settingRepoStub{values: settings}, cfg)
 	affiliateSvc := NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
 	userRepo := &registerUserRepoWithEnt{client: client}
-	svc := NewAuthService(client, userRepo, redeemRepo, &refreshTokenCacheStub{}, cfg, settingSvc, nil, nil, nil, nil, nil, affiliateSvc)
+	svc := NewAuthService(client, userRepo, redeemRepo, &refreshTokenCacheStub{}, cfg, settingSvc, nil, nil, nil, nil, nil, affiliateSvc, nil)
 	return svc, client
 }
 
@@ -518,6 +530,7 @@ func newAuthService(repo *userRepoStub, settings map[string]string, emailCache E
 		nil, // promoService
 		nil, // defaultSubAssigner
 		nil, // affiliateService
+		nil, // userPlatformQuotaRepo
 	)
 }
 
@@ -969,7 +982,7 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_UsesLinuxDoAuthSourceDefa
 	service.defaultSubAssigner = assigner
 	service.refreshTokenCache = &refreshTokenCacheStub{}
 
-	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-123@linuxdo-connect.invalid", "linuxdo_user", "", "")
+	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), "linuxdo-123@linuxdo-connect.invalid", "linuxdo_user", "", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, tokenPair)
 	require.NotNil(t, user)
@@ -1005,7 +1018,7 @@ func TestAuthService_LoginOrRegisterOAuthWithTokenPair_ExistingUserDoesNotGrantA
 	service.defaultSubAssigner = assigner
 	service.refreshTokenCache = &refreshTokenCacheStub{}
 
-	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), existing.Email, "linuxdo_user", "", "")
+	tokenPair, user, err := service.LoginOrRegisterOAuthWithTokenPair(context.Background(), existing.Email, "linuxdo_user", "", "", "")
 	require.NoError(t, err)
 	require.NotNil(t, tokenPair)
 	require.Equal(t, existing.ID, user.ID)

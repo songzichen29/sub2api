@@ -251,7 +251,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t 
 
 // 缺少 refresh_token 的 OAuth 账号 401 应直接 SetError 永久禁用，
 // 不再走 10 分钟冷却（冷却期内无人能刷新它，结束后还会被选中再 502 一次）。
-func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError(t *testing.T) {
+func TestRateLimitService_HandleUpstreamError_OAuth401NoRefreshTokenSetsError_MoreCases(t *testing.T) {
 	t.Run("openai_no_refresh_token", func(t *testing.T) {
 		repo := &rateLimitAccountRepoStub{}
 		invalidator := &tokenCacheInvalidatorRecorder{}

@@ -5,6 +5,7 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,40 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+// equalNullableFloat 比较两个 *float64 是否相等（含 nil 语义）。
+func equalNullableFloat(a, b *float64) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b || (math.IsNaN(*a) && math.IsNaN(*b))
+}
+
+// equalPlatformQuotaSettings 比较两个平台配额设置映射是否相同。
+func equalPlatformQuotaSettings(a, b map[string]*service.DefaultPlatformQuotaSetting) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for platform, aSetting := range a {
+		bSetting, ok := b[platform]
+		if !ok {
+			return false
+		}
+		if !equalNullableFloat(aSetting.DailyLimitUSD, bSetting.DailyLimitUSD) {
+			return false
+		}
+		if !equalNullableFloat(aSetting.WeeklyLimitUSD, bSetting.WeeklyLimitUSD) {
+			return false
+		}
+		if !equalNullableFloat(aSetting.MonthlyLimitUSD, bSetting.MonthlyLimitUSD) {
+			return false
+		}
+	}
+	return true
+}
 
 func TestDiffSettings_DetectsGlobalPlatformQuotaChange(t *testing.T) {
 	five := 5.0

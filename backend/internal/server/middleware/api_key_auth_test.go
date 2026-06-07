@@ -1011,6 +1011,10 @@ func (r *stubApiKeyRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
 
+func (r *stubApiKeyRepo) DeleteWithAudit(ctx context.Context, id int64) error {
+	return errors.New("not implemented")
+}
+
 func (r *stubApiKeyRepo) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, _ service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
 }

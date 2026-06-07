@@ -273,7 +273,7 @@ func TestJWTAuth_UserLookupInternalError(t *testing.T) {
 	cfg.JWT.Secret = "test-jwt-secret-32bytes-long!!!"
 	cfg.JWT.AccessTokenExpireMinutes = 60
 
-	authSvc := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil)
+	authSvc := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	userSvc := &errJWTUserReader{err: errors.New("query user_avatars: Error 1146")}
 
 	r := gin.New()
