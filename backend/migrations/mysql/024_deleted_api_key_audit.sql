@@ -1,6 +1,6 @@
 -- 已删除 API key 审计表:删除 key 时同步留存(明文 key、所有者、key 信息),
 -- 供认证失败(INVALID_API_KEY)反查"这个失效 key 曾属于谁"。
--- 仅对本表上线后删除的 key 生效;此前已删的 key 原值已被 tombstone 覆盖,无法补录。
+-- 仅对本表上线后删除的 key 生效（此前已删的 key 原值已被 tombstone 覆盖,无法补录）。
 
 CREATE TABLE IF NOT EXISTS `deleted_api_key_audits` (
     `id`           bigint NOT NULL AUTO_INCREMENT,
