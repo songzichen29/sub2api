@@ -53,6 +53,52 @@ func TestForwardResponses_ForceChatCompletionsRoutesNonStreamingToChatCompletion
 	require.False(t, result.Stream)
 }
 
+func TestForwardResponses_ForceChatCompletionsPreservesInputFilePart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{
+		"model":"gpt-5.4",
+		"input":[{
+			"type":"message",
+			"role":"user",
+			"content":[
+				{"type":"input_text","text":"before"},
+				{"type":"input_file","filename":"demo.pdf","file_data":"JVBERi0xLjQK"},
+				{"type":"input_text","text":"after"}
+			]
+		}],
+		"stream":false
+	}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_resp_chat_file"}},
+		Body: io.NopCloser(strings.NewReader(
+			`{"id":"chatcmpl_file","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`,
+		)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	result, err := svc.Forward(context.Background(), c, forceChatResponsesFallbackAccount(), body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "http://upstream.example/v1/chat/completions", upstream.lastReq.URL.String())
+	require.Equal(t, "text", gjson.GetBytes(upstream.lastBody, "messages.0.content.0.type").String())
+	require.Equal(t, "before", gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String())
+	require.Equal(t, "file", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.type").String())
+	require.Equal(t, "demo.pdf", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.file.filename").String())
+	require.Equal(t, "JVBERi0xLjQK", gjson.GetBytes(upstream.lastBody, "messages.0.content.1.file.file_data").String())
+	require.Equal(t, "text", gjson.GetBytes(upstream.lastBody, "messages.0.content.2.type").String())
+	require.Equal(t, "after", gjson.GetBytes(upstream.lastBody, "messages.0.content.2.text").String())
+}
+
 func TestForwardResponses_ForceChatCompletionsRoutesStreamingToChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

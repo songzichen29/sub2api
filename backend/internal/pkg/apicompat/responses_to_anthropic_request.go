@@ -1,9 +1,13 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"mime"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -382,6 +386,10 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 					Source: src,
 				})
 			}
+		case "input_file":
+			if block := responsesFileToAnthropicBlock(p); block != nil {
+				blocks = append(blocks, *block)
+			}
 		}
 	}
 
@@ -467,6 +475,181 @@ func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
 		MediaType: mediaType,
 		Data:      data,
 	}
+}
+
+func responsesFileToAnthropicBlock(p ResponsesContentPart) *AnthropicContentBlock {
+	fileData := strings.TrimSpace(p.FileData)
+	if fileData != "" {
+		mediaType, data := responsesFileMediaTypeAndData(p)
+		if strings.HasPrefix(mediaType, "image/") {
+			return &AnthropicContentBlock{
+				Type: "image",
+				Source: &AnthropicImageSource{
+					Type:      "base64",
+					MediaType: mediaType,
+					Data:      data,
+				},
+			}
+		}
+		if shouldInlineResponsesFileAsText(mediaType, p.Filename) {
+			if text, ok := decodeResponsesFileText(data); ok {
+				return &AnthropicContentBlock{
+					Type: "text",
+					Text: responsesFileTextLabel(p.Filename, text),
+				}
+			}
+		}
+		return &AnthropicContentBlock{
+			Type: "document",
+			Source: &AnthropicImageSource{
+				Type:      "base64",
+				MediaType: mediaType,
+				Data:      data,
+			},
+		}
+	}
+
+	if fileID := strings.TrimSpace(p.FileID); fileID != "" {
+		return &AnthropicContentBlock{
+			Type: "document",
+			Source: &AnthropicImageSource{
+				Type:   "file",
+				FileID: fileID,
+			},
+		}
+	}
+
+	if fileURL := strings.TrimSpace(p.FileURL); fileURL != "" {
+		return &AnthropicContentBlock{
+			Type: "document",
+			Source: &AnthropicImageSource{
+				Type: "url",
+				URL:  fileURL,
+			},
+		}
+	}
+
+	return nil
+}
+
+func responsesFileMediaTypeAndData(p ResponsesContentPart) (string, string) {
+	data := strings.TrimSpace(p.FileData)
+	if mediaType, payload, ok := splitResponsesDataURI(data); ok {
+		if normalized := normalizeResponsesMediaType(firstNonEmptyString(p.MimeType, mediaType)); normalized != "" {
+			return normalized, payload
+		}
+		return mediaType, payload
+	}
+	mediaType := normalizeResponsesMediaType(p.MimeType)
+	if mediaType == "" {
+		mediaType = inferResponsesFileMediaType(p.Filename)
+	}
+	return mediaType, data
+}
+
+func splitResponsesDataURI(value string) (mediaType, data string, ok bool) {
+	if !strings.HasPrefix(value, "data:") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(value, "data:")
+	commaIdx := strings.Index(rest, ",")
+	if commaIdx < 0 {
+		return "", "", false
+	}
+	meta := rest[:commaIdx]
+	payload := rest[commaIdx+1:]
+	mediaType = meta
+	if semicolonIdx := strings.Index(mediaType, ";"); semicolonIdx >= 0 {
+		mediaType = mediaType[:semicolonIdx]
+	}
+	if !strings.Contains(meta, ";base64") {
+		return "", "", false
+	}
+	return normalizeResponsesMediaType(mediaType), payload, true
+}
+
+func inferResponsesFileMediaType(filename string) string {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))
+	if ext != "" {
+		if mt := normalizeResponsesMediaType(mime.TypeByExtension(ext)); mt != "" {
+			return mt
+		}
+	}
+	switch ext {
+	case ".md", ".markdown", ".txt", ".log", ".csv", ".tsv", ".yaml", ".yml":
+		return "text/plain"
+	case ".json":
+		return "application/json"
+	case ".pdf":
+		return "application/pdf"
+	}
+	return "application/pdf"
+}
+
+func normalizeResponsesMediaType(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if mt, _, err := mime.ParseMediaType(value); err == nil {
+		return strings.ToLower(strings.TrimSpace(mt))
+	}
+	return strings.ToLower(value)
+}
+
+func shouldInlineResponsesFileAsText(mediaType, filename string) bool {
+	mediaType = normalizeResponsesMediaType(mediaType)
+	if strings.HasPrefix(mediaType, "text/") {
+		return true
+	}
+	switch mediaType {
+	case "application/json", "application/xml", "application/javascript", "application/x-javascript", "application/yaml", "application/x-yaml":
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(strings.TrimSpace(filename))) {
+	case ".md", ".markdown", ".txt", ".log", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".js", ".ts", ".py", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".hpp", ".css", ".html":
+		return true
+	}
+	return false
+}
+
+func decodeResponsesFileText(data string) (string, bool) {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" {
+		return "", false
+	}
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	} {
+		decoded, err := enc.DecodeString(trimmed)
+		if err == nil && utf8.Valid(decoded) {
+			return string(decoded), true
+		}
+	}
+	if utf8.ValidString(trimmed) {
+		return trimmed, true
+	}
+	return "", false
+}
+
+func responsesFileTextLabel(filename, text string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return text
+	}
+	return fmt.Sprintf("[File: %s]\n%s", filename, text)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // mergeConsecutiveMessages merges consecutive messages with the same role

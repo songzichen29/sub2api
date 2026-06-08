@@ -74,6 +74,37 @@ func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *
 	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
 }
 
+func TestResponsesToChatCompletionsRequest_InputFilePartPreserved(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[{
+			"type":"message",
+			"role":"user",
+			"content":[
+				{"type":"input_text","text":"front"},
+				{"type":"input_file","filename":"demo.pdf","file_data":"JVBERi0xLjQK"},
+				{"type":"input_text","text":"tail"}
+			]
+		}]`),
+	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Len(t, out.Messages, 1)
+
+	var parts []ChatContentPart
+	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &parts))
+	require.Len(t, parts, 3)
+	assert.Equal(t, "text", parts[0].Type)
+	assert.Equal(t, "front", parts[0].Text)
+	assert.Equal(t, "file", parts[1].Type)
+	require.NotNil(t, parts[1].File)
+	assert.Equal(t, "demo.pdf", parts[1].File.Filename)
+	assert.Equal(t, "JVBERi0xLjQK", parts[1].File.FileData)
+	assert.Equal(t, "text", parts[2].Type)
+	assert.Equal(t, "tail", parts[2].Text)
+}
+
 func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testing.T) {
 	resp := &ChatCompletionsResponse{
 		ID:     "chatcmpl_test",

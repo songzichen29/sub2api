@@ -389,6 +389,17 @@ func responsesContentPartsToChatContent(rawParts []json.RawMessage, role string)
 				Type:     "image_url",
 				ImageURL: &ChatImageURL{URL: imageURL},
 			})
+		case "input_file", "file":
+			filePart, textFallback := chatFileContentPartFromResponsesPart(partType, part)
+			if filePart != nil {
+				hasNonText = true
+				chatParts = append(chatParts, *filePart)
+				continue
+			}
+			if textFallback != "" {
+				textParts = append(textParts, textFallback)
+				chatParts = append(chatParts, ChatContentPart{Type: "text", Text: textFallback})
+			}
 		}
 	}
 
@@ -418,9 +429,49 @@ func chatContentFromSingleResponsesPart(partType string, part map[string]json.Ra
 			Type:     "image_url",
 			ImageURL: &ChatImageURL{URL: imageURL},
 		}})
+	case "input_file", "file":
+		filePart, textFallback := chatFileContentPartFromResponsesPart(partType, part)
+		if filePart != nil {
+			return json.Marshal([]ChatContentPart{*filePart})
+		}
+		return json.Marshal(textFallback)
 	default:
 		return json.Marshal(rawString(part["text"]))
 	}
+}
+
+func chatFileContentPartFromResponsesPart(partType string, part map[string]json.RawMessage) (*ChatContentPart, string) {
+	var fileObj map[string]json.RawMessage
+	if partType == "file" {
+		_ = json.Unmarshal(part["file"], &fileObj)
+	}
+	rawField := func(key string) json.RawMessage {
+		if fileObj != nil {
+			if raw := fileObj[key]; len(bytesTrimSpace(raw)) > 0 {
+				return raw
+			}
+		}
+		return part[key]
+	}
+
+	file := &ChatFile{
+		Filename: rawString(rawField("filename")),
+		FileData: rawString(rawField("file_data")),
+		FileID:   rawString(rawField("file_id")),
+	}
+	if file.FileData != "" || file.FileID != "" {
+		return &ChatContentPart{Type: "file", File: file}, ""
+	}
+	if fileURL := rawString(rawField("file_url")); fileURL != "" {
+		if file.Filename != "" {
+			return nil, "File " + file.Filename + ": " + fileURL
+		}
+		return nil, "File URL: " + fileURL
+	}
+	if file.Filename != "" {
+		return nil, "File: " + file.Filename
+	}
+	return nil, ""
 }
 
 func responsesToolsToChatTools(tools []ResponsesTool) []ChatTool {

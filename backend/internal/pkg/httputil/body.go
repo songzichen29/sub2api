@@ -21,6 +21,46 @@ const (
 	maxDecompressedBodySize = 64 << 20
 )
 
+// RequestBodyReadErrorKind classifies failures that happen before a request
+// body can be parsed by API handlers.
+type RequestBodyReadErrorKind string
+
+const (
+	RequestBodyReadErrorKindRead                RequestBodyReadErrorKind = "read"
+	RequestBodyReadErrorKindDecode              RequestBodyReadErrorKind = "decode_content_encoding"
+	RequestBodyReadErrorKindUnsupportedEncoding RequestBodyReadErrorKind = "unsupported_content_encoding"
+)
+
+// ErrUnsupportedContentEncoding marks a request Content-Encoding value that the
+// gateway cannot decode.
+var ErrUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
+
+// RequestBodyReadError preserves the low-level reason why reading a request
+// body failed while keeping compatibility with errors.As on the wrapped error
+// (for example *http.MaxBytesError from http.MaxBytesReader).
+type RequestBodyReadError struct {
+	Kind     RequestBodyReadErrorKind
+	Encoding string
+	Err      error
+}
+
+func (e *RequestBodyReadError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if e.Encoding != "" {
+		return fmt.Sprintf("request body %s failed for Content-Encoding %q: %v", e.Kind, e.Encoding, e.Err)
+	}
+	return fmt.Sprintf("request body %s failed: %v", e.Kind, e.Err)
+}
+
+func (e *RequestBodyReadError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
 // ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
 // on content length, transparently decoding any Content-Encoding the upstream
 // client used to compress the body (zstd, gzip, deflate).
@@ -43,7 +83,10 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 
 	buf := bytes.NewBuffer(make([]byte, 0, capHint))
 	if _, err := io.Copy(buf, req.Body); err != nil {
-		return nil, err
+		return nil, &RequestBodyReadError{
+			Kind: RequestBodyReadErrorKindRead,
+			Err:  err,
+		}
 	}
 	raw := buf.Bytes()
 
@@ -54,7 +97,15 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 
 	decoded, err := decompressRequestBody(enc, raw)
 	if err != nil {
-		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
+		kind := RequestBodyReadErrorKindDecode
+		if errors.Is(err, ErrUnsupportedContentEncoding) {
+			kind = RequestBodyReadErrorKindUnsupportedEncoding
+		}
+		return nil, &RequestBodyReadError{
+			Kind:     kind,
+			Encoding: enc,
+			Err:      err,
+		}
 	}
 
 	req.Header.Del("Content-Encoding")
@@ -88,6 +139,6 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 		defer func() { _ = zr.Close() }()
 		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
 	default:
-		return nil, errors.New("unsupported Content-Encoding")
+		return nil, ErrUnsupportedContentEncoding
 	}
 }

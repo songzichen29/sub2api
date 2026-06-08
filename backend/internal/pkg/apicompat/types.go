@@ -97,11 +97,15 @@ func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// AnthropicImageSource describes the source data for an image content block.
+// AnthropicImageSource describes the source data for image/document content
+// blocks. Images use base64 sources; documents can also reference a file_id or
+// URL depending on upstream support.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
+	FileID    string `json:"file_id,omitempty"`
+	URL       string `json:"url,omitempty"`
 }
 
 // AnthropicTool describes a tool available to the model.
@@ -241,9 +245,17 @@ type ResponsesInputItem struct {
 
 // ResponsesContentPart is a typed content part in a Responses message.
 type ResponsesContentPart struct {
-	Type     string `json:"type"` // "input_text" | "output_text" | "input_image"
+	Type     string `json:"type"` // "input_text" | "output_text" | "input_image" | "input_file"
 	Text     string `json:"text,omitempty"`
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
+
+	// type=input_file
+	FileID   string `json:"file_id,omitempty"`
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"`
+	FileURL  string `json:"file_url,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Detail   string `json:"detail,omitempty"`
 }
 
 func (p ResponsesContentPart) MarshalJSON() ([]byte, error) {
@@ -483,12 +495,20 @@ type ChatContentPart struct {
 	Type     string        `json:"type"` // "text" | "image_url"
 	Text     string        `json:"text,omitempty"`
 	ImageURL *ChatImageURL `json:"image_url,omitempty"`
+	File     *ChatFile     `json:"file,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.
 type ChatImageURL struct {
 	URL    string `json:"url"`
 	Detail string `json:"detail,omitempty"` // "auto" | "low" | "high"
+}
+
+// ChatFile contains file content for a Chat Completions content part.
+type ChatFile struct {
+	Filename string `json:"filename,omitempty"`
+	FileData string `json:"file_data,omitempty"`
+	FileID   string `json:"file_id,omitempty"`
 }
 
 // ChatTool describes a tool available to the model.

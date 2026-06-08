@@ -47,11 +47,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// Read request body
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.responsesErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
-			return
-		}
-		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		writeGatewayResponsesRequestBodyReadError(h, c, "handler.gateway.responses", err)
 		return
 	}
 

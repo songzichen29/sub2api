@@ -1256,6 +1256,63 @@ func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) 
 	assert.Equal(t, "get_weather", tc["name"])
 }
 
+func TestResponsesToAnthropicRequest_InputFileDataBecomesDocument(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[{
+			"type":"message",
+			"role":"user",
+			"content":[
+				{"type":"input_text","text":"front"},
+				{"type":"input_file","filename":"demo.pdf","mime_type":"application/pdf","file_data":"JVBERi0xLjQK"},
+				{"type":"input_text","text":"tail"}
+			]
+		}]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 3)
+	assert.Equal(t, "text", blocks[0].Type)
+	assert.Equal(t, "front", blocks[0].Text)
+	assert.Equal(t, "document", blocks[1].Type)
+	require.NotNil(t, blocks[1].Source)
+	assert.Equal(t, "base64", blocks[1].Source.Type)
+	assert.Equal(t, "application/pdf", blocks[1].Source.MediaType)
+	assert.Equal(t, "JVBERi0xLjQK", blocks[1].Source.Data)
+	assert.Equal(t, "text", blocks[2].Type)
+	assert.Equal(t, "tail", blocks[2].Text)
+}
+
+func TestResponsesToAnthropicRequest_InputFileIDBecomesDocumentReference(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-5.2",
+		Input: json.RawMessage(`[{
+			"type":"message",
+			"role":"user",
+			"content":[
+				{"type":"input_file","file_id":"file_abc123","filename":"demo.pdf"}
+			]
+		}]`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Messages, 1)
+
+	var blocks []AnthropicContentBlock
+	require.NoError(t, json.Unmarshal(resp.Messages[0].Content, &blocks))
+	require.Len(t, blocks, 1)
+	assert.Equal(t, "document", blocks[0].Type)
+	require.NotNil(t, blocks[0].Source)
+	assert.Equal(t, "file", blocks[0].Source.Type)
+	assert.Equal(t, "file_abc123", blocks[0].Source.FileID)
+}
+
 // ---------------------------------------------------------------------------
 // Image content block conversion tests
 // ---------------------------------------------------------------------------

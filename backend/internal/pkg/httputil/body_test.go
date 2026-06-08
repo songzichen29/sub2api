@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -107,6 +108,16 @@ func TestReadRequestBodyWithPrealloc_RejectsUnsupportedEncoding(t *testing.T) {
 	if !strings.Contains(err.Error(), "br") {
 		t.Fatalf("error should mention encoding, got %v", err)
 	}
+	var readErr *RequestBodyReadError
+	if !errors.As(err, &readErr) {
+		t.Fatalf("error should be RequestBodyReadError, got %T", err)
+	}
+	if readErr.Kind != RequestBodyReadErrorKindUnsupportedEncoding {
+		t.Fatalf("kind=%q, want %q", readErr.Kind, RequestBodyReadErrorKindUnsupportedEncoding)
+	}
+	if !errors.Is(err, ErrUnsupportedContentEncoding) {
+		t.Fatalf("error should wrap ErrUnsupportedContentEncoding, got %v", err)
+	}
 }
 
 func TestReadRequestBodyWithPrealloc_RejectsCorruptZstd(t *testing.T) {
@@ -114,6 +125,16 @@ func TestReadRequestBodyWithPrealloc_RejectsCorruptZstd(t *testing.T) {
 	_, err := ReadRequestBodyWithPrealloc(req)
 	if err == nil {
 		t.Fatal("expected error for corrupt zstd body, got nil")
+	}
+	var readErr *RequestBodyReadError
+	if !errors.As(err, &readErr) {
+		t.Fatalf("error should be RequestBodyReadError, got %T", err)
+	}
+	if readErr.Kind != RequestBodyReadErrorKindDecode {
+		t.Fatalf("kind=%q, want %q", readErr.Kind, RequestBodyReadErrorKindDecode)
+	}
+	if readErr.Encoding != "zstd" {
+		t.Fatalf("encoding=%q, want zstd", readErr.Encoding)
 	}
 }
 
