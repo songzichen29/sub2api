@@ -122,12 +122,12 @@ export async function deleteKey(id: number): Promise<{ message: string }> {
 }
 
 /**
- * Toggle API key status (active/inactive)
+ * Toggle API key status (active/disabled)
  * @param id - API key ID
  * @param status - New status
  * @returns Updated API key
  */
-export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<ApiKey> {
+export async function toggleStatus(id: number, status: 'active' | 'disabled'): Promise<ApiKey> {
   return update(id, { status })
 }
 

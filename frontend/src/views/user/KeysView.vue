@@ -1171,7 +1171,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
-  status: 'active' as 'active' | 'inactive',
+  status: 'active' as 'active' | 'disabled',
   use_custom_key: false,
   custom_key: '',
   enable_ip_restriction: false,
@@ -1208,7 +1208,7 @@ const customKeyError = computed(() => {
 
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
-  { value: 'inactive', label: t('common.inactive') }
+  { value: 'disabled', label: t('common.disabled') }
 ])
 
 // Filter dropdown options
@@ -1222,6 +1222,7 @@ const statusFilterOptions = computed(() => [
   { value: '', label: t('keys.allStatus') },
   { value: 'active', label: t('keys.status.active') },
   { value: 'inactive', label: t('keys.status.inactive') },
+  { value: 'disabled', label: t('keys.status.disabled') },
   { value: 'quota_exhausted', label: t('keys.status.quota_exhausted') },
   { value: 'expired', label: t('keys.status.expired') }
 ])
@@ -1395,7 +1396,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
-    status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
+    status: key.status === 'active' ? 'active' : 'disabled',
     use_custom_key: false,
     custom_key: '',
     enable_ip_restriction: hasIPRestriction,
@@ -1415,7 +1416,7 @@ const editKey = (key: ApiKey) => {
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
-  const newStatus = key.status === 'active' ? 'inactive' : 'active'
+  const newStatus = key.status === 'active' ? 'disabled' : 'active'
   try {
     await keysAPI.toggleStatus(key.id, newStatus)
     appStore.showSuccess(

@@ -364,7 +364,8 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} to lift'
       }
-    }
+    },
+    login: 'Login'
   },
 
   // Navigation
@@ -945,7 +946,37 @@ export default {
     exportExcelSuccess: 'Usage data exported successfully (Excel format)',
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    errors: {
+      model: 'Model',
+      modelPlaceholder: 'Enter full model name',
+      keyName: 'API Key',
+      allKeys: 'All Keys',
+      category: 'Category',
+      allCategories: 'All Categories',
+      endpoint: 'Endpoint',
+      status: 'Status',
+      message: 'Message',
+      platform: 'Platform',
+      time: 'Time',
+      empty: 'No error requests',
+      keyDeleted: 'Key deleted',
+      categories: {
+        auth: 'Auth',
+        rate_limit: 'Rate Limit',
+        quota: 'Quota',
+        invalid_request: 'Invalid Request',
+        service_unavailable: 'Service Unavailable',
+        upstream: 'Upstream',
+        internal: 'Internal'
+      },
+      detail: {
+        title: 'Error Detail',
+        loadFailed: 'Failed to load error detail',
+        upstreamStatus: 'Upstream Status',
+        responseBody: 'Response Body'
+      }
+    }
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -1335,6 +1366,7 @@ export default {
         linuxdo: 'LinuxDo',
         oidc: '{providerName}',
         wechat: 'WeChat',
+        dingtalk: 'DingTalk'
       },
       notes: {
         emailManagedFromProfile: 'Primary email is managed in the profile form',
@@ -2332,7 +2364,8 @@ export default {
         gemini: 'Gemini',
         grok: 'Grok',
         hint: 'Select at least one model family'
-      }
+      },
+      failedToSave: 'Failed to save group'
     },
 
     // Available Channels (aggregated read-only view)
@@ -2504,7 +2537,9 @@ export default {
         syncModelsSuccess: 'Synced {count} new model(s)',
         syncModelsAlreadyUpToDate: 'Models already up to date',
         syncModelsError: 'Failed to sync models'
-      }
+      },
+      noGroupsSelected: 'No group selected for {platform}. Select at least one group or disable this platform.',
+      emptyModelsInPricing: '{platform} has pricing entries without models. Add models or remove those entries.'
     },
 
     riskControl: {
@@ -3776,7 +3811,15 @@ export default {
           validating: 'Validating...',
           validateAndCreate: 'Validate & Create Account',
           pleaseEnterRefreshToken: 'Please enter Refresh Token',
-          pleaseEnterSessionToken: 'Please enter Session Token'
+          pleaseEnterSessionToken: 'Please enter Session Token',
+          mobileRefreshTokenAuth: 'Manual Mobile RT Input',
+          accessTokenAuth: 'Manual AT Input',
+          codexSessionAuth: 'Import Codex Session',
+          codexSessionDesc: 'Paste Codex session JSON or access tokens. Batch import is supported; the system will parse and create accounts.',
+          codexSessionInputLabel: 'Codex Session Content',
+          codexSessionPlaceholder: 'Paste Codex session JSON, access token, or one item per line...',
+          codexSessionHint: 'Supports full JSON or multiline tokens. The system will extract usable credentials automatically.',
+          codexSessionImportAndCreate: 'Import & Create Account'
         },
         // Gemini specific
 	        gemini: {
@@ -4130,7 +4173,9 @@ export default {
       linkCopied: 'Link Copied',
       needsReauth: 'Re-auth Required',
       rateLimited: 'Rate Limited',
-      usageError: 'Fetch Error'
+      usageError: 'Fetch Error',
+      fromModel: 'Source model',
+      toModel: 'Target model'
     },
 
     // Scheduled Tests
@@ -4320,7 +4365,10 @@ export default {
       hostRequired: 'Please enter host address',
       portInvalid: 'Port must be between 1-65535',
       deleteConfirm:
-        "Are you sure you want to delete '{name}'? Accounts using this proxy will have their proxy removed."
+        "Are you sure you want to delete '{name}'? Accounts using this proxy will have their proxy removed.",
+      ad: {
+        inline: 'Recommended proxy deals'
+      }
     },
 
     // Redeem Codes
@@ -4345,7 +4393,8 @@ export default {
         status: 'Status',
         usedBy: 'Used By',
         usedAt: 'Used At',
-        actions: 'Actions'
+        actions: 'Actions',
+        expiresAt: 'Expires At'
       },
       userPrefix: 'User #{id}',
       exportCsv: 'Export CSV',
@@ -4397,7 +4446,29 @@ export default {
         used: 'Used',
         expired: 'Expired',
         disabled: 'Disabled'
-      }
+      },
+      batchUpdate: 'Batch Update',
+      batchUpdateTitle: 'Batch Update Redeem Codes',
+      batchFields: {
+        status: 'Status',
+        expiresAt: 'Expires At',
+        notes: 'Notes',
+        group: 'Subscription Group'
+      },
+      batchNotesPlaceholder: 'Write notes in bulk; leave empty to clear notes',
+      selectedCount: '{count} redeem code(s) selected',
+      clearSelection: 'Clear selection',
+      codeExpiry: 'Code Expiry',
+      neverExpires: 'Never expires',
+      expiryPresetDays: 'Expires in {days} day(s)',
+      customExpiry: 'Custom expiry days',
+      customExpiryDays: 'Enter expiry days',
+      expiryDaysRequired: 'Please enter a valid expiry time',
+      noBatchFieldsSelected: 'Select at least one field to update',
+      selectCodesFirst: 'Select redeem codes first',
+      batchUpdateSuccess: 'Updated {count} redeem code(s)',
+      failedToBatchUpdate: 'Failed to batch update redeem codes',
+      clearGroup: 'Clear group binding'
     },
 
     // Announcements
@@ -4607,7 +4678,8 @@ export default {
           failed: 'Failed',
           canceled: 'Canceled'
         }
-      }
+      },
+      userDeletedBadge: 'deleted'
     },
 
     // Ops Monitoring
@@ -4709,7 +4781,8 @@ export default {
         '6h': 'Last 6 hours',
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
-        '30d': 'Last 30 days'
+        '30d': 'Last 30 days',
+        custom: 'Custom'
       },
       openaiTokenStats: {
         title: 'OpenAI Token Request Stats',
@@ -4981,7 +5054,11 @@ export default {
         suggestRequest: 'Client request error: ask customer to fix request parameters',
         suggestAuth: 'Auth failed: verify API key/credentials',
         suggestPlatform: 'Platform error: prioritize investigation and fix',
-        suggestGeneric: 'See details for more context'
+        suggestGeneric: 'See details for more context',
+        apiKeyPrefix: 'API Key Prefix',
+        attemptedKeyPrefix: 'Attempted Key Prefix',
+        deletedKeyOwner: 'Deleted Key Owner',
+        keyDeletedBadge: 'Key Deleted'
       },
       requestDetails: {
         title: 'Request Details',
@@ -5215,7 +5292,17 @@ export default {
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
           upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
-        }
+        },
+        metricThresholds: 'Metric Thresholds',
+        metricThresholdsHint: 'SLA, first-token latency, and error-rate thresholds used for alert evaluation.',
+        slaMinPercent: 'Minimum SLA (%)',
+        slaMinPercentHint: 'Triggers an alert when SLA falls below this percentage. Leave empty to skip.',
+        ttftP99MaxMs: 'P99 TTFT Max (ms)',
+        ttftP99MaxMsHint: 'Triggers an alert when P99 time to first token exceeds this value. Leave empty to skip.',
+        requestErrorRateMaxPercent: 'Request Error Rate Max (%)',
+        requestErrorRateMaxPercentHint: 'Triggers an alert when request error rate exceeds this percentage. Leave empty to skip.',
+        upstreamErrorRateMaxPercent: 'Upstream Error Rate Max (%)',
+        upstreamErrorRateMaxPercentHint: 'Triggers an alert when upstream error rate exceeds this percentage. Leave empty to skip.'
       },
       email: {
         title: 'Email Notification',
@@ -5327,8 +5414,14 @@ export default {
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
-          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100'
-        }
+          upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause thresholds must be between 0 and 100%'
+        },
+        openaiQuotaAutoPause: 'OpenAI Account Quota Auto Pause',
+        openaiQuotaAutoPauseHint: 'Configure default pause thresholds for 5-hour and 7-day windows. OpenAI accounts reaching the threshold will be paused automatically.',
+        openaiQuotaAutoPauseDefault5h: '5h Default Threshold (%)',
+        openaiQuotaAutoPauseDefault7d: '7d Default Threshold (%)',
+        openaiQuotaAutoPauseThresholdHint: 'Enter a percentage from 0 to 100. 0 disables auto pause for that window.'
       },
       concurrency: {
         title: 'Concurrency / Queue',
@@ -5396,6 +5489,11 @@ export default {
         resetZoomHint: 'Reset zoom (if enabled)',
         downloadChart: 'Download',
         downloadChartHint: 'Download chart as image'
+      },
+      result: 'Result',
+      customTimeRange: {
+        startTime: 'Start Time',
+        endTime: 'End Time'
       }
     },
 
@@ -5988,6 +6086,9 @@ export default {
         refundEnabled: 'Allow Refund',
         allowUserRefund: 'Allow User Refund',
         enableConflict: '{method} already has an enabled provider instance: {provider}. Disable the existing instance before switching.',
+        stripeWebhookApiVersionHint: 'Make sure the Stripe Webhook API version is compatible with the current SDK: {version}',
+        airwallexGuideSummary: 'Airwallex uses Hosted Payment Page. Configure Client ID, API Key, and Webhook.',
+        airwallexGuideNote: 'Enable the Payment Attempt Webhook in Airwallex and make sure the callback URL matches this site.'
       },
       balanceNotify: {
         title: 'Balance Low Notification',
@@ -6847,6 +6948,7 @@ export default {
       link: 'Link',
       alipay_direct: 'Alipay (Direct)',
       wxpay_direct: 'WeChat Pay (Direct)',
+      airwallex: 'Airwallex'
     },
     status: {
       pending: 'Pending',
@@ -7188,6 +7290,9 @@ export default {
         revoked: 'Revoked',
       },
     },
+    airwallexLoadFailed: 'Failed to load Airwallex payment component. Please refresh and try again.',
+    airwallexMissingParams: 'Missing Airwallex payment parameters',
+    renewalResetNoticeTitle: 'Reset Notice'
   },
 
 }

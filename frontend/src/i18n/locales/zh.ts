@@ -364,7 +364,8 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} 后解除'
       }
-    }
+    },
+    login: '登录'
   },
 
   // Navigation
@@ -949,7 +950,37 @@ export default {
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
-    userAgent: 'User-Agent'
+    userAgent: 'User-Agent',
+    errors: {
+      model: '模型',
+      modelPlaceholder: '输入完整模型名',
+      keyName: '密钥',
+      allKeys: '全部密钥',
+      category: '分类',
+      allCategories: '全部分类',
+      endpoint: '端点',
+      status: '状态码',
+      message: '消息',
+      platform: '平台',
+      time: '时间',
+      empty: '暂无错误请求',
+      keyDeleted: '密钥已删除',
+      categories: {
+        auth: '认证',
+        rate_limit: '限流',
+        quota: '额度',
+        invalid_request: '无效请求',
+        service_unavailable: '服务不可用',
+        upstream: '上游',
+        internal: '内部'
+      },
+      detail: {
+        title: '错误详情',
+        loadFailed: '加载错误详情失败',
+        upstreamStatus: '上游状态码',
+        responseBody: '响应体'
+      }
+    }
   },
 
   // Shared keys for channel monitor (admin + user views)
@@ -1339,6 +1370,7 @@ export default {
         linuxdo: 'LinuxDo',
         oidc: '{providerName}',
         wechat: '微信',
+        dingtalk: '钉钉'
       },
       notes: {
         emailManagedFromProfile: '主邮箱在资料表单中管理',
@@ -2581,7 +2613,9 @@ export default {
         syncModelsSuccess: '已同步 {count} 个新模型',
         syncModelsAlreadyUpToDate: '模型列表已是最新',
         syncModelsError: '同步模型失败'
-      }
+      },
+      noGroupsSelected: '{platform} 平台未选择分组，请至少选择一个分组或禁用该平台',
+      emptyModelsInPricing: '{platform} 平台下有定价条目未添加模型，请添加模型或删除该条目'
     },
 
     riskControl: {
@@ -3942,7 +3976,15 @@ export default {
           validating: '验证中...',
           validateAndCreate: '验证并创建账号',
           pleaseEnterRefreshToken: '请输入 Refresh Token',
-          pleaseEnterSessionToken: '请输入 Session Token'
+          pleaseEnterSessionToken: '请输入 Session Token',
+          mobileRefreshTokenAuth: '手动输入 Mobile RT',
+          accessTokenAuth: '手动输入 AT',
+          codexSessionAuth: '导入 Codex Session',
+          codexSessionDesc: '粘贴 Codex session JSON 或 access token，支持批量导入，系统会解析并创建账号。',
+          codexSessionInputLabel: 'Codex Session 内容',
+          codexSessionPlaceholder: '粘贴 Codex session JSON、access token 或多行内容...',
+          codexSessionHint: '支持完整 JSON 或多行 token；系统会自动提取可用凭据。',
+          codexSessionImportAndCreate: '导入并创建账号'
         },
         // Gemini specific
         gemini: {
@@ -4225,7 +4267,9 @@ export default {
         todayCost: '今日费用',
         usageTrend: '30天费用与请求趋势',
         noData: '该账号暂无使用数据'
-      }
+      },
+      fromModel: '源模型',
+      toModel: '目标模型'
     },
 
     // Scheduled Tests
@@ -4444,7 +4488,10 @@ export default {
       nameRequired: '请输入代理名称',
       hostRequired: '请输入主机地址',
       portInvalid: '端口必须在 1-65535 之间',
-      deleteConfirm: "确定要删除代理 '{name}' 吗？使用此代理的账号将被移除代理设置。"
+      deleteConfirm: "确定要删除代理 '{name}' 吗？使用此代理的账号将被移除代理设置。",
+      ad: {
+        inline: '优质代理推荐'
+      }
     },
 
     // Redeem Codes Management
@@ -4460,7 +4507,8 @@ export default {
         usedBy: '使用者',
         usedAt: '使用时间',
         createdAt: '创建时间',
-        actions: '操作'
+        actions: '操作',
+        expiresAt: '过期时间'
       },
       types: {
         balance: '余额',
@@ -4553,7 +4601,29 @@ export default {
       failedToLoad: '加载兑换码列表失败',
       failedToGenerate: '生成兑换码失败',
       failedToUpdate: '更新兑换码失败',
-      failedToDelete: '删除兑换码失败'
+      failedToDelete: '删除兑换码失败',
+      batchUpdate: '批量更新',
+      batchUpdateTitle: '批量更新兑换码',
+      batchFields: {
+        status: '状态',
+        expiresAt: '过期时间',
+        notes: '备注',
+        group: '订阅分组'
+      },
+      batchNotesPlaceholder: '批量写入备注；留空表示清空备注',
+      selectedCount: '已选择 {count} 个兑换码',
+      clearSelection: '清空选择',
+      codeExpiry: '兑换码过期时间',
+      neverExpires: '永不过期',
+      expiryPresetDays: '{days} 天后过期',
+      customExpiry: '自定义过期天数',
+      customExpiryDays: '请输入过期天数',
+      expiryDaysRequired: '请输入有效的过期时间',
+      noBatchFieldsSelected: '请至少选择一个要更新的字段',
+      selectCodesFirst: '请先选择兑换码',
+      batchUpdateSuccess: '已批量更新 {count} 个兑换码',
+      failedToBatchUpdate: '批量更新兑换码失败',
+      clearGroup: '清除分组绑定'
     },
 
     // Announcements
@@ -4763,7 +4833,8 @@ export default {
           failed: '失败',
           canceled: '已取消'
         }
-      }
+      },
+      userDeletedBadge: '已删除'
     },
 
     // Ops Monitoring
@@ -5143,7 +5214,11 @@ export default {
         suggestRequest: '⚠️ 客户端请求错误，建议：联系客户修正请求参数 / 手动标记已解决',
         suggestAuth: '⚠️ 认证失败，建议：检查 API Key 是否有效 / 联系客户更新凭证',
         suggestPlatform: '🚨 平台错误，建议立即排查修复',
-        suggestGeneric: '查看详情了解更多信息'
+        suggestGeneric: '查看详情了解更多信息',
+        apiKeyPrefix: 'API Key 前缀',
+        attemptedKeyPrefix: '尝试使用的 Key 前缀',
+        deletedKeyOwner: '已删除密钥归属',
+        keyDeletedBadge: '密钥已删除'
       },
       requestDetails: {
         title: '请求明细',
@@ -5377,7 +5452,17 @@ export default {
           ttftP99MaxRange: 'TTFT P99 最大值必须大于或等于 0',
           requestErrorRateMaxRange: '请求错误率最大值必须在 0-100 之间',
           upstreamErrorRateMaxRange: '上游错误率最大值必须在 0-100 之间'
-        }
+        },
+        metricThresholds: '指标阈值',
+        metricThresholdsHint: '用于告警评估的 SLA、首 Token 延迟和错误率阈值。',
+        slaMinPercent: 'SLA 最低值 (%)',
+        slaMinPercentHint: '低于该 SLA 百分比时触发告警；留空表示不检查。',
+        ttftP99MaxMs: 'P99 首 Token 延迟上限 (ms)',
+        ttftP99MaxMsHint: 'P99 首 Token 延迟高于该毫秒值时触发告警；留空表示不检查。',
+        requestErrorRateMaxPercent: '请求错误率上限 (%)',
+        requestErrorRateMaxPercentHint: '请求错误率高于该百分比时触发告警；留空表示不检查。',
+        upstreamErrorRateMaxPercent: '上游错误率上限 (%)',
+        upstreamErrorRateMaxPercentHint: '上游错误率高于该百分比时触发告警；留空表示不检查。'
       },
       email: {
         title: '邮件通知配置',
@@ -5490,8 +5575,14 @@ export default {
           slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
-          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间'
-        }
+          upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
+          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100% 之间'
+        },
+        openaiQuotaAutoPause: 'OpenAI 账号配额自动暂停',
+        openaiQuotaAutoPauseHint: '配置 5 小时和 7 天窗口的默认暂停阈值。达到阈值的 OpenAI 账号会自动暂停调度。',
+        openaiQuotaAutoPauseDefault5h: '5小时默认阈值 (%)',
+        openaiQuotaAutoPauseDefault7d: '7天默认阈值 (%)',
+        openaiQuotaAutoPauseThresholdHint: '填写 0-100 的百分比；0 表示禁用对应窗口的自动暂停。'
       },
       concurrency: {
         title: '并发 / 排队',
@@ -6147,6 +6238,9 @@ export default {
         refundEnabled: '允许退款',
         allowUserRefund: '允许用户退款',
         enableConflict: '{method} 已有启用中的服务商实例：{provider}。请先停用现有实例后再启用或切换。',
+        stripeWebhookApiVersionHint: '请确认 Stripe Webhook API 版本与当前 SDK 兼容：{version}',
+        airwallexGuideSummary: 'Airwallex 通过 Hosted Payment Page 完成支付，需配置客户端 ID、API Key 和 Webhook。',
+        airwallexGuideNote: '请在 Airwallex 后台开启 Payment Attempt Webhook，并确认回调地址与当前站点一致。'
       },
       balanceNotify: {
         title: '余额不足提醒',
@@ -7030,6 +7124,7 @@ export default {
       link: 'Link',
       alipay_direct: '支付宝（直连）',
       wxpay_direct: '微信支付（直连）',
+      airwallex: 'Airwallex'
     },
     status: {
       pending: '待支付',
@@ -7277,6 +7372,7 @@ export default {
       refundSuccess: '退款成功',
       refundInfo: '退款信息',
       refundEnabled: '允许退款',
+      allowUserRefund: '允许用户退款',
       alreadyRefunded: '已退款',
       deductBalance: '扣除余额',
       deductBalanceHint: '从用户余额中扣回充值金额',
@@ -7371,6 +7467,8 @@ export default {
         revoked: '已撤销',
       },
     },
+    airwallexLoadFailed: 'Airwallex 支付组件加载失败，请刷新后重试',
+    airwallexMissingParams: '缺少 Airwallex 支付参数'
   },
 
 }
