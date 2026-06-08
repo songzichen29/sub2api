@@ -99,23 +99,30 @@ func TestOpenAIOAuthErrorAlertService_NotifyAccountError(t *testing.T) {
 
 	svc := NewOpenAIOAuthErrorAlertService(repo, emailSvc, accountRepo, usageRepo)
 	svc.NotifyAccountError(context.Background(), &Account{
-		ID:       12,
-		Name:     "test-openai-oauth",
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeOAuth,
-	}, "ratelimit.handleAuthError", "Access forbidden (403)")
+		ID:          12,
+		Name:        "test-openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"email": "owner@example.com"},
+	}, "ratelimit.handleAuthError", "Access forbidden (403) token=secret-token-value-1234567890")
 
 	require.Equal(t, []string{"a@example.com", "b@example.com"}, sentTo)
 	require.Len(t, sentSubjects, 2)
 	require.Contains(t, sentSubjects[0], "OpenAI OAuth 账号错误")
 	require.Len(t, sentBodies, 2)
 	require.True(t, strings.Contains(sentBodies[0], "test-openai-oauth"))
+	require.True(t, strings.Contains(sentBodies[0], "owner@example.com"))
+	require.True(t, strings.Contains(sentBodies[0], "当前可用 OpenAI OAuth 账号"))
+	require.True(t, strings.Contains(sentBodies[0], "1 个"))
 	require.True(t, strings.Contains(sentBodies[0], "ratelimit.handleAuthError"))
 	require.True(t, strings.Contains(sentBodies[0], "https://example.com/admin/accounts"))
-	require.True(t, strings.Contains(sentBodies[0], "同平台账号汇总"))
-	require.True(t, strings.Contains(sentBodies[0], "剩余可用账号与使用情况"))
-	require.True(t, strings.Contains(sentBodies[0], "other-openai-oauth"))
-	require.True(t, strings.Contains(sentBodies[0], "req=20, tokens=2000, cost=2.3400"))
+	require.True(t, strings.Contains(sentBodies[0], "建议动作"))
+	require.True(t, strings.Contains(sentBodies[0], "[已脱敏]"))
+	require.False(t, strings.Contains(sentBodies[0], "secret-token-value-1234567890"))
+	require.False(t, strings.Contains(sentBodies[0], "同平台账号汇总"))
+	require.False(t, strings.Contains(sentBodies[0], "剩余可用账号与使用情况"))
+	require.False(t, strings.Contains(sentBodies[0], "other-openai-oauth"))
+	require.False(t, strings.Contains(sentBodies[0], "req=20, tokens=2000, cost=2.3400"))
 }
 
 func TestOpenAIOAuthErrorAlertService_NotifyAccountError_SkipsNonOpenAIOAuth(t *testing.T) {

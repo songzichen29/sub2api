@@ -66,8 +66,8 @@ func (s *OpenAIOAuthErrorAlertService) notifyAccountIssue(ctx context.Context, a
 
 	subject := fmt.Sprintf("[OpenAI OAuth 账号%s] %s (#%d)", issueTypeLabel(issueType), strings.TrimSpace(account.Name), account.ID)
 	adminURL := s.buildAdminAccountsURL(ctx)
-	snapshot := s.buildPlatformSnapshot(ctx, account)
-	body := buildOpenAIOAuthAccountIssueEmailBody(account, issueType, trigger, detail, adminURL, snapshot)
+	availableCount := s.availableOpenAIOAuthAccountCount(ctx)
+	body := buildOpenAIOAuthAccountIssueEmailBody(account, issueType, trigger, detail, adminURL, availableCount)
 
 	for _, recipient := range recipients {
 		if err := s.emailService.SendEmail(ctx, recipient, subject, body); err != nil {
@@ -192,6 +192,25 @@ func (s *OpenAIOAuthErrorAlertService) describeUsageWindow(ctx context.Context, 
 	return fmt.Sprintf("req=%d, tokens=%d, cost=%.4f", stats.Requests, stats.Tokens, stats.Cost)
 }
 
+func (s *OpenAIOAuthErrorAlertService) availableOpenAIOAuthAccountCount(ctx context.Context) *int {
+	if s == nil || s.accountRepo == nil {
+		return nil
+	}
+	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		slog.Warn("openai_oauth_error_alert_available_count_failed", "error", err)
+		return nil
+	}
+	count := 0
+	for i := range accounts {
+		account := accounts[i]
+		if account.Type == AccountTypeOAuth && account.IsSchedulable() {
+			count++
+		}
+	}
+	return &count
+}
+
 func (s *OpenAIOAuthErrorAlertService) loadRecipients(ctx context.Context) []string {
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsEmailNotificationConfig)
 	if err != nil {
@@ -245,48 +264,72 @@ func issueTypeLabel(issueType string) string {
 	}
 }
 
-func buildOpenAIOAuthAccountIssueEmailBody(account *Account, issueType, trigger, detail, adminURL string, snapshots []openAIOAuthAccountSnapshot) string {
+func buildOpenAIOAuthAccountIssueEmailBody(account *Account, issueType, trigger, detail, adminURL string, availableCount *int) string {
 	if account == nil {
 		return ""
 	}
+	accountName := strings.TrimSpace(account.Name)
+	accountEmail := strings.TrimSpace(account.GetCredential("email"))
+	trigger = conciseOpenAIOAuthAlertText(trigger, 120)
+	detail = conciseOpenAIOAuthAlertText(detail, 240)
+	occurredAt := time.Now().Format(time.RFC3339)
 	adminLinkHTML := ""
 	if strings.TrimSpace(adminURL) != "" {
 		escapedURL := html.EscapeString(strings.TrimSpace(adminURL))
 		adminLinkHTML = fmt.Sprintf(
-			`<p><b>后台入口</b>: <a href="%s" target="_blank" rel="noopener noreferrer">%s</a></p>
-<p>打开后可按账号 ID <b>%d</b> 或账号名称 <b>%s</b> 搜索定位。</p>`,
-			escapedURL,
+			`<p><b>后台入口</b>: <a href="%s" target="_blank" rel="noopener noreferrer">打开账号管理</a>，搜索账号 ID <b>%d</b>。</p>`,
 			escapedURL,
 			account.ID,
-			html.EscapeString(strings.TrimSpace(account.Name)),
 		)
 	}
-	snapshotHTML := buildOpenAIOAuthSnapshotHTML(snapshots)
+	accountEmailHTML := ""
+	if accountEmail != "" {
+		accountEmailHTML = fmt.Sprintf(`<p><b>账号邮箱</b>: %s</p>`, html.EscapeString(accountEmail))
+	}
+	availableCountHTML := `<p><b>当前可用 OpenAI OAuth 账号</b>: 未知</p>`
+	if availableCount != nil {
+		availableCountHTML = fmt.Sprintf(`<p><b>当前可用 OpenAI OAuth 账号</b>: %d 个</p>`, *availableCount)
+	}
 	return fmt.Sprintf(`
 <h2>OpenAI OAuth 账号%s告警</h2>
-<p><b>账号 ID</b>: %d</p>
-<p><b>账号名称</b>: %s</p>
-<p><b>平台</b>: %s</p>
-<p><b>类型</b>: %s</p>
+<p><b>问题</b>: %s</p>
+<p><b>账号</b>: #%d %s</p>
+%s
+%s
 <p><b>触发来源</b>: %s</p>
-<p><b>当前状态</b>: %s</p>
-<p><b>详细信息</b>: %s</p>
+<p><b>错误摘要</b>: %s</p>
 <p><b>时间</b>: %s</p>
 %s
-%s
+<h3>建议动作</h3>
+<ol>
+  <li>进入后台账号管理，定位该 OpenAI OAuth 账号。</li>
+  <li>若是 401/403，优先重新授权或检查账号权限；若是 429，等待重置或降低调度频率。</li>
+  <li>处理完成后，手动恢复账号调度并观察后续请求。</li>
+</ol>
 `,
 		html.EscapeString(issueTypeLabel(issueType)),
-		account.ID,
-		html.EscapeString(strings.TrimSpace(account.Name)),
-		html.EscapeString(strings.TrimSpace(account.Platform)),
-		html.EscapeString(strings.TrimSpace(account.Type)),
-		html.EscapeString(strings.TrimSpace(trigger)),
 		html.EscapeString(issueTypeLabel(issueType)),
-		html.EscapeString(strings.TrimSpace(detail)),
-		time.Now().Format(time.RFC3339),
+		account.ID,
+		html.EscapeString(accountName),
+		accountEmailHTML,
+		availableCountHTML,
+		html.EscapeString(trigger),
+		html.EscapeString(detail),
+		occurredAt,
 		adminLinkHTML,
-		snapshotHTML,
 	)
+}
+
+func conciseOpenAIOAuthAlertText(value string, maxLen int) string {
+	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	value = redactContentModerationSecrets(value)
+	if value == "" {
+		return "-"
+	}
+	if maxLen <= 0 || len(value) <= maxLen {
+		return value
+	}
+	return strings.TrimSpace(truncateString(value, maxLen)) + "…"
 }
 
 func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string {
