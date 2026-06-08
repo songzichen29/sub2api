@@ -869,6 +869,8 @@ export default {
     accountCost: '成本',
     userBilled: '用户扣费',
     accountBilled: '账号计费',
+    resetNow: '现在',
+    resetPending: '待刷新',
     accountMultiplier: '账号倍率',
     avgDuration: '平均耗时',
     inSelectedRange: '所选范围内',
@@ -3560,6 +3562,11 @@ export default {
       recoverStateHint: '用于恢复错误、限流和临时不可调度等可恢复状态。',
       recoverStateSuccess: '账号状态已恢复',
       recoverStateFailed: '恢复账号状态失败',
+      fallbackActive: '已回退',
+      fallbackActiveTip: '原代理 {origin} 已到期，当前使用备用代理',
+      revertProxy: '切回原代理',
+      revertProxySuccess: '已成功切回原代理',
+      revertProxyFailed: '切回原代理失败',
       resetStatus: '重置状态',
       statusReset: '账号状态已重置',
       failedToResetStatus: '重置账号状态失败',
@@ -4353,6 +4360,8 @@ export default {
         status: '状态',
         accounts: '账号数',
         latency: '延迟',
+        expiry: '有效期',
+        createdAt: '创建时间',
         actions: '操作',
         nameLabel: '名称',
         namePlaceholder: '请输入代理名称',
@@ -4490,8 +4499,22 @@ export default {
       portInvalid: '端口必须在 1-65535 之间',
       deleteConfirm: "确定要删除代理 '{name}' 吗？使用此代理的账号将被移除代理设置。",
       ad: {
-        inline: '优质代理推荐'
-      }
+        inline: '??????'
+      },
+      neverExpires: '????',
+      expired: '???',
+      overdueDays: '??? {days} ?',
+      expiringInDays: '{days} ????',
+      remainingDays: '?? {days} ?',
+      expiresAt: '???',
+      nDays: '{days} ?',
+      expiryDaysPlaceholder: '???????? = ????',
+      expiryWarnDays: '????????',
+      fallbackMode: '????',
+      fallbackNone: '???',
+      fallbackProxy: '??????',
+      fallbackDirect: '????',
+      backupProxy: '????',
     },
 
     // Redeem Codes Management
@@ -5333,6 +5356,7 @@ export default {
           accountRateLimitedCount: '限流账号数',
           accountErrorCount: '错误账号数（不含临时不可调度）',
           accountErrorRatio: '错误账号比例 (%)',
+          accountTempUnscheduledCount: '临时不可调度账号数',
           overloadAccountCount: '过载账号数'
         },
         metricDescriptions: {
@@ -5350,6 +5374,7 @@ export default {
           accountRateLimitedCount: '统计窗口内被限流的账号数量。',
           accountErrorCount: '统计窗口内产生错误的账号数量（不含临时不可调度）。',
           accountErrorRatio: '统计窗口内错误账号占比（0~100）。',
+          accountTempUnscheduledCount: '当前处于临时不可调度状态的账号数量（如代理/凭据故障被自动摘除）。',
           overloadAccountCount: '统计窗口内过载账号数量。'
         },
         hints: {
