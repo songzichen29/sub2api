@@ -564,7 +564,7 @@ func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int6
 // sweepOneExpiredProxyOnExec 在给定的 sqlExecutor 上执行：标记 expired + 改投账号。
 func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec sqlExecutor, proxyID int64, target *int64, change bool) (int64, error) {
 	if _, err := exec.ExecContext(ctx,
-		`UPDATE proxies SET status=$1, updated_at=NOW() WHERE id=$2 AND deleted_at IS NULL`,
+		`UPDATE proxies SET status=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`,
 		service.StatusExpired, proxyID); err != nil {
 		return 0, err
 	}
@@ -577,12 +577,12 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	)
 	if target == nil {
 		res, err = exec.ExecContext(ctx, `
-			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=$1, updated_at=NOW()
-			WHERE proxy_id=$1 AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`, proxyID)
+			UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=?, updated_at=NOW()
+			WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`, proxyID, proxyID)
 	} else {
 		res, err = exec.ExecContext(ctx, `
-			UPDATE accounts SET proxy_id=$2, proxy_fallback_origin_id=$1, updated_at=NOW()
-			WHERE proxy_id=$1 AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`, proxyID, *target)
+			UPDATE accounts SET proxy_id=?, proxy_fallback_origin_id=?, updated_at=NOW()
+			WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`, *target, proxyID, proxyID)
 	}
 	if err != nil {
 		return 0, err
@@ -594,7 +594,7 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 // CountExpired 返回已过期（status=expired）的代理数量。
 func (r *proxyRepository) CountExpired(ctx context.Context) (int64, error) {
 	var c int64
-	err := scanSingleRow(ctx, r.sql, `SELECT COUNT(*) FROM proxies WHERE status=$1 AND deleted_at IS NULL`, []any{service.StatusExpired}, &c)
+	err := scanSingleRow(ctx, r.sql, `SELECT COUNT(*) FROM proxies WHERE status=? AND deleted_at IS NULL`, []any{service.StatusExpired}, &c)
 	return c, err
 }
 
@@ -603,8 +603,8 @@ func (r *proxyRepository) CountExpiringSoon(ctx context.Context, now time.Time) 
 	var c int64
 	err := scanSingleRow(ctx, r.sql, `
 		SELECT COUNT(*) FROM proxies
-		WHERE deleted_at IS NULL AND status=$1 AND expires_at IS NOT NULL
-		  AND expires_at > $2 AND expires_at <= $2 + (expiry_warn_days || ' days')::interval`,
-		[]any{service.StatusActive, now}, &c)
+		WHERE deleted_at IS NULL AND status=? AND expires_at IS NOT NULL
+		  AND expires_at > ? AND expires_at <= DATE_ADD(?, INTERVAL expiry_warn_days DAY)`,
+		[]any{service.StatusActive, now, now}, &c)
 	return c, err
 }

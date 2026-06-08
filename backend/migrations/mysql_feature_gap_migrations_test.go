@@ -63,6 +63,25 @@ func TestMySQLSubscriptionExpiryNotifyEnabledMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLProxyExpiryFallbackMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("026_proxy_expiry_fallback.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'proxies'")
+	require.Contains(t, sql, "column_name = 'expires_at'")
+	require.Contains(t, sql, "ADD COLUMN `expires_at` datetime(6) NULL")
+	require.Contains(t, sql, "ADD COLUMN `fallback_mode` varchar(20) NOT NULL DEFAULT ''none''")
+	require.Contains(t, sql, "ADD COLUMN `backup_proxy_id` bigint NULL")
+	require.Contains(t, sql, "ADD COLUMN `expiry_warn_days` int NOT NULL DEFAULT 7")
+	require.Contains(t, sql, "CREATE INDEX `proxy_expires_at` ON `proxies` (`expires_at`)")
+	require.Contains(t, sql, "CREATE INDEX `proxy_backup_proxy_id` ON `proxies` (`backup_proxy_id`)")
+	require.Contains(t, sql, "FOREIGN KEY (`backup_proxy_id`) REFERENCES `proxies` (`id`) ON DELETE SET NULL")
+	require.Contains(t, sql, "table_name = 'accounts'")
+	require.Contains(t, sql, "ADD COLUMN `proxy_fallback_origin_id` bigint NULL")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

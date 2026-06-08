@@ -35,18 +35,24 @@ func (s *ProxyExpirySuite) mkProxy(name, mode string, expiresAt *time.Time, back
 }
 
 func (s *ProxyExpirySuite) mkAccountWithProxy(proxyID int64) int64 {
-	var id int64
-	err := scanSingleRow(s.ctx, s.tx, `
+	res, err := s.tx.ExecContext(s.ctx, `
 		INSERT INTO accounts (name, platform, type, credentials, extra, status, proxy_id, created_at, updated_at)
-		VALUES ($1,'claude','api','{}','{}','active',$2,NOW(),NOW()) RETURNING id`,
-		[]any{"acc-" + time.Now().Format("150405.000000"), proxyID}, &id)
+		VALUES (?, ?, ?, '{}', '{}', ?, ?, NOW(), NOW())`,
+		"acc-"+time.Now().Format("150405.000000"),
+		service.PlatformAnthropic,
+		service.AccountTypeAPIKey,
+		service.StatusActive,
+		proxyID,
+	)
+	s.Require().NoError(err)
+	id, err := res.LastInsertId()
 	s.Require().NoError(err)
 	return id
 }
 
 func (s *ProxyExpirySuite) accountProxyID(id int64) *int64 {
 	var pid *int64
-	err := scanSingleRow(s.ctx, s.tx, `SELECT proxy_id FROM accounts WHERE id=$1`, []any{id}, &pid)
+	err := scanSingleRow(s.ctx, s.tx, `SELECT proxy_id FROM accounts WHERE id=?`, []any{id}, &pid)
 	s.Require().NoError(err)
 	return pid
 }
@@ -64,7 +70,7 @@ func (s *ProxyExpirySuite) TestSweep_DirectMode() {
 	s.Require().Equal(service.StatusExpired, got.Status)
 	s.Require().Nil(s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=?`, []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().NotNil(origin)
 	s.Require().Equal(pid, *origin)
@@ -81,7 +87,7 @@ func (s *ProxyExpirySuite) TestSweep_ProxyMode_Healthy() {
 	s.Require().NoError(err)
 	s.Require().Equal(backup, *s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=?`, []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().NotNil(origin)
 	s.Require().Equal(pid, *origin)
@@ -98,7 +104,7 @@ func (s *ProxyExpirySuite) TestSweep_NoneMode_KeepsAccount() {
 	s.Require().Equal(service.StatusExpired, got.Status)
 	s.Require().Equal(pid, *s.accountProxyID(aid))
 	var origin *int64
-	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=$1`, []any{aid}, &origin)
+	err = scanSingleRow(s.ctx, s.tx, `SELECT proxy_fallback_origin_id FROM accounts WHERE id=?`, []any{aid}, &origin)
 	s.Require().NoError(err)
 	s.Require().Nil(origin)
 }
