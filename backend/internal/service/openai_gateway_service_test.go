@@ -25,6 +25,66 @@ import (
 var _ AccountRepository = (*stubOpenAIAccountRepo)(nil)
 var _ GatewayCache = (*stubGatewayCache)(nil)
 
+func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		data      string
+		eventType string
+		want      bool
+	}{
+		{name: "empty", data: "", eventType: "", want: false},
+		{name: "done_marker", data: "[DONE]", eventType: "", want: false},
+		{name: "preamble_created", data: `{"type":"response.created"}`, eventType: "response.created", want: false},
+		{name: "preamble_in_progress", data: `{"type":"response.in_progress"}`, eventType: "response.in_progress", want: false},
+		{name: "output_item_added", data: `{"type":"response.output_item.added","item":{"type":"message"}}`, eventType: "response.output_item.added", want: false},
+		{name: "output_item_done", data: `{"type":"response.output_item.done"}`, eventType: "response.output_item.done", want: false},
+		{name: "terminal_completed", data: `{"type":"response.completed"}`, eventType: "response.completed", want: false},
+		{name: "terminal_done", data: `{"type":"response.done"}`, eventType: "response.done", want: false},
+		{name: "terminal_failed", data: `{"type":"response.failed"}`, eventType: "response.failed", want: false},
+		{name: "text_delta", data: `{"type":"response.output_text.delta","delta":"h"}`, eventType: "response.output_text.delta", want: true},
+		{name: "audio_delta", data: `{"type":"response.output_audio.delta","delta":"abc"}`, eventType: "response.output_audio.delta", want: true},
+		{name: "function_arguments_delta", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, eventType: "response.function_call_arguments.delta", want: true},
+		{name: "output_text_done", data: `{"type":"response.output_text.done"}`, eventType: "response.output_text.done", want: true},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, openAIStreamDataStartsFirstToken(tc.data, tc.eventType))
+		})
+	}
+}
+
+func TestOpenAIChatChunkStartsFirstToken(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		payload string
+		want    bool
+	}{
+		{name: "empty", payload: "", want: false},
+		{name: "usage_only", payload: `{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}`, want: false},
+		{name: "role_only", payload: `{"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`, want: false},
+		{name: "empty_delta_finish", payload: `{"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`, want: false},
+		{name: "content", payload: `{"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}`, want: true},
+		{name: "empty_content_present", payload: `{"choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}]}`, want: true},
+		{name: "reasoning_content", payload: `{"choices":[{"index":0,"delta":{"reasoning_content":"think"},"finish_reason":null}]}`, want: true},
+		{name: "tool_calls", payload: `{"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup","arguments":""}}]},"finish_reason":null}]}`, want: true},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, openAIChatChunkStartsFirstToken(tc.payload))
+		})
+	}
+}
+
 type stubOpenAIAccountRepo struct {
 	AccountRepository
 	accounts []Account

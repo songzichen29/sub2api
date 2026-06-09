@@ -561,7 +561,6 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	}()
 	defer close(done)
 
-
 	var parser openAICompatSSEFrameParser
 
 	for {
@@ -602,7 +601,6 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				return nil, usage, acc, ev.err
 			}
 
-
 			if isOpenAICompatDoneSentinelLine(ev.line) {
 				return nil, usage, acc, nil
 			}
@@ -611,7 +609,6 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				continue
 			}
 			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
-
 
 			var event apicompat.ResponsesStreamEvent
 			if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -680,12 +677,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var usage OpenAIUsage
 	responseID := ""
 	var firstTokenMs *int
-	firstChunk := true
 	clientDisconnected := false
 
 	clientOutputStarted := false
 	var streamFailoverErr error
-
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -725,12 +720,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// processDataLine handles a single "data: ..." SSE line from upstream.
 	processDataLine := func(payload string) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
-
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai messages stream: failed to parse event",
@@ -740,6 +729,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 
+		if firstTokenMs == nil && openAIStreamDataStartsFirstToken(payload, event.Type) {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
 
 		if event.Type == "response.failed" {
 			failedMessage := extractOpenAISSEErrorMessage([]byte(payload))
@@ -834,7 +827,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 		return processDataLine(payload)
 	}
-
 
 	// ── Determine keepalive interval ──
 	keepaliveInterval := time.Duration(0)

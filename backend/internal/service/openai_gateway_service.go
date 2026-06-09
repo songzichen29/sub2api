@@ -3789,6 +3789,31 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsPreamble(eventType)
 }
 
+func openAIStreamDataStartsFirstToken(data, eventType string) bool {
+	trimmed := strings.TrimSpace(data)
+	eventType = strings.TrimSpace(eventType)
+	if trimmed == "" || trimmed == "[DONE]" || eventType == "" {
+		return false
+	}
+	if openAIStreamEventIsPreamble(eventType) || openAIStreamEventIsTerminal(trimmed) {
+		return false
+	}
+	switch eventType {
+	case "response.output_item.added", "response.output_item.done":
+		return false
+	}
+	if strings.Contains(eventType, ".delta") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output_text") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output") {
+		return true
+	}
+	return false
+}
+
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
@@ -3972,7 +3997,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			imageCounter.AddSSEData(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
+			if firstTokenMs == nil && openAIStreamDataStartsFirstToken(trimmedData, eventType) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
@@ -4865,7 +4890,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			}
 
 			// Record first token time
-			if firstTokenMs == nil && startsClientOutput {
+			if firstTokenMs == nil && openAIStreamDataStartsFirstToken(data, eventType) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}

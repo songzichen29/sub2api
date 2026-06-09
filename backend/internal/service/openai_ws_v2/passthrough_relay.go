@@ -882,7 +882,10 @@ func isTokenEvent(eventType string) bool {
 	if strings.HasPrefix(eventType, "response.output") {
 		return true
 	}
-	return eventType == "response.completed" || eventType == "response.done"
+	// 终止事件（response.completed/done/failed/...）由 isTerminalEvent 单独处理。
+	// 不能把它们当作 token event，否则当上游没有可识别的 delta 时，
+	// firstTokenMs 会被填到终止时刻，等于把"总耗时"误报为"首 token 延迟"。
+	return false
 }
 
 func minDuration(a, b time.Duration) time.Duration {

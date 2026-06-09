@@ -66,7 +66,7 @@ func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *ser
 	}
 
 	latencyCtx, cancelLatency := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
-	duration, ttft, err := r.queryUsageLatency(latencyCtx, filter, start, end)
+	duration, ttft, _, err := r.queryUsageLatency(latencyCtx, filter, start, end)
 	cancelLatency()
 	if err != nil {
 		if isQueryTimeoutErr(err) {
@@ -181,8 +181,9 @@ type opsDashboardPartial struct {
 
 	tokenConsumed int64
 
-	duration service.OpsPercentiles
-	ttft     service.OpsPercentiles
+	duration  service.OpsPercentiles
+	ttft      service.OpsPercentiles
+	ttftCount int64
 }
 
 func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsDashboardOverview, error) {
@@ -256,9 +257,9 @@ func (r *opsRepository) getDashboardOverviewPreaggregated(ctx context.Context, f
 		{weight: tail.successCount, p: tail.duration},
 	})
 	ttft := combineApproxPercentiles([]opsPercentileSegment{
-		{weight: preagg.successCount, p: preagg.ttft},
-		{weight: head.successCount, p: head.ttft},
-		{weight: tail.successCount, p: tail.ttft},
+		{weight: preagg.ttftCount, p: preagg.ttft},
+		{weight: head.ttftCount, p: head.ttft},
+		{weight: tail.ttftCount, p: tail.ttft},
 	})
 
 	windowSeconds := end.Sub(start).Seconds()
@@ -370,12 +371,13 @@ type opsHourlyMetricsRow struct {
 	durationAvg sql.NullFloat64
 	durationMax sql.NullInt64
 
-	ttftP50 sql.NullInt64
-	ttftP90 sql.NullInt64
-	ttftP95 sql.NullInt64
-	ttftP99 sql.NullInt64
-	ttftAvg sql.NullFloat64
-	ttftMax sql.NullInt64
+	ttftP50         sql.NullInt64
+	ttftP90         sql.NullInt64
+	ttftP95         sql.NullInt64
+	ttftP99         sql.NullInt64
+	ttftAvg         sql.NullFloat64
+	ttftMax         sql.NullInt64
+	ttftSampleCount sql.NullInt64
 }
 
 func (r *opsRepository) listHourlyMetricsRows(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) ([]opsHourlyMetricsRow, error) {
@@ -433,7 +435,8 @@ SELECT
   ttft_p95_ms,
   ttft_p99_ms,
   ttft_avg_ms,
-  ttft_max_ms
+  ttft_max_ms,
+  ttft_sample_count
 FROM ops_metrics_hourly
 WHERE ` + where + `
 ORDER BY bucket_start ASC`
@@ -469,6 +472,7 @@ ORDER BY bucket_start ASC`
 			&row.ttftP99,
 			&row.ttftAvg,
 			&row.ttftMax,
+			&row.ttftSampleCount,
 		); err != nil {
 			return nil, err
 		}
@@ -524,6 +528,8 @@ func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {
 		out.upstream529Count += row.upstream529Count
 
 		out.tokenConsumed += row.tokenConsumed
+		ttftWeight := opsHourlyRowTTFTWeight(row)
+		out.ttftCount += ttftWeight
 
 		if row.successCount > 0 {
 			if row.durationP50.Valid {
@@ -539,16 +545,16 @@ func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {
 				avgW += row.successCount
 			}
 			if row.ttftP50.Valid {
-				ttftP50Sum += float64(row.ttftP50.Int64) * float64(row.successCount)
-				ttftP50W += row.successCount
+				ttftP50Sum += float64(row.ttftP50.Int64) * float64(ttftWeight)
+				ttftP50W += ttftWeight
 			}
 			if row.ttftP90.Valid {
-				ttftP90Sum += float64(row.ttftP90.Int64) * float64(row.successCount)
-				ttftP90W += row.successCount
+				ttftP90Sum += float64(row.ttftP90.Int64) * float64(ttftWeight)
+				ttftP90W += ttftWeight
 			}
 			if row.ttftAvg.Valid {
-				ttftAvgSum += row.ttftAvg.Float64 * float64(row.successCount)
-				ttftAvgW += row.successCount
+				ttftAvgSum += row.ttftAvg.Float64 * float64(ttftWeight)
+				ttftAvgW += ttftWeight
 			}
 		}
 
@@ -628,6 +634,28 @@ func aggregateHourlyRows(rows []opsHourlyMetricsRow) opsDashboardPartial {
 	return out
 }
 
+func opsHourlyRowTTFTWeight(row opsHourlyMetricsRow) int64 {
+	if row.ttftSampleCount.Valid && row.ttftSampleCount.Int64 > 0 {
+		return row.ttftSampleCount.Int64
+	}
+	// Backward compatibility for rows written before ttft_sample_count existed.
+	// Treat only clearly non-zero TTFT metrics as sampled; old rows with no TTFT
+	// data commonly stored ttft_avg_ms=0/ttft_max_ms=0 and should not dilute
+	// merged TTFT values.
+	if row.successCount <= 0 {
+		return 0
+	}
+	if (row.ttftP50.Valid && row.ttftP50.Int64 > 0) ||
+		(row.ttftP90.Valid && row.ttftP90.Int64 > 0) ||
+		(row.ttftP95.Valid && row.ttftP95.Int64 > 0) ||
+		(row.ttftP99.Valid && row.ttftP99.Int64 > 0) ||
+		(row.ttftAvg.Valid && row.ttftAvg.Float64 > 0) ||
+		(row.ttftMax.Valid && row.ttftMax.Int64 > 0) {
+		return row.successCount
+	}
+	return 0
+}
+
 func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (*opsDashboardPartial, error) {
 	successCount, tokenConsumed, err := r.queryUsageCounts(ctx, filter, start, end)
 	if err != nil {
@@ -635,12 +663,13 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 	}
 
 	latencyCtx, cancelLatency := context.WithTimeout(ctx, opsRawLatencyQueryTimeout)
-	duration, ttft, err := r.queryUsageLatency(latencyCtx, filter, start, end)
+	duration, ttft, ttftCount, err := r.queryUsageLatency(latencyCtx, filter, start, end)
 	cancelLatency()
 	if err != nil {
 		if isQueryTimeoutErr(err) {
 			duration = service.OpsPercentiles{}
 			ttft = service.OpsPercentiles{}
+			ttftCount = 0
 		} else {
 			return nil, err
 		}
@@ -662,6 +691,7 @@ func (r *opsRepository) queryRawPartial(ctx context.Context, filter *service.Ops
 		tokenConsumed:                tokenConsumed,
 		duration:                     duration,
 		ttft:                         ttft,
+		ttftCount:                    ttftCount,
 	}, nil
 }
 
@@ -798,7 +828,7 @@ FROM usage_logs ul
 	return successCount, tokenConsumed, nil
 }
 
-func (r *opsRepository) queryUsageLatency(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (duration service.OpsPercentiles, ttft service.OpsPercentiles, err error) {
+func (r *opsRepository) queryUsageLatency(ctx context.Context, filter *service.OpsDashboardFilter, start, end time.Time) (duration service.OpsPercentiles, ttft service.OpsPercentiles, ttftCount int64, err error) {
 	join, where, args, _ := buildUsageWhere(filter, start, end, 1)
 	q := `
 SELECT
@@ -812,7 +842,7 @@ LIMIT 10000`
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
-		return service.OpsPercentiles{}, service.OpsPercentiles{}, err
+		return service.OpsPercentiles{}, service.OpsPercentiles{}, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -825,7 +855,7 @@ LIMIT 10000`
 		var durationMS sql.NullInt64
 		var firstTokenMS sql.NullInt64
 		if err := rows.Scan(&durationMS, &firstTokenMS); err != nil {
-			return service.OpsPercentiles{}, service.OpsPercentiles{}, err
+			return service.OpsPercentiles{}, service.OpsPercentiles{}, 0, err
 		}
 		if durationMS.Valid {
 			v := int(durationMS.Int64)
@@ -836,15 +866,16 @@ LIMIT 10000`
 			v := int(firstTokenMS.Int64)
 			ttftValues = append(ttftValues, v)
 			ttftSum += firstTokenMS.Int64
+			ttftCount++
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return service.OpsPercentiles{}, service.OpsPercentiles{}, err
+		return service.OpsPercentiles{}, service.OpsPercentiles{}, 0, err
 	}
 
 	duration = buildOpsPercentilesFromValues(durationValues, durationSum)
 	ttft = buildOpsPercentilesFromValues(ttftValues, ttftSum)
-	return duration, ttft, nil
+	return duration, ttft, ttftCount, nil
 }
 
 func buildOpsPercentilesFromValues(values []int, sum int64) service.OpsPercentiles {

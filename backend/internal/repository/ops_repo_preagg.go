@@ -43,6 +43,7 @@ INSERT INTO ops_metrics_hourly (
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
+  ttft_sample_count,
   computed_at
 )
 SELECT
@@ -67,8 +68,9 @@ SELECT
   NULL AS ttft_p90_ms,
   NULL AS ttft_p95_ms,
   NULL AS ttft_p99_ms,
-  CAST(AVG(NULLIF(x.ttft_avg_ms, 0)) AS DECIMAL(10,2)) AS ttft_avg_ms,
+  CAST(SUM(x.ttft_avg_ms * x.ttft_sample_count) / NULLIF(SUM(x.ttft_sample_count), 0) AS DECIMAL(10,2)) AS ttft_avg_ms,
   MAX(NULLIF(x.ttft_max_ms, 0)) AS ttft_max_ms,
+  COALESCE(SUM(x.ttft_sample_count), 0) AS ttft_sample_count,
   NOW() AS computed_at
 FROM (
   -- usage: overall
@@ -86,8 +88,9 @@ FROM (
     COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
     COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
     COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
-    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
-    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+    AVG(ul.first_token_ms) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms,
+    COUNT(ul.first_token_ms) AS ttft_sample_count
   FROM usage_logs ul
   WHERE ul.created_at >= ? AND ul.created_at < ?
   GROUP BY 1
@@ -104,8 +107,9 @@ FROM (
     COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
     COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
     COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
-    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
-    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+    AVG(ul.first_token_ms) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms,
+    COUNT(ul.first_token_ms) AS ttft_sample_count
   FROM usage_logs ul
   JOIN %s g ON g.id = ul.group_id
   WHERE ul.created_at >= ? AND ul.created_at < ?
@@ -123,8 +127,9 @@ FROM (
     COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS token_consumed,
     COALESCE(AVG(COALESCE(ul.duration_ms, 0)), 0) AS duration_avg_ms,
     COALESCE(MAX(ul.duration_ms), 0) AS duration_max_ms,
-    COALESCE(AVG(COALESCE(ul.first_token_ms, 0)), 0) AS ttft_avg_ms,
-    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms
+    AVG(ul.first_token_ms) AS ttft_avg_ms,
+    COALESCE(MAX(ul.first_token_ms), 0) AS ttft_max_ms,
+    COUNT(ul.first_token_ms) AS ttft_sample_count
   FROM usage_logs ul
   JOIN %s g ON g.id = ul.group_id
   WHERE ul.created_at >= ? AND ul.created_at < ?
@@ -148,7 +153,8 @@ FROM (
     0 AS duration_avg_ms,
     0 AS duration_max_ms,
     0 AS ttft_avg_ms,
-    0 AS ttft_max_ms
+    0 AS ttft_max_ms,
+    0 AS ttft_sample_count
   FROM ops_error_logs o
   WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE
   GROUP BY 1
@@ -167,7 +173,7 @@ FROM (
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) NOT IN (429,529) THEN 1 ELSE 0 END),
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 429 THEN 1 ELSE 0 END),
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 529 THEN 1 ELSE 0 END),
-    0,0,0,0,0
+    0,0,0,0,0,0
   FROM ops_error_logs o
   WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE
   GROUP BY 1,2
@@ -186,7 +192,7 @@ FROM (
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) NOT IN (429,529) THEN 1 ELSE 0 END),
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 429 THEN 1 ELSE 0 END),
     SUM(CASE WHEN o.error_owner = 'provider' AND NOT o.is_business_limited AND COALESCE(o.upstream_status_code, o.status_code, 0) = 529 THEN 1 ELSE 0 END),
-    0,0,0,0,0
+    0,0,0,0,0,0
   FROM ops_error_logs o
   WHERE o.created_at >= ? AND o.created_at < ? AND o.is_count_tokens = FALSE AND o.group_id IS NOT NULL
   GROUP BY 1,2,3
@@ -214,6 +220,7 @@ ON DUPLICATE KEY UPDATE
   ttft_p99_ms = VALUES(ttft_p99_ms),
   ttft_avg_ms = VALUES(ttft_avg_ms),
   ttft_max_ms = VALUES(ttft_max_ms),
+  ttft_sample_count = VALUES(ttft_sample_count),
   computed_at = VALUES(computed_at)
 `, quotedGroupsTable, quotedGroupsTable)
 
@@ -264,6 +271,7 @@ INSERT INTO ops_metrics_daily (
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
+  ttft_sample_count,
   computed_at
 )
 SELECT
@@ -288,8 +296,9 @@ SELECT
   NULL,
   MAX(ttft_p95_ms),
   MAX(ttft_p99_ms),
-  CAST(AVG(NULLIF(ttft_avg_ms, 0)) AS DECIMAL(10,2)),
+  CAST(SUM(ttft_avg_ms * ttft_sample_count) / NULLIF(SUM(ttft_sample_count), 0) AS DECIMAL(10,2)),
   MAX(ttft_max_ms),
+  COALESCE(SUM(ttft_sample_count), 0),
   NOW()
 FROM ops_metrics_hourly
 WHERE bucket_start >= ? AND bucket_start < ?
@@ -315,6 +324,7 @@ ON DUPLICATE KEY UPDATE
   ttft_p99_ms = VALUES(ttft_p99_ms),
   ttft_avg_ms = VALUES(ttft_avg_ms),
   ttft_max_ms = VALUES(ttft_max_ms),
+  ttft_sample_count = VALUES(ttft_sample_count),
   computed_at = VALUES(computed_at)
 `
 

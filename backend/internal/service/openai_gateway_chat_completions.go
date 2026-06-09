@@ -453,14 +453,12 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
-	firstChunk := true
 	clientDisconnected := false
 
 	clientOutputStarted := false
 	var streamFailoverErr error
 	pendingSSE := make([]string, 0, 4)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
-
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -497,12 +495,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	processDataLine := func(payload string) bool {
-		if firstChunk {
-			firstChunk = false
-			ms := int(time.Since(startTime).Milliseconds())
-			firstTokenMs = &ms
-		}
-
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("openai chat_completions stream: failed to parse event",
@@ -513,6 +505,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		refusalDetector.ObservePayload([]byte(payload))
 
+		if firstTokenMs == nil && openAIStreamDataStartsFirstToken(payload, event.Type) {
+			ms := int(time.Since(startTime).Milliseconds())
+			firstTokenMs = &ms
+		}
 
 		if event.Type == "response.failed" {
 			failedMessage := extractOpenAISSEErrorMessage([]byte(payload))
@@ -688,7 +684,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		return processDataLine(payload)
 	}
-
 
 	// Determine keepalive interval
 	keepaliveInterval := time.Duration(0)

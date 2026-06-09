@@ -319,7 +319,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
 				}
-				if firstTokenMs == nil && !usageOnlyChunk {
+				if firstTokenMs == nil && !usageOnlyChunk && openAIChatChunkStartsFirstToken(payload) {
 					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
 				}
@@ -401,6 +401,26 @@ func isOpenAIChatUsageOnlyStreamChunk(payload string) bool {
 	}
 	choices := gjson.Get(payload, "choices")
 	return choices.Exists() && choices.IsArray() && len(choices.Array()) == 0
+}
+
+func openAIChatChunkStartsFirstToken(payload string) bool {
+	if strings.TrimSpace(payload) == "" {
+		return false
+	}
+	for _, choice := range gjson.Get(payload, "choices").Array() {
+		delta := choice.Get("delta")
+		if !delta.Exists() || !delta.IsObject() {
+			continue
+		}
+		if delta.Get("content").Exists() || delta.Get("reasoning_content").Exists() {
+			return true
+		}
+		toolCalls := delta.Get("tool_calls")
+		if toolCalls.Exists() && toolCalls.IsArray() && len(toolCalls.Array()) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // extractCCStreamUsage 从单个 CC 流式 chunk 的 payload 中提取 usage 字段。
