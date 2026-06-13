@@ -2,10 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import JSZip from 'jszip'
 import ImportDataModal from '@/components/admin/account/ImportDataModal.vue'
+import type { AccountImportApplyTemplate } from '@/api/admin/settings'
+import type { AdminGroup } from '@/types'
 
 const showError = vi.fn()
 const showSuccess = vi.fn()
 const importDataMock = vi.fn()
+const getTemplatesMock = vi.fn()
+const updateTemplatesMock = vi.fn()
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
@@ -18,6 +22,10 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       importData: (...args: unknown[]) => importDataMock(...args)
+    },
+    settings: {
+      getAccountImportTemplates: (...args: unknown[]) => getTemplatesMock(...args),
+      updateAccountImportTemplates: (...args: unknown[]) => updateTemplatesMock(...args)
     }
   }
 }))
@@ -41,6 +49,63 @@ const stubChild = (name: string, props: string[]) => ({
   emits: ['update:modelValue', 'invalid']
 })
 
+const makeGroup = (id: number, name = `group-${id}`): AdminGroup => ({
+  id,
+  name,
+  description: null,
+  platform: 'anthropic',
+  rate_multiplier: 1,
+  rpm_limit: 0,
+  is_exclusive: false,
+  status: 'active',
+  subscription_type: 'standard',
+  daily_limit_usd: null,
+  daily_limit_reset_price: null,
+  allow_daily_overdraft: false,
+  weekly_limit_usd: null,
+  monthly_limit_usd: null,
+  allow_image_generation: false,
+  image_rate_independent: false,
+  image_rate_multiplier: 1,
+  image_price_1k: null,
+  image_price_2k: null,
+  image_price_4k: null,
+  claude_code_only: false,
+  fallback_group_id: null,
+  fallback_group_id_on_invalid_request: null,
+  allow_messages_dispatch: false,
+  require_oauth_only: false,
+  require_privacy_set: false,
+  created_at: '',
+  updated_at: '',
+  model_routing: null,
+  model_routing_enabled: false,
+  mcp_xml_inject: false,
+  sort_order: id
+})
+
+const makeTemplate = (
+  overrides: Partial<AccountImportApplyTemplate> = {}
+): AccountImportApplyTemplate => ({
+  id: 'tpl-default',
+  name: 'default',
+  enableTags: false,
+  enableGroups: false,
+  enableProxy: false,
+  enableConcurrency: false,
+  enablePriority: false,
+  enableModelRestriction: false,
+  applyTags: [],
+  applyGroupIds: [],
+  applyProxyId: null,
+  applyConcurrency: 1,
+  applyPriority: 1,
+  modelRestrictionMode: 'whitelist',
+  allowedModels: [],
+  modelMappings: [],
+  ...overrides
+})
+
 const mountModal = (props: Record<string, unknown> = {}) =>
   mount(ImportDataModal, {
     props: { show: true, proxies: [], groups: [], availableTags: [], ...props },
@@ -51,6 +116,7 @@ const mountModal = (props: Record<string, unknown> = {}) =>
         GroupSelector: stubChild('GroupSelector', ['modelValue', 'groups']),
         AccountTagsInput: stubChild('AccountTagsInput', ['modelValue', 'suggestions', 'disabled', 'placeholder']),
         ModelWhitelistSelector: stubChild('ModelWhitelistSelector', ['modelValue']),
+        Select: stubChild('Select', ['modelValue', 'options', 'placeholder']),
         Icon: true
       }
     }
@@ -127,6 +193,8 @@ describe('ImportDataModal', () => {
     showError.mockReset()
     showSuccess.mockReset()
     importDataMock.mockReset()
+    getTemplatesMock.mockReset()
+    updateTemplatesMock.mockReset()
     importDataMock.mockResolvedValue({
       account_created: 1,
       account_failed: 0,
@@ -135,6 +203,8 @@ describe('ImportDataModal', () => {
       proxy_failed: 0,
       errors: []
     })
+    getTemplatesMock.mockResolvedValue([])
+    updateTemplatesMock.mockImplementation(async (templates) => templates)
   })
 
   it('未选择文件时提示错误', async () => {
@@ -372,9 +442,35 @@ describe('ImportDataModal', () => {
   })
 
   it('勾选 groups 触发子组件更新后 payload.apply.group_ids 正确', async () => {
-    const wrapper = mountModal()
+    const wrapper = mountModal({ groups: [makeGroup(5), makeGroup(7)] })
     await wrapper.find('input#import-apply-groups-enabled').setValue(true)
     await wrapper.findComponent({ name: 'GroupSelector' }).vm.$emit('update:modelValue', [5, 7])
+
+    await attachJsonFile(wrapper, sampleData)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(importDataMock).toHaveBeenCalledTimes(1)
+    const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
+    expect(arg.apply).toEqual({ group_ids: [5, 7] })
+  })
+
+  it('套用模板时过滤已删除分组，避免导入账号重新显示旧分组', async () => {
+    getTemplatesMock.mockResolvedValue([
+      makeTemplate({
+        id: 'tpl-with-deleted-group',
+        name: '旧模板',
+        enableGroups: true,
+        applyGroupIds: [5, 99, 7, 5]
+      })
+    ])
+    const wrapper = mountModal({ groups: [makeGroup(5), makeGroup(7)] })
+    await flushPromises()
+
+    await wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'tpl-with-deleted-group')
+    await flushPromises()
+
+    expect(wrapper.findComponent({ name: 'GroupSelector' }).props('modelValue')).toEqual([5, 7])
 
     await attachJsonFile(wrapper, sampleData)
     await wrapper.find('form').trigger('submit')

@@ -2563,6 +2563,14 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	if len(groupIDs) > 0 {
+		// 先验证分组是否存在（只接受未软删除分组），避免历史模板或手工 API
+		// 把已删除分组重新写入 account_groups。
+		if err := s.validateGroupIDsExist(ctx, groupIDs); err != nil {
+			return nil, err
+		}
+	}
+
 	// 检查混合渠道风险（除非用户已确认）
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {
 		if err := s.checkMixedChannelRisk(ctx, 0, input.Platform, groupIDs); err != nil {

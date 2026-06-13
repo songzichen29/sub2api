@@ -173,6 +173,9 @@ func (r *inMemoryAccountRepo) ClearModelRateLimits(ctx context.Context, id int64
 func (r *inMemoryAccountRepo) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	panic("unexpected")
 }
+func (r *inMemoryAccountRepo) UpdateSessionWindowEnd(ctx context.Context, id int64, end time.Time) error {
+	panic("unexpected")
+}
 func (r *inMemoryAccountRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
 	panic("unexpected")
 }
@@ -183,6 +186,9 @@ func (r *inMemoryAccountRepo) IncrementQuotaUsed(ctx context.Context, id int64, 
 	return nil
 }
 func (r *inMemoryAccountRepo) ResetQuotaUsed(ctx context.Context, id int64) error { return nil }
+func (r *inMemoryAccountRepo) RevertProxyFallback(ctx context.Context, accountID int64) error {
+	panic("unexpected")
+}
 
 // TestAccountService_CreateThenRead_TagsNormalized 是 step 2 主退出信号——
 // "创建账号附带 tags 后再读取" 闭环：输入 ["VIP", " prod ", "vip"] 经 service 规范化后

@@ -385,6 +385,32 @@ func TestImportData_ApplyGroupIDs_BindsToGroups(t *testing.T) {
 	require.True(t, adminSvc.createdAccounts[0].SkipDefaultGroupBind)
 }
 
+func TestImportData_ApplyGroupIDs_ReportsDeletedGroup(t *testing.T) {
+	router, adminSvc := setupAccountDataRouter()
+	adminSvc.createAccountErr = service.ErrGroupNotFound
+
+	body := buildImportPayloadWithApply(t, map[string]any{
+		"group_ids": []int{99},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/data", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Code int              `json:"code"`
+		Data DataImportResult `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, 0, resp.Data.AccountCreated)
+	require.Equal(t, 1, resp.Data.AccountFailed)
+	require.Len(t, resp.Data.Errors, 1)
+	require.Equal(t, "account", resp.Data.Errors[0].Kind)
+	require.Contains(t, resp.Data.Errors[0].Message, "GROUP_NOT_FOUND")
+}
+
 func TestImportData_LegacyFileWithoutTags_ApplyTagsWorks(t *testing.T) {
 	router, adminSvc := setupAccountDataRouter()
 

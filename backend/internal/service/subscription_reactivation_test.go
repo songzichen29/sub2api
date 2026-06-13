@@ -636,6 +636,134 @@ func TestAssignOrExtendSubscription_QuotaExhaustedRenewalRestartsPeriodAndRestor
 	require.NoError(t, err)
 }
 
+func TestGetActiveSubscription_QuotaExhaustedDailyOverdraftRecoversAfterDailyWindowReset(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-quota-exhausted-daily-window-recovers@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-quota-exhausted-daily-window-recovers-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 120.0
+	groupEntity, err := client.Group.Create().
+		SetName("sub-quota-exhausted-daily-window-recovers-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetAllowDailyOverdraft(true).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-26 * time.Hour)
+	expiresAt := startsAt.Add(5 * 24 * time.Hour)
+	oldDailyStart := startsAt
+	exhaustedSub := &UserSubscription{
+		UserID:              user.ID,
+		GroupID:             groupEntity.ID,
+		StartsAt:            startsAt,
+		ExpiresAt:           expiresAt,
+		Status:              SubscriptionStatusQuotaExhausted,
+		ValidityUnit:        "day",
+		DailyWindowStart:    &oldDailyStart,
+		DailyUsageUSD:       239.9820036,
+		WeeklyUsageUSD:      571.85369254,
+		MonthlyUsageUSD:     571.85369254,
+		AllowDailyOverdraft: true,
+		Source:              domain.SubscriptionSourcePayment,
+	}
+	err = repo.Create(ctx, exhaustedSub)
+	require.NoError(t, err)
+
+	group := &Group{
+		ID:                  groupEntity.ID,
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &dailyLimit,
+		AllowDailyOverdraft: true,
+	}
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{group: group}, repo, nil, client, nil)
+
+	sub, err := svc.GetActiveSubscription(ctx, user.ID, groupEntity.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, sub)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	require.NotNil(t, sub.DailyWindowStart)
+	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *sub.DailyWindowStart, 3*time.Second)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	sub.Group = group
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
+	require.NoError(t, err)
+
+	persisted, err := repo.GetByID(ctx, sub.ID)
+	require.NoError(t, err)
+	require.Equal(t, SubscriptionStatusActive, persisted.Status)
+	require.InDelta(t, 0.0, persisted.DailyUsageUSD, 1e-9)
+}
+
+func TestGetActiveSubscription_QuotaExhaustedDailyOverdraftStaysExhaustedWhenPeriodPoolUsed(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-quota-exhausted-period-pool-stays@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-quota-exhausted-period-pool-stays-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 120.0
+	groupEntity, err := client.Group.Create().
+		SetName("sub-quota-exhausted-period-pool-stays-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetAllowDailyOverdraft(true).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-26 * time.Hour)
+	expiresAt := startsAt.Add(5 * 24 * time.Hour)
+	oldDailyStart := startsAt
+	exhaustedSub := &UserSubscription{
+		UserID:              user.ID,
+		GroupID:             groupEntity.ID,
+		StartsAt:            startsAt,
+		ExpiresAt:           expiresAt,
+		Status:              SubscriptionStatusQuotaExhausted,
+		ValidityUnit:        "day",
+		DailyWindowStart:    &oldDailyStart,
+		DailyUsageUSD:       239.9820036,
+		WeeklyUsageUSD:      dailyLimit * 5,
+		MonthlyUsageUSD:     dailyLimit * 5,
+		AllowDailyOverdraft: true,
+		Source:              domain.SubscriptionSourcePayment,
+	}
+	err = repo.Create(ctx, exhaustedSub)
+	require.NoError(t, err)
+
+	group := &Group{
+		ID:                  groupEntity.ID,
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &dailyLimit,
+		AllowDailyOverdraft: true,
+	}
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{group: group}, repo, nil, client, nil)
+
+	_, err = svc.GetActiveSubscription(ctx, user.ID, groupEntity.ID)
+
+	require.ErrorIs(t, err, ErrSubscriptionNotFound)
+	persisted, err := repo.GetByID(ctx, exhaustedSub.ID)
+	require.NoError(t, err)
+	require.Equal(t, SubscriptionStatusQuotaExhausted, persisted.Status)
+}
+
 func TestAssignOrExtendSubscription_MultiDayPaidRestartResetsPeriod(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

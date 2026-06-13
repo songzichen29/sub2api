@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -854,7 +855,14 @@ func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID,
 	value, err, _ := s.subCacheGroup.Do(key, func() (any, error) {
 		sub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 		if err != nil {
-			return nil, err // 直接透传 repo 已翻译的错误（NotFound → ErrSubscriptionNotFound，其他错误原样返回）
+			if !errors.Is(err, ErrSubscriptionNotFound) {
+				return nil, err // 直接透传 repo 已翻译的错误（NotFound → ErrSubscriptionNotFound，其他错误原样返回）
+			}
+			reactivated, reactivateErr := s.reactivateQuotaExhaustedSubscriptionIfRecoverable(ctx, userID, groupID)
+			if reactivateErr != nil || reactivated == nil {
+				return nil, err
+			}
+			sub = reactivated
 		}
 		// 写入 L1 缓存
 		if s.subCacheL1 != nil {
@@ -872,6 +880,65 @@ func (s *SubscriptionService) GetActiveSubscription(ctx context.Context, userID,
 	}
 	cp := *sub
 	return &cp, nil
+}
+
+// reactivateQuotaExhaustedSubscriptionIfRecoverable handles subscriptions that
+// were marked quota_exhausted by a previous request but whose rolling usage
+// windows have since expired. The hot auth path first queries only active
+// subscriptions for speed; without this recovery pass, quota_exhausted rows can
+// never reach CheckAndResetWindows and remain stuck until manual intervention.
+func (s *SubscriptionService) reactivateQuotaExhaustedSubscriptionIfRecoverable(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
+	if s == nil || s.userSubRepo == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByUserIDAndGroupID(ctx, userID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.Status != SubscriptionStatusQuotaExhausted {
+		return nil, ErrSubscriptionNotFound
+	}
+
+	now := time.Now()
+	if now.Before(sub.StartsAt) {
+		return nil, ErrSubscriptionNotStarted
+	}
+	if !sub.ExpiresAt.After(now) {
+		return nil, ErrSubscriptionExpired
+	}
+
+	group := sub.Group
+	if group == nil && s.groupRepo != nil {
+		group, err = s.groupRepo.GetByID(ctx, sub.GroupID)
+		if err != nil {
+			return nil, err
+		}
+		sub.Group = group
+	}
+	if group == nil {
+		return nil, ErrSubscriptionQuotaExhausted
+	}
+
+	if err := s.CheckAndResetWindows(ctx, sub); err != nil {
+		return nil, err
+	}
+	if !sub.CheckDailyLimit(group, 0) || !sub.CheckWeeklyLimit(group, 0) || !sub.CheckMonthlyLimit(group, 0) {
+		return nil, ErrSubscriptionQuotaExhausted
+	}
+
+	if err := s.userSubRepo.UpdateStatus(ctx, sub.ID, SubscriptionStatusActive); err != nil {
+		return nil, err
+	}
+	sub.Status = SubscriptionStatusActive
+
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+	return sub, nil
 }
 
 // ResolveSubscriptionError 在 GetActiveSubscription 返回 ErrSubscriptionNotFound 时被调用，

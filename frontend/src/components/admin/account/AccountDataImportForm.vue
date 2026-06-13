@@ -506,6 +506,19 @@ const enableModelRestriction = ref(false)
 
 const applyTags = ref<string[]>([])
 const applyGroupIds = ref<number[]>([])
+const availableGroupIdSet = computed(() => new Set(props.groups.map((group) => group.id)))
+const sanitizeGroupIds = (ids: number[] | undefined | null): number[] => {
+  if (!Array.isArray(ids)) return []
+  const allowed = availableGroupIdSet.value
+  const seen = new Set<number>()
+  const result: number[] = []
+  for (const id of ids) {
+    if (!allowed.has(id) || seen.has(id)) continue
+    seen.add(id)
+    result.push(id)
+  }
+  return result
+}
 const applyProxyId = ref<number | null>(null)
 const applyConcurrency = ref<number>(1)
 const applyPriority = ref<number>(1)
@@ -521,7 +534,7 @@ const buildTemplateSnapshot = (): Omit<AccountImportApplyTemplate, 'id' | 'name'
   enablePriority: enablePriority.value,
   enableModelRestriction: enableModelRestriction.value,
   applyTags: [...applyTags.value],
-  applyGroupIds: [...applyGroupIds.value],
+  applyGroupIds: sanitizeGroupIds(applyGroupIds.value),
   applyProxyId: applyProxyId.value,
   applyConcurrency: applyConcurrency.value,
   applyPriority: applyPriority.value,
@@ -538,7 +551,7 @@ const applyTemplateSnapshot = (snapshot: Omit<AccountImportApplyTemplate, 'id' |
   enablePriority.value = snapshot.enablePriority
   enableModelRestriction.value = snapshot.enableModelRestriction
   applyTags.value = [...snapshot.applyTags]
-  applyGroupIds.value = [...snapshot.applyGroupIds]
+  applyGroupIds.value = sanitizeGroupIds(snapshot.applyGroupIds)
   applyProxyId.value = snapshot.applyProxyId
   applyConcurrency.value = snapshot.applyConcurrency
   applyPriority.value = snapshot.applyPriority
@@ -563,6 +576,14 @@ const resetApplyState = () => {
   allowedModels.value = []
   modelMappings.value = []
 }
+
+watch(
+  () => props.groups,
+  () => {
+    applyGroupIds.value = sanitizeGroupIds(applyGroupIds.value)
+  },
+  { deep: true }
+)
 
 const loadTemplates = () => {
   props.templatesLoader()
@@ -687,7 +708,7 @@ const buildApplyPayload = (): AdminDataImportApply | undefined => {
   }
 
   if (enableGroups.value) {
-    apply.group_ids = [...applyGroupIds.value]
+    apply.group_ids = sanitizeGroupIds(applyGroupIds.value)
   }
 
   if (enableProxy.value && applyProxyId.value !== null) {
