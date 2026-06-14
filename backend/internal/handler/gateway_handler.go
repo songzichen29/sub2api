@@ -272,7 +272,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -487,12 +487,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.String("account_name", account.Name),
 					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 				}
 				if account.Proxy != nil {
@@ -581,6 +586,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		retryWithFallback := false
 
 		for {
+			attemptParsedReq, err := parsedReq.CloneForBody(body)
+			if err != nil {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+				return
+			}
+			attemptParsedReq.GroupID = currentAPIKey.GroupID
+
 			// 选择支持该模型的账号
 			reqLog.Info("sticky.selecting_account",
 				zap.String("session_key", sessionKey),
@@ -712,7 +724,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
-			umqMode := h.getUserMsgQueueMode(account, parsedReq)
+			umqMode := h.getUserMsgQueueMode(account, attemptParsedReq)
 
 			switch umqMode {
 			case config.UMQModeSerialize:
@@ -759,21 +771,26 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 用 wrapReleaseOnDone 确保 context 取消时自动释放（仅 serialize 模式有 queueRelease）
 			queueRelease = wrapReleaseOnDone(c.Request.Context(), queueRelease)
 			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
-			parsedReq.OnUpstreamAccepted = queueRelease
+			attemptParsedReq.OnUpstreamAccepted = queueRelease
 			// ===== 用户消息串行队列 END =====
 
-			// 应用渠道模型映射到请求
+			// 渠道模型映射只作用于本次账号尝试，避免 failover 后污染原始 ParsedRequest。
 			if channelMapping.Mapped {
-				parsedReq.Model = channelMapping.MappedModel
-				body = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-				if err := parsedReq.ReplaceBody(body); err != nil {
-					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to rewrite request body")
+				attemptParsedReq.Model = channelMapping.MappedModel
+				if err := attemptParsedReq.ReplaceBody(h.gatewayService.ReplaceModelInBody(attemptParsedReq.Body.Bytes(), channelMapping.MappedModel)); err != nil {
+					h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 					return
 				}
 			}
+			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
+			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, currentAPIKey.GroupID)); err != nil {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+				return
+			}
+			attemptBody := attemptParsedReq.Body.Bytes()
 
 			// 转发请求 - 根据账号平台分流
-			c.Set("parsed_request", parsedReq)
+			c.Set("parsed_request", attemptParsedReq)
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
 			if fs.SwitchCount > 0 {
@@ -782,11 +799,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
-				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else if account.Platform == service.PlatformGrok {
-				result, err = h.grokGatewayService.Forward(requestCtx, c, account, body)
+				result, err = h.grokGatewayService.Forward(requestCtx, c, account, attemptBody)
 			} else {
-				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
+				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
@@ -794,7 +811,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				queueRelease()
 			}
 			// 清理回调引用，防止 failover 重试时旧回调被错误调用
-			parsedReq.OnUpstreamAccepted = nil
+			attemptParsedReq.OnUpstreamAccepted = nil
 
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
@@ -834,7 +851,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
+						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.PlatformFromAPIKey(fallbackAPIKey)); err != nil {
 							status, code, message, retryAfter := billingErrorDetails(err)
 							if retryAfter > 0 {
 								c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -872,12 +889,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.String("account_name", account.Name),
 					zap.String("account_platform", account.Platform),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 				}
 				if account.Proxy != nil {
@@ -917,19 +939,23 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
-			requestPayloadHash := service.HashUsageRequestPayload(body)
+			// Forward 内部可能继续改写 body，usage 去重指纹必须使用最终上游接受的当前 body。
+			requestPayloadHash := service.HashUsageRequestPayload(attemptParsedReq.Body.Bytes())
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
 			if result.ReasoningEffort == nil {
-				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
+				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
+			forceCacheBilling := fs.ForceCacheBilling
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
-					ParsedRequest:      parsedReq,
+					QuotaPlatform:      quotaPlatform,
 					APIKey:             currentAPIKey,
 					User:               currentAPIKey.User,
 					Account:            account,
@@ -939,7 +965,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
 					RequestPayloadHash: requestPayloadHash,
-					ForceCacheBilling:  fs.ForceCacheBilling,
+					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
 				}); err != nil {
@@ -1504,11 +1530,39 @@ func (h *GatewayHandler) ensureForwardErrorResponse(c *gin.Context, streamStarte
 	if c == nil || c.Writer == nil {
 		return false
 	}
+	if service.IsResponseCommitted(c) {
+		return false
+	}
 	if c.Writer.Written() {
 		streamStarted = true
 	}
 	h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed", streamStarted)
 	return true
+}
+
+// gatewayForwardErrorAlreadyCommunicated reports whether a Forward implementation
+// has already written a complete error response to the client before returning
+// an error to the handler.
+//
+// This is intentionally narrower than "writer size changed": a stream may have
+// only emitted keepalive pings or partial data, in which case the handler still
+// needs to append a protocol-level terminal error. Non-SSE output from Forward
+// is different: service-level helpers such as handleErrorResponse/writeClaudeError
+// already wrote the client-visible JSON body, so adding the generic streaming
+// fallback would corrupt the response by appending a second `data: ...` frame.
+func gatewayForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForward int, err error) bool {
+	if err == nil || c == nil || c.Writer == nil {
+		return false
+	}
+	if c.Writer.Size() == writerSizeBeforeForward {
+		return false
+	}
+
+	contentType := strings.ToLower(strings.TrimSpace(c.Writer.Header().Get("Content-Type")))
+	if contentType == "" {
+		return false
+	}
+	return !strings.Contains(contentType, "text/event-stream")
 }
 
 // checkClaudeCodeVersion 检查 Claude Code 客户端版本是否满足版本要求
@@ -1629,7 +1683,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))

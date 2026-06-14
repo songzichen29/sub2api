@@ -71,6 +71,30 @@ func (h *OpenAIGatewayHandler) precheckModelAccess(ctx context.Context, groupID 
 	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
 }
 
+type openAIModelBodyReplaceFunc func([]byte, string) []byte
+
+func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
+	if !mapped || replace == nil {
+		return body
+	}
+	return replace(body, mappedModel)
+}
+
+func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFunc) func(bool, string) []byte {
+	replacedBodies := make(map[string][]byte)
+	return func(mapped bool, mappedModel string) []byte {
+		if !mapped {
+			return body
+		}
+		if cachedBody, ok := replacedBodies[mappedModel]; ok {
+			return cachedBody
+		}
+		replacedBody := openAIModelMappedBody(body, true, mappedModel, replace)
+		replacedBodies[mappedModel] = replacedBody
+		return replacedBody
+	}
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -262,6 +286,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 
 	if err := h.precheckModelAccess(c.Request.Context(), apiKey.GroupID, reqModel); err != nil {
 		if status, code, message, ok := gatewayModelPrecheckError(err); ok {
@@ -298,7 +323,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing eligibility after wait
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -382,11 +407,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -444,6 +464,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					switchCount++
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					reqLog.Warn("openai.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
@@ -453,10 +477,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					continue
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				}
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 				}
 				if shouldLogOpenAIForwardFailureAsWarn(c, wroteFallback) {
@@ -672,6 +701,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingMsg, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	mappedBodyForMessages := newOpenAIModelMappedBodyCache(body, h.gatewayService.ReplaceModelInBody)
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -691,7 +721,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -769,10 +799,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		defaultMappedModel := strings.TrimSpace(effectiveMappedModel)
 		// 应用渠道模型映射到请求体
-		forwardBody := body
-		if channelMappingMsg.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMappingMsg.MappedModel)
-		}
+		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
+		writerSizeBeforeForward := c.Writer.Size()
 		result, err := h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
@@ -798,6 +826,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleAnthropicFailoverExhausted(c, failoverErr, true)
+						return
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount {
@@ -826,6 +858,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 					switchCount++
+					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
+						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					reqLog.Warn("openai_messages.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
@@ -834,11 +870,23 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					)
 					continue
 				}
+				if result != nil && result.ClientDisconnect {
+					reqLog.Info("openai_messages.client_disconnected",
+						zap.Int64("account_id", account.ID),
+						zap.Error(err),
+					)
+					return
+				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)
+				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				wroteFallback := false
+				if !upstreamErrorAlreadyCommunicated {
+					wroteFallback = h.ensureAnthropicErrorResponse(c, streamStarted)
+				}
 				reqLog.Warn("openai_messages.forward_failed",
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 					zap.Error(err),
 				)
 				return
@@ -1845,11 +1893,9 @@ func (h *OpenAIGatewayHandler) ensureForwardErrorResponse(c *gin.Context, stream
 	if c == nil || c.Writer == nil {
 		return false
 	}
-	// 旧实现在 Writer.Written 时直接 return false，导致 ping 已 flush 之后的
-	// 上游错误（http2 timeout、连接中断等）完全无法把错误传给客户端——
-	// HTTP 200 已锁死，TCP 直接 EOF，Codex CLI 报 "stream closed before response.completed"。
-	// 这里改成：Writer 已写过时强制走 streamStarted 分支，让
-	// handleStreamingAwareError 通过 SSE 发协议合规的 response.failed。
+	if service.IsResponseCommitted(c) {
+		return false
+	}
 	if c.Writer.Written() {
 		streamStarted = true
 	}
@@ -1865,6 +1911,29 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 		return false
 	}
 	return c.Writer.Written()
+}
+
+// openAIForwardErrorAlreadyCommunicated reports whether Forward has already
+// written the upstream terminal error response to the client before returning
+// an error to the handler.
+func openAIForwardErrorAlreadyCommunicated(c *gin.Context, writerSizeBeforeForward int, err error) bool {
+	if err == nil || c == nil || c.Writer == nil {
+		return false
+	}
+	if c.Writer.Size() == writerSizeBeforeForward {
+		return false
+	}
+
+	msg := strings.TrimSpace(err.Error())
+	for _, prefix := range []string{
+		"upstream response failed:",
+		"non-streaming openai protocol error:",
+	} {
+		if strings.HasPrefix(msg, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // errorResponse returns OpenAI API format error response

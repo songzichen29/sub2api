@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -213,7 +214,14 @@ func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens
 		if err != nil {
 			return nil, fmt.Errorf("inject anthropic_beta: %w", err)
 		}
+		logger.LegacyPrintf("service.gateway", "[Bedrock] Injected beta tokens: %v (model=%s ccCompat=%v)", betaTokens, modelID, ccCompat)
+	} else {
+		body, _ = sjson.DeleteBytes(body, "anthropic_beta")
 	}
+
+	// 移除 Bedrock 不支持的 Anthropic 直连 API 专有顶层字段
+	body, _ = sjson.DeleteBytes(body, "provider")
+	body, _ = sjson.DeleteBytes(body, "metadata")
 
 	// 移除 model 字段（Bedrock 通过 URL 指定模型）
 	body, err = sjson.DeleteBytes(body, "model")
@@ -346,6 +354,9 @@ var claudeVersionRe = regexp.MustCompile(`claude-(?:haiku|sonnet|opus)-(\d+)[-.]
 // Claude 4.5+ 支持 cache_control 中的 ttl 字段（"5m" 和 "1h"）
 func isBedrockClaude45OrNewer(modelID string) bool {
 	lower := strings.ToLower(modelID)
+	if isBedrockFable5(lower) {
+		return true
+	}
 	matches := claudeVersionRe.FindStringSubmatch(lower)
 	if matches == nil {
 		return false
@@ -463,13 +474,15 @@ func parseAnthropicBetaHeader(header string) []string {
 // 参考: litellm/litellm/llms/bedrock/common_utils.py (anthropic_beta_headers_config.json)
 // 更新策略: 当 AWS Bedrock 新增支持的 beta token 时需同步更新此白名单
 var bedrockSupportedBetaTokens = map[string]bool{
-	"computer-use-2025-01-24":         true,
-	"computer-use-2025-11-24":         true,
-	"context-1m-2025-08-07":           true,
-	"compact-2026-01-12":              true,
-	"interleaved-thinking-2025-05-14": true,
-	"tool-search-tool-2025-10-19":     true,
-	"tool-examples-2025-10-29":        true,
+	"computer-use-2025-01-24":                true,
+	"computer-use-2025-11-24":                true,
+	"context-1m-2025-08-07":                  true,
+	"context-management-2025-06-27":          true, // compaction + clear_thinking，AWS 文档已支持
+	"compact-2026-01-12":                     true, // 官方支持，仅 InvokeModel API（Opus 4.6+）
+	"fine-grained-tool-streaming-2025-05-14": true, // AWS Tool Use 文档已支持
+	"interleaved-thinking-2025-05-14":        true,
+	"tool-search-tool-2025-10-19":            true,
+	"tool-examples-2025-10-29":               true,
 }
 
 const bedrockContextManagementBetaToken = "context-management-2025-06-27"
@@ -658,9 +671,14 @@ func isBedrockOpus47OrNewer(modelID string) bool {
 	return major > 4 || (major == 4 && minor >= 7)
 }
 
+func isBedrockFable5(modelID string) bool {
+	return strings.Contains(strings.ToLower(modelID), "claude-fable-5")
+}
+
 const defaultThinkingBudgetTokens = 10000
 
 // sanitizeBedrockThinking 修复 thinking 字段的 Bedrock 兼容性问题：
+//   - Fable 5: 仅使用 always-on adaptive thinking，不支持手动 budget_tokens
 //   - Opus 4.7+: 仅支持 "adaptive"，将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
 //   - 其他模型: "enabled" 必须带 budget_tokens，缺失时补充默认值
 func sanitizeBedrockThinking(body []byte, modelID string) []byte {
@@ -671,6 +689,16 @@ func sanitizeBedrockThinking(body []byte, modelID string) []byte {
 
 	thinkingType := thinking.Get("type").String()
 	if thinkingType == "" {
+		return body
+	}
+
+	if isBedrockFable5(modelID) {
+		if thinkingType == "enabled" {
+			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
+		}
+		if thinkingType == "enabled" || thinkingType == "adaptive" {
+			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
+		}
 		return body
 	}
 
@@ -721,5 +749,68 @@ func sanitizeIDField(body []byte, id, path string) []byte {
 	if sanitized != id {
 		body, _ = sjson.SetBytes(body, path, sanitized)
 	}
+	return body
+}
+
+const defaultCCMaxTokens = 81920
+
+// sanitizeBedrockCCFields 处理 Claude Code 发送的 Bedrock 不兼容字段：
+//   - 移除 service_tier（Anthropic API 专有，Bedrock 不支持）
+//   - 移除 interface_geo（Anthropic API 专有，Bedrock 不支持）
+//   - 移除 context_management（Anthropic API 专有，Bedrock 不支持，CC v2.1.87+ 默认携带）
+//   - 注入 max_tokens 默认值 81920（CC 可能省略，Bedrock 要求必须提供）
+//   - 注入 anthropic_version（CC 通过 HTTP 头发送，Bedrock 需要放在请求体中）
+func sanitizeBedrockCCFields(body []byte) []byte {
+	if gjson.GetBytes(body, "service_tier").Exists() {
+		body, _ = sjson.DeleteBytes(body, "service_tier")
+	}
+	if gjson.GetBytes(body, "interface_geo").Exists() {
+		body, _ = sjson.DeleteBytes(body, "interface_geo")
+	}
+	if gjson.GetBytes(body, "context_management").Exists() {
+		body, _ = sjson.DeleteBytes(body, "context_management")
+	}
+	if !gjson.GetBytes(body, "max_tokens").Exists() {
+		body, _ = sjson.SetBytes(body, "max_tokens", defaultCCMaxTokens)
+	}
+	if !gjson.GetBytes(body, "anthropic_version").Exists() {
+		body, _ = sjson.SetBytes(body, "anthropic_version", "bedrock-2023-05-31")
+	}
+	return body
+}
+
+// sanitizeBedrockCCBetaTokens 清理请求体中的 anthropic_beta 字段，只保留 Bedrock 支持的 beta token。
+// CC 可能在请求体中注入了 Bedrock 不支持的 beta token（如 prompt-caching 等），导致 ValidationException。
+func sanitizeBedrockCCBetaTokens(body []byte, modelID string) []byte {
+	betaField := gjson.GetBytes(body, "anthropic_beta")
+	if !betaField.Exists() {
+		return body
+	}
+
+	var tokens []string
+	if betaField.IsArray() {
+		for _, t := range betaField.Array() {
+			if t.Type == gjson.String {
+				tokens = append(tokens, t.String())
+			}
+		}
+	}
+
+	originalTokens := append([]string(nil), tokens...)
+	tokens = autoInjectBedrockBetaTokens(tokens, body, modelID)
+	tokens = filterBedrockBetaTokens(tokens)
+
+	if len(tokens) == 0 {
+		body, _ = sjson.DeleteBytes(body, "anthropic_beta")
+		logger.LegacyPrintf("service.gateway", "[Bedrock CC Compat] Removed all beta tokens: original=%v", originalTokens)
+	} else {
+		body, _ = sjson.SetBytes(body, "anthropic_beta", tokens)
+		if len(originalTokens) > 0 {
+			logger.LegacyPrintf("service.gateway", "[Bedrock CC Compat] Filtered beta tokens: original=%v final=%v", originalTokens, tokens)
+		} else {
+			logger.LegacyPrintf("service.gateway", "[Bedrock CC Compat] Auto-injected beta tokens: %v", tokens)
+		}
+	}
+
 	return body
 }

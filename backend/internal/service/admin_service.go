@@ -50,6 +50,9 @@ type AdminService interface {
 	ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]Group, int64, error)
 	GetAllGroups(ctx context.Context) ([]Group, error)
 	GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error)
+	// GetAllGroupsIncludingInactive returns all groups regardless of status (active + disabled),
+	// ordered by sort_order then id. Used by the API Key group filter dropdown.
+	GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error)
 	GetGroup(ctx context.Context, id int64) (*Group, error)
 	CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error)
 	UpdateGroup(ctx context.Context, id int64, input *UpdateGroupInput) (*Group, error)
@@ -1728,6 +1731,13 @@ func (s *adminServiceImpl) GetAllGroups(ctx context.Context) ([]Group, error) {
 
 func (s *adminServiceImpl) GetAllGroupsByPlatform(ctx context.Context, platform string) ([]Group, error) {
 	return s.groupRepo.ListActiveByPlatform(ctx, platform)
+}
+
+func (s *adminServiceImpl) GetAllGroupsIncludingInactive(ctx context.Context) ([]Group, error) {
+	// ListWithFilters with empty status = no status filter, so active + disabled groups are returned.
+	// PageSize 10000 is intentionally large; group count is O(dozens) in practice.
+	groups, _, err := s.groupRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, "", "", "", nil)
+	return groups, err
 }
 
 func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, error) {

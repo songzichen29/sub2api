@@ -82,11 +82,25 @@ func TestMySQLProxyExpiryFallbackMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLAccountGroupSchedulerIndexesMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("028_account_group_scheduler_indexes.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'account_groups'")
+	require.Contains(t, sql, "index_name = 'idx_account_groups_group_priority_account'")
+	require.Contains(t, sql, "CREATE INDEX `idx_account_groups_group_priority_account` ON `account_groups` (`group_id`, `priority`, `account_id`)")
+	require.Contains(t, sql, "index_name = 'idx_account_groups_account_priority_group'")
+	require.Contains(t, sql, "CREATE INDEX `idx_account_groups_account_priority_group` ON `account_groups` (`account_id`, `priority`, `group_id`)")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 
 	lower := strings.ToLower(sql)
 	require.NotContains(t, lower, "on conflict")
+	require.NotContains(t, lower, "concurrently")
 	require.NotContains(t, lower, "::jsonb")
 	require.NotContains(t, lower, "bigserial")
 	require.NotContains(t, lower, "timestamptz")

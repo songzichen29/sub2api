@@ -153,7 +153,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("gateway.cc.billing_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
@@ -298,9 +298,15 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					return
 				}
 			}
-			h.ensureForwardErrorResponse(c, streamStarted)
+			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+			wroteFallback := false
+			if !upstreamErrorAlreadyCommunicated {
+				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+			}
 			reqLog.Error("gateway.cc.forward_failed",
 				zap.Int64("account_id", account.ID),
+				zap.Bool("fallback_error_response_written", wroteFallback),
+				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
 			return

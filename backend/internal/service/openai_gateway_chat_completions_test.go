@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -97,7 +98,6 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
 }
 
-
 func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -113,7 +113,10 @@ func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *te
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"model not found"}}`)),
 	}}
 
-	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
 	account := &Account{
 		ID:          1,
 		Name:        "openai-oauth",
@@ -134,6 +137,49 @@ func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *te
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set("api_key", &APIKey{ID: 99})
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_chat_prompt_cache"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop before response parsing"}}`)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          2,
+		Name:        "openai-compatible",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-compatible",
+		},
+		Extra: map[string]any{
+			"openai_responses_supported": true,
+		},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "cache-key-123", "gpt-5.4")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "cache-key-123", gjson.GetBytes(upstream.lastBody, "prompt_cache_key").String())
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer sk-compatible", upstream.lastReq.Header.Get("Authorization"))
+	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
+}
 
 func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -181,7 +227,6 @@ func TestForwardAsChatCompletions_ClientDisconnectDrainsUpstreamUsage(t *testing
 	require.Equal(t, 5, result.Usage.OutputTokens)
 	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
 }
-
 
 func TestForwardAsChatCompletions_StreamsUsageWithoutClientStreamOptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -335,7 +380,6 @@ func TestForwardAsChatCompletions_BufferedTopLevelTerminalUsage(t *testing.T) {
 	require.Contains(t, responseBody, `"cached_tokens":3`)
 }
 
-
 func TestForwardAsChatCompletions_TerminalUsageWithoutUpstreamCloseReturns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -393,7 +437,6 @@ func TestForwardAsChatCompletions_TerminalUsageWithoutUpstreamCloseReturns(t *te
 		require.Fail(t, "ForwardAsChatCompletions should return after terminal usage event even if upstream keeps the connection open")
 	}
 }
-
 
 func TestForwardAsChatCompletions_EventNamedTerminalWithoutUpstreamCloseReturns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -508,7 +551,6 @@ func TestForwardAsChatCompletions_EventTypeDoesNotLeakAcrossFrames(t *testing.T)
 	require.Contains(t, rec.Body.String(), `"content":"ok"`)
 	require.Contains(t, rec.Body.String(), `data: [DONE]`)
 }
-
 
 func TestForwardAsChatCompletions_BufferedTerminalWithoutUpstreamCloseReturns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
