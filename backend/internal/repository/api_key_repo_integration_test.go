@@ -603,7 +603,7 @@ func (s *APIKeyRepoSuite) TestDeleteWithAudit_WritesAuditAndSoftDeletes() {
 	s.Require().Error(err)
 
 	rows, qErr := s.client.QueryContext(s.ctx,
-		`SELECT key, key_name, user_id, api_key_id FROM deleted_api_key_audits WHERE api_key_id = $1`, key.ID)
+		`SELECT key, key_name, user_id, api_key_id FROM deleted_api_key_audits WHERE api_key_id = ?`, key.ID)
 	s.Require().NoError(qErr)
 	defer rows.Close()
 	s.Require().True(rows.Next(), "expected one audit row")

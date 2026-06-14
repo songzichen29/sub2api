@@ -30,7 +30,10 @@
       </div>
       <template v-else-if="stats">
         <OrderStatsCards :stats="stats" />
-        <DailyRevenueChart :data="stats.daily_series || []" :loading="loading" />
+        <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+          <DailyRevenueChart :data="stats.daily_series || []" :loading="loading" />
+          <PaymentDailyCalendar :data="stats.daily_series || []" />
+        </div>
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div class="card p-4">
             <h3 class="mb-4 text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.admin.paymentDistribution') }}</h3>
@@ -79,6 +82,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import OrderStatsCards from '@/components/admin/payment/OrderStatsCards.vue'
 import DailyRevenueChart from '@/components/admin/payment/DailyRevenueChart.vue'
+import PaymentDailyCalendar from '@/components/admin/payment/PaymentDailyCalendar.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()

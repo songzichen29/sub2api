@@ -288,7 +288,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 			return err
 		}
 		// Code already created and redeemed — just mark completed
-		s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
+		s.applyDefaultUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
 		return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 	case redeemActionCreate:
 		rc := &RedeemCode{Code: o.RechargeCode, Type: RedeemTypeBalance, Value: o.Amount, Status: StatusUnused}
@@ -307,7 +307,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder) e
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
-	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
+	s.applyDefaultUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "RECHARGE_SUCCESS")
 	return s.markCompleted(ctx, o, "RECHARGE_SUCCESS")
 }
 
@@ -443,7 +443,7 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
 		return err
 	}
-	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
+	s.applyDefaultUserRPMLimitOnPaid(ctx, o.ID, o.UserID, "SUBSCRIPTION_SUCCESS")
 	return s.markCompleted(ctx, o, "SUBSCRIPTION_SUCCESS")
 }
 
@@ -523,7 +523,7 @@ func (s *PaymentService) doDailyLimitReset(ctx context.Context, o *dbent.Payment
 		"subscriptionID": subscriptionID,
 		"userID":         o.UserID,
 	})
-	s.clearUserRPMLimitOnPaid(ctx, o.ID, o.UserID, successAction)
+	s.applyDefaultUserRPMLimitOnPaid(ctx, o.ID, o.UserID, successAction)
 	return s.markCompleted(ctx, o, successAction)
 }
 
@@ -691,35 +691,62 @@ func (s *PaymentService) updateClaimedAffiliateRebateAudit(ctx context.Context, 
 	return nil
 }
 
-// clearUserRPMLimitOnPaid 把指定用户的 rpm_limit 写为 0（=无上限）。
+// applyDefaultUserRPMLimitOnPaid 把指定用户的 rpm_limit 恢复为系统默认值。
 //
 // 触发时机：付费订单（充值 / 订阅）成功完成后，紧挨 markCompleted 之前调用。
-// 语义为"无脑覆盖"——不读旧值不比较，付费即解除限速。
+// 默认值来源：settings.default_user_rpm_limit；未配置或配置非法时按系统默认 0 处理。
 //
 // 失败处理：只记 slog + 一条 RPM_RESET_FAILED audit log，不向上抛错——
-// rpm 限速解除属于"锦上添花"，不应让 user 表更新失败回滚整笔订单状态机。
-func (s *PaymentService) clearUserRPMLimitOnPaid(ctx context.Context, orderID, userID int64, reason string) {
-	if userID <= 0 {
+// rpm 限速恢复属于"锦上添花"，不应让 user 表更新失败回滚整笔订单状态机。
+func (s *PaymentService) applyDefaultUserRPMLimitOnPaid(ctx context.Context, orderID, userID int64, reason string) {
+	if s == nil || s.entClient == nil || userID <= 0 {
 		return
 	}
-	if _, err := s.entClient.User.UpdateOneID(userID).SetRpmLimit(0).Save(ctx); err != nil {
-		slog.Warn("clear user rpm_limit on paid failed",
+	defaultRPMLimit := s.paymentDefaultUserRPMLimit(ctx)
+	if _, err := s.entClient.User.UpdateOneID(userID).SetRpmLimit(defaultRPMLimit).Save(ctx); err != nil {
+		slog.Warn("apply default user rpm_limit on paid failed",
 			"orderID", orderID,
 			"userID", userID,
 			"reason", reason,
+			"defaultRpmLimit", defaultRPMLimit,
 			"error", err,
 		)
 		s.writeAuditLog(ctx, orderID, "RPM_RESET_FAILED", "system", map[string]any{
-			"userID": userID,
-			"reason": reason,
-			"error":  err.Error(),
+			"userID":          userID,
+			"reason":          reason,
+			"defaultRpmLimit": defaultRPMLimit,
+			"error":           err.Error(),
 		})
 		return
 	}
-	s.writeAuditLog(ctx, orderID, "RPM_RESET_TO_UNLIMITED", "system", map[string]any{
-		"userID": userID,
-		"reason": reason,
+	s.invalidatePaidUserRPMLimitAuthCache(ctx, userID)
+	s.writeAuditLog(ctx, orderID, "RPM_RESET_TO_DEFAULT", "system", map[string]any{
+		"userID":          userID,
+		"reason":          reason,
+		"defaultRpmLimit": defaultRPMLimit,
 	})
+}
+
+func (s *PaymentService) paymentDefaultUserRPMLimit(ctx context.Context) int {
+	if s == nil || s.configService == nil || s.configService.settingRepo == nil {
+		return 0
+	}
+	value, err := s.configService.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit)
+	if err != nil || strings.TrimSpace(value) == "" {
+		return 0
+	}
+	rpm, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || rpm < 0 {
+		return 0
+	}
+	return rpm
+}
+
+func (s *PaymentService) invalidatePaidUserRPMLimitAuthCache(ctx context.Context, userID int64) {
+	if s == nil || s.redeemService == nil || s.redeemService.authCacheInvalidator == nil || userID <= 0 {
+		return
+	}
+	s.redeemService.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 }
 
 func (s *PaymentService) markFailed(ctx context.Context, oid int64, cause error) {

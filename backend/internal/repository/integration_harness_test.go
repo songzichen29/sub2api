@@ -272,7 +272,13 @@ func testRedis(t *testing.T) *redisclient.Client {
 }
 
 func applyMySQLMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
-	if _, err := db.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS `schema_migrations` ("+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open migration connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	if _, err := conn.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS `schema_migrations` ("+
 		"`filename` VARCHAR(255) NOT NULL PRIMARY KEY,"+
 		"`checksum` VARCHAR(64) NOT NULL DEFAULT '',"+
 		"`applied_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)"+
@@ -304,11 +310,11 @@ func applyMySQLMigrationsForIntegration(ctx context.Context, db *sql.DB) error {
 			if trimmed == "" || stripSQLLineComment(trimmed) == "" {
 				continue
 			}
-			if _, err := db.ExecContext(ctx, trimmed); err != nil {
+			if _, err := conn.ExecContext(ctx, trimmed); err != nil {
 				return fmt.Errorf("apply migration %s (statement %d): %w", name, i+1, err)
 			}
 		}
-		if _, err := db.ExecContext(ctx, "INSERT IGNORE INTO `schema_migrations` (`filename`, `checksum`) VALUES (?, ?)", name, "integration"); err != nil {
+		if _, err := conn.ExecContext(ctx, "INSERT IGNORE INTO `schema_migrations` (`filename`, `checksum`) VALUES (?, ?)", name, "integration"); err != nil {
 			return fmt.Errorf("record migration %s: %w", name, err)
 		}
 	}

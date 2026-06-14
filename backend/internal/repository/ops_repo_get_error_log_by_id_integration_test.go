@@ -16,7 +16,7 @@ import (
 //  2. 新列全为 NULL 的普通记录 Scan 不报错,这些字段为空/nil
 func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	ctx := context.Background()
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE ops_error_logs RESTART IDENTITY CASCADE")
+	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE TABLE ops_error_logs")
 
 	repo := NewOpsRepository(integrationDB).(*opsRepository)
 
@@ -26,16 +26,18 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	})
 
 	var insertedID int64
-	err := integrationDB.QueryRowContext(ctx, `
+	res, err := integrationDB.ExecContext(ctx, `
 		INSERT INTO ops_error_logs (
 			error_phase, error_type, severity, status_code, created_at,
 			attempted_key_prefix, deleted_key_owner_user_id, deleted_key_name
 		) VALUES (
 			'auth', 'INVALID_API_KEY', 'error', 401, NOW(),
-			'sk-test-abc', $1, 'my-deleted-key'
-		) RETURNING id`,
+			'sk-test-abc', ?, 'my-deleted-key'
+		)`,
 		owner.ID,
-	).Scan(&insertedID)
+	)
+	require.NoError(t, err)
+	insertedID, err = res.LastInsertId()
 	require.NoError(t, err)
 	require.Positive(t, insertedID)
 
@@ -51,13 +53,15 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 
 	// ── Case 2: 新列全为 NULL 的普通错误记录 ──────────────────────────────────
 	var plainID int64
-	err = integrationDB.QueryRowContext(ctx, `
+	res, err = integrationDB.ExecContext(ctx, `
 		INSERT INTO ops_error_logs (
 			error_phase, error_type, severity, status_code, created_at
 		) VALUES (
 			'upstream', 'upstream_error', 'error', 500, NOW()
-		) RETURNING id`,
-	).Scan(&plainID)
+		)`,
+	)
+	require.NoError(t, err)
+	plainID, err = res.LastInsertId()
 	require.NoError(t, err)
 	require.Positive(t, plainID)
 
@@ -72,7 +76,7 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	require.Empty(t, plain.APIKeyPrefix, "no api key prefix for plain error")
 
 	// ── Case 3: 有效(未删除)key 报错,经 InsertErrorLog 快照 api_key_prefix ──────
-	// 走真实 InsertErrorLog 写入路径(覆盖新列 + $41 占位符),再 GetErrorLogByID 读回。
+	// 走真实 InsertErrorLog 写入路径(覆盖新列 + MySQL ? 占位符),再 GetErrorLogByID 读回。
 	validID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
 		ErrorPhase:   "request",
 		ErrorType:    "api_error",

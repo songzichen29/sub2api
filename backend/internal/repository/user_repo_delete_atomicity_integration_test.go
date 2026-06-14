@@ -39,9 +39,9 @@ func TestUserRepository_DeleteUser_AtomicWithAPIKeys(t *testing.T) {
 
 	t.Cleanup(func() {
 		// testEntClient 的写入不会自动回滚，best-effort 清理避免污染共享库。
-		_, _ = integrationDB.Exec(`DELETE FROM deleted_api_key_audits WHERE user_id = $1`, user.ID)
-		_, _ = integrationDB.Exec(`DELETE FROM api_keys WHERE user_id = $1`, user.ID)
-		_, _ = integrationDB.Exec(`DELETE FROM users WHERE id = $1`, user.ID)
+		_, _ = integrationDB.Exec(`DELETE FROM deleted_api_key_audits WHERE user_id = ?`, user.ID)
+		_, _ = integrationDB.Exec(`DELETE FROM api_keys WHERE user_id = ?`, user.ID)
+		_, _ = integrationDB.Exec(`DELETE FROM users WHERE id = ?`, user.ID)
 	})
 
 	listParams := pagination.PaginationParams{Page: 1, PageSize: 10}
@@ -68,7 +68,7 @@ func TestUserRepository_DeleteUser_AtomicWithAPIKeys(t *testing.T) {
 
 	var auditCount int
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE user_id = $1`, user.ID).Scan(&auditCount))
+		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE user_id = ?`, user.ID).Scan(&auditCount))
 	require.Zero(t, auditCount, "回滚后不应有已提交的审计行")
 
 	// --- Case 2: 外层事务提交 → 删 Key 与删 User 一起生效 ---
@@ -90,6 +90,6 @@ func TestUserRepository_DeleteUser_AtomicWithAPIKeys(t *testing.T) {
 	require.Empty(t, keysAfter, "提交后 API Key 应全部被软删除")
 
 	require.NoError(t, integrationDB.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE user_id = $1`, user.ID).Scan(&auditCount))
+		`SELECT COUNT(*) FROM deleted_api_key_audits WHERE user_id = ?`, user.ID).Scan(&auditCount))
 	require.Equal(t, 2, auditCount, "提交后应为每个被删 Key 写入一行审计")
 }
