@@ -71,6 +71,11 @@ const (
 	openAIResponsesPreambleMaxPendingEvents = 8
 	openAIResponsesPreambleMaxPendingBytes  = 16 * 1024
 	openAIResponsesPreambleMaxPendingAge    = 1500 * time.Millisecond
+
+	// Opt-in SSE timing comment for diagnosing "upstream first event" vs real
+	// first token latency. Disabled by default so normal pre-output failover
+	// behavior is unchanged.
+	openAIStreamDebugTimingHeader = "X-Sub2API-Debug-Timing"
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -3778,6 +3783,25 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	return c != nil && c.Writer != nil && c.Writer.Written()
 }
 
+func openAIStreamDebugTimingEnabled(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(c.GetHeader(openAIStreamDebugTimingHeader))) {
+	case "1", "true", "on", "enabled", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+func openAIStreamTimingComment(ms int) string {
+	if ms < 0 {
+		ms = 0
+	}
+	return fmt.Sprintf(": sub2api_upstream_first_event_ms=%d\n\n", ms)
+}
+
 func openAIStreamEventIsPreamble(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
 	case "response.created", "response.in_progress":
@@ -3957,6 +3981,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	debugTiming := openAIStreamDebugTimingEnabled(c)
+	upstreamFirstEventRecorded := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
 	pendingLineEvents := 0
@@ -4040,6 +4066,34 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		)
 		return writePendingLines()
 	}
+	recordUpstreamFirstEvent := func(eventType string, allowEmptyEventType bool) {
+		eventType = strings.TrimSpace(eventType)
+		if upstreamFirstEventRecorded || (eventType == "" && !allowEmptyEventType) {
+			return
+		}
+		upstreamFirstEventRecorded = true
+		ms := int(time.Since(startTime).Milliseconds())
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+
+		// response.failed 在尚未输出给客户端前仍应保留 clean failover 能力；
+		// 因此即使开启 debug timing，也不在 failed 首事件前提交 HTTP body。
+		if !debugTiming || clientOutputStarted || clientDisconnected || eventType == "response.failed" {
+			return
+		}
+		if _, err := fmt.Fprint(w, openAIStreamTimingComment(ms)); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during debug timing comment, continue draining upstream for usage: account=%d", account.ID)
+			return
+		}
+		clientOutputStarted = true
+		if len(pendingLines) > 0 {
+			_ = writePendingLines()
+		}
+		stopPreambleReleaseTimer()
+		if !clientDisconnected {
+			flusher.Flush()
+		}
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -4062,6 +4116,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	processLine := func(line string) (*openaiStreamingResultPassthrough, error, bool) {
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
+		if eventType, ok := extractOpenAISSEEventLine(line); ok {
+			recordUpstreamFirstEvent(eventType, false)
+		}
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
@@ -4073,6 +4130,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				}
 			}
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
+			recordUpstreamFirstEvent(eventType, true)
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
@@ -4893,6 +4951,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawFailedEvent := false
 	failedMessage := ""
 	clientOutputStarted := false
+	debugTiming := openAIStreamDebugTimingEnabled(c)
+	upstreamFirstEventRecorded := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 
 	pendingPreambleEvents := 0
@@ -4974,6 +5034,35 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		lastDownstreamWriteAt = time.Now()
 		clearPendingPreamble()
 		return true
+	}
+	recordUpstreamFirstEvent := func(eventType string, allowEmptyEventType bool) {
+		eventType = strings.TrimSpace(eventType)
+		if upstreamFirstEventRecorded || (eventType == "" && !allowEmptyEventType) {
+			return
+		}
+		upstreamFirstEventRecorded = true
+		ms := int(time.Since(startTime).Milliseconds())
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+
+		// Debug timing 是显式开启的诊断能力。为避免把上游首包误当成
+		// 真实首 token，这里只发送 SSE comment，不修改 firstTokenMs。
+		// response.failed 作为首事件时仍保留 clean failover 能力。
+		if !debugTiming || clientOutputStarted || clientDisconnected || eventType == "response.failed" {
+			return
+		}
+		if _, err := bufferedWriter.WriteString(openAIStreamTimingComment(ms)); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "Client disconnected during debug timing comment, continuing to drain upstream for billing")
+			return
+		}
+		if err := flushBuffered(); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "Client disconnected during debug timing flush, continuing to drain upstream for billing")
+			return
+		}
+		clientOutputStarted = true
+		lastDownstreamWriteAt = time.Now()
+		clearPendingPreamble()
 	}
 
 	var streamFailoverErr error
@@ -5077,6 +5166,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if streamFailoverErr != nil {
 			return
 		}
+		if eventType, ok := extractOpenAISSEEventLine(line); ok {
+			recordUpstreamFirstEvent(eventType, false)
+		}
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 
@@ -5091,6 +5183,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				sawTerminalEvent = true
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			recordUpstreamFirstEvent(eventType, true)
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)

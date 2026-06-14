@@ -58,6 +58,34 @@ func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
 	}
 }
 
+func TestOpenAIStreamDebugTimingEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	enabledValues := []string{"1", "true", "TRUE", "on", "enabled", "yes", " yes "}
+	for _, value := range enabledValues {
+		t.Run("enabled_"+strings.TrimSpace(value), func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			c.Request.Header.Set(openAIStreamDebugTimingHeader, value)
+			require.True(t, openAIStreamDebugTimingEnabled(c))
+		})
+	}
+
+	disabledValues := []string{"", "0", "false", "off", "disabled", "no", "random"}
+	for _, value := range disabledValues {
+		t.Run("disabled_"+strings.TrimSpace(value), func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			c.Request.Header.Set(openAIStreamDebugTimingHeader, value)
+			require.False(t, openAIStreamDebugTimingEnabled(c))
+		})
+	}
+
+	require.False(t, openAIStreamDebugTimingEnabled(nil))
+}
+
 func TestOpenAIChatChunkStartsFirstToken(t *testing.T) {
 	t.Parallel()
 
@@ -1370,6 +1398,136 @@ func TestOpenAIStreamingPreambleForceReleaseByAge(t *testing.T) {
 	}
 }
 
+func TestOpenAIStreamingDebugTimingCommentDoesNotCountAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set(openAIStreamDebugTimingHeader, "1")
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-debug-timing"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	start := time.Now()
+	go func() {
+		result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, start, "model", "model")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		body := rec.Body.String()
+		return strings.Contains(body, "sub2api_upstream_first_event_ms=") &&
+			strings.Contains(body, "response.created") &&
+			!strings.Contains(body, "response.output_text.delta")
+	}, 3*time.Second, 25*time.Millisecond, "debug timing comment should be visible before first token")
+
+	time.Sleep(75 * time.Millisecond)
+	_, err = fmt.Fprint(pw, `data: {"type":"response.output_text.delta","delta":"你"}`+"\n\n")
+	require.NoError(t, err)
+	_, err = fmt.Fprint(pw, `data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.result)
+		require.NotNil(t, got.result.firstTokenMs, "real output delta should be recorded as first token")
+		require.GreaterOrEqual(t, *got.result.firstTokenMs, 50, "debug comment / response.created must not be recorded as first token")
+		require.NotNil(t, got.result.usage)
+		require.Equal(t, 1, got.result.usage.InputTokens)
+		require.Equal(t, 1, got.result.usage.OutputTokens)
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+
+	gotUpstreamFirstEvent, ok := c.Get(OpsOpenAIUpstreamFirstEventMsKey)
+	require.True(t, ok)
+	require.IsType(t, int64(0), gotUpstreamFirstEvent)
+	require.Contains(t, rec.Body.String(), ": sub2api_upstream_first_event_ms=")
+	require.Contains(t, rec.Body.String(), "response.output_text.delta")
+}
+
+func TestOpenAIStreamingDebugTimingResponseFailedAfterCommentDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set(openAIStreamDebugTimingHeader, "1")
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-debug-timing-failed-after-comment"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "sub2api_upstream_first_event_ms=")
+	}, 3*time.Second, 25*time.Millisecond, "debug timing comment should commit the downstream stream")
+
+	_, err = fmt.Fprint(pw, `data: {"type":"response.failed","error":{"message":"upstream processing failed"}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.Error(t, got.err)
+		var failoverErr *UpstreamFailoverError
+		require.False(t, errors.As(got.err, &failoverErr), "after debug timing comment is released, stream cannot cleanly fail over")
+		require.Contains(t, got.err.Error(), "upstream response failed")
+		require.NotNil(t, got.result)
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), "response.failed")
+	require.Contains(t, rec.Body.String(), "upstream processing failed")
+}
+
 func TestOpenAIStreamingResponseFailedAfterPreambleForceReleaseDoesNotFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -1739,6 +1897,75 @@ func TestOpenAIStreamingPassthroughPreambleForceReleaseByAge(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("passthrough stream handler did not finish")
 	}
+}
+
+func TestOpenAIStreamingPassthroughDebugTimingCommentDoesNotCountAsFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Request.Header.Set(openAIStreamDebugTimingHeader, "yes")
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-passthrough-debug-timing"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResultPassthrough
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	start := time.Now()
+	go func() {
+		result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, start, "", "")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		body := rec.Body.String()
+		return strings.Contains(body, "sub2api_upstream_first_event_ms=") &&
+			strings.Contains(body, "response.created") &&
+			!strings.Contains(body, "response.output_text.delta")
+	}, 3*time.Second, 25*time.Millisecond, "passthrough debug timing comment should be visible before first token")
+
+	time.Sleep(75 * time.Millisecond)
+	_, err = fmt.Fprint(pw, `data: {"type":"response.output_text.delta","delta":"你"}`+"\n\n")
+	require.NoError(t, err)
+	_, err = fmt.Fprint(pw, `data: {"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":1}}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.result)
+		require.NotNil(t, got.result.firstTokenMs)
+		require.GreaterOrEqual(t, *got.result.firstTokenMs, 50, "debug comment / response.created must not be recorded as first token")
+		require.NotNil(t, got.result.usage)
+		require.Equal(t, 2, got.result.usage.InputTokens)
+		require.Equal(t, 1, got.result.usage.OutputTokens)
+	case <-time.After(time.Second):
+		t.Fatal("passthrough stream handler did not finish")
+	}
+
+	gotUpstreamFirstEvent, ok := c.Get(OpsOpenAIUpstreamFirstEventMsKey)
+	require.True(t, ok)
+	require.IsType(t, int64(0), gotUpstreamFirstEvent)
+	require.Contains(t, rec.Body.String(), ": sub2api_upstream_first_event_ms=")
+	require.Contains(t, rec.Body.String(), "response.output_text.delta")
 }
 
 func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t *testing.T) {
