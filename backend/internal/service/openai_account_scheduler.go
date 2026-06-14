@@ -1055,14 +1055,14 @@ func (s *OpenAIGatewayService) isOpenAIAdvancedSchedulerEnabled(ctx context.Cont
 			}
 		}
 
-		enabled := false
+		enabled := true
 		if repo := s.openAIAdvancedSchedulerSettingRepo(); repo != nil {
 			dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIAdvancedSchedulerSettingDBTimeout)
 			defer cancel()
 
 			value, err := repo.GetValue(dbCtx, openAIAdvancedSchedulerSettingKey)
 			if err == nil {
-				enabled = strings.EqualFold(strings.TrimSpace(value), "true")
+				enabled = !isFalseSettingValue(value)
 			}
 		}
 

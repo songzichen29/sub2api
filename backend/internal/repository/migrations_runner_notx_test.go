@@ -222,6 +222,37 @@ func TestApplyMigrationsFS_TransactionalMigration_MultiStatementsAndComments(t *
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestApplyMigrationsFS_TransactionalMigration_StripsLeadingCommentsBeforeExec(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\?").
+		WithArgs("001_comment_prefixed.sql").
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectBegin()
+	mock.ExpectExec("SET @idx_exists := \\(\\s*SELECT COUNT\\(\\*\\)\\s*FROM information_schema\\.statistics\\s*\\)").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\?, \\?\\)").
+		WithArgs("001_comment_prefixed.sql", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery("SELECT RELEASE_LOCK\\(\\?\\)").
+		WithArgs(migrationsNamedLockName).
+		WillReturnRows(sqlmock.NewRows([]string{"RELEASE_LOCK(?)"}).AddRow(1))
+
+	fsys := fstest.MapFS{
+		"001_comment_prefixed.sql": &fstest.MapFile{
+			Data: []byte("-- migration title\n-- more detail\n\nSET @idx_exists := (\n    SELECT COUNT(*)\n    FROM information_schema.statistics\n);\n"),
+		},
+	}
+
+	err = applyMigrationsFS(context.Background(), db, fsys)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyMigrationsFS_TransactionalMigration(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

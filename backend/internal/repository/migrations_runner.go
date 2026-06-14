@@ -228,10 +228,11 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 				if trimmed == "" {
 					continue
 				}
-				if stripSQLLineComment(trimmed) == "" {
+				executable := stripLeadingSQLLineComments(trimmed)
+				if executable == "" {
 					continue
 				}
-				if _, err := db.ExecContext(ctx, trimmed); err != nil {
+				if _, err := db.ExecContext(ctx, executable); err != nil {
 					return fmt.Errorf("apply migration %s (non-tx statement %d): %w", name, i+1, err)
 				}
 			}
@@ -254,10 +255,11 @@ func applyMigrationsFS(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 			if trimmed == "" {
 				continue
 			}
-			if stripSQLLineComment(trimmed) == "" {
+			executable := stripLeadingSQLLineComments(trimmed)
+			if executable == "" {
 				continue
 			}
-			if _, err := tx.ExecContext(ctx, trimmed); err != nil {
+			if _, err := tx.ExecContext(ctx, executable); err != nil {
 				_ = tx.Rollback()
 				return fmt.Errorf("apply migration %s (statement %d): %w", name, i+1, err)
 			}
@@ -510,6 +512,20 @@ func splitSQLStatements(content string) []string {
 		out = append(out, part)
 	}
 	return out
+}
+
+func stripLeadingSQLLineComments(s string) string {
+	lines := strings.Split(s, "\n")
+	start := 0
+	for start < len(lines) {
+		line := strings.TrimSpace(lines[start])
+		if line == "" || strings.HasPrefix(line, "--") {
+			start++
+			continue
+		}
+		break
+	}
+	return strings.TrimSpace(strings.Join(lines[start:], "\n"))
 }
 
 func stripSQLLineComment(s string) string {

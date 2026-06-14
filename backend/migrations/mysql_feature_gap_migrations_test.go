@@ -95,6 +95,16 @@ func TestMySQLAccountGroupSchedulerIndexesMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLEnableOpenAIAdvancedSchedulerMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("029_enable_openai_advanced_scheduler.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "openai_advanced_scheduler_enabled")
+	require.Contains(t, sql, "ON DUPLICATE KEY UPDATE")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

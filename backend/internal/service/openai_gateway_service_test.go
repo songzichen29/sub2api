@@ -1315,6 +1315,119 @@ func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t
 	require.Empty(t, rec.Body.String())
 }
 
+func TestOpenAIStreamingPreambleForceReleaseByAge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-preamble-age"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "response.created")
+	}, 3*time.Second, 25*time.Millisecond, "response.created should be force-released before a token/terminal event")
+
+	_, err = fmt.Fprint(pw, `data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":0}}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.result)
+		require.Nil(t, got.result.firstTokenMs, "response.created must not be recorded as first token")
+		require.NotNil(t, got.result.usage)
+		require.Equal(t, 1, got.result.usage.InputTokens)
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+}
+
+func TestOpenAIStreamingResponseFailedAfterPreambleForceReleaseDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-preamble-failed-after-release"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "response.created")
+	}, 3*time.Second, 25*time.Millisecond, "preamble should be visible before response.failed arrives")
+
+	_, err = fmt.Fprint(pw, `data: {"type":"response.failed","error":{"message":"upstream processing failed"}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.Error(t, got.err)
+		var failoverErr *UpstreamFailoverError
+		require.False(t, errors.As(got.err, &failoverErr), "after preamble is released, stream cannot cleanly fail over")
+		require.Contains(t, got.err.Error(), "upstream response failed")
+		require.NotNil(t, got.result)
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), "response.failed")
+	require.Contains(t, rec.Body.String(), "upstream processing failed")
+}
+
 func TestOpenAIStreamingPreambleOnlyMissingTerminalReturnsFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -1573,6 +1686,59 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	require.Contains(t, string(failoverErr.ResponseBody), "upstream processing failed")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamingPassthroughPreambleForceReleaseByAge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-passthrough-preamble-age"}},
+	}
+
+	type streamResult struct {
+		result *openaiStreamingResultPassthrough
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "", "")
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_1"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "response.created")
+	}, 3*time.Second, 25*time.Millisecond, "passthrough preamble should be force-released before a token/terminal event")
+
+	_, err = fmt.Fprint(pw, `data: {"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":0}}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err)
+		require.NotNil(t, got.result)
+		require.Nil(t, got.result.firstTokenMs, "response.created must not be recorded as first token")
+		require.NotNil(t, got.result.usage)
+		require.Equal(t, 2, got.result.usage.InputTokens)
+	case <-time.After(time.Second):
+		t.Fatal("passthrough stream handler did not finish")
+	}
 }
 
 func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t *testing.T) {

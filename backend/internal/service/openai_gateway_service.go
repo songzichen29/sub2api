@@ -63,6 +63,14 @@ const (
 	// 当 Codex usage 快照过旧时，不再用它维持账号 quota auto-pause，避免账号被过期快照永久跳过。
 	openAICodexAutoPauseStaleAfter         = 2 * time.Hour
 	openAIUpstreamErrorBodyReadLimit int64 = 512 << 10
+
+	// /v1/responses 会在首个可输出 token 前先收到 response.created /
+	// response.in_progress。为了保留 pre-output failover，网关默认会缓存这些
+	// preamble；但如果上游长时间不产出 token，客户端会完全收不到 SSE，看起来
+	// 像卡死。下面的阈值用于在可接受边界内提前释放 preamble。
+	openAIResponsesPreambleMaxPendingEvents = 8
+	openAIResponsesPreambleMaxPendingBytes  = 16 * 1024
+	openAIResponsesPreambleMaxPendingAge    = 1500 * time.Millisecond
 )
 
 // OpenAI allowed headers whitelist (for non-passthrough).
@@ -3815,6 +3823,22 @@ func openAIStreamDataStartsFirstToken(data, eventType string) bool {
 	return false
 }
 
+func openAIResponsesShouldForceReleasePreamble(pendingCount int, pendingBytes int, firstPendingAt time.Time, now time.Time) (bool, string) {
+	if pendingCount <= 0 {
+		return false, ""
+	}
+	if pendingCount >= openAIResponsesPreambleMaxPendingEvents {
+		return true, "pending_events"
+	}
+	if pendingBytes >= openAIResponsesPreambleMaxPendingBytes {
+		return true, "pending_bytes"
+	}
+	if openAIResponsesPreambleMaxPendingAge > 0 && !firstPendingAt.IsZero() && now.Sub(firstPendingAt) >= openAIResponsesPreambleMaxPendingAge {
+		return true, "pending_age"
+	}
+	return false, ""
+}
+
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
@@ -3935,6 +3959,56 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
+	pendingLineEvents := 0
+	pendingLineBytes := 0
+	firstPendingLineAt := time.Time{}
+	var preambleReleaseTimer *time.Timer
+	var preambleReleaseCh <-chan time.Time
+	stopPreambleReleaseTimer := func() {
+		if preambleReleaseTimer == nil {
+			return
+		}
+		if !preambleReleaseTimer.Stop() {
+			select {
+			case <-preambleReleaseTimer.C:
+			default:
+			}
+		}
+		preambleReleaseCh = nil
+	}
+	defer stopPreambleReleaseTimer()
+	schedulePreambleReleaseTimer := func() {
+		if clientOutputStarted || firstPendingLineAt.IsZero() || openAIResponsesPreambleMaxPendingAge <= 0 {
+			return
+		}
+		delay := time.Until(firstPendingLineAt.Add(openAIResponsesPreambleMaxPendingAge))
+		if delay <= 0 {
+			delay = time.Nanosecond
+		}
+		if preambleReleaseTimer == nil {
+			preambleReleaseTimer = time.NewTimer(delay)
+		} else {
+			if !preambleReleaseTimer.Stop() {
+				select {
+				case <-preambleReleaseTimer.C:
+				default:
+				}
+			}
+			preambleReleaseTimer.Reset(delay)
+		}
+		preambleReleaseCh = preambleReleaseTimer.C
+	}
+	appendPendingLine := func(line string) {
+		if len(pendingLines) == 0 {
+			firstPendingLineAt = time.Now()
+			schedulePreambleReleaseTimer()
+		}
+		pendingLines = append(pendingLines, line)
+		if strings.TrimSpace(line) != "" {
+			pendingLineEvents++
+		}
+		pendingLineBytes += len(line) + 1
+	}
 	writePendingLines := func() bool {
 		for _, pending := range pendingLines {
 			if _, err := fmt.Fprintln(w, pending); err != nil {
@@ -3944,7 +4018,27 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 		}
 		pendingLines = pendingLines[:0]
+		pendingLineEvents = 0
+		pendingLineBytes = 0
+		firstPendingLineAt = time.Time{}
+		stopPreambleReleaseTimer()
+		clientOutputStarted = !clientDisconnected
 		return true
+	}
+	forceReleasePendingLines := func(reason string) bool {
+		if len(pendingLines) == 0 || clientOutputStarted || clientDisconnected {
+			return false
+		}
+		logger.L().Info("openai responses passthrough: force releasing preamble before first token",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_request_id", upstreamRequestID),
+			zap.String("reason", reason),
+			zap.Int("pending_events", pendingLineEvents),
+			zap.Int("pending_lines", len(pendingLines)),
+			zap.Int("pending_bytes", pendingLineBytes),
+			zap.Duration("pending_age", time.Since(firstPendingLineAt)),
+		)
+		return writePendingLines()
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -3954,7 +4048,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
-	defer putSSEScannerBuf64K(scanBuf)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
@@ -3966,8 +4059,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	processLine := func(line string) (*openaiStreamingResultPassthrough, error, bool) {
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -3985,7 +4077,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					return resultWithUsage(),
-						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage),
+						true
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -4007,12 +4100,18 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 		if !clientDisconnected {
 			if !clientOutputStarted && !lineStartsClientOutput {
-				pendingLines = append(pendingLines, line)
-				continue
+				appendPendingLine(line)
+				if force, reason := openAIResponsesShouldForceReleasePreamble(pendingLineEvents, pendingLineBytes, firstPendingLineAt, time.Now()); force {
+					forceReleasePendingLines(reason)
+					if !clientDisconnected {
+						flusher.Flush()
+					}
+				}
+				return nil, nil, false
 			}
 			if !clientOutputStarted && len(pendingLines) > 0 {
 				if !writePendingLines() {
-					continue
+					return nil, nil, false
 				}
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
@@ -4020,42 +4119,99 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
 				clientOutputStarted = true
+				stopPreambleReleaseTimer()
 				flusher.Flush()
 			}
 		}
+		return nil, nil, false
 	}
-	if err := scanner.Err(); err != nil {
+
+	type scanEvent struct {
+		line string
+		err  error
+	}
+	events := make(chan scanEvent, 16)
+	done := make(chan struct{})
+	sendEvent := func(ev scanEvent) bool {
+		select {
+		case events <- ev:
+			return true
+		case <-done:
+			return false
+		}
+	}
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
+		defer close(events)
+		for scanner.Scan() {
+			if !sendEvent(scanEvent{line: scanner.Text()}) {
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			_ = sendEvent(scanEvent{err: err})
+		}
+	}(scanBuf)
+	defer close(done)
+
+	var scanErr error
+scanLoop:
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				break scanLoop
+			}
+			if ev.err != nil {
+				scanErr = ev.err
+				break scanLoop
+			}
+			if result, err, done := processLine(ev.line); done {
+				return result, err
+			}
+		case <-preambleReleaseCh:
+			if force, reason := openAIResponsesShouldForceReleasePreamble(pendingLineEvents, pendingLineBytes, firstPendingLineAt, time.Now()); force {
+				forceReleasePendingLines(reason)
+				if !clientDisconnected {
+					flusher.Flush()
+				}
+			} else if len(pendingLines) > 0 && !clientOutputStarted {
+				schedulePreambleReleaseTimer()
+			}
+		}
+	}
+	if scanErr != nil {
 		if sawTerminalEvent && !sawFailedEvent {
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+		if errors.Is(scanErr, context.Canceled) || errors.Is(scanErr, context.DeadlineExceeded) {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", scanErr)
 		}
-		if errors.Is(err, bufio.ErrTooLong) {
-			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, err)
-			return resultWithUsage(), err
+		if errors.Is(scanErr, bufio.ErrTooLong) {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, scanErr)
+			return resultWithUsage(), scanErr
 		}
 		if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
 			msg := "OpenAI stream disconnected before completion"
-			if errText := strings.TrimSpace(err.Error()); errText != "" {
+			if errText := strings.TrimSpace(scanErr.Error()); errText != "" {
 				msg += ": " + errText
 			}
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, msg)
 		}
 		if clientDisconnected {
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", scanErr)
 		}
 		logger.LegacyPrintf("service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
 			account.ID,
 			upstreamRequestID,
-			err,
+			scanErr,
 		)
-		return resultWithUsage(), fmt.Errorf("stream read error: %w", err)
+		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr)
 	}
 	if sawFailedEvent {
 		return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
@@ -4674,7 +4830,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	if !ok {
 		return nil, errors.New("streaming not supported")
 	}
-	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
+	bufferedWriter := bufio.NewWriterSize(w, openAIResponsesPreambleMaxPendingBytes+4*1024)
 	flushBuffered := func() error {
 		if err := bufferedWriter.Flush(); err != nil {
 			return err
@@ -4738,6 +4894,88 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	failedMessage := ""
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+
+	pendingPreambleEvents := 0
+	pendingPreambleBytes := 0
+	firstPendingPreambleAt := time.Time{}
+	var preambleReleaseTimer *time.Timer
+	var preambleReleaseCh <-chan time.Time
+	stopPreambleReleaseTimer := func() {
+		if preambleReleaseTimer == nil {
+			return
+		}
+		if !preambleReleaseTimer.Stop() {
+			select {
+			case <-preambleReleaseTimer.C:
+			default:
+			}
+		}
+		preambleReleaseCh = nil
+	}
+	defer stopPreambleReleaseTimer()
+	schedulePreambleReleaseTimer := func() {
+		if clientOutputStarted || firstPendingPreambleAt.IsZero() || openAIResponsesPreambleMaxPendingAge <= 0 {
+			return
+		}
+		delay := time.Until(firstPendingPreambleAt.Add(openAIResponsesPreambleMaxPendingAge))
+		if delay <= 0 {
+			delay = time.Nanosecond
+		}
+		if preambleReleaseTimer == nil {
+			preambleReleaseTimer = time.NewTimer(delay)
+		} else {
+			if !preambleReleaseTimer.Stop() {
+				select {
+				case <-preambleReleaseTimer.C:
+				default:
+				}
+			}
+			preambleReleaseTimer.Reset(delay)
+		}
+		preambleReleaseCh = preambleReleaseTimer.C
+	}
+	trackPendingPreambleLine := func(line string) {
+		if clientOutputStarted {
+			return
+		}
+		if firstPendingPreambleAt.IsZero() {
+			firstPendingPreambleAt = time.Now()
+			schedulePreambleReleaseTimer()
+		}
+		if strings.TrimSpace(line) != "" {
+			pendingPreambleEvents++
+		}
+		pendingPreambleBytes += len(line) + 1
+	}
+	clearPendingPreamble := func() {
+		pendingPreambleEvents = 0
+		pendingPreambleBytes = 0
+		firstPendingPreambleAt = time.Time{}
+		stopPreambleReleaseTimer()
+	}
+	forceReleasePendingPreamble := func(reason string) bool {
+		if clientOutputStarted || clientDisconnected || pendingPreambleEvents <= 0 {
+			return false
+		}
+		logger.L().Info("openai responses: force releasing preamble before first token",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_request_id", upstreamRequestID),
+			zap.String("reason", reason),
+			zap.Int("pending_events", pendingPreambleEvents),
+			zap.Int("pending_bytes", pendingPreambleBytes),
+			zap.Duration("pending_age", time.Since(firstPendingPreambleAt)),
+		)
+		if err := flushBuffered(); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.openai_gateway", "Client disconnected during preamble force flush, continuing to drain upstream for billing")
+			return false
+		}
+		clientOutputStarted = true
+		lastDownstreamWriteAt = time.Now()
+		clearPendingPreamble()
+		return true
+	}
+
 	var streamFailoverErr error
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
@@ -4759,6 +4997,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		clientOutputStarted = true
 		lastDownstreamWriteAt = time.Now()
+		clearPendingPreamble()
 	}
 
 	needModelReplace := originalModel != mappedModel
@@ -4894,6 +5133,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					} else {
 						clientOutputStarted = true
 						lastDownstreamWriteAt = time.Now()
+						clearPendingPreamble()
+					}
+				} else if !clientOutputStarted {
+					trackPendingPreambleLine(line)
+					if force, reason := openAIResponsesShouldForceReleasePreamble(pendingPreambleEvents, pendingPreambleBytes, firstPendingPreambleAt, time.Now()); force {
+						forceReleasePendingPreamble(reason)
 					}
 				}
 			}
@@ -4922,13 +5167,21 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				} else {
 					clientOutputStarted = true
 					lastDownstreamWriteAt = time.Now()
+					clearPendingPreamble()
+				}
+			} else if !clientOutputStarted {
+				trackPendingPreambleLine(line)
+				if force, reason := openAIResponsesShouldForceReleasePreamble(pendingPreambleEvents, pendingPreambleBytes, firstPendingPreambleAt, time.Now()); force {
+					forceReleasePendingPreamble(reason)
 				}
 			}
 		}
 	}
 
-	// 无超时/无 keepalive 的常见路径走同步扫描，减少 goroutine 与 channel 开销。
-	if streamInterval <= 0 && keepaliveInterval <= 0 {
+	// 无超时/无 keepalive 且不需要 preamble 独立释放时走同步扫描，减少 goroutine 与 channel 开销。
+	// /v1/responses 需要在上游只发 response.created 后也能按时间阈值释放给客户端，
+	// 因此默认会进入异步 select 路径，让 timer 不依赖下一条上游事件触发。
+	if streamInterval <= 0 && keepaliveInterval <= 0 && openAIResponsesPreambleMaxPendingAge <= 0 {
 		defer putSSEScannerBuf64K(scanBuf)
 		for scanner.Scan() {
 			processSSELine(scanner.Text(), true)
@@ -4986,6 +5239,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			processSSELine(ev.line, len(events) == 0)
 			if streamFailoverErr != nil {
 				return resultWithUsage(), streamFailoverErr
+			}
+
+		case <-preambleReleaseCh:
+			if force, reason := openAIResponsesShouldForceReleasePreamble(pendingPreambleEvents, pendingPreambleBytes, firstPendingPreambleAt, time.Now()); force {
+				forceReleasePendingPreamble(reason)
+			} else if pendingPreambleEvents > 0 && !clientOutputStarted {
+				schedulePreambleReleaseTimer()
 			}
 
 		case <-intervalCh:

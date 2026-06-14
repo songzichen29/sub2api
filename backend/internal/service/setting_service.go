@@ -2971,7 +2971,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingPaymentVisibleMethodWxpaySource:       "",
 		SettingPaymentVisibleMethodAlipayEnabled:     "false",
 		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		openAIAdvancedSchedulerSettingKey:            "true",
 
 		SettingKeyAllowUserViewErrorRequests:          "false",
 		SettingKeyStandaloneAccountImportEnabled:      "false",
@@ -3525,7 +3525,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodWxpaySource = NormalizeVisibleMethodSource("wxpay", settings[SettingPaymentVisibleMethodWxpaySource])
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
-	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
+	if value, ok := settings[openAIAdvancedSchedulerSettingKey]; ok {
+		result.OpenAIAdvancedSchedulerEnabled = !isFalseSettingValue(value)
+	} else {
+		result.OpenAIAdvancedSchedulerEnabled = true
+	}
 
 	// 余额、订阅到期与账号限额通知
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"
