@@ -1723,7 +1723,8 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	svc.ReportOpenAIAccountScheduleResult(10, true, &ttft)
 	svc.RecordOpenAIAccountSwitch()
 	snapshot := svc.SnapshotOpenAIAccountSchedulerMetrics()
-	require.Equal(t, OpenAIAccountSchedulerMetricsSnapshot{}, snapshot)
+	require.Equal(t, int64(1), snapshot.AccountSwitchTotal)
+	require.Equal(t, 1, snapshot.RuntimeStatsAccountCount)
 	require.Equal(t, 7, svc.openAIWSLBTopK())
 	require.Equal(t, openaiStickySessionTTL, svc.openAIWSSessionStickyTTL())
 
