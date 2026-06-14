@@ -33,10 +33,10 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 		{name: "delta_audio_transcript", eventType: "response.audio_transcript.delta", want: true},
 		{name: "delta_function_call_arguments", eventType: "response.function_call_arguments.delta", want: true},
 
-		{name: "output_text_done", eventType: "response.output_text.done", want: true},
-		{name: "output_text_annotation_added", eventType: "response.output_text.annotation.added", want: true},
+		{name: "output_text_done", eventType: "response.output_text.done", want: false},
+		{name: "output_text_annotation_added", eventType: "response.output_text.annotation.added", want: false},
 
-		{name: "output_audio_done", eventType: "response.output_audio.done", want: true},
+		{name: "output_audio_done", eventType: "response.output_audio.done", want: false},
 
 		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", want: true},
 

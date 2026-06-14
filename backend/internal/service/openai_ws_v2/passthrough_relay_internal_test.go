@@ -394,7 +394,9 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	require.False(t, isTokenEvent("response.in_progress"))
 	require.False(t, isTokenEvent("response.output_item.added"))
 	require.True(t, isTokenEvent("response.output_audio.delta"))
-	require.True(t, isTokenEvent("response.output"))
+	require.True(t, isTokenEvent("response.output_text.delta"))
+	require.False(t, isTokenEvent("response.output"))
+	require.False(t, isTokenEvent("response.output_text.done"))
 	require.False(t, isTokenEvent("response.done"))
 }
 

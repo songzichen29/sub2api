@@ -44,9 +44,14 @@ func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
 		{name: "terminal_done", data: `{"type":"response.done"}`, eventType: "response.done", want: false},
 		{name: "terminal_failed", data: `{"type":"response.failed"}`, eventType: "response.failed", want: false},
 		{name: "text_delta", data: `{"type":"response.output_text.delta","delta":"h"}`, eventType: "response.output_text.delta", want: true},
+		{name: "empty_text_delta", data: `{"type":"response.output_text.delta","delta":""}`, eventType: "response.output_text.delta", want: false},
 		{name: "audio_delta", data: `{"type":"response.output_audio.delta","delta":"abc"}`, eventType: "response.output_audio.delta", want: true},
 		{name: "function_arguments_delta", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, eventType: "response.function_call_arguments.delta", want: true},
-		{name: "output_text_done", data: `{"type":"response.output_text.done"}`, eventType: "response.output_text.done", want: true},
+		{name: "output_text_done", data: `{"type":"response.output_text.done","text":"h"}`, eventType: "response.output_text.done", want: false},
+		{name: "output_audio_done", data: `{"type":"response.output_audio.done"}`, eventType: "response.output_audio.done", want: false},
+		{name: "output_text_annotation_added", data: `{"type":"response.output_text.annotation.added"}`, eventType: "response.output_text.annotation.added", want: false},
+		{name: "event_named_delta_without_type", data: `{"delta":"h"}`, eventType: "response.output_text.delta", want: true},
+		{name: "event_named_done_without_type", data: `{"text":"h"}`, eventType: "response.output_text.done", want: false},
 	}
 
 	for _, tc := range cases {
@@ -223,6 +228,16 @@ func (w *failingGinWriter) Write(p []byte) (int, error) {
 		return 0, errors.New("write failed")
 	}
 	w.writes++
+	return w.ResponseWriter.Write(p)
+}
+
+type slowGinWriter struct {
+	gin.ResponseWriter
+	delay time.Duration
+}
+
+func (w *slowGinWriter) Write(p []byte) (int, error) {
+	time.Sleep(w.delay)
 	return w.ResponseWriter.Write(p)
 }
 
@@ -1467,6 +1482,111 @@ func TestOpenAIStreamingDebugTimingCommentDoesNotCountAsFirstToken(t *testing.T)
 	require.IsType(t, int64(0), gotUpstreamFirstEvent)
 	require.Contains(t, rec.Body.String(), ": sub2api_upstream_first_event_ms=")
 	require.Contains(t, rec.Body.String(), "response.output_text.delta")
+}
+
+func TestOpenAIStreamingFirstTokenMsRecordedBeforeDownstreamWrite(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	c.Writer = &slowGinWriter{ResponseWriter: c.Writer, delay: 300 * time.Millisecond}
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.output_text.delta","delta":"你"}`,
+			"",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-first-token-before-write"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs)
+	require.Less(t, *result.firstTokenMs, 200, "firstTokenMs should not include slow downstream write/flush latency")
+	require.Contains(t, rec.Body.String(), "response.output_text.delta")
+}
+
+func TestOpenAIStreamingDoneEventDoesNotRecordFirstTokenMs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			`data: {"type":"response.output_text.done","text":"完整文本"}`,
+			"",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-done-not-first-token"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Nil(t, result.firstTokenMs, "response.output_text.done must not be treated as first token")
+	require.Contains(t, rec.Body.String(), "response.output_text.done")
+}
+
+func TestOpenAIStreamingEventNamedDeltaRecordsFirstTokenMs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_text.delta`,
+			`data: {"delta":"你"}`,
+			"",
+			`event: response.completed`,
+			`data: {"response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-event-named-delta-first-token"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs, "event: response.output_text.delta should supply type for data-only payload")
+	require.Contains(t, rec.Body.String(), `data: {"delta":"你"}`)
 }
 
 func TestOpenAIStreamingDebugTimingResponseFailedAfterCommentDoesNotFailover(t *testing.T) {
