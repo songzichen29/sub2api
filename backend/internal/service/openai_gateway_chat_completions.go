@@ -475,7 +475,84 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	clientOutputStarted := false
 	var streamFailoverErr error
 	pendingSSE := make([]string, 0, 4)
+	pendingSSEBytes := 0
+	firstPendingSSEAt := time.Time{}
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
+	var refusalReleaseTimer *time.Timer
+	var refusalReleaseCh <-chan time.Time
+	stopRefusalReleaseTimer := func() {
+		if refusalReleaseTimer == nil {
+			return
+		}
+		if !refusalReleaseTimer.Stop() {
+			select {
+			case <-refusalReleaseTimer.C:
+			default:
+			}
+		}
+		refusalReleaseCh = nil
+	}
+	defer stopRefusalReleaseTimer()
+	scheduleRefusalReleaseTimer := func() {
+		if !refusalDetector.Enabled() || clientOutputStarted || firstPendingSSEAt.IsZero() || openAISilentRefusalMaxPendingAge <= 0 {
+			return
+		}
+		delay := time.Until(firstPendingSSEAt.Add(openAISilentRefusalMaxPendingAge))
+		if delay <= 0 {
+			delay = time.Nanosecond
+		}
+		if refusalReleaseTimer == nil {
+			refusalReleaseTimer = time.NewTimer(delay)
+		} else {
+			if !refusalReleaseTimer.Stop() {
+				select {
+				case <-refusalReleaseTimer.C:
+				default:
+				}
+			}
+			refusalReleaseTimer.Reset(delay)
+		}
+		refusalReleaseCh = refusalReleaseTimer.C
+	}
+	appendPendingSSE := func(sse string) {
+		if len(pendingSSE) == 0 {
+			firstPendingSSEAt = time.Now()
+			scheduleRefusalReleaseTimer()
+		}
+		pendingSSE = append(pendingSSE, sse)
+		pendingSSEBytes += len(sse)
+	}
+	flushPendingSSE := func(disconnectLog string) bool {
+		writeStreamHeaders()
+		for _, pending := range pendingSSE {
+			if _, err := fmt.Fprint(c.Writer, pending); err != nil {
+				clientDisconnected = true
+				logger.L().Info(disconnectLog,
+					zap.String("request_id", requestID),
+				)
+				break
+			}
+		}
+		pendingSSE = pendingSSE[:0]
+		pendingSSEBytes = 0
+		firstPendingSSEAt = time.Time{}
+		stopRefusalReleaseTimer()
+		clientOutputStarted = !clientDisconnected
+		return !clientDisconnected
+	}
+	forceReleasePendingSSE := func(reason string) bool {
+		if len(pendingSSE) == 0 || clientOutputStarted || clientDisconnected {
+			return false
+		}
+		logger.L().Info("openai chat_completions stream: force releasing pending chunks before silent-refusal decision",
+			zap.String("request_id", requestID),
+			zap.String("reason", reason),
+			zap.Int("pending_chunks", len(pendingSSE)),
+			zap.Int("pending_bytes", pendingSSEBytes),
+			zap.Duration("pending_age", time.Since(firstPendingSSEAt)),
+		)
+		return flushPendingSSE("openai chat_completions stream: client disconnected while force flushing pending chunks")
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -561,23 +638,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
-					pendingSSE = append(pendingSSE, sse)
+					appendPendingSSE(sse)
+					if force, reason := refusalDetector.ShouldForceReleaseClientOutput(len(pendingSSE), pendingSSEBytes, firstPendingSSEAt, time.Now()); force {
+						forceReleasePendingSSE(reason)
+					}
 					continue
 				}
 				if !clientOutputStarted {
-					writeStreamHeaders()
-					for _, pending := range pendingSSE {
-						if _, err := fmt.Fprint(c.Writer, pending); err != nil {
-							clientDisconnected = true
-							logger.L().Info("openai chat_completions stream: client disconnected while flushing pending chunks",
-								zap.String("request_id", requestID),
-							)
-							break
-						}
-					}
-					pendingSSE = pendingSSE[:0]
-					clientOutputStarted = !clientDisconnected
-					if clientDisconnected {
+					if !flushPendingSSE("openai chat_completions stream: client disconnected while flushing pending chunks") {
 						break
 					}
 				}
@@ -610,23 +678,14 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				}
 
 				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
-					pendingSSE = append(pendingSSE, sse)
+					appendPendingSSE(sse)
+					if force, reason := refusalDetector.ShouldForceReleaseClientOutput(len(pendingSSE), pendingSSEBytes, firstPendingSSEAt, time.Now()); force {
+						forceReleasePendingSSE(reason)
+					}
 					continue
 				}
 				if !clientOutputStarted {
-					writeStreamHeaders()
-					for _, pending := range pendingSSE {
-						if _, err := fmt.Fprint(c.Writer, pending); err != nil {
-							clientDisconnected = true
-							logger.L().Info("openai chat_completions stream: client disconnected during pending final flush",
-								zap.String("request_id", requestID),
-							)
-							break
-						}
-					}
-					pendingSSE = pendingSSE[:0]
-					clientOutputStarted = !clientDisconnected
-					if clientDisconnected {
+					if !flushPendingSSE("openai chat_completions stream: client disconnected during pending final flush") {
 						break
 					}
 				}
@@ -646,18 +705,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
 			}
 			if len(pendingSSE) > 0 {
-				writeStreamHeaders()
-				for _, pending := range pendingSSE {
-					if _, err := fmt.Fprint(c.Writer, pending); err != nil {
-						clientDisconnected = true
-						logger.L().Info("openai chat_completions stream: client disconnected during final pending flush",
-							zap.String("request_id", requestID),
-						)
-						break
-					}
-				}
-				pendingSSE = pendingSSE[:0]
-				clientOutputStarted = !clientDisconnected
+				flushPendingSSE("openai chat_completions stream: client disconnected during final pending flush")
 
 			}
 		}
@@ -709,7 +757,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	}
 
 	// No keepalive: fast synchronous path
-	if streamInterval <= 0 && keepaliveInterval <= 0 {
+	if streamInterval <= 0 && keepaliveInterval <= 0 && !refusalDetector.Enabled() {
 
 		var parser openAICompatSSEFrameParser
 		for scanner.Scan() {
@@ -841,6 +889,16 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				zap.Duration("interval", streamInterval),
 			)
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+
+		case <-refusalReleaseCh:
+			if force, reason := refusalDetector.ShouldForceReleaseClientOutput(len(pendingSSE), pendingSSEBytes, firstPendingSSEAt, time.Now()); force {
+				forceReleasePendingSSE(reason)
+				if !clientDisconnected {
+					c.Writer.Flush()
+				}
+			} else if len(pendingSSE) > 0 && !clientOutputStarted {
+				scheduleRefusalReleaseTimer()
+			}
 
 		case <-keepaliveCh:
 			if clientDisconnected {

@@ -19,8 +19,8 @@ FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm (match frontend/package.json packageManager for reproducible builds)
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
@@ -28,6 +28,7 @@ RUN pnpm install --frozen-lockfile
 
 # Copy frontend source and build
 COPY frontend/ ./
+COPY docs/legal/ /app/docs/legal/
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------

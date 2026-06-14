@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -337,6 +338,123 @@ func TestHandleChatStreamingResponse_SilentRefusalReasoningSummaryExempt(t *test
 	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
 
+func TestHandleChatStreamingResponse_SilentRefusalPendingChunksForceReleaseByAge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_force_release"}},
+		Body:       pr,
+	}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+
+	type streamResult struct {
+		result *OpenAIForwardResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.handleChatStreamingResponse(
+			resp,
+			c,
+			rawChatCompletionsTestAccount(),
+			"gpt-5.5",
+			"gpt-5.5",
+			"gpt-5.5",
+			time.Now(),
+			openAISilentRefusalMinRequestBodyBytes,
+		)
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"type":"response.created","response":{"id":"resp_force_release","model":"gpt-5.5"}}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), `"role":"assistant"`)
+	}, 3*time.Second, 25*time.Millisecond, "pending role chunk should be released before terminal event")
+
+	_, err = fmt.Fprint(pw, `data: {"type":"response.completed","response":{"id":"resp_force_release","model":"gpt-5.5","status":"completed"}}`+"\n\n")
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err, "after force release, a later silent-refusal-looking terminal event must not fail over")
+		require.NotNil(t, got.result)
+	case <-time.After(time.Second):
+		t.Fatal("stream handler did not finish")
+	}
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
+func TestStreamRawChatCompletions_SilentRefusalPendingLinesForceReleaseByAge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_raw_force_release"}},
+		Body:       pr,
+	}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+
+	type streamResult struct {
+		result *OpenAIForwardResult
+		err    error
+	}
+	done := make(chan streamResult, 1)
+	go func() {
+		result, err := svc.streamRawChatCompletions(
+			c,
+			resp,
+			rawChatCompletionsTestAccount(),
+			"gpt-5.5",
+			"gpt-5.5",
+			"gpt-5.5",
+			nil,
+			nil,
+			time.Now(),
+			openAISilentRefusalMinRequestBodyBytes,
+		)
+		done <- streamResult{result: result, err: err}
+	}()
+
+	_, err := fmt.Fprint(pw, `data: {"id":"chatcmpl_raw_age","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"role":"assistant"}}]}`+"\n\n")
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), `"role":"assistant"`)
+	}, 3*time.Second, 25*time.Millisecond, "raw pending role chunk should be released before terminal event")
+
+	_, err = fmt.Fprint(pw, strings.Join([]string{
+		`data: {"id":"chatcmpl_raw_age","object":"chat.completion.chunk","model":"gpt-5.5","choices":[{"index":0,"delta":{"content":""},"finish_reason":"stop"}]}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n"))
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	select {
+	case got := <-done:
+		require.NoError(t, got.err, "after force release, a later silent-refusal-looking terminal chunk must not fail over")
+		require.NotNil(t, got.result)
+	case <-time.After(time.Second):
+		t.Fatal("raw stream handler did not finish")
+	}
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
+}
+
 func TestForwardAsRawChatCompletions_SilentRefusalNormalContentExempt(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -511,6 +629,42 @@ func TestEnsureOpenAIChatStreamUsage(t *testing.T) {
 	body, err = ensureOpenAIChatStreamUsage([]byte(`{"model":"gpt-5.4","stream_options":{"include_usage":false}}`))
 	require.NoError(t, err)
 	require.True(t, gjson.GetBytes(body, "stream_options.include_usage").Bool())
+}
+
+func TestOpenAIChatSilentRefusalDetector_ShouldForceReleaseClientOutput(t *testing.T) {
+	t.Parallel()
+
+	firstPendingAt := time.Now()
+	newDetector := func() *openAIChatSilentRefusalDetector {
+		return newOpenAIChatSilentRefusalDetector(openAISilentRefusalMinRequestBodyBytes)
+	}
+
+	force, reason := newDetector().ShouldForceReleaseClientOutput(openAISilentRefusalMaxPendingEvents-1, openAISilentRefusalMaxPendingBytes-1, firstPendingAt, firstPendingAt.Add(openAISilentRefusalMaxPendingAge-time.Millisecond))
+	require.False(t, force)
+	require.Empty(t, reason)
+
+	force, reason = newDetector().ShouldForceReleaseClientOutput(openAISilentRefusalMaxPendingEvents, 1, firstPendingAt, firstPendingAt)
+	require.True(t, force)
+	require.Equal(t, "pending_events", reason)
+
+	force, reason = newDetector().ShouldForceReleaseClientOutput(1, openAISilentRefusalMaxPendingBytes, firstPendingAt, firstPendingAt)
+	require.True(t, force)
+	require.Equal(t, "pending_bytes", reason)
+
+	force, reason = newDetector().ShouldForceReleaseClientOutput(1, 1, firstPendingAt, firstPendingAt.Add(openAISilentRefusalMaxPendingAge))
+	require.True(t, force)
+	require.Equal(t, "pending_age", reason)
+
+	disabled := newOpenAIChatSilentRefusalDetector(openAISilentRefusalMinRequestBodyBytes - 1)
+	force, reason = disabled.ShouldForceReleaseClientOutput(openAISilentRefusalMaxPendingEvents, openAISilentRefusalMaxPendingBytes, firstPendingAt, firstPendingAt.Add(openAISilentRefusalMaxPendingAge))
+	require.False(t, force)
+	require.Empty(t, reason)
+
+	releasable := newDetector()
+	releasable.ObservePayload([]byte(`{"choices":[{"delta":{"content":"ok"}}]}`))
+	force, reason = releasable.ShouldForceReleaseClientOutput(openAISilentRefusalMaxPendingEvents, openAISilentRefusalMaxPendingBytes, firstPendingAt, firstPendingAt.Add(openAISilentRefusalMaxPendingAge))
+	require.False(t, force)
+	require.Empty(t, reason)
 }
 
 func TestBufferRawChatCompletions_RejectsOversizedResponse(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
@@ -16,6 +17,10 @@ const (
 	openAISilentRefusalErrorCode           = "openai_silent_refusal"
 	openAISilentRefusalUpstreamMessage     = "OpenAI upstream returned an empty completion stream with finish_reason=stop and no usage"
 	openAISilentRefusalClientMessage       = "Upstream returned an empty completion without usage; no fallback account was available"
+
+	openAISilentRefusalMaxPendingEvents = 8
+	openAISilentRefusalMaxPendingBytes  = 16 * 1024
+	openAISilentRefusalMaxPendingAge    = 1500 * time.Millisecond
 )
 
 type openAIChatSilentRefusalDetector struct {
@@ -114,6 +119,25 @@ func (d *openAIChatSilentRefusalDetector) ShouldReleaseClientOutput() bool {
 		return true
 	}
 	return d.sawFinish && d.finishReason != "" && d.finishReason != "stop"
+}
+
+func (d *openAIChatSilentRefusalDetector) ShouldForceReleaseClientOutput(pendingCount int, pendingBytes int, firstPendingAt time.Time, now time.Time) (bool, string) {
+	if d == nil || !d.enabled || d.ShouldReleaseClientOutput() {
+		return false, ""
+	}
+	if pendingCount <= 0 {
+		return false, ""
+	}
+	if pendingCount >= openAISilentRefusalMaxPendingEvents {
+		return true, "pending_events"
+	}
+	if pendingBytes >= openAISilentRefusalMaxPendingBytes {
+		return true, "pending_bytes"
+	}
+	if openAISilentRefusalMaxPendingAge > 0 && !firstPendingAt.IsZero() && now.Sub(firstPendingAt) >= openAISilentRefusalMaxPendingAge {
+		return true, "pending_age"
+	}
+	return false, ""
 }
 
 func (d *openAIChatSilentRefusalDetector) IsSilentRefusal() bool {
