@@ -1,4 +1,4 @@
-﻿-- 账号分组调度复合索引（MySQL 版本）
+-- 账号分组调度复合索引（MySQL 版本）
 --
 -- 上游 PostgreSQL 迁移 150_account_group_scheduler_indexes_notx.sql 使用 PG 专用建索引语法。
 -- MySQL 这里通过 information_schema.statistics 做幂等保护。
