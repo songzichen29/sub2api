@@ -3902,14 +3902,20 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 		eventType == "response.output_item.added" || eventType == "response.output_item.done" {
 		return false
 	}
-	return openAIResponsesEventTypeCanStartFirstToken(eventType)
+	if strings.Contains(eventType, ".delta") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output_text") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output") {
+		return true
+	}
+	return false
 }
 
 func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool {
-	if !isOpenAIWSTokenEvent(eventType) {
-		return false
-	}
-	return openAIResponsesPayloadHasNonEmptyDelta(string(message))
+	return isOpenAIWSTokenEvent(eventType)
 }
 
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {

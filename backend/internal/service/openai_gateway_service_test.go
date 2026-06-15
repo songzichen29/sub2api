@@ -38,24 +38,24 @@ func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
 		{name: "done_marker", data: "[DONE]", eventType: "", want: false},
 		{name: "preamble_created", data: `{"type":"response.created"}`, eventType: "response.created", want: false},
 		{name: "preamble_in_progress", data: `{"type":"response.in_progress"}`, eventType: "response.in_progress", want: false},
-		{name: "output_item_added", data: `{"type":"response.output_item.added","item":{"type":"message"}}`, eventType: "response.output_item.added", want: false},
-		{name: "output_item_done", data: `{"type":"response.output_item.done"}`, eventType: "response.output_item.done", want: false},
+		{name: "output_item_added", data: `{"type":"response.output_item.added","item":{"type":"message"}}`, eventType: "response.output_item.added", want: true},
+		{name: "output_item_done", data: `{"type":"response.output_item.done"}`, eventType: "response.output_item.done", want: true},
 		{name: "terminal_completed", data: `{"type":"response.completed"}`, eventType: "response.completed", want: false},
 		{name: "terminal_done", data: `{"type":"response.done"}`, eventType: "response.done", want: false},
 		{name: "terminal_failed", data: `{"type":"response.failed"}`, eventType: "response.failed", want: false},
 		{name: "text_delta", data: `{"type":"response.output_text.delta","delta":"h"}`, eventType: "response.output_text.delta", want: true},
-		{name: "empty_text_delta", data: `{"type":"response.output_text.delta","delta":""}`, eventType: "response.output_text.delta", want: false},
-		{name: "whitespace_text_delta", data: `{"type":"response.output_text.delta","delta":"   "}`, eventType: "response.output_text.delta", want: false},
+		{name: "empty_text_delta", data: `{"type":"response.output_text.delta","delta":""}`, eventType: "response.output_text.delta", want: true},
+		{name: "whitespace_text_delta", data: `{"type":"response.output_text.delta","delta":"   "}`, eventType: "response.output_text.delta", want: true},
 		{name: "audio_delta", data: `{"type":"response.output_audio.delta","delta":"abc"}`, eventType: "response.output_audio.delta", want: true},
 		{name: "function_arguments_delta", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, eventType: "response.function_call_arguments.delta", want: true},
 		{name: "reasoning_summary_delta", data: `{"type":"response.reasoning_summary_text.delta","delta":"think"}`, eventType: "response.reasoning_summary_text.delta", want: true},
 		{name: "unknown_delta", data: `{"type":"response.custom.delta","delta":"x"}`, eventType: "response.custom.delta", want: true},
-		{name: "unknown_non_delta", data: `{"type":"response.custom","value":"x"}`, eventType: "response.custom", want: false},
-		{name: "output_text_done", data: `{"type":"response.output_text.done","text":"h"}`, eventType: "response.output_text.done", want: false},
-		{name: "output_audio_done", data: `{"type":"response.output_audio.done"}`, eventType: "response.output_audio.done", want: false},
-		{name: "output_text_annotation_added", data: `{"type":"response.output_text.annotation.added"}`, eventType: "response.output_text.annotation.added", want: false},
+		{name: "unknown_non_delta", data: `{"type":"response.custom","value":"x"}`, eventType: "response.custom", want: true},
+		{name: "output_text_done", data: `{"type":"response.output_text.done","text":"h"}`, eventType: "response.output_text.done", want: true},
+		{name: "output_audio_done", data: `{"type":"response.output_audio.done"}`, eventType: "response.output_audio.done", want: true},
+		{name: "output_text_annotation_added", data: `{"type":"response.output_text.annotation.added"}`, eventType: "response.output_text.annotation.added", want: true},
 		{name: "event_named_delta_without_type", data: `{"delta":"h"}`, eventType: "response.output_text.delta", want: true},
-		{name: "event_named_done_without_type", data: `{"text":"h"}`, eventType: "response.output_text.done", want: false},
+		{name: "event_named_done_without_type", data: `{"text":"h"}`, eventType: "response.output_text.done", want: true},
 	}
 
 	for _, tc := range cases {
@@ -1525,7 +1525,40 @@ func TestOpenAIStreamingFirstTokenMsRecordedBeforeDownstreamWrite(t *testing.T) 
 	require.Contains(t, rec.Body.String(), "response.output_text.delta")
 }
 
-func TestOpenAIStreamingDoneEventDoesNotRecordFirstTokenMs(t *testing.T) {
+func TestOpenAIStreamingTerminalEventDoesNotRecordFirstTokenMs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-done-not-first-token"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Nil(t, result.firstTokenMs, "response.completed must not be treated as first token")
+	require.Contains(t, rec.Body.String(), "response.completed")
+}
+
+func TestOpenAIStreamingOutputTextDoneRecordsForkLikeFirstTokenMs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
@@ -1550,13 +1583,13 @@ func TestOpenAIStreamingDoneEventDoesNotRecordFirstTokenMs(t *testing.T) {
 			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
 			"",
 		}, "\n"))),
-		Header: http.Header{"X-Request-Id": []string{"rid-done-not-first-token"}},
+		Header: http.Header{"X-Request-Id": []string{"rid-output-text-done-first-token"}},
 	}
 
 	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "model", "model")
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Nil(t, result.firstTokenMs, "response.output_text.done must not be treated as first token")
+	require.NotNil(t, result.firstTokenMs, "fork-like firstTokenMs should record first non-preamble output/progress event")
 	require.Contains(t, rec.Body.String(), "response.output_text.done")
 }
 

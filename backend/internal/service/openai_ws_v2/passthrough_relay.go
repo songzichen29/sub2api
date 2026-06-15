@@ -872,7 +872,16 @@ func isTokenEvent(eventType string) bool {
 		eventType == "response.output_item.added" || eventType == "response.output_item.done" {
 		return false
 	}
-	return strings.Contains(eventType, ".delta")
+	if strings.Contains(eventType, ".delta") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output_text") {
+		return true
+	}
+	if strings.HasPrefix(eventType, "response.output") {
+		return true
+	}
+	return false
 }
 
 func isPreambleEvent(eventType string) bool {
@@ -885,14 +894,7 @@ func isPreambleEvent(eventType string) bool {
 }
 
 func isTokenEventMessage(message []byte, eventType string) bool {
-	if !isTokenEvent(eventType) {
-		return false
-	}
-	delta := gjson.GetBytes(message, "delta")
-	if !delta.Exists() {
-		return false
-	}
-	return strings.TrimSpace(delta.String()) != ""
+	return isTokenEvent(eventType)
 }
 
 func minDuration(a, b time.Duration) time.Duration {

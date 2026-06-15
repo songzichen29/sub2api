@@ -17,24 +17,24 @@ The system SHALL record the first upstream OpenAI streaming event separately fro
 - **WHEN** an OpenAI stream emits only preamble and terminal events without any effective output token event
 - **THEN** the system SHALL leave `first_token_ms` unset and SHALL NOT use the terminal event time as a fallback first token
 
-### Requirement: First token uses effective non-empty output events
-The system SHALL set `first_token_ms` only when it observes the first non-empty OpenAI streaming event that represents output token content or effective output progress.
+### Requirement: First token uses fork-like output progress events
+The system SHALL set `first_token_ms` when it observes the first OpenAI streaming event that represents client-visible output or output progress, excluding preamble, failure, terminal, and `[DONE]` events.
 
 #### Scenario: Text delta starts first token
-- **WHEN** the stream emits `response.output_text.delta` with a non-empty `delta`
+- **WHEN** the stream emits `response.output_text.delta` after preamble
 - **THEN** the system SHALL set `first_token_ms` to the elapsed time at that upstream event
 
 #### Scenario: Tool argument delta starts first token
-- **WHEN** the stream emits `response.function_call_arguments.delta` with a non-empty `delta`
+- **WHEN** the stream emits `response.function_call_arguments.delta` after preamble
 - **THEN** the system SHALL set `first_token_ms` to the elapsed time at that upstream event
 
 #### Scenario: Reasoning summary delta starts first token
-- **WHEN** the stream emits `response.reasoning_summary_text.delta` with a non-empty `delta`
+- **WHEN** the stream emits `response.reasoning_summary_text.delta` after preamble
 - **THEN** the system SHALL set `first_token_ms` to the elapsed time at that upstream event
 
-#### Scenario: Empty delta is ignored
-- **WHEN** the stream emits a `*.delta` event whose `delta` value is empty
-- **THEN** the system SHALL NOT set `first_token_ms` from that event
+#### Scenario: Empty delta can start fork-like first token
+- **WHEN** the stream emits a `*.delta` event whose `delta` value is empty after preamble
+- **THEN** the system SHALL set `first_token_ms` from that output progress event
 
 ### Requirement: Non-token events do not start first token
 The system SHALL NOT classify OpenAI preamble, lifecycle, terminal, debug, or empty events as first token events.
@@ -43,9 +43,9 @@ The system SHALL NOT classify OpenAI preamble, lifecycle, terminal, debug, or em
 - **WHEN** the stream emits `response.created` or `response.in_progress`
 - **THEN** the system SHALL NOT set `first_token_ms` from those events
 
-#### Scenario: Output item lifecycle events are excluded
-- **WHEN** the stream emits `response.output_item.added` or `response.output_item.done` without an explicit non-empty output delta
-- **THEN** the system SHALL NOT set `first_token_ms` from those events
+#### Scenario: Output item lifecycle events can start HTTP first token
+- **WHEN** an HTTP stream emits `response.output_item.added` or `response.output_item.done` after preamble
+- **THEN** the system SHALL set `first_token_ms` from that first output progress event
 
 #### Scenario: Terminal events are excluded
 - **WHEN** the stream emits `response.completed`, `response.done`, `response.failed`, `response.incomplete`, `response.cancelled`, or `response.canceled`
