@@ -28,6 +28,7 @@ export interface MarketplaceProviderFacet {
 export interface MarketplaceGroupFacet {
   id: number
   name: string
+  description: string
   provider: string
   model_count: number
   rate_multiplier: number
@@ -213,6 +214,7 @@ export function collectMarketplaceGroupFacets(items: MarketplaceModelItem[]): Ma
         facets.set(group.id, {
           id: group.id,
           name: group.name,
+          description: group.description || '',
           provider: group.platform,
           model_count: 0,
           rate_multiplier: group.rate_multiplier,
@@ -317,6 +319,7 @@ export function transformAdminChannelsToAvailableChannels(
         existing.groups.push({
           id: group.id,
           name: group.name,
+          description: group.description || '',
           platform: group.platform,
           subscription_type: group.subscription_type,
           rate_multiplier: group.rate_multiplier,

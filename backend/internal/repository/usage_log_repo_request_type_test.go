@@ -73,6 +73,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			true,
 			sqlmock.AnyArg(), // duration_ms
 			sqlmock.AnyArg(), // first_token_ms
+			sqlmock.AnyArg(), // upstream_first_event_ms
 			sqlmock.AnyArg(), // user_agent
 			sqlmock.AnyArg(), // ip_address
 			log.ImageCount,
@@ -159,6 +160,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			false,
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
+			sqlmock.AnyArg(), // upstream_first_event_ms
 			sqlmock.AnyArg(),
 			sqlmock.AnyArg(),
 			log.ImageCount,
@@ -266,13 +268,29 @@ func TestPrepareUsageLogInsert_PersistsImageSizeMetadata(t *testing.T) {
 		CreatedAt:          time.Date(2025, 1, 6, 12, 0, 0, 0, time.UTC),
 	})
 
-	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[34])
-	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[35])
-	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[36])
-	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[37])
-	breakdownJSON, ok := prepared.args[38].(string)
+	require.Equal(t, sql.NullString{String: imageSize, Valid: true}, prepared.args[35])
+	require.Equal(t, sql.NullString{String: inputSize, Valid: true}, prepared.args[36])
+	require.Equal(t, sql.NullString{String: outputSize, Valid: true}, prepared.args[37])
+	require.Equal(t, sql.NullString{String: source, Valid: true}, prepared.args[38])
+	breakdownJSON, ok := prepared.args[39].(string)
 	require.True(t, ok)
 	require.JSONEq(t, `{"1K":1,"4K":1}`, breakdownJSON)
+}
+
+func TestPrepareUsageLogInsert_PersistsUpstreamFirstEventMs(t *testing.T) {
+	upstreamFirstEventMs := 321
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:               1,
+		APIKeyID:             2,
+		AccountID:            3,
+		RequestID:            "req-upstream-first-event",
+		Model:                "gpt-5",
+		RequestedModel:       "gpt-5",
+		UpstreamFirstEventMs: &upstreamFirstEventMs,
+		CreatedAt:            time.Date(2025, 1, 7, 12, 0, 0, 0, time.UTC),
+	})
+
+	require.Equal(t, sql.NullInt64{Int64: int64(upstreamFirstEventMs), Valid: true}, prepared.args[31])
 }
 
 func TestCoalesceTrimmedString(t *testing.T) {
@@ -653,6 +671,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullInt64{}, // upstream_first_event_ms
 			sql.NullString{},
 			sql.NullString{},
 			2,
@@ -721,6 +740,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false, // legacy openai ws
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullInt64{}, // upstream_first_event_ms
 			sql.NullString{},
 			sql.NullString{},
 			0,
@@ -773,6 +793,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullInt64{}, // upstream_first_event_ms
 			sql.NullString{},
 			sql.NullString{},
 			0,
@@ -825,6 +846,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,
 			sql.NullInt64{},
 			sql.NullInt64{},
+			sql.NullInt64{}, // upstream_first_event_ms
 			sql.NullString{},
 			sql.NullString{},
 			0,

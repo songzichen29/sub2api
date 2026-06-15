@@ -72,7 +72,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 		Platforms: []userChannelPlatformSection{
 			{
 				Platform:        "anthropic",
-				Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Platform: "anthropic"}},
+				Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Description: "group desc", Platform: "anthropic"}},
 				SupportedModels: []userSupportedModel{},
 			},
 		},
@@ -107,7 +107,7 @@ func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	require.NoError(t, err)
 	var groupDecoded map[string]any
 	require.NoError(t, json.Unmarshal(rawGroup, &groupDecoded))
-	for _, key := range []string{"id", "name", "platform", "subscription_type", "rate_multiplier", "is_exclusive"} {
+	for _, key := range []string{"id", "name", "description", "platform", "subscription_type", "rate_multiplier", "is_exclusive"} {
 		_, exists := groupDecoded[key]
 		require.Truef(t, exists, "group DTO must expose %q", key)
 	}

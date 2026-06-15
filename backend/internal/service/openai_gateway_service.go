@@ -247,21 +247,22 @@ type OpenAIForwardResult struct {
 	ServiceTier *string
 	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
 	// Stored for usage records display; nil means not provided / not applicable.
-	ReasoningEffort    *string
-	Stream             bool
-	OpenAIWSMode       bool
-	ResponseHeaders    http.Header
-	Duration           time.Duration
-	FirstTokenMs       *int
-	ClientDisconnect   bool
-	ImageCount         int
-	ImageSize          string
-	ImageInputSize     string
-	ImageOutputSize    string
-	ImageOutputSizes   []string
-	ImageSizeSource    string
-	ImageSizeBreakdown map[string]int
-	BillingTier        *string
+	ReasoningEffort      *string
+	Stream               bool
+	OpenAIWSMode         bool
+	ResponseHeaders      http.Header
+	Duration             time.Duration
+	FirstTokenMs         *int
+	UpstreamFirstEventMs *int
+	ClientDisconnect     bool
+	ImageCount           int
+	ImageSize            string
+	ImageInputSize       string
+	ImageOutputSize      string
+	ImageOutputSizes     []string
+	ImageSizeSource      string
+	ImageSizeBreakdown   map[string]int
+	BillingTier          *string
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -3183,6 +3184,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var upstreamFirstEventMs *int
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
@@ -3192,6 +3194,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
+			upstreamFirstEventMs = streamResult.upstreamFirstEventMs
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 		} else {
@@ -3219,16 +3222,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		serviceTier := extractOpenAIServiceTier(reqBody)
 
 		forwardResult := &OpenAIForwardResult{
-			RequestID:       resp.Header.Get("x-request-id"),
-			Usage:           *usage,
-			Model:           originalModel,
-			UpstreamModel:   upstreamModel,
-			ServiceTier:     serviceTier,
-			ReasoningEffort: reasoningEffort,
-			Stream:          reqStream,
-			OpenAIWSMode:    false,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:            resp.Header.Get("x-request-id"),
+			Usage:                *usage,
+			Model:                originalModel,
+			UpstreamModel:        upstreamModel,
+			ServiceTier:          serviceTier,
+			ReasoningEffort:      reasoningEffort,
+			Stream:               reqStream,
+			OpenAIWSMode:         false,
+			Duration:             time.Since(startTime),
+			FirstTokenMs:         firstTokenMs,
+			UpstreamFirstEventMs: upstreamFirstEventMs,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount
@@ -3417,6 +3421,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var upstreamFirstEventMs *int
 	imageCount := 0
 	var imageOutputSizes []string
 	if reqStream {
@@ -3426,6 +3431,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
+		upstreamFirstEventMs = result.upstreamFirstEventMs
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
@@ -3447,16 +3453,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		Usage:           *usage,
-		Model:           reqModel,
-		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     extractOpenAIServiceTierFromBody(body),
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            resp.Header.Get("x-request-id"),
+		Usage:                *usage,
+		Model:                reqModel,
+		UpstreamModel:        upstreamPassthroughModel,
+		ServiceTier:          extractOpenAIServiceTierFromBody(body),
+		ReasoningEffort:      reasoningEffort,
+		Stream:               reqStream,
+		OpenAIWSMode:         false,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		UpstreamFirstEventMs: upstreamFirstEventMs,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -3763,10 +3770,11 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	imageCount       int
-	imageOutputSizes []string
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	upstreamFirstEventMs *int
+	imageCount           int
+	imageOutputSizes     []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3985,6 +3993,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	clientOutputStarted := false
 	debugTiming := openAIStreamDebugTimingEnabled(c)
 	upstreamFirstEventRecorded := false
+	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	pendingLines := make([]string, 0, 8)
 	pendingLineEvents := 0
@@ -4075,6 +4084,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		upstreamFirstEventRecorded = true
 		ms := int(time.Since(startTime).Milliseconds())
+		upstreamFirstEventMs = &ms
 		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
 
 		// response.failed 在尚未输出给客户端前仍应保留 clean failover 能力；
@@ -4108,10 +4118,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			upstreamFirstEventMs: upstreamFirstEventMs,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
 		}
 	}
 
@@ -4864,10 +4875,11 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	imageCount       int
-	imageOutputSizes []string
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	upstreamFirstEventMs *int
+	imageCount           int
+	imageOutputSizes     []string
 }
 
 type openaiNonStreamingResult struct {
@@ -4963,6 +4975,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	clientOutputStarted := false
 	debugTiming := openAIStreamDebugTimingEnabled(c)
 	upstreamFirstEventRecorded := false
+	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 
 	pendingPreambleEvents := 0
@@ -5052,6 +5065,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		upstreamFirstEventRecorded = true
 		ms := int(time.Since(startTime).Milliseconds())
+		upstreamFirstEventMs = &ms
 		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
 
 		// Debug timing 是显式开启的诊断能力。为避免把上游首包误当成
@@ -5102,10 +5116,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	needModelReplace := originalModel != mappedModel
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			upstreamFirstEventMs: upstreamFirstEventMs,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -6299,6 +6314,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	usageLog.OpenAIWSMode = result.OpenAIWSMode
 	usageLog.DurationMs = &durationMs
 	usageLog.FirstTokenMs = result.FirstTokenMs
+	usageLog.UpstreamFirstEventMs = result.UpstreamFirstEventMs
 	usageLog.CreatedAt = time.Now()
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)

@@ -210,6 +210,11 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 }
 
+// UpstreamFirstEventMs applies equality check predicate on the "upstream_first_event_ms" field. It's identical to UpstreamFirstEventMsEQ.
+func UpstreamFirstEventMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamFirstEventMs, v))
+}
+
 // UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
 func UserAgent(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
@@ -1648,6 +1653,56 @@ func FirstTokenMsIsNil() predicate.UsageLog {
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+}
+
+// UpstreamFirstEventMsEQ applies the EQ predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsNEQ applies the NEQ predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsIn applies the In predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUpstreamFirstEventMs, vs...))
+}
+
+// UpstreamFirstEventMsNotIn applies the NotIn predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUpstreamFirstEventMs, vs...))
+}
+
+// UpstreamFirstEventMsGT applies the GT predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsGTE applies the GTE predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsLT applies the LT predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsLTE applies the LTE predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUpstreamFirstEventMs, v))
+}
+
+// UpstreamFirstEventMsIsNil applies the IsNil predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldUpstreamFirstEventMs))
+}
+
+// UpstreamFirstEventMsNotNil applies the NotNil predicate on the "upstream_first_event_ms" field.
+func UpstreamFirstEventMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldUpstreamFirstEventMs))
 }
 
 // UserAgentEQ applies the EQ predicate on the "user_agent" field.

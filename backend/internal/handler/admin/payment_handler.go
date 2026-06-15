@@ -3,11 +3,13 @@ package admin
 import (
 	"context"
 	"strconv"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -44,6 +46,49 @@ func (h *PaymentHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+// GetDailyStats returns payment daily statistics for an explicit date range.
+// GET /api/v1/admin/payment/daily-stats?start=2026-06-01&end=2026-06-30
+func (h *PaymentHandler) GetDailyStats(c *gin.Context) {
+	const maxRangeDays = 370
+
+	userTZ := c.Query("timezone")
+	startRaw := c.Query("start")
+	endRaw := c.Query("end")
+	if startRaw == "" || endRaw == "" {
+		response.BadRequest(c, "start and end are required")
+		return
+	}
+
+	start, err := timezone.ParseInUserLocation("2006-01-02", startRaw, userTZ)
+	if err != nil {
+		response.BadRequest(c, "invalid start date")
+		return
+	}
+	end, err := timezone.ParseInUserLocation("2006-01-02", endRaw, userTZ)
+	if err != nil {
+		response.BadRequest(c, "invalid end date")
+		return
+	}
+	start = timezone.StartOfDayInUserLocation(start, userTZ)
+	endExclusive := timezone.StartOfDayInUserLocation(end, userTZ).AddDate(0, 0, 1)
+
+	if !endExclusive.After(start) {
+		response.BadRequest(c, "end date must be greater than or equal to start date")
+		return
+	}
+	if endExclusive.Sub(start) > maxRangeDays*24*time.Hour {
+		response.BadRequest(c, "date range is too large")
+		return
+	}
+
+	series, err := h.paymentService.GetDailyStatsRange(c.Request.Context(), start, endExclusive)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, series)
 }
 
 // --- Orders ---

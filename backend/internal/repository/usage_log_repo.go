@@ -41,7 +41,7 @@ func buildInt64InClause(ids []int64) (string, []any) {
 	return strings.Join(placeholders, ","), args
 }
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, upstream_first_event_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, service_tier, reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, created_at"
 
 // usageLogInsertArgTypes must stay in the same order as:
 //  1. prepareUsageLogInsert().args
@@ -82,6 +82,7 @@ var usageLogInsertArgTypes = [...]string{
 	"boolean",     // openai_ws_mode
 	"integer",     // duration_ms
 	"integer",     // first_token_ms
+	"integer",     // upstream_first_event_ms
 	"text",        // user_agent
 	"text",        // ip_address
 	"integer",     // image_count
@@ -772,6 +773,7 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			upstream_first_event_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -797,7 +799,7 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			?, ?, ?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON DUPLICATE KEY UPDATE id = id
 	`, prepared.args...)
@@ -820,6 +822,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	subscriptionID := nullInt64(log.SubscriptionID)
 	duration := nullInt(log.DurationMs)
 	firstToken := nullInt(log.FirstTokenMs)
+	upstreamFirstEvent := nullInt(log.UpstreamFirstEventMs)
 	userAgent := nullString(log.UserAgent)
 	ipAddress := nullString(log.IPAddress)
 	imageSize := nullString(log.ImageSize)
@@ -884,6 +887,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.OpenAIWSMode,
 			duration,
 			firstToken,
+			upstreamFirstEvent,
 			userAgent,
 			ipAddress,
 			log.ImageCount,
@@ -942,6 +946,7 @@ func buildUsageLogMultiInsertQuery(preparedList []usageLogInsertPrepared) string
 			openai_ws_mode,
 			duration_ms,
 			first_token_ms,
+			upstream_first_event_ms,
 			user_agent,
 			ip_address,
 			image_count,
@@ -3830,6 +3835,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		openaiWSMode          bool
 		durationMs            sql.NullInt64
 		firstTokenMs          sql.NullInt64
+		upstreamFirstEventMs  sql.NullInt64
 		userAgent             sql.NullString
 		ipAddress             sql.NullString
 		imageCount            int
@@ -3884,6 +3890,7 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&openaiWSMode,
 		&durationMs,
 		&firstTokenMs,
+		&upstreamFirstEventMs,
 		&userAgent,
 		&ipAddress,
 		&imageCount,
@@ -3960,6 +3967,10 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	if firstTokenMs.Valid {
 		value := int(firstTokenMs.Int64)
 		log.FirstTokenMs = &value
+	}
+	if upstreamFirstEventMs.Valid {
+		value := int(upstreamFirstEventMs.Int64)
+		log.UpstreamFirstEventMs = &value
 	}
 	if userAgent.Valid {
 		log.UserAgent = &userAgent.String

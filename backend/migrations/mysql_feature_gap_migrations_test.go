@@ -105,6 +105,17 @@ func TestMySQLEnableOpenAIAdvancedSchedulerMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLUsageLogUpstreamFirstEventMsMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("030_add_usage_log_upstream_first_event_ms.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'usage_logs'")
+	require.Contains(t, sql, "column_name = 'upstream_first_event_ms'")
+	require.Contains(t, sql, "ALTER TABLE `usage_logs` ADD COLUMN `upstream_first_event_ms` int NULL")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

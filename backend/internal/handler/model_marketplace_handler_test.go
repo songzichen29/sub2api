@@ -15,6 +15,7 @@ func TestBuildMarketplaceModelItems_ExcludesSubscriptionGroups(t *testing.T) {
 				{
 					ID:               1,
 					Name:             "standard-group",
+					Description:      "standard group description",
 					Platform:         service.PlatformOpenAI,
 					SubscriptionType: service.SubscriptionTypeStandard,
 					RateMultiplier:   1,
@@ -74,6 +75,9 @@ func TestBuildMarketplaceModelItems_ExcludesSubscriptionGroups(t *testing.T) {
 	if group.SubscriptionType != service.SubscriptionTypeStandard {
 		t.Fatalf("expected remaining group to be standard, got %q", group.SubscriptionType)
 	}
+	if group.Description != "standard group description" {
+		t.Fatalf("expected group description to be preserved, got %q", group.Description)
+	}
 
 	facets := collectMarketplaceGroupFacets(items)
 	if len(facets) != 1 {
@@ -82,6 +86,9 @@ func TestBuildMarketplaceModelItems_ExcludesSubscriptionGroups(t *testing.T) {
 
 	if facets[0].ID != 1 {
 		t.Fatalf("expected facet group id to be 1, got %d", facets[0].ID)
+	}
+	if facets[0].Description != "standard group description" {
+		t.Fatalf("expected facet group description to be preserved, got %q", facets[0].Description)
 	}
 }
 

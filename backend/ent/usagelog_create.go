@@ -421,6 +421,20 @@ func (_c *UsageLogCreate) SetNillableFirstTokenMs(v *int) *UsageLogCreate {
 	return _c
 }
 
+// SetUpstreamFirstEventMs sets the "upstream_first_event_ms" field.
+func (_c *UsageLogCreate) SetUpstreamFirstEventMs(v int) *UsageLogCreate {
+	_c.mutation.SetUpstreamFirstEventMs(v)
+	return _c
+}
+
+// SetNillableUpstreamFirstEventMs sets the "upstream_first_event_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableUpstreamFirstEventMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetUpstreamFirstEventMs(*v)
+	}
+	return _c
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_c *UsageLogCreate) SetUserAgent(v string) *UsageLogCreate {
 	_c.mutation.SetUserAgent(v)
@@ -962,6 +976,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FirstTokenMs(); ok {
 		_spec.SetField(usagelog.FieldFirstTokenMs, field.TypeInt, value)
 		_node.FirstTokenMs = &value
+	}
+	if value, ok := _c.mutation.UpstreamFirstEventMs(); ok {
+		_spec.SetField(usagelog.FieldUpstreamFirstEventMs, field.TypeInt, value)
+		_node.UpstreamFirstEventMs = &value
 	}
 	if value, ok := _c.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -1683,6 +1701,30 @@ func (u *UsageLogUpsert) AddFirstTokenMs(v int) *UsageLogUpsert {
 // ClearFirstTokenMs clears the value of the "first_token_ms" field.
 func (u *UsageLogUpsert) ClearFirstTokenMs() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldFirstTokenMs)
+	return u
+}
+
+// SetUpstreamFirstEventMs sets the "upstream_first_event_ms" field.
+func (u *UsageLogUpsert) SetUpstreamFirstEventMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldUpstreamFirstEventMs, v)
+	return u
+}
+
+// UpdateUpstreamFirstEventMs sets the "upstream_first_event_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateUpstreamFirstEventMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldUpstreamFirstEventMs)
+	return u
+}
+
+// AddUpstreamFirstEventMs adds v to the "upstream_first_event_ms" field.
+func (u *UsageLogUpsert) AddUpstreamFirstEventMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldUpstreamFirstEventMs, v)
+	return u
+}
+
+// ClearUpstreamFirstEventMs clears the value of the "upstream_first_event_ms" field.
+func (u *UsageLogUpsert) ClearUpstreamFirstEventMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldUpstreamFirstEventMs)
 	return u
 }
 
@@ -2521,6 +2563,34 @@ func (u *UsageLogUpsertOne) UpdateFirstTokenMs() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearFirstTokenMs() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetUpstreamFirstEventMs sets the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertOne) SetUpstreamFirstEventMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamFirstEventMs(v)
+	})
+}
+
+// AddUpstreamFirstEventMs adds v to the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertOne) AddUpstreamFirstEventMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddUpstreamFirstEventMs(v)
+	})
+}
+
+// UpdateUpstreamFirstEventMs sets the "upstream_first_event_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateUpstreamFirstEventMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamFirstEventMs()
+	})
+}
+
+// ClearUpstreamFirstEventMs clears the value of the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertOne) ClearUpstreamFirstEventMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUpstreamFirstEventMs()
 	})
 }
 
@@ -3551,6 +3621,34 @@ func (u *UsageLogUpsertBulk) UpdateFirstTokenMs() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearFirstTokenMs() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetUpstreamFirstEventMs sets the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertBulk) SetUpstreamFirstEventMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetUpstreamFirstEventMs(v)
+	})
+}
+
+// AddUpstreamFirstEventMs adds v to the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertBulk) AddUpstreamFirstEventMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddUpstreamFirstEventMs(v)
+	})
+}
+
+// UpdateUpstreamFirstEventMs sets the "upstream_first_event_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateUpstreamFirstEventMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateUpstreamFirstEventMs()
+	})
+}
+
+// ClearUpstreamFirstEventMs clears the value of the "upstream_first_event_ms" field.
+func (u *UsageLogUpsertBulk) ClearUpstreamFirstEventMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearUpstreamFirstEventMs()
 	})
 }
 

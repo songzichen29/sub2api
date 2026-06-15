@@ -43,6 +43,7 @@ type marketplaceProviderFacet struct {
 type marketplaceGroupFacet struct {
 	ID               int64   `json:"id"`
 	Name             string  `json:"name"`
+	Description      string  `json:"description"`
 	Provider         string  `json:"provider"`
 	ModelCount       int     `json:"model_count"`
 	RateMultiplier   float64 `json:"rate_multiplier"`
@@ -117,6 +118,7 @@ func buildMarketplaceModelItems(channels []service.AvailableChannel) []marketpla
 			groupsByPlatform[g.Platform] = append(groupsByPlatform[g.Platform], userAvailableGroup{
 				ID:               g.ID,
 				Name:             g.Name,
+				Description:      g.Description,
 				Platform:         g.Platform,
 				SubscriptionType: g.SubscriptionType,
 				RateMultiplier:   g.RateMultiplier,
@@ -294,6 +296,7 @@ func collectMarketplaceGroupFacets(items []marketplaceModelItem) []marketplaceGr
 						facet: marketplaceGroupFacet{
 							ID:               group.ID,
 							Name:             group.Name,
+							Description:      group.Description,
 							Provider:         group.Platform,
 							RateMultiplier:   group.RateMultiplier,
 							SubscriptionType: group.SubscriptionType,

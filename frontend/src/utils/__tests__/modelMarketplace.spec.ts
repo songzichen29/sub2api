@@ -24,6 +24,7 @@ const sampleChannels: UserAvailableChannel[] = [
           {
             id: 1,
             name: 'default-openai',
+            description: 'Default OpenAI access',
             platform: 'openai',
             subscription_type: 'standard',
             rate_multiplier: 1,
@@ -59,6 +60,7 @@ const sampleChannels: UserAvailableChannel[] = [
           {
             id: 2,
             name: 'vip-openai',
+            description: 'VIP OpenAI access',
             platform: 'openai',
             subscription_type: 'subscription',
             rate_multiplier: 1.2,
@@ -88,6 +90,7 @@ const sampleChannels: UserAvailableChannel[] = [
           {
             id: 3,
             name: 'claude',
+            description: 'Claude access',
             platform: 'anthropic',
             subscription_type: 'standard',
             rate_multiplier: 1,
@@ -210,6 +213,7 @@ describe('modelMarketplace utils', () => {
     expect(transformed[0].platforms).toHaveLength(1)
     expect(transformed[0].platforms[0].platform).toBe('openai')
     expect(transformed[0].platforms[0].groups[0].name).toBe('openai-public')
+    expect(transformed[0].platforms[0].groups[0].description).toBe('')
     expect(transformed[0].platforms[0].supported_models[0].name).toBe('gpt-5.4')
   })
 

@@ -314,13 +314,27 @@
           </template>
 
           <template #cell-first_token="{ row }">
-            <span
-              v-if="row.first_token_ms != null"
-              class="text-sm text-gray-600 dark:text-gray-400"
-            >
-              {{ formatDuration(row.first_token_ms) }}
-            </span>
-            <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+            <div class="space-y-0.5 text-sm">
+              <div
+                v-if="row.first_token_ms != null"
+                class="font-medium text-gray-700 dark:text-gray-300"
+              >
+                {{ formatDuration(row.first_token_ms) }}
+              </div>
+              <div v-else class="text-gray-400 dark:text-gray-500">-</div>
+              <div
+                v-if="row.upstream_first_event_ms != null"
+                class="text-[11px] leading-tight text-cyan-600 dark:text-cyan-400"
+              >
+                {{ t('usage.upstreamFirstEvent') }} {{ formatDuration(row.upstream_first_event_ms) }}
+              </div>
+              <div
+                v-if="firstTokenGapMs(row) != null"
+                class="text-[11px] leading-tight text-amber-600 dark:text-amber-400"
+              >
+                {{ t('usage.upstreamToFirstToken') }} {{ formatDuration(firstTokenGapMs(row)!) }}
+              </div>
+            </div>
           </template>
 
           <template #cell-duration="{ row }">
@@ -688,6 +702,11 @@ const formatDuration = (ms: number): string => {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
+const firstTokenGapMs = (row: Pick<UsageLog, 'first_token_ms' | 'upstream_first_event_ms'>): number | null => {
+  if (row.first_token_ms == null || row.upstream_first_event_ms == null) return null
+  return Math.max(0, row.first_token_ms - row.upstream_first_event_ms)
+}
+
 const imageUnitPrice = (row: UsageLog | null): number => {
   if (!row || row.image_count <= 0) return 0
   const total = row.total_cost ?? 0
@@ -930,6 +949,8 @@ const exportToCSV = async () => {
       'Billed Cost',
       'Original Cost',
       'First Token (ms)',
+      'Upstream First Event (ms)',
+      'Upstream First Event -> First Token (ms)',
       'Duration (ms)'
     ]
     const rows = allLogs.map((log) =>
@@ -949,6 +970,8 @@ const exportToCSV = async () => {
         log.actual_cost.toFixed(8),
         log.total_cost.toFixed(8),
         log.first_token_ms ?? '',
+        log.upstream_first_event_ms ?? '',
+        firstTokenGapMs(log) ?? '',
         log.duration_ms
       ].map(escapeCSVValue)
     )

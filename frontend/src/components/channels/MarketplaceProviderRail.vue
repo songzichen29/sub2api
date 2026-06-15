@@ -97,14 +97,22 @@
           "
           @click="$emit('select-group', facet.id)"
         >
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex min-w-0 items-center gap-2">
-              <span class="truncate text-sm font-medium">{{ facet.name }}</span>
-              <span
-                class="inline-flex flex-shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="truncate text-sm font-medium">{{ facet.name }}</span>
+                <span
+                  class="inline-flex flex-shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+                >
+                  {{ formatRateMultiplier(facet.rate_multiplier) }}
+                </span>
+              </div>
+              <p
+                v-if="facet.description"
+                class="mt-1 line-clamp-2 text-xs leading-4 text-gray-500 dark:text-gray-400"
               >
-                {{ formatRateMultiplier(facet.rate_multiplier) }}
-              </span>
+                {{ facet.description }}
+              </p>
             </div>
             <span class="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
               {{ facet.model_count }}

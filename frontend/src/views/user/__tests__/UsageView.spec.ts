@@ -39,6 +39,8 @@ const messages: Record<string, string> = {
   'usage.tokens': 'Tokens',
   'usage.cost': 'Cost',
   'usage.firstToken': 'First Token',
+  'usage.upstreamFirstEvent': 'Upstream first event',
+  'usage.upstreamToFirstToken': 'First event→first token',
   'usage.duration': 'Duration',
   'usage.time': 'Time',
   'usage.userAgent': 'User Agent',

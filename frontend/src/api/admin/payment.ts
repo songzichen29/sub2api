@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   DashboardStats,
+  DailyPaymentStat,
   PaymentOrder,
   PaymentChannel,
   SubscriptionPlan,
@@ -75,6 +76,11 @@ export const adminPaymentAPI = {
     return apiClient.get<DashboardStats>('/admin/payment/dashboard', {
       params: days ? { days } : undefined
     })
+  },
+
+  /** Get payment daily statistics for a fixed date range */
+  getDailyStats(params: { start: string; end: string }) {
+    return apiClient.get<DailyPaymentStat[]>('/admin/payment/daily-stats', { params })
   },
 
   // ==================== Orders ====================

@@ -25,6 +25,8 @@ const messages: Record<string, string> = {
   'admin.dashboard.day': 'Day',
   'admin.dashboard.hour': 'Hour',
   'admin.usage.failedToLoadUser': 'Failed to load user',
+  'usage.upstreamFirstEvent': 'Upstream first event',
+  'usage.upstreamToFirstToken': 'First event→first token',
 }
 
 const formatLocalDate = (date: Date): string => {

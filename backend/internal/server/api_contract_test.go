@@ -584,6 +584,7 @@ func TestAPIContracts(t *testing.T) {
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
+							"upstream_first_event_ms": null,
 							"image_count": 0,
 							"image_size": null,
 							"image_input_size": null,
