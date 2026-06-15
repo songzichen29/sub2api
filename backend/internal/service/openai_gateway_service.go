@@ -71,6 +71,11 @@ const (
 	openAIResponsesPreambleMaxPendingEvents = 8
 	openAIResponsesPreambleMaxPendingBytes  = 16 * 1024
 	openAIResponsesPreambleMaxPendingAge    = 1500 * time.Millisecond
+	// 仅用于日志诊断：当“上游首包 -> 真实首 token”的间隔超过该阈值时，
+	// 打印首 token 前的 SSE 事件摘要，用来判断上游是在沉默还是在发送非文本事件。
+	openAIResponsesSlowFirstTokenGap = 10 * time.Second
+	// 慢首字诊断日志中最多保留首 token 前的前 N 个事件时间线，避免大流量日志爆炸。
+	openAIResponsesPreFirstTokenTimelineLimit = 16
 
 	// Opt-in SSE timing comment for diagnosing "upstream first event" vs real
 	// first token latency. Disabled by default so normal pre-output failover
@@ -3185,6 +3190,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var usage *OpenAIUsage
 		var firstTokenMs *int
 		var upstreamFirstEventMs *int
+		var firstTokenDiagnostics *openAIResponsesPreFirstTokenDiagnostics
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
@@ -3195,6 +3201,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 			upstreamFirstEventMs = streamResult.upstreamFirstEventMs
+			firstTokenDiagnostics = streamResult.diagnostics
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 		} else {
@@ -3220,6 +3227,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		reasoningEffort := extractOpenAIReasoningEffort(reqBody, originalModel)
 		serviceTier := extractOpenAIServiceTier(reqBody)
+		if reqStream && firstTokenDiagnostics != nil && firstTokenMs != nil {
+			firstTokenDiagnostics.maybeLogSlowFirstToken(
+				ctx,
+				"service.openai_gateway",
+				account.ID,
+				originalModel,
+				optionalStringValue(reasoningEffort),
+				optionalStringValue(serviceTier),
+				len(body),
+				usage.CacheReadInputTokens,
+				usage.CacheCreationInputTokens,
+				upstreamFirstEventMs,
+				*firstTokenMs,
+			)
+		}
 
 		forwardResult := &OpenAIForwardResult{
 			RequestID:            resp.Header.Get("x-request-id"),
@@ -3422,6 +3444,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	var upstreamFirstEventMs *int
+	var firstTokenDiagnostics *openAIResponsesPreFirstTokenDiagnostics
 	imageCount := 0
 	var imageOutputSizes []string
 	if reqStream {
@@ -3432,6 +3455,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
 		upstreamFirstEventMs = result.upstreamFirstEventMs
+		firstTokenDiagnostics = result.diagnostics
 		imageCount = result.imageCount
 		imageOutputSizes = result.imageOutputSizes
 	} else {
@@ -3451,13 +3475,29 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if usage == nil {
 		usage = &OpenAIUsage{}
 	}
+	serviceTier := extractOpenAIServiceTierFromBody(body)
+	if reqStream && firstTokenDiagnostics != nil && firstTokenMs != nil {
+		firstTokenDiagnostics.maybeLogSlowFirstToken(
+			ctx,
+			"service.openai_gateway.passthrough",
+			account.ID,
+			reqModel,
+			optionalStringValue(reasoningEffort),
+			optionalStringValue(serviceTier),
+			len(body),
+			usage.CacheReadInputTokens,
+			usage.CacheCreationInputTokens,
+			upstreamFirstEventMs,
+			*firstTokenMs,
+		)
+	}
 
 	forwardResult := &OpenAIForwardResult{
 		RequestID:            resp.Header.Get("x-request-id"),
 		Usage:                *usage,
 		Model:                reqModel,
 		UpstreamModel:        upstreamPassthroughModel,
-		ServiceTier:          extractOpenAIServiceTierFromBody(body),
+		ServiceTier:          serviceTier,
 		ReasoningEffort:      reasoningEffort,
 		Stream:               reqStream,
 		OpenAIWSMode:         false,
@@ -3773,6 +3813,7 @@ type openaiStreamingResultPassthrough struct {
 	usage                *OpenAIUsage
 	firstTokenMs         *int
 	upstreamFirstEventMs *int
+	diagnostics          *openAIResponsesPreFirstTokenDiagnostics
 	imageCount           int
 	imageOutputSizes     []string
 }
@@ -3871,6 +3912,141 @@ func openAIResponsesShouldForceReleasePreamble(pendingCount int, pendingBytes in
 		return true, "pending_age"
 	}
 	return false, ""
+}
+
+type openAIResponsesPreFirstTokenEventSample struct {
+	ElapsedMs int    `json:"elapsed_ms"`
+	EventType string `json:"event_type"`
+}
+
+type openAIResponsesPreFirstTokenDiagnostics struct {
+	startTime               time.Time
+	upstreamRequestID       string
+	events                  map[string]int
+	samples                 []openAIResponsesPreFirstTokenEventSample
+	eventCount              int
+	lastEventBeforeTokenMs  *int
+	firstOutputTextDeltaMs  *int
+	firstAnyDeltaMs         *int
+	firstClientOutputMs     *int
+	loggedSlowFirstTokenGap bool
+}
+
+func newOpenAIResponsesPreFirstTokenDiagnostics(startTime time.Time, upstreamRequestID string) *openAIResponsesPreFirstTokenDiagnostics {
+	return &openAIResponsesPreFirstTokenDiagnostics{
+		startTime:         startTime,
+		upstreamRequestID: upstreamRequestID,
+		events:            make(map[string]int, 8),
+		samples:           make([]openAIResponsesPreFirstTokenEventSample, 0, openAIResponsesPreFirstTokenTimelineLimit),
+	}
+}
+
+func intPtrValueOr(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func (d *openAIResponsesPreFirstTokenDiagnostics) observeEvent(eventType string, firstTokenSeen bool) {
+	if d == nil || firstTokenSeen {
+		return
+	}
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" {
+		eventType = "(unknown)"
+	}
+	ms := int(time.Since(d.startTime).Milliseconds())
+	d.eventCount++
+	d.events[eventType]++
+	d.lastEventBeforeTokenMs = &ms
+	if len(d.samples) < openAIResponsesPreFirstTokenTimelineLimit {
+		d.samples = append(d.samples, openAIResponsesPreFirstTokenEventSample{
+			ElapsedMs: ms,
+			EventType: eventType,
+		})
+	}
+	if strings.Contains(eventType, ".delta") && d.firstAnyDeltaMs == nil {
+		v := ms
+		d.firstAnyDeltaMs = &v
+	}
+	if eventType == "response.output_text.delta" && d.firstOutputTextDeltaMs == nil {
+		v := ms
+		d.firstOutputTextDeltaMs = &v
+	}
+	if openAIStreamDataStartsClientOutput("{}", eventType) && d.firstClientOutputMs == nil {
+		v := ms
+		d.firstClientOutputMs = &v
+	}
+}
+
+func (d *openAIResponsesPreFirstTokenDiagnostics) maybeLogSlowFirstToken(
+	ctx context.Context,
+	component string,
+	accountID int64,
+	model string,
+	reasoningEffort string,
+	serviceTier string,
+	bodyBytes int,
+	cacheReadTokens int,
+	cacheCreationTokens int,
+	upstreamFirstEventMs *int,
+	firstTokenMs int,
+) {
+	if d == nil || d.loggedSlowFirstTokenGap || upstreamFirstEventMs == nil {
+		return
+	}
+	gapMs := firstTokenMs - *upstreamFirstEventMs
+	if gapMs < int(openAIResponsesSlowFirstTokenGap.Milliseconds()) {
+		return
+	}
+	d.loggedSlowFirstTokenGap = true
+	lastEventMs := -1
+	silenceMs := -1
+	if d.lastEventBeforeTokenMs != nil {
+		lastEventMs = *d.lastEventBeforeTokenMs
+		silenceMs = firstTokenMs - lastEventMs
+		if silenceMs < 0 {
+			silenceMs = 0
+		}
+	}
+	eventsJSON := "{}"
+	if data, err := json.Marshal(d.events); err == nil {
+		eventsJSON = string(data)
+	}
+	timelineJSON := "[]"
+	if data, err := json.Marshal(d.samples); err == nil {
+		timelineJSON = string(data)
+	}
+	logger.FromContext(ctx).Info("openai responses slow first token diagnostic",
+		zap.String("component", component),
+		zap.Int64("account_id", accountID),
+		zap.String("model", model),
+		zap.String("reasoning_effort", strings.TrimSpace(reasoningEffort)),
+		zap.String("service_tier", strings.TrimSpace(serviceTier)),
+		zap.Int("body_bytes", bodyBytes),
+		zap.Int("cache_read_tokens", cacheReadTokens),
+		zap.Int("cache_creation_tokens", cacheCreationTokens),
+		zap.String("upstream_request_id", d.upstreamRequestID),
+		zap.Int("upstream_first_event_ms", *upstreamFirstEventMs),
+		zap.Int("first_token_ms", firstTokenMs),
+		zap.Int("gap_ms", gapMs),
+		zap.Int("pre_first_token_event_count", d.eventCount),
+		zap.Int("last_event_before_first_token_ms", lastEventMs),
+		zap.Int("silence_before_first_token_ms", silenceMs),
+		zap.Int("first_any_delta_ms", intPtrValueOr(d.firstAnyDeltaMs, -1)),
+		zap.Int("first_output_text_delta_ms", intPtrValueOr(d.firstOutputTextDeltaMs, -1)),
+		zap.Int("first_client_output_ms", intPtrValueOr(d.firstClientOutputMs, -1)),
+		zap.String("pre_first_token_event_types", eventsJSON),
+		zap.String("pre_first_token_timeline", timelineJSON),
+	)
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
@@ -3995,6 +4171,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	upstreamFirstEventRecorded := false
 	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamRequestID)
 	pendingLines := make([]string, 0, 8)
 	pendingLineEvents := 0
 	pendingLineBytes := 0
@@ -4121,6 +4298,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			usage:                usage,
 			firstTokenMs:         firstTokenMs,
 			upstreamFirstEventMs: upstreamFirstEventMs,
+			diagnostics:          diagnostics,
 			imageCount:           imageCounter.Count(),
 			imageOutputSizes:     imageCounter.Sizes(),
 		}
@@ -4149,6 +4327,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				eventType = currentSSEEventType
 			}
 			recordUpstreamFirstEvent(eventType, true)
+			startsFirstToken := openAIStreamDataStartsFirstToken(trimmedData, eventType)
+			if firstTokenMs == nil && startsFirstToken {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstTokenMs = &ms
+			}
+			diagnostics.observeEvent(eventType, firstTokenMs != nil)
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
@@ -4167,10 +4351,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 			imageCounter.AddSSEData(dataBytes)
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if firstTokenMs == nil && openAIStreamDataStartsFirstToken(trimmedData, eventType) {
-				ms := int(time.Since(startTime).Milliseconds())
-				firstTokenMs = &ms
-			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 		}
 		if strings.TrimSpace(line) == "" {
@@ -4878,6 +5058,7 @@ type openaiStreamingResult struct {
 	usage                *OpenAIUsage
 	firstTokenMs         *int
 	upstreamFirstEventMs *int
+	diagnostics          *openAIResponsesPreFirstTokenDiagnostics
 	imageCount           int
 	imageOutputSizes     []string
 }
@@ -4977,6 +5158,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	upstreamFirstEventRecorded := false
 	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
+	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamRequestID)
 
 	pendingPreambleEvents := 0
 	pendingPreambleBytes := 0
@@ -5119,6 +5301,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			usage:                usage,
 			firstTokenMs:         firstTokenMs,
 			upstreamFirstEventMs: upstreamFirstEventMs,
+			diagnostics:          diagnostics,
 			imageCount:           imageCounter.Count(),
 			imageOutputSizes:     imageCounter.Sizes(),
 		}
@@ -5247,6 +5430,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
+			diagnostics.observeEvent(eventType, firstTokenMs != nil)
 
 			// 写入客户端（客户端断开后继续 drain 上游）
 			if !clientDisconnected {
