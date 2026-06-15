@@ -1449,6 +1449,10 @@ func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSub
 // 仅做内存检查，不触发 DB 写入。窗口重置的 DB 写入由 DoWindowMaintenance 异步完成。
 // 返回 needsMaintenance 表示是否需要异步执行窗口维护。
 func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *UserSubscription, group *Group) (needsMaintenance bool, err error) {
+	return s.validateAndCheckLimits(ctx, sub, group, true)
+}
+
+func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *UserSubscription, group *Group, allowDBRecheck bool) (needsMaintenance bool, err error) {
 	now := time.Now()
 
 	// 1. 验证订阅状态
@@ -1488,21 +1492,58 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 
 	// 3. 检查用量限额
 	if !sub.CheckDailyLimit(group, 0) {
+		if allowDBRecheck {
+			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrDailyLimitExceeded)
+		}
 		if sub.AllowsDailyOverdraft(group) {
 			s.MarkQuotaExhausted(ctx, sub)
 		}
 		return needsMaintenance, ErrDailyLimitExceeded
 	}
 	if !sub.CheckWeeklyLimit(group, 0) {
+		if allowDBRecheck {
+			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrWeeklyLimitExceeded)
+		}
 		s.MarkQuotaExhausted(ctx, sub)
 		return needsMaintenance, ErrWeeklyLimitExceeded
 	}
 	if !sub.CheckMonthlyLimit(group, 0) {
+		if allowDBRecheck {
+			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrMonthlyLimitExceeded)
+		}
 		s.MarkQuotaExhausted(ctx, sub)
 		return needsMaintenance, ErrMonthlyLimitExceeded
 	}
 
 	return needsMaintenance, nil
+}
+
+func (s *SubscriptionService) recheckSubscriptionLimitFromDB(ctx context.Context, sub *UserSubscription, group *Group, staleNeedsMaintenance bool, staleErr error) (bool, error) {
+	if s == nil || s.userSubRepo == nil || sub == nil || sub.UserID <= 0 || sub.GroupID <= 0 {
+		return staleNeedsMaintenance, staleErr
+	}
+
+	freshSub, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, sub.UserID, sub.GroupID)
+	if err != nil || freshSub == nil {
+		return staleNeedsMaintenance, staleErr
+	}
+
+	freshNeedsMaintenance, freshErr := s.validateAndCheckLimits(ctx, freshSub, group, false)
+	if freshErr != nil {
+		return freshNeedsMaintenance, freshErr
+	}
+
+	// 当前快照判定超限，但 DB 权威数据仍可用：说明 L1/热路径快照已陈旧。
+	// 覆盖调用方持有的订阅对象，并清掉相关缓存，避免后续请求继续命中旧快照。
+	*sub = *freshSub
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+	return freshNeedsMaintenance, nil
 }
 
 // DoWindowMaintenance 异步执行窗口维护（激活+重置）

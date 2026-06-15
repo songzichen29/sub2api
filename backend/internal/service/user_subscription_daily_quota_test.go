@@ -13,11 +13,20 @@ type dailyResetTrackingUserSubRepo struct {
 	userSubRepoNoop
 
 	resetDailyCalled bool
+	activeSub        *UserSubscription
 }
 
 func (r *dailyResetTrackingUserSubRepo) ResetDailyUsage(context.Context, int64, time.Time) error {
 	r.resetDailyCalled = true
 	return nil
+}
+
+func (r *dailyResetTrackingUserSubRepo) GetActiveByUserIDAndGroupID(context.Context, int64, int64) (*UserSubscription, error) {
+	if r.activeSub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	cp := *r.activeSub
+	return &cp, nil
 }
 
 func TestAssignOrExtendSubscription_ExpiredDailyCardStartsNewOneTimeQuota(t *testing.T) {
@@ -175,4 +184,45 @@ func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t 
 	require.False(t, needsMaintenance, "日卡跨过日窗口后不应触发 daily reset 维护")
 	require.True(t, errors.Is(err, ErrDailyLimitExceeded))
 	require.Equal(t, dailyLimit+0.01, sub.DailyUsageUSD, "热路径不应清零日卡已用额度")
+}
+
+func TestValidateAndCheckLimits_RechecksStaleDailyLimitSnapshot(t *testing.T) {
+	now := time.Now()
+	dailyLimit := 80.0
+	repo := &dailyResetTrackingUserSubRepo{
+		activeSub: &UserSubscription{
+			ID:               127,
+			UserID:           110,
+			GroupID:          26,
+			Status:           SubscriptionStatusActive,
+			StartsAt:         now.Add(-7 * time.Hour),
+			ExpiresAt:        now.Add(5 * 24 * time.Hour),
+			DailyWindowStart: &now,
+			DailyUsageUSD:    66.9359596,
+			WeeklyUsageUSD:   481.56250122,
+		},
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	staleSub := &UserSubscription{
+		ID:               127,
+		UserID:           110,
+		GroupID:          26,
+		Status:           SubscriptionStatusActive,
+		StartsAt:         now.Add(-7 * time.Hour),
+		ExpiresAt:        now.Add(5 * 24 * time.Hour),
+		DailyWindowStart: &now,
+		DailyUsageUSD:    dailyLimit,
+	}
+	group := &Group{
+		ID:               26,
+		SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD:    &dailyLimit,
+	}
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(context.Background(), staleSub, group)
+
+	require.NoError(t, err)
+	require.False(t, needsMaintenance)
+	require.Equal(t, repo.activeSub.DailyUsageUSD, staleSub.DailyUsageUSD)
+	require.Equal(t, repo.activeSub.WeeklyUsageUSD, staleSub.WeeklyUsageUSD)
 }

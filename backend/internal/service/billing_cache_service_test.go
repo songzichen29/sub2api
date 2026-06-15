@@ -133,8 +133,9 @@ func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 
 type billingCacheSubscriptionStub struct {
 	billingCacheWorkerStub
-	data        *SubscriptionCacheData
-	lastSetData *SubscriptionCacheData
+	data             *SubscriptionCacheData
+	lastSetData      *SubscriptionCacheData
+	invalidateCalled int
 }
 
 func (b *billingCacheSubscriptionStub) GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
@@ -144,6 +145,11 @@ func (b *billingCacheSubscriptionStub) GetSubscriptionCache(ctx context.Context,
 func (b *billingCacheSubscriptionStub) SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error {
 	b.lastSetData = data
 	return b.billingCacheWorkerStub.SetSubscriptionCache(ctx, userID, groupID, data)
+}
+
+func (b *billingCacheSubscriptionStub) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
+	b.invalidateCalled++
+	return nil
 }
 
 type billingCacheSubscriptionRepoStub struct {
@@ -329,4 +335,38 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DisabledDayOverdraftRep
 	cache.data.WeeklyUsage = 1160 + 15 + 25
 	err = svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_RechecksStaleDailyLimitCache(t *testing.T) {
+	daily := 80.0
+	now := time.Now()
+	startsAt := now.Add(-7 * time.Hour)
+	dailyStart := startsAt
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:           SubscriptionStatusActive,
+		StartsAt:         startsAt,
+		ExpiresAt:        startsAt.Add(5 * 24 * time.Hour),
+		DailyWindowStart: &dailyStart,
+		DailyUsage:       daily,
+		WeeklyUsage:      500,
+	}}
+	repo := &billingCacheSubscriptionRepoStub{sub: &UserSubscription{
+		Status:           SubscriptionStatusActive,
+		StartsAt:         startsAt,
+		ExpiresAt:        startsAt.Add(5 * 24 * time.Hour),
+		DailyWindowStart: &dailyStart,
+		DailyUsageUSD:    66.9359596,
+		WeeklyUsageUSD:   481.56250122,
+	}}
+	svc := NewBillingCacheService(cache, nil, repo, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+	group := &Group{ID: 26, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily}
+
+	err := svc.checkSubscriptionEligibility(context.Background(), 110, group, nil)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, cache.invalidateCalled)
+	require.NotNil(t, cache.lastSetData)
+	require.Equal(t, repo.sub.DailyUsageUSD, cache.lastSetData.DailyUsage)
+	require.Equal(t, repo.sub.WeeklyUsageUSD, cache.lastSetData.WeeklyUsage)
 }

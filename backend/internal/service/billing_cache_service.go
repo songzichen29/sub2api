@@ -964,26 +964,70 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	}
 	if group.HasDailyLimit() {
 		if !subAllowsOverdraft && subData.DailyUsage+cacheSub.DailyOverdraftDebtUSD(group, time.Now()) >= *group.DailyLimitUSD {
+			if s.subscriptionCacheLimitRecheckAllows(ctx, userID, group) {
+				return nil
+			}
 			return ErrDailyLimitExceeded
 		}
 		if subAllowsOverdraft {
 			limit, ok := cacheSub.DailyOverdraftLimitUSD(group)
 			used := cacheSub.DailyOverdraftUsedUSD(group)
 			if !ok || used >= limit {
+				if s.subscriptionCacheLimitRecheckAllows(ctx, userID, group) {
+					return nil
+				}
 				return ErrDailyLimitExceeded
 			}
 		}
 	}
 
 	if group.HasWeeklyLimit() && !subAllowsOverdraft && subData.WeeklyUsage >= *group.WeeklyLimitUSD {
+		if s.subscriptionCacheLimitRecheckAllows(ctx, userID, group) {
+			return nil
+		}
 		return ErrWeeklyLimitExceeded
 	}
 
 	if group.HasMonthlyLimit() && !subAllowsOverdraft && subData.MonthlyUsage >= *group.MonthlyLimitUSD {
+		if s.subscriptionCacheLimitRecheckAllows(ctx, userID, group) {
+			return nil
+		}
 		return ErrMonthlyLimitExceeded
 	}
 
 	return nil
+}
+
+func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Context, userID int64, group *Group) bool {
+	if s == nil || s.subRepo == nil || group == nil {
+		return false
+	}
+	freshSub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, group.ID)
+	if err != nil || freshSub == nil {
+		return false
+	}
+	if !freshSub.CheckDailyLimit(group, 0) ||
+		!freshSub.CheckWeeklyLimit(group, 0) ||
+		!freshSub.CheckMonthlyLimit(group, 0) {
+		return false
+	}
+
+	if s.cache != nil {
+		_ = s.cache.InvalidateSubscriptionCache(ctx, userID, group.ID)
+		s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
+			Status:              freshSub.Status,
+			StartsAt:            freshSub.StartsAt,
+			ExpiresAt:           freshSub.ExpiresAt,
+			ValidityUnit:        normalizeSubscriptionValidityUnit(freshSub.ValidityUnit),
+			DailyWindowStart:    freshSub.DailyWindowStart,
+			DailyUsage:          freshSub.DailyUsageUSD,
+			WeeklyUsage:         freshSub.WeeklyUsageUSD,
+			MonthlyUsage:        freshSub.MonthlyUsageUSD,
+			AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
+			Version:             freshSub.UpdatedAt.Unix(),
+		})
+	}
+	return true
 }
 
 // checkUserPlatformQuotaEligibility 在 standard 模式下检查 user × platform 日/周/月 quota。
