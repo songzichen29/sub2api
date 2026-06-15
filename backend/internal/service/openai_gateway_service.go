@@ -3886,16 +3886,32 @@ func openAIStreamDataStartsFirstToken(data, eventType string) bool {
 	if trimmed == "" || trimmed == "[DONE]" || eventType == "" {
 		return false
 	}
-	if openAIStreamEventIsPreamble(eventType) || openAIStreamEventIsTerminal(trimmed) {
+	if openAIStreamEventIsPreamble(eventType) || openAIStreamEventIsTerminal(trimmed) || openAIStreamEventTypeIsTerminal(eventType) {
 		return false
 	}
-	if !strings.Contains(eventType, ".delta") {
+	if eventType == "response.output_item.added" || eventType == "response.output_item.done" {
 		return false
 	}
-	if delta := gjson.Get(trimmed, "delta"); delta.Exists() {
-		return delta.String() != ""
+	if !openAIResponsesEventTypeCanStartFirstToken(eventType) {
+		return false
 	}
-	return false
+	return openAIResponsesPayloadHasNonEmptyDelta(trimmed)
+}
+
+func openAIResponsesEventTypeCanStartFirstToken(eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" {
+		return false
+	}
+	return strings.Contains(eventType, ".delta")
+}
+
+func openAIResponsesPayloadHasNonEmptyDelta(data string) bool {
+	delta := gjson.Get(data, "delta")
+	if !delta.Exists() {
+		return false
+	}
+	return strings.TrimSpace(delta.String()) != ""
 }
 
 func openAIResponsesShouldForceReleasePreamble(pendingCount int, pendingBytes int, firstPendingAt time.Time, now time.Time) (bool, string) {

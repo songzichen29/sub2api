@@ -2159,7 +2159,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			responseID = eventResponseID
 		}
 
-		isTokenEvent := isOpenAIWSTokenEvent(eventType)
+		isTokenEvent := isOpenAIWSTokenEventMessage(message, eventType)
 		if isTokenEvent {
 			tokenEventCount++
 		}
@@ -2986,7 +2986,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					}
 				}
 			}
-			isTokenEvent := isOpenAIWSTokenEvent(eventType)
+			isTokenEvent := isOpenAIWSTokenEventMessage(upstreamMessage, eventType)
 			if isTokenEvent {
 				tokenEventCount++
 			}
@@ -3898,7 +3898,18 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	if eventType == "" {
 		return false
 	}
-	return strings.Contains(eventType, ".delta")
+	if openAIStreamEventIsPreamble(eventType) || isOpenAIWSTerminalEvent(eventType) ||
+		eventType == "response.output_item.added" || eventType == "response.output_item.done" {
+		return false
+	}
+	return openAIResponsesEventTypeCanStartFirstToken(eventType)
+}
+
+func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool {
+	if !isOpenAIWSTokenEvent(eventType) {
+		return false
+	}
+	return openAIResponsesPayloadHasNonEmptyDelta(string(message))
 }
 
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {

@@ -400,6 +400,36 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	require.False(t, isTokenEvent("response.done"))
 }
 
+func TestIsTokenEventMessageRequiresNonEmptyDelta(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		eventType string
+		message   []byte
+		want      bool
+	}{
+		{name: "text_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"hi"}`), want: true},
+		{name: "function_call_arguments_delta", eventType: "response.function_call_arguments.delta", message: []byte(`{"type":"response.function_call_arguments.delta","delta":"{}"}`), want: true},
+		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", message: []byte(`{"type":"response.reasoning_summary_text.delta","delta":"think"}`), want: true},
+		{name: "unknown_delta", eventType: "response.custom.delta", message: []byte(`{"type":"response.custom.delta","delta":"x"}`), want: true},
+		{name: "empty_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":""}`), want: false},
+		{name: "whitespace_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"   "}`), want: false},
+		{name: "missing_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta"}`), want: false},
+		{name: "preamble_with_delta", eventType: "response.created", message: []byte(`{"type":"response.created","delta":"x"}`), want: false},
+		{name: "terminal_with_delta", eventType: "response.completed", message: []byte(`{"type":"response.completed","delta":"x"}`), want: false},
+		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: false},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, isTokenEventMessage(tc.message, tc.eventType))
+		})
+	}
+}
+
 func TestShouldParseUsageTerminalEvents(t *testing.T) {
 	t.Parallel()
 
@@ -478,4 +508,36 @@ func TestObserveUpstreamMessage_ResponseIDFallbackPolicy(t *testing.T) {
 	)
 	require.True(t, observed.terminal)
 	require.Equal(t, "resp_fallback", observed.responseID)
+}
+
+func TestObserveUpstreamMessage_EmptyDeltaDoesNotSetFirstToken(t *testing.T) {
+	t.Parallel()
+
+	state := &relayState{requestModel: "gpt-5"}
+	startAt := time.Unix(0, 0)
+	now := startAt
+	nowFn := func() time.Time {
+		now = now.Add(5 * time.Millisecond)
+		return now
+	}
+
+	observed := observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.output_text.delta","response_id":"resp_empty","delta":""}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	require.False(t, observed.terminal)
+	require.Nil(t, state.firstTokenMs)
+
+	observed = observeUpstreamMessage(
+		state,
+		[]byte(`{"type":"response.output_text.delta","response_id":"resp_empty","delta":"hi"}`),
+		startAt,
+		nowFn,
+		nil,
+	)
+	require.False(t, observed.terminal)
+	require.NotNil(t, state.firstTokenMs)
 }

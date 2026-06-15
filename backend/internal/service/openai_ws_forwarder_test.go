@@ -73,3 +73,30 @@ func TestIsOpenAIWSTokenEvent_DisjointWithTerminal(t *testing.T) {
 		})
 	}
 }
+
+func TestIsOpenAIWSTokenEventMessage_RequiresNonEmptyDelta(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		message   []byte
+		want      bool
+	}{
+		{name: "text_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"hi"}`), want: true},
+		{name: "function_call_arguments_delta", eventType: "response.function_call_arguments.delta", message: []byte(`{"type":"response.function_call_arguments.delta","delta":"{}"}`), want: true},
+		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", message: []byte(`{"type":"response.reasoning_summary_text.delta","delta":"think"}`), want: true},
+		{name: "unknown_delta", eventType: "response.custom.delta", message: []byte(`{"type":"response.custom.delta","delta":"x"}`), want: true},
+		{name: "empty_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":""}`), want: false},
+		{name: "whitespace_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"   "}`), want: false},
+		{name: "missing_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta"}`), want: false},
+		{name: "preamble_with_delta", eventType: "response.created", message: []byte(`{"type":"response.created","delta":"x"}`), want: false},
+		{name: "terminal_with_delta", eventType: "response.completed", message: []byte(`{"type":"response.completed","delta":"x"}`), want: false},
+		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: false},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, isOpenAIWSTokenEventMessage(tc.message, tc.eventType))
+		})
+	}
+}

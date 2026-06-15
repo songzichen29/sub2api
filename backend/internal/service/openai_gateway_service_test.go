@@ -45,8 +45,12 @@ func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
 		{name: "terminal_failed", data: `{"type":"response.failed"}`, eventType: "response.failed", want: false},
 		{name: "text_delta", data: `{"type":"response.output_text.delta","delta":"h"}`, eventType: "response.output_text.delta", want: true},
 		{name: "empty_text_delta", data: `{"type":"response.output_text.delta","delta":""}`, eventType: "response.output_text.delta", want: false},
+		{name: "whitespace_text_delta", data: `{"type":"response.output_text.delta","delta":"   "}`, eventType: "response.output_text.delta", want: false},
 		{name: "audio_delta", data: `{"type":"response.output_audio.delta","delta":"abc"}`, eventType: "response.output_audio.delta", want: true},
 		{name: "function_arguments_delta", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, eventType: "response.function_call_arguments.delta", want: true},
+		{name: "reasoning_summary_delta", data: `{"type":"response.reasoning_summary_text.delta","delta":"think"}`, eventType: "response.reasoning_summary_text.delta", want: true},
+		{name: "unknown_delta", data: `{"type":"response.custom.delta","delta":"x"}`, eventType: "response.custom.delta", want: true},
+		{name: "unknown_non_delta", data: `{"type":"response.custom","value":"x"}`, eventType: "response.custom", want: false},
 		{name: "output_text_done", data: `{"type":"response.output_text.done","text":"h"}`, eventType: "response.output_text.done", want: false},
 		{name: "output_audio_done", data: `{"type":"response.output_audio.done"}`, eventType: "response.output_audio.done", want: false},
 		{name: "output_text_annotation_added", data: `{"type":"response.output_text.annotation.added"}`, eventType: "response.output_text.annotation.added", want: false},
@@ -2092,6 +2096,39 @@ func TestOpenAIStreamingPassthroughDebugTimingCommentDoesNotCountAsFirstToken(t 
 	require.Contains(t, rec.Body.String(), "response.output_text.delta")
 }
 
+func TestOpenAIStreamingPassthroughEventNamedDeltaRecordsFirstTokenMs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_text.delta`,
+			`data: {"delta":"你"}`,
+			"",
+			`event: response.completed`,
+			`data: {"response":{"usage":{"input_tokens":2,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-passthrough-event-named-delta-first-token"}},
+	}
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, time.Now(), "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs, "event: response.output_text.delta should supply type for passthrough data-only payload")
+	require.Contains(t, rec.Body.String(), `data: {"delta":"你"}`)
+}
+
 func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
@@ -2121,6 +2158,7 @@ func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t 
 	_ = pr.Close()
 	require.NoError(t, err)
 	require.NotNil(t, result)
+	require.Nil(t, result.firstTokenMs, "terminal response.done must not be recorded as first token")
 	require.NotNil(t, result.usage)
 	require.Equal(t, 2, result.usage.InputTokens)
 	require.Equal(t, 3, result.usage.OutputTokens)
