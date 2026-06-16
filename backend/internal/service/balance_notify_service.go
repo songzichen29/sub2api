@@ -178,7 +178,7 @@ func buildQuotaDimsFromState(account *Account, state *AccountQuotaState) []quota
 }
 
 // CheckAccountQuotaAfterIncrement checks if any quota dimension crossed above its notify threshold.
-// When quotaState is non-nil (from DB transaction RETURNING), it is used directly for threshold
+// When quotaState is non-nil (from repository transaction result), it is used directly for threshold
 // checking, avoiding a separate DB read. Otherwise it falls back to fetching fresh account data.
 func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Context, account *Account, cost float64, quotaState *AccountQuotaState) {
 	if account == nil || s.emailService == nil || s.settingRepo == nil || cost <= 0 {

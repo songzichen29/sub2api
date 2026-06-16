@@ -270,7 +270,7 @@ func validateExtraHeaders(h map[string]string) error {
 	return nil
 }
 
-// emptyHeadersIfNil 把 nil map 归一成空 map（repo 层写库时 JSONB 需要非 nil）。
+// emptyHeadersIfNil 把 nil map 归一成空 map（repo 层写库时 JSON 需要非 nil）。
 func emptyHeadersIfNil(h map[string]string) map[string]string {
 	if h == nil {
 		return map[string]string{}

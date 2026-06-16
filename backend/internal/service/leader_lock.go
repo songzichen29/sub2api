@@ -20,9 +20,9 @@ type LeaderLockCache interface {
 
 // tryAcquireSingletonLeaderLock provides best-effort single-flight execution of a
 // periodic background job across multiple instances. It prefers the Redis-backed
-// LeaderLockCache and falls back to a Postgres advisory lock when the cache is
-// unavailable or errors, mirroring the approach used by the Ops background
-// services.
+// LeaderLockCache and falls back to a database-level lock when the cache is
+// unavailable or errors. The active MySQL repository path implements that
+// fallback with MySQL named locks.
 //
 // Semantics:
 //   - acquired      -> returns a non-nil release func and true; callers should
@@ -55,7 +55,7 @@ func tryAcquireSingletonLeaderLock(ctx context.Context, cache LeaderLockCache, d
 			}
 			return release, true
 		}
-		// Cache error: fall through to the DB advisory lock so a flaky Redis does
+		// Cache error: fall through to the DB named lock so a flaky Redis does
 		// not stampede the job across every instance.
 	}
 

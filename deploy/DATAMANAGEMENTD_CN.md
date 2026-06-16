@@ -71,7 +71,8 @@ services:
 
 `datamanagementd` 执行备份时依赖以下工具：
 
-- `pg_dump`
+- `mysqldump`
+- `mysql`
 - `redis-cli`
 - `docker`（仅 `source_mode=docker_exec` 时）
 

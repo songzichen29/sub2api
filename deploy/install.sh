@@ -94,7 +94,7 @@ declare -A MSG_ZH=(
     ["install_complete"]="Sub2API 安装完成！"
     ["install_dir"]="安装目录"
     ["next_steps"]="后续步骤"
-    ["step1_check_services"]="确保 PostgreSQL 和 Redis 正在运行："
+    ["step1_check_services"]="确保 MySQL 和 Redis 正在运行："
     ["step2_start_service"]="启动 Sub2API 服务："
     ["step3_enable_autostart"]="设置开机自启："
     ["step4_open_wizard"]="在浏览器中打开设置向导："
@@ -219,7 +219,7 @@ declare -A MSG_EN=(
     ["install_complete"]="Sub2API installation completed!"
     ["install_dir"]="Installation directory"
     ["next_steps"]="NEXT STEPS"
-    ["step1_check_services"]="Make sure PostgreSQL and Redis are running:"
+    ["step1_check_services"]="Make sure MySQL and Redis are running:"
     ["step2_start_service"]="Start Sub2API service:"
     ["step3_enable_autostart"]="Enable auto-start on boot:"
     ["step4_open_wizard"]="Open the Setup Wizard in your browser:"
@@ -671,8 +671,8 @@ install_service() {
 [Unit]
 Description=Sub2API - AI API Gateway Platform
 Documentation=https://github.com/Wei-Shaw/sub2api
-After=network.target postgresql.service redis.service
-Wants=postgresql.service redis.service
+After=network.target mysql.service mariadb.service redis.service
+Wants=mysql.service mariadb.service redis.service
 
 [Service]
 Type=simple

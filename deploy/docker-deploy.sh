@@ -4,7 +4,7 @@
 # =============================================================================
 # This script prepares the local deploy directory for Sub2API:
 #   - Copies .env.example to .env
-#   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY)
+#   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, DATABASE_PASSWORD)
 #   - Creates necessary data directories
 #
 # After running this script, you can start services with:
@@ -89,6 +89,7 @@ main() {
     # Generate secrets
     JWT_SECRET=$(generate_secret)
     TOTP_ENCRYPTION_KEY=$(generate_secret)
+    DATABASE_PASSWORD=$(generate_secret)
     # Create .env from .env.example
     cp .env.example .env
 
@@ -97,15 +98,17 @@ main() {
         # GNU sed (Linux)
         sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
+        sed -i "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=${DATABASE_PASSWORD}/" .env
     else
         # BSD sed (macOS)
         sed -i '' "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i '' "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
+        sed -i '' "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=${DATABASE_PASSWORD}/" .env
     fi
 
     # Create data directories
     print_info "Creating data directories..."
-    mkdir -p data
+    mkdir -p data mysql_data redis_data
     print_success "Created data directories"
 
     # Set secure permissions for .env file (readable/writable only by owner)
@@ -120,6 +123,7 @@ main() {
     echo "Generated secure credentials:"
     echo "  JWT_SECRET:            ${JWT_SECRET}"
     echo "  TOTP_ENCRYPTION_KEY:   ${TOTP_ENCRYPTION_KEY}"
+    echo "  DATABASE_PASSWORD:     ${DATABASE_PASSWORD}"
     echo ""
     print_warning "These credentials have been saved to .env file."
     print_warning "Please keep them secure and do not share publicly!"
@@ -129,6 +133,8 @@ main() {
     echo "  .env                      - Environment variables (generated secrets)"
     echo "  .env.example              - Example template (for reference)"
     echo "  data/                     - Application data (will be created on first run)"
+    echo "  mysql_data/               - MySQL data"
+    echo "  redis_data/               - Redis data"
     echo ""
     echo "Next steps:"
     echo "  1. (Optional) Edit .env to customize configuration"

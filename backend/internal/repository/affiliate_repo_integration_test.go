@@ -210,8 +210,8 @@ VALUES (?, ?, 0, 0, NOW(), NOW())`, u.ID, affCode)
 // - ResetUserAffCode reverts aff_code_custom and assigns a new system-format code
 //
 // The conflict path (duplicate code → ErrAffiliateCodeTaken) lives in its own
-// test because a unique-violation aborts the surrounding Postgres tx, which
-// would poison subsequent assertions in the same transaction.
+// test because a unique-violation can poison subsequent assertions in the same
+// transaction on some database/driver combinations.
 func TestAffiliateRepository_AdminCustomCode(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
@@ -266,9 +266,9 @@ func TestAffiliateRepository_AdminCustomCode(t *testing.T) {
 }
 
 // TestAffiliateRepository_AdminCustomCode_Conflict isolates the unique-violation
-// path. PostgreSQL aborts the enclosing tx when a unique constraint fires, so
-// this test must be the only assertion and run in its own tx — production
-// callers each have their own outer tx, so this matches real behavior.
+// path. Keep it isolated in its own tx so a duplicate-key error cannot affect
+// subsequent assertions; production callers each have their own outer tx, so
+// this matches real behavior.
 func TestAffiliateRepository_AdminCustomCode_Conflict(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

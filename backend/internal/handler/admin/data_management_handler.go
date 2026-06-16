@@ -57,7 +57,7 @@ type CreateBackupJobRequest struct {
 	BackupType     string `json:"backup_type" binding:"required,oneof=mysql redis full"`
 	UploadToS3     bool   `json:"upload_to_s3"`
 	S3ProfileID    string `json:"s3_profile_id"`
-	PostgresID     string `json:"mysql_profile_id"`
+	MySQLID        string `json:"mysql_profile_id"`
 	RedisID        string `json:"redis_profile_id"`
 	IdempotencyKey string `json:"idempotency_key"`
 }
@@ -197,7 +197,7 @@ func (h *DataManagementHandler) CreateBackupJob(c *gin.Context) {
 		BackupType:     req.BackupType,
 		UploadToS3:     req.UploadToS3,
 		S3ProfileID:    req.S3ProfileID,
-		PostgresID:     req.PostgresID,
+		MySQLID:        req.MySQLID,
 		RedisID:        req.RedisID,
 		TriggeredBy:    triggeredBy,
 		IdempotencyKey: req.IdempotencyKey,

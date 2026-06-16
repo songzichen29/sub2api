@@ -746,7 +746,7 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 	}
 	defer func() { _ = body.Close() }()
 
-	// 流式解压 gzip -> psql（不将全部数据加载到内存）
+	// 流式解压 gzip -> mysql（不将全部数据加载到内存）
 	gzReader, err := gzip.NewReader(body)
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
@@ -755,7 +755,7 @@ func (s *BackupService) RestoreBackup(ctx context.Context, backupID string) erro
 
 	// 流式恢复
 	if err := s.dumper.Restore(ctx, gzReader); err != nil {
-		return fmt.Errorf("pg restore: %w", err)
+		return fmt.Errorf("mysql restore: %w", err)
 	}
 
 	return nil
@@ -855,7 +855,7 @@ func (s *BackupService) executeRestore(record *BackupRecord, objectStore BackupO
 
 	if err := s.dumper.Restore(ctx, gzReader); err != nil {
 		record.RestoreStatus = "failed"
-		record.RestoreError = fmt.Sprintf("pg restore: %v", err)
+		record.RestoreError = fmt.Sprintf("mysql restore: %v", err)
 		_ = s.saveRecord(context.Background(), record)
 		return
 	}

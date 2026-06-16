@@ -8,44 +8,64 @@ Sub2API is an AI API Gateway Platform for distributing and managing AI product s
 docker run -d \
   --name sub2api \
   -p 8080:8080 \
-  -e DATABASE_URL="postgres://user:pass@host:5432/sub2api" \
-  -e REDIS_URL="redis://host:6379" \
+  -e AUTO_SETUP=true \
+  -e DATABASE_HOST=mysql.example.internal \
+  -e DATABASE_PORT=3306 \
+  -e DATABASE_USER=sub2api \
+  -e DATABASE_PASSWORD=change_this_password \
+  -e DATABASE_DBNAME=sub2api \
+  -e REDIS_HOST=redis.example.internal \
+  -e REDIS_PORT=6379 \
   weishaw/sub2api:latest
 ```
 
 ## Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   sub2api:
     image: weishaw/sub2api:latest
     ports:
       - "8080:8080"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/sub2api?sslmode=disable
-      - REDIS_URL=redis://redis:6379
+      - AUTO_SETUP=true
+      - DATABASE_HOST=mysql
+      - DATABASE_PORT=3306
+      - DATABASE_USER=sub2api
+      - DATABASE_PASSWORD=sub2api
+      - DATABASE_DBNAME=sub2api
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
-      - db
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  db:
-    image: postgres:15-alpine
+  mysql:
+    image: mysql:8.0
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=sub2api
+      - MYSQL_DATABASE=sub2api
+      - MYSQL_USER=sub2api
+      - MYSQL_PASSWORD=sub2api
+      - MYSQL_ROOT_PASSWORD=sub2api
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -usub2api -psub2api --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     volumes:
       - redis_data:/data
 
 volumes:
-  postgres_data:
+  mysql_data:
   redis_data:
 ```
 
@@ -53,10 +73,16 @@ volumes:
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes | - |
-| `REDIS_URL` | Redis connection string | Yes | - |
-| `PORT` | Server port | No | `8080` |
-| `GIN_MODE` | Gin framework mode (`debug`/`release`) | No | `release` |
+| `DATABASE_HOST` | MySQL host | Yes | - |
+| `DATABASE_PORT` | MySQL port | No | `3306` |
+| `DATABASE_USER` | MySQL user | Yes | - |
+| `DATABASE_PASSWORD` | MySQL password | Yes | - |
+| `DATABASE_DBNAME` | MySQL database name | Yes | - |
+| `DATABASE_SSLMODE` | MySQL TLS mode | No | `disable` |
+| `REDIS_HOST` | Redis host | Yes | - |
+| `REDIS_PORT` | Redis port | No | `6379` |
+| `SERVER_PORT` | Server port inside the container | No | `8080` |
+| `SERVER_MODE` | Gin framework mode (`debug`/`release`) | No | `release` |
 
 ## Supported Architectures
 

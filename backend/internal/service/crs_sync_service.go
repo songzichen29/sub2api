@@ -1101,7 +1101,7 @@ func sanitizeCredentialsMap(input map[string]any) map[string]any {
 	}
 	out := make(map[string]any, len(input))
 	for k, v := range input {
-		// Avoid nil values to keep JSONB cleaner
+		// Avoid nil values to keep JSON cleaner
 		if v != nil {
 			out[k] = v
 		}

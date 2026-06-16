@@ -1,0 +1,125 @@
+﻿Auto-merging .dockerignore
+CONFLICT (content): Merge conflict in .dockerignore
+Auto-merging Dockerfile
+Auto-merging backend/cmd/server/wire_gen.go
+CONFLICT (content): Merge conflict in backend/cmd/server/wire_gen.go
+Auto-merging backend/ent/migrate/schema.go
+Auto-merging backend/ent/mutation.go
+Auto-merging backend/ent/runtime/runtime.go
+Auto-merging backend/internal/handler/admin/content_moderation_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/admin/content_moderation_handler.go
+Auto-merging backend/internal/handler/admin/setting_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/admin/setting_handler.go
+Auto-merging backend/internal/handler/auth_email_oauth_test.go
+Auto-merging backend/internal/handler/auth_wechat_oauth.go
+Auto-merging backend/internal/handler/dto/settings.go
+CONFLICT (content): Merge conflict in backend/internal/handler/dto/settings.go
+Auto-merging backend/internal/handler/gateway_handler.go
+Auto-merging backend/internal/handler/gateway_handler_chat_completions.go
+Auto-merging backend/internal/handler/gateway_handler_responses.go
+Auto-merging backend/internal/handler/gemini_v1beta_handler.go
+Auto-merging backend/internal/handler/openai_chat_completions.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_chat_completions.go
+Auto-merging backend/internal/handler/openai_gateway_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_gateway_handler.go
+Auto-merging backend/internal/handler/openai_gateway_handler_test.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_gateway_handler_test.go
+Auto-merging backend/internal/handler/openai_images.go
+Auto-merging backend/internal/handler/ops_error_logger.go
+Auto-merging backend/internal/pkg/apicompat/chatcompletions_responses_test.go
+Auto-merging backend/internal/repository/account_repo.go
+Auto-merging backend/internal/repository/account_repo_integration_test.go
+Auto-merging backend/internal/repository/channel_monitor_repo.go
+Auto-merging backend/internal/repository/content_moderation_repo.go
+CONFLICT (content): Merge conflict in backend/internal/repository/content_moderation_repo.go
+Auto-merging backend/internal/repository/content_moderation_repo_test.go
+CONFLICT (content): Merge conflict in backend/internal/repository/content_moderation_repo_test.go
+Auto-merging backend/internal/repository/migrations_runner.go
+Auto-merging backend/internal/repository/migrations_runner_notx_test.go
+CONFLICT (content): Merge conflict in backend/internal/repository/migrations_runner_notx_test.go
+Auto-merging backend/internal/repository/migrations_schema_integration_test.go
+CONFLICT (modify/delete): backend/internal/repository/ops_error_where_test.go deleted in HEAD and modified in upstream/main.  Version upstream/main of backend/internal/repository/ops_error_where_test.go left in tree.
+Auto-merging backend/internal/repository/ops_repo.go
+Auto-merging backend/internal/repository/ops_write_pressure_integration_test.go
+Auto-merging backend/internal/repository/scheduler_outbox_repo.go
+CONFLICT (content): Merge conflict in backend/internal/repository/scheduler_outbox_repo.go
+Auto-merging backend/internal/server/api_contract_test.go
+Auto-merging backend/internal/server/middleware/api_key_auth.go
+CONFLICT (content): Merge conflict in backend/internal/server/middleware/api_key_auth.go
+Auto-merging backend/internal/server/middleware/api_key_auth_test.go
+CONFLICT (content): Merge conflict in backend/internal/server/middleware/api_key_auth_test.go
+Auto-merging backend/internal/server/routes/admin.go
+Auto-merging backend/internal/service/account_service.go
+Auto-merging backend/internal/service/auth_service.go
+Auto-merging backend/internal/service/channel_monitor_const.go
+Auto-merging backend/internal/service/channel_monitor_validate.go
+Auto-merging backend/internal/service/content_moderation.go
+CONFLICT (content): Merge conflict in backend/internal/service/content_moderation.go
+Auto-merging backend/internal/service/content_moderation_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/content_moderation_test.go
+Auto-merging backend/internal/service/domain_constants.go
+Auto-merging backend/internal/service/gateway_forward_as_chat_completions.go
+Auto-merging backend/internal/service/gateway_forward_as_responses.go
+Auto-merging backend/internal/service/gateway_request.go
+Auto-merging backend/internal/service/gateway_service.go
+CONFLICT (content): Merge conflict in backend/internal/service/gateway_service.go
+Auto-merging backend/internal/service/gemini_chat_completions_compat_service.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_chat_completions.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions_raw.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_chat_completions_test.go
+Auto-merging backend/internal/service/openai_gateway_messages.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_messages.go
+Auto-merging backend/internal/service/openai_gateway_record_usage_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_record_usage_test.go
+Auto-merging backend/internal/service/openai_gateway_responses_chat_fallback.go
+Auto-merging backend/internal/service/openai_gateway_service.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_service.go
+Auto-merging backend/internal/service/openai_gateway_service_hotpath_test.go
+Auto-merging backend/internal/service/openai_gateway_service_test.go
+Auto-merging backend/internal/service/openai_images.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_images.go
+Auto-merging backend/internal/service/openai_images_responses.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_images_responses.go
+Auto-merging backend/internal/service/openai_images_test.go
+Auto-merging backend/internal/service/openai_ws_forwarder.go
+Auto-merging backend/internal/service/openai_ws_forwarder_test.go
+Auto-merging backend/internal/service/openai_ws_http_bridge.go
+Auto-merging backend/internal/service/ratelimit_service.go
+Auto-merging backend/internal/service/ratelimit_session_window_test.go
+Auto-merging backend/internal/service/scheduler_snapshot_service.go
+Auto-merging backend/internal/service/setting_service.go
+Auto-merging backend/internal/service/settings_view.go
+CONFLICT (content): Merge conflict in backend/internal/service/settings_view.go
+Auto-merging backend/internal/service/token_refresh_service.go
+Auto-merging backend/internal/service/token_refresh_service_test.go
+Auto-merging backend/internal/service/usage_log.go
+Auto-merging backend/internal/service/wire.go
+Auto-merging backend/migrations/auth_identity_payment_migrations_regression_test.go
+CONFLICT (content): Merge conflict in backend/migrations/auth_identity_payment_migrations_regression_test.go
+Auto-merging deploy/Dockerfile
+Auto-merging frontend/package.json
+Auto-merging frontend/pnpm-lock.yaml
+Auto-merging frontend/src/api/admin/accounts.ts
+CONFLICT (content): Merge conflict in frontend/src/api/admin/accounts.ts
+Auto-merging frontend/src/api/admin/riskControl.ts
+CONFLICT (content): Merge conflict in frontend/src/api/admin/riskControl.ts
+Auto-merging frontend/src/api/admin/settings.ts
+Auto-merging frontend/src/components/account/AccountUsageCell.vue
+Auto-merging frontend/src/components/admin/usage/UsageFilters.vue
+Auto-merging frontend/src/components/admin/usage/UsageTable.vue
+Auto-merging frontend/src/i18n/locales/en.ts
+CONFLICT (content): Merge conflict in frontend/src/i18n/locales/en.ts
+Auto-merging frontend/src/i18n/locales/zh.ts
+CONFLICT (content): Merge conflict in frontend/src/i18n/locales/zh.ts
+Auto-merging frontend/src/types/index.ts
+Auto-merging frontend/src/views/admin/AccountsView.vue
+CONFLICT (content): Merge conflict in frontend/src/views/admin/AccountsView.vue
+Auto-merging frontend/src/views/admin/RiskControlView.vue
+Auto-merging frontend/src/views/admin/SettingsView.vue
+CONFLICT (content): Merge conflict in frontend/src/views/admin/SettingsView.vue
+Auto-merging frontend/src/views/admin/UsageView.vue
+Auto-merging frontend/src/views/admin/__tests__/SettingsView.spec.ts
+CONFLICT (content): Merge conflict in frontend/src/views/admin/__tests__/SettingsView.spec.ts
+Auto-merging frontend/src/views/user/UsageView.vue

@@ -30,7 +30,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
-	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 )
@@ -77,6 +76,8 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
 	"session_window_utilization": {},
 }
+
+const queryParameterBatchSize = 50000
 
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
@@ -552,20 +553,12 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}
 	}
 	if search != "" {
-		isPostgres := r.client.Driver().Dialect() == dialect.Postgres
 		q = q.Where(
 			dbaccount.Or(
 				dbaccount.NameContainsFold(search),
 				dbaccount.NotesContainsFold(search),
 				dbpredicate.Account(func(s *entsql.Selector) {
 					s.Where(entsql.P(func(b *entsql.Builder) {
-						if isPostgres {
-							b.WriteString("LOWER(COALESCE(").
-								Ident(s.C(dbaccount.FieldExtra)).
-								WriteString("->>'email_address','')) LIKE ")
-							b.Arg("%" + strings.ToLower(search) + "%")
-							return
-						}
 						b.WriteString("LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(").
 							Ident(s.C(dbaccount.FieldExtra)).
 							WriteString(", '$.email_address')), '')) LIKE ")
@@ -595,15 +588,10 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	// Tags：JSONB / JSON 数组包含语义。OR 语义——只要包含任意一个传入标签即命中。
-	// PostgreSQL 用 `tags @> '["x"]'`（GIN 索引 idx_accounts_tags_gin 加速）；
-	// MySQL 8 用 `JSON_CONTAINS(tags, '"x"')`（无索引，全表扫但规模可控）。
-	// 多个标签时按标签拆成多条单标签谓词，再用 OR 连接——dialect 兼容且各 driver 都能命中索引/复用 plan。
+	// Tags：MySQL JSON 数组包含语义。OR 语义——只要包含任意一个传入标签即命中。
+	// MySQL 8 用 `JSON_CONTAINS(tags, '["x"]')`；多个标签时按标签拆成多条单标签谓词，再用 OR 连接。
 	if len(tags) > 0 {
-		isPostgres := r.client.Driver().Dialect() == dialect.Postgres
-		// 预先把每个标签序列化为 candidate payload，PG 需要 JSON 数组形式 ["x"]，
-		// MySQL 也接受同样形式（JSON_CONTAINS 的第二参数是 JSON 文档），
-		// 因此两侧统一用 ["x"] 单元素数组，避免 dialect 分支差异。
+		// 预先把每个标签序列化为 JSON_CONTAINS candidate payload。
 		perTagPayloads := make([]string, 0, len(tags))
 		for _, tag := range tags {
 			payload, marshalErr := json.Marshal([]string{tag})
@@ -618,17 +606,11 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					if i > 0 {
 						b.WriteString(" OR ")
 					}
-					if isPostgres {
-						b.Ident(s.C(dbaccount.FieldTags)).
-							WriteString(" @> ").
-							Arg(payload)
-					} else {
-						b.WriteString("JSON_CONTAINS(").
-							Ident(s.C(dbaccount.FieldTags)).
-							WriteString(", ").
-							Arg(payload).
-							WriteString(")")
-					}
+					b.WriteString("JSON_CONTAINS(").
+						Ident(s.C(dbaccount.FieldTags)).
+						WriteString(", ").
+						Arg(payload).
+						WriteString(")")
 				}
 			}))
 		}))
@@ -660,8 +642,8 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 
 // ListAllTags 返回所有未删除账号 tags 字段去重排序后的并集，用于自动补全候选。
 //
-// 实现策略：dialect-agnostic—— SQL 只查每个账号的 tags 字段，Go 层做 unnest + dedupe。
-// 不用 PG 的 jsonb_array_elements_text 是因为运行时 dialect 也可能是 MySQL（无对应函数）。
+// 实现策略：SQL 只查每个账号的 tags 字段，Go 层做 unnest + dedupe。
+// 避免依赖数据库侧 JSON 展开函数，保持 MySQL 运行路径简单可控。
 // 规模评估：N 账号 * 平均标签数（< 20）一次拿回，~100KB 内存可容纳 5k 账号场景。
 func (r *accountRepository) ListAllTags(ctx context.Context) ([]string, error) {
 	type tagsHolder struct {
@@ -755,6 +737,59 @@ func (r *accountRepository) ListActive(ctx context.Context) ([]service.Account, 
 		return nil, err
 	}
 	return r.accountsToService(ctx, accounts)
+}
+
+func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]service.Account, error) {
+	if r.sql == nil {
+		return nil, errors.New("account repository SQL executor not configured")
+	}
+	// 只排除“仍处于 token refresh retry exhausted 临时不可调度窗口”的账号。
+	// COALESCE(..., FALSE) 避免 NULL 三值逻辑误排除健康账号（temp_unschedulable_until=NULL）。
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id
+		FROM accounts
+		WHERE deleted_at IS NULL
+			AND status = 'active'
+			AND type = 'oauth'
+			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
+			AND TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.refresh_token')), '')) <> ''
+			AND NOT (
+				COALESCE(temp_unschedulable_until > NOW(6), FALSE)
+				AND COALESCE(temp_unschedulable_reason LIKE 'token refresh retry exhausted:%', FALSE)
+			)
+		ORDER BY priority ASC, id ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []service.Account{}, nil
+	}
+
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			out = append(out, *account)
+		}
+	}
+	return out, nil
 }
 
 func (r *accountRepository) ListByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
@@ -1245,7 +1280,7 @@ func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until t
 }
 
 func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
-	_, err := r.sql.ExecContext(ctx, `
+	result, err := r.sql.ExecContext(ctx, `
 		UPDATE accounts
 		SET temp_unschedulable_until = ?,
 			temp_unschedulable_reason = ?,
@@ -1256,6 +1291,13 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	`, until, reason, id, until)
 	if err != nil {
 		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected <= 0 {
+		return nil
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
@@ -1454,7 +1496,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return nil
 	}
 
-	// 使用 JSONB 合并操作实现原子更新，避免读-改-写的并发丢失更新问题
+	// 使用 JSON 合并操作实现原子更新，避免读-改-写的并发丢失更新问题
 	payload, err := json.Marshal(updates)
 	if err != nil {
 		return err
@@ -1578,7 +1620,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
-	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
+	// JSON 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
 		payload, err := json.Marshal(updates.Credentials)
 		if err != nil {
@@ -1598,7 +1640,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		idx++
 	}
 	// Tags：替换语义。指针非 nil 即落库；空数组允许（清空所有标签）。
-	// JSONB 字段直接整体覆盖，不做 merge —— 标签的语义是"集合"，merge 会
+	// JSON 字段直接整体覆盖，不做 merge —— 标签的语义是"集合"，merge 会
 	// 让"清空"无法表达。前置 service 层已规范化，这里不再校验。
 	if updates.Tags != nil {
 		payload, err := json.Marshal(normalizeJSONStringSlice(*updates.Tags))
@@ -1794,17 +1836,23 @@ func notExpiredPredicate(now time.Time) dbpredicate.Account {
 
 func (r *accountRepository) loadProxies(ctx context.Context, proxyIDs []int64) (map[int64]*service.Proxy, error) {
 	proxyMap := make(map[int64]*service.Proxy)
+	proxyIDs = uniquePositiveInt64s(proxyIDs)
 	if len(proxyIDs) == 0 {
 		return proxyMap, nil
 	}
 
-	proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs...)).All(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, p := range proxies {
-		proxyMap[p.ID] = proxyEntityToService(p)
+	for start := 0; start < len(proxyIDs); start += queryParameterBatchSize {
+		end := start + queryParameterBatchSize
+		if end > len(proxyIDs) {
+			end = len(proxyIDs)
+		}
+		proxies, err := r.client.Proxy.Query().Where(dbproxy.IDIn(proxyIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range proxies {
+			proxyMap[p.ID] = proxyEntityToService(p)
+		}
 	}
 	return proxyMap, nil
 }
@@ -1814,36 +1862,92 @@ func (r *accountRepository) loadAccountGroups(ctx context.Context, accountIDs []
 	groupIDsByAccount := make(map[int64][]int64)
 	accountGroupsByAccount := make(map[int64][]service.AccountGroup)
 
+	accountIDs = uniquePositiveInt64s(accountIDs)
 	if len(accountIDs) == 0 {
 		return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
 	}
 
-	entries, err := r.client.AccountGroup.Query().
-		Where(dbaccountgroup.AccountIDIn(accountIDs...)).
-		WithGroup().
-		Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
-		All(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	for _, ag := range entries {
-		groupSvc := groupEntityToService(ag.Edges.Group)
-		agSvc := service.AccountGroup{
-			AccountID: ag.AccountID,
-			GroupID:   ag.GroupID,
-			Priority:  ag.Priority,
-			CreatedAt: ag.CreatedAt,
-			Group:     groupSvc,
+	for start := 0; start < len(accountIDs); start += queryParameterBatchSize {
+		end := start + queryParameterBatchSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
 		}
-		accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
-		groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
-		if groupSvc != nil {
-			groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+		entries, err := r.client.AccountGroup.Query().
+			Where(dbaccountgroup.AccountIDIn(accountIDs[start:end]...)).
+			Order(dbaccountgroup.ByAccountID(), dbaccountgroup.ByPriority()).
+			All(ctx)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		groupIDs := make([]int64, 0, len(entries))
+		for _, ag := range entries {
+			groupIDs = append(groupIDs, ag.GroupID)
+		}
+		groupMap, err := r.loadGroups(ctx, groupIDs)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		for _, ag := range entries {
+			groupSvc := groupMap[ag.GroupID]
+			agSvc := service.AccountGroup{
+				AccountID: ag.AccountID,
+				GroupID:   ag.GroupID,
+				Priority:  ag.Priority,
+				CreatedAt: ag.CreatedAt,
+				Group:     groupSvc,
+			}
+			accountGroupsByAccount[ag.AccountID] = append(accountGroupsByAccount[ag.AccountID], agSvc)
+			groupIDsByAccount[ag.AccountID] = append(groupIDsByAccount[ag.AccountID], ag.GroupID)
+			if groupSvc != nil {
+				groupsByAccount[ag.AccountID] = append(groupsByAccount[ag.AccountID], groupSvc)
+			}
 		}
 	}
 
 	return groupsByAccount, groupIDsByAccount, accountGroupsByAccount, nil
+}
+
+func (r *accountRepository) loadGroups(ctx context.Context, groupIDs []int64) (map[int64]*service.Group, error) {
+	groupMap := make(map[int64]*service.Group)
+	groupIDs = uniquePositiveInt64s(groupIDs)
+	if len(groupIDs) == 0 {
+		return groupMap, nil
+	}
+
+	for start := 0; start < len(groupIDs); start += queryParameterBatchSize {
+		end := start + queryParameterBatchSize
+		if end > len(groupIDs) {
+			end = len(groupIDs)
+		}
+		groups, err := r.client.Group.Query().Where(dbgroup.IDIn(groupIDs[start:end]...)).All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range groups {
+			groupMap[g.ID] = groupEntityToService(g)
+		}
+	}
+	return groupMap, nil
+}
+
+func uniquePositiveInt64s(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func (r *accountRepository) loadAccountGroupIDs(ctx context.Context, accountID int64) ([]int64, error) {
@@ -1887,7 +1991,11 @@ func mergeGroupIDs(a []int64, b []int64) []int64 {
 	return out
 }
 
-func buildSchedulerGroupPayload(groupIDs []int64) map[string]any {
+// buildSchedulerGroupPayload 构造 EventAccountChanged / EventAccountGroupsChanged
+// 事件的 payload。空 groupIDs 必须返回 untyped nil（any 而非 map[string]any(nil)），
+// 否则 enqueueSchedulerOutbox 的 "payload != nil" 接口判空会被 typed-nil 欺骗，
+// 把 payload marshal 成 "null" 写入 dedup_key 哈希，破坏与其他 nil-payload 调用的去重一致性。
+func buildSchedulerGroupPayload(groupIDs []int64) any {
 	if len(groupIDs) == 0 {
 		return nil
 	}
@@ -1943,7 +2051,7 @@ func normalizeJSONMap(in map[string]any) map[string]any {
 }
 
 // normalizeJSONStringSlice 把可能为 nil 的字符串数组兜底成空切片，
-// 用于写入 JSONB 字段时保证落库为 [] 而不是 NULL。
+// 用于写入 JSON 字段时保证落库为 [] 而不是 NULL。
 func normalizeJSONStringSlice(in []string) []string {
 	if in == nil {
 		return []string{}
@@ -1989,10 +2097,10 @@ func itoa(v int) string {
 }
 
 // FindByExtraField 根据 extra 字段中的键值对查找账号。
-// 使用 PostgreSQL JSONB @> 操作符进行高效查询（需要 GIN 索引支持）。
+// 通过 Ent sqljson 生成 MySQL JSON 查询条件。
 //
 // FindByExtraField finds accounts by key-value pairs in the extra field.
-// Uses PostgreSQL JSONB @> operator for efficient queries (requires GIN index).
+// It uses Ent sqljson predicates so the active MySQL path emits JSON_EXTRACT-based SQL.
 func (r *accountRepository) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(

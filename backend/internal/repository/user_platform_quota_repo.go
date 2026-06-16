@@ -112,7 +112,7 @@ func (r *userPlatformQuotaRepository) BulkInsertInitial(ctx context.Context, rec
 		)
 	}
 	// MySQL 用 generated column active_platform + UNIQUE(user_id, active_platform)
-	// 等效 PostgreSQL partial unique index（deleted_at IS NULL）的作用域。
+	// 等效“仅未软删除记录唯一”的作用域。
 	// limit 为 NULL 时才写入 EXCLUDED，否则保留现有非 NULL 值。
 	_, _ = sb.WriteString(` ON DUPLICATE KEY UPDATE
 		daily_limit_usd   = COALESCE(daily_limit_usd, VALUES(daily_limit_usd)),
@@ -196,7 +196,7 @@ func (r *userPlatformQuotaRepository) IncrementUsageWithReset(ctx context.Contex
 					weekly_usage_usd  = weekly_usage_usd  + VALUES(weekly_usage_usd),
 					monthly_usage_usd = monthly_usage_usd + VALUES(monthly_usage_usd),
 					updated_at        = VALUES(updated_at)`
-			// $6 = now：30 天滚动月度窗口以当前时刻为起始
+			// now 参数：30 天滚动月度窗口以当前时刻为起始
 			_, e := txClient.ExecContext(txCtx, insertSQL,
 				userID, platform, cost, cost, cost,
 				timezone.StartOfDay(now), timezone.StartOfWeek(now), now, now, now)
@@ -436,7 +436,7 @@ func insertLimitsRow(ctx context.Context, client *dbent.Client, userID int64, re
 const batchRows = 6000
 
 // BatchSnapshotUsage 用一条多行 UPSERT 把整批 usage 以绝对值覆盖写入（非累加）。
-// 每批最多 batchRows 行；$1=now 共用；每行 8 个 per-row 参（user_id, platform, 3×usage, 3×window_start）。
+// 每批最多 batchRows 行；每行 9 个 per-row 参数（user_id, platform, 3×usage, 3×window_start, updated_at）。
 // FK 违反（user_id 不存在）返回 ErrUserPlatformQuotaFKViolation。
 //
 // 注意:snapshots 超过 batchRows 会分多条 SQL 执行且【非单事务】——若某子批 FK 失败,

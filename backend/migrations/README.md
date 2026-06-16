@@ -63,7 +63,7 @@ Why?
 1. **Create new migration**
    ```bash
    # Create new file with next sequential number
-   touch migrations/018_your_change.sql
+   touch migrations/mysql/018_your_change.sql
    ```
 
 2. **Write forward-only migration SQL**
@@ -81,7 +81,7 @@ Why?
 
 4. **Commit and deploy**
    ```bash
-   git add migrations/018_your_change.sql
+   git add migrations/mysql/018_your_change.sql
    git commit -m "feat(db): add your change"
    ```
 
@@ -102,13 +102,13 @@ migration 017_add_gemini_tier_id.sql checksum mismatch (db=abc123... file=def456
 **Solution:**
 ```bash
 # 1. Find the original version
-git log --oneline -- migrations/017_add_gemini_tier_id.sql
+git log --oneline -- migrations/mysql/017_add_gemini_tier_id.sql
 
 # 2. Revert to the commit when it was first applied
-git checkout <commit-hash> -- migrations/017_add_gemini_tier_id.sql
+git checkout <commit-hash> -- migrations/mysql/017_add_gemini_tier_id.sql
 
 # 3. Create a NEW migration for your changes
-touch migrations/018_your_new_change.sql
+touch migrations/mysql/018_your_new_change.sql
 ```
 
 ## Migration System Details
@@ -146,15 +146,14 @@ touch migrations/018_your_new_change.sql
 ```sql
 -- Add tier_id field to Gemini OAuth accounts for quota tracking
 UPDATE accounts
-SET credentials = jsonb_set(
-    credentials,
-    '{tier_id}',
-    '"LEGACY"',
-    true
+SET credentials = JSON_SET(
+    COALESCE(credentials, JSON_OBJECT()),
+    '$.tier_id',
+    'LEGACY'
 )
 WHERE platform = 'gemini'
   AND type = 'oauth'
-  AND credentials->>'tier_id' IS NULL;
+  AND JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.tier_id')) IS NULL;
 ```
 
 ## Troubleshooting
@@ -165,7 +164,7 @@ See "If You Accidentally Modified an Applied Migration" above.
 ### Migration Failed
 ```bash
 # Check migration status
-psql -d sub2api -c "SELECT * FROM schema_migrations ORDER BY applied_at DESC;"
+mysql -D sub2api -e "SELECT * FROM schema_migrations ORDER BY applied_at DESC;"
 
 # Manually rollback if needed (use with caution)
 # Better to fix the migration and create a new one
@@ -181,4 +180,4 @@ VALUES ('NNN_migration.sql', 'calculated_checksum', NOW());
 ## References
 
 - Migration runner: `internal/repository/migrations_runner.go`
-- PostgreSQL docs: https://www.postgresql.org/docs/
+- MySQL docs: https://dev.mysql.com/doc/

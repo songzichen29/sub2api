@@ -22,17 +22,28 @@ type CustomEndpoint struct {
 	Description string `json:"description"`
 }
 
+// LoginAgreementDocument represents a configured login agreement document.
+type LoginAgreementDocument struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	ContentMD string `json:"content_md"`
+}
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	RegistrationEnabled              bool     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
-	FrontendURL                      string   `json:"frontend_url"`
-	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool     `json:"totp_enabled"`                   // TOTP 双因素认证
-	TotpEncryptionKeyConfigured      bool     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
+	RegistrationEnabled              bool                     `json:"registration_enabled"`
+	EmailVerifyEnabled               bool                     `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string                 `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool                     `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool                     `json:"password_reset_enabled"`
+	FrontendURL                      string                   `json:"frontend_url"`
+	InvitationCodeEnabled            bool                     `json:"invitation_code_enabled"`
+	TotpEnabled                      bool                     `json:"totp_enabled"` // TOTP 双因素认证
+	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
+	LoginAgreementMode               string                   `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments          []LoginAgreementDocument `json:"login_agreement_documents"`
+	TotpEncryptionKeyConfigured      bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
 
 	SMTPHost               string `json:"smtp_host"`
 	SMTPPort               int    `json:"smtp_port"`
@@ -109,6 +120,17 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string `json:"oidc_connect_userinfo_id_path"`
 	OIDCConnectUserInfoUsernamePath   string `json:"oidc_connect_userinfo_username_path"`
 
+	GitHubOAuthEnabled                bool   `json:"github_oauth_enabled"`
+	GitHubOAuthClientID               string `json:"github_oauth_client_id"`
+	GitHubOAuthClientSecretConfigured bool   `json:"github_oauth_client_secret_configured"`
+	GitHubOAuthRedirectURL            string `json:"github_oauth_redirect_url"`
+	GitHubOAuthFrontendRedirectURL    string `json:"github_oauth_frontend_redirect_url"`
+	GoogleOAuthEnabled                bool   `json:"google_oauth_enabled"`
+	GoogleOAuthClientID               string `json:"google_oauth_client_id"`
+	GoogleOAuthClientSecretConfigured bool   `json:"google_oauth_client_secret_configured"`
+	GoogleOAuthRedirectURL            string `json:"google_oauth_redirect_url"`
+	GoogleOAuthFrontendRedirectURL    string `json:"google_oauth_frontend_redirect_url"`
+
 	SiteName                               string           `json:"site_name"`
 	SiteLogo                               string           `json:"site_logo"`
 	SiteSubtitle                           string           `json:"site_subtitle"`
@@ -166,12 +188,17 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         bool   `json:"rewrite_message_cache_control"`
-	OpenAICodexUserAgent               string `json:"openai_codex_user_agent"`
+	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin       bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
@@ -188,6 +215,9 @@ type SystemSettings struct {
 	// Standalone account import
 	StandaloneAccountImportEnabled            bool `json:"standalone_account_import_enabled"`
 	StandaloneAccountImportPasswordConfigured bool `json:"standalone_account_import_password_configured"`
+
+	DefaultPlatformQuotas      map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+	AllowUserViewErrorRequests bool                                    `json:"allow_user_view_error_requests"`
 
 	// Payment configuration
 	PaymentEnabled                   bool                              `json:"payment_enabled"`
@@ -234,6 +264,10 @@ type SystemSettings struct {
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
+	// cyber 会话屏蔽开关 + TTL
+	CyberSessionBlockEnabled    bool `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds int  `json:"cyber_session_block_ttl_seconds"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -254,6 +288,12 @@ type PaymentPaidUserRateBackfillStatus struct {
 	Status         string `json:"status"`
 	Error          string `json:"error,omitempty"`
 	UpdatedAt      string `json:"updated_at,omitempty"`
+}
+
+type DefaultPlatformQuotaSetting struct {
+	DailyLimitUSD   *float64 `json:"daily"`
+	WeeklyLimitUSD  *float64 `json:"weekly"`
+	MonthlyLimitUSD *float64 `json:"monthly"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -291,12 +331,15 @@ type PublicSettings struct {
 	CustomMenuItems                        []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints                        []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled                    bool             `json:"linuxdo_oauth_enabled"`
+	DingTalkOAuthEnabled                   bool             `json:"dingtalk_oauth_enabled"`
 	WeChatOAuthEnabled                     bool             `json:"wechat_oauth_enabled"`
 	WeChatOAuthOpenEnabled                 bool             `json:"wechat_oauth_open_enabled"`
 	WeChatOAuthMPEnabled                   bool             `json:"wechat_oauth_mp_enabled"`
 	WeChatOAuthMobileEnabled               bool             `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                       bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName                  string           `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled                     bool             `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled                     bool             `json:"google_oauth_enabled"`
 	SoraClientEnabled                      bool             `json:"sora_client_enabled"`
 	BackendModeEnabled                     bool             `json:"backend_mode_enabled"`
 	PaymentEnabled                         bool             `json:"payment_enabled"`

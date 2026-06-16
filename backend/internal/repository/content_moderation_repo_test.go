@@ -149,13 +149,15 @@ SELECT COUNT(*)
 FROM content_moderation_logs
 WHERE user_id = ?
   AND flagged = TRUE
+  AND action <> 'hash_block'
+  AND (? = FALSE OR action <> 'cyber_policy')
   AND created_at >= ?
   AND created_at > COALESCE((SELECT at FROM last_auto_ban), '1970-01-01 00:00:00')
 `)).
-		WithArgs(int64(7), int64(7), since).
+		WithArgs(int64(7), int64(7), false, since).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(3))
 
-	count, err := repo.CountFlaggedByUserSince(context.Background(), 7, since)
+	count, err := repo.CountFlaggedByUserSince(context.Background(), 7, since, false)
 	if err != nil {
 		t.Fatalf("CountFlaggedByUserSince error: %v", err)
 	}

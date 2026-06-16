@@ -1,0 +1,8 @@
+﻿git diff HEAD --check exit=0
+
+warning: in the working copy of 'deploy/DATAMANAGEMENTD_CN.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'deploy/DOCKER.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'deploy/README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'deploy/sub2api.service', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'frontend/src/api/admin/riskControl.ts', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'frontend/src/views/admin/SettingsView.vue', CRLF will be replaced by LF the next time Git touches it

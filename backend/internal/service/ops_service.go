@@ -373,7 +373,7 @@ func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, fi
 	// "user_id = 自己 AND api_key_id = X" 双重约束保证——传入他人 key 只会得到空集，无泄露。
 	filter.View = "all"
 	filter.ExcludeCountTokens = true
-	filter.ModelFuzzy = true // 用户端模型过滤走 ILIKE 模糊；管理端不设此字段，保持精确
+	filter.ModelFuzzy = true // 用户端模型过滤走 LIKE 模糊；管理端不设此字段，保持精确
 	// 防御：用户端不接受这些 admin-only / 特殊维度
 	filter.UserQuery = ""
 	filter.Owner = ""

@@ -1,0 +1,228 @@
+﻿e598644424b84368680a45bdcbde34cd6050ae38
+100644 770145cb709b79be5027fe769cc694f2eeea0330 1	.dockerignore
+100644 f73a22c9e85682a9938c67c560ac19a6e09cde3d 2	.dockerignore
+100644 d5369692cbe637cb2e13c14b641a7947007f964c 3	.dockerignore
+100644 879d56d22fe889ae3dfd28598b8a48ca0f48f4ac 1	backend/cmd/server/wire_gen.go
+100644 6a91564fc6419788f8e0dbc73df4bf6ccbe173de 2	backend/cmd/server/wire_gen.go
+100644 eefd228ef6b7458ee5855b0ff2c3a51effe80de5 3	backend/cmd/server/wire_gen.go
+100644 e11ea6eb213e134166d6ed438e30908bfde7a28a 1	backend/internal/handler/admin/content_moderation_handler.go
+100644 6f0f2aabd78ec1081d23b87e3b5e91478809c1de 2	backend/internal/handler/admin/content_moderation_handler.go
+100644 00a8dca05fd9ffb90a4c518cfeabc3c8debe3005 3	backend/internal/handler/admin/content_moderation_handler.go
+100644 0beb15d3a1c03dc83c7f311c3d6eeafcc3c820a2 1	backend/internal/handler/admin/setting_handler.go
+100644 9fa1cd0e30142178428882693ab0682ccf1ed18b 2	backend/internal/handler/admin/setting_handler.go
+100644 6bad41018cfc6aa3749484ba9d806ec8fbd2c526 3	backend/internal/handler/admin/setting_handler.go
+100644 da89ac237c925a1ca0700e9f5599a75036698d06 1	backend/internal/handler/dto/settings.go
+100644 90047c9f48053adc6fbbf501b0f370f331c2d70f 2	backend/internal/handler/dto/settings.go
+100644 604428ef28f0f8387f86051963c661b1229d1f02 3	backend/internal/handler/dto/settings.go
+100644 64a0f97ba726f67da96feb236979a08482a1e83c 1	backend/internal/handler/openai_chat_completions.go
+100644 a6ce03a1c2c63f9a6d46f3c767b28b036d95d613 2	backend/internal/handler/openai_chat_completions.go
+100644 a59450f130622b04b091647931d77759e660b604 3	backend/internal/handler/openai_chat_completions.go
+100644 65bf172ecd4b8d68fd343c157bb26c6b196fda55 1	backend/internal/handler/openai_gateway_handler.go
+100644 bf2cc5887760841e6c9128ada4e9d59bfc53ce32 2	backend/internal/handler/openai_gateway_handler.go
+100644 4c13a2e7aa32f33280490f140550cc7d78fbfd8e 3	backend/internal/handler/openai_gateway_handler.go
+100644 7743d6ab6232169f1df26cec7609e5b23b2a10ef 1	backend/internal/handler/openai_gateway_handler_test.go
+100644 c339f609f5c0bf801882f96cc6c86252231e6769 2	backend/internal/handler/openai_gateway_handler_test.go
+100644 fd3508837ee1ce1a5f6aaba163a81c05bd3e5abc 3	backend/internal/handler/openai_gateway_handler_test.go
+100644 9b19cce9882deb88daedac92b9527a8068f44df5 1	backend/internal/repository/content_moderation_repo.go
+100644 78e28158988a6911aac20530e1674af80a42eb69 2	backend/internal/repository/content_moderation_repo.go
+100644 9a40b3c2fdde45387de6ba8baffcbcbc2dcef02a 3	backend/internal/repository/content_moderation_repo.go
+100644 6d5faa121fe170a1e89c1f9c9f3e9d565c3b35eb 1	backend/internal/repository/content_moderation_repo_test.go
+100644 f4b8d80b83a96695fe9f58fc40017e79015118f5 2	backend/internal/repository/content_moderation_repo_test.go
+100644 3f34f9d05fa6231721db31fcb81eb17c961ef42d 3	backend/internal/repository/content_moderation_repo_test.go
+100644 b7cb396c470826c6718c892d77462be159f2c197 1	backend/internal/repository/migrations_runner_notx_test.go
+100644 38ede2b0dd5c20c53e60da753c12f62ff7ac23d5 2	backend/internal/repository/migrations_runner_notx_test.go
+100644 c9f6a2cdf1d07635757c149a3ba30996209e4829 3	backend/internal/repository/migrations_runner_notx_test.go
+100644 9bebb15895657798bc674c699f1fe5e998fd2a70 1	backend/internal/repository/ops_error_where_test.go
+100644 5b9d7ab1c342ad459d2d0cc933685b6cee73d055 3	backend/internal/repository/ops_error_where_test.go
+100644 4b9a9f58b1d15244c69502d4984db4495541c97a 1	backend/internal/repository/scheduler_outbox_repo.go
+100644 fbfd5dc0d345e62db0492069ad479f329cbab719 2	backend/internal/repository/scheduler_outbox_repo.go
+100644 59772fbb5aff316b5bcd023d297f728f0cf7701b 3	backend/internal/repository/scheduler_outbox_repo.go
+100644 32257b0bae3c19266906fe65e88f44b485b4651f 1	backend/internal/server/middleware/api_key_auth.go
+100644 34a04707df24f7b51c6615cbe325e3016f382c0b 2	backend/internal/server/middleware/api_key_auth.go
+100644 2f0a3f1cf786d533cea7a21b5fda67bef50cf21a 3	backend/internal/server/middleware/api_key_auth.go
+100644 dc445b3cefc91f29ca06949876a1fc65d766c969 1	backend/internal/server/middleware/api_key_auth_test.go
+100644 7d13377931f1ab5ac394476222b06b481a11f552 2	backend/internal/server/middleware/api_key_auth_test.go
+100644 d2234e837062cab1b5e30d487b2fd7257cd54408 3	backend/internal/server/middleware/api_key_auth_test.go
+100644 42b909c90fc59c6dd3daaa541c313deced07ac8e 1	backend/internal/service/content_moderation.go
+100644 5873073bbedbc1383d7009955fef2cda5b956f51 2	backend/internal/service/content_moderation.go
+100644 0ce4355fe71481d552048b713354aca0002154ba 3	backend/internal/service/content_moderation.go
+100644 9cfdc1e4b8f8faa107a9b2ebbc901fff942d5aee 1	backend/internal/service/content_moderation_test.go
+100644 b24145edf8a9770f971b8cb0279bca34a6517256 2	backend/internal/service/content_moderation_test.go
+100644 3336745647b763a1da5d71b6f81a7b7f21b44f02 3	backend/internal/service/content_moderation_test.go
+100644 82b57f3041257dfe164de41599ddb4bc0b37be37 1	backend/internal/service/gateway_service.go
+100644 8fc014237ca9b1137da240f950706fb12636bc6f 2	backend/internal/service/gateway_service.go
+100644 5a9a33880e4c59b80624f12350432b304d6f0395 3	backend/internal/service/gateway_service.go
+100644 8b75097349f7b927a5f24b619f7b6c5d0edc59eb 1	backend/internal/service/openai_gateway_chat_completions.go
+100644 2d0f140c3fcef116e8af32bd880271c6877a3036 2	backend/internal/service/openai_gateway_chat_completions.go
+100644 a1051afe5e0ce73b3e99f9dc559aa8cc3f1bc9e5 3	backend/internal/service/openai_gateway_chat_completions.go
+100644 779565037dc5d1345c05af964ad9bea796dd89e5 1	backend/internal/service/openai_gateway_chat_completions_test.go
+100644 9edfc69e50b60bcb0621d6450e8141a9399d50a7 2	backend/internal/service/openai_gateway_chat_completions_test.go
+100644 071308a57a80b63f8faffeea9662dcf0027a0173 3	backend/internal/service/openai_gateway_chat_completions_test.go
+100644 99653fec456207f7f8268d85b8f4fa36d55fd2fe 1	backend/internal/service/openai_gateway_messages.go
+100644 a320ba59f2c1760fb172c4836490efd731721dc9 2	backend/internal/service/openai_gateway_messages.go
+100644 7d07fcc808d70dfc544bba03bdbbc2f66f18a80b 3	backend/internal/service/openai_gateway_messages.go
+100644 318c0861136f41d9a46819b530222b8c97a7a4be 1	backend/internal/service/openai_gateway_record_usage_test.go
+100644 0e2425924bf07639e559e9b9fecc3cc2d3b23348 2	backend/internal/service/openai_gateway_record_usage_test.go
+100644 1e4e58dc429921d4dba0567b729d76ba27ce2d38 3	backend/internal/service/openai_gateway_record_usage_test.go
+100644 6374ee91bdd47124590a3734cc00b20297f23a3a 1	backend/internal/service/openai_gateway_service.go
+100644 db2229780310b8573651419c185a735c62850de6 2	backend/internal/service/openai_gateway_service.go
+100644 2bed9e0394d8baef2319ba8e6b3f83223844b67c 3	backend/internal/service/openai_gateway_service.go
+100644 6041c4fa61237a2df7733f958498370d28f8d9fb 1	backend/internal/service/openai_images.go
+100644 e50808d21d3f98087ba7608c87417a9ba21508b9 2	backend/internal/service/openai_images.go
+100644 7081653d800fc9858796a10cb3d2f6c5cfa68d25 3	backend/internal/service/openai_images.go
+100644 56f98a999d8d8fda895f5142f48ee80a9f2fcaa3 1	backend/internal/service/openai_images_responses.go
+100644 b3680ec11db53d30d94a7edb61749afbcd49f583 2	backend/internal/service/openai_images_responses.go
+100644 482b527448009bcb23333984df7868beb16e1a15 3	backend/internal/service/openai_images_responses.go
+100644 97217202130f8446ba95e342483a4d0a9d43e098 1	backend/internal/service/settings_view.go
+100644 05266ef31a256362437c51e77efd5316bf02b8ab 2	backend/internal/service/settings_view.go
+100644 fc4f27b28131d6ba4bb384c9d7b284cd32f68963 3	backend/internal/service/settings_view.go
+100644 d122a3b75ade1482be03b9bac11cd315020620e0 1	backend/migrations/auth_identity_payment_migrations_regression_test.go
+100644 39826a457960a11c2d78040bcc706e714715bc3e 2	backend/migrations/auth_identity_payment_migrations_regression_test.go
+100644 047ea7de8a717d7d7c67042acf3461e6f554fb53 3	backend/migrations/auth_identity_payment_migrations_regression_test.go
+100644 f800b940bad0ce73c37fa9408565049ebdef1ac6 1	frontend/src/api/admin/accounts.ts
+100644 746442253dbec278b32d79f6de69b6e8e731ddea 2	frontend/src/api/admin/accounts.ts
+100644 c297943d9170de81e0b82a18e9e8438e629d2112 3	frontend/src/api/admin/accounts.ts
+100644 aefd1618b1e46c25b711f99a57ecfb4daaf3f847 1	frontend/src/api/admin/riskControl.ts
+100644 40952bc8eb1bc59cf11a1cc8bcdcabc7765599e7 2	frontend/src/api/admin/riskControl.ts
+100644 5cce4c18275cbf2db8e1501a93fb9492588e6f5e 3	frontend/src/api/admin/riskControl.ts
+100644 f71d62a19e52ffaba0ec2be0699e95661e2dd47f 1	frontend/src/i18n/locales/en.ts
+100644 61d61bad6c3c38d2c5eb094bf4cbee512d1812f1 2	frontend/src/i18n/locales/en.ts
+100644 c26d4d063c8c136f92d2a14858814c8adc4a91f9 3	frontend/src/i18n/locales/en.ts
+100644 996b38d6d9934552ff14f24a545c16d675888139 1	frontend/src/i18n/locales/zh.ts
+100644 75426f9bcbc89a126803996b019de041336d78ec 2	frontend/src/i18n/locales/zh.ts
+100644 0ce766f9f7e15673fdd4e5a602fde721399b91bf 3	frontend/src/i18n/locales/zh.ts
+100644 8b5b840fc4240069f8c3554948cc58eef6d99e25 1	frontend/src/views/admin/AccountsView.vue
+100644 edfece619a7c35207fa37c4ee9b7f5823e5f3cf4 2	frontend/src/views/admin/AccountsView.vue
+100644 acd736ff35fc63ad444aff73dba9c56854f85ff4 3	frontend/src/views/admin/AccountsView.vue
+100644 c3e0f2b96597c18b4fe9dc5eff9205d9277df8df 1	frontend/src/views/admin/SettingsView.vue
+100644 424cb9393d3ef23e4cdd3a010bcc3797e29db22a 2	frontend/src/views/admin/SettingsView.vue
+100644 5ae9869f0deb5798c1fe9b43180500729ddf34bd 3	frontend/src/views/admin/SettingsView.vue
+100644 69b4f5f291ad66ded1e355eed1df5ded678cf713 1	frontend/src/views/admin/__tests__/SettingsView.spec.ts
+100644 133b2000b270f74a94b95ef5d4d000e1d2f624d4 2	frontend/src/views/admin/__tests__/SettingsView.spec.ts
+100644 4327eb186958318749d542e7a0f841a951b63f9e 3	frontend/src/views/admin/__tests__/SettingsView.spec.ts
+
+Auto-merging .dockerignore
+CONFLICT (content): Merge conflict in .dockerignore
+Auto-merging Dockerfile
+Auto-merging backend/cmd/server/wire_gen.go
+CONFLICT (content): Merge conflict in backend/cmd/server/wire_gen.go
+Auto-merging backend/ent/migrate/schema.go
+Auto-merging backend/ent/mutation.go
+Auto-merging backend/ent/runtime/runtime.go
+Auto-merging backend/internal/handler/admin/content_moderation_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/admin/content_moderation_handler.go
+Auto-merging backend/internal/handler/admin/setting_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/admin/setting_handler.go
+Auto-merging backend/internal/handler/auth_email_oauth_test.go
+Auto-merging backend/internal/handler/auth_wechat_oauth.go
+Auto-merging backend/internal/handler/dto/settings.go
+CONFLICT (content): Merge conflict in backend/internal/handler/dto/settings.go
+Auto-merging backend/internal/handler/gateway_handler.go
+Auto-merging backend/internal/handler/gateway_handler_chat_completions.go
+Auto-merging backend/internal/handler/gateway_handler_responses.go
+Auto-merging backend/internal/handler/gemini_v1beta_handler.go
+Auto-merging backend/internal/handler/openai_chat_completions.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_chat_completions.go
+Auto-merging backend/internal/handler/openai_gateway_handler.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_gateway_handler.go
+Auto-merging backend/internal/handler/openai_gateway_handler_test.go
+CONFLICT (content): Merge conflict in backend/internal/handler/openai_gateway_handler_test.go
+Auto-merging backend/internal/handler/openai_images.go
+Auto-merging backend/internal/handler/ops_error_logger.go
+Auto-merging backend/internal/pkg/apicompat/chatcompletions_responses_test.go
+Auto-merging backend/internal/repository/account_repo.go
+Auto-merging backend/internal/repository/account_repo_integration_test.go
+Auto-merging backend/internal/repository/channel_monitor_repo.go
+Auto-merging backend/internal/repository/content_moderation_repo.go
+CONFLICT (content): Merge conflict in backend/internal/repository/content_moderation_repo.go
+Auto-merging backend/internal/repository/content_moderation_repo_test.go
+CONFLICT (content): Merge conflict in backend/internal/repository/content_moderation_repo_test.go
+Auto-merging backend/internal/repository/migrations_runner.go
+Auto-merging backend/internal/repository/migrations_runner_notx_test.go
+CONFLICT (content): Merge conflict in backend/internal/repository/migrations_runner_notx_test.go
+Auto-merging backend/internal/repository/migrations_schema_integration_test.go
+CONFLICT (modify/delete): backend/internal/repository/ops_error_where_test.go deleted in HEAD and modified in upstream/main.  Version upstream/main of backend/internal/repository/ops_error_where_test.go left in tree.
+Auto-merging backend/internal/repository/ops_repo.go
+Auto-merging backend/internal/repository/ops_write_pressure_integration_test.go
+Auto-merging backend/internal/repository/scheduler_outbox_repo.go
+CONFLICT (content): Merge conflict in backend/internal/repository/scheduler_outbox_repo.go
+Auto-merging backend/internal/server/api_contract_test.go
+Auto-merging backend/internal/server/middleware/api_key_auth.go
+CONFLICT (content): Merge conflict in backend/internal/server/middleware/api_key_auth.go
+Auto-merging backend/internal/server/middleware/api_key_auth_test.go
+CONFLICT (content): Merge conflict in backend/internal/server/middleware/api_key_auth_test.go
+Auto-merging backend/internal/server/routes/admin.go
+Auto-merging backend/internal/service/account_service.go
+Auto-merging backend/internal/service/auth_service.go
+Auto-merging backend/internal/service/channel_monitor_const.go
+Auto-merging backend/internal/service/channel_monitor_validate.go
+Auto-merging backend/internal/service/content_moderation.go
+CONFLICT (content): Merge conflict in backend/internal/service/content_moderation.go
+Auto-merging backend/internal/service/content_moderation_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/content_moderation_test.go
+Auto-merging backend/internal/service/domain_constants.go
+Auto-merging backend/internal/service/gateway_forward_as_chat_completions.go
+Auto-merging backend/internal/service/gateway_forward_as_responses.go
+Auto-merging backend/internal/service/gateway_request.go
+Auto-merging backend/internal/service/gateway_service.go
+CONFLICT (content): Merge conflict in backend/internal/service/gateway_service.go
+Auto-merging backend/internal/service/gemini_chat_completions_compat_service.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_chat_completions.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions_raw.go
+Auto-merging backend/internal/service/openai_gateway_chat_completions_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_chat_completions_test.go
+Auto-merging backend/internal/service/openai_gateway_messages.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_messages.go
+Auto-merging backend/internal/service/openai_gateway_record_usage_test.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_record_usage_test.go
+Auto-merging backend/internal/service/openai_gateway_responses_chat_fallback.go
+Auto-merging backend/internal/service/openai_gateway_service.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_gateway_service.go
+Auto-merging backend/internal/service/openai_gateway_service_hotpath_test.go
+Auto-merging backend/internal/service/openai_gateway_service_test.go
+Auto-merging backend/internal/service/openai_images.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_images.go
+Auto-merging backend/internal/service/openai_images_responses.go
+CONFLICT (content): Merge conflict in backend/internal/service/openai_images_responses.go
+Auto-merging backend/internal/service/openai_images_test.go
+Auto-merging backend/internal/service/openai_ws_forwarder.go
+Auto-merging backend/internal/service/openai_ws_forwarder_test.go
+Auto-merging backend/internal/service/openai_ws_http_bridge.go
+Auto-merging backend/internal/service/ratelimit_service.go
+Auto-merging backend/internal/service/ratelimit_session_window_test.go
+Auto-merging backend/internal/service/scheduler_snapshot_service.go
+Auto-merging backend/internal/service/setting_service.go
+Auto-merging backend/internal/service/settings_view.go
+CONFLICT (content): Merge conflict in backend/internal/service/settings_view.go
+Auto-merging backend/internal/service/token_refresh_service.go
+Auto-merging backend/internal/service/token_refresh_service_test.go
+Auto-merging backend/internal/service/usage_log.go
+Auto-merging backend/internal/service/wire.go
+Auto-merging backend/migrations/auth_identity_payment_migrations_regression_test.go
+CONFLICT (content): Merge conflict in backend/migrations/auth_identity_payment_migrations_regression_test.go
+Auto-merging deploy/Dockerfile
+Auto-merging frontend/package.json
+Auto-merging frontend/pnpm-lock.yaml
+Auto-merging frontend/src/api/admin/accounts.ts
+CONFLICT (content): Merge conflict in frontend/src/api/admin/accounts.ts
+Auto-merging frontend/src/api/admin/riskControl.ts
+CONFLICT (content): Merge conflict in frontend/src/api/admin/riskControl.ts
+Auto-merging frontend/src/api/admin/settings.ts
+Auto-merging frontend/src/components/account/AccountUsageCell.vue
+Auto-merging frontend/src/components/admin/usage/UsageFilters.vue
+Auto-merging frontend/src/components/admin/usage/UsageTable.vue
+Auto-merging frontend/src/i18n/locales/en.ts
+CONFLICT (content): Merge conflict in frontend/src/i18n/locales/en.ts
+Auto-merging frontend/src/i18n/locales/zh.ts
+CONFLICT (content): Merge conflict in frontend/src/i18n/locales/zh.ts
+Auto-merging frontend/src/types/index.ts
+Auto-merging frontend/src/views/admin/AccountsView.vue
+CONFLICT (content): Merge conflict in frontend/src/views/admin/AccountsView.vue
+Auto-merging frontend/src/views/admin/RiskControlView.vue
+Auto-merging frontend/src/views/admin/SettingsView.vue
+CONFLICT (content): Merge conflict in frontend/src/views/admin/SettingsView.vue
+Auto-merging frontend/src/views/admin/UsageView.vue
+Auto-merging frontend/src/views/admin/__tests__/SettingsView.spec.ts
+CONFLICT (content): Merge conflict in frontend/src/views/admin/__tests__/SettingsView.spec.ts
+Auto-merging frontend/src/views/user/UsageView.vue

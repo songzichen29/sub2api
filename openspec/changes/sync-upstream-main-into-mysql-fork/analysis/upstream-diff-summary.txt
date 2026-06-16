@@ -1,0 +1,238 @@
+﻿BASE=e34ad2b19424844cbd1bcffb599e5b0002ad3c50
+HEAD=b6e0d0f7e6f2abcb392370684118213e585aeb86
+UPSTREAM=4a5665da5b2c6b83c4597844ea6e573746c821b1
+DIVERGENCE=338	80
+
+## Upstream commits since base
+4a5665da chore: sync VERSION to 0.1.137 [skip ci]
+6c7203d8 fix(gateway): preserve SSE event:error body so ops logs reflect real upstream errors
+a05d9e87 feat(billing): 国产模型 thinking-enabled 自动填充 reasoning_effort 默认值
+5c528397 doc(thinking-protocol): clarify mappedModel vs originalModel semantics per call path
+56c6325d fix(gateway): rewrite thinking.type=enabled to adaptive for MiniMax M-series
+efbf6d20 fix(test): update FilterThinkingBlocksForRetry call to use mappedModel param
+6baf00d7 fix(gateway): protocol-aware thinking-block filtering for Anthropic-compatible upstreams
+34b1e56e test: add 'max' → 'xhigh' test cases for reasoning effort normalization
+142d8c36 fix(gateway): normalize DeepSeek reasoning_effort 'max' to 'xhigh'
+262fe123 feat(billing): 为 doubao-embedding-vision 添加图文差别兜底定价
+4f5f2788 fix(billing): add kimi-for-coding fallback pricing
+c90089c8 fix(billing): address Copilot review feedback
+a4ce7339 feat(billing): add GLM / Kimi / MiniMax fallback pricing for Chinese LLM providers
+f597d98b test(openai): use unpriced model in usage test
+5a593a51 test(billing): tighten DeepSeek V4 fallback assertions; clarify branch comments
+27e26a3a chore: fix gofmt alignment
+c906bf00 feat(billing): add DeepSeek V4 Pro / Flash fallback pricing
+b8a482e1 fix(ci): unblock main after recent merges
+56c62c59 fix(auth): include client ip in acl denial message
+b8169492 feat(openai-quota): query + reset rate-limit credits for OpenAI accounts
+b88f8e4c fix(openai-probe): /responses 能力探测增加工具调用校验
+f069c9ae fix(outbox-dedup): buildSchedulerGroupPayload typed-nil broke dedup_key consistency
+acaffe29 fix(account-repo): refresh candidates SQL excluded healthy accounts; fix CI build
+31dc8913 chore(outbox-cleanup): add 10s grace to defend against id-vs-commit race
+cb14935e fix: cleanup consumed scheduler outbox rows
+1fdbe52f chore(migrations): renumber scheduler outbox dedup migrations 151/152 -> 152/153
+b3ec6288 fix: release scheduler outbox dedup on claim
+60cf89ae fix: recover scheduler outbox invalid dedup index
+3ef70b04 fix: safely coalesce scheduler outbox events
+34e66ec0 fix: outbox scheduler snapshot coalesce
+9b270f11 refactor: inline token refresh retry reason prefix
+74199b6a fix: reduce token refresh retry amplification
+b0579c48 fix: move user wait queue accounting off hot path
+8b698ff4 fix account list parameter limit
+bbd97024 fix(frontend): bump form-data to >=4.0.6 via pnpm override
+b63b4116 fix: remove unused billing attribution helper
+ab9987b2 fix(gateway): fail over on non-JSON 2xx responses
+25a9762a feat: show account id in account list
+8ce7b9a8 feat: configure Claude OAuth system prompt blocks
+c70c6a26 feat(渠道监控): 检测间隔支持正负随机抖动配置
+c1c28ac7 fix(gateway): 解压 zstd 上游响应体
+edfd5e37 fix(apicompat): default tool strict to false
+f6e0ebc6 fix: preserve Anthropic window cooldowns
+b62b573f feat(openai): cyber_policy 硬阻断全链路透传、审计与计费
+e4c255a7 fix：account expiry autopause index
+b256f911 fix(gateway): intercept max_tokens=1 haiku probes for streaming requests too
+f8c80bf0 fix(auth): apply promo codes to oauth signups
+65559ac5 fix(antigravity): merge system role messages
+727ac3f6 fix: add app_session_terminated to non-retryable refresh errors / 将 app_session_terminated 添加到不可重试的刷新错误中
+ad135854 fix(docker): ship docs/legal in build context for admin-compliance gate
+fa8f1749 fix: treat invalid_refresh_token as non-retryable / 将 invalid_refresh_token 判定为不可重试
+46bd7968 fix: reuse OpenAI failover error body
+da30c599 fix(openai): fail over image server errors
+a67b10f4 fix(gateway): anchor responses fallback to input
+
+## Diff stat
+ Dockerfile                                         |   7 +-
+ backend/cmd/server/VERSION                         |   2 +-
+ backend/cmd/server/wire_gen.go                     |   5 +-
+ backend/ent/channelmonitor.go                      |  13 +-
+ backend/ent/channelmonitor/channelmonitor.go       |  12 +
+ backend/ent/channelmonitor/where.go                |  45 ++
+ backend/ent/channelmonitor_create.go               |  90 +++
+ backend/ent/channelmonitor_update.go               |  64 ++
+ backend/ent/migrate/schema.go                      |   7 +-
+ backend/ent/mutation.go                            |  89 ++-
+ backend/ent/runtime/runtime.go                     |  10 +-
+ backend/ent/schema/channel_monitor.go              |   4 +
+ .../handler/admin/channel_monitor_handler.go       |   6 +
+ .../handler/admin/content_moderation_handler.go    | 124 ++--
+ .../internal/handler/admin/openai_oauth_handler.go |  48 +-
+ backend/internal/handler/admin/setting_handler.go  |  88 ++-
+ backend/internal/handler/auth_dingtalk_oauth.go    |  12 +-
+ backend/internal/handler/auth_email_oauth.go       |  11 +-
+ backend/internal/handler/auth_email_oauth_test.go  |  43 ++
+ backend/internal/handler/auth_linuxdo_oauth.go     |  22 +-
+ .../internal/handler/auth_oauth_pending_flow.go    |  61 +-
+ .../handler/auth_oauth_pending_flow_test.go        | 298 +++++++++-
+ backend/internal/handler/auth_oidc_oauth.go        |  20 +-
+ backend/internal/handler/auth_wechat_oauth.go      |  12 +-
+ .../internal/handler/concurrency_error_response.go |   6 +
+ backend/internal/handler/dto/settings.go           |  23 +-
+ backend/internal/handler/gateway_handler.go        |  66 +--
+ .../handler/gateway_handler_chat_completions.go    |  23 -
+ .../handler/gateway_handler_intercept_test.go      |   6 +-
+ .../internal/handler/gateway_handler_responses.go  |  23 -
+ backend/internal/handler/gateway_helper.go         |  27 +-
+ .../handler/gateway_helper_hotpath_test.go         | 112 ++++
+ backend/internal/handler/gemini_v1beta_handler.go  |  24 -
+ .../internal/handler/openai_chat_completions.go    |  10 +
+ .../internal/handler/openai_gateway_cyber_test.go  | 180 ++++++
+ backend/internal/handler/openai_gateway_handler.go | 456 ++++++++++++--
+ .../handler/openai_gateway_handler_test.go         |  30 +-
+ backend/internal/handler/openai_images.go          |  17 +-
+ .../handler/openai_images_failover_test.go         | 187 ++++++
+ backend/internal/handler/ops_error_logger.go       |  10 +
+ .../handler/ops_error_logger_cyber_test.go         |  22 +
+ .../pkg/antigravity/request_transformer.go         |  20 +-
+ .../pkg/antigravity/request_transformer_test.go    | 109 ++++
+ .../apicompat/chatcompletions_responses_test.go    |  85 +++
+ .../pkg/apicompat/chatcompletions_to_responses.go  |  12 +-
+ backend/internal/repository/account_repo.go        | 189 +++++-
+ .../repository/account_repo_integration_test.go    |  31 +
+ .../repository/account_repo_temp_unsched_test.go   | 102 ++++
+ backend/internal/repository/account_repo_test.go   | 158 +++++
+ .../internal/repository/channel_monitor_repo.go    |   3 +
+ .../internal/repository/content_moderation_repo.go |  14 +-
+ .../repository/content_moderation_repo_test.go     |  22 +-
+ .../repository/decompress_response_test.go         | 190 ++++++
+ backend/internal/repository/gateway_cache.go       |  20 +
+ backend/internal/repository/http_upstream.go       |  36 +-
+ backend/internal/repository/migrations_runner.go   |  16 +-
+ .../repository/migrations_runner_notx_test.go      |  38 ++
+ .../migrations_schema_integration_test.go          |   5 +
+ .../internal/repository/ops_error_where_test.go    |  22 +
+ backend/internal/repository/ops_repo.go            |   6 +-
+ .../ops_write_pressure_integration_test.go         |  60 +-
+ .../internal/repository/scheduler_outbox_repo.go   | 129 +++-
+ .../repository/scheduler_outbox_repo_test.go       | 118 ++++
+ backend/internal/server/api_contract_test.go       |  14 +
+ backend/internal/server/middleware/api_key_auth.go |   6 +-
+ .../server/middleware/api_key_auth_test.go         | 112 +++-
+ backend/internal/server/routes/admin.go            |   2 +
+ .../internal/service/account_quota_reset_test.go   |  16 +-
+ ...ount_repository_refresh_candidates_unit_test.go |  25 +
+ backend/internal/service/account_service.go        |   1 +
+ backend/internal/service/auth_email_oauth_auto.go  |  17 +-
+ backend/internal/service/auth_service.go           |  39 ++
+ backend/internal/service/billing_service.go        | 318 +++++++++-
+ backend/internal/service/billing_service_test.go   | 322 +++++++++-
+ backend/internal/service/channel_monitor_const.go  |   3 +
+ backend/internal/service/channel_monitor_runner.go |  32 +-
+ .../internal/service/channel_monitor_service.go    |  13 +
+ backend/internal/service/channel_monitor_types.go  |   3 +
+ .../internal/service/channel_monitor_validate.go   |   9 +
+ backend/internal/service/content_moderation.go     | 332 ++++++++---
+ .../service/content_moderation_cyber_test.go       | 302 ++++++++++
+ .../internal/service/content_moderation_email.go   |  38 ++
+ .../internal/service/content_moderation_test.go    |  50 +-
+ backend/internal/service/domain_constants.go       |   8 +
+ .../gateway_anthropic_apikey_passthrough_test.go   |  64 ++
+ backend/internal/service/gateway_billing_block.go  |  17 +-
+ .../service/gateway_forward_as_chat_completions.go |   4 +
+ .../gateway_forward_as_chat_completions_test.go    |   6 +
+ .../service/gateway_forward_as_responses.go        |   2 +
+ .../service/gateway_forward_as_responses_test.go   |   4 +
+ .../service/gateway_non_streaming_response_test.go | 177 ++++++
+ backend/internal/service/gateway_prompt_test.go    |  41 ++
+ backend/internal/service/gateway_request.go        | 145 ++++-
+ backend/internal/service/gateway_request_test.go   | 318 +++++++++-
+ backend/internal/service/gateway_service.go        | 443 +++++++++++++-
+ backend/internal/service/gateway_streaming_test.go | 140 +++++
+ .../gemini_chat_completions_compat_service.go      |   3 +
+ .../service/gemini_messages_compat_service.go      |   7 +-
+ .../internal/service/generate_session_hash_test.go |  62 ++
+ .../internal/service/notification_email_service.go |  39 ++
+ .../service/notification_email_service_test.go     |   1 +
+ .../service/openai_apikey_responses_probe.go       | 129 +++-
+ .../service/openai_apikey_responses_probe_test.go  |  78 +++
+ backend/internal/service/openai_cyber_policy.go    |  88 +++
+ .../internal/service/openai_cyber_policy_test.go   |  88 +++
+ .../internal/service/openai_cyber_session_block.go |  99 ++++
+ .../service/openai_cyber_session_block_test.go     | 192 ++++++
+ backend/internal/service/openai_embeddings.go      |   7 +
+ .../service/openai_failover_cached_body_test.go    |  28 +
+ .../service/openai_gateway_chat_completions.go     |  81 ++-
+ .../service/openai_gateway_chat_completions_raw.go |   2 +
+ .../openai_gateway_chat_completions_test.go        |  56 ++
+ .../service/openai_gateway_compat_cyber_test.go    | 136 +++++
+ .../internal/service/openai_gateway_messages.go    |  75 +++
+ .../service/openai_gateway_record_usage_test.go    |  99 +++-
+ .../openai_gateway_responses_chat_fallback.go      |   2 +
+ backend/internal/service/openai_gateway_service.go | 181 +++++-
+ .../service/openai_gateway_service_hotpath_test.go |   7 +
+ .../service/openai_gateway_service_test.go         | 106 ++++
+ .../openai_image_generation_controls_test.go       |  28 +
+ backend/internal/service/openai_images.go          |   2 +-
+ .../internal/service/openai_images_responses.go    | 144 ++++-
+ backend/internal/service/openai_images_test.go     | 149 +++++
+ backend/internal/service/openai_quota_service.go   | 313 ++++++++++
+ backend/internal/service/openai_ws_forwarder.go    |  28 +-
+ .../internal/service/openai_ws_forwarder_test.go   |  54 ++
+ backend/internal/service/openai_ws_http_bridge.go  |   2 +-
+ backend/internal/service/ops_user_error.go         |   4 +
+ .../internal/service/ops_user_error_cyber_test.go  |  14 +
+ backend/internal/service/ratelimit_service.go      | 119 ++++
+ ...atelimit_service_anthropic_window_limit_test.go |  68 +++
+ .../service/ratelimit_session_window_test.go       |   3 +
+ backend/internal/service/scheduler_outbox.go       |  10 +-
+ .../scheduler_snapshot_outbox_cleanup_test.go      | 269 +++++++++
+ .../internal/service/scheduler_snapshot_service.go |  38 +-
+ backend/internal/service/setting_service.go        | 226 +++++--
+ ...ting_service_claude_oauth_system_prompt_test.go |  49 ++
+ backend/internal/service/settings_view.go          |  21 +-
+ backend/internal/service/thinking_protocol.go      | 112 ++++
+ .../thinking_protocol_filter_integration_test.go   |  80 +++
+ backend/internal/service/thinking_protocol_test.go | 120 ++++
+ backend/internal/service/token_refresh_service.go  |  26 +-
+ .../token_refresh_service_candidates_test.go       | 190 ++++++
+ .../internal/service/token_refresh_service_test.go |   2 +
+ backend/internal/service/usage_log.go              |  17 +-
+ backend/internal/service/usage_log_cyber_test.go   |  25 +
+ backend/internal/service/wire.go                   |  13 +
+ .../151_account_autopause_expiry_index_notx.sql    |   6 +
+ backend/migrations/151_channel_monitor_jitter.sql  |   7 +
+ .../migrations/152_scheduler_outbox_dedup_key.sql  |   2 +
+ ...heduler_outbox_pending_dedup_key_index_notx.sql |   3 +
+ ..._identity_payment_migrations_regression_test.go |  13 +
+ deploy/Dockerfile                                  |   7 +-
+ frontend/package.json                              |   3 +-
+ frontend/pnpm-lock.yaml                            |  25 +-
+ frontend/src/api/admin/accounts.ts                 |  74 ++-
+ frontend/src/api/admin/channelMonitor.ts           |   3 +
+ frontend/src/api/admin/riskControl.ts              |   2 +
+ frontend/src/api/admin/settings.ts                 |  16 +
+ .../src/components/account/AccountUsageCell.vue    |  60 +-
+ .../components/account/OpenAIQuotaResetCell.vue    | 200 +++++++
+ .../components/admin/monitor/MonitorFormDialog.vue |  14 +
+ .../src/components/admin/usage/UsageFilters.vue    |   3 +-
+ frontend/src/components/admin/usage/UsageTable.vue |   2 +
+ .../src/components/user/UserErrorRequestsTable.vue |   2 +-
+ frontend/src/i18n/locales/en.ts                    |  48 +-
+ frontend/src/i18n/locales/zh.ts                    |  48 +-
+ frontend/src/types/index.ts                        |   2 +-
+ frontend/src/utils/usageRequestType.ts             |   5 +-
+ frontend/src/views/admin/AccountsView.vue          |   5 +
+ frontend/src/views/admin/RiskControlView.vue       |  14 +-
+ frontend/src/views/admin/SettingsView.vue          | 657 +++++++++++++++++++++
+ frontend/src/views/admin/UsageView.vue             |   1 +
+ .../src/views/admin/__tests__/SettingsView.spec.ts |  39 ++
+ frontend/src/views/user/UsageView.vue              |   3 +
+ 175 files changed, 11018 insertions(+), 661 deletions(-)

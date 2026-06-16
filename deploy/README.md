@@ -45,10 +45,10 @@ chmod +x docker-deploy.sh
 
 **What the script does:**
 - Downloads `docker-compose.local.yml` and `.env.example`
-- Automatically generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
+- Automatically generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, DATABASE_PASSWORD)
 - Creates `.env` file with generated secrets
-- Creates necessary data directories (data/, postgres_data/, redis_data/)
-- **Displays generated credentials** (POSTGRES_PASSWORD, JWT_SECRET, etc.)
+- Creates necessary data directories (data/, mysql_data/, redis_data/)
+- **Displays generated credentials** (DATABASE_PASSWORD, JWT_SECRET, etc.)
 
 **After running the script:**
 ```bash
@@ -76,7 +76,7 @@ cd sub2api/deploy
 
 # Configure environment
 cp .env.example .env
-nano .env  # Set POSTGRES_PASSWORD and other required variables
+nano .env  # Set DATABASE_PASSWORD and other required variables
 
 # Generate secure secrets (recommended)
 JWT_SECRET=$(openssl rand -hex 32)
@@ -85,7 +85,7 @@ echo "JWT_SECRET=${JWT_SECRET}" >> .env
 echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
 
 # Create data directories
-mkdir -p data postgres_data redis_data
+mkdir -p data mysql_data redis_data
 
 # Start all services using local directory version
 docker compose -f docker-compose.local.yml up -d
@@ -101,7 +101,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 
 | Version | Data Storage | Migration | Best For |
 |---------|-------------|-----------|----------|
-| **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
+| **docker-compose.local.yml** | Local directories (./data, ./mysql_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
 **Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
@@ -111,8 +111,8 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 When using Docker Compose with `AUTO_SETUP=true`:
 
 1. On first run, the system automatically:
-   - Connects to PostgreSQL and Redis
-   - Applies database migrations (SQL files in `backend/migrations/*.sql`) and records them in `schema_migrations`
+   - Connects to MySQL and Redis
+   - Applies database migrations (SQL files in `backend/migrations/mysql/*.sql`) and records them in `schema_migrations`
    - Generates JWT secret (if not provided)
    - Creates admin account (password auto-generated if not provided)
    - Writes config.yaml
@@ -124,28 +124,24 @@ When using Docker Compose with `AUTO_SETUP=true`:
    docker compose logs sub2api | grep "admin password"
    ```
 
-### Database Migration Notes (PostgreSQL)
+### Database Migration Notes (MySQL)
 
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
 - `schema_migrations` tracks applied migrations (filename + checksum).
 - Migrations are forward-only; rollback requires a DB backup restore or a manual compensating SQL script.
 
-**Verify `users.allowed_groups` → `user_allowed_groups` backfill**
+**Verify MySQL migrations**
 
-During the incremental GORM→Ent migration, `users.allowed_groups` (legacy `BIGINT[]`) is being replaced by a normalized join table `user_allowed_groups(user_id, group_id)`.
-
-Run this query to compare the legacy data vs the join table:
+Run these queries to confirm migrations were recorded and the MySQL join table exists:
 
 ```sql
-WITH old_pairs AS (
-  SELECT DISTINCT u.id AS user_id, x.group_id
-  FROM users u
-  CROSS JOIN LATERAL unnest(u.allowed_groups) AS x(group_id)
-  WHERE u.allowed_groups IS NOT NULL
-)
-SELECT
-  (SELECT COUNT(*) FROM old_pairs)           AS old_pair_count,
-  (SELECT COUNT(*) FROM user_allowed_groups) AS new_pair_count;
+SELECT filename, applied_at
+FROM schema_migrations
+ORDER BY filename DESC
+LIMIT 10;
+
+SELECT COUNT(*) AS user_allowed_group_count
+FROM user_allowed_groups;
 ```
 
 ### datamanagementd（数据管理）联动
@@ -179,7 +175,7 @@ docker compose -f docker-compose.local.yml up -d
 
 # Remove all data (caution!)
 docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
+rm -rf data/ mysql_data/ redis_data/
 ```
 
 For **named volumes version** (docker-compose.yml):
@@ -209,7 +205,7 @@ docker compose down -v
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `POSTGRES_PASSWORD` | **Yes** | - | PostgreSQL password |
+| `DATABASE_PASSWORD` | **Yes** | - | MySQL password |
 | `JWT_SECRET` | **Recommended** | *(auto-generated)* | JWT secret (fixed for persistent sessions) |
 | `TOTP_ENCRYPTION_KEY` | **Recommended** | *(auto-generated)* | TOTP encryption key (fixed for persistent 2FA) |
 | `SERVER_PORT` | No | `8080` | Server port |
@@ -223,7 +219,7 @@ docker compose down -v
 
 See `.env.example` for all available options.
 
-> **Note:** The `docker-deploy.sh` script automatically generates `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you.
+> **Note:** The `docker-deploy.sh` script automatically generates `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, and `DATABASE_PASSWORD` for you.
 
 ### Easy Migration (Local Directory Version)
 
@@ -466,7 +462,7 @@ The main config file is at `/etc/sub2api/config.yaml` (created by Setup Wizard).
 ### Prerequisites
 
 - Linux server (Ubuntu 20.04+, Debian 11+, CentOS 8+, etc.)
-- PostgreSQL 14+
+- MySQL 8.0+
 - Redis 6+
 - systemd
 
@@ -498,7 +494,7 @@ docker compose -f docker-compose.local.yml ps
 docker compose -f docker-compose.local.yml logs --tail=100 sub2api
 
 # Check database connection
-docker compose -f docker-compose.local.yml exec postgres pg_isready
+docker compose -f docker-compose.local.yml exec mysql sh -c 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD"'
 
 # Check Redis connection
 docker compose -f docker-compose.local.yml exec redis redis-cli ping
@@ -507,7 +503,7 @@ docker compose -f docker-compose.local.yml exec redis redis-cli ping
 docker compose -f docker-compose.local.yml restart
 
 # Check data directories
-ls -la data/ postgres_data/ redis_data/
+ls -la data/ mysql_data/ redis_data/
 ```
 
 For **named volumes version**:
@@ -520,7 +516,7 @@ docker compose ps
 docker compose logs --tail=100 sub2api
 
 # Check database connection
-docker compose exec postgres pg_isready
+docker compose exec mysql sh -c 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD"'
 
 # Check Redis connection
 docker compose exec redis redis-cli ping
@@ -541,8 +537,8 @@ sudo journalctl -u sub2api -n 50
 # Check config file
 sudo cat /etc/sub2api/config.yaml
 
-# Check PostgreSQL
-sudo systemctl status postgresql
+# Check MySQL
+sudo systemctl status mysql  # or mariadb
 
 # Check Redis
 sudo systemctl status redis
@@ -551,7 +547,7 @@ sudo systemctl status redis
 ### Common Issues
 
 1. **Port already in use**: Change `SERVER_PORT` in `.env` or systemd config
-2. **Database connection failed**: Check PostgreSQL is running and credentials are correct
+2. **Database connection failed**: Check MySQL is running and credentials are correct
 3. **Redis connection failed**: Check Redis is running and password is correct
 4. **Permission denied**: Ensure proper file ownership for binary install
 

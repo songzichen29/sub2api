@@ -52,6 +52,8 @@ const migrationsLockRetryInterval = 500 * time.Millisecond
 const nonTransactionalMigrationSuffix = "_notx.sql"
 const paymentOrdersOutTradeNoUniqueMigration = "120_enforce_payment_orders_out_trade_no_unique_notx.sql"
 const paymentOrdersOutTradeNoUniqueIndex = "paymentorder_out_trade_no_unique"
+const schedulerOutboxPendingDedupKeyMigration = "153_scheduler_outbox_pending_dedup_key_index_notx.sql"
+const schedulerOutboxPendingDedupKeyIndex = "idx_scheduler_outbox_pending_dedup_key"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -98,7 +100,7 @@ var migrationChecksumCompatibilityRules = map[string]migrationChecksumCompatibil
 // 该函数可以在每次应用启动时安全调用：
 // - 已应用的迁移会被自动跳过（通过校验 filename 判断）
 // - 如果迁移文件内容被修改（checksum 不匹配），会返回错误
-// - 使用 PostgreSQL Advisory Lock 确保多实例并发安全
+// - 使用 MySQL 命名锁确保多实例并发安全
 //
 // 参数：
 //   - ctx: 上下文，用于超时控制和取消
@@ -117,7 +119,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 // 它从指定的文件系统读取 SQL 迁移文件并按顺序应用。
 //
 // 迁移执行流程：
-//  1. 获取 PostgreSQL Advisory Lock，防止多实例并发迁移
+//  1. 获取 MySQL 命名锁，防止多实例并发迁移
 //  2. 确保 schema_migrations 表存在
 //  3. 按文件名排序读取所有 .sql 文件
 //  4. 对于每个迁移文件：
@@ -125,7 +127,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 //     - 检查该迁移是否已应用（通过 filename 查询）
 //     - 如果已应用，验证校验和是否匹配
 //     - 如果未应用，在事务中执行迁移并记录
-//  5. 释放 Advisory Lock
+//  5. 释放命名锁
 //
 // 参数：
 //   - ctx: 上下文
@@ -285,6 +287,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db *sql.DB, name stri
 	switch name {
 	case paymentOrdersOutTradeNoUniqueMigration:
 		return preparePaymentOrdersOutTradeNoUniqueMigration(ctx, db)
+	case schedulerOutboxPendingDedupKeyMigration:
+		return dropInvalidIndexIfPresent(ctx, db, schedulerOutboxPendingDedupKeyIndex)
 	default:
 		return nil
 	}
@@ -303,16 +307,20 @@ func preparePaymentOrdersOutTradeNoUniqueMigration(ctx context.Context, db *sql.
 		)
 	}
 
-	invalid, err := indexIsInvalid(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+	return dropInvalidIndexIfPresent(ctx, db, paymentOrdersOutTradeNoUniqueIndex)
+}
+
+func dropInvalidIndexIfPresent(ctx context.Context, db *sql.DB, indexName string) error {
+	invalid, err := indexIsInvalid(ctx, db, indexName)
 	if err != nil {
-		return fmt.Errorf("check invalid index %s: %w", paymentOrdersOutTradeNoUniqueIndex, err)
+		return fmt.Errorf("check invalid index %s: %w", indexName, err)
 	}
 	if !invalid {
 		return nil
 	}
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP INDEX CONCURRENTLY IF EXISTS %s", paymentOrdersOutTradeNoUniqueIndex)); err != nil {
-		return fmt.Errorf("drop invalid index %s: %w", paymentOrdersOutTradeNoUniqueIndex, err)
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP INDEX CONCURRENTLY IF EXISTS %s", indexName)); err != nil {
+		return fmt.Errorf("drop invalid index %s: %w", indexName, err)
 	}
 	return nil
 }

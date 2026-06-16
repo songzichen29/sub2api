@@ -336,7 +336,7 @@ func TestBackupService_CreateBackup_Streaming(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
 
-	dumpContent := "-- PostgreSQL dump\nCREATE TABLE test (id int);\n"
+	dumpContent := "-- MySQL dump\nCREATE TABLE test (id int);\n"
 	dumper := &mockDumper{dumpData: []byte(dumpContent)}
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, dumper, store)
@@ -397,7 +397,7 @@ func TestBackupService_RestoreBackup_Streaming(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
 
-	dumpContent := "-- PostgreSQL dump\nCREATE TABLE test (id int);\n"
+	dumpContent := "-- MySQL dump\nCREATE TABLE test (id int);\n"
 	dumper := &mockDumper{dumpData: []byte(dumpContent)}
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, dumper, store)
@@ -410,7 +410,7 @@ func TestBackupService_RestoreBackup_Streaming(t *testing.T) {
 	err = svc.RestoreBackup(context.Background(), record.ID)
 	require.NoError(t, err)
 
-	// 验证 psql 收到的数据是否与原始 dump 内容一致
+	// 验证 mysql 收到的数据是否与原始 dump 内容一致
 	require.Equal(t, dumpContent, string(dumper.restored))
 }
 
@@ -680,7 +680,7 @@ func TestStartRestore_Async(t *testing.T) {
 	repo := newMockSettingRepo()
 	seedS3Config(t, repo)
 
-	dumpContent := "-- PostgreSQL dump\nCREATE TABLE test (id int);\n"
+	dumpContent := "-- MySQL dump\nCREATE TABLE test (id int);\n"
 	dumper := &mockDumper{dumpData: []byte(dumpContent)}
 	store := newMockObjectStore()
 	svc := newTestBackupService(repo, dumper, store)

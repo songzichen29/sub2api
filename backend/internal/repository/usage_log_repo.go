@@ -90,7 +90,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // image_input_size
 	"text",        // image_output_size
 	"text",        // image_size_source
-	"jsonb",       // image_size_breakdown
+	"json",        // image_size_breakdown
 	"text",        // service_tier
 	"text",        // reasoning_effort
 	"text",        // inbound_endpoint
@@ -101,7 +101,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // billing_tier
 	"text",        // billing_mode
 	"numeric",     // account_stats_cost
-	"timestamptz", // created_at
+	"datetime(6)", // created_at
 }
 
 const rawUsageLogModelColumn = "model"

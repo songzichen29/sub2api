@@ -2,7 +2,7 @@ package service
 
 import "context"
 
-type DataManagementPostgresConfig struct {
+type DataManagementMySQLConfig struct {
 	Host               string `json:"host"`
 	Port               int32  `json:"port"`
 	User               string `json:"user"`
@@ -36,17 +36,17 @@ type DataManagementS3Config struct {
 }
 
 type DataManagementConfig struct {
-	SourceMode        string                       `json:"source_mode"`
-	BackupRoot        string                       `json:"backup_root"`
-	SQLitePath        string                       `json:"sqlite_path,omitempty"`
-	RetentionDays     int32                        `json:"retention_days"`
-	KeepLast          int32                        `json:"keep_last"`
-	ActivePostgresID  string                       `json:"active_mysql_profile_id"`
-	ActiveRedisID     string                       `json:"active_redis_profile_id"`
-	Postgres          DataManagementPostgresConfig `json:"mysql"`
-	Redis             DataManagementRedisConfig    `json:"redis"`
-	S3                DataManagementS3Config       `json:"s3"`
-	ActiveS3ProfileID string                       `json:"active_s3_profile_id"`
+	SourceMode        string                    `json:"source_mode"`
+	BackupRoot        string                    `json:"backup_root"`
+	SQLitePath        string                    `json:"sqlite_path,omitempty"`
+	RetentionDays     int32                     `json:"retention_days"`
+	KeepLast          int32                     `json:"keep_last"`
+	ActiveMySQLID     string                    `json:"active_mysql_profile_id"`
+	ActiveRedisID     string                    `json:"active_redis_profile_id"`
+	MySQL             DataManagementMySQLConfig `json:"mysql"`
+	Redis             DataManagementRedisConfig `json:"redis"`
+	S3                DataManagementS3Config    `json:"s3"`
+	ActiveS3ProfileID string                    `json:"active_s3_profile_id"`
 }
 
 type DataManagementTestS3Result struct {
@@ -60,7 +60,7 @@ type DataManagementCreateBackupJobInput struct {
 	TriggeredBy    string
 	IdempotencyKey string
 	S3ProfileID    string
-	PostgresID     string
+	MySQLID        string
 	RedisID        string
 }
 
@@ -91,7 +91,7 @@ type DataManagementBackupJob struct {
 	IdempotencyKey string                     `json:"idempotency_key,omitempty"`
 	UploadToS3     bool                       `json:"upload_to_s3"`
 	S3ProfileID    string                     `json:"s3_profile_id,omitempty"`
-	PostgresID     string                     `json:"mysql_profile_id,omitempty"`
+	MySQLID        string                     `json:"mysql_profile_id,omitempty"`
 	RedisID        string                     `json:"redis_profile_id,omitempty"`
 	StartedAt      string                     `json:"started_at,omitempty"`
 	FinishedAt     string                     `json:"finished_at,omitempty"`

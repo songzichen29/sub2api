@@ -135,15 +135,15 @@ type OpsErrorLogFilter struct {
 
 	// Model matches against requested_model first, then model.
 	Model string
-	// ModelFuzzy 为 true 时 Model 走 ILIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
+	// ModelFuzzy 为 true 时 Model 走 LIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
 	ModelFuzzy bool
 
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
+	// ErrorPhasesAny / ErrorTypesAny add multi-value filters without touching the
 	// special-cased single `Phase` field (only Phase=="upstream" bypasses the status>=400 clause).
-	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
+	// NOTE: these multi-value filters do NOT bypass status>=400; records with error_phase='upstream'
 	// but status_code<400 (recovered upstream errors) remain excluded.
 	// Used to map user-facing coarse categories to backend conditions.
 	ErrorPhasesAny []string

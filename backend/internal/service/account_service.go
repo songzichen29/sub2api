@@ -41,6 +41,7 @@ type AccountRepository interface {
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
+	ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
 	// ListAllTags 返回所有未删除账号 tags 字段去重排序后的并集，用于自动补全。
 	ListAllTags(ctx context.Context) ([]string, error)

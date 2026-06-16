@@ -4,7 +4,12 @@
  */
 
 import { apiClient } from "../client";
-import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry } from "@/types";
+import type {
+  CustomMenuItem,
+  CustomEndpoint,
+  LoginAgreementDocument,
+  NotifyEmailEntry,
+} from "@/types";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
@@ -70,6 +75,17 @@ export type PaymentVisibleMethodSource =
   | "official_wxpay"
   | "easypay_wxpay";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
+export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity";
+
+export interface PlatformQuotaLimits {
+  daily: number | null;
+  weekly: number | null;
+  monthly: number | null;
+}
+
+export type DefaultPlatformQuotasMap = Partial<
+  Record<PlatformType, PlatformQuotaLimits>
+>;
 
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
@@ -91,6 +107,12 @@ const AUTH_SOURCE_TYPES: AuthSourceType[] = [
 ];
 const AUTH_SOURCE_DEFAULT_BALANCE = 0;
 const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5;
+const PLATFORMS: PlatformType[] = [
+  "anthropic",
+  "openai",
+  "gemini",
+  "antigravity",
+];
 const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
   PaymentVisibleMethod,
   PaymentVisibleMethodSourceOption[]
@@ -219,6 +241,49 @@ export function normalizeDefaultSubscriptionSettings(
     });
   }
   return normalized;
+}
+
+export function normalizePlatformQuotasMap(
+  input?: DefaultPlatformQuotasMap | null,
+): DefaultPlatformQuotasMap {
+  const result: DefaultPlatformQuotasMap = {};
+  for (const platform of PLATFORMS) {
+    const source = input?.[platform];
+    result[platform] = {
+      daily:
+        typeof source?.daily === "number" && Number.isFinite(source.daily)
+          ? source.daily
+          : null,
+      weekly:
+        typeof source?.weekly === "number" && Number.isFinite(source.weekly)
+          ? source.weekly
+          : null,
+      monthly:
+        typeof source?.monthly === "number" && Number.isFinite(source.monthly)
+          ? source.monthly
+          : null,
+    };
+  }
+  return result;
+}
+
+export function sanitizePlatformQuotasMap(
+  input?: DefaultPlatformQuotasMap | null,
+): DefaultPlatformQuotasMap {
+  const clean = (value: unknown): number | null =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : null;
+  const result: DefaultPlatformQuotasMap = {};
+  for (const platform of PLATFORMS) {
+    const source = input?.[platform];
+    result[platform] = {
+      daily: clean(source?.daily),
+      weekly: clean(source?.weekly),
+      monthly: clean(source?.monthly),
+    };
+  }
+  return result;
 }
 
 export function buildAuthSourceDefaultsState(
@@ -377,6 +442,10 @@ export interface SystemSettings {
   invitation_code_enabled: boolean;
   totp_enabled: boolean; // TOTP 双因素认证
   totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
+  login_agreement_enabled?: boolean;
+  login_agreement_mode?: "modal" | "checkbox" | string;
+  login_agreement_updated_at?: string;
+  login_agreement_documents?: LoginAgreementDocument[];
   // Default settings
   default_balance: number;
   affiliate_recharge_enabled: boolean;
@@ -409,6 +478,7 @@ export interface SystemSettings {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  default_platform_quotas?: DefaultPlatformQuotasMap;
   force_email_on_third_party_signup?: boolean;
   // OEM settings
   site_name: string;
@@ -516,14 +586,23 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
+  enable_claude_oauth_system_prompt_injection: boolean;
+  claude_oauth_system_prompt: string;
+  claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
+  antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
   payment_enabled: boolean;
   risk_control_enabled: boolean;
+
+  // Cyber session block
+  cyber_session_block_enabled: boolean;
+  cyber_session_block_ttl_seconds: number;
+
   payment_min_amount: number;
   payment_max_amount: number;
   payment_daily_limit: number;
@@ -585,6 +664,10 @@ export interface UpdateSettingsRequest {
   frontend_url?: string;
   invitation_code_enabled?: boolean;
   totp_enabled?: boolean; // TOTP 双因素认证
+  login_agreement_enabled?: boolean;
+  login_agreement_mode?: "modal" | "checkbox" | string;
+  login_agreement_updated_at?: string;
+  login_agreement_documents?: LoginAgreementDocument[];
   default_balance?: number;
   affiliate_recharge_enabled?: boolean;
   affiliate_subscription_enabled?: boolean;
@@ -616,6 +699,7 @@ export interface UpdateSettingsRequest {
   auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
+  default_platform_quotas?: DefaultPlatformQuotasMap;
   force_email_on_third_party_signup?: boolean;
   site_name?: string;
   site_logo?: string;
@@ -702,12 +786,21 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
+  enable_claude_oauth_system_prompt_injection?: boolean;
+  claude_oauth_system_prompt?: string;
+  claude_oauth_system_prompt_blocks?: string;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
+  antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
+
+  // Cyber session block
+  cyber_session_block_enabled?: boolean;
+  cyber_session_block_ttl_seconds?: number;
+
   payment_min_amount?: number;
   payment_max_amount?: number;
   payment_daily_limit?: number;
