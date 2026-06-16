@@ -2799,7 +2799,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	//      completions 入口由 normalizeResponsesBodyServiceTier 完成同一
 	//      行为，这里手工实现等效逻辑。
 	if rawTier, ok := reqBody["service_tier"].(string); ok {
-		if normTier := normalizedOpenAIServiceTierValue(rawTier); normTier != "" {
+		normTier := normalizedOpenAIServiceTierValue(rawTier)
+		if account.Type == AccountTypeOAuth && !openAIChatGPTInternalSupportsServiceTier(normTier) {
+			delete(reqBody, "service_tier")
+			bodyModified = true
+			disablePatch()
+		} else if normTier != "" {
 			action, errMsg := s.evaluateOpenAIFastPolicy(ctx, account, upstreamModel, normTier)
 			switch action {
 			case BetaPolicyActionBlock:
@@ -6944,7 +6949,8 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
 // 1) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
-// 2) store=false 3) 非 compact 保持 stream=true；compact 强制 stream=false
+// 2) 删除 ChatGPT internal API 不支持的 service_tier 值
+// 3) store=false 4) 非 compact 保持 stream=true；compact 强制 stream=false
 func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
@@ -6963,6 +6969,26 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		}
 		normalized = next
 		changed = true
+	}
+
+	rawServiceTier := gjson.GetBytes(normalized, "service_tier")
+	if rawServiceTier.Exists() {
+		normalizedTier := normalizedOpenAIServiceTierValue(rawServiceTier.String())
+		if !openAIChatGPTInternalSupportsServiceTier(normalizedTier) {
+			next, err := sjson.DeleteBytes(normalized, "service_tier")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete service_tier: %w", err)
+			}
+			normalized = next
+			changed = true
+		} else if normalizedTier != rawServiceTier.String() {
+			next, err := sjson.SetBytes(normalized, "service_tier", normalizedTier)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body service_tier: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
 	}
 
 	if compact {
@@ -7002,6 +7028,15 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
+}
+
+func openAIChatGPTInternalSupportsServiceTier(tier string) bool {
+	switch strings.ToLower(strings.TrimSpace(tier)) {
+	case "priority", "flex":
+		return true
+	default:
+		return false
+	}
 }
 
 func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
@@ -7207,6 +7242,13 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		return body, nil
 	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
+	if account != nil && account.Type == AccountTypeOAuth && !openAIChatGPTInternalSupportsServiceTier(normTier) {
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		if err != nil {
+			return body, fmt.Errorf("strip unsupported oauth service_tier from body: %w", err)
+		}
+		return trimmed, nil
+	}
 	if normTier == "" {
 		return body, nil
 	}
@@ -7304,6 +7346,13 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToWSResponseCreate(
 		return frame, nil, nil
 	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
+	if account != nil && account.Type == AccountTypeOAuth && !openAIChatGPTInternalSupportsServiceTier(normTier) {
+		trimmed, err := sjson.DeleteBytes(frame, "service_tier")
+		if err != nil {
+			return frame, nil, fmt.Errorf("strip unsupported oauth service_tier from ws frame: %w", err)
+		}
+		return trimmed, nil, nil
+	}
 	if normTier == "" {
 		return frame, nil, nil
 	}

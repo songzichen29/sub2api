@@ -31,3 +31,31 @@ func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *te
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
 }
+
+func TestNormalizeOpenAIPassthroughOAuthBody_RemovesUnsupportedServiceTier(t *testing.T) {
+	for _, tier := range []string{"auto", "default", "scale", "turbo"} {
+		body := []byte(`{"model":"gpt-5.4","input":"hello","service_tier":"` + tier + `"}`)
+
+		normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+		require.NoError(t, err)
+		require.True(t, changed, "tier %q should be stripped for OAuth passthrough", tier)
+		require.False(t, gjson.GetBytes(normalized, "service_tier").Exists())
+	}
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_PreservesSupportedServiceTier(t *testing.T) {
+	for _, tc := range []struct {
+		raw  string
+		want string
+	}{
+		{raw: "priority", want: "priority"},
+		{raw: "flex", want: "flex"},
+		{raw: "fast", want: "priority"},
+	} {
+		body := []byte(`{"model":"gpt-5.4","input":"hello","service_tier":"` + tc.raw + `"}`)
+
+		normalized, _, err := normalizeOpenAIPassthroughOAuthBody(body, false)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, gjson.GetBytes(normalized, "service_tier").String())
+	}
+}

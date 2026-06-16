@@ -145,6 +145,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		}
 		responsesReq.Model = upstreamModel
 		normalizeResponsesRequestServiceTier(responsesReq)
+		normalizeChatGPTInternalResponsesRequestServiceTier(account, responsesReq)
 		responsesBody, err = json.Marshal(responsesReq)
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
@@ -214,6 +215,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		return nil, policyErr
 	}
 	responsesBody = updatedBody
+	responsesReq.ServiceTier = gjson.GetBytes(responsesBody, "service_tier").String()
 
 	// 5. Get access token
 	token, _, err := s.GetAccessToken(ctx, account)
@@ -341,6 +343,15 @@ func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
 		return
 	}
 	req.ServiceTier = normalizedOpenAIServiceTierValue(req.ServiceTier)
+}
+
+func normalizeChatGPTInternalResponsesRequestServiceTier(account *Account, req *apicompat.ResponsesRequest) {
+	if req == nil || account == nil || account.Type != AccountTypeOAuth {
+		return
+	}
+	if !openAIChatGPTInternalSupportsServiceTier(req.ServiceTier) {
+		req.ServiceTier = ""
+	}
 }
 
 func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {

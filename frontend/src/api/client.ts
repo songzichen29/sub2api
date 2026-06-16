@@ -58,12 +58,20 @@ apiClient.interceptors.request.use(
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
     if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`
+      if (typeof config.headers.set === 'function') {
+        config.headers.set('Authorization', `Bearer ${token}`)
+      } else {
+        config.headers.Authorization = `Bearer ${token}`
+      }
     }
 
     // Attach locale for backend translations
     if (config.headers) {
-      config.headers['Accept-Language'] = getLocale()
+      if (typeof config.headers.set === 'function') {
+        config.headers.set('Accept-Language', getLocale())
+      } else {
+        config.headers['Accept-Language'] = getLocale()
+      }
     }
 
     // Attach timezone for all GET requests (backend may use it for default date ranges)

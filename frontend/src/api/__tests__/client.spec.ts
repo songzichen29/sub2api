@@ -44,6 +44,25 @@ describe('API Client', () => {
       expect(config.headers.get('Authorization')).toBe('Bearer my-jwt-token')
     })
 
+    it('通过 AxiosHeaders.set 附加 Authorization 头', async () => {
+      localStorage.setItem('auth_token', 'my-jwt-token')
+
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.get('/admin/affiliates/invites')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('Authorization')).toBe('Bearer my-jwt-token')
+      expect(config.headers.get('Accept-Language')).toBe('zh-CN')
+    })
+
     it('无 token 时不附加 Authorization 头', async () => {
       const adapter = vi.fn().mockResolvedValue({
         status: 200,
