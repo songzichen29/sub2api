@@ -214,6 +214,55 @@ describe('API Client', () => {
   // --- 401 Token 刷新 ---
 
   describe('401 Token 刷新', () => {
+    it('刷新 token 后重试请求时保留新的 Authorization 头', async () => {
+      localStorage.setItem('auth_token', 'expired-token')
+      localStorage.setItem('refresh_token', 'refresh-token')
+
+      vi.spyOn(axios, 'post').mockResolvedValue({
+        data: {
+          code: 0,
+          data: {
+            access_token: 'new-token',
+            refresh_token: 'new-refresh-token',
+            expires_in: 3600,
+          },
+        },
+      })
+
+      const adapter = vi.fn(async (config) => {
+        if (adapter.mock.calls.length === 1) {
+          throw {
+            response: {
+              status: 401,
+              data: { code: 'TOKEN_EXPIRED', message: 'Token expired' },
+            },
+            config,
+            code: 'ERR_BAD_REQUEST',
+          }
+        }
+
+        return {
+          status: 200,
+          data: { code: 0, data: { ok: true } },
+          headers: {},
+          config,
+          statusText: 'OK',
+        }
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.get('/admin/affiliates/rebates')).resolves.toEqual(
+        expect.objectContaining({
+          data: { ok: true },
+        })
+      )
+
+      const retryConfig = adapter.mock.calls[1][0]
+      expect(retryConfig.headers.get('Authorization')).toBe('Bearer new-token')
+      expect(localStorage.getItem('auth_token')).toBe('new-token')
+      expect(localStorage.getItem('refresh_token')).toBe('new-refresh-token')
+    })
+
     it('无 refresh_token 时 401 清除 localStorage', async () => {
       localStorage.setItem('auth_token', 'expired-token')
       // 不设置 refresh_token

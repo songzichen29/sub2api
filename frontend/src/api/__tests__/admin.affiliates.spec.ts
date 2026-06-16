@@ -41,4 +41,28 @@ describe('admin affiliates api', () => {
       },
     })
   })
+
+  it('uses shared apiClient for rebate records so auth interceptors run', async () => {
+    await affiliatesAPI.listRebateRecords({
+      page: 1,
+      page_size: 20,
+      search: '1410134718@qq.com',
+      sort_by: 'created_at',
+      sort_order: 'desc',
+      timezone: 'Asia/Shanghai',
+    })
+
+    expect(get).toHaveBeenCalledWith('/admin/affiliates/rebates', {
+      params: {
+        page: 1,
+        page_size: 20,
+        search: '1410134718@qq.com',
+        start_at: undefined,
+        end_at: undefined,
+        sort_by: 'created_at',
+        sort_order: 'desc',
+        timezone: 'Asia/Shanghai',
+      },
+    })
+  })
 })

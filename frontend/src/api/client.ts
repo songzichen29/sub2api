@@ -53,26 +53,46 @@ const getUserTimezone = (): string => {
   }
 }
 
+function setRequestHeader(
+  headers: InternalAxiosRequestConfig['headers'] | undefined,
+  name: string,
+  value: string
+): void {
+  if (!headers) return
+
+  if (typeof headers.set === 'function') {
+    headers.set(name, value)
+    return
+  }
+
+  const mutableHeaders = headers as Record<string, string>
+  mutableHeaders[name] = value
+}
+
+function getRequestHeader(
+  headers: InternalAxiosRequestConfig['headers'] | undefined,
+  name: string
+): unknown {
+  if (!headers) return undefined
+
+  if (typeof headers.get === 'function') {
+    return headers.get(name)
+  }
+
+  const rawHeaders = headers as Record<string, unknown>
+  return rawHeaders[name] ?? rawHeaders[name.toLowerCase()]
+}
+
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
-    if (token && config.headers) {
-      if (typeof config.headers.set === 'function') {
-        config.headers.set('Authorization', `Bearer ${token}`)
-      } else {
-        config.headers.Authorization = `Bearer ${token}`
-      }
+    if (token) {
+      setRequestHeader(config.headers, 'Authorization', `Bearer ${token}`)
     }
 
     // Attach locale for backend translations
-    if (config.headers) {
-      if (typeof config.headers.set === 'function') {
-        config.headers.set('Accept-Language', getLocale())
-      } else {
-        config.headers['Accept-Language'] = getLocale()
-      }
-    }
+    setRequestHeader(config.headers, 'Accept-Language', getLocale())
 
     // Attach timezone for all GET requests (backend may use it for default date ranges)
     if (config.method === 'get') {
@@ -194,9 +214,7 @@ apiClient.interceptors.response.use(
                 if (newToken) {
                   // Mark as retried to prevent infinite loop if retry also returns 401
                   originalRequest._retry = true
-                  if (originalRequest.headers) {
-                    originalRequest.headers.Authorization = `Bearer ${newToken}`
-                  }
+                  setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${newToken}`)
                   resolve(apiClient(originalRequest))
                 } else {
                   // Refresh failed, reject with original error
@@ -239,9 +257,7 @@ apiClient.interceptors.response.use(
               onTokenRefreshed(access_token)
 
               // Retry the original request with new token
-              if (originalRequest.headers) {
-                originalRequest.headers.Authorization = `Bearer ${access_token}`
-              }
+              setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${access_token}`)
 
               isRefreshing = false
               return apiClient(originalRequest)
@@ -275,8 +291,8 @@ apiClient.interceptors.response.use(
 
         // No refresh token or is auth endpoint - clear auth and redirect
         const hasToken = !!localStorage.getItem('auth_token')
-        const headers = error.config?.headers as Record<string, unknown> | undefined
-        const authHeader = headers?.Authorization ?? headers?.authorization
+        const headers = error.config?.headers as InternalAxiosRequestConfig['headers'] | undefined
+        const authHeader = getRequestHeader(headers, 'Authorization')
         const sentAuth =
           typeof authHeader === 'string'
             ? authHeader.trim() !== ''
