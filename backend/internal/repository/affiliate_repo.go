@@ -718,10 +718,11 @@ func buildAffiliateRecordWhere(filter service.AffiliateRecordFilter, timeColumn 
 	}
 	search := strings.TrimSpace(filter.Search)
 	if search != "" && len(searchColumns) > 0 {
-		args = append(args, "%"+strings.ToLower(search)+"%")
+		likeArg := "%" + strings.ToLower(search) + "%"
 		parts := make([]string, 0, len(searchColumns))
 		for _, col := range searchColumns {
 			parts = append(parts, fmt.Sprintf("LOWER(%s) LIKE ?", col))
+			args = append(args, likeArg)
 		}
 		clauses = append(clauses, "("+strings.Join(parts, " OR ")+")")
 	}

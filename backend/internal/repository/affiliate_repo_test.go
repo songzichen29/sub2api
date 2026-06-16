@@ -4,7 +4,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,4 +29,32 @@ func TestAffiliateRecordQueriesUseLedgerAuditFields(t *testing.T) {
 	require.NotContains(t, content, "::double precision")
 	require.NotContains(t, content, "parseAffiliateRebateAmount")
 	require.NotContains(t, content, `"current_balance": "u.balance"`)
+}
+
+func TestBuildAffiliateRecordWhereRepeatsSearchArgForEachColumn(t *testing.T) {
+	start := time.Date(2026, 6, 16, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 16, 23, 59, 59, 0, time.UTC)
+
+	where, args := buildAffiliateRecordWhere(service.AffiliateRecordFilter{
+		Search:  "  1410134718@qq.com  ",
+		StartAt: &start,
+		EndAt:   &end,
+	}, "ual.created_at", []string{
+		"inviter.email",
+		"invitee.email",
+		"CAST(po.id AS CHAR)",
+	})
+
+	require.Contains(t, where, "ual.created_at >= ?")
+	require.Contains(t, where, "ual.created_at <= ?")
+	require.Contains(t, where, "LOWER(inviter.email) LIKE ?")
+	require.Contains(t, where, "LOWER(invitee.email) LIKE ?")
+	require.Contains(t, where, "LOWER(CAST(po.id AS CHAR)) LIKE ?")
+	require.Equal(t, []any{
+		start,
+		end,
+		"%1410134718@qq.com%",
+		"%1410134718@qq.com%",
+		"%1410134718@qq.com%",
+	}, args)
 }
