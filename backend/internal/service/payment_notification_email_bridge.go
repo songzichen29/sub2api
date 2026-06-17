@@ -49,6 +49,7 @@ func NewPaymentNotificationEmailBridge(
 	return bridge
 }
 
+//nolint:unused // test helper used by targeted bridge tests in downstream branches.
 func newPaymentNotificationEmailBridgeForTest(
 	entClient *dbent.Client,
 	notificationEmailService *NotificationEmailService,

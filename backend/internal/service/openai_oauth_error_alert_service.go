@@ -86,6 +86,7 @@ func (s *OpenAIOAuthErrorAlertService) notifyAccountIssue(ctx context.Context, a
 	}
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 type openAIOAuthAccountSnapshot struct {
 	AccountID   int64
 	AccountName string
@@ -96,6 +97,7 @@ type openAIOAuthAccountSnapshot struct {
 	IsAvailable bool
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 type openAIOAuthSnapshotSummary struct {
 	Total             int
 	Available         int
@@ -106,6 +108,7 @@ type openAIOAuthSnapshotSummary struct {
 	UnavailableOther  int
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func (s *OpenAIOAuthErrorAlertService) buildPlatformSnapshot(ctx context.Context, current *Account) []openAIOAuthAccountSnapshot {
 	if s == nil || s.accountRepo == nil {
 		return nil
@@ -134,6 +137,7 @@ func (s *OpenAIOAuthErrorAlertService) buildPlatformSnapshot(ctx context.Context
 	return snapshots
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func (s *OpenAIOAuthErrorAlertService) describeAccountStatus(account *Account, current *Account) string {
 	if account == nil {
 		return "未知"
@@ -163,6 +167,7 @@ func (s *OpenAIOAuthErrorAlertService) describeAccountStatus(account *Account, c
 	}
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func (s *OpenAIOAuthErrorAlertService) describeAccountDetail(account *Account) string {
 	if account == nil {
 		return ""
@@ -181,6 +186,7 @@ func (s *OpenAIOAuthErrorAlertService) describeAccountDetail(account *Account) s
 	}
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func (s *OpenAIOAuthErrorAlertService) describeUsageWindow(ctx context.Context, accountID int64, window time.Duration) string {
 	if s == nil || s.usageRepo == nil || accountID <= 0 {
 		return "-"
@@ -332,6 +338,7 @@ func conciseOpenAIOAuthAlertText(value string, maxLen int) string {
 	return strings.TrimSpace(truncateString(value, maxLen)) + "…"
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string {
 	if len(snapshots) == 0 {
 		return ""
@@ -383,6 +390,7 @@ func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string
 	return rows.String()
 }
 
+//nolint:unused // retained for richer OpenAI OAuth alert snapshots.
 func summarizeOpenAIOAuthSnapshots(snapshots []openAIOAuthAccountSnapshot) openAIOAuthSnapshotSummary {
 	summary := openAIOAuthSnapshotSummary{}
 	for _, item := range snapshots {

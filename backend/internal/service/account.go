@@ -1049,11 +1049,7 @@ func (a *Account) GetCustomErrorCodes() []int {
 		return result
 	}
 	if arr, ok := raw.([]int); ok {
-		result := make([]int, 0, len(arr))
-		for _, v := range arr {
-			result = append(result, v)
-		}
-		return result
+		return append([]int(nil), arr...)
 	}
 	if arr, ok := raw.([]float64); ok {
 		result := make([]int, 0, len(arr))

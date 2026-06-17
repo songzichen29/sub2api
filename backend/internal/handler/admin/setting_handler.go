@@ -2736,7 +2736,28 @@ func normalizeDefaultSubscriptions(input []dto.DefaultSubscriptionSetting) []dto
 	}
 	normalized := make([]dto.DefaultSubscriptionSetting, 0, len(input))
 	for _, item := range input {
-		if item.GroupID <= 0 || item.ValidityDays <= 0 {
+		if item.GroupID <= 0 {
+			continue
+		}
+		startRaw := ""
+		if item.StartsAt != nil {
+			startRaw = strings.TrimSpace(*item.StartsAt)
+		}
+		endRaw := ""
+		if item.ExpiresAt != nil {
+			endRaw = strings.TrimSpace(*item.ExpiresAt)
+		}
+		if startRaw != "" || endRaw != "" {
+			if startRaw == "" || endRaw == "" {
+				continue
+			}
+			item.ValidityDays = 0
+			item.StartsAt = &startRaw
+			item.ExpiresAt = &endRaw
+			normalized = append(normalized, item)
+			continue
+		}
+		if item.ValidityDays <= 0 {
 			continue
 		}
 		if item.ValidityDays > service.MaxValidityDays {
@@ -3528,6 +3549,41 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+// GetAccountImportTemplates 获取账号导入 Apply 模板
+// GET /api/v1/admin/settings/account-import-templates
+func (h *SettingHandler) GetAccountImportTemplates(c *gin.Context) {
+	templates, err := h.settingService.GetAccountImportApplyTemplates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"templates": templates})
+}
+
+// UpdateAccountImportTemplates 更新账号导入 Apply 模板
+// PUT /api/v1/admin/settings/account-import-templates
+func (h *SettingHandler) UpdateAccountImportTemplates(c *gin.Context) {
+	var req struct {
+		Templates []service.AccountImportApplyTemplate `json:"templates"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.settingService.SetAccountImportApplyTemplates(c.Request.Context(), req.Templates); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	templates, err := h.settingService.GetAccountImportApplyTemplates(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"templates": templates})
 }
 
 // ensureDingTalkSyncAttributes 在保存 settings 后，按 admin 配置的 (attr key, attr name)

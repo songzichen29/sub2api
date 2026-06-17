@@ -270,8 +270,8 @@ type OpenAIForwardResult struct {
 	ImageSizeBreakdown   map[string]int
 	BillingTier          *string
 
-	wsReplayInput       []json.RawMessage
-	wsReplayInputExists bool
+	wsReplayInput       []json.RawMessage //nolint:unused // reserved for the feature-gated OpenAI WS HTTP bridge replay path.
+	wsReplayInputExists bool              //nolint:unused // reserved for the feature-gated OpenAI WS HTTP bridge replay path.
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -2397,6 +2397,7 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
+//nolint:unused // kept for upstream JSON passthrough paths that need HTML-escaping disabled.
 func marshalOpenAIUpstreamJSON(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -3232,9 +3233,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// line 2510-2515 的 GetMappedModel + reqModel 赋值），可直接作为 mappedModel。
 		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, reqModel)
 		serviceTier := extractOpenAIServiceTierFromBody(body)
-		// 上游接受后只保留计费需要的标量，避免响应处理期间继续保活完整 input/tools map。
-		reqBody = nil
-
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int

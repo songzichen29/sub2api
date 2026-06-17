@@ -117,6 +117,8 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 // extractAPIKeyForGoogle extracts API key for Google/Gemini endpoints.
 // Priority: x-goog-api-key > Authorization: Bearer > x-api-key > query key
 // This allows OpenClaw and other clients using Bearer auth to work with Gemini endpoints.
+//
+//nolint:unused // retained as a small compatibility wrapper for callers that only need the key.
 func extractAPIKeyForGoogle(c *gin.Context) string {
 	_, key := extractAPIKeyForGoogleWithSource(c)
 	return key

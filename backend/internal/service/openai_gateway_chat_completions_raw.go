@@ -367,10 +367,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		if clientDisconnected {
 			return
 		}
-		currentLineBuffered := false
 		if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
 			appendPendingLine(line)
-			currentLineBuffered = true
 			if force, reason := refusalDetector.ShouldForceReleaseClientOutput(pendingLineEvents, pendingLineBytes, firstPendingLineAt, time.Now()); !force {
 				return
 			} else {
@@ -380,9 +378,6 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 		if !clientOutputStarted {
 			if !flushPendingLines("openai chat_completions raw: client disconnected, continuing to drain upstream for billing") {
-				return
-			}
-			if currentLineBuffered {
 				return
 			}
 		}

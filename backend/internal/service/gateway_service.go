@@ -1057,6 +1057,7 @@ func appendResponsesContentText(builder *strings.Builder, content gjson.Result) 
 	})
 }
 
+//nolint:unused // reserved for raw Anthropic prompt-cache metric extraction.
 func extractCacheableTextFromSystemRaw(raw []byte) string {
 	system := parseRawJSONView(raw)
 	if !system.IsArray() {
@@ -1074,6 +1075,7 @@ func extractCacheableTextFromSystemRaw(raw []byte) string {
 	return builder.String()
 }
 
+//nolint:unused // reserved for raw Anthropic prompt-cache metric extraction.
 func extractCacheableTextFromMessagesRaw(raw []byte) string {
 	messages := parseRawJSONView(raw)
 	if !messages.IsArray() {

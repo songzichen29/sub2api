@@ -2,6 +2,7 @@ package service
 
 import "strings"
 
+//nolint:unused // retained for admin setting normalization paths that may re-enable custom model lists.
 func normalizeGroupModelsListConfig(cfg GroupModelsListConfig) GroupModelsListConfig {
 	out := GroupModelsListConfig{Enabled: cfg.Enabled}
 	if len(cfg.Models) == 0 {

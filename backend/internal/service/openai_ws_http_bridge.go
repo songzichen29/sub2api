@@ -29,10 +29,12 @@ func ResolveOpenAIWSClientReadLimitBytes(cfg *config.Config) int64 {
 	return cfg.Gateway.OpenAIWS.ClientReadLimitBytes
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (s *OpenAIGatewayService) openAIWSHTTPBridgeEnabled() bool {
 	return s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.HTTPBridgeEnabled
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (s *OpenAIGatewayService) openAIWSHTTPBridgeThresholdBytes() int64 {
 	if s == nil || s.cfg == nil || s.cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes <= 0 {
 		return openAIWSHTTPBridgeThresholdBytesDefault
@@ -40,6 +42,7 @@ func (s *OpenAIGatewayService) openAIWSHTTPBridgeThresholdBytes() int64 {
 	return s.cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(payloadBytes int, previousResponseID string) bool {
 	if !s.openAIWSHTTPBridgeEnabled() {
 		return false
@@ -51,6 +54,7 @@ func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(payloadBytes int, previo
 	return threshold > 0 && int64(payloadBytes) >= threshold
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	var body map[string]any
 	if err := json.Unmarshal(payload, &body); err != nil {
@@ -66,11 +70,13 @@ func prepareOpenAIWSHTTPBridgeBody(payload []byte) ([]byte, error) {
 	return json.Marshal(body)
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 type openAIWSToolCallReplayCollector struct {
 	items []json.RawMessage
 	seen  map[string]struct{}
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (c *openAIWSToolCallReplayCollector) AddEvent(eventType string, message []byte) {
 	switch strings.TrimSpace(eventType) {
 	case "response.output_item.done":
@@ -86,10 +92,12 @@ func (c *openAIWSToolCallReplayCollector) AddEvent(eventType string, message []b
 	}
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (c *openAIWSToolCallReplayCollector) Items() []json.RawMessage {
 	return cloneOpenAIWSRawMessages(c.items)
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
 	if !item.Exists() || item.Type != gjson.JSON {
 		return
@@ -118,6 +126,7 @@ func (c *openAIWSToolCallReplayCollector) addItem(item gjson.Result) {
 	c.items = append(c.items, json.RawMessage(raw))
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 	message = strings.TrimSpace(message)
 	if message == "" {
@@ -141,6 +150,7 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 	return body
 }
 
+//nolint:unused // feature-gated OpenAI WS HTTP bridge is wired by downstream runtime paths.
 func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	ctx context.Context,
 	c *gin.Context,

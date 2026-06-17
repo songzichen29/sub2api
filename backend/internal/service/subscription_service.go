@@ -1364,7 +1364,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 
 	// 周窗口重置（订阅锚点滚动 7 天）。日额度透支模式下 weekly_usage_usd
 	// 承载订阅周期累计用量，必须一直保留到订阅过期/续期，不能每周重置。
-	if sub.NeedsWeeklyReset() && !(sub.Group != nil && sub.AllowsDailyOverdraft(sub.Group)) {
+	if sub.NeedsWeeklyReset() && (sub.Group == nil || !sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentWeeklyWindowStart(now)
 		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
@@ -1376,7 +1376,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 
 	// 月窗口重置（订阅锚点滚动 30 天）。日额度透支模式下 monthly_usage_usd
 	// 表示订阅周期累计用量，不能按月窗口清零。
-	if sub.NeedsMonthlyReset() && !(sub.Group != nil && sub.AllowsDailyOverdraft(sub.Group)) {
+	if sub.NeedsMonthlyReset() && (sub.Group == nil || !sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentMonthlyWindowStart(now)
 		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
 			return err
@@ -1478,11 +1478,11 @@ func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *U
 		sub.DailyUsageUSD = 0
 		needsMaintenance = true
 	}
-	if sub.NeedsWeeklyReset() && !(group != nil && sub.AllowsDailyOverdraft(group)) {
+	if sub.NeedsWeeklyReset() && (group == nil || !sub.AllowsDailyOverdraft(group)) {
 		sub.WeeklyUsageUSD = 0
 		needsMaintenance = true
 	}
-	if sub.NeedsMonthlyReset() && !(group != nil && sub.AllowsDailyOverdraft(group)) {
+	if sub.NeedsMonthlyReset() && (group == nil || !sub.AllowsDailyOverdraft(group)) {
 		sub.MonthlyUsageUSD = 0
 		needsMaintenance = true
 	}

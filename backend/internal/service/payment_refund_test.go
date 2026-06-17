@@ -612,8 +612,9 @@ func TestPrepareRefundUsesAdjustedSubscriptionRangeForRefundAndDeduction(t *test
 		Save(ctx)
 	require.NoError(t, err)
 
-	startsAt := time.Now().Add(-5 * 24 * time.Hour)
-	expiresAt := time.Now().Add(15 * 24 * time.Hour)
+	baseTime := time.Now().UTC().Truncate(time.Second)
+	startsAt := baseTime.Add(-5 * 24 * time.Hour)
+	expiresAt := baseTime.Add(15 * 24 * time.Hour)
 	_, err = client.UserSubscription.Create().
 		SetUserID(user.ID).
 		SetGroupID(groupEntity.ID).

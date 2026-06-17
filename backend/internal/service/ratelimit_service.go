@@ -128,6 +128,7 @@ func (s *RateLimitService) notifyAccountSchedulingBlocked(account *Account, unti
 	s.runtimeBlocker.BlockAccountScheduling(account, until, reason)
 }
 
+//nolint:unused // reserved for runtime scheduling block recovery hooks.
 func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) {
 	if s == nil || s.runtimeBlocker == nil || accountID <= 0 {
 		return

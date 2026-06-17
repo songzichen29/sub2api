@@ -382,10 +382,9 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 				return nil, s.grokSSEErrorAsFailover(ctx, c, account, resp.Header, streamErr)
 			}
 
-			if s.extractCCUsage([]byte(payload), &usage) {
-				// usage is captured for billing, but usage-only chunks should not
-				// create empty output blocks in Anthropic conversion.
-			}
+			// usage is captured for billing, but usage-only chunks should not
+			// create empty output blocks in Anthropic conversion.
+			_ = s.extractCCUsage([]byte(payload), &usage)
 			if isOpenAIChatUsageOnlyStreamChunk(payload) {
 				continue
 			}

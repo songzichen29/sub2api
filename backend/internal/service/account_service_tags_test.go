@@ -189,6 +189,9 @@ func (r *inMemoryAccountRepo) ResetQuotaUsed(ctx context.Context, id int64) erro
 func (r *inMemoryAccountRepo) RevertProxyFallback(ctx context.Context, accountID int64) error {
 	panic("unexpected")
 }
+func (r *inMemoryAccountRepo) ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error) {
+	panic("unexpected")
+}
 
 // TestAccountService_CreateThenRead_TagsNormalized 是 step 2 主退出信号——
 // "创建账号附带 tags 后再读取" 闭环：输入 ["VIP", " prod ", "vip"] 经 service 规范化后

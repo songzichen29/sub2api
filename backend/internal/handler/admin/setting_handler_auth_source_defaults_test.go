@@ -168,7 +168,7 @@ func TestSettingHandler_GetSettings_DefaultSubscriptionsIncludeTimeRange(t *test
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -201,7 +201,7 @@ func TestSettingHandler_UpdateSettings_PersistsDefaultSubscriptionTimeRange(t *t
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	start := time.Now().UTC().Add(48 * time.Hour).Format(time.RFC3339)
 	end := time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)

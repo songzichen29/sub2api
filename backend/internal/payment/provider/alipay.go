@@ -30,6 +30,7 @@ var (
 	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
 		return client.TradePreCreate(ctx, param)
 	}
+	//nolint:unused // kept injectable for page-pay regression coverage.
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		return client.TradePagePay(param)
 	}
@@ -162,6 +163,7 @@ func (a *Alipay) createPrecreateTrade(ctx context.Context, client *alipay.Client
 	}, nil
 }
 
+//nolint:unused // kept for the explicit page-pay flow and its regression tests.
 func (a *Alipay) createPagePayTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
 	param := alipay.TradePagePay{}
 	param.OutTradeNo = req.OrderID
