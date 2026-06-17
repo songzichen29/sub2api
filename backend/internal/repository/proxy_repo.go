@@ -278,11 +278,28 @@ func proxyListOrder(params pagination.PaginationParams) []func(*entsql.Selector)
 	case "created_at":
 		field = proxy.FieldCreatedAt
 	case "expiry":
-		// expires_at 可空(NULL=永不过期)。不写显式 NULLS:
-		// dbent.Asc/Desc 不带 NULLS 子句,继承 PG 默认
-		// (ASC→NULLS LAST、DESC→NULLS FIRST),即 NULL 视为最晚——
-		// 升序垫底、降序置顶。
-		field = proxy.FieldExpiresAt
+		// expires_at 可空(NULL=永不过期)。MySQL 与 PostgreSQL 的 NULL
+		// 默认排序相反，这里显式表达：ASC 时 NULL 垫底，DESC 时 NULL 置顶。
+		nullRank := func(s *entsql.Selector) {
+			col := s.C(proxy.FieldExpiresAt)
+			if sortOrder == pagination.SortOrderAsc {
+				s.OrderExpr(entsql.ExprFunc(func(b *entsql.Builder) {
+					b.WriteString("CASE WHEN ").
+						Ident(col).
+						WriteString(" IS NULL THEN 1 ELSE 0 END ASC")
+				}))
+				return
+			}
+			s.OrderExpr(entsql.ExprFunc(func(b *entsql.Builder) {
+				b.WriteString("CASE WHEN ").
+					Ident(col).
+					WriteString(" IS NULL THEN 0 ELSE 1 END ASC")
+			}))
+		}
+		if sortOrder == pagination.SortOrderAsc {
+			return []func(*entsql.Selector){nullRank, dbent.Asc(proxy.FieldExpiresAt), dbent.Asc(proxy.FieldID)}
+		}
+		return []func(*entsql.Selector){nullRank, dbent.Desc(proxy.FieldExpiresAt), dbent.Desc(proxy.FieldID)}
 	default:
 		field = proxy.FieldID
 	}

@@ -602,6 +602,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}
 		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
 			s.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteString("(")
 				for i, payload := range perTagPayloads {
 					if i > 0 {
 						b.WriteString(" OR ")
@@ -612,6 +613,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 						Arg(payload).
 						WriteString(")")
 				}
+				b.WriteString(")")
 			}))
 		}))
 	}

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -313,9 +314,71 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error {
-	// MySQL fork keeps the current soft-delete behaviour here; audit-table specific
-	// upstream changes are deferred to avoid widening delete semantics during this merge.
-	return r.Delete(ctx, id)
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.deleteWithAudit(ctx, existingTx.Client(), id)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return translatePersistenceError(err, service.ErrAPIKeyNotFound, nil)
+	}
+	exec := r.client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		exec = tx.Client()
+	}
+
+	if err := r.deleteWithAudit(ctx, exec, id); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return translatePersistenceError(err, service.ErrAPIKeyNotFound, nil)
+		}
+	}
+	return nil
+}
+
+func (r *apiKeyRepository) deleteWithAudit(ctx context.Context, exec *dbent.Client, id int64) error {
+	key, err := exec.APIKey.Query().
+		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			exists, err := exec.APIKey.Query().
+				Where(apikey.IDEQ(id)).
+				Exist(mixins.SkipSoftDelete(ctx))
+			if err != nil {
+				return err
+			}
+			if exists {
+				return nil
+			}
+			return service.ErrAPIKeyNotFound
+		}
+		return err
+	}
+
+	if _, err := exec.ExecContext(ctx, `
+		INSERT INTO deleted_api_key_audits (`+"`key`"+`, api_key_id, user_id, key_name, deleted_at)
+		VALUES (?, ?, ?, ?, NOW(6))
+	`, key.Key, id, key.UserID, key.Name); err != nil {
+		return err
+	}
+
+	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
+	affected, err := exec.APIKey.Update().
+		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
+		SetKey(tombstoneKey).
+		SetDeletedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAPIKeyNotFound
+	}
+	return nil
 }
 
 func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, params pagination.PaginationParams, filters service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
@@ -706,6 +769,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		RPMLimit:                   u.RpmLimit,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
+		DeletedAt:                  u.DeletedAt,
 	}
 	// Parse extra emails JSON (supports both old []string and new []NotifyEmailEntry format)
 	if u.BalanceNotifyExtraEmails != "" && u.BalanceNotifyExtraEmails != "[]" {

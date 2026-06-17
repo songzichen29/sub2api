@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,11 +19,12 @@ func (s *UserRepoSuite) mustInsertUsageLog(userID int64, createdAt time.Time) {
 
 	_, err := integrationDB.ExecContext(
 		s.ctx,
-		`INSERT INTO usage_logs (user_id, api_key_id, account_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
-		 VALUES (?, ?, ?, 'gpt-test', 1, 1, 0.01, 0.01, ?)`,
+		`INSERT INTO usage_logs (user_id, api_key_id, account_id, request_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
+		 VALUES (?, ?, ?, ?, 'gpt-test', 1, 1, 0.01, 0.01, ?)`,
 		userID,
 		apiKey.ID,
 		account.ID,
+		fmt.Sprintf("req-user-%d-%d", userID, createdAt.UnixNano()),
 		createdAt.UTC(),
 	)
 	s.Require().NoError(err)

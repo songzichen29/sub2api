@@ -857,6 +857,11 @@ func isTerminalEvent(eventType string) bool {
 	}
 }
 
+func isErrorEvent(eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	return eventType == "error" || strings.HasSuffix(eventType, ".error")
+}
+
 func shouldParseUsage(eventType string) bool {
 	switch eventType {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
@@ -868,20 +873,13 @@ func shouldParseUsage(eventType string) bool {
 
 func isTokenEvent(eventType string) bool {
 	eventType = strings.TrimSpace(eventType)
-	if eventType == "" || isPreambleEvent(eventType) || isTerminalEvent(eventType) ||
-		eventType == "response.output_item.added" || eventType == "response.output_item.done" {
+	if eventType == "" || isPreambleEvent(eventType) || isTerminalEvent(eventType) || isErrorEvent(eventType) {
 		return false
 	}
-	if strings.Contains(eventType, ".delta") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output_text") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output") {
-		return true
-	}
-	return false
+	// Keep the first-token metric broad: any non-preamble, non-terminal,
+	// non-error response progress/output event can start TTFT. This avoids
+	// under-counting future or non-text event families.
+	return strings.HasPrefix(eventType, "response.")
 }
 
 func isPreambleEvent(eventType string) bool {

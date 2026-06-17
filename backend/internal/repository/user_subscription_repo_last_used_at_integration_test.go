@@ -3,6 +3,7 @@
 package repository
 
 import (
+	"fmt"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -18,14 +19,17 @@ func (s *UserSubscriptionRepoSuite) mustInsertUsageLogForSubscription(userID int
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "sub-usage-log-account"})
 	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: userID})
 
-	_, err := integrationDB.ExecContext(
+	sqlq := sqlExecutorFromEntClient(s.client)
+	s.Require().NotNil(sqlq, "resolve tx-aware SQL executor")
+	_, err := sqlq.ExecContext(
 		s.ctx,
-		`INSERT INTO usage_logs (user_id, api_key_id, account_id, subscription_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
-		 VALUES (?, ?, ?, ?, 'gpt-test', 1, 1, 0.01, 0.01, ?)`,
+		`INSERT INTO usage_logs (user_id, api_key_id, account_id, subscription_id, request_id, model, input_tokens, output_tokens, total_cost, actual_cost, created_at)
+		 VALUES (?, ?, ?, ?, ?, 'gpt-test', 1, 1, 0.01, 0.01, ?)`,
 		userID,
 		apiKey.ID,
 		account.ID,
 		subscriptionID,
+		fmt.Sprintf("req-sub-%d-%d", subscriptionID, createdAt.UnixNano()),
 		createdAt.UTC(),
 	)
 	s.Require().NoError(err)

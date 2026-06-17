@@ -319,7 +319,7 @@ func (s *ProxyRepoSuite) mustInsertAccount(name string, proxyID *int64) {
 	}
 	_, err := s.tx.ExecContext(
 		s.ctx,
-		"INSERT INTO accounts (name, platform, type, proxy_id) VALUES (?, ?, ?, ?)",
+		"INSERT INTO accounts (name, platform, type, credentials, extra, tags, proxy_id, created_at, updated_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), ?, NOW(6), NOW(6))",
 		name,
 		service.PlatformAnthropic,
 		service.AccountTypeOAuth,

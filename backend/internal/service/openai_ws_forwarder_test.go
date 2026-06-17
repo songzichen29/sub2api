@@ -23,8 +23,8 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 
 		{name: "response.created", eventType: "response.created", want: false},
 		{name: "response.in_progress", eventType: "response.in_progress", want: false},
-		{name: "response.output_item.added", eventType: "response.output_item.added", want: false},
-		{name: "response.output_item.done", eventType: "response.output_item.done", want: false},
+		{name: "response.output_item.added", eventType: "response.output_item.added", want: true},
+		{name: "response.output_item.done", eventType: "response.output_item.done", want: true},
 
 		{name: "terminal_response.completed", eventType: "response.completed", want: false},
 		{name: "terminal_response.done", eventType: "response.done", want: false},
@@ -43,7 +43,8 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", want: true},
 
 		{name: "unrelated_event_error", eventType: "error", want: false},
-		{name: "unknown_event_without_match", eventType: "response.reasoning_summary_part.added", want: false},
+		{name: "future_response_progress_event", eventType: "response.reasoning_summary_part.added", want: true},
+		{name: "non_response_event", eventType: "session.created", want: false},
 	}
 
 	for _, tc := range cases {
@@ -146,7 +147,8 @@ func TestIsOpenAIWSTokenEventMessage_UsesForkLikeEventTypeSemantics(t *testing.T
 		{name: "response_output", eventType: "response.output", message: []byte(`{"type":"response.output"}`), want: true},
 		{name: "preamble_with_delta", eventType: "response.created", message: []byte(`{"type":"response.created","delta":"x"}`), want: false},
 		{name: "terminal_with_delta", eventType: "response.completed", message: []byte(`{"type":"response.completed","delta":"x"}`), want: false},
-		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: false},
+		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: true},
+		{name: "error_with_delta", eventType: "error", message: []byte(`{"type":"error","delta":"x"}`), want: false},
 	}
 
 	for _, tc := range cases {

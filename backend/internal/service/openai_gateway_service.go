@@ -3927,6 +3927,11 @@ func openAIStreamEventTypeIsTerminal(eventType string) bool {
 	}
 }
 
+func openAIStreamEventTypeIsError(eventType string) bool {
+	eventType = strings.TrimSpace(eventType)
+	return eventType == "error" || strings.HasSuffix(eventType, ".error")
+}
+
 func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	if trimmed == "" {
@@ -3944,7 +3949,8 @@ func openAIStreamDataStartsFirstToken(data, eventType string) bool {
 	if trimmed == "" || trimmed == "[DONE]" || eventType == "" {
 		return false
 	}
-	if openAIStreamEventIsPreamble(eventType) || openAIStreamEventIsTerminal(trimmed) || openAIStreamEventTypeIsTerminal(eventType) {
+	if openAIStreamEventIsPreamble(eventType) || openAIStreamEventIsTerminal(trimmed) ||
+		openAIStreamEventTypeIsTerminal(eventType) || openAIStreamEventTypeIsError(eventType) {
 		return false
 	}
 	if eventType == "response.failed" {

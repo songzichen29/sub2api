@@ -134,18 +134,32 @@ func mustCreateProxy(t *testing.T, client *dbent.Client, p *service.Proxy) *serv
 	if p.Status == "" {
 		p.Status = service.StatusActive
 	}
+	if p.FallbackMode == "" {
+		p.FallbackMode = service.FallbackModeNone
+	}
+	if p.ExpiryWarnDays == 0 {
+		p.ExpiryWarnDays = 7
+	}
 
 	create := client.Proxy.Create().
 		SetName(p.Name).
 		SetProtocol(p.Protocol).
 		SetHost(p.Host).
 		SetPort(p.Port).
-		SetStatus(p.Status)
+		SetStatus(p.Status).
+		SetFallbackMode(p.FallbackMode).
+		SetExpiryWarnDays(p.ExpiryWarnDays)
 	if p.Username != "" {
 		create.SetUsername(p.Username)
 	}
 	if p.Password != "" {
 		create.SetPassword(p.Password)
+	}
+	if p.ExpiresAt != nil {
+		create.SetExpiresAt(*p.ExpiresAt)
+	}
+	if p.BackupProxyID != nil {
+		create.SetBackupProxyID(*p.BackupProxyID)
 	}
 	if !p.CreatedAt.IsZero() {
 		create.SetCreatedAt(p.CreatedAt)
@@ -191,6 +205,9 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 	if a.Extra == nil {
 		a.Extra = map[string]any{}
 	}
+	if a.Tags == nil {
+		a.Tags = []string{}
+	}
 
 	create := client.Account.Create().
 		SetName(a.Name).
@@ -204,9 +221,7 @@ func mustCreateAccount(t *testing.T, client *dbent.Client, a *service.Account) *
 		SetSchedulable(a.Schedulable).
 		SetErrorMessage(a.ErrorMessage)
 
-	if a.Tags != nil {
-		create.SetTags(a.Tags)
-	}
+	create.SetTags(a.Tags)
 
 	if a.ProxyID != nil {
 		create.SetProxyID(*a.ProxyID)

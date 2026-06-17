@@ -43,6 +43,7 @@ func TestOpenAIStreamDataStartsFirstToken(t *testing.T) {
 		{name: "terminal_completed", data: `{"type":"response.completed"}`, eventType: "response.completed", want: false},
 		{name: "terminal_done", data: `{"type":"response.done"}`, eventType: "response.done", want: false},
 		{name: "terminal_failed", data: `{"type":"response.failed"}`, eventType: "response.failed", want: false},
+		{name: "error_event", data: `{"type":"error","error":{"message":"boom"}}`, eventType: "error", want: false},
 		{name: "text_delta", data: `{"type":"response.output_text.delta","delta":"h"}`, eventType: "response.output_text.delta", want: true},
 		{name: "empty_text_delta", data: `{"type":"response.output_text.delta","delta":""}`, eventType: "response.output_text.delta", want: true},
 		{name: "whitespace_text_delta", data: `{"type":"response.output_text.delta","delta":"   "}`, eventType: "response.output_text.delta", want: true},

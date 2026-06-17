@@ -3924,20 +3924,15 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	if eventType == "" {
 		return false
 	}
-	if openAIStreamEventIsPreamble(eventType) || isOpenAIWSTerminalEvent(eventType) ||
-		eventType == "response.output_item.added" || eventType == "response.output_item.done" {
+	if openAIStreamEventIsPreamble(eventType) || isOpenAIWSTerminalEvent(eventType) || openAIStreamEventTypeIsError(eventType) {
 		return false
 	}
-	if strings.Contains(eventType, ".delta") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output_text") {
-		return true
-	}
-	if strings.HasPrefix(eventType, "response.output") {
-		return true
-	}
-	return false
+	// TTFT intentionally uses a broad "first meaningful response progress"
+	// definition instead of requiring a non-empty text delta. This keeps the
+	// metric fork-like across text, reasoning, tool-call, audio, and future
+	// Responses event families while still excluding lifecycle preamble,
+	// terminal, and explicit error events.
+	return strings.HasPrefix(eventType, "response.")
 }
 
 func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool {

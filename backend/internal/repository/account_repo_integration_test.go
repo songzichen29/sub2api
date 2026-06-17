@@ -885,7 +885,7 @@ func (s *AccountRepoSuite) TestSetTempUnschedulableSkipsOutboxWhenWindowDoesNotE
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
 
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, "DELETE FROM scheduler_outbox")
 	s.Require().NoError(err)
 
 	until := time.Now().Add(30 * time.Minute).UTC().Truncate(time.Second)
@@ -1093,7 +1093,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 	})
 	cacheRecorder := &schedulerCacheRecorder{}
 	s.repo.schedulerCache = cacheRecorder
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, "DELETE FROM scheduler_outbox")
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{
@@ -1118,7 +1118,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_SchedulerRelevantStillEnqueuesOutbox(
 		Platform: service.PlatformAntigravity,
 		Extra:    map[string]any{},
 	})
-	_, err := s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	_, err := s.repo.sql.ExecContext(s.ctx, "DELETE FROM scheduler_outbox")
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.repo.UpdateExtra(s.ctx, account.ID, map[string]any{

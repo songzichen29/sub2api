@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -44,6 +46,15 @@ func (s *GroupRepoSuite) SetupTest() {
 
 func TestGroupRepoSuite(t *testing.T) {
 	suite.Run(t, new(GroupRepoSuite))
+}
+
+func groupTestAccountInsertSQL(columns string) string {
+	placeholderCount := 0
+	if columns != "" {
+		columns = ", " + columns
+		placeholderCount = strings.Count(columns, ",")
+	}
+	return fmt.Sprintf("INSERT INTO accounts (name, platform, type, credentials, extra, tags, created_at, updated_at%s) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW(6), NOW(6)%s)", columns, strings.Repeat(", ?", placeholderCount))
 }
 
 // --- Create / GetByID / Update / Delete ---
@@ -477,7 +488,7 @@ func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {
 	var accountID int64
 	{
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			groupTestAccountInsertSQL(""),
 			"acc1", service.PlatformAnthropic, service.AccountTypeOAuth)
 		s.Require().NoError(err)
 		accountID, err = res.LastInsertId()
@@ -612,7 +623,7 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 	var a1 int64
 	{
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			groupTestAccountInsertSQL(""),
 			"a1", service.PlatformAnthropic, service.AccountTypeOAuth)
 		s.Require().NoError(err)
 		a1, err = res.LastInsertId()
@@ -621,7 +632,7 @@ func (s *GroupRepoSuite) TestGetAccountCount() {
 	var a2 int64
 	{
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			groupTestAccountInsertSQL(""),
 			"a2", service.PlatformAnthropic, service.AccountTypeOAuth)
 		s.Require().NoError(err)
 		a2, err = res.LastInsertId()
@@ -671,7 +682,7 @@ func (s *GroupRepoSuite) TestListWithFilters_ActiveAccountCount_LessThanTotal() 
 	insertAccount := func(name, status string, schedulable bool) int64 {
 		res, err := s.tx.ExecContext(
 			s.ctx,
-			"INSERT INTO accounts (name, platform, type, status, schedulable) VALUES (?, ?, ?, ?, ?)",
+			groupTestAccountInsertSQL("status, schedulable"),
 			name, service.PlatformAnthropic, service.AccountTypeOAuth, status, schedulable,
 		)
 		s.Require().NoError(err)
@@ -741,23 +752,23 @@ func (s *GroupRepoSuite) TestListWithFilters_RateLimitedAccountCount() {
 	}
 
 	normalID := insertAccount(
-		"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+		groupTestAccountInsertSQL(""),
 		"acc-normal", service.PlatformAnthropic, service.AccountTypeOAuth,
 	)
 	rateLimitedID := insertAccount(
-		"INSERT INTO accounts (name, platform, type, rate_limit_reset_at) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR)",
+		"INSERT INTO accounts (name, platform, type, credentials, extra, tags, rate_limit_reset_at, created_at, updated_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW() + INTERVAL 1 HOUR, NOW(6), NOW(6))",
 		"acc-rate-limited", service.PlatformAnthropic, service.AccountTypeOAuth,
 	)
 	overloadedID := insertAccount(
-		"INSERT INTO accounts (name, platform, type, overload_until) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR)",
+		"INSERT INTO accounts (name, platform, type, credentials, extra, tags, overload_until, created_at, updated_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW() + INTERVAL 1 HOUR, NOW(6), NOW(6))",
 		"acc-overloaded", service.PlatformAnthropic, service.AccountTypeOAuth,
 	)
 	tempUnschedulableID := insertAccount(
-		"INSERT INTO accounts (name, platform, type, temp_unschedulable_until) VALUES (?, ?, ?, NOW() + INTERVAL 1 HOUR)",
+		"INSERT INTO accounts (name, platform, type, credentials, extra, tags, temp_unschedulable_until, created_at, updated_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW() + INTERVAL 1 HOUR, NOW(6), NOW(6))",
 		"acc-temp-unschedulable", service.PlatformAnthropic, service.AccountTypeOAuth,
 	)
 	expiredID := insertAccount(
-		"INSERT INTO accounts (name, platform, type, expires_at, auto_pause_on_expired) VALUES (?, ?, ?, NOW() - INTERVAL 1 HOUR, TRUE)",
+		"INSERT INTO accounts (name, platform, type, credentials, extra, tags, expires_at, auto_pause_on_expired, created_at, updated_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW() - INTERVAL 1 HOUR, TRUE, NOW(6), NOW(6))",
 		"acc-expired", service.PlatformAnthropic, service.AccountTypeOAuth,
 	)
 
@@ -813,7 +824,7 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID() {
 	var accountID int64
 	{
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			groupTestAccountInsertSQL(""),
 			"acc-del", service.PlatformAnthropic, service.AccountTypeOAuth)
 		s.Require().NoError(err)
 		accountID, err = res.LastInsertId()
@@ -845,7 +856,7 @@ func (s *GroupRepoSuite) TestDeleteAccountGroupsByGroupID_MultipleAccounts() {
 	insertAccount := func(name string) int64 {
 		var id int64
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type) VALUES (?, ?, ?)",
+			groupTestAccountInsertSQL(""),
 			name, service.PlatformAnthropic, service.AccountTypeOAuth)
 		s.Require().NoError(err)
 		id, err = res.LastInsertId()

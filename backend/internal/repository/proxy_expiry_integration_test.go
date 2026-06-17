@@ -36,8 +36,8 @@ func (s *ProxyExpirySuite) mkProxy(name, mode string, expiresAt *time.Time, back
 
 func (s *ProxyExpirySuite) mkAccountWithProxy(proxyID int64) int64 {
 	res, err := s.tx.ExecContext(s.ctx, `
-		INSERT INTO accounts (name, platform, type, credentials, extra, status, proxy_id, created_at, updated_at)
-		VALUES (?, ?, ?, '{}', '{}', ?, ?, NOW(), NOW())`,
+		INSERT INTO accounts (name, platform, type, credentials, extra, tags, status, proxy_id, created_at, updated_at)
+		VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), ?, ?, NOW(6), NOW(6))`,
 		"acc-"+time.Now().Format("150405.000000"),
 		service.PlatformAnthropic,
 		service.AccountTypeAPIKey,

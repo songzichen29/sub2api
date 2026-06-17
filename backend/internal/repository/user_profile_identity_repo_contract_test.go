@@ -32,16 +32,15 @@ func (s *UserProfileIdentityRepoSuite) SetupTest() {
 	s.client = testEntClient(s.T())
 	s.repo = newUserRepositoryWithSQL(s.client, integrationDB)
 
-	_, err := integrationDB.ExecContext(s.ctx, `
-TRUNCATE TABLE
-	identity_adoption_decisions,
-	auth_identity_channels,
-	auth_identities,
-	pending_auth_sessions,
-	user_provider_default_grants,
-	user_avatars
-RESTART IDENTITY`)
-	s.Require().NoError(err)
+	resetIntegrationTables(
+		s.T(),
+		"identity_adoption_decisions",
+		"auth_identity_channels",
+		"auth_identities",
+		"pending_auth_sessions",
+		"user_provider_default_grants",
+		"user_avatars",
+	)
 }
 
 func (s *UserProfileIdentityRepoSuite) mustCreateUser(label string) *dbent.User {

@@ -392,12 +392,15 @@ func TestIsTokenEventCoverageBranches(t *testing.T) {
 	t.Parallel()
 
 	require.False(t, isTokenEvent("response.in_progress"))
-	require.False(t, isTokenEvent("response.output_item.added"))
+	require.True(t, isTokenEvent("response.output_item.added"))
 	require.True(t, isTokenEvent("response.output_audio.delta"))
 	require.True(t, isTokenEvent("response.output_text.delta"))
 	require.True(t, isTokenEvent("response.output"))
 	require.True(t, isTokenEvent("response.output_text.done"))
 	require.False(t, isTokenEvent("response.done"))
+	require.False(t, isTokenEvent("error"))
+	require.True(t, isTokenEvent("response.reasoning_summary_part.added"))
+	require.False(t, isTokenEvent("session.created"))
 }
 
 func TestIsTokenEventMessageUsesForkLikeEventTypeSemantics(t *testing.T) {
@@ -420,7 +423,8 @@ func TestIsTokenEventMessageUsesForkLikeEventTypeSemantics(t *testing.T) {
 		{name: "response_output", eventType: "response.output", message: []byte(`{"type":"response.output"}`), want: true},
 		{name: "preamble_with_delta", eventType: "response.created", message: []byte(`{"type":"response.created","delta":"x"}`), want: false},
 		{name: "terminal_with_delta", eventType: "response.completed", message: []byte(`{"type":"response.completed","delta":"x"}`), want: false},
-		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: false},
+		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: true},
+		{name: "error_with_delta", eventType: "error", message: []byte(`{"type":"error","delta":"x"}`), want: false},
 	}
 
 	for _, tc := range cases {

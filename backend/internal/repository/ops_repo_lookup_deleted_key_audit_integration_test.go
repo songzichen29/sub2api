@@ -12,12 +12,12 @@ import (
 
 func TestOpsRepositoryLookupDeletedKeyAudit(t *testing.T) {
 	ctx := context.Background()
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE TABLE deleted_api_key_audits")
+	resetIntegrationTables(t, "deleted_api_key_audits")
 	repo := NewOpsRepository(integrationDB).(*opsRepository)
 
 	// 同一 key 两条审计,取最近一条(deleted_at DESC, id DESC)
 	_, err := integrationDB.ExecContext(ctx, `
-		INSERT INTO deleted_api_key_audits (key, api_key_id, user_id, key_name, deleted_at)
+		INSERT INTO deleted_api_key_audits (`+"`key`"+`, api_key_id, user_id, key_name, deleted_at)
 		VALUES ('sk-lookup-1', 10, 100, 'old', ?),
 		       ('sk-lookup-1', 11, 200, 'new', ?)`,
 		time.Now().Add(-time.Hour), time.Now())

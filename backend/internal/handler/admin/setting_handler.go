@@ -235,6 +235,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
+		AffiliateRechargeEnabled:               settings.AffiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:           settings.AffiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            settings.AffiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        settings.AffiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
@@ -538,9 +542,11 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
-	AffiliateRechargeEnabled                  bool                              `json:"affiliate_recharge_enabled"`
-	AffiliateSubscriptionEnabled              bool                              `json:"affiliate_subscription_enabled"`
+	AffiliateRechargeEnabled                  *bool                             `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled              *bool                             `json:"affiliate_subscription_enabled"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
+	AffiliateRechargeRebateRate               *float64                          `json:"affiliate_recharge_rebate_rate"`
+	AffiliateSubscriptionRebateRate           *float64                          `json:"affiliate_subscription_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
@@ -736,6 +742,28 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebateRate > service.AffiliateRebateRateMax {
 		affiliateRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateRechargeEnabled := boolValueOrDefault(req.AffiliateRechargeEnabled, previousSettings.AffiliateRechargeEnabled)
+	affiliateSubscriptionEnabled := boolValueOrDefault(req.AffiliateSubscriptionEnabled, previousSettings.AffiliateSubscriptionEnabled)
+	affiliateRechargeRebateRate := previousSettings.AffiliateRechargeRebateRate
+	if req.AffiliateRechargeRebateRate != nil {
+		affiliateRechargeRebateRate = *req.AffiliateRechargeRebateRate
+	}
+	if affiliateRechargeRebateRate < service.AffiliateRebateRateMin {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateRechargeRebateRate > service.AffiliateRebateRateMax {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateSubscriptionRebateRate := previousSettings.AffiliateSubscriptionRebateRate
+	if req.AffiliateSubscriptionRebateRate != nil {
+		affiliateSubscriptionRebateRate = *req.AffiliateSubscriptionRebateRate
+	}
+	if affiliateSubscriptionRebateRate < service.AffiliateRebateRateMin {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateSubscriptionRebateRate > service.AffiliateRebateRateMax {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMax
 	}
 	affiliateRebateFreezeHours := previousSettings.AffiliateRebateFreezeHours
 	if req.AffiliateRebateFreezeHours != nil {
@@ -1624,8 +1652,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateRebateRate:                    affiliateRebateRate,
-		AffiliateRechargeEnabled:               req.AffiliateRechargeEnabled,
-		AffiliateSubscriptionEnabled:           req.AffiliateSubscriptionEnabled,
+		AffiliateRechargeEnabled:               affiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:           affiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            affiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        affiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
@@ -2104,6 +2134,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
 		AffiliateRechargeEnabled:               updatedSettings.AffiliateRechargeEnabled,
 		AffiliateSubscriptionEnabled:           updatedSettings.AffiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            updatedSettings.AffiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        updatedSettings.AffiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
@@ -2508,6 +2540,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
+	}
+	if before.AffiliateRechargeEnabled != after.AffiliateRechargeEnabled {
+		changed = append(changed, "affiliate_recharge_enabled")
+	}
+	if before.AffiliateSubscriptionEnabled != after.AffiliateSubscriptionEnabled {
+		changed = append(changed, "affiliate_subscription_enabled")
+	}
+	if before.AffiliateRechargeRebateRate != after.AffiliateRechargeRebateRate {
+		changed = append(changed, "affiliate_recharge_rebate_rate")
+	}
+	if before.AffiliateSubscriptionRebateRate != after.AffiliateSubscriptionRebateRate {
+		changed = append(changed, "affiliate_subscription_rebate_rate")
 	}
 	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
 		changed = append(changed, "affiliate_rebate_freeze_hours")

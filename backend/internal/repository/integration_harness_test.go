@@ -207,6 +207,62 @@ func testEntClient(t *testing.T) *dbent.Client {
 	return integrationEntClient
 }
 
+func resetIntegrationTables(t *testing.T, tables ...string) {
+	t.Helper()
+	ctx := context.Background()
+	if len(tables) == 0 {
+		tables = []string{
+			"usage_logs",
+			"usage_billing_dedup",
+			"usage_billing_dedup_archive",
+			"usage_dashboard_hourly_users",
+			"usage_dashboard_daily_users",
+			"usage_dashboard_hourly",
+			"usage_dashboard_daily",
+			"payment_audit_logs",
+			"payment_orders",
+			"payment_provider_instances",
+			"promo_code_usages",
+			"promo_codes",
+			"redeem_codes",
+			"deleted_api_key_audits",
+			"api_keys",
+			"auth_identity_channels",
+			"identity_adoption_decisions",
+			"auth_identities",
+			"pending_auth_sessions",
+			"user_provider_default_grants",
+			"user_avatars",
+			"user_attribute_values",
+			"user_platform_quotas",
+			"user_allowed_groups",
+			"user_group_rate_multipliers",
+			"user_subscriptions",
+			"account_groups",
+			"scheduler_outbox",
+			"users",
+			"accounts",
+			"proxies",
+			"`groups`",
+		}
+	}
+
+	_, err := integrationDB.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=0")
+	require.NoError(t, err, "disable FK checks for integration cleanup")
+	t.Cleanup(func() {
+		_, err := integrationDB.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=1")
+		require.NoError(t, err, "restore FK checks after integration cleanup")
+	})
+
+	for _, table := range tables {
+		_, err := integrationDB.ExecContext(ctx, "DELETE FROM "+table)
+		require.NoError(t, err, "clean integration table %s", table)
+	}
+
+	_, err = integrationDB.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=1")
+	require.NoError(t, err, "restore FK checks after integration cleanup")
+}
+
 // testEntTx 返回一个 ent 事务，用于需要事务隔离的测试。
 // 测试结束后会自动回滚，不会影响数据库状态。
 func testEntTx(t *testing.T) *dbent.Tx {

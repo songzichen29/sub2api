@@ -17,7 +17,7 @@ func TestSchedulerSnapshotOutboxReplay(t *testing.T) {
 	rdb := testRedis(t)
 	client := testEntClient(t)
 
-	_, _ = integrationDB.ExecContext(ctx, "TRUNCATE scheduler_outbox")
+	_, _ = integrationDB.ExecContext(ctx, "DELETE FROM scheduler_outbox")
 
 	accountRepo := newAccountRepositoryWithSQL(client, integrationDB, nil)
 	outboxRepo := NewSchedulerOutboxRepository(integrationDB)

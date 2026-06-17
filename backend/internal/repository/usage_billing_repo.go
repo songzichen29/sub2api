@@ -68,6 +68,22 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 }
 
 func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (bool, error) {
+	var archivedFingerprint string
+	err := tx.QueryRowContext(ctx, `
+		SELECT request_fingerprint
+		FROM usage_billing_dedup_archive
+		WHERE request_id = ? AND api_key_id = ?
+	`, cmd.RequestID, cmd.APIKeyID).Scan(&archivedFingerprint)
+	if err == nil {
+		if strings.TrimSpace(archivedFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
+			return false, service.ErrUsageBillingRequestConflict
+		}
+		return false, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT IGNORE INTO usage_billing_dedup (request_id, api_key_id, request_fingerprint)
 		VALUES (?, ?, ?)
@@ -93,22 +109,6 @@ func (r *usageBillingRepository) claimUsageBillingKey(ctx context.Context, tx *s
 	}
 	if strings.TrimSpace(existingFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
 		return false, service.ErrUsageBillingRequestConflict
-	}
-
-	var archivedFingerprint string
-	err = tx.QueryRowContext(ctx, `
-		SELECT request_fingerprint
-		FROM usage_billing_dedup_archive
-		WHERE request_id = ? AND api_key_id = ?
-	`, cmd.RequestID, cmd.APIKeyID).Scan(&archivedFingerprint)
-	if err == nil {
-		if strings.TrimSpace(archivedFingerprint) != strings.TrimSpace(cmd.RequestFingerprint) {
-			return false, service.ErrUsageBillingRequestConflict
-		}
-		return false, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return false, err
 	}
 	return false, nil
 }

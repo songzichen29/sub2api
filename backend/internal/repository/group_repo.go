@@ -564,9 +564,9 @@ func (r *groupRepository) GetAccountCount(ctx context.Context, groupID int64) (t
 	var rateLimited int64
 	err = scanSingleRow(ctx, r.sql,
 		fmt.Sprintf(`SELECT
-			SUM(CASE WHEN a.deleted_at IS NULL THEN 1 ELSE 0 END),
-			SUM(CASE WHEN %s THEN 1 ELSE 0 END),
-			SUM(CASE WHEN %s THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN a.deleted_at IS NULL THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN %s THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN %s THEN 1 ELSE 0 END), 0)
 		FROM account_groups ag JOIN accounts a ON a.id = ag.account_id
 		WHERE ag.group_id = ?`, groupAccountAvailableSQL, groupAccountTemporarilyLimitedSQL),
 		[]any{groupID}, &total, &active, &rateLimited)

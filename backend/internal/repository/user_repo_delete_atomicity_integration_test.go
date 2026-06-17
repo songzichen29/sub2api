@@ -28,6 +28,7 @@ import (
 func TestUserRepository_DeleteUser_AtomicWithAPIKeys(t *testing.T) {
 	ctx := context.Background()
 	client := testEntClient(t)
+	resetIntegrationTables(t)
 
 	userRepo := NewUserRepository(client, integrationDB)
 	apiKeyRepo := NewAPIKeyRepository(client, integrationDB)

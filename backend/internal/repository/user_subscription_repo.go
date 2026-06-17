@@ -500,7 +500,7 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 					) <= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 				)
 				OR (
-					g.allow_daily_overdraft = TRUE
+					? AND g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
 					AND (
 						CASE
@@ -529,7 +529,7 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 					AND us.daily_usage_usd + ? <= g.daily_limit_usd
 				)
 				OR (
-					NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
+					? AND NOT (g.allow_daily_overdraft = TRUE AND COALESCE(us.validity_unit, 'day') IN ('day', 'days'))
 					AND us.daily_usage_usd < g.daily_limit_usd
 				)
 				OR (
@@ -554,7 +554,7 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 					) + ? <= g.daily_limit_usd
 				)
 				OR (
-					g.allow_daily_overdraft = TRUE
+					? AND g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = FALSE
 					AND COALESCE(us.validity_unit, 'day') IN ('day', 'days')
 					AND us.daily_usage_usd + GREATEST(
@@ -579,17 +579,18 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 				COALESCE(g.weekly_limit_usd, 0) <= 0
 				OR (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
 				OR us.weekly_usage_usd + ? <= g.weekly_limit_usd
-				OR us.weekly_usage_usd < g.weekly_limit_usd
+				OR (? AND us.weekly_usage_usd < g.weekly_limit_usd)
 			)
 			AND (
 				COALESCE(g.monthly_limit_usd, 0) <= 0
 				OR (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
 				OR us.monthly_usage_usd + ? <= g.monthly_limit_usd
-				OR us.monthly_usage_usd < g.monthly_limit_usd
+				OR (? AND us.monthly_usage_usd < g.monthly_limit_usd)
 			)
 	`
 
 	client := clientFromContext(ctx, r.client)
+	allowOverLimit := false
 	result, err := client.ExecContext(ctx, updateSQL,
 		costUSD, costUSD, costUSD,
 		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
@@ -597,10 +598,10 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		id,
 		costUSD, costUSD, costUSD, costUSD,
-		costUSD,
-		costUSD,
-		costUSD,
-		costUSD,
+		allowOverLimit,
+		costUSD, allowOverLimit, costUSD, allowOverLimit,
+		costUSD, allowOverLimit,
+		costUSD, allowOverLimit,
 	)
 	if err != nil {
 		return err
@@ -614,7 +615,13 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 		return nil
 	}
 
-	exists, err := client.UserSubscription.Query().Where(usersubscription.IDEQ(id)).Exist(ctx)
+	exists, err := client.UserSubscription.Query().
+		Where(
+			usersubscription.IDEQ(id),
+			usersubscription.DeletedAtIsNil(),
+			usersubscription.HasGroupWith(group.DeletedAtIsNil()),
+		).
+		Exist(ctx)
 	if err != nil {
 		return err
 	}
