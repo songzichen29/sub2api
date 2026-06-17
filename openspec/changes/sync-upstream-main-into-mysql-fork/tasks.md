@@ -50,4 +50,5 @@
 - [x] 7.1 Review `git diff --stat` and high-risk diffs for unintended PostgreSQL rollback, generated-only noise, or public API drift.
 - [x] 7.2 Ensure the final branch contains a clear merge/conflict-resolution history suitable for review.
 - [x] 7.3 Summarize accepted upstream feature groups, MySQL adaptations, skipped/changed upstream migration handling, verification results, and known risks.
-- [ ] 7.4 Only after successful review, merge or fast-forward the long-lived fork branch from the isolated integration branch.
+- [x] 7.4 Only after successful review, merge or fast-forward the long-lived fork branch from the isolated integration branch.
+

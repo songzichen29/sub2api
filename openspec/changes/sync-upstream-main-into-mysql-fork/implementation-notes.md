@@ -82,3 +82,19 @@
 
 - Reviewed final diff stat: `openspec/changes/sync-upstream-main-into-mysql-fork/analysis/final-diff-stat.txt`
 - Long-lived fork branch was not merged or fast-forwarded. Task 7.4 remains intentionally open for human review after this integration branch is inspected.
+
+## Public MySQL / Redis Validation
+
+- Updated ignored local `deploy/.env` to use the public endpoints supplied by the operator:
+  - MySQL: `192.220.50.182:13306`
+  - Redis: `192.220.50.182:16379`
+- The ignored local `.env` file is not tracked by git; no database or Redis password was committed.
+- Remote firewall/listener check confirmed:
+  - `0.0.0.0:13306` mapped to the MySQL container
+  - `0.0.0.0:16379` mapped to the Redis container
+  - UFW allow rules exist for both ports
+- Added/updated MySQL remote grant for `sub2api`@`%` using the password already present in `/data/docker-compose/sub2api/.env`.
+- External verification from the local machine passed:
+  - `MYSQL_PUBLIC_OK host=192.220.50.182 port=13306 db=sub2api table_count=81`
+  - `REDIS_PUBLIC_OK host=192.220.50.182 port=16379 db=0 ping=PONG`
+- Evidence: `openspec/changes/sync-upstream-main-into-mysql-fork/analysis/public-mysql-redis-validation.txt`
