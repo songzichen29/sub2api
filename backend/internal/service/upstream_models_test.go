@@ -128,6 +128,17 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", antigravityReq.URL.String())
 	require.Equal(t, "antigravity-key", antigravityReq.Header.Get("x-api-key"))
+
+	antigravityRootReq, err := svc.buildAntigravityAPIKeyModelsRequest(ctx, &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "antigravity-key",
+			"base_url": "https://gateway.example.com",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", antigravityRootReq.URL.String())
 }
 
 func TestBuildAntigravityAPIKeyModelsRequestRejectsOfficialCloudCodeBase(t *testing.T) {

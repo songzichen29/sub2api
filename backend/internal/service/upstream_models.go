@@ -218,11 +218,18 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 		return nil, newUpstreamModelSyncConfigError("No Antigravity API key is available", nil)
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(account.GetCredential("base_url")), "/")
-	if baseURL == "" {
+	rawBaseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	if rawBaseURL == "" {
 		return nil, newUpstreamModelSyncConfigError("Antigravity API-key base URL is required for upstream model sync", nil)
 	}
+	baseURL := strings.TrimRight(strings.TrimSpace(account.GetBaseURL()), "/")
 	if !strings.HasSuffix(strings.ToLower(baseURL), "/antigravity") {
+		return nil, newUpstreamModelSyncUnsupportedError(
+			"Antigravity API-key upstream model sync requires a compatible gateway base URL ending in /antigravity; use Antigravity OAuth for official Cloud Code upstreams",
+			nil,
+		)
+	}
+	if rawBaseURL != "" && isOfficialAntigravityCloudCodeBaseURL(rawBaseURL) {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			"Antigravity API-key upstream model sync requires a compatible gateway base URL ending in /antigravity; use Antigravity OAuth for official Cloud Code upstreams",
 			nil,
@@ -245,6 +252,18 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	req.Header.Set("x-api-key", apiKey)
 	return req, nil
+}
+
+func isOfficialAntigravityCloudCodeBaseURL(baseURL string) bool {
+	normalized := strings.ToLower(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+	normalized = strings.TrimSuffix(normalized, "/antigravity")
+	switch normalized {
+	case "https://cloudcode-pa.googleapis.com",
+		"https://daily-cloudcode-pa.sandbox.googleapis.com":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {

@@ -770,7 +770,11 @@ func (a *Account) GetBaseURL() string {
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
-		return strings.TrimRight(baseURL, "/") + "/antigravity"
+		normalized := strings.TrimRight(baseURL, "/")
+		if strings.HasSuffix(strings.ToLower(normalized), "/antigravity") {
+			return normalized
+		}
+		return normalized + "/antigravity"
 	}
 	return baseURL
 }
@@ -783,7 +787,11 @@ func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 		return defaultBaseURL
 	}
 	if a.Platform == PlatformAntigravity && a.Type == AccountTypeAPIKey {
-		return strings.TrimRight(baseURL, "/") + "/antigravity"
+		normalized := strings.TrimRight(baseURL, "/")
+		if strings.HasSuffix(strings.ToLower(normalized), "/antigravity") {
+			return normalized
+		}
+		return normalized + "/antigravity"
 	}
 	return baseURL
 }
