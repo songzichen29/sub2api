@@ -74,6 +74,9 @@ const (
 	// 仅用于日志诊断：当“上游首包 -> 真实首 token”的间隔超过该阈值时，
 	// 打印首 token 前的 SSE 事件摘要，用来判断上游是在沉默还是在发送非文本事件。
 	openAIResponsesSlowFirstTokenGap = 10 * time.Second
+	// 仅用于日志诊断：当“上游请求 -> 首个 SSE 事件”的整体首包时间超过该阈值时，
+	// 打印 HTTP 首包拆分，用来判断慢在本地准备、响应头，还是响应头后的 SSE。
+	openAIResponsesSlowUpstreamFirstEvent = 5 * time.Second
 	// 慢首字诊断日志中最多保留首 token 前的前 N 个事件时间线，避免大流量日志爆炸。
 	openAIResponsesPreFirstTokenTimelineLimit = 16
 
@@ -3165,15 +3168,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		// Send request
+		SetOpsLatencyMs(c, OpsOpenAILocalPrepareMsKey, time.Since(startTime).Milliseconds())
 		upstreamStart := time.Now()
 		resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+		upstreamHeadersAt := time.Now()
+		upstreamHeadersMs := upstreamHeadersAt.Sub(upstreamStart).Milliseconds()
+		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamHeadersMs)
 		if err != nil {
 			// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 			// a failover so the handler switches to a healthy account, and temporarily
 			// unschedule the account on durable faults (e.g. rejected proxy credentials).
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 		}
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamHeadersMsKey, upstreamHeadersMs)
 
 		// Handle error response
 		if resp.StatusCode >= 400 {
@@ -3241,7 +3248,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		var imageOutputSizes []string
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, upstreamHeadersAt, originalModel, upstreamModel, len(body))
 			if err != nil {
 				return nil, err
 			}
@@ -3275,6 +3282,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqStream && firstTokenDiagnostics != nil && firstTokenMs != nil {
 			firstTokenDiagnostics.maybeLogSlowFirstToken(
 				ctx,
+				c,
 				"service.openai_gateway",
 				account.ID,
 				originalModel,
@@ -3466,15 +3474,19 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		c.Set("openai_passthrough", true)
 	}
 
+	SetOpsLatencyMs(c, OpsOpenAILocalPrepareMsKey, time.Since(startTime).Milliseconds())
 	upstreamStart := time.Now()
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	upstreamHeadersAt := time.Now()
+	upstreamHeadersMs := upstreamHeadersAt.Sub(upstreamStart).Milliseconds()
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, upstreamHeadersMs)
 	if err != nil {
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 		// a failover so the handler switches to a healthy account, and temporarily
 		// unschedule the account on durable faults (e.g. rejected proxy credentials).
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 	}
+	SetOpsLatencyMs(c, OpsOpenAIUpstreamHeadersMsKey, upstreamHeadersMs)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
@@ -3493,7 +3505,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	imageCount := 0
 	var imageOutputSizes []string
 	if reqStream {
-		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
+		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, upstreamHeadersAt, reqModel, upstreamPassthroughModel, len(body))
 		if err != nil {
 			return nil, err
 		}
@@ -3524,6 +3536,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	if reqStream && firstTokenDiagnostics != nil && firstTokenMs != nil {
 		firstTokenDiagnostics.maybeLogSlowFirstToken(
 			ctx,
+			c,
 			"service.openai_gateway.passthrough",
 			account.ID,
 			reqModel,
@@ -3982,6 +3995,7 @@ type openAIResponsesPreFirstTokenEventSample struct {
 
 type openAIResponsesPreFirstTokenDiagnostics struct {
 	startTime               time.Time
+	upstreamHeadersAt       time.Time
 	upstreamRequestID       string
 	events                  map[string]int
 	samples                 []openAIResponsesPreFirstTokenEventSample
@@ -3991,11 +4005,13 @@ type openAIResponsesPreFirstTokenDiagnostics struct {
 	firstAnyDeltaMs         *int
 	firstClientOutputMs     *int
 	loggedSlowFirstTokenGap bool
+	loggedSlowFirstEvent    bool
 }
 
-func newOpenAIResponsesPreFirstTokenDiagnostics(startTime time.Time, upstreamRequestID string) *openAIResponsesPreFirstTokenDiagnostics {
+func newOpenAIResponsesPreFirstTokenDiagnostics(startTime time.Time, upstreamHeadersAt time.Time, upstreamRequestID string) *openAIResponsesPreFirstTokenDiagnostics {
 	return &openAIResponsesPreFirstTokenDiagnostics{
 		startTime:         startTime,
+		upstreamHeadersAt: upstreamHeadersAt,
 		upstreamRequestID: upstreamRequestID,
 		events:            make(map[string]int, 8),
 		samples:           make([]openAIResponsesPreFirstTokenEventSample, 0, openAIResponsesPreFirstTokenTimelineLimit),
@@ -4048,8 +4064,56 @@ func (d *openAIResponsesPreFirstTokenDiagnostics) observeEvent(eventType string,
 	}
 }
 
+func openAIResponsesContextLatencyMs(c *gin.Context, key string) int64 {
+	if v, ok := GetOpsLatencyMs(c, key); ok {
+		return v
+	}
+	return -1
+}
+
+func (d *openAIResponsesPreFirstTokenDiagnostics) maybeLogSlowUpstreamFirstEvent(
+	ctx context.Context,
+	c *gin.Context,
+	component string,
+	accountID int64,
+	model string,
+	bodyBytes int,
+	upstreamFirstEventMs int,
+	eventType string,
+) {
+	if d == nil || d.loggedSlowFirstEvent {
+		return
+	}
+	if upstreamFirstEventMs < int(openAIResponsesSlowUpstreamFirstEvent.Milliseconds()) {
+		return
+	}
+	d.loggedSlowFirstEvent = true
+	headersToFirstSSEMs := int64(-1)
+	if !d.upstreamHeadersAt.IsZero() {
+		headersToFirstSSEMs = time.Since(d.upstreamHeadersAt).Milliseconds()
+		if headersToFirstSSEMs < 0 {
+			headersToFirstSSEMs = 0
+		}
+	}
+	localPrepareMs := openAIResponsesContextLatencyMs(c, OpsOpenAILocalPrepareMsKey)
+	upstreamHeadersMs := openAIResponsesContextLatencyMs(c, OpsOpenAIUpstreamHeadersMsKey)
+	logger.FromContext(ctx).Info("openai responses slow upstream first event diagnostic",
+		zap.String("component", component),
+		zap.Int64("account_id", accountID),
+		zap.String("model", strings.TrimSpace(model)),
+		zap.Int("body_bytes", bodyBytes),
+		zap.String("upstream_request_id", d.upstreamRequestID),
+		zap.String("first_event_type", strings.TrimSpace(eventType)),
+		zap.Int("upstream_first_event_ms", upstreamFirstEventMs),
+		zap.Int64("local_prepare_ms", localPrepareMs),
+		zap.Int64("upstream_headers_ms", upstreamHeadersMs),
+		zap.Int64("first_sse_after_headers_ms", headersToFirstSSEMs),
+	)
+}
+
 func (d *openAIResponsesPreFirstTokenDiagnostics) maybeLogSlowFirstToken(
 	ctx context.Context,
+	c *gin.Context,
 	component string,
 	accountID int64,
 	model string,
@@ -4086,6 +4150,9 @@ func (d *openAIResponsesPreFirstTokenDiagnostics) maybeLogSlowFirstToken(
 	if data, err := json.Marshal(d.samples); err == nil {
 		timelineJSON = string(data)
 	}
+	localPrepareMs := openAIResponsesContextLatencyMs(c, OpsOpenAILocalPrepareMsKey)
+	upstreamHeadersMs := openAIResponsesContextLatencyMs(c, OpsOpenAIUpstreamHeadersMsKey)
+	firstSSEAfterHeadersMs := openAIResponsesContextLatencyMs(c, OpsOpenAIFirstSSEAfterHeadersMsKey)
 	logger.FromContext(ctx).Info("openai responses slow first token diagnostic",
 		zap.String("component", component),
 		zap.Int64("account_id", accountID),
@@ -4097,6 +4164,9 @@ func (d *openAIResponsesPreFirstTokenDiagnostics) maybeLogSlowFirstToken(
 		zap.Int("cache_creation_tokens", cacheCreationTokens),
 		zap.String("upstream_request_id", d.upstreamRequestID),
 		zap.Int("upstream_first_event_ms", *upstreamFirstEventMs),
+		zap.Int64("local_prepare_ms", localPrepareMs),
+		zap.Int64("upstream_headers_ms", upstreamHeadersMs),
+		zap.Int64("first_sse_after_headers_ms", firstSSEAfterHeadersMs),
 		zap.Int("first_token_ms", firstTokenMs),
 		zap.Int("gap_ms", gapMs),
 		zap.Int("pre_first_token_event_count", d.eventCount),
@@ -4199,8 +4269,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	c *gin.Context,
 	account *Account,
 	startTime time.Time,
+	upstreamHeadersAt time.Time,
 	originalModel string,
 	mappedModel string,
+	bodyBytes int,
 ) (*openaiStreamingResultPassthrough, error) {
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
@@ -4232,7 +4304,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	upstreamFirstEventRecorded := false
 	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
-	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamRequestID)
+	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamHeadersAt, upstreamRequestID)
 	pendingLines := make([]string, 0, 8)
 	pendingLineEvents := 0
 	pendingLineBytes := 0
@@ -4324,6 +4396,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		ms := int(time.Since(startTime).Milliseconds())
 		upstreamFirstEventMs = &ms
 		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+		if !upstreamHeadersAt.IsZero() {
+			SetOpsLatencyMs(c, OpsOpenAIFirstSSEAfterHeadersMsKey, time.Since(upstreamHeadersAt).Milliseconds())
+		}
+		diagnostics.maybeLogSlowUpstreamFirstEvent(ctx, c, "service.openai_gateway.passthrough", account.ID, originalModel, bodyBytes, ms, eventType)
 
 		// response.failed 在尚未输出给客户端前仍应保留 clean failover 能力；
 		// 因此即使开启 debug timing，也不在 failed 首事件前提交 HTTP body。
@@ -5190,7 +5266,17 @@ type openaiNonStreamingResult struct {
 	imageOutputSizes []string
 }
 
-func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
+func (s *OpenAIGatewayService) handleStreamingResponse(
+	ctx context.Context,
+	resp *http.Response,
+	c *gin.Context,
+	account *Account,
+	startTime time.Time,
+	upstreamHeadersAt time.Time,
+	originalModel string,
+	mappedModel string,
+	bodyBytes int,
+) (*openaiStreamingResult, error) {
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
@@ -5278,7 +5364,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	upstreamFirstEventRecorded := false
 	var upstreamFirstEventMs *int
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
-	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamRequestID)
+	diagnostics := newOpenAIResponsesPreFirstTokenDiagnostics(startTime, upstreamHeadersAt, upstreamRequestID)
 
 	pendingPreambleEvents := 0
 	pendingPreambleBytes := 0
@@ -5369,6 +5455,10 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		ms := int(time.Since(startTime).Milliseconds())
 		upstreamFirstEventMs = &ms
 		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+		if !upstreamHeadersAt.IsZero() {
+			SetOpsLatencyMs(c, OpsOpenAIFirstSSEAfterHeadersMsKey, time.Since(upstreamHeadersAt).Milliseconds())
+		}
+		diagnostics.maybeLogSlowUpstreamFirstEvent(ctx, c, "service.openai_gateway", account.ID, originalModel, bodyBytes, ms, eventType)
 
 		// Debug timing 是显式开启的诊断能力。为避免把上游首包误当成
 		// 真实首 token，这里只发送 SSE comment，不修改 firstTokenMs。

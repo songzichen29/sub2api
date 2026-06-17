@@ -29,6 +29,12 @@ const (
 	OpsTimeToFirstTokenMsKey = "ops_time_to_first_token_ms"
 	// OpenAI Responses 首个上游 SSE 事件到达时间；用于区分“上游已首包”与“真实首 token”。
 	OpsOpenAIUpstreamFirstEventMsKey = "ops_openai_upstream_first_event_ms"
+	// OpenAI Responses HTTP 首包拆分指标：local_prepare 表示进入 Forward 到发起上游请求前；
+	// upstream_headers 表示发起上游请求到 HTTP 响应头返回；first_sse_after_headers
+	// 表示响应头返回到第一个 SSE 事件。
+	OpsOpenAILocalPrepareMsKey         = "ops_openai_local_prepare_ms"
+	OpsOpenAIUpstreamHeadersMsKey      = "ops_openai_upstream_headers_ms"
+	OpsOpenAIFirstSSEAfterHeadersMsKey = "ops_openai_first_sse_after_headers_ms"
 	// OpenAI WS 关键观测字段
 	OpsOpenAIWSQueueWaitMsKey = "ops_openai_ws_queue_wait_ms"
 	OpsOpenAIWSConnPickMsKey  = "ops_openai_ws_conn_pick_ms"
@@ -78,6 +84,28 @@ func SetOpsLatencyMs(c *gin.Context, key string, value int64) {
 		return
 	}
 	c.Set(key, value)
+}
+
+func GetOpsLatencyMs(c *gin.Context, key string) (int64, bool) {
+	if c == nil || strings.TrimSpace(key) == "" {
+		return 0, false
+	}
+	v, ok := c.Get(key)
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	default:
+		return 0, false
+	}
 }
 
 func MarkOpsClientBusinessLimited(c *gin.Context, reason string) {
