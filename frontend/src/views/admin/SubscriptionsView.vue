@@ -227,6 +227,49 @@
 
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
+              <!-- Total Quota -->
+              <div v-if="hasTotalQuota(row)" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.totalQuota') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(getTotalQuotaUsed(row), getTotalQuotaLimit(row))"
+                      :style="{
+                        width: getProgressWidth(getTotalQuotaUsed(row), getTotalQuotaLimit(row))
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ getTotalQuotaUsed(row).toFixed(2) }}
+                    <span class="text-gray-400">/</span>
+                    ${{ getTotalQuotaLimit(row).toFixed(2) }}
+                  </span>
+                </div>
+                <div class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
+                    />
+                  </svg>
+                  <span>
+                    {{
+                      t('admin.subscriptions.totalQuotaRemaining', {
+                        amount: getTotalQuotaRemaining(row).toFixed(2),
+                      })
+                    }}
+                  </span>
+                </div>
+              </div>
+
               <!-- Daily Usage -->
               <div v-if="row.group?.daily_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
@@ -332,7 +375,8 @@
                   !row.group?.daily_limit_usd &&
                   !row.group?.weekly_limit_usd &&
                   !row.group?.monthly_limit_usd &&
-                  !row.allow_daily_overdraft
+                  !row.allow_daily_overdraft &&
+                  !hasTotalQuota(row)
                 "
                 class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
@@ -1682,6 +1726,25 @@ const isSubscriptionNotStarted = (sub: UserSubscription): boolean => {
   const startsAtMs = new Date(sub.starts_at).getTime()
   if (Number.isNaN(startsAtMs)) return false
   return startsAtMs > Date.now()
+}
+
+const hasTotalQuota = (sub: UserSubscription): boolean => {
+  return sub.quota_limit_usd != null && sub.quota_limit_usd > 0
+}
+
+const getTotalQuotaLimit = (sub: UserSubscription): number => {
+  return sub.quota_limit_usd && sub.quota_limit_usd > 0 ? sub.quota_limit_usd : 0
+}
+
+const getTotalQuotaUsed = (sub: UserSubscription): number => {
+  return Math.max(sub.quota_used_usd || 0, 0)
+}
+
+const getTotalQuotaRemaining = (sub: UserSubscription): number => {
+  if (typeof sub.quota_remaining_usd === 'number') {
+    return Math.max(sub.quota_remaining_usd, 0)
+  }
+  return Math.max(getTotalQuotaLimit(sub) - getTotalQuotaUsed(sub), 0)
 }
 
 const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {

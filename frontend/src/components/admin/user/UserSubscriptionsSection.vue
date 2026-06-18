@@ -108,6 +108,35 @@
 
         <!-- Row 2: usage progress -->
         <div class="mt-3 space-y-2">
+          <!-- Total Quota -->
+          <div v-if="hasTotalQuota(sub)" class="usage-row">
+            <div class="flex items-center gap-2">
+              <span class="usage-label">{{ t('admin.subscriptions.totalQuota') }}</span>
+              <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                <div
+                  class="h-1.5 rounded-full transition-all"
+                  :class="getProgressClass(getTotalQuotaUsed(sub), getTotalQuotaLimit(sub))"
+                  :style="{ width: getProgressWidth(getTotalQuotaUsed(sub), getTotalQuotaLimit(sub)) }"
+                ></div>
+              </div>
+              <span class="usage-amount">
+                ${{ getTotalQuotaUsed(sub).toFixed(2) }}
+                <span class="text-gray-400">/</span>
+                ${{ getTotalQuotaLimit(sub).toFixed(2) }}
+              </span>
+            </div>
+            <div class="reset-info">
+              <Icon name="dollar" size="xs" />
+              <span>
+                {{
+                  t('admin.subscriptions.totalQuotaRemaining', {
+                    amount: getTotalQuotaRemaining(sub).toFixed(2),
+                  })
+                }}
+              </span>
+            </div>
+          </div>
+
           <!-- Daily -->
           <div v-if="sub.group?.daily_limit_usd" class="usage-row">
             <div class="flex items-center gap-2">
@@ -202,7 +231,8 @@
               !sub.group?.daily_limit_usd &&
               !sub.group?.weekly_limit_usd &&
               !sub.group?.monthly_limit_usd &&
-              !getOverdraftLimit(sub)
+              !getOverdraftLimit(sub) &&
+              !hasTotalQuota(sub)
             "
             class="flex items-center gap-2 rounded-md bg-gradient-to-r from-emerald-50 to-teal-50 px-2 py-1.5 dark:from-emerald-900/20 dark:to-teal-900/20"
           >
@@ -323,6 +353,25 @@ const isSubscriptionNotStarted = (sub: UserSubscription): boolean => {
   const startsAtMs = new Date(sub.starts_at).getTime()
   if (Number.isNaN(startsAtMs)) return false
   return startsAtMs > Date.now()
+}
+
+const hasTotalQuota = (sub: UserSubscription): boolean => {
+  return sub.quota_limit_usd != null && sub.quota_limit_usd > 0
+}
+
+const getTotalQuotaLimit = (sub: UserSubscription): number => {
+  return sub.quota_limit_usd && sub.quota_limit_usd > 0 ? sub.quota_limit_usd : 0
+}
+
+const getTotalQuotaUsed = (sub: UserSubscription): number => {
+  return Math.max(sub.quota_used_usd || 0, 0)
+}
+
+const getTotalQuotaRemaining = (sub: UserSubscription): number => {
+  if (typeof sub.quota_remaining_usd === 'number') {
+    return Math.max(sub.quota_remaining_usd, 0)
+  }
+  return Math.max(getTotalQuotaLimit(sub) - getTotalQuotaUsed(sub), 0)
 }
 
 const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
