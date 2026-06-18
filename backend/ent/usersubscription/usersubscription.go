@@ -45,6 +45,10 @@ const (
 	FieldWeeklyUsageUsd = "weekly_usage_usd"
 	// FieldMonthlyUsageUsd holds the string denoting the monthly_usage_usd field in the database.
 	FieldMonthlyUsageUsd = "monthly_usage_usd"
+	// FieldQuotaLimitUsd holds the string denoting the quota_limit_usd field in the database.
+	FieldQuotaLimitUsd = "quota_limit_usd"
+	// FieldQuotaUsedUsd holds the string denoting the quota_used_usd field in the database.
+	FieldQuotaUsedUsd = "quota_used_usd"
 	// FieldAllowDailyOverdraft holds the string denoting the allow_daily_overdraft field in the database.
 	FieldAllowDailyOverdraft = "allow_daily_overdraft"
 	// FieldAssignedBy holds the string denoting the assigned_by field in the database.
@@ -113,6 +117,8 @@ var Columns = []string{
 	FieldDailyUsageUsd,
 	FieldWeeklyUsageUsd,
 	FieldMonthlyUsageUsd,
+	FieldQuotaLimitUsd,
+	FieldQuotaUsedUsd,
 	FieldAllowDailyOverdraft,
 	FieldAssignedBy,
 	FieldAssignedAt,
@@ -158,6 +164,8 @@ var (
 	DefaultWeeklyUsageUsd float64
 	// DefaultMonthlyUsageUsd holds the default value on creation for the "monthly_usage_usd" field.
 	DefaultMonthlyUsageUsd float64
+	// DefaultQuotaUsedUsd holds the default value on creation for the "quota_used_usd" field.
+	DefaultQuotaUsedUsd float64
 	// DefaultAllowDailyOverdraft holds the default value on creation for the "allow_daily_overdraft" field.
 	DefaultAllowDailyOverdraft bool
 	// DefaultAssignedAt holds the default value on creation for the "assigned_at" field.
@@ -249,6 +257,16 @@ func ByWeeklyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByMonthlyUsageUsd orders the results by the monthly_usage_usd field.
 func ByMonthlyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyUsageUsd, opts...).ToFunc()
+}
+
+// ByQuotaLimitUsd orders the results by the quota_limit_usd field.
+func ByQuotaLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaLimitUsd, opts...).ToFunc()
+}
+
+// ByQuotaUsedUsd orders the results by the quota_used_usd field.
+func ByQuotaUsedUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaUsedUsd, opts...).ToFunc()
 }
 
 // ByAllowDailyOverdraft orders the results by the allow_daily_overdraft field.

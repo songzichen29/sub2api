@@ -52,6 +52,8 @@ const (
 	FieldSubscriptionID = "subscription_id"
 	// FieldSubscriptionDays holds the string denoting the subscription_days field in the database.
 	FieldSubscriptionDays = "subscription_days"
+	// FieldSubscriptionQuotaUsd holds the string denoting the subscription_quota_usd field in the database.
+	FieldSubscriptionQuotaUsd = "subscription_quota_usd"
 	// FieldSubscriptionValidityUnit holds the string denoting the subscription_validity_unit field in the database.
 	FieldSubscriptionValidityUnit = "subscription_validity_unit"
 	// FieldSubscriptionPlanExpiresAt holds the string denoting the subscription_plan_expires_at field in the database.
@@ -133,6 +135,7 @@ var Columns = []string{
 	FieldSubscriptionGroupID,
 	FieldSubscriptionID,
 	FieldSubscriptionDays,
+	FieldSubscriptionQuotaUsd,
 	FieldSubscriptionValidityUnit,
 	FieldSubscriptionPlanExpiresAt,
 	FieldProviderInstanceID,
@@ -318,6 +321,11 @@ func BySubscriptionID(opts ...sql.OrderTermOption) OrderOption {
 // BySubscriptionDays orders the results by the subscription_days field.
 func BySubscriptionDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscriptionDays, opts...).ToFunc()
+}
+
+// BySubscriptionQuotaUsd orders the results by the subscription_quota_usd field.
+func BySubscriptionQuotaUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSubscriptionQuotaUsd, opts...).ToFunc()
 }
 
 // BySubscriptionValidityUnit orders the results by the subscription_validity_unit field.

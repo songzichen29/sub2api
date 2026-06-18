@@ -57,6 +57,8 @@ const (
 	subFieldDailyUsage          = "daily_usage"
 	subFieldWeeklyUsage         = "weekly_usage"
 	subFieldMonthlyUsage        = "monthly_usage"
+	subFieldQuotaLimitUSD       = "quota_limit_usd"
+	subFieldQuotaUsedUSD        = "quota_used_usd"
 	subFieldAllowDailyOverdraft = "allow_daily_overdraft"
 	subFieldVersion             = "version"
 )
@@ -96,6 +98,7 @@ var (
 		redis.call('HINCRBYFLOAT', KEYS[1], 'daily_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'weekly_usage', cost)
 		redis.call('HINCRBYFLOAT', KEYS[1], 'monthly_usage', cost)
+		redis.call('HINCRBYFLOAT', KEYS[1], 'quota_used_usd', cost)
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 		return 1
 	`)
@@ -234,6 +237,16 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		result.MonthlyUsage, _ = strconv.ParseFloat(monthlyStr, 64)
 	}
 
+	if quotaLimitStr, ok := data[subFieldQuotaLimitUSD]; ok && quotaLimitStr != "" {
+		if quotaLimit, err := strconv.ParseFloat(quotaLimitStr, 64); err == nil {
+			result.QuotaLimitUSD = &quotaLimit
+		}
+	}
+
+	if quotaUsedStr, ok := data[subFieldQuotaUsedUSD]; ok {
+		result.QuotaUsedUSD, _ = strconv.ParseFloat(quotaUsedStr, 64)
+	}
+
 	if overdraftStr, ok := data[subFieldAllowDailyOverdraft]; ok {
 		result.AllowDailyOverdraft = overdraftStr == "1" || strings.EqualFold(overdraftStr, "true")
 	}
@@ -260,8 +273,14 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		subFieldDailyUsage:          data.DailyUsage,
 		subFieldWeeklyUsage:         data.WeeklyUsage,
 		subFieldMonthlyUsage:        data.MonthlyUsage,
+		subFieldQuotaUsedUSD:        data.QuotaUsedUSD,
 		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
 		subFieldVersion:             data.Version,
+	}
+	if data.QuotaLimitUSD != nil {
+		fields[subFieldQuotaLimitUSD] = *data.QuotaLimitUSD
+	} else {
+		fields[subFieldQuotaLimitUSD] = ""
 	}
 	if data.DailyWindowStart != nil && !data.DailyWindowStart.IsZero() {
 		fields[subFieldDailyWindowStart] = data.DailyWindowStart.Unix()

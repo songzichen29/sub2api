@@ -72,6 +72,15 @@ func (UserSubscription) Fields() []ent.Field {
 		field.Float("monthly_usage_usd").
 			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}).
 			Default(0),
+		field.Float("quota_limit_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			Comment("Total USD quota available during this subscription period"),
+		field.Float("quota_used_usd").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}).
+			Default(0).
+			Comment("Total USD quota used during this subscription period"),
 		field.Bool("allow_daily_overdraft").
 			Default(false).
 			Comment("Whether this user subscription has enabled daily quota overdraft"),

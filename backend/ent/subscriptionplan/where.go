@@ -89,6 +89,11 @@ func ValidityUnit(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldValidityUnit, v))
 }
 
+// QuotaLimitUsd applies equality check predicate on the "quota_limit_usd" field. It's identical to QuotaLimitUsdEQ.
+func QuotaLimitUsd(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldQuotaLimitUsd, v))
+}
+
 // ExpiresAt applies equality check predicate on the "expires_at" field. It's identical to ExpiresAtEQ.
 func ExpiresAt(v time.Time) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldExpiresAt, v))
@@ -487,6 +492,56 @@ func ValidityUnitEqualFold(v string) predicate.SubscriptionPlan {
 // ValidityUnitContainsFold applies the ContainsFold predicate on the "validity_unit" field.
 func ValidityUnitContainsFold(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldValidityUnit, v))
+}
+
+// QuotaLimitUsdEQ applies the EQ predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdEQ(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdNEQ applies the NEQ predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNEQ(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdIn applies the In predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdIn(vs ...float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldQuotaLimitUsd, vs...))
+}
+
+// QuotaLimitUsdNotIn applies the NotIn predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNotIn(vs ...float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldQuotaLimitUsd, vs...))
+}
+
+// QuotaLimitUsdGT applies the GT predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdGT(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdGTE applies the GTE predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdGTE(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdLT applies the LT predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdLT(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdLTE applies the LTE predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdLTE(v float64) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdIsNil applies the IsNil predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdIsNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIsNull(FieldQuotaLimitUsd))
+}
+
+// QuotaLimitUsdNotNil applies the NotNil predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNotNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotNull(FieldQuotaLimitUsd))
 }
 
 // ExpiresAtEQ applies the EQ predicate on the "expires_at" field.

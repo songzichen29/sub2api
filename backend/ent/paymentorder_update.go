@@ -392,6 +392,33 @@ func (_u *PaymentOrderUpdate) ClearSubscriptionDays() *PaymentOrderUpdate {
 	return _u
 }
 
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdate) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetSubscriptionQuotaUsd()
+	_u.mutation.SetSubscriptionQuotaUsd(v)
+	return _u
+}
+
+// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetSubscriptionQuotaUsd(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionQuotaUsd adds value to the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdate) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddSubscriptionQuotaUsd(v)
+	return _u
+}
+
+// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdate) ClearSubscriptionQuotaUsd() *PaymentOrderUpdate {
+	_u.mutation.ClearSubscriptionQuotaUsd()
+	return _u
+}
+
 // SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
 func (_u *PaymentOrderUpdate) SetSubscriptionValidityUnit(v string) *PaymentOrderUpdate {
 	_u.mutation.SetSubscriptionValidityUnit(v)
@@ -1022,6 +1049,15 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
 	}
+	if value, ok := _u.mutation.SubscriptionQuotaUsd(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionQuotaUsd(); ok {
+		_spec.AddField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.SubscriptionQuotaUsdCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
 	}
@@ -1545,6 +1581,33 @@ func (_u *PaymentOrderUpdateOne) AddSubscriptionDays(v int) *PaymentOrderUpdateO
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (_u *PaymentOrderUpdateOne) ClearSubscriptionDays() *PaymentOrderUpdateOne {
 	_u.mutation.ClearSubscriptionDays()
+	return _u
+}
+
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdateOne) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetSubscriptionQuotaUsd()
+	_u.mutation.SetSubscriptionQuotaUsd(v)
+	return _u
+}
+
+// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetSubscriptionQuotaUsd(*v)
+	}
+	return _u
+}
+
+// AddSubscriptionQuotaUsd adds value to the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdateOne) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddSubscriptionQuotaUsd(v)
+	return _u
+}
+
+// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
+func (_u *PaymentOrderUpdateOne) ClearSubscriptionQuotaUsd() *PaymentOrderUpdateOne {
+	_u.mutation.ClearSubscriptionQuotaUsd()
 	return _u
 }
 
@@ -2207,6 +2270,15 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
+	}
+	if value, ok := _u.mutation.SubscriptionQuotaUsd(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedSubscriptionQuotaUsd(); ok {
+		_spec.AddField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.SubscriptionQuotaUsdCleared() {
+		_spec.ClearField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)

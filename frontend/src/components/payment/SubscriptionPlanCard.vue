@@ -46,23 +46,27 @@
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ rateDisplay }}</span>
         </div>
+        <div v-if="hasTotalQuota" class="flex items-center justify-between">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.totalQuota') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatUSD(plan.quota_limit_usd) }}</span>
+        </div>
         <div v-if="plan.daily_limit_usd != null && plan.daily_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.dailyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.daily_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatUSD(plan.daily_limit_usd) }}</span>
         </div>
         <div v-if="overdraftPoolLimit !== null" class="flex items-center justify-between">
-          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.totalQuota') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ overdraftPoolLimit }}</span>
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.overdraftTotal') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatUSD(overdraftPoolLimit) }}</span>
         </div>
         <div v-else-if="plan.weekly_limit_usd != null && plan.weekly_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.weekly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatUSD(plan.weekly_limit_usd) }}</span>
         </div>
         <div v-else-if="plan.monthly_limit_usd != null && plan.monthly_limit_usd > 0" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-          <span class="font-medium text-gray-700 dark:text-gray-300">${{ plan.monthly_limit_usd }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">${{ formatUSD(plan.monthly_limit_usd) }}</span>
         </div>
-        <div v-if="(plan.daily_limit_usd == null || plan.daily_limit_usd <= 0) && (plan.weekly_limit_usd == null || plan.weekly_limit_usd <= 0) && (plan.monthly_limit_usd == null || plan.monthly_limit_usd <= 0)" class="flex items-center justify-between">
+        <div v-if="!hasAnyQuotaLimit" class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
         </div>
@@ -146,6 +150,23 @@ const rateDisplay = computed(() => {
   const rate = props.plan.rate_multiplier ?? 1
   return `×${Number(rate.toPrecision(10))}`
 })
+
+const hasTotalQuota = computed(() =>
+  props.plan.quota_limit_usd != null && props.plan.quota_limit_usd > 0
+)
+
+const hasAnyQuotaLimit = computed(() =>
+  hasTotalQuota.value ||
+  (props.plan.daily_limit_usd != null && props.plan.daily_limit_usd > 0) ||
+  (props.plan.weekly_limit_usd != null && props.plan.weekly_limit_usd > 0) ||
+  (props.plan.monthly_limit_usd != null && props.plan.monthly_limit_usd > 0) ||
+  overdraftPoolLimit.value !== null
+)
+
+function formatUSD(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '0.00'
+  return value.toFixed(2)
+}
 
 const overdraftPoolLimit = computed(() => {
   if (!props.plan.allow_daily_overdraft || props.plan.daily_limit_usd == null || props.plan.daily_limit_usd <= 0) {

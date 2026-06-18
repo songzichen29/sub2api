@@ -264,6 +264,54 @@ func (_u *UserSubscriptionUpdate) AddMonthlyUsageUsd(v float64) *UserSubscriptio
 	return _u
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdate) SetQuotaLimitUsd(v float64) *UserSubscriptionUpdate {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableQuotaLimitUsd(v *float64) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdate) AddQuotaLimitUsd(v float64) *UserSubscriptionUpdate {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdate) ClearQuotaLimitUsd() *UserSubscriptionUpdate {
+	_u.mutation.ClearQuotaLimitUsd()
+	return _u
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (_u *UserSubscriptionUpdate) SetQuotaUsedUsd(v float64) *UserSubscriptionUpdate {
+	_u.mutation.ResetQuotaUsedUsd()
+	_u.mutation.SetQuotaUsedUsd(v)
+	return _u
+}
+
+// SetNillableQuotaUsedUsd sets the "quota_used_usd" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableQuotaUsedUsd(v *float64) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetQuotaUsedUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaUsedUsd adds value to the "quota_used_usd" field.
+func (_u *UserSubscriptionUpdate) AddQuotaUsedUsd(v float64) *UserSubscriptionUpdate {
+	_u.mutation.AddQuotaUsedUsd(v)
+	return _u
+}
+
 // SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
 func (_u *UserSubscriptionUpdate) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpdate {
 	_u.mutation.SetAllowDailyOverdraft(v)
@@ -570,6 +618,21 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.QuotaUsedUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaUsedUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaUsedUsd(); ok {
+		_spec.AddField(usersubscription.FieldQuotaUsedUsd, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
@@ -971,6 +1034,54 @@ func (_u *UserSubscriptionUpdateOne) AddMonthlyUsageUsd(v float64) *UserSubscrip
 	return _u
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdateOne) SetQuotaLimitUsd(v float64) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableQuotaLimitUsd(v *float64) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdateOne) AddQuotaLimitUsd(v float64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *UserSubscriptionUpdateOne) ClearQuotaLimitUsd() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearQuotaLimitUsd()
+	return _u
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (_u *UserSubscriptionUpdateOne) SetQuotaUsedUsd(v float64) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetQuotaUsedUsd()
+	_u.mutation.SetQuotaUsedUsd(v)
+	return _u
+}
+
+// SetNillableQuotaUsedUsd sets the "quota_used_usd" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableQuotaUsedUsd(v *float64) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetQuotaUsedUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaUsedUsd adds value to the "quota_used_usd" field.
+func (_u *UserSubscriptionUpdateOne) AddQuotaUsedUsd(v float64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddQuotaUsedUsd(v)
+	return _u
+}
+
 // SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
 func (_u *UserSubscriptionUpdateOne) SetAllowDailyOverdraft(v bool) *UserSubscriptionUpdateOne {
 	_u.mutation.SetAllowDailyOverdraft(v)
@@ -1307,6 +1418,21 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if value, ok := _u.mutation.AddedMonthlyUsageUsd(); ok {
 		_spec.AddField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.QuotaUsedUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaUsedUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaUsedUsd(); ok {
+		_spec.AddField(usersubscription.FieldQuotaUsedUsd, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)

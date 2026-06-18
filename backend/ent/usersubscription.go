@@ -49,6 +49,10 @@ type UserSubscription struct {
 	WeeklyUsageUsd float64 `json:"weekly_usage_usd,omitempty"`
 	// MonthlyUsageUsd holds the value of the "monthly_usage_usd" field.
 	MonthlyUsageUsd float64 `json:"monthly_usage_usd,omitempty"`
+	// Total USD quota available during this subscription period
+	QuotaLimitUsd *float64 `json:"quota_limit_usd,omitempty"`
+	// Total USD quota used during this subscription period
+	QuotaUsedUsd float64 `json:"quota_used_usd,omitempty"`
 	// Whether this user subscription has enabled daily quota overdraft
 	AllowDailyOverdraft bool `json:"allow_daily_overdraft,omitempty"`
 	// AssignedBy holds the value of the "assigned_by" field.
@@ -129,7 +133,7 @@ func (*UserSubscription) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case usersubscription.FieldAllowDailyOverdraft:
 			values[i] = new(sql.NullBool)
-		case usersubscription.FieldDailyUsageUsd, usersubscription.FieldWeeklyUsageUsd, usersubscription.FieldMonthlyUsageUsd:
+		case usersubscription.FieldDailyUsageUsd, usersubscription.FieldWeeklyUsageUsd, usersubscription.FieldMonthlyUsageUsd, usersubscription.FieldQuotaLimitUsd, usersubscription.FieldQuotaUsedUsd:
 			values[i] = new(sql.NullFloat64)
 		case usersubscription.FieldID, usersubscription.FieldUserID, usersubscription.FieldGroupID, usersubscription.FieldAssignedBy:
 			values[i] = new(sql.NullInt64)
@@ -251,6 +255,19 @@ func (_m *UserSubscription) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field monthly_usage_usd", values[i])
 			} else if value.Valid {
 				_m.MonthlyUsageUsd = value.Float64
+			}
+		case usersubscription.FieldQuotaLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_limit_usd", values[i])
+			} else if value.Valid {
+				_m.QuotaLimitUsd = new(float64)
+				*_m.QuotaLimitUsd = value.Float64
+			}
+		case usersubscription.FieldQuotaUsedUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_used_usd", values[i])
+			} else if value.Valid {
+				_m.QuotaUsedUsd = value.Float64
 			}
 		case usersubscription.FieldAllowDailyOverdraft:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -392,6 +409,14 @@ func (_m *UserSubscription) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("monthly_usage_usd=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MonthlyUsageUsd))
+	builder.WriteString(", ")
+	if v := _m.QuotaLimitUsd; v != nil {
+		builder.WriteString("quota_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("quota_used_usd=")
+	builder.WriteString(fmt.Sprintf("%v", _m.QuotaUsedUsd))
 	builder.WriteString(", ")
 	builder.WriteString("allow_daily_overdraft=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowDailyOverdraft))

@@ -31,6 +31,8 @@ type SubscriptionPlan struct {
 	ValidityDays int `json:"validity_days,omitempty"`
 	// ValidityUnit holds the value of the "validity_unit" field.
 	ValidityUnit string `json:"validity_unit,omitempty"`
+	// Total USD quota granted by this plan during the subscription period
+	QuotaLimitUsd *float64 `json:"quota_limit_usd,omitempty"`
 	// Fixed subscription end time; when set, purchases expire at this timestamp instead of now + validity_days
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// Features holds the value of the "features" field.
@@ -55,7 +57,7 @@ func (*SubscriptionPlan) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case subscriptionplan.FieldForSale:
 			values[i] = new(sql.NullBool)
-		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice:
+		case subscriptionplan.FieldPrice, subscriptionplan.FieldOriginalPrice, subscriptionplan.FieldQuotaLimitUsd:
 			values[i] = new(sql.NullFloat64)
 		case subscriptionplan.FieldID, subscriptionplan.FieldGroupID, subscriptionplan.FieldValidityDays, subscriptionplan.FieldSortOrder:
 			values[i] = new(sql.NullInt64)
@@ -126,6 +128,13 @@ func (_m *SubscriptionPlan) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field validity_unit", values[i])
 			} else if value.Valid {
 				_m.ValidityUnit = value.String
+			}
+		case subscriptionplan.FieldQuotaLimitUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field quota_limit_usd", values[i])
+			} else if value.Valid {
+				_m.QuotaLimitUsd = new(float64)
+				*_m.QuotaLimitUsd = value.Float64
 			}
 		case subscriptionplan.FieldExpiresAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -228,6 +237,11 @@ func (_m *SubscriptionPlan) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("validity_unit=")
 	builder.WriteString(_m.ValidityUnit)
+	builder.WriteString(", ")
+	if v := _m.QuotaLimitUsd; v != nil {
+		builder.WriteString("quota_limit_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.ExpiresAt; v != nil {
 		builder.WriteString("expires_at=")

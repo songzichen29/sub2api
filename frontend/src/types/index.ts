@@ -1557,6 +1557,9 @@ export interface UserSubscription {
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  quota_limit_usd?: number | null
+  quota_used_usd?: number | null
+  quota_remaining_usd?: number | null
   allow_daily_overdraft: boolean
   overdraft_limit_usd?: number
   overdraft_used_usd?: number
@@ -1592,6 +1595,12 @@ export interface SubscriptionProgress {
     reset_in_seconds: number | null
   } | null
   monthly: {
+    used: number
+    limit: number | null
+    percentage: number
+    reset_in_seconds: number | null
+  } | null
+  total?: {
     used: number
     limit: number | null
     percentage: number

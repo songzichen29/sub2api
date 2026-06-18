@@ -99,6 +99,7 @@ export interface PaymentOrder {
   subscription_group_id?: number
   subscription_id?: number
   subscription_days?: number
+  subscription_quota_usd?: number | null
   subscription_plan_expires_at?: string
   can_refund?: boolean
   subscription_expires_at?: string
@@ -128,6 +129,7 @@ export interface SubscriptionPlan {
   original_price?: number
   validity_days: number
   validity_unit: string
+  quota_limit_usd?: number | null
   expires_at?: string | null
   /** Stored as JSON string in backend; API layer should parse before use */
   features: string[]

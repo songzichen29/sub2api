@@ -179,6 +179,11 @@ type AssignSubscriptionInput struct {
 	// 留空时按 AssignedBy 推断：>0 → admin，==0 → redeem。
 	// payment 入口必须显式传 SubscriptionSourcePayment。
 	Source string
+	// QuotaLimitSpecified indicates that this assignment carries an explicit
+	// period-level total quota. QuotaLimitUSD == nil with this flag set means
+	// "unlimited / no total quota" for the purchased plan.
+	QuotaLimitSpecified bool
+	QuotaLimitUSD       *float64
 }
 
 // AssignSubscription 分配订阅给用户（不允许重复分配）
@@ -282,6 +287,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			existingSub.DailyUsageUSD = 0
 			existingSub.WeeklyUsageUSD = 0
 			existingSub.MonthlyUsageUSD = 0
+			applyFreshPeriodQuota(existingSub, input)
 			existingSub.UpdatedAt = now
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
 				rollbackTx()
@@ -306,6 +312,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 				newExpiresAt = MaxExpiresAt
 			}
 			existingSub.ExpiresAt = newExpiresAt
+			applyExtensionQuota(existingSub, input)
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
 				rollbackTx()
 				return nil, false, fmt.Errorf("cap 1-day renewal expiry: %w", err)
@@ -323,6 +330,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		} else {
 			// 普通续期只延长过期时间，同时保存本次订阅来源的原始有效单位。后者只影响日透支
 			// 统计口径：day 按每日额度到期计入，week/month 继续按真实累计用量。
+			applyExtensionQuota(existingSub, input)
 			if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
 				rollbackTx()
 				return nil, false, fmt.Errorf("extend subscription: %w", err)
@@ -411,9 +419,13 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 		existingSub.DailyUsageUSD = 0
 		existingSub.WeeklyUsageUSD = 0
 		existingSub.MonthlyUsageUSD = 0
+		applyFreshPeriodQuota(existingSub, input)
 	} else if expiresAt.After(existingSub.ExpiresAt) {
 		existingSub.ExpiresAt = expiresAt
 		existingSub.ValidityUnit = nextValidityUnit
+	}
+	if !(wasExpired || wasQuotaExhausted || input.RestartPeriod) {
+		applyExtensionQuota(existingSub, input)
 	}
 	existingSub.UpdatedAt = now
 	if err := s.userSubRepo.Update(txCtx, existingSub); err != nil {
@@ -473,6 +485,55 @@ func (s *SubscriptionService) beginSubscriptionUpdateTx(ctx context.Context) (co
 	}, tx.Commit, nil
 }
 
+func cloneQuotaLimitPtr(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	cp := *v
+	return &cp
+}
+
+func applyNewSubscriptionQuota(sub *UserSubscription, input *AssignSubscriptionInput) {
+	if sub == nil || input == nil || !input.QuotaLimitSpecified {
+		return
+	}
+	sub.QuotaLimitUSD = cloneQuotaLimitPtr(input.QuotaLimitUSD)
+	sub.QuotaUsedUSD = 0
+}
+
+func applyFreshPeriodQuota(sub *UserSubscription, input *AssignSubscriptionInput) {
+	if sub == nil || input == nil {
+		return
+	}
+	if input.QuotaLimitSpecified {
+		sub.QuotaLimitUSD = cloneQuotaLimitPtr(input.QuotaLimitUSD)
+	}
+	sub.QuotaUsedUSD = 0
+}
+
+func applyExtensionQuota(sub *UserSubscription, input *AssignSubscriptionInput) {
+	if sub == nil || input == nil || !input.QuotaLimitSpecified {
+		return
+	}
+	if input.QuotaLimitUSD == nil {
+		sub.QuotaLimitUSD = nil
+		sub.QuotaUsedUSD = 0
+		return
+	}
+	grant := *input.QuotaLimitUSD
+	if grant <= 0 {
+		sub.QuotaLimitUSD = nil
+		sub.QuotaUsedUSD = 0
+		return
+	}
+	if sub.QuotaLimitUSD == nil || *sub.QuotaLimitUSD <= 0 {
+		sub.QuotaLimitUSD = cloneQuotaLimitPtr(input.QuotaLimitUSD)
+		return
+	}
+	next := *sub.QuotaLimitUSD + grant
+	sub.QuotaLimitUSD = &next
+}
+
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	now := time.Now()
@@ -494,6 +555,7 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
+	applyNewSubscriptionQuota(sub, input)
 	// 只有当 AssignedBy > 0 时才设置（0 表示系统分配，如兑换码）
 	if input.AssignedBy > 0 {
 		sub.AssignedBy = &input.AssignedBy
@@ -922,7 +984,7 @@ func (s *SubscriptionService) reactivateQuotaExhaustedSubscriptionIfRecoverable(
 	if err := s.CheckAndResetWindows(ctx, sub); err != nil {
 		return nil, err
 	}
-	if !sub.CheckDailyLimit(group, 0) || !sub.CheckWeeklyLimit(group, 0) || !sub.CheckMonthlyLimit(group, 0) {
+	if !sub.CheckTotalQuota(0) || !sub.CheckDailyLimit(group, 0) || !sub.CheckWeeklyLimit(group, 0) || !sub.CheckMonthlyLimit(group, 0) {
 		return nil, ErrSubscriptionQuotaExhausted
 	}
 
@@ -1491,6 +1553,13 @@ func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *U
 	}
 
 	// 3. 检查用量限额
+	if !sub.CheckTotalQuota(0) {
+		if allowDBRecheck {
+			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrSubscriptionQuotaExhausted)
+		}
+		s.MarkQuotaExhausted(ctx, sub)
+		return needsMaintenance, ErrSubscriptionQuotaExhausted
+	}
 	if !sub.CheckDailyLimit(group, 0) {
 		if allowDBRecheck {
 			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrDailyLimitExceeded)
@@ -1599,6 +1668,7 @@ type SubscriptionProgress struct {
 	GroupName     string               `json:"group_name"`
 	ExpiresAt     time.Time            `json:"expires_at"`
 	ExpiresInDays int                  `json:"expires_in_days"`
+	Total         *UsageWindowProgress `json:"total,omitempty"`
 	Daily         *UsageWindowProgress `json:"daily,omitempty"`
 	Weekly        *UsageWindowProgress `json:"weekly,omitempty"`
 	Monthly       *UsageWindowProgress `json:"monthly,omitempty"`
@@ -1641,6 +1711,30 @@ func (s *SubscriptionService) calculateProgress(sub *UserSubscription, group *Gr
 		GroupName:     group.Name,
 		ExpiresAt:     sub.ExpiresAt,
 		ExpiresInDays: sub.DaysRemaining(),
+	}
+
+	if sub.HasTotalQuotaLimit() {
+		remaining := *sub.QuotaLimitUSD - sub.QuotaUsedUSD
+		if remaining < 0 {
+			remaining = 0
+		}
+		percentage := (sub.QuotaUsedUSD / *sub.QuotaLimitUSD) * 100
+		if percentage > 100 {
+			percentage = 100
+		}
+		resetsIn := int64(sub.ExpiresAt.Sub(now).Seconds())
+		if resetsIn < 0 {
+			resetsIn = 0
+		}
+		progress.Total = &UsageWindowProgress{
+			LimitUSD:        *sub.QuotaLimitUSD,
+			UsedUSD:         sub.QuotaUsedUSD,
+			RemainingUSD:    remaining,
+			Percentage:      percentage,
+			WindowStart:     sub.StartsAt,
+			ResetsAt:        sub.ExpiresAt,
+			ResetsInSeconds: resetsIn,
+		}
 	}
 
 	// 日进度

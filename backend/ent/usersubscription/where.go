@@ -130,6 +130,16 @@ func MonthlyUsageUsd(v float64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldMonthlyUsageUsd, v))
 }
 
+// QuotaLimitUsd applies equality check predicate on the "quota_limit_usd" field. It's identical to QuotaLimitUsdEQ.
+func QuotaLimitUsd(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldQuotaLimitUsd, v))
+}
+
+// QuotaUsedUsd applies equality check predicate on the "quota_used_usd" field. It's identical to QuotaUsedUsdEQ.
+func QuotaUsedUsd(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldQuotaUsedUsd, v))
+}
+
 // AllowDailyOverdraft applies equality check predicate on the "allow_daily_overdraft" field. It's identical to AllowDailyOverdraftEQ.
 func AllowDailyOverdraft(v bool) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldAllowDailyOverdraft, v))
@@ -803,6 +813,96 @@ func MonthlyUsageUsdLT(v float64) predicate.UserSubscription {
 // MonthlyUsageUsdLTE applies the LTE predicate on the "monthly_usage_usd" field.
 func MonthlyUsageUsdLTE(v float64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldLTE(FieldMonthlyUsageUsd, v))
+}
+
+// QuotaLimitUsdEQ applies the EQ predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdNEQ applies the NEQ predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdIn applies the In predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldQuotaLimitUsd, vs...))
+}
+
+// QuotaLimitUsdNotIn applies the NotIn predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNotIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldQuotaLimitUsd, vs...))
+}
+
+// QuotaLimitUsdGT applies the GT predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdGT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdGTE applies the GTE predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdGTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdLT applies the LT predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdLT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdLTE applies the LTE predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdLTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldQuotaLimitUsd, v))
+}
+
+// QuotaLimitUsdIsNil applies the IsNil predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldQuotaLimitUsd))
+}
+
+// QuotaLimitUsdNotNil applies the NotNil predicate on the "quota_limit_usd" field.
+func QuotaLimitUsdNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldQuotaLimitUsd))
+}
+
+// QuotaUsedUsdEQ applies the EQ predicate on the "quota_used_usd" field.
+func QuotaUsedUsdEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldQuotaUsedUsd, v))
+}
+
+// QuotaUsedUsdNEQ applies the NEQ predicate on the "quota_used_usd" field.
+func QuotaUsedUsdNEQ(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldQuotaUsedUsd, v))
+}
+
+// QuotaUsedUsdIn applies the In predicate on the "quota_used_usd" field.
+func QuotaUsedUsdIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldQuotaUsedUsd, vs...))
+}
+
+// QuotaUsedUsdNotIn applies the NotIn predicate on the "quota_used_usd" field.
+func QuotaUsedUsdNotIn(vs ...float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldQuotaUsedUsd, vs...))
+}
+
+// QuotaUsedUsdGT applies the GT predicate on the "quota_used_usd" field.
+func QuotaUsedUsdGT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldQuotaUsedUsd, v))
+}
+
+// QuotaUsedUsdGTE applies the GTE predicate on the "quota_used_usd" field.
+func QuotaUsedUsdGTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldQuotaUsedUsd, v))
+}
+
+// QuotaUsedUsdLT applies the LT predicate on the "quota_used_usd" field.
+func QuotaUsedUsdLT(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldQuotaUsedUsd, v))
+}
+
+// QuotaUsedUsdLTE applies the LTE predicate on the "quota_used_usd" field.
+func QuotaUsedUsdLTE(v float64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldQuotaUsedUsd, v))
 }
 
 // AllowDailyOverdraftEQ applies the EQ predicate on the "allow_daily_overdraft" field.

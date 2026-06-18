@@ -96,6 +96,20 @@ func (_c *SubscriptionPlanCreate) SetNillableValidityUnit(v *string) *Subscripti
 	return _c
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_c *SubscriptionPlanCreate) SetQuotaLimitUsd(v float64) *SubscriptionPlanCreate {
+	_c.mutation.SetQuotaLimitUsd(v)
+	return _c
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetQuotaLimitUsd(*v)
+	}
+	return _c
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_c *SubscriptionPlanCreate) SetExpiresAt(v time.Time) *SubscriptionPlanCreate {
 	_c.mutation.SetExpiresAt(v)
@@ -375,6 +389,10 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
 		_node.ValidityUnit = value
 	}
+	if value, ok := _c.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+		_node.QuotaLimitUsd = &value
+	}
 	if value, ok := _c.mutation.ExpiresAt(); ok {
 		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)
 		_node.ExpiresAt = &value
@@ -566,6 +584,30 @@ func (u *SubscriptionPlanUpsert) SetValidityUnit(v string) *SubscriptionPlanUpse
 // UpdateValidityUnit sets the "validity_unit" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateValidityUnit() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldValidityUnit)
+	return u
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsert) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldQuotaLimitUsd, v)
+	return u
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateQuotaLimitUsd() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldQuotaLimitUsd)
+	return u
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsert) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsert {
+	u.Add(subscriptionplan.FieldQuotaLimitUsd, v)
+	return u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsert) ClearQuotaLimitUsd() *SubscriptionPlanUpsert {
+	u.SetNull(subscriptionplan.FieldQuotaLimitUsd)
 	return u
 }
 
@@ -828,6 +870,34 @@ func (u *SubscriptionPlanUpsertOne) SetValidityUnit(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertOne) UpdateValidityUnit() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateValidityUnit()
+	})
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertOne) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetQuotaLimitUsd(v)
+	})
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertOne) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddQuotaLimitUsd(v)
+	})
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateQuotaLimitUsd() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateQuotaLimitUsd()
+	})
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertOne) ClearQuotaLimitUsd() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearQuotaLimitUsd()
 	})
 }
 
@@ -1270,6 +1340,34 @@ func (u *SubscriptionPlanUpsertBulk) SetValidityUnit(v string) *SubscriptionPlan
 func (u *SubscriptionPlanUpsertBulk) UpdateValidityUnit() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateValidityUnit()
+	})
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertBulk) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetQuotaLimitUsd(v)
+	})
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertBulk) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddQuotaLimitUsd(v)
+	})
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateQuotaLimitUsd() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateQuotaLimitUsd()
+	})
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *SubscriptionPlanUpsertBulk) ClearQuotaLimitUsd() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearQuotaLimitUsd()
 	})
 }
 

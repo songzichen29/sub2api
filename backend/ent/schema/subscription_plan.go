@@ -48,6 +48,11 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("validity_unit").
 			MaxLen(10).
 			Default("day"),
+		field.Float("quota_limit_usd").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			Optional().
+			Nillable().
+			Comment("Total USD quota granted by this plan during the subscription period"),
 		field.Time("expires_at").
 			Optional().
 			Nillable().

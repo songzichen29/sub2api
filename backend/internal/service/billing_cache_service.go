@@ -45,6 +45,8 @@ type subscriptionCacheData struct {
 	DailyUsage          float64
 	WeeklyUsage         float64
 	MonthlyUsage        float64
+	QuotaLimitUSD       *float64
+	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
 	Version             int64
 }
@@ -450,6 +452,8 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
 		MonthlyUsage:        data.MonthlyUsage,
+		QuotaLimitUSD:       data.QuotaLimitUSD,
+		QuotaUsedUSD:        data.QuotaUsedUSD,
 		AllowDailyOverdraft: data.AllowDailyOverdraft,
 		Version:             data.Version,
 	}
@@ -465,6 +469,8 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 		DailyUsage:          data.DailyUsage,
 		WeeklyUsage:         data.WeeklyUsage,
 		MonthlyUsage:        data.MonthlyUsage,
+		QuotaLimitUSD:       data.QuotaLimitUSD,
+		QuotaUsedUSD:        data.QuotaUsedUSD,
 		AllowDailyOverdraft: data.AllowDailyOverdraft,
 		Version:             data.Version,
 	}
@@ -486,6 +492,8 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 		DailyUsage:          sub.DailyUsageUSD,
 		WeeklyUsage:         sub.WeeklyUsageUSD,
 		MonthlyUsage:        sub.MonthlyUsageUSD,
+		QuotaLimitUSD:       sub.QuotaLimitUSD,
+		QuotaUsedUSD:        sub.QuotaUsedUSD,
 		AllowDailyOverdraft: sub.AllowDailyOverdraft,
 		Version:             sub.UpdatedAt.Unix(),
 	}, nil
@@ -903,7 +911,17 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		DailyUsageUSD:       subData.DailyUsage,
 		WeeklyUsageUSD:      subData.WeeklyUsage,
 		MonthlyUsageUSD:     subData.MonthlyUsage,
+		QuotaLimitUSD:       subData.QuotaLimitUSD,
+		QuotaUsedUSD:        subData.QuotaUsedUSD,
 		AllowDailyOverdraft: subData.AllowDailyOverdraft,
+	}
+	if subscription != nil {
+		if subData.QuotaLimitUSD == nil && subscription.QuotaLimitUSD != nil {
+			cacheSub.QuotaLimitUSD = subscription.QuotaLimitUSD
+			cacheSub.QuotaUsedUSD = subscription.QuotaUsedUSD
+			subData.QuotaLimitUSD = subscription.QuotaLimitUSD
+			subData.QuotaUsedUSD = subscription.QuotaUsedUSD
+		}
 	}
 	subAllowsOverdraft := cacheSub.AllowsDailyOverdraft(group)
 	needsDayOverdraftAccounting := group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
@@ -938,6 +956,8 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			cacheSub.DailyUsageUSD = freshSub.DailyUsageUSD
 			cacheSub.WeeklyUsageUSD = freshSub.WeeklyUsageUSD
 			cacheSub.MonthlyUsageUSD = freshSub.MonthlyUsageUSD
+			cacheSub.QuotaLimitUSD = freshSub.QuotaLimitUSD
+			cacheSub.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			subData.StartsAt = freshSub.StartsAt
 			subData.ExpiresAt = freshSub.ExpiresAt
@@ -946,6 +966,8 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			subData.DailyUsage = freshSub.DailyUsageUSD
 			subData.WeeklyUsage = freshSub.WeeklyUsageUSD
 			subData.MonthlyUsage = freshSub.MonthlyUsageUSD
+			subData.QuotaLimitUSD = freshSub.QuotaLimitUSD
+			subData.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			subData.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
 				Status:              freshSub.Status,
@@ -956,6 +978,8 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				DailyUsage:          freshSub.DailyUsageUSD,
 				WeeklyUsage:         freshSub.WeeklyUsageUSD,
 				MonthlyUsage:        freshSub.MonthlyUsageUSD,
+				QuotaLimitUSD:       freshSub.QuotaLimitUSD,
+				QuotaUsedUSD:        freshSub.QuotaUsedUSD,
 				AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
 				Version:             freshSub.UpdatedAt.Unix(),
 			})
@@ -995,6 +1019,13 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		return ErrMonthlyLimitExceeded
 	}
 
+	if !cacheSub.CheckTotalQuota(0) {
+		if s.subscriptionCacheLimitRecheckAllows(ctx, userID, group) {
+			return nil
+		}
+		return ErrSubscriptionInvalid
+	}
+
 	return nil
 }
 
@@ -1008,7 +1039,8 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 	}
 	if !freshSub.CheckDailyLimit(group, 0) ||
 		!freshSub.CheckWeeklyLimit(group, 0) ||
-		!freshSub.CheckMonthlyLimit(group, 0) {
+		!freshSub.CheckMonthlyLimit(group, 0) ||
+		!freshSub.CheckTotalQuota(0) {
 		return false
 	}
 
@@ -1023,6 +1055,8 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 			DailyUsage:          freshSub.DailyUsageUSD,
 			WeeklyUsage:         freshSub.WeeklyUsageUSD,
 			MonthlyUsage:        freshSub.MonthlyUsageUSD,
+			QuotaLimitUSD:       freshSub.QuotaLimitUSD,
+			QuotaUsedUSD:        freshSub.QuotaUsedUSD,
 			AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
 			Version:             freshSub.UpdatedAt.Unix(),
 		})

@@ -32,6 +32,8 @@ type UserSubscription struct {
 	DailyUsageUSD       float64
 	WeeklyUsageUSD      float64
 	MonthlyUsageUSD     float64
+	QuotaLimitUSD       *float64
+	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
 
 	AssignedBy *int64
@@ -375,6 +377,31 @@ func (s *UserSubscription) CheckMonthlyLimit(group *Group, additionalCost float6
 		return s.MonthlyUsageUSD < *group.MonthlyLimitUSD
 	}
 	return s.MonthlyUsageUSD+additionalCost <= *group.MonthlyLimitUSD
+}
+
+func (s *UserSubscription) HasTotalQuotaLimit() bool {
+	return s != nil && s.QuotaLimitUSD != nil && *s.QuotaLimitUSD > 0
+}
+
+func (s *UserSubscription) CheckTotalQuota(additionalCost float64) bool {
+	if !s.HasTotalQuotaLimit() {
+		return true
+	}
+	if additionalCost <= 0 {
+		return s.QuotaUsedUSD < *s.QuotaLimitUSD
+	}
+	return s.QuotaUsedUSD+additionalCost <= *s.QuotaLimitUSD
+}
+
+func (s *UserSubscription) QuotaRemainingUSD() *float64 {
+	if !s.HasTotalQuotaLimit() {
+		return nil
+	}
+	remaining := *s.QuotaLimitUSD - s.QuotaUsedUSD
+	if remaining < 0 {
+		remaining = 0
+	}
+	return &remaining
 }
 
 func (s *UserSubscription) CheckAllLimits(group *Group, additionalCost float64) (daily, weekly, monthly bool) {

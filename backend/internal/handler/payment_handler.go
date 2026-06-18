@@ -67,6 +67,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		OriginalPrice *float64   `json:"original_price,omitempty"`
 		ValidityDays  int        `json:"validity_days"`
 		ValidityUnit  string     `json:"validity_unit"`
+		QuotaLimitUSD *float64   `json:"quota_limit_usd,omitempty"`
 		ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 		Features      string     `json:"features"`
 		ProductName   string     `json:"product_name"`
@@ -87,7 +88,7 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		result = append(result, planWithPlatform{
 			ID: int64(p.ID), GroupID: p.GroupID, GroupPlatform: platformMap[p.GroupID], GroupName: gi.Name,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, ExpiresAt: p.ExpiresAt, Features: p.Features,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, QuotaLimitUSD: p.QuotaLimitUsd, ExpiresAt: p.ExpiresAt, Features: p.Features,
 			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder, SalesCount: salesMap[p.ID],
 		})
 	}
@@ -143,7 +144,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, ExpiresAt: p.ExpiresAt, Features: parseFeatures(p.Features),
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, QuotaLimitUSD: p.QuotaLimitUsd, ExpiresAt: p.ExpiresAt, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName, SalesCount: salesMap[p.ID],
 		})
 	}
@@ -191,6 +192,7 @@ type checkoutPlan struct {
 	OriginalPrice   *float64   `json:"original_price,omitempty"`
 	ValidityDays    int        `json:"validity_days"`
 	ValidityUnit    string     `json:"validity_unit"`
+	QuotaLimitUSD   *float64   `json:"quota_limit_usd,omitempty"`
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	Features        []string   `json:"features"`
 	ProductName     string     `json:"product_name"`

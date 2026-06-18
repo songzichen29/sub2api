@@ -420,17 +420,23 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		startsAt = &now
 		expiresAt = o.SubscriptionPlanExpiresAt
 	}
+	var quotaLimitUSD *float64
+	if o.SubscriptionQuotaUsd != nil && *o.SubscriptionQuotaUsd > 0 {
+		quotaLimitUSD = o.SubscriptionQuotaUsd
+	}
 	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
-		UserID:        o.UserID,
-		GroupID:       gid,
-		ValidityDays:  days,
-		ValidityUnit:  validityUnit,
-		StartsAt:      startsAt,
-		ExpiresAt:     expiresAt,
-		AssignedBy:    0,
-		Notes:         orderNote,
-		RestartPeriod: days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,
-		Source:        domain.SubscriptionSourcePayment,
+		UserID:              o.UserID,
+		GroupID:             gid,
+		ValidityDays:        days,
+		ValidityUnit:        validityUnit,
+		StartsAt:            startsAt,
+		ExpiresAt:           expiresAt,
+		AssignedBy:          0,
+		Notes:               orderNote,
+		RestartPeriod:       days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,
+		Source:              domain.SubscriptionSourcePayment,
+		QuotaLimitSpecified: true,
+		QuotaLimitUSD:       quotaLimitUSD,
 	})
 	if err != nil {
 		return fmt.Errorf("assign subscription: %w", err)

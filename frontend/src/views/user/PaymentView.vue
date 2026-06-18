@@ -185,23 +185,27 @@
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
                     </div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd != null">
+                  <div v-if="selectedPlan.daily_limit_usd != null && selectedPlan.daily_limit_usd > 0">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.daily_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.daily_limit_usd) }}</div>
+                  </div>
+                  <div v-if="planHasTotalQuota(selectedPlan)">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.totalQuota') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.quota_limit_usd) }}</div>
                   </div>
                   <div v-if="getPlanOverdraftLimit(selectedPlan) !== null">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.totalQuota') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ getPlanOverdraftLimit(selectedPlan) }}</div>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.overdraftTotal') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(getPlanOverdraftLimit(selectedPlan)) }}</div>
                   </div>
-                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.weekly_limit_usd != null">
+                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.weekly_limit_usd != null && selectedPlan.weekly_limit_usd > 0">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.weekly_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.weekly_limit_usd) }}</div>
                   </div>
-                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.monthly_limit_usd != null">
+                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.monthly_limit_usd != null && selectedPlan.monthly_limit_usd > 0">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.monthly_limit_usd) }}</div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null && getPlanOverdraftLimit(selectedPlan) === null">
+                  <div v-if="!planHasAnyQuotaLimit(selectedPlan)">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -262,7 +266,8 @@
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
-                        <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                        <span v-if="subscriptionHasTotalQuota(sub)">{{ t('payment.planCard.totalQuota') }}: ${{ formatUSD(sub.quota_used_usd) }} / ${{ formatUSD(sub.quota_limit_usd) }}</span>
+                        <span v-if="subscriptionIsUnlimited(sub)">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
                         <span v-if="sub.expires_at">{{ getRemainingSubscriptionText(sub.expires_at) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
                       </div>
@@ -796,7 +801,40 @@ function getPlanOverdraftLimit(plan: SubscriptionPlan | null | undefined): numbe
   return plan.daily_limit_usd * days
 }
 
+function formatUSD(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '0.00'
+  return value.toFixed(2)
+}
+
+function planHasTotalQuota(plan: SubscriptionPlan | null | undefined): boolean {
+  return plan?.quota_limit_usd != null && plan.quota_limit_usd > 0
+}
+
+function planHasAnyQuotaLimit(plan: SubscriptionPlan | null | undefined): boolean {
+  if (!plan) return false
+  return planHasTotalQuota(plan)
+    || (plan.daily_limit_usd != null && plan.daily_limit_usd > 0)
+    || (plan.weekly_limit_usd != null && plan.weekly_limit_usd > 0)
+    || (plan.monthly_limit_usd != null && plan.monthly_limit_usd > 0)
+    || getPlanOverdraftLimit(plan) !== null
+}
+
+function subscriptionHasTotalQuota(sub: UserSubscription | null | undefined): boolean {
+  return sub?.quota_limit_usd != null && sub.quota_limit_usd > 0
+}
+
+function subscriptionIsUnlimited(sub: UserSubscription): boolean {
+  return !subscriptionHasTotalQuota(sub)
+    && (sub.group?.daily_limit_usd == null || sub.group.daily_limit_usd <= 0)
+    && (sub.group?.weekly_limit_usd == null || sub.group.weekly_limit_usd <= 0)
+    && (sub.group?.monthly_limit_usd == null || sub.group.monthly_limit_usd <= 0)
+    && getOverdraftLimit(sub) === null
+}
+
 function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
+  if (subscriptionHasTotalQuota(sub)) {
+    return (sub.quota_remaining_usd ?? Math.max((sub.quota_limit_usd || 0) - (sub.quota_used_usd || 0), 0)) > 0
+  }
   const group = sub.group
   if (!group) return false
   const overdraftLimit = getOverdraftLimit(sub)
@@ -815,6 +853,7 @@ function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
   const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
     && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
     && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
+    && !subscriptionHasTotalQuota(sub)
   return hasUnlimitedQuota || dailyRemaining > 0 || weeklyRemaining > 0 || monthlyRemaining > 0
 }
 

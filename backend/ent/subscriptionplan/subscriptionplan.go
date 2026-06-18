@@ -27,6 +27,8 @@ const (
 	FieldValidityDays = "validity_days"
 	// FieldValidityUnit holds the string denoting the validity_unit field in the database.
 	FieldValidityUnit = "validity_unit"
+	// FieldQuotaLimitUsd holds the string denoting the quota_limit_usd field in the database.
+	FieldQuotaLimitUsd = "quota_limit_usd"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
 	FieldExpiresAt = "expires_at"
 	// FieldFeatures holds the string denoting the features field in the database.
@@ -55,6 +57,7 @@ var Columns = []string{
 	FieldOriginalPrice,
 	FieldValidityDays,
 	FieldValidityUnit,
+	FieldQuotaLimitUsd,
 	FieldExpiresAt,
 	FieldFeatures,
 	FieldProductName,
@@ -144,6 +147,11 @@ func ByValidityDays(opts ...sql.OrderTermOption) OrderOption {
 // ByValidityUnit orders the results by the validity_unit field.
 func ByValidityUnit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldValidityUnit, opts...).ToFunc()
+}
+
+// ByQuotaLimitUsd orders the results by the quota_limit_usd field.
+func ByQuotaLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaLimitUsd, opts...).ToFunc()
 }
 
 // ByExpiresAt orders the results by the expires_at field.

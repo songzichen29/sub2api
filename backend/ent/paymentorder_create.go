@@ -225,6 +225,20 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderC
 	return _c
 }
 
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (_c *PaymentOrderCreate) SetSubscriptionQuotaUsd(v float64) *PaymentOrderCreate {
+	_c.mutation.SetSubscriptionQuotaUsd(v)
+	return _c
+}
+
+// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
+func (_c *PaymentOrderCreate) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderCreate {
+	if v != nil {
+		_c.SetSubscriptionQuotaUsd(*v)
+	}
+	return _c
+}
+
 // SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
 func (_c *PaymentOrderCreate) SetSubscriptionValidityUnit(v string) *PaymentOrderCreate {
 	_c.mutation.SetSubscriptionValidityUnit(v)
@@ -820,6 +834,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
 	}
+	if value, ok := _c.mutation.SubscriptionQuotaUsd(); ok {
+		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
+		_node.SubscriptionQuotaUsd = &value
+	}
 	if value, ok := _c.mutation.SubscriptionValidityUnit(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
 		_node.SubscriptionValidityUnit = &value
@@ -1296,6 +1314,30 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
+	return u
+}
+
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsert) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldSubscriptionQuotaUsd, v)
+	return u
+}
+
+// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldSubscriptionQuotaUsd)
+	return u
+}
+
+// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsert) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsert {
+	u.Add(paymentorder.FieldSubscriptionQuotaUsd, v)
+	return u
+}
+
+// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsert) ClearSubscriptionQuotaUsd() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldSubscriptionQuotaUsd)
 	return u
 }
 
@@ -2072,6 +2114,34 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertOne) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionQuotaUsd(v)
+	})
+}
+
+// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertOne) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddSubscriptionQuotaUsd(v)
+	})
+}
+
+// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionQuotaUsd()
+	})
+}
+
+// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertOne) ClearSubscriptionQuotaUsd() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionQuotaUsd()
 	})
 }
 
@@ -3074,6 +3144,34 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
+	})
+}
+
+// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertBulk) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetSubscriptionQuotaUsd(v)
+	})
+}
+
+// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertBulk) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.AddSubscriptionQuotaUsd(v)
+	})
+}
+
+// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdateSubscriptionQuotaUsd()
+	})
+}
+
+// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
+func (u *PaymentOrderUpsertBulk) ClearSubscriptionQuotaUsd() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearSubscriptionQuotaUsd()
 	})
 }
 

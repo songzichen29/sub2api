@@ -161,7 +161,9 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			us.daily_usage_usd = us.daily_usage_usd + ?,
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
 			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.quota_used_usd = us.quota_used_usd + ?,
 			us.status = CASE
+				WHEN COALESCE(us.quota_limit_usd, 0) > 0 AND us.quota_used_usd + ? >= us.quota_limit_usd THEN ?
 				WHEN g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
 					AND COALESCE(g.daily_limit_usd, 0) > 0
@@ -194,6 +196,11 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			us.updated_at = NOW()
 		WHERE us.id = ?
 			AND us.deleted_at IS NULL
+			AND (
+				COALESCE(us.quota_limit_usd, 0) <= 0
+				OR us.quota_used_usd + ? <= us.quota_limit_usd
+				OR (? AND us.quota_used_usd < us.quota_limit_usd)
+			)
 			AND (
 				COALESCE(g.daily_limit_usd, 0) <= 0
 				OR (
@@ -311,11 +318,13 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 			)
 	`
 	res, err := tx.ExecContext(ctx, updateSQL,
-		costUSD, costUSD, costUSD,
+		costUSD, costUSD, costUSD, costUSD,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		subscriptionID,
+		costUSD, allowOverLimit,
 		costUSD, costUSD, costUSD, costUSD,
 		allowOverLimit,
 		costUSD, allowOverLimit, costUSD, allowOverLimit,

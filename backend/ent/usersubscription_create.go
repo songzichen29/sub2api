@@ -203,6 +203,34 @@ func (_c *UserSubscriptionCreate) SetNillableMonthlyUsageUsd(v *float64) *UserSu
 	return _c
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_c *UserSubscriptionCreate) SetQuotaLimitUsd(v float64) *UserSubscriptionCreate {
+	_c.mutation.SetQuotaLimitUsd(v)
+	return _c
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableQuotaLimitUsd(v *float64) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetQuotaLimitUsd(*v)
+	}
+	return _c
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (_c *UserSubscriptionCreate) SetQuotaUsedUsd(v float64) *UserSubscriptionCreate {
+	_c.mutation.SetQuotaUsedUsd(v)
+	return _c
+}
+
+// SetNillableQuotaUsedUsd sets the "quota_used_usd" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableQuotaUsedUsd(v *float64) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetQuotaUsedUsd(*v)
+	}
+	return _c
+}
+
 // SetAllowDailyOverdraft sets the "allow_daily_overdraft" field.
 func (_c *UserSubscriptionCreate) SetAllowDailyOverdraft(v bool) *UserSubscriptionCreate {
 	_c.mutation.SetAllowDailyOverdraft(v)
@@ -388,6 +416,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultMonthlyUsageUsd
 		_c.mutation.SetMonthlyUsageUsd(v)
 	}
+	if _, ok := _c.mutation.QuotaUsedUsd(); !ok {
+		v := usersubscription.DefaultQuotaUsedUsd
+		_c.mutation.SetQuotaUsedUsd(v)
+	}
 	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
 		v := usersubscription.DefaultAllowDailyOverdraft
 		_c.mutation.SetAllowDailyOverdraft(v)
@@ -450,6 +482,9 @@ func (_c *UserSubscriptionCreate) check() error {
 	}
 	if _, ok := _c.mutation.MonthlyUsageUsd(); !ok {
 		return &ValidationError{Name: "monthly_usage_usd", err: errors.New(`ent: missing required field "UserSubscription.monthly_usage_usd"`)}
+	}
+	if _, ok := _c.mutation.QuotaUsedUsd(); !ok {
+		return &ValidationError{Name: "quota_used_usd", err: errors.New(`ent: missing required field "UserSubscription.quota_used_usd"`)}
 	}
 	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
 		return &ValidationError{Name: "allow_daily_overdraft", err: errors.New(`ent: missing required field "UserSubscription.allow_daily_overdraft"`)}
@@ -549,6 +584,14 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.MonthlyUsageUsd(); ok {
 		_spec.SetField(usersubscription.FieldMonthlyUsageUsd, field.TypeFloat64, value)
 		_node.MonthlyUsageUsd = value
+	}
+	if value, ok := _c.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaLimitUsd, field.TypeFloat64, value)
+		_node.QuotaLimitUsd = &value
+	}
+	if value, ok := _c.mutation.QuotaUsedUsd(); ok {
+		_spec.SetField(usersubscription.FieldQuotaUsedUsd, field.TypeFloat64, value)
+		_node.QuotaUsedUsd = value
 	}
 	if value, ok := _c.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
@@ -892,6 +935,48 @@ func (u *UserSubscriptionUpsert) UpdateMonthlyUsageUsd() *UserSubscriptionUpsert
 // AddMonthlyUsageUsd adds v to the "monthly_usage_usd" field.
 func (u *UserSubscriptionUpsert) AddMonthlyUsageUsd(v float64) *UserSubscriptionUpsert {
 	u.Add(usersubscription.FieldMonthlyUsageUsd, v)
+	return u
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsert) SetQuotaLimitUsd(v float64) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldQuotaLimitUsd, v)
+	return u
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateQuotaLimitUsd() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldQuotaLimitUsd)
+	return u
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsert) AddQuotaLimitUsd(v float64) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldQuotaLimitUsd, v)
+	return u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsert) ClearQuotaLimitUsd() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldQuotaLimitUsd)
+	return u
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (u *UserSubscriptionUpsert) SetQuotaUsedUsd(v float64) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldQuotaUsedUsd, v)
+	return u
+}
+
+// UpdateQuotaUsedUsd sets the "quota_used_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateQuotaUsedUsd() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldQuotaUsedUsd)
+	return u
+}
+
+// AddQuotaUsedUsd adds v to the "quota_used_usd" field.
+func (u *UserSubscriptionUpsert) AddQuotaUsedUsd(v float64) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldQuotaUsedUsd, v)
 	return u
 }
 
@@ -1254,6 +1339,55 @@ func (u *UserSubscriptionUpsertOne) AddMonthlyUsageUsd(v float64) *UserSubscript
 func (u *UserSubscriptionUpsertOne) UpdateMonthlyUsageUsd() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateMonthlyUsageUsd()
+	})
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertOne) SetQuotaLimitUsd(v float64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetQuotaLimitUsd(v)
+	})
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertOne) AddQuotaLimitUsd(v float64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddQuotaLimitUsd(v)
+	})
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateQuotaLimitUsd() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateQuotaLimitUsd()
+	})
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertOne) ClearQuotaLimitUsd() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearQuotaLimitUsd()
+	})
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (u *UserSubscriptionUpsertOne) SetQuotaUsedUsd(v float64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetQuotaUsedUsd(v)
+	})
+}
+
+// AddQuotaUsedUsd adds v to the "quota_used_usd" field.
+func (u *UserSubscriptionUpsertOne) AddQuotaUsedUsd(v float64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddQuotaUsedUsd(v)
+	})
+}
+
+// UpdateQuotaUsedUsd sets the "quota_used_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateQuotaUsedUsd() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateQuotaUsedUsd()
 	})
 }
 
@@ -1794,6 +1928,55 @@ func (u *UserSubscriptionUpsertBulk) AddMonthlyUsageUsd(v float64) *UserSubscrip
 func (u *UserSubscriptionUpsertBulk) UpdateMonthlyUsageUsd() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateMonthlyUsageUsd()
+	})
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertBulk) SetQuotaLimitUsd(v float64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetQuotaLimitUsd(v)
+	})
+}
+
+// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertBulk) AddQuotaLimitUsd(v float64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddQuotaLimitUsd(v)
+	})
+}
+
+// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateQuotaLimitUsd() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateQuotaLimitUsd()
+	})
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (u *UserSubscriptionUpsertBulk) ClearQuotaLimitUsd() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearQuotaLimitUsd()
+	})
+}
+
+// SetQuotaUsedUsd sets the "quota_used_usd" field.
+func (u *UserSubscriptionUpsertBulk) SetQuotaUsedUsd(v float64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetQuotaUsedUsd(v)
+	})
+}
+
+// AddQuotaUsedUsd adds v to the "quota_used_usd" field.
+func (u *UserSubscriptionUpsertBulk) AddQuotaUsedUsd(v float64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddQuotaUsedUsd(v)
+	})
+}
+
+// UpdateQuotaUsedUsd sets the "quota_used_usd" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateQuotaUsedUsd() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateQuotaUsedUsd()
 	})
 }
 

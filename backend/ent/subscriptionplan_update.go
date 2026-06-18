@@ -160,6 +160,33 @@ func (_u *SubscriptionPlanUpdate) SetNillableValidityUnit(v *string) *Subscripti
 	return _u
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpdate {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpdate {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) ClearQuotaLimitUsd() *SubscriptionPlanUpdate {
+	_u.mutation.ClearQuotaLimitUsd()
+	return _u
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_u *SubscriptionPlanUpdate) SetExpiresAt(v time.Time) *SubscriptionPlanUpdate {
 	_u.mutation.SetExpiresAt(v)
@@ -358,6 +385,15 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64)
+	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)
 	}
@@ -531,6 +567,33 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableValidityUnit(v *string) *Subscri
 	if v != nil {
 		_u.SetValidityUnit(*v)
 	}
+	return _u
+}
+
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) ClearQuotaLimitUsd() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearQuotaLimitUsd()
 	return _u
 }
 
@@ -761,6 +824,15 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64)
 	}
 	if value, ok := _u.mutation.ExpiresAt(); ok {
 		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)

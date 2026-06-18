@@ -90,6 +90,11 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		field.Float("subscription_quota_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			Comment("Subscription quota snapshot frozen at order creation"),
 		field.String("subscription_validity_unit").
 			Optional().
 			Nillable().

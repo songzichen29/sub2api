@@ -177,6 +177,7 @@ type CreatePlanRequest struct {
 	OriginalPrice *float64   `json:"original_price"`
 	ValidityDays  int        `json:"validity_days"`
 	ValidityUnit  string     `json:"validity_unit"`
+	QuotaLimitUSD *float64   `json:"quota_limit_usd"`
 	ExpiresAt     *time.Time `json:"expires_at"`
 	Features      string     `json:"features"`
 	ProductName   string     `json:"product_name"`
@@ -192,6 +193,7 @@ type UpdatePlanRequest struct {
 	OriginalPrice *float64              `json:"original_price"`
 	ValidityDays  *int                  `json:"validity_days"`
 	ValidityUnit  *string               `json:"validity_unit"`
+	QuotaLimitUSD *float64              `json:"quota_limit_usd"`
 	ExpiresAt     OptionalPlanExpiresAt `json:"expires_at"`
 	Features      *string               `json:"features"`
 	ProductName   *string               `json:"product_name"`

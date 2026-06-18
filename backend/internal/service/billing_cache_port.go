@@ -14,6 +14,8 @@ type SubscriptionCacheData struct {
 	DailyUsage          float64
 	WeeklyUsage         float64
 	MonthlyUsage        float64
+	QuotaLimitUSD       *float64
+	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
 	Version             int64
 }

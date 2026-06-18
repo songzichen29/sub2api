@@ -581,13 +581,16 @@ type UserSubscription struct {
 	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`
 	MonthlyWindowStart *time.Time `json:"monthly_window_start"`
 
-	DailyUsageUSD       float64 `json:"daily_usage_usd"`
-	WeeklyUsageUSD      float64 `json:"weekly_usage_usd"`
-	MonthlyUsageUSD     float64 `json:"monthly_usage_usd"`
-	AllowDailyOverdraft bool    `json:"allow_daily_overdraft"`
-	OverdraftLimitUSD   float64 `json:"overdraft_limit_usd,omitempty"`
-	OverdraftUsedUSD    float64 `json:"overdraft_used_usd,omitempty"`
-	OverdraftDays       int     `json:"overdraft_days,omitempty"`
+	DailyUsageUSD       float64  `json:"daily_usage_usd"`
+	WeeklyUsageUSD      float64  `json:"weekly_usage_usd"`
+	MonthlyUsageUSD     float64  `json:"monthly_usage_usd"`
+	QuotaLimitUSD       *float64 `json:"quota_limit_usd,omitempty"`
+	QuotaUsedUSD        *float64 `json:"quota_used_usd,omitempty"`
+	QuotaRemainingUSD   *float64 `json:"quota_remaining_usd,omitempty"`
+	AllowDailyOverdraft bool     `json:"allow_daily_overdraft"`
+	OverdraftLimitUSD   float64  `json:"overdraft_limit_usd,omitempty"`
+	OverdraftUsedUSD    float64  `json:"overdraft_used_usd,omitempty"`
+	OverdraftDays       int      `json:"overdraft_days,omitempty"`
 
 	// Source 标识订阅来源（admin/redeem/payment），前端据此决定能否重置配额。
 	Source string `json:"source"`

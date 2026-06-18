@@ -126,6 +126,28 @@
               </label>
             </div>
 
+            <!-- Total Quota -->
+            <div v-if="hasTotalQuota(subscription)" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('userSubscriptions.totalQuota') }}
+                </span>
+                <span class="text-sm text-gray-500 dark:text-dark-400">
+                  ${{ getTotalQuotaUsed(subscription).toFixed(2) }} / ${{ getTotalQuotaLimit(subscription).toFixed(2) }}
+                </span>
+              </div>
+              <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                <div
+                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                  :class="getProgressBarClass(getTotalQuotaUsed(subscription), getTotalQuotaLimit(subscription))"
+                  :style="{ width: getProgressWidth(getTotalQuotaUsed(subscription), getTotalQuotaLimit(subscription)) }"
+                ></div>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-dark-400">
+                {{ t('userSubscriptions.totalQuotaRemaining', { amount: getTotalQuotaRemaining(subscription).toFixed(2) }) }}
+              </p>
+            </div>
+
             <!-- Daily Usage -->
             <div v-if="subscription.group?.daily_limit_usd" class="space-y-2">
               <div class="flex items-center justify-between">
@@ -265,7 +287,8 @@
                 !subscription.group?.daily_limit_usd &&
                 !subscription.group?.weekly_limit_usd &&
                 !subscription.group?.monthly_limit_usd &&
-                !getOverdraftLimit(subscription)
+                !getOverdraftLimit(subscription) &&
+                !hasTotalQuota(subscription)
               "
               class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
             >
@@ -354,6 +377,25 @@ function getProgressBarClass(used: number | undefined, limit: number | null | un
   if (percentage >= 90) return 'bg-red-500'
   if (percentage >= 70) return 'bg-orange-500'
   return 'bg-green-500'
+}
+
+function hasTotalQuota(subscription: UserSubscription): boolean {
+  return subscription.quota_limit_usd != null && subscription.quota_limit_usd > 0
+}
+
+function getTotalQuotaLimit(subscription: UserSubscription): number {
+  return subscription.quota_limit_usd && subscription.quota_limit_usd > 0 ? subscription.quota_limit_usd : 0
+}
+
+function getTotalQuotaUsed(subscription: UserSubscription): number {
+  return Math.max(subscription.quota_used_usd || 0, 0)
+}
+
+function getTotalQuotaRemaining(subscription: UserSubscription): number {
+  if (typeof subscription.quota_remaining_usd === 'number') {
+    return Math.max(subscription.quota_remaining_usd, 0)
+  }
+  return Math.max(getTotalQuotaLimit(subscription) - getTotalQuotaUsed(subscription), 0)
 }
 
 function getOverdraftLimit(subscription: UserSubscription): number | null {
@@ -491,6 +533,7 @@ function getQuotaRemaining(subscription: UserSubscription, key: 'daily_limit_usd
 }
 
 function subscriptionHasRenewalWarning(subscription: UserSubscription): boolean {
+  if (hasTotalQuota(subscription) && getTotalQuotaRemaining(subscription) > 0) return true
   const group = subscription.group
   if (!group) return true
   const overdraftLimit = getOverdraftLimit(subscription)
@@ -500,6 +543,7 @@ function subscriptionHasRenewalWarning(subscription: UserSubscription): boolean 
   const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
     && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
     && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
+    && !hasTotalQuota(subscription)
   if (hasUnlimitedQuota) return true
   return (getQuotaRemaining(subscription, 'daily_limit_usd', subscription.daily_usage_usd) ?? 0) > 0
     || (getQuotaRemaining(subscription, 'weekly_limit_usd', subscription.weekly_usage_usd) ?? 0) > 0

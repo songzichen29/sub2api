@@ -68,6 +68,13 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	return nil
 }
 
+func validatePlanQuotaLimit(quota *float64) error {
+	if quota != nil && *quota < 0 {
+		return infraerrors.BadRequest("PLAN_QUOTA_INVALID", "quota_limit_usd must be >= 0")
+	}
+	return nil
+}
+
 func validatePlanExpiresAt(expiresAt *time.Time, now time.Time) error {
 	if expiresAt == nil {
 		return nil
@@ -100,6 +107,9 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	}
 	if req.OriginalPrice != nil && *req.OriginalPrice < 0 {
 		return infraerrors.BadRequest("PLAN_ORIGINAL_PRICE_INVALID", "original price must be >= 0")
+	}
+	if err := validatePlanQuotaLimit(req.QuotaLimitUSD); err != nil {
+		return err
 	}
 	if req.ExpiresAt.Set {
 		if err := validatePlanExpiresAt(req.ExpiresAt.Value, time.Now()); err != nil {
@@ -217,6 +227,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
 	}
+	if err := validatePlanQuotaLimit(req.QuotaLimitUSD); err != nil {
+		return nil, err
+	}
 	if err := validatePlanExpiresAt(req.ExpiresAt, time.Now()); err != nil {
 		return nil, err
 	}
@@ -227,6 +240,11 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		SetForSale(req.ForSale).SetSortOrder(req.SortOrder)
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
+	}
+	if req.QuotaLimitUSD != nil {
+		if *req.QuotaLimitUSD > 0 {
+			b.SetQuotaLimitUsd(*req.QuotaLimitUSD)
+		}
 	}
 	if req.ExpiresAt != nil {
 		b.SetExpiresAt(*req.ExpiresAt)
@@ -262,6 +280,13 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	}
 	if req.ValidityUnit != nil {
 		u.SetValidityUnit(*req.ValidityUnit)
+	}
+	if req.QuotaLimitUSD != nil {
+		if *req.QuotaLimitUSD > 0 {
+			u.SetQuotaLimitUsd(*req.QuotaLimitUSD)
+		} else {
+			u.ClearQuotaLimitUsd()
+		}
 	}
 	if req.ExpiresAt.Set {
 		if req.ExpiresAt.Value == nil {

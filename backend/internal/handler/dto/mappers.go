@@ -748,6 +748,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		DailyUsageUSD:       sub.DailyUsageUSD,
 		WeeklyUsageUSD:      sub.WeeklyUsageUSD,
 		MonthlyUsageUSD:     sub.MonthlyUsageUSD,
+		QuotaLimitUSD:       sub.QuotaLimitUSD,
 		AllowDailyOverdraft: sub.AllowDailyOverdraft,
 		Source:              sub.Source,
 		ValidityDays:        nil,
@@ -761,6 +762,11 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		if days := sub.EffectiveValidityDays(); days > 0 {
 			out.ValidityDays = &days
 		}
+	}
+	if sub.HasTotalQuotaLimit() {
+		used := sub.QuotaUsedUSD
+		out.QuotaUsedUSD = &used
+		out.QuotaRemainingUSD = sub.QuotaRemainingUSD()
 	}
 	if limit, ok := sub.DailyOverdraftLimitUSD(sub.Group); ok && sub.AllowsDailyOverdraft(sub.Group) {
 		out.OverdraftLimitUSD = limit

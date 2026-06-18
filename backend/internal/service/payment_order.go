@@ -280,6 +280,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 			SetSubscriptionGroupID(plan.GroupID).
 			SetSubscriptionDays(subscriptionDays).
 			SetSubscriptionValidityUnit(normalizeSubscriptionValidityUnit(plan.ValidityUnit))
+		if plan.QuotaLimitUsd != nil && *plan.QuotaLimitUsd > 0 {
+			b.SetSubscriptionQuotaUsd(*plan.QuotaLimitUsd)
+		}
 		if plan.ExpiresAt != nil {
 			b.SetSubscriptionPlanExpiresAt(*plan.ExpiresAt)
 		}

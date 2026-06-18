@@ -72,6 +72,22 @@
 
               <!-- Progress bars for limited subscriptions -->
               <template v-else>
+                <div v-if="hasTotalQuota(subscription)" class="flex items-center gap-2">
+                  <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
+                    t('subscriptionProgress.totalQuota')
+                  }}</span>
+                  <div class="h-1.5 min-w-0 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressBarClass(getTotalQuotaUsed(subscription), getTotalQuotaLimit(subscription))"
+                      :style="{ width: getProgressWidth(getTotalQuotaUsed(subscription), getTotalQuotaLimit(subscription)) }"
+                    ></div>
+                  </div>
+                  <span class="w-24 flex-shrink-0 text-right text-[10px] text-gray-500">
+                    {{ formatUsage(getTotalQuotaUsed(subscription), getTotalQuotaLimit(subscription)) }}
+                  </span>
+                </div>
+
                 <div v-if="subscription.group?.daily_limit_usd" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.daily')
@@ -237,6 +253,9 @@ const displaySubscriptions = computed(() => {
 
 function getMaxUsagePercentage(sub: UserSubscription): number {
   const percentages: number[] = []
+  if (hasTotalQuota(sub)) {
+    percentages.push((getTotalQuotaUsed(sub) / getTotalQuotaLimit(sub)) * 100)
+  }
   if (sub.group?.daily_limit_usd) {
     percentages.push(((sub.daily_usage_usd || 0) / sub.group.daily_limit_usd) * 100)
   }
@@ -254,11 +273,24 @@ function getMaxUsagePercentage(sub: UserSubscription): number {
 
 function isUnlimited(sub: UserSubscription): boolean {
   return (
+    !hasTotalQuota(sub) &&
     !sub.group?.daily_limit_usd &&
     !getOverdraftLimit(sub) &&
     !sub.group?.weekly_limit_usd &&
     !sub.group?.monthly_limit_usd
   )
+}
+
+function hasTotalQuota(sub: UserSubscription): boolean {
+  return sub.quota_limit_usd != null && sub.quota_limit_usd > 0
+}
+
+function getTotalQuotaLimit(sub: UserSubscription): number {
+  return sub.quota_limit_usd && sub.quota_limit_usd > 0 ? sub.quota_limit_usd : 0
+}
+
+function getTotalQuotaUsed(sub: UserSubscription): number {
+  return Math.max(sub.quota_used_usd || 0, 0)
 }
 
 function getOverdraftLimit(sub: UserSubscription): number | null {

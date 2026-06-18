@@ -8819,6 +8819,17 @@ func markSubscriptionQuotaExhaustedAfterBilling(ctx context.Context, p *postUsag
 	if deps.userSubRepo == nil || p.Cost.ActualCost <= 0 {
 		return
 	}
+	if p.Subscription.HasTotalQuotaLimit() && p.Subscription.QuotaUsedUSD+p.Cost.ActualCost >= *p.Subscription.QuotaLimitUSD {
+		if err := deps.userSubRepo.UpdateStatus(ctx, p.Subscription.ID, SubscriptionStatusQuotaExhausted); err != nil {
+			slog.Error("mark subscription quota exhausted failed", "subscription_id", p.Subscription.ID, "error", err)
+			return
+		}
+		p.Subscription.Status = SubscriptionStatusQuotaExhausted
+		if deps.billingCacheService != nil && p.User != nil {
+			_ = deps.billingCacheService.InvalidateSubscription(ctx, p.User.ID, p.Subscription.GroupID)
+		}
+		return
+	}
 	group := p.APIKey.Group
 	if p.Subscription.AllowsDailyOverdraft(group) {
 		limit, ok := p.Subscription.DailyOverdraftLimitUSD(group)

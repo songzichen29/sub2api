@@ -39,6 +39,8 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetNillableQuotaLimitUsd(sub.QuotaLimitUSD).
+		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNillableAssignedBy(sub.AssignedBy)
 
@@ -126,10 +128,16 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetDailyUsageUsd(sub.DailyUsageUSD).
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
+		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	if sub.QuotaLimitUSD != nil {
+		builder.SetQuotaLimitUsd(*sub.QuotaLimitUSD)
+	} else {
+		builder.ClearQuotaLimitUsd()
+	}
 	if sub.DailyWindowStart != nil {
 		builder.SetDailyWindowStart(*sub.DailyWindowStart)
 	} else {
@@ -439,7 +447,9 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			us.daily_usage_usd = us.daily_usage_usd + ?,
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
 			us.monthly_usage_usd = us.monthly_usage_usd + ?,
+			us.quota_used_usd = us.quota_used_usd + ?,
 			us.status = CASE
+				WHEN COALESCE(us.quota_limit_usd, 0) > 0 AND us.quota_used_usd + ? >= us.quota_limit_usd THEN ?
 				WHEN g.allow_daily_overdraft = TRUE
 					AND us.allow_daily_overdraft = TRUE
 					AND COALESCE(g.daily_limit_usd, 0) > 0
@@ -472,6 +482,11 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			us.updated_at = NOW()
 		WHERE us.id = ?
 			AND us.deleted_at IS NULL
+			AND (
+				COALESCE(us.quota_limit_usd, 0) <= 0
+				OR us.quota_used_usd + ? <= us.quota_limit_usd
+				OR (? AND us.quota_used_usd < us.quota_limit_usd)
+			)
 			AND (
 				COALESCE(g.daily_limit_usd, 0) <= 0
 				OR (
@@ -592,11 +607,13 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 	client := clientFromContext(ctx, r.client)
 	allowOverLimit := false
 	result, err := client.ExecContext(ctx, updateSQL,
-		costUSD, costUSD, costUSD,
+		costUSD, costUSD, costUSD, costUSD,
+		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		id,
+		costUSD, allowOverLimit,
 		costUSD, costUSD, costUSD, costUSD,
 		allowOverLimit,
 		costUSD, allowOverLimit, costUSD, allowOverLimit,
@@ -756,6 +773,8 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		DailyUsageUSD:       m.DailyUsageUsd,
 		WeeklyUsageUSD:      m.WeeklyUsageUsd,
 		MonthlyUsageUSD:     m.MonthlyUsageUsd,
+		QuotaLimitUSD:       m.QuotaLimitUsd,
+		QuotaUsedUSD:        m.QuotaUsedUsd,
 		AllowDailyOverdraft: m.AllowDailyOverdraft,
 		AssignedBy:          m.AssignedBy,
 		AssignedAt:          m.AssignedAt,
@@ -792,6 +811,8 @@ func applyUserSubscriptionEntityToService(dst *service.UserSubscription, src *db
 	}
 	dst.ID = src.ID
 	dst.ValidityUnit = normalizeRepoSubscriptionValidityUnit(src.ValidityUnit)
+	dst.QuotaLimitUSD = src.QuotaLimitUsd
+	dst.QuotaUsedUSD = src.QuotaUsedUsd
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 }
