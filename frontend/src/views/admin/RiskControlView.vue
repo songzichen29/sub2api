@@ -303,6 +303,24 @@
                   <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
                 </div>
               </div>
+              <div>
+                <label class="input-label">{{ t('admin.riskControl.moderationProtocol') }}</label>
+                <Select v-model="configForm.moderation_protocol" :options="moderationProtocolOptions" />
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ moderationProtocolDescription(configForm.moderation_protocol) }}</p>
+              </div>
+              <div v-if="configForm.moderation_protocol === 'anthropic_llm'" class="lg:col-span-2">
+                <label class="input-label">
+                  {{ t('admin.riskControl.systemPrompt') }}
+                  <span class="ml-2 text-xs font-normal text-gray-400">({{ systemPromptLength }}/{{ configForm.system_prompt_max_length }})</span>
+                </label>
+                <textarea
+                  v-model="configForm.system_prompt"
+                  class="input min-h-[160px] resize-y font-mono text-sm"
+                  :placeholder="t('admin.riskControl.systemPromptPlaceholder')"
+                  :maxlength="configForm.system_prompt_max_length"
+                ></textarea>
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.systemPromptHint') }}</p>
+              </div>
             </div>
 
             <div class="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-800">
@@ -903,6 +921,7 @@ import type {
   ContentModerationTestAuditResult,
   KeywordBlockingMode,
   ModerationMode,
+  ModerationProtocol,
   UpdateContentModerationConfig,
 } from '@/api/admin/riskControl'
 import type { AdminGroup, SelectOption } from '@/types'
@@ -997,6 +1016,12 @@ const configForm = reactive({
   pre_hash_check_enabled: false,
   blocked_keywords_text: '',
   keyword_blocking_mode: 'keyword_and_api' as KeywordBlockingMode,
+  // 审核 API 协议类型
+  moderation_protocol: 'openai_moderation' as ModerationProtocol,
+  // Anthropic LLM 协议的系统提示词
+  system_prompt: '',
+  // 系统提示词最大长度
+  system_prompt_max_length: 4000,
 })
 
 const pagination = reactive({
@@ -1029,6 +1054,23 @@ const modeOptions = computed<SelectOption[]>(() => [
   { value: 'observe', label: t('admin.riskControl.modeObserve') },
   { value: 'off', label: t('admin.riskControl.modeOff') },
 ])
+
+const moderationProtocolOptions = computed<SelectOption[]>(() => [
+  { value: 'openai_moderation', label: t('admin.riskControl.protocolOpenAI') },
+  { value: 'anthropic_llm', label: t('admin.riskControl.protocolAnthropic') },
+])
+
+const systemPromptLength = computed(() => {
+  return configForm.system_prompt ? configForm.system_prompt.length : 0
+})
+
+function moderationProtocolDescription(protocol: ModerationProtocol): string {
+  const descriptions: Record<ModerationProtocol, string> = {
+    openai_moderation: t('admin.riskControl.protocolOpenAIDesc'),
+    anthropic_llm: t('admin.riskControl.protocolAnthropicDesc'),
+  }
+  return descriptions[protocol] ?? ''
+}
 
 const keywordBlockingModeOptions = computed<Array<{ value: KeywordBlockingMode; label: string; description: string }>>(() => [
   {
@@ -1354,6 +1396,9 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.pre_hash_check_enabled = config.pre_hash_check_enabled ?? false
   configForm.blocked_keywords_text = Array.isArray(config.blocked_keywords) ? config.blocked_keywords.join('\n') : ''
   configForm.keyword_blocking_mode = normalizeKeywordBlockingMode(config.keyword_blocking_mode)
+  configForm.moderation_protocol = normalizeModerationProtocol(config.moderation_protocol)
+  configForm.system_prompt = config.system_prompt || ''
+  configForm.system_prompt_max_length = config.system_prompt_max_length || 4000
 }
 
 async function loadAll() {
@@ -1426,6 +1471,8 @@ async function saveConfig() {
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
       blocked_keywords: blockedKeywordList.value,
       keyword_blocking_mode: configForm.keyword_blocking_mode,
+      moderation_protocol: configForm.moderation_protocol,
+      system_prompt: configForm.system_prompt,
     }
     const keys = parseApiKeys(configForm.api_keys_text)
     if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keys.length === 0) {
@@ -1836,6 +1883,13 @@ function normalizeKeywordBlockingMode(value: unknown): KeywordBlockingMode {
     return value
   }
   return 'keyword_and_api'
+}
+
+function normalizeModerationProtocol(value: unknown): ModerationProtocol {
+  if (value === 'openai_moderation' || value === 'anthropic_llm') {
+    return value
+  }
+  return 'openai_moderation'
 }
 
 function parseBlockedKeywords(value: string): string[] {

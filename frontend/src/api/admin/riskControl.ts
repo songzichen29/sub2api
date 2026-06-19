@@ -4,6 +4,8 @@ export type ModerationMode = 'off' | 'observe' | 'pre_block'
 export type KeywordBlockingMode = 'keyword_only' | 'keyword_and_api' | 'api_only'
 export type ContentModerationAPIKeysMode = 'append' | 'replace'
 export type ContentModerationModelFilterType = 'all' | 'include' | 'exclude' | string
+// 审核 API 协议类型
+export type ModerationProtocol = 'openai_moderation' | 'anthropic_llm'
 
 export interface ContentModerationModelFilter {
   type: ContentModerationModelFilterType
@@ -41,6 +43,12 @@ export interface ContentModerationConfig {
   keyword_blocking_mode: KeywordBlockingMode
   model_filter: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count: boolean
+  // 审核 API 协议类型
+  moderation_protocol: ModerationProtocol
+  // Anthropic LLM 协议的系统提示词
+  system_prompt: string
+  // 系统提示词最大长度
+  system_prompt_max_length: number
 }
 
 export type ContentModerationAPIKeyStatusValue = 'unknown' | 'ok' | 'error' | 'frozen'
@@ -118,6 +126,10 @@ export interface UpdateContentModerationConfig {
   keyword_blocking_mode?: KeywordBlockingMode
   model_filter?: ContentModerationModelFilter
   cyber_policy_exclude_from_ban_count?: boolean
+  // 审核 API 协议类型
+  moderation_protocol?: ModerationProtocol
+  // Anthropic LLM 协议的系统提示词
+  system_prompt?: string
 }
 
 export interface ContentModerationRuntimeStatus {

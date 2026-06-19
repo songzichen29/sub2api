@@ -55,12 +55,17 @@ const (
 	ContentModerationProtocolGemini            = "gemini"
 	ContentModerationProtocolOpenAIImages      = "openai_images"
 
+	// 审核 API 协议类型（用于指定调用哪种审核服务）
+	ModerationAPIProtocolOpenAIModeration = "openai_moderation"
+	ModerationAPIProtocolAnthropicLLM     = "anthropic_llm"
+
 	defaultContentModerationBaseURL   = "https://api.openai.com"
 	defaultContentModerationModel     = "omni-moderation-latest"
 	defaultContentModerationTimeoutMS = 3000
 	maxContentModerationTimeoutMS     = 30000
 	maxModerationInputRunes           = 12000
 	maxModerationExcerptRunes         = 240
+	maxSystemPromptRunes              = 4000
 
 	defaultContentModerationWorkerCount          = 4
 	maxContentModerationWorkerCount              = 32
@@ -92,6 +97,22 @@ const (
 	contentModerationCleanupTimeout  = 30 * time.Minute
 	contentModerationCleanupDelay    = 5 * time.Minute
 )
+
+// defaultAnthropicModerationPrompt 是 Anthropic LLM 协议的默认系统提示词
+const defaultAnthropicModerationPrompt = `你是一个内容安全审核员。请对用户输入的内容进行风险评估。
+请严格按照以下JSON格式返回结果，不要返回其他内容：
+{"flagged": true或false, "category_scores": {"violence": 0.0到1.0, "sexual": 0.0到1.0, "hate": 0.0到1.0, "harassment": 0.0到1.0, "self-harm": 0.0到1.0, "illicit": 0.0到1.0}}
+
+类别说明：
+- violence: 暴力内容（威胁、攻击意图等）
+- sexual: 色情内容（性暗示、露骨描述等）
+- hate: 仇恨言论（针对特定群体的歧视、仇恨等）
+- harassment: 骚扰内容（欺凌、威胁、恶意骚扰等）
+- self-harm: 自残内容（自杀意图、自伤行为等）
+- illicit: 非法内容（毒品制作、武器制造、犯罪行为指导等）
+
+评分标准：0.0表示完全没有该类内容，1.0表示明确包含该类内容。
+如果任何类别的分数超过阈值，flagged应为true，否则为false。`
 
 var contentModerationCategoryOrder = []string{
 	"harassment",
@@ -165,6 +186,10 @@ type ContentModerationConfig struct {
 	// 当次不判定封号，且历史 cyber 行在 CountFlaggedByUserSince 中被排除。
 	// 默认 false（计入，与历史行为一致；旧配置 JSON 无此字段时反序列化为 false）。
 	CyberPolicyExcludeFromBanCount bool `json:"cyber_policy_exclude_from_ban_count"`
+	// ModerationProtocol 审核 API 协议类型：openai_moderation（默认）或 anthropic_llm
+	ModerationProtocol string `json:"moderation_protocol"`
+	// SystemPrompt 用于 anthropic_llm 协议的系统提示词，定义 LLM 审核行为
+	SystemPrompt string `json:"system_prompt,omitempty"`
 }
 
 type ContentModerationConfigView struct {
@@ -199,6 +224,9 @@ type ContentModerationConfigView struct {
 	KeywordBlockingMode            string                          `json:"keyword_blocking_mode"`
 	ModelFilter                    ContentModerationModelFilter    `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount bool                            `json:"cyber_policy_exclude_from_ban_count"`
+	ModerationProtocol             string                          `json:"moderation_protocol"`
+	SystemPrompt                   string                          `json:"system_prompt,omitempty"`
+	SystemPromptMaxLength          int                             `json:"system_prompt_max_length"`
 }
 
 type ContentModerationAPIKeyStatus struct {
@@ -287,6 +315,8 @@ type UpdateContentModerationConfigInput struct {
 	KeywordBlockingMode            *string                       `json:"keyword_blocking_mode"`
 	ModelFilter                    *ContentModerationModelFilter `json:"model_filter"`
 	CyberPolicyExcludeFromBanCount *bool                         `json:"cyber_policy_exclude_from_ban_count"`
+	ModerationProtocol             *string                       `json:"moderation_protocol"`
+	SystemPrompt                   *string                       `json:"system_prompt"`
 }
 
 type ContentModerationModelFilter struct {
@@ -661,6 +691,12 @@ func (s *ContentModerationService) UpdateConfig(ctx context.Context, input Updat
 	}
 	if input.CyberPolicyExcludeFromBanCount != nil {
 		cfg.CyberPolicyExcludeFromBanCount = *input.CyberPolicyExcludeFromBanCount
+	}
+	if input.ModerationProtocol != nil {
+		cfg.ModerationProtocol = strings.TrimSpace(*input.ModerationProtocol)
+	}
+	if input.SystemPrompt != nil {
+		cfg.SystemPrompt = *input.SystemPrompt
 	}
 	if input.Thresholds != nil {
 		cfg.Thresholds = mergeContentModerationThresholds(ContentModerationDefaultThresholds(), *input.Thresholds)
@@ -1482,6 +1518,14 @@ func (s *ContentModerationService) validateConfig(ctx context.Context, cfg *Cont
 	if cfg.ModelFilter.Type != ContentModerationModelFilterAll && len(cfg.ModelFilter.Models) == 0 {
 		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_MODEL_FILTER", "指定或排除模型时至少需要配置 1 个模型")
 	}
+	switch cfg.ModerationProtocol {
+	case ModerationAPIProtocolOpenAIModeration, ModerationAPIProtocolAnthropicLLM:
+	default:
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_PROTOCOL", "审核协议类型无效")
+	}
+	if len([]rune(cfg.SystemPrompt)) > maxSystemPromptRunes {
+		return infraerrors.BadRequest("INVALID_CONTENT_MODERATION_SYSTEM_PROMPT", fmt.Sprintf("系统提示词长度不能超过 %d 字符", maxSystemPromptRunes))
+	}
 	if !cfg.AllGroups && len(cfg.GroupIDs) > 0 && s.groupRepo != nil {
 		for _, groupID := range cfg.GroupIDs {
 			if _, err := s.groupRepo.GetByIDLite(ctx, groupID); err != nil {
@@ -1544,6 +1588,11 @@ func (s *ContentModerationService) callModeration(ctx context.Context, cfg *Cont
 }
 
 func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Context, cfg *ContentModerationConfig, apiKey string, input any, httpStatus *int) (*moderationAPIResult, error) {
+	// 根据协议类型分发到不同的调用函数
+	if cfg.ModerationProtocol == ModerationAPIProtocolAnthropicLLM {
+		return s.callAnthropicModeration(ctx, cfg, apiKey, input, httpStatus)
+	}
+	// 默认使用 OpenAI Moderation 协议
 	base := strings.TrimRight(cfg.BaseURL, "/")
 	endpoint, err := url.JoinPath(base, "/v1/moderations")
 	if err != nil {
@@ -1595,6 +1644,132 @@ func (s *ContentModerationService) callModerationOnceWithInput(ctx context.Conte
 	return &out.Results[0], nil
 }
 
+// callAnthropicModeration 调用 Anthropic Messages API 进行内容审核
+func (s *ContentModerationService) callAnthropicModeration(ctx context.Context, cfg *ContentModerationConfig, apiKey string, input any, httpStatus *int) (*moderationAPIResult, error) {
+	base := strings.TrimRight(cfg.BaseURL, "/")
+	endpoint, err := url.JoinPath(base, "/v1/messages")
+	if err != nil {
+		return nil, err
+	}
+
+	// 构建消息内容
+	var userContent string
+	switch v := input.(type) {
+	case string:
+		userContent = v
+	case ContentModerationInput:
+		userContent = v.Text
+	default:
+		// 尝试序列化为 JSON 字符串
+		raw, err := json.Marshal(input)
+		if err != nil {
+			return nil, fmt.Errorf("marshal anthropic input: %w", err)
+		}
+		userContent = string(raw)
+	}
+
+	// 获取系统提示词（使用配置的或默认的）
+	systemPrompt := cfg.SystemPrompt
+	if strings.TrimSpace(systemPrompt) == "" {
+		systemPrompt = defaultAnthropicModerationPrompt
+	}
+
+	// 构建 Anthropic Messages API 请求
+	payload := anthropicMessagesRequest{
+		Model:     cfg.Model,
+		MaxTokens: 1024,
+		System:    systemPrompt,
+		Messages: []anthropicMessage{
+			{
+				Role:    "user",
+				Content: userContent,
+			},
+		},
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	timeout := time.Duration(cfg.TimeoutMS) * time.Millisecond
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	// Anthropic 认证方式
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+
+	client := s.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if httpStatus != nil {
+		*httpStatus = resp.StatusCode
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("anthropic moderation api status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var out anthropicMessagesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode anthropic response: %w", err)
+	}
+
+	// 从 content 数组中提取 text 类型的块
+	for _, content := range out.Content {
+		if content.Type == "text" && strings.TrimSpace(content.Text) != "" {
+			return parseAnthropicModerationResult(content.Text)
+		}
+	}
+
+	return nil, errors.New("anthropic response contains no text content")
+}
+
+// parseAnthropicModerationResult 解析 Anthropic LLM 返回的审核结果 JSON
+func parseAnthropicModerationResult(text string) (*moderationAPIResult, error) {
+	text = strings.TrimSpace(text)
+	// 尝试直接解析
+	var result anthropicModerationResult
+	if err := json.Unmarshal([]byte(text), &result); err != nil {
+		// 尝试提取 JSON 块（LLM 可能返回 markdown 代码块）
+		if start := strings.Index(text, "{"); start >= 0 {
+			if end := strings.LastIndex(text, "}"); end > start {
+				jsonStr := text[start : end+1]
+				if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+					return nil, fmt.Errorf("parse anthropic moderation result: %w", err)
+				}
+			} else {
+				return nil, fmt.Errorf("parse anthropic moderation result: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("parse anthropic moderation result: %w", err)
+		}
+	}
+
+	// 转换为统一的 moderationAPIResult 格式
+	scores := make(map[string]float64)
+	for k, v := range result.CategoryScores {
+		scores[k] = v
+	}
+
+	return &moderationAPIResult{
+		Flagged:        result.Flagged,
+		CategoryScores: scores,
+	}, nil
+}
+
 func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
 	var userID *int64
 	if input.UserID > 0 {
@@ -1603,6 +1778,12 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 	var apiKeyID *int64
 	if input.APIKeyID > 0 {
 		apiKeyID = &input.APIKeyID
+	}
+	// 被拦截的输入不进行脱敏，保留完整的原始用户输入用于审计
+	// 非拦截记录仍保持原有脱敏逻辑
+	inputExcerpt := text
+	if !flagged {
+		inputExcerpt = redactContentModerationSecrets(text)
 	}
 	return &ContentModerationLog{
 		RequestID:         input.RequestID,
@@ -1622,7 +1803,7 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 		HighestScore:      highestScore,
 		CategoryScores:    cloneFloatMap(scores),
 		ThresholdSnapshot: cloneFloatMap(cfg.Thresholds),
-		InputExcerpt:      trimRunes(redactContentModerationSecrets(text), maxModerationExcerptRunes),
+		InputExcerpt:      trimRunes(inputExcerpt, maxModerationExcerptRunes),
 		UpstreamLatencyMS: latency,
 		QueueDelayMS:      queueDelay,
 		Error:             errText,
@@ -1850,6 +2031,8 @@ func defaultContentModerationConfig() *ContentModerationConfig {
 			Models: []string{},
 		},
 		CyberPolicyExcludeFromBanCount: false,
+		ModerationProtocol:             ModerationAPIProtocolOpenAIModeration,
+		SystemPrompt:                   "",
 	}
 }
 
@@ -1947,6 +2130,8 @@ func (cfg *ContentModerationConfig) normalize() {
 	cfg.BlockedKeywords = normalizeBlockedKeywords(cfg.BlockedKeywords)
 	cfg.KeywordBlockingMode = normalizeKeywordBlockingMode(cfg.KeywordBlockingMode)
 	cfg.ModelFilter = normalizeContentModerationModelFilter(cfg.ModelFilter)
+	cfg.ModerationProtocol = normalizeModerationAPIProtocol(cfg.ModerationProtocol)
+	cfg.SystemPrompt = normalizeSystemPrompt(cfg.SystemPrompt)
 }
 
 func (cfg *ContentModerationConfig) includesGroup(groupID *int64) bool {
@@ -2177,6 +2362,9 @@ func (s *ContentModerationService) configView(cfg *ContentModerationConfig) *Con
 		KeywordBlockingMode:            cfg.KeywordBlockingMode,
 		ModelFilter:                    cloneContentModerationModelFilter(cfg.ModelFilter),
 		CyberPolicyExcludeFromBanCount: cfg.CyberPolicyExcludeFromBanCount,
+		ModerationProtocol:             cfg.ModerationProtocol,
+		SystemPrompt:                   cfg.SystemPrompt,
+		SystemPromptMaxLength:          maxSystemPromptRunes,
 	}
 }
 
@@ -2419,6 +2607,33 @@ type moderationAPIResult struct {
 	CategoryScores map[string]float64 `json:"category_scores"`
 }
 
+// Anthropic Messages API 相关类型
+type anthropicMessagesRequest struct {
+	Model     string            `json:"model"`
+	MaxTokens int               `json:"max_tokens"`
+	System    string            `json:"system,omitempty"`
+	Messages  []anthropicMessage `json:"messages"`
+}
+
+type anthropicMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type anthropicMessagesResponse struct {
+	Content []anthropicContentBlock `json:"content"`
+}
+
+type anthropicContentBlock struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type anthropicModerationResult struct {
+	Flagged        bool               `json:"flagged"`
+	CategoryScores map[string]float64 `json:"category_scores"`
+}
+
 func evaluateModerationScores(scores map[string]float64, thresholds map[string]float64) (bool, string, float64) {
 	flagged := false
 	highestCategory := ""
@@ -2517,6 +2732,25 @@ func normalizeKeywordBlockingMode(mode string) string {
 	default:
 		return ContentModerationKeywordModeKeywordAndAPI
 	}
+}
+
+func normalizeModerationAPIProtocol(protocol string) string {
+	switch strings.TrimSpace(protocol) {
+	case ModerationAPIProtocolAnthropicLLM:
+		return ModerationAPIProtocolAnthropicLLM
+	case ModerationAPIProtocolOpenAIModeration:
+		return ModerationAPIProtocolOpenAIModeration
+	default:
+		return ModerationAPIProtocolOpenAIModeration
+	}
+}
+
+func normalizeSystemPrompt(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if len([]rune(prompt)) > maxSystemPromptRunes {
+		prompt = string([]rune(prompt)[:maxSystemPromptRunes])
+	}
+	return prompt
 }
 
 func normalizeContentModerationModelFilter(filter ContentModerationModelFilter) ContentModerationModelFilter {

@@ -53,6 +53,10 @@ type contentModerationConfigRequest struct {
 	BlockedKeywords                *[]string                             `json:"blocked_keywords"`
 	KeywordBlockingMode            *string                               `json:"keyword_blocking_mode"`
 	ModelFilter                    *service.ContentModerationModelFilter `json:"model_filter"`
+	// 审核 API 协议类型：openai_moderation 或 anthropic_llm
+	ModerationProtocol *string `json:"moderation_protocol"`
+	// Anthropic LLM 协议的系统提示词
+	SystemPrompt *string `json:"system_prompt"`
 }
 
 type contentModerationAPIKeyTestRequest struct {
@@ -115,6 +119,8 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		BlockedKeywords:                req.BlockedKeywords,
 		KeywordBlockingMode:            req.KeywordBlockingMode,
 		ModelFilter:                    req.ModelFilter,
+		ModerationProtocol:             req.ModerationProtocol,
+		SystemPrompt:                   req.SystemPrompt,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
