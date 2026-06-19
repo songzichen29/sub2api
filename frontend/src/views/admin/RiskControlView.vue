@@ -290,7 +290,8 @@
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.timeoutMs') }}</label>
-                <input v-model.number="configForm.timeout_ms" type="number" min="500" max="30000" class="input" />
+                <input v-model.number="configForm.timeout_ms" type="number" min="1000" max="60000" class="input" />
+                <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.timeoutMsHint') }}</p>
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.retryCount') }}</label>
@@ -996,7 +997,7 @@ const configForm = reactive({
   api_key_statuses: [] as ContentModerationAPIKeyStatus[],
   api_keys_mode: 'append' as APIKeysWriteMode,
   clear_api_key: false,
-  timeout_ms: 3000,
+  timeout_ms: 10000,
   retry_count: 2,
   sample_rate: 100,
   all_groups: true,

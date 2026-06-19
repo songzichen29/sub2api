@@ -61,10 +61,10 @@ const (
 
 	defaultContentModerationBaseURL   = "https://api.openai.com"
 	defaultContentModerationModel     = "omni-moderation-latest"
-	defaultContentModerationTimeoutMS = 3000
-	maxContentModerationTimeoutMS     = 30000
+	defaultContentModerationTimeoutMS = 10000 // LLM 审核需要更长时间，默认 10 秒
+	maxContentModerationTimeoutMS     = 60000 // 最大 60 秒
 	maxModerationInputRunes           = 12000
-	maxModerationExcerptRunes         = 240
+	maxModerationExcerptRunes         = 12000 // 保留完整用户输入用于审计，与 maxModerationInputRunes 一致
 	maxSystemPromptRunes              = 4000
 
 	defaultContentModerationWorkerCount          = 4
@@ -100,7 +100,7 @@ const (
 
 // defaultAnthropicModerationPrompt 是 Anthropic LLM 协议的默认系统提示词
 const defaultAnthropicModerationPrompt = `你是一个内容安全审核员。请对用户输入的内容进行风险评估。
-请严格按照以下JSON格式返回结果，不要返回其他内容：
+不要输出思考过程，直接返回以下 JSON 格式结果，不要返回其他内容：
 {"flagged": true或false, "category_scores": {"violence": 0.0到1.0, "sexual": 0.0到1.0, "hate": 0.0到1.0, "harassment": 0.0到1.0, "self-harm": 0.0到1.0, "illicit": 0.0到1.0}}
 
 类别说明：
@@ -1694,6 +1694,7 @@ func (s *ContentModerationService) callAnthropicModeration(ctx context.Context, 
 				Content: userContent,
 			},
 		},
+		Thinking: &anthropicThinking{Type: "disabled"}, // 关闭思考
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -2618,10 +2619,15 @@ type moderationAPIResult struct {
 
 // Anthropic Messages API 相关类型
 type anthropicMessagesRequest struct {
-	Model     string            `json:"model"`
-	MaxTokens int               `json:"max_tokens"`
-	System    string            `json:"system,omitempty"`
+	Model     string             `json:"model"`
+	MaxTokens int                `json:"max_tokens"`
+	System    string             `json:"system,omitempty"`
 	Messages  []anthropicMessage `json:"messages"`
+	Thinking  *anthropicThinking `json:"thinking,omitempty"`
+}
+
+type anthropicThinking struct {
+	Type string `json:"type"` // "enabled" 或 "disabled"
 }
 
 type anthropicMessage struct {
@@ -2959,6 +2965,7 @@ type CyberPolicyRecordInput struct {
 	GroupName       string
 	Endpoint        string
 	Model           string
+	UserInput       string // 用户原始输入内容（用于审计记录）
 	UpstreamMessage string
 	UpstreamBody    string
 	UpstreamStatus  int
@@ -3013,8 +3020,10 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		Flagged:         true,
 		HighestCategory: "cyber_policy",
 		HighestScore:    1.0,
-		Error:           trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
-		CreatedAt:       time.Now(),
+		// 被拦截的输入不进行脱敏，保留完整的原始用户输入用于审计
+		InputExcerpt: trimRunes(in.UserInput, maxModerationExcerptRunes),
+		Error:        trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
+		CreatedAt:    time.Now(),
 	}
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
