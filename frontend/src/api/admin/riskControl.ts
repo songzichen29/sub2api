@@ -76,6 +76,10 @@ export interface TestContentModerationAPIKeysPayload {
   timeout_ms?: number
   prompt?: string
   images?: string[]
+  // 审核协议类型
+  protocol?: ModerationProtocol
+  // 系统提示词
+  system_prompt?: string
 }
 
 export interface TestContentModerationAPIKeysResponse {

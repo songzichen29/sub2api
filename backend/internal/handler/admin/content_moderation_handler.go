@@ -60,12 +60,14 @@ type contentModerationConfigRequest struct {
 }
 
 type contentModerationAPIKeyTestRequest struct {
-	APIKeys   []string `json:"api_keys"`
-	BaseURL   string   `json:"base_url"`
-	Model     string   `json:"model"`
-	TimeoutMS int      `json:"timeout_ms"`
-	Prompt    string   `json:"prompt"`
-	Images    []string `json:"images"`
+	APIKeys      []string `json:"api_keys"`
+	BaseURL      string   `json:"base_url"`
+	Model        string   `json:"model"`
+	TimeoutMS    int      `json:"timeout_ms"`
+	Prompt       string   `json:"prompt"`
+	Images       []string `json:"images"`
+	Protocol     string   `json:"protocol"`
+	SystemPrompt string   `json:"system_prompt"`
 }
 
 type contentModerationHashRequest struct {
@@ -136,12 +138,14 @@ func (h *ContentModerationHandler) TestAPIKeys(c *gin.Context) {
 		return
 	}
 	result, err := h.service.TestAPIKeys(c.Request.Context(), service.TestContentModerationAPIKeysInput{
-		APIKeys:   req.APIKeys,
-		BaseURL:   req.BaseURL,
-		Model:     req.Model,
-		TimeoutMS: req.TimeoutMS,
-		Prompt:    req.Prompt,
-		Images:    req.Images,
+		APIKeys:      req.APIKeys,
+		BaseURL:      req.BaseURL,
+		Model:        req.Model,
+		TimeoutMS:    req.TimeoutMS,
+		Prompt:       req.Prompt,
+		Images:       req.Images,
+		Protocol:     req.Protocol,
+		SystemPrompt: req.SystemPrompt,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

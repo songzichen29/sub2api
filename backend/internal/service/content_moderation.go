@@ -260,12 +260,14 @@ type ContentModerationAPIKeyLoad struct {
 }
 
 type TestContentModerationAPIKeysInput struct {
-	APIKeys   []string `json:"api_keys"`
-	BaseURL   string   `json:"base_url"`
-	Model     string   `json:"model"`
-	TimeoutMS int      `json:"timeout_ms"`
-	Prompt    string   `json:"prompt"`
-	Images    []string `json:"images"`
+	APIKeys      []string `json:"api_keys"`
+	BaseURL      string   `json:"base_url"`
+	Model        string   `json:"model"`
+	TimeoutMS    int      `json:"timeout_ms"`
+	Prompt       string   `json:"prompt"`
+	Images       []string `json:"images"`
+	Protocol     string   `json:"protocol"`
+	SystemPrompt string   `json:"system_prompt"`
 }
 
 type TestContentModerationAPIKeysResult struct {
@@ -756,6 +758,13 @@ func (s *ContentModerationService) TestAPIKeys(ctx context.Context, input TestCo
 	}
 	if input.TimeoutMS > 0 {
 		cfg.TimeoutMS = input.TimeoutMS
+	}
+	// 使用传入的协议和系统提示词（测试时覆盖配置）
+	if strings.TrimSpace(input.Protocol) != "" {
+		cfg.ModerationProtocol = strings.TrimSpace(input.Protocol)
+	}
+	if strings.TrimSpace(input.SystemPrompt) != "" {
+		cfg.SystemPrompt = input.SystemPrompt
 	}
 	cfg.normalize()
 	testInput, imageCount, err := buildModerationTestInput(input.Prompt, input.Images)

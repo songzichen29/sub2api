@@ -1643,6 +1643,8 @@ async function testApiKeys(useInputKeys: boolean) {
       timeout_ms: Number(configForm.timeout_ms) || 3000,
       prompt: moderationTestPrompt.value,
       images: moderationTestImages.value,
+      protocol: configForm.moderation_protocol,
+      system_prompt: configForm.system_prompt || undefined,
     })
     moderationTestResult.value = result.audit_result ?? null
     if (useInputKeys) {
