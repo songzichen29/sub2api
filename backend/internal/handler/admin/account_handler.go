@@ -2118,31 +2118,52 @@ func antigravityModelsFromMapping(mapping map[string]string) []antigravity.Claud
 		return nil
 	}
 
+	ids := make([]string, 0, len(mapping))
+	for requestedModel := range mapping {
+		requestedModel = strings.TrimSpace(requestedModel)
+		if requestedModel != "" {
+			ids = append(ids, requestedModel)
+		}
+	}
+	return antigravityModelsFromIDs(ids)
+}
+
+func antigravityModelsFromIDs(ids []string) []antigravity.ClaudeModel {
+	if len(ids) == 0 {
+		return nil
+	}
+
 	defaultModels := antigravity.DefaultModels()
 	defaultsByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
 	for _, model := range defaultModels {
 		defaultsByID[model.ID] = model
 	}
 
-	keys := make([]string, 0, len(mapping))
-	for requestedModel := range mapping {
-		requestedModel = strings.TrimSpace(requestedModel)
-		if requestedModel != "" {
-			keys = append(keys, requestedModel)
+	modelIDs := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, modelID := range ids {
+		modelID = strings.TrimSpace(modelID)
+		if modelID == "" {
+			continue
 		}
+		if _, ok := seen[modelID]; ok {
+			continue
+		}
+		seen[modelID] = struct{}{}
+		modelIDs = append(modelIDs, modelID)
 	}
-	sort.Strings(keys)
+	sort.Strings(modelIDs)
 
-	models := make([]antigravity.ClaudeModel, 0, len(keys))
-	for _, requestedModel := range keys {
-		if model, ok := defaultsByID[requestedModel]; ok {
+	models := make([]antigravity.ClaudeModel, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
 			models = append(models, model)
 			continue
 		}
 		models = append(models, antigravity.ClaudeModel{
-			ID:          requestedModel,
+			ID:          modelID,
 			Type:        "model",
-			DisplayName: requestedModel,
+			DisplayName: modelID,
 			CreatedAt:   "",
 		})
 	}
@@ -2240,11 +2261,22 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	// Handle Antigravity accounts: prefer the account-specific model_mapping.
-	// Antigravity upstream availability is account-specific; returning the static
-	// DefaultModels() here makes account test/scheduling UIs ignore models synced
-	// or configured on the account itself.
+	// Handle Antigravity accounts: prefer live upstream models from the selected
+	// account. Antigravity upstream availability is account-specific; returning
+	// the static DefaultModels() here makes account test/scheduling UIs ignore
+	// the account's real available models.
 	if account.Platform == service.PlatformAntigravity {
+		if h.accountTestService != nil {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+			defer cancel()
+			if upstreamModels, err := h.accountTestService.FetchUpstreamSupportedModels(ctx, account); err == nil && len(upstreamModels) > 0 {
+				response.Success(c, antigravityModelsFromIDs(upstreamModels))
+				return
+			} else if err != nil {
+				log.Printf("[AccountHandler.GetAvailableModels] antigravity list-upstream failed account=%d err=%v", account.ID, err)
+			}
+		}
+
 		if mapping := explicitAccountModelMapping(account); len(mapping) > 0 {
 			response.Success(c, antigravityModelsFromMapping(mapping))
 			return

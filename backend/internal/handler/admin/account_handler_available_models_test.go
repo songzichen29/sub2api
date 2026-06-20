@@ -37,6 +37,24 @@ func setupAvailableModelsRouter(adminSvc service.AdminService) *gin.Engine {
 	return router
 }
 
+func setupAvailableModelsRouterWithAccountTestService(adminSvc service.AdminService, upstream service.HTTPUpstream) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	accountTestSvc := service.NewAccountTestService(
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		upstream,
+		&config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+		nil,
+	)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, accountTestSvc, nil, nil, nil, nil, nil, nil)
+	router.GET("/api/v1/admin/accounts/:id/models", handler.GetAvailableModels)
+	return router
+}
+
 type syncUpstreamHTTPUpstream struct {
 	resp *http.Response
 	err  error
@@ -185,6 +203,50 @@ func TestAccountHandlerGetAvailableModels_AntigravityUsesExplicitModelMapping(t 
 		"gemini-3.1-pro-high",
 		"gemini-3.5-flash-low",
 	}, ids)
+}
+
+func TestAccountHandlerGetAvailableModels_AntigravityPrefersLiveUpstreamModels(t *testing.T) {
+	svc := &availableModelsAdminService{
+		stubAdminService: newStubAdminService(),
+		account: service.Account{
+			ID:       48,
+			Name:     "antigravity-apikey",
+			Platform: service.PlatformAntigravity,
+			Type:     service.AccountTypeAPIKey,
+			Status:   service.StatusActive,
+			Credentials: map[string]any{
+				"api_key":  "antigravity-key",
+				"base_url": "https://antigravity.example.com",
+				"model_mapping": map[string]any{
+					"old-local-model": "old-local-model",
+				},
+			},
+		},
+	}
+	upstream := &syncUpstreamHTTPUpstream{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"gemini-pro-agent"},{"id":"claude-sonnet-4-6"}]}`)),
+	}}
+	router := setupAvailableModelsRouterWithAccountTestService(svc, upstream)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts/48/models", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	ids := make([]string, 0, len(resp.Data))
+	for _, model := range resp.Data {
+		ids = append(ids, model.ID)
+	}
+	require.Equal(t, []string{"claude-sonnet-4-6", "gemini-pro-agent"}, ids)
 }
 
 func TestAccountHandlerGetAvailableModels_AntigravityWithoutExplicitMappingFallsBackToDefaults(t *testing.T) {
