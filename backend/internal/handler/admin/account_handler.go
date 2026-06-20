@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2077,6 +2078,77 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+func explicitAccountModelMapping(account *service.Account) map[string]string {
+	if account == nil || account.Credentials == nil {
+		return nil
+	}
+	raw, ok := account.Credentials["model_mapping"]
+	if !ok {
+		return nil
+	}
+
+	mapping := make(map[string]string)
+	switch value := raw.(type) {
+	case map[string]any:
+		for k, v := range value {
+			key := strings.TrimSpace(k)
+			mapped, ok := v.(string)
+			mapped = strings.TrimSpace(mapped)
+			if ok && key != "" && mapped != "" {
+				mapping[key] = mapped
+			}
+		}
+	case map[string]string:
+		for k, v := range value {
+			key := strings.TrimSpace(k)
+			mapped := strings.TrimSpace(v)
+			if key != "" && mapped != "" {
+				mapping[key] = mapped
+			}
+		}
+	}
+	if len(mapping) == 0 {
+		return nil
+	}
+	return mapping
+}
+
+func antigravityModelsFromMapping(mapping map[string]string) []antigravity.ClaudeModel {
+	if len(mapping) == 0 {
+		return nil
+	}
+
+	defaultModels := antigravity.DefaultModels()
+	defaultsByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
+	for _, model := range defaultModels {
+		defaultsByID[model.ID] = model
+	}
+
+	keys := make([]string, 0, len(mapping))
+	for requestedModel := range mapping {
+		requestedModel = strings.TrimSpace(requestedModel)
+		if requestedModel != "" {
+			keys = append(keys, requestedModel)
+		}
+	}
+	sort.Strings(keys)
+
+	models := make([]antigravity.ClaudeModel, 0, len(keys))
+	for _, requestedModel := range keys {
+		if model, ok := defaultsByID[requestedModel]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, antigravity.ClaudeModel{
+			ID:          requestedModel,
+			Type:        "model",
+			DisplayName: requestedModel,
+			CreatedAt:   "",
+		})
+	}
+	return models
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2168,9 +2240,17 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
-	// Handle Antigravity accounts: return Claude + Gemini models
+	// Handle Antigravity accounts: prefer the account-specific model_mapping.
+	// Antigravity upstream availability is account-specific; returning the static
+	// DefaultModels() here makes account test/scheduling UIs ignore models synced
+	// or configured on the account itself.
 	if account.Platform == service.PlatformAntigravity {
-		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
+		if mapping := explicitAccountModelMapping(account); len(mapping) > 0 {
+			response.Success(c, antigravityModelsFromMapping(mapping))
+			return
+		}
+
+		// Fallback only when the account has no explicit mapping configured.
 		response.Success(c, antigravity.DefaultModels())
 		return
 	}
