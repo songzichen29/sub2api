@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/couponusage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -46,6 +47,7 @@ type UserQuery struct {
 	withUsageLogs             *UsageLogQuery
 	withAttributeValues       *UserAttributeValueQuery
 	withPromoCodeUsages       *PromoCodeUsageQuery
+	withCouponUsages          *CouponUsageQuery
 	withPaymentOrders         *PaymentOrderQuery
 	withAuthIdentities        *AuthIdentityQuery
 	withPendingAuthSessions   *PendingAuthSessionQuery
@@ -279,6 +281,28 @@ func (_q *UserQuery) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(promocodeusage.Table, promocodeusage.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.PromoCodeUsagesTable, user.PromoCodeUsagesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCouponUsages chains the current query on the "coupon_usages" edge.
+func (_q *UserQuery) QueryCouponUsages() *CouponUsageQuery {
+	query := (&CouponUsageClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(couponusage.Table, couponusage.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CouponUsagesTable, user.CouponUsagesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -597,6 +621,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withUsageLogs:             _q.withUsageLogs.Clone(),
 		withAttributeValues:       _q.withAttributeValues.Clone(),
 		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
+		withCouponUsages:          _q.withCouponUsages.Clone(),
 		withPaymentOrders:         _q.withPaymentOrders.Clone(),
 		withAuthIdentities:        _q.withAuthIdentities.Clone(),
 		withPendingAuthSessions:   _q.withPendingAuthSessions.Clone(),
@@ -704,6 +729,17 @@ func (_q *UserQuery) WithPromoCodeUsages(opts ...func(*PromoCodeUsageQuery)) *Us
 		opt(query)
 	}
 	_q.withPromoCodeUsages = query
+	return _q
+}
+
+// WithCouponUsages tells the query-builder to eager-load the nodes that are connected to
+// the "coupon_usages" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithCouponUsages(opts ...func(*CouponUsageQuery)) *UserQuery {
+	query := (&CouponUsageClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCouponUsages = query
 	return _q
 }
 
@@ -840,7 +876,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [14]bool{
+		loadedTypes = [15]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -850,6 +886,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withUsageLogs != nil,
 			_q.withAttributeValues != nil,
 			_q.withPromoCodeUsages != nil,
+			_q.withCouponUsages != nil,
 			_q.withPaymentOrders != nil,
 			_q.withAuthIdentities != nil,
 			_q.withPendingAuthSessions != nil,
@@ -940,6 +977,13 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadPromoCodeUsages(ctx, query, nodes,
 			func(n *User) { n.Edges.PromoCodeUsages = []*PromoCodeUsage{} },
 			func(n *User, e *PromoCodeUsage) { n.Edges.PromoCodeUsages = append(n.Edges.PromoCodeUsages, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCouponUsages; query != nil {
+		if err := _q.loadCouponUsages(ctx, query, nodes,
+			func(n *User) { n.Edges.CouponUsages = []*CouponUsage{} },
+			func(n *User, e *CouponUsage) { n.Edges.CouponUsages = append(n.Edges.CouponUsages, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1275,6 +1319,36 @@ func (_q *UserQuery) loadPromoCodeUsages(ctx context.Context, query *PromoCodeUs
 	}
 	query.Where(predicate.PromoCodeUsage(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.PromoCodeUsagesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadCouponUsages(ctx context.Context, query *CouponUsageQuery, nodes []*User, init func(*User), assign func(*User, *CouponUsage)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(couponusage.FieldUserID)
+	}
+	query.Where(predicate.CouponUsage(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.CouponUsagesColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

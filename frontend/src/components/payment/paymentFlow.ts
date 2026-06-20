@@ -78,6 +78,7 @@ export interface BuildCreateOrderPayloadInput {
   planId?: number
   subscriptionId?: number
   renewalMode?: 'extend' | 'restart'
+  couponCode?: string
   origin?: string
   isMobile: boolean
   isWechatBrowser: boolean
@@ -136,6 +137,9 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
   }
   if (input.renewalMode) {
     payload.renewal_mode = input.renewalMode
+  }
+  if (input.couponCode?.trim()) {
+    payload.coupon_code = input.couponCode.trim()
   }
   if (normalizedOrigin) {
     payload.return_url = `${normalizedOrigin}/payment/result`

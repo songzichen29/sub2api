@@ -30,6 +30,8 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/plans", paymentHandler.GetPlans)
 		authenticated.GET("/channels", paymentHandler.GetChannels)
 		authenticated.GET("/limits", paymentHandler.GetLimits)
+		authenticated.GET("/discount-rules", paymentHandler.GetDiscountRules)
+		authenticated.POST("/preview-price", paymentHandler.PreviewPrice)
 
 		orders := authenticated.Group("/orders")
 		{
@@ -105,6 +107,17 @@ func RegisterPaymentRoutes(
 			providers.POST("", adminPaymentHandler.CreateProvider)
 			providers.PUT("/:id", adminPaymentHandler.UpdateProvider)
 			providers.DELETE("/:id", adminPaymentHandler.DeleteProvider)
+		}
+
+		// Payment coupons
+		coupons := adminGroup.Group("/coupons")
+		{
+			coupons.GET("", adminPaymentHandler.ListCoupons)
+			coupons.GET("/:id", adminPaymentHandler.GetCoupon)
+			coupons.POST("", adminPaymentHandler.CreateCoupon)
+			coupons.PUT("/:id", adminPaymentHandler.UpdateCoupon)
+			coupons.DELETE("/:id", adminPaymentHandler.DeleteCoupon)
+			coupons.GET("/:id/usages", adminPaymentHandler.ListCouponUsages)
 		}
 	}
 }

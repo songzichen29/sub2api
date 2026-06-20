@@ -95,6 +95,10 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
+func ProvideAdminPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, couponService *service.CouponService) *admin.PaymentHandler {
+	return admin.NewPaymentHandler(paymentService, configService, couponService)
+}
+
 // ProvideAdminUserHandler wraps admin.NewUserHandler's variadic optional dependencies
 // so Wire can inject the concrete quota repository and billing cache explicitly.
 func ProvideAdminUserHandler(
@@ -237,7 +241,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
-	admin.NewPaymentHandler,
+	ProvideAdminPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 

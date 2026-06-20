@@ -33,6 +33,7 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  discount_rules?: DiscountRule[]
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -80,6 +81,9 @@ export interface PaymentOrder {
   user_id: number
   amount: number
   pay_amount: number
+  discount_amount?: number
+  coupon_code?: string
+  coupon_discount_amount?: number
   currency?: string
   fee_rate: number
   payment_type: string
@@ -175,11 +179,48 @@ export interface CreateOrderRequest {
   plan_id?: number
   subscription_id?: number
   renewal_mode?: 'extend' | 'restart'
+  coupon_code?: string
   return_url?: string
   payment_source?: string
   openid?: string
   wechat_resume_token?: string
   is_mobile?: boolean
+}
+
+export interface DiscountRule {
+  threshold: number
+  type: 'rate' | 'reduce'
+  value: number
+  label?: string
+  enabled: boolean
+}
+
+export interface CouponInfo {
+  code: string
+  type: 'fixed' | 'percent'
+  value: number
+  discount_amount: number
+}
+
+export interface PricePreviewRequest {
+  amount: number
+  order_type: OrderType
+  plan_id?: number
+  subscription_id?: number
+  coupon_code?: string
+  payment_type?: string
+}
+
+export interface PricePreviewResponse {
+  base_amount: number
+  threshold_discount: number
+  coupon_discount: number
+  after_discount: number
+  fee: number
+  pay_amount: number
+  fee_rate: number
+  applied_threshold_rule?: DiscountRule
+  coupon_info?: CouponInfo
 }
 
 export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
@@ -213,6 +254,9 @@ export interface CreateOrderResult {
   country_code?: string
   payment_env?: string
   pay_amount: number
+  discount_amount?: number
+  coupon_code?: string
+  coupon_discount_amount?: number
   fee_rate: number
   expires_at: string
   result_type?: CreateOrderResultType

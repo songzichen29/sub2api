@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/couponusage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -546,6 +547,21 @@ func (_u *UserUpdate) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
+// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
+func (_u *UserUpdate) AddCouponUsageIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddCouponUsageIDs(ids...)
+	return _u
+}
+
+// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
+func (_u *UserUpdate) AddCouponUsages(v ...*CouponUsage) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCouponUsageIDs(ids...)
+}
+
 // AddPaymentOrderIDs adds the "payment_orders" edge to the PaymentOrder entity by IDs.
 func (_u *UserUpdate) AddPaymentOrderIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddPaymentOrderIDs(ids...)
@@ -798,6 +814,27 @@ func (_u *UserUpdate) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePromoCodeUsageIDs(ids...)
+}
+
+// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
+func (_u *UserUpdate) ClearCouponUsages() *UserUpdate {
+	_u.mutation.ClearCouponUsages()
+	return _u
+}
+
+// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
+func (_u *UserUpdate) RemoveCouponUsageIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveCouponUsageIDs(ids...)
+	return _u
+}
+
+// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
+func (_u *UserUpdate) RemoveCouponUsages(v ...*CouponUsage) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCouponUsageIDs(ids...)
 }
 
 // ClearPaymentOrders clears all "payment_orders" edges to the PaymentOrder entity.
@@ -1482,6 +1519,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2195,6 +2277,21 @@ func (_u *UserUpdateOne) AddPromoCodeUsages(v ...*PromoCodeUsage) *UserUpdateOne
 	return _u.AddPromoCodeUsageIDs(ids...)
 }
 
+// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
+func (_u *UserUpdateOne) AddCouponUsageIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddCouponUsageIDs(ids...)
+	return _u
+}
+
+// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
+func (_u *UserUpdateOne) AddCouponUsages(v ...*CouponUsage) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCouponUsageIDs(ids...)
+}
+
 // AddPaymentOrderIDs adds the "payment_orders" edge to the PaymentOrder entity by IDs.
 func (_u *UserUpdateOne) AddPaymentOrderIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddPaymentOrderIDs(ids...)
@@ -2447,6 +2544,27 @@ func (_u *UserUpdateOne) RemovePromoCodeUsages(v ...*PromoCodeUsage) *UserUpdate
 		ids[i] = v[i].ID
 	}
 	return _u.RemovePromoCodeUsageIDs(ids...)
+}
+
+// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
+func (_u *UserUpdateOne) ClearCouponUsages() *UserUpdateOne {
+	_u.mutation.ClearCouponUsages()
+	return _u
+}
+
+// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
+func (_u *UserUpdateOne) RemoveCouponUsageIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveCouponUsageIDs(ids...)
+	return _u
+}
+
+// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
+func (_u *UserUpdateOne) RemoveCouponUsages(v ...*CouponUsage) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCouponUsageIDs(ids...)
 }
 
 // ClearPaymentOrders clears all "payment_orders" edges to the PaymentOrder entity.
@@ -3161,6 +3279,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.CouponUsagesTable,
+			Columns: []string{user.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

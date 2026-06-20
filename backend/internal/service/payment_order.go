@@ -78,6 +78,31 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			return nil, err
 		}
 	}
+	discountResult := ThresholdDiscountResult{BaseAmount: roundMoney(limitAmount), AfterDiscount: roundMoney(limitAmount)}
+	if req.OrderType != payment.OrderTypeDailyLimitReset {
+		discountSvc := s.discountService
+		if discountSvc == nil {
+			discountSvc = NewDiscountService()
+		}
+		discountResult = discountSvc.ApplyThresholdDiscount(limitAmount, cfg.DiscountRules)
+		limitAmount = discountResult.AfterDiscount
+	} else if strings.TrimSpace(req.CouponCode) != "" {
+		return nil, ErrCouponNotApplicable
+	}
+	couponPreviewAmount := 0.0
+	if strings.TrimSpace(req.CouponCode) != "" && s.couponService != nil {
+		couponResult, err := s.couponService.Validate(ctx, CouponValidationRequest{
+			Code:      req.CouponCode,
+			UserID:    req.UserID,
+			Amount:    limitAmount,
+			OrderType: req.OrderType,
+		})
+		if err != nil {
+			return nil, err
+		}
+		couponPreviewAmount = couponResult.DiscountAmount
+		limitAmount = roundMoney(limitAmount - couponPreviewAmount)
+	}
 	payAmountStr, payAmount, err := calculateCreateOrderPayAmount(limitAmount, feeRate, methodCurrency)
 	if err != nil {
 		return nil, err
@@ -109,7 +134,7 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if oauthResp != nil {
 		return oauthResp, nil
 	}
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, discountResult.DiscountAmount, couponPreviewAmount, feeRate, payAmount, sel)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +234,7 @@ func canRestartSubscriptionPeriod(now time.Time, sub *UserSubscription, group *G
 	return false
 }
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, discountAmount, couponDiscountAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -253,6 +278,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetAmount(orderAmount).
 		SetPayAmount(payAmount).
 		SetFeeRate(feeRate).
+		SetDiscountAmount(discountAmount).
+		SetCouponCode(strings.TrimSpace(req.CouponCode)).
+		SetCouponDiscountAmount(couponDiscountAmount).
 		SetRechargeCode("").
 		SetOutTradeNo(outTradeNo).
 		SetPaymentType(req.PaymentType).
@@ -293,6 +321,19 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	order, err := b.Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
+	}
+	if strings.TrimSpace(req.CouponCode) != "" {
+		if s.couponService == nil {
+			return nil, fmt.Errorf("coupon service not configured")
+		}
+		if _, err := s.couponService.ApplyInTx(dbent.NewTxContext(ctx, tx), CouponValidationRequest{
+			Code:      req.CouponCode,
+			UserID:    req.UserID,
+			Amount:    roundMoney(limitAmount + couponDiscountAmount),
+			OrderType: req.OrderType,
+		}, order.ID); err != nil {
+			return nil, err
+		}
 	}
 	code := fmt.Sprintf("PAY-%d-%d", order.ID, time.Now().UnixNano()%100000)
 	order, err = tx.PaymentOrder.UpdateOneID(order.ID).SetRechargeCode(code).Save(ctx)
@@ -685,11 +726,14 @@ func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, r
 	}
 
 	return &CreateOrderResponse{
-		Amount:      amount,
-		PayAmount:   payAmount,
-		FeeRate:     feeRate,
-		ResultType:  payment.CreatePaymentResultOAuthRequired,
-		PaymentType: req.PaymentType,
+		Amount:               amount,
+		PayAmount:            payAmount,
+		FeeRate:              feeRate,
+		DiscountAmount:       0,
+		CouponCode:           strings.TrimSpace(req.CouponCode),
+		CouponDiscountAmount: 0,
+		ResultType:           payment.CreatePaymentResultOAuthRequired,
+		PaymentType:          req.PaymentType,
 		OAuth: &payment.WechatOAuthInfo{
 			AuthorizeURL: authorizeURL,
 			AppID:        appID,
@@ -797,26 +841,29 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
-		OrderID:      order.ID,
-		Amount:       order.Amount,
-		PayAmount:    payAmount,
-		FeeRate:      order.FeeRate,
-		Status:       OrderStatusPending,
-		ResultType:   resultType,
-		PaymentType:  req.PaymentType,
-		OutTradeNo:   order.OutTradeNo,
-		PayURL:       pr.PayURL,
-		QRCode:       pr.QRCode,
-		ClientSecret: pr.ClientSecret,
-		IntentID:     pr.IntentID,
-		Currency:     pr.Currency,
-		CountryCode:  pr.CountryCode,
-		PaymentEnv:   pr.PaymentEnv,
-		OAuth:        pr.OAuth,
-		JSAPI:        pr.JSAPI,
-		JSAPIPayload: pr.JSAPI,
-		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  sel.PaymentMode,
+		OrderID:              order.ID,
+		Amount:               order.Amount,
+		PayAmount:            payAmount,
+		FeeRate:              order.FeeRate,
+		DiscountAmount:       order.DiscountAmount,
+		CouponCode:           order.CouponCode,
+		CouponDiscountAmount: order.CouponDiscountAmount,
+		Status:               OrderStatusPending,
+		ResultType:           resultType,
+		PaymentType:          req.PaymentType,
+		OutTradeNo:           order.OutTradeNo,
+		PayURL:               pr.PayURL,
+		QRCode:               pr.QRCode,
+		ClientSecret:         pr.ClientSecret,
+		IntentID:             pr.IntentID,
+		Currency:             pr.Currency,
+		CountryCode:          pr.CountryCode,
+		PaymentEnv:           pr.PaymentEnv,
+		OAuth:                pr.OAuth,
+		JSAPI:                pr.JSAPI,
+		JSAPIPayload:         pr.JSAPI,
+		ExpiresAt:            order.ExpiresAt,
+		PaymentMode:          sel.PaymentMode,
 	}
 }
 

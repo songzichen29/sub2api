@@ -50,6 +50,18 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Float("fee_rate").
 			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}).
 			Default(0),
+		field.Float("discount_amount").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			Default(0).
+			Comment("满减折扣金额"),
+		field.String("coupon_code").
+			MaxLen(32).
+			Default("").
+			Comment("支付优惠券码"),
+		field.Float("coupon_discount_amount").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			Default(0).
+			Comment("优惠券抵扣金额"),
 		field.String("recharge_code").
 			MaxLen(64),
 
@@ -198,6 +210,7 @@ func (PaymentOrder) Edges() []ent.Edge {
 			Field("user_id").
 			Unique().
 			Required(),
+		edge.To("coupon_usages", CouponUsage.Type),
 	}
 }
 
@@ -214,5 +227,6 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("payment_type", "paid_at"),
 		index.Fields("order_type"),
 		index.Fields("subscription_id"),
+		index.Fields("coupon_code"),
 	}
 }

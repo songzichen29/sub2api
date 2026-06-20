@@ -28,6 +28,7 @@ const (
 	SettingLoadBalanceStrategy  = "LOAD_BALANCE_STRATEGY"
 	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingDiscountRules        = "PAYMENT_DISCOUNT_RULES"
 	SettingPaidUserRateEnabled  = "PAID_USER_RATE_ENABLED"
 	SettingPaidUserRateRules    = "PAID_USER_RATE_RULES"
 	SettingPaidUserRateBackfill = "PAID_USER_RATE_BACKFILL"
@@ -64,6 +65,32 @@ type PaymentPaidUserRateBackfillStatus struct {
 	UpdatedAt      string `json:"updated_at,omitempty"`
 }
 
+type DiscountRule struct {
+	Threshold float64 `json:"threshold"`
+	Type      string  `json:"type"`
+	Value     float64 `json:"value"`
+	Label     string  `json:"label,omitempty"`
+	Enabled   bool    `json:"enabled"`
+}
+
+func (r *DiscountRule) UnmarshalJSON(data []byte) error {
+	type alias DiscountRule
+	aux := struct {
+		Enabled *bool `json:"enabled"`
+		*alias
+	}{
+		alias: (*alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.Enabled = true
+	if aux.Enabled != nil {
+		r.Enabled = *aux.Enabled
+	}
+	return nil
+}
+
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
 	Enabled                   bool                              `json:"enabled"`
@@ -75,6 +102,7 @@ type PaymentConfig struct {
 	EnabledTypes              []string                          `json:"enabled_payment_types"`
 	BalanceDisabled           bool                              `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64                           `json:"balance_recharge_multiplier"`
+	DiscountRules             []DiscountRule                    `json:"discount_rules"`
 	PaidUserRateEnabled       bool                              `json:"paid_user_rate_enabled"`
 	PaidUserRateRules         []PaymentPaidUserRateRule         `json:"paid_user_rate_rules"`
 	PaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"paid_user_rate_backfill"`
@@ -105,6 +133,7 @@ type UpdatePaymentConfigRequest struct {
 	EnabledTypes              []string                  `json:"enabled_payment_types"`
 	BalanceDisabled           *bool                     `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64                  `json:"balance_recharge_multiplier"`
+	DiscountRules             []DiscountRule            `json:"discount_rules"`
 	PaidUserRateEnabled       *bool                     `json:"paid_user_rate_enabled"`
 	PaidUserRateRules         []PaymentPaidUserRateRule `json:"paid_user_rate_rules"`
 	RechargeFeeRate           *float64                  `json:"recharge_fee_rate"`
@@ -229,7 +258,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingDiscountRules, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingPaidUserRateEnabled, SettingPaidUserRateRules, SettingPaidUserRateBackfill,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
@@ -278,6 +307,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		DiscountRules:             parseDiscountRules(vals[SettingDiscountRules]),
 		PaidUserRateEnabled:       vals[SettingPaidUserRateEnabled] == "true",
 		PaidUserRateRules:         parsePaidUserRateRules(vals[SettingPaidUserRateRules]),
 		PaidUserRateBackfill:      parsePaidUserRateBackfillStatus(vals[SettingPaidUserRateBackfill]),
@@ -340,6 +370,10 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_BALANCE_RECHARGE_MULTIPLIER", "balance recharge multiplier must be greater than 0")
 		}
 	}
+	discountRules, err := normalizeDiscountRules(req.DiscountRules)
+	if err != nil {
+		return err
+	}
 	paidUserRateRules, err := normalizePaidUserRateRules(req.PaidUserRateRules)
 	if err != nil {
 		return err
@@ -366,6 +400,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingMaxPendingOrders:                  formatPositiveInt(req.MaxPendingOrders),
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
+		SettingDiscountRules:                     formatDiscountRules(discountRules),
 		SettingPaidUserRateEnabled:               formatBoolOrEmpty(req.PaidUserRateEnabled),
 		SettingPaidUserRateRules:                 formatPaidUserRateRules(paidUserRateRules),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),

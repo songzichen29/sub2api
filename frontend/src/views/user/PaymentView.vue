@@ -48,6 +48,7 @@
                 :max="globalMaxAmount"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+              <p v-if="discountRuleHint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
             </div>
             <div v-if="enabledMethods.length >= 1" class="card p-6">
               <PaymentMethodSelector
@@ -57,19 +58,29 @@
               />
             </div>
             <div v-if="validAmount > 0" class="card p-6">
-              <div class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ validAmount.toFixed(2) }}</span>
-                </div>
-                <div v-if="feeRate > 0" class="flex justify-between">
-                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ feeAmount.toFixed(2) }}</span>
-                </div>
-                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ totalAmount.toFixed(2) }}</span>
-                </div>
+              <CouponInput
+                v-model="couponCode"
+                :loading="pricePreviewLoading"
+                :error="!!couponMessage && couponMessageIsError"
+                :message="couponMessage"
+                @apply="refreshPricePreview"
+              />
+            </div>
+            <div v-if="validAmount > 0" class="card p-6">
+              <PriceBreakdown
+                :base-amount="priceBreakdown.baseAmount"
+                :threshold-discount="priceBreakdown.thresholdDiscount"
+                :coupon-discount="priceBreakdown.couponDiscount"
+                :fee="priceBreakdown.fee"
+                :pay-amount="priceBreakdown.payAmount"
+                :fee-rate="priceBreakdown.feeRate"
+                :base-label="t('payment.paymentAmount')"
+                :threshold-label="t('payment.thresholdDiscount')"
+                :coupon-label="t('payment.couponDiscount')"
+                :fee-label="t('payment.fee')"
+                :pay-label="t('payment.actualPay')"
+              />
+              <div class="mt-2 space-y-2 text-sm">
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
@@ -177,6 +188,7 @@
                   <p class="font-medium">{{ renewalNoticeTitle }}</p>
                   <p class="mt-1 leading-relaxed">{{ renewalNotice }}</p>
                 </div>
+                <p v-if="discountRuleHint" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
                   <div>
@@ -218,28 +230,36 @@
                   @select="selectedMethod = $event"
                 />
               </div>
-              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ selectedPlan.price.toFixed(2) }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ subFeeAmount.toFixed(2) }}</span>
-                  </div>
-                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ subTotalAmount.toFixed(2) }}</span>
-                  </div>
-                </div>
+              <div v-if="selectedPlan.price > 0" class="card p-6">
+                <CouponInput
+                  v-model="couponCode"
+                  :loading="pricePreviewLoading"
+                  :error="!!couponMessage && couponMessageIsError"
+                  :message="couponMessage"
+                  @apply="refreshPricePreview"
+                />
+              </div>
+              <div v-if="selectedPlan.price > 0" class="card p-6">
+                <PriceBreakdown
+                  :base-amount="priceBreakdown.baseAmount"
+                  :threshold-discount="priceBreakdown.thresholdDiscount"
+                  :coupon-discount="priceBreakdown.couponDiscount"
+                  :fee="priceBreakdown.fee"
+                  :pay-amount="priceBreakdown.payAmount"
+                  :fee-rate="priceBreakdown.feeRate"
+                  :base-label="t('payment.amountLabel')"
+                  :threshold-label="t('payment.thresholdDiscount')"
+                  :coupon-label="t('payment.couponDiscount')"
+                  :fee-label="t('payment.fee')"
+                  :pay-label="t('payment.actualPay')"
+                />
               </div>
               <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
                 <span v-if="submitting" class="flex items-center justify-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} ¥{{ priceBreakdown.payAmount.toFixed(2) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -365,11 +385,13 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PricePreviewResponse, DiscountRule } from '@/types/payment'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
+import CouponInput from '@/components/payment/CouponInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
+import PriceBreakdown from '@/components/payment/PriceBreakdown.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -418,6 +440,12 @@ const activeTab = ref<PaymentTab>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const couponCode = ref('')
+const pricePreview = ref<PricePreviewResponse | null>(null)
+const pricePreviewLoading = ref(false)
+const couponMessage = ref('')
+const couponMessageIsError = ref(false)
+const discountRules = ref<DiscountRule[]>([])
 const selectedDailyResetSubscriptionId = ref<number | null>(null)
 const renewalModeTarget = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
@@ -682,6 +710,43 @@ const totalAmount = computed(() =>
     : validAmount.value
 )
 
+const priceBreakdown = computed(() => {
+  if (pricePreview.value) {
+    return {
+      baseAmount: pricePreview.value.base_amount,
+      thresholdDiscount: pricePreview.value.threshold_discount,
+      couponDiscount: pricePreview.value.coupon_discount,
+      fee: pricePreview.value.fee,
+      payAmount: pricePreview.value.pay_amount,
+      feeRate: pricePreview.value.fee_rate,
+    }
+  }
+  const base = activeTab.value === 'subscription'
+    ? selectedPlan.value?.price ?? 0
+    : validAmount.value
+  const fee = activeTab.value === 'subscription' ? subFeeAmount.value : feeAmount.value
+  const pay = activeTab.value === 'subscription' ? subTotalAmount.value : totalAmount.value
+  return {
+    baseAmount: base,
+    thresholdDiscount: 0,
+    couponDiscount: 0,
+    fee,
+    payAmount: pay,
+    feeRate: feeRate.value,
+  }
+})
+
+const discountRuleHint = computed(() => {
+  const enabled = discountRules.value.filter(rule => rule.enabled)
+  if (enabled.length === 0) return ''
+  return enabled
+    .slice(0, 3)
+    .map((rule) => rule.label || (rule.type === 'rate'
+      ? t('payment.thresholdRateHint', { threshold: rule.threshold, rate: Math.round(rule.value * 100) })
+      : t('payment.thresholdReduceHint', { threshold: rule.threshold, amount: rule.value })))
+    .join(' · ')
+})
+
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
@@ -913,6 +978,28 @@ watch(() => [dailyResetPrice.value, selectedMethod.value] as const, ([price, met
   if (available) selectedMethod.value = available
 })
 
+let previewTimer: number | undefined
+watch(
+  () => [activeTab.value, validAmount.value, selectedPlan.value?.id ?? 0, selectedMethod.value, couponCode.value] as const,
+  () => {
+    window.clearTimeout(previewTimer)
+    if (activeTab.value === 'daily_limit_reset') {
+      pricePreview.value = null
+      couponMessage.value = ''
+      return
+    }
+    const baseAmount = activeTab.value === 'subscription' ? selectedPlan.value?.price ?? 0 : validAmount.value
+    if (baseAmount <= 0) {
+      pricePreview.value = null
+      couponMessage.value = ''
+      return
+    }
+    previewTimer = window.setTimeout(() => {
+      refreshPricePreview()
+    }, 250)
+  }
+)
+
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
   const m = selectedMethod.value
@@ -951,6 +1038,9 @@ const planValiditySuffix = computed(() => {
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
+  couponCode.value = ''
+  pricePreview.value = null
+  couponMessage.value = ''
   errorMessage.value = ''
 }
 
@@ -958,7 +1048,44 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
+  couponCode.value = ''
+  pricePreview.value = null
+  couponMessage.value = ''
   errorMessage.value = ''
+}
+
+async function refreshPricePreview() {
+  const orderType: OrderType = activeTab.value === 'subscription' ? 'subscription' : 'balance'
+  const baseAmount = orderType === 'subscription' ? selectedPlan.value?.price ?? 0 : validAmount.value
+  if (baseAmount <= 0) {
+    pricePreview.value = null
+    return
+  }
+  pricePreviewLoading.value = true
+  couponMessage.value = ''
+  couponMessageIsError.value = false
+  try {
+    const response = await paymentAPI.previewPrice({
+      amount: baseAmount,
+      order_type: orderType,
+      plan_id: orderType === 'subscription' ? selectedPlan.value?.id : undefined,
+      coupon_code: couponCode.value.trim() || undefined,
+      payment_type: selectedMethod.value || undefined,
+    })
+    pricePreview.value = response.data
+    if (couponCode.value.trim()) {
+      couponMessage.value = response.data.coupon_discount > 0
+        ? t('payment.couponApplied')
+        : t('payment.couponNoDiscount')
+      couponMessageIsError.value = false
+    }
+  } catch (error) {
+    pricePreview.value = null
+    couponMessage.value = extractI18nErrorMessage(error, t, 'payment.errors', t('payment.couponInvalid')) || extractApiErrorMessage(error) || t('payment.couponInvalid')
+    couponMessageIsError.value = true
+  } finally {
+    pricePreviewLoading.value = false
+  }
 }
 
 function closeRenewalModal() {
@@ -1023,6 +1150,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       planId,
       subscriptionId: options.subscriptionId,
       renewalMode: options.renewalMode,
+      couponCode: orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: requestIsMobile,
       isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
@@ -1261,6 +1389,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       planId: context.planId,
       subscriptionId: context.subscriptionId,
       renewalMode: context.renewalMode,
+      couponCode: context.orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1362,6 +1491,9 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
+    paymentAPI.getDiscountRules()
+      .then((rules) => { discountRules.value = rules.data || [] })
+      .catch(() => { discountRules.value = [] })
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {

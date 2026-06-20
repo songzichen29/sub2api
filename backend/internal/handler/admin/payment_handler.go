@@ -3,11 +3,13 @@ package admin
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/subscriptionplan"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -19,13 +21,19 @@ import (
 type PaymentHandler struct {
 	paymentService *service.PaymentService
 	configService  *service.PaymentConfigService
+	couponService  *service.CouponService
 }
 
 // NewPaymentHandler creates a new admin PaymentHandler.
-func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService) *PaymentHandler {
+func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, couponService ...*service.CouponService) *PaymentHandler {
+	var cs *service.CouponService
+	if len(couponService) > 0 {
+		cs = couponService[0]
+	}
 	return &PaymentHandler{
 		paymentService: paymentService,
 		configService:  configService,
+		couponService:  cs,
 	}
 }
 
@@ -493,4 +501,248 @@ func (h *PaymentHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 	response.Success(c, cfg)
+}
+
+type CreateCouponRequest struct {
+	Code         string  `json:"code"`
+	Type         string  `json:"type" binding:"required"`
+	Value        float64 `json:"value" binding:"required"`
+	MinAmount    float64 `json:"min_amount"`
+	MaxDiscount  float64 `json:"max_discount"`
+	Scope        string  `json:"scope"`
+	MaxUses      int     `json:"max_uses"`
+	PerUserLimit int     `json:"per_user_limit"`
+	StartsAt     *int64  `json:"starts_at"`
+	ExpiresAt    *int64  `json:"expires_at"`
+	Notes        string  `json:"notes"`
+}
+
+type UpdateCouponRequest struct {
+	Code         *string  `json:"code"`
+	Type         *string  `json:"type"`
+	Value        *float64 `json:"value"`
+	MinAmount    *float64 `json:"min_amount"`
+	MaxDiscount  *float64 `json:"max_discount"`
+	Scope        *string  `json:"scope"`
+	MaxUses      *int     `json:"max_uses"`
+	PerUserLimit *int     `json:"per_user_limit"`
+	Status       *string  `json:"status"`
+	StartsAt     *int64   `json:"starts_at"`
+	ExpiresAt    *int64   `json:"expires_at"`
+	Notes        *string  `json:"notes"`
+}
+
+type couponResponse struct {
+	ID           int64      `json:"id"`
+	Code         string     `json:"code"`
+	Type         string     `json:"type"`
+	Value        float64    `json:"value"`
+	MinAmount    float64    `json:"min_amount"`
+	MaxDiscount  float64    `json:"max_discount"`
+	Scope        string     `json:"scope"`
+	MaxUses      int        `json:"max_uses"`
+	UsedCount    int        `json:"used_count"`
+	PerUserLimit int        `json:"per_user_limit"`
+	Status       string     `json:"status"`
+	StartsAt     *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt    *time.Time `json:"expires_at,omitempty"`
+	Notes        string     `json:"notes"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type couponUsageResponse struct {
+	ID             int64     `json:"id"`
+	CouponID       int64     `json:"coupon_id"`
+	UserID         int64     `json:"user_id"`
+	OrderID        int64     `json:"order_id"`
+	DiscountAmount float64   `json:"discount_amount"`
+	UsedAt         time.Time `json:"used_at"`
+	Status         string    `json:"status"`
+}
+
+func couponToResponse(c *service.Coupon) couponResponse {
+	if c == nil {
+		return couponResponse{}
+	}
+	return couponResponse{
+		ID: c.ID, Code: c.Code, Type: c.Type, Value: c.Value,
+		MinAmount: c.MinAmount, MaxDiscount: c.MaxDiscount, Scope: c.Scope,
+		MaxUses: c.MaxUses, UsedCount: c.UsedCount, PerUserLimit: c.PerUserLimit,
+		Status: c.Status, StartsAt: c.StartsAt, ExpiresAt: c.ExpiresAt, Notes: c.Notes,
+		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt,
+	}
+}
+
+func couponUsageToResponse(u service.CouponUsage) couponUsageResponse {
+	return couponUsageResponse{
+		ID: u.ID, CouponID: u.CouponID, UserID: u.UserID, OrderID: u.OrderID,
+		DiscountAmount: u.DiscountAmount, UsedAt: u.UsedAt, Status: u.Status,
+	}
+}
+
+func (h *PaymentHandler) requireCouponService(c *gin.Context) (*service.CouponService, bool) {
+	if h.couponService == nil {
+		response.InternalError(c, "coupon service is not configured")
+		return nil, false
+	}
+	return h.couponService, true
+}
+
+// ListCoupons lists payment coupons.
+func (h *PaymentHandler) ListCoupons(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	status := strings.TrimSpace(c.Query("status"))
+	search := strings.TrimSpace(c.Query("search"))
+	if len(search) > 100 {
+		search = search[:100]
+	}
+	items, pageResult, err := svc.List(c.Request.Context(), pagination.PaginationParams{Page: page, PageSize: pageSize}, status, search)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]couponResponse, 0, len(items))
+	for i := range items {
+		out = append(out, couponToResponse(&items[i]))
+	}
+	response.Paginated(c, out, pageResult.Total, page, pageSize)
+}
+
+func (h *PaymentHandler) GetCoupon(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid coupon ID")
+		return
+	}
+	item, err := svc.GetByID(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, couponToResponse(item))
+}
+
+func (h *PaymentHandler) CreateCoupon(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	var req CreateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	input := service.CreateCouponInput{
+		Code: req.Code, Type: req.Type, Value: req.Value,
+		MinAmount: req.MinAmount, MaxDiscount: req.MaxDiscount, Scope: req.Scope,
+		MaxUses: req.MaxUses, PerUserLimit: req.PerUserLimit, Notes: req.Notes,
+	}
+	if req.StartsAt != nil && *req.StartsAt > 0 {
+		t := time.Unix(*req.StartsAt, 0)
+		input.StartsAt = &t
+	}
+	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
+		t := time.Unix(*req.ExpiresAt, 0)
+		input.ExpiresAt = &t
+	}
+	item, err := svc.Create(c.Request.Context(), input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, couponToResponse(item))
+}
+
+func (h *PaymentHandler) UpdateCoupon(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid coupon ID")
+		return
+	}
+	var req UpdateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	input := service.UpdateCouponInput{
+		Code: req.Code, Type: req.Type, Value: req.Value,
+		MinAmount: req.MinAmount, MaxDiscount: req.MaxDiscount, Scope: req.Scope,
+		MaxUses: req.MaxUses, PerUserLimit: req.PerUserLimit, Status: req.Status,
+		Notes: req.Notes,
+	}
+	if req.StartsAt != nil {
+		if *req.StartsAt > 0 {
+			t := time.Unix(*req.StartsAt, 0)
+			input.StartsAt = &t
+		} else {
+			input.StartsAt = nil
+		}
+	}
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt > 0 {
+			t := time.Unix(*req.ExpiresAt, 0)
+			input.ExpiresAt = &t
+		} else {
+			input.ExpiresAt = nil
+		}
+	}
+	item, err := svc.Update(c.Request.Context(), id, input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, couponToResponse(item))
+}
+
+func (h *PaymentHandler) DeleteCoupon(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid coupon ID")
+		return
+	}
+	if err := svc.Delete(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"message": "Coupon archived successfully"})
+}
+
+func (h *PaymentHandler) ListCouponUsages(c *gin.Context) {
+	svc, ok := h.requireCouponService(c)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid coupon ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, pageResult, err := svc.ListUsages(c.Request.Context(), id, pagination.PaginationParams{Page: page, PageSize: pageSize})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]couponUsageResponse, 0, len(items))
+	for _, item := range items {
+		out = append(out, couponUsageToResponse(item))
+	}
+	response.Paginated(c, out, pageResult.Total, page, pageSize)
 }

@@ -28,6 +28,12 @@ const (
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
+	// FieldDiscountAmount holds the string denoting the discount_amount field in the database.
+	FieldDiscountAmount = "discount_amount"
+	// FieldCouponCode holds the string denoting the coupon_code field in the database.
+	FieldCouponCode = "coupon_code"
+	// FieldCouponDiscountAmount holds the string denoting the coupon_discount_amount field in the database.
+	FieldCouponDiscountAmount = "coupon_discount_amount"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -102,6 +108,8 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
+	// EdgeCouponUsages holds the string denoting the coupon_usages edge name in mutations.
+	EdgeCouponUsages = "coupon_usages"
 	// Table holds the table name of the paymentorder in the database.
 	Table = "payment_orders"
 	// UserTable is the table that holds the user relation/edge.
@@ -111,6 +119,13 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
+	// CouponUsagesTable is the table that holds the coupon_usages relation/edge.
+	CouponUsagesTable = "coupon_usages"
+	// CouponUsagesInverseTable is the table name for the CouponUsage entity.
+	// It exists in this package in order to avoid circular dependency with the "couponusage" package.
+	CouponUsagesInverseTable = "coupon_usages"
+	// CouponUsagesColumn is the table column denoting the coupon_usages relation/edge.
+	CouponUsagesColumn = "order_id"
 )
 
 // Columns holds all SQL columns for paymentorder fields.
@@ -123,6 +138,9 @@ var Columns = []string{
 	FieldAmount,
 	FieldPayAmount,
 	FieldFeeRate,
+	FieldDiscountAmount,
+	FieldCouponCode,
+	FieldCouponDiscountAmount,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,
@@ -178,6 +196,14 @@ var (
 	UserNameValidator func(string) error
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
+	// DefaultDiscountAmount holds the default value on creation for the "discount_amount" field.
+	DefaultDiscountAmount float64
+	// DefaultCouponCode holds the default value on creation for the "coupon_code" field.
+	DefaultCouponCode string
+	// CouponCodeValidator is a validator for the "coupon_code" field. It is called by the builders before save.
+	CouponCodeValidator func(string) error
+	// DefaultCouponDiscountAmount holds the default value on creation for the "coupon_discount_amount" field.
+	DefaultCouponDiscountAmount float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
 	RechargeCodeValidator func(string) error
 	// DefaultOutTradeNo holds the default value on creation for the "out_trade_no" field.
@@ -261,6 +287,21 @@ func ByPayAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByFeeRate orders the results by the fee_rate field.
 func ByFeeRate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFeeRate, opts...).ToFunc()
+}
+
+// ByDiscountAmount orders the results by the discount_amount field.
+func ByDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDiscountAmount, opts...).ToFunc()
+}
+
+// ByCouponCode orders the results by the coupon_code field.
+func ByCouponCode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCouponCode, opts...).ToFunc()
+}
+
+// ByCouponDiscountAmount orders the results by the coupon_discount_amount field.
+func ByCouponDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCouponDiscountAmount, opts...).ToFunc()
 }
 
 // ByRechargeCode orders the results by the recharge_code field.
@@ -444,10 +485,31 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByCouponUsagesCount orders the results by coupon_usages count.
+func ByCouponUsagesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCouponUsagesStep(), opts...)
+	}
+}
+
+// ByCouponUsages orders the results by coupon_usages terms.
+func ByCouponUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCouponUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
+	)
+}
+func newCouponUsagesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CouponUsagesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CouponUsagesTable, CouponUsagesColumn),
 	)
 }

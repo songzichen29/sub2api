@@ -599,6 +599,111 @@ var (
 			},
 		},
 	}
+	// CouponsColumns holds the columns for the "coupons" table.
+	CouponsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "code", Type: field.TypeString, Unique: true, Size: 32},
+		{Name: "type", Type: field.TypeString, Size: 20},
+		{Name: "value", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,8)"}},
+		{Name: "min_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "max_discount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "scope", Type: field.TypeString, Size: 20, Default: "all"},
+		{Name: "max_uses", Type: field.TypeInt, Default: 0},
+		{Name: "used_count", Type: field.TypeInt, Default: 0},
+		{Name: "per_user_limit", Type: field.TypeInt, Default: 1},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "starts_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+	}
+	// CouponsTable holds the schema information for the "coupons" table.
+	CouponsTable = &schema.Table{
+		Name:       "coupons",
+		Columns:    CouponsColumns,
+		PrimaryKey: []*schema.Column{CouponsColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "coupon_status",
+				Unique:  false,
+				Columns: []*schema.Column{CouponsColumns[10]},
+			},
+			{
+				Name:    "coupon_scope",
+				Unique:  false,
+				Columns: []*schema.Column{CouponsColumns[6]},
+			},
+			{
+				Name:    "coupon_expires_at",
+				Unique:  false,
+				Columns: []*schema.Column{CouponsColumns[12]},
+			},
+		},
+	}
+	// CouponUsagesColumns holds the columns for the "coupon_usages" table.
+	CouponUsagesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "discount_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "used_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "used"},
+		{Name: "coupon_id", Type: field.TypeInt64},
+		{Name: "order_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// CouponUsagesTable holds the schema information for the "coupon_usages" table.
+	CouponUsagesTable = &schema.Table{
+		Name:       "coupon_usages",
+		Columns:    CouponUsagesColumns,
+		PrimaryKey: []*schema.Column{CouponUsagesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "coupon_usages_coupons_usage_records",
+				Columns:    []*schema.Column{CouponUsagesColumns[4]},
+				RefColumns: []*schema.Column{CouponsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "coupon_usages_payment_orders_coupon_usages",
+				Columns:    []*schema.Column{CouponUsagesColumns[5]},
+				RefColumns: []*schema.Column{PaymentOrdersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "coupon_usages_users_coupon_usages",
+				Columns:    []*schema.Column{CouponUsagesColumns[6]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "couponusage_coupon_id",
+				Unique:  false,
+				Columns: []*schema.Column{CouponUsagesColumns[4]},
+			},
+			{
+				Name:    "couponusage_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{CouponUsagesColumns[6]},
+			},
+			{
+				Name:    "couponusage_order_id",
+				Unique:  true,
+				Columns: []*schema.Column{CouponUsagesColumns[5]},
+			},
+			{
+				Name:    "couponusage_coupon_id_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{CouponUsagesColumns[4], CouponUsagesColumns[6]},
+			},
+			{
+				Name:    "couponusage_status",
+				Unique:  false,
+				Columns: []*schema.Column{CouponUsagesColumns[3]},
+			},
+		},
+	}
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -827,6 +932,9 @@ var (
 		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
 		{Name: "pay_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
 		{Name: "fee_rate", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(10,4)"}},
+		{Name: "discount_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "coupon_code", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "coupon_discount_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
 		{Name: "recharge_code", Type: field.TypeString, Size: 64},
 		{Name: "out_trade_no", Type: field.TypeString, Size: 64, Default: ""},
 		{Name: "payment_type", Type: field.TypeString, Size: 30},
@@ -873,7 +981,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "payment_orders_users_payment_orders",
-				Columns:    []*schema.Column{PaymentOrdersColumns[43]},
+				Columns:    []*schema.Column{PaymentOrdersColumns[46]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -882,7 +990,7 @@ var (
 			{
 				Name:    "paymentorder_out_trade_no",
 				Unique:  true,
-				Columns: []*schema.Column{PaymentOrdersColumns[8]},
+				Columns: []*schema.Column{PaymentOrdersColumns[11]},
 				Annotation: &entsql.IndexAnnotation{
 					Where: "out_trade_no <> ''",
 				},
@@ -890,42 +998,47 @@ var (
 			{
 				Name:    "paymentorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[43]},
+				Columns: []*schema.Column{PaymentOrdersColumns[46]},
 			},
 			{
 				Name:    "paymentorder_status",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[25]},
+				Columns: []*schema.Column{PaymentOrdersColumns[28]},
 			},
 			{
 				Name:    "paymentorder_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[33]},
+				Columns: []*schema.Column{PaymentOrdersColumns[36]},
 			},
 			{
 				Name:    "paymentorder_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[41]},
+				Columns: []*schema.Column{PaymentOrdersColumns[44]},
 			},
 			{
 				Name:    "paymentorder_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[34]},
+				Columns: []*schema.Column{PaymentOrdersColumns[37]},
 			},
 			{
 				Name:    "paymentorder_payment_type_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[9], PaymentOrdersColumns[34]},
+				Columns: []*schema.Column{PaymentOrdersColumns[12], PaymentOrdersColumns[37]},
 			},
 			{
 				Name:    "paymentorder_order_type",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[14]},
+				Columns: []*schema.Column{PaymentOrdersColumns[17]},
 			},
 			{
 				Name:    "paymentorder_subscription_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[17]},
+				Columns: []*schema.Column{PaymentOrdersColumns[20]},
+			},
+			{
+				Name:    "paymentorder_coupon_code",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[8]},
 			},
 		},
 	}
@@ -1801,6 +1914,8 @@ var (
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
+		CouponsTable,
+		CouponUsagesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1873,6 +1988,15 @@ func init() {
 	}
 	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_request_templates",
+	}
+	CouponsTable.Annotation = &entsql.Annotation{
+		Table: "coupons",
+	}
+	CouponUsagesTable.ForeignKeys[0].RefTable = CouponsTable
+	CouponUsagesTable.ForeignKeys[1].RefTable = PaymentOrdersTable
+	CouponUsagesTable.ForeignKeys[2].RefTable = UsersTable
+	CouponUsagesTable.Annotation = &entsql.Annotation{
+		Table: "coupon_usages",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

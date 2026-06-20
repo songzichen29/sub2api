@@ -87,30 +87,63 @@ type CreateOrderRequest struct {
 	PlanID          int64
 	SubscriptionID  int64
 	RenewalMode     string
+	CouponCode      string
 }
 
 type CreateOrderResponse struct {
-	OrderID      int64                           `json:"order_id"`
-	Amount       float64                         `json:"amount"`
-	PayAmount    float64                         `json:"pay_amount"`
-	FeeRate      float64                         `json:"fee_rate"`
-	Status       string                          `json:"status"`
-	ResultType   payment.CreatePaymentResultType `json:"result_type,omitempty"`
-	PaymentType  string                          `json:"payment_type"`
-	OutTradeNo   string                          `json:"out_trade_no,omitempty"`
-	PayURL       string                          `json:"pay_url,omitempty"`
-	QRCode       string                          `json:"qr_code,omitempty"`
-	ClientSecret string                          `json:"client_secret,omitempty"`
-	IntentID     string                          `json:"intent_id,omitempty"`
-	Currency     string                          `json:"currency,omitempty"`
-	CountryCode  string                          `json:"country_code,omitempty"`
-	PaymentEnv   string                          `json:"payment_env,omitempty"`
-	OAuth        *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
-	JSAPI        *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
-	JSAPIPayload *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`
-	ExpiresAt    time.Time                       `json:"expires_at"`
-	PaymentMode  string                          `json:"payment_mode,omitempty"`
-	ResumeToken  string                          `json:"resume_token,omitempty"`
+	OrderID              int64                           `json:"order_id"`
+	Amount               float64                         `json:"amount"`
+	PayAmount            float64                         `json:"pay_amount"`
+	FeeRate              float64                         `json:"fee_rate"`
+	DiscountAmount       float64                         `json:"discount_amount"`
+	CouponCode           string                          `json:"coupon_code,omitempty"`
+	CouponDiscountAmount float64                         `json:"coupon_discount_amount"`
+	Status               string                          `json:"status"`
+	ResultType           payment.CreatePaymentResultType `json:"result_type,omitempty"`
+	PaymentType          string                          `json:"payment_type"`
+	OutTradeNo           string                          `json:"out_trade_no,omitempty"`
+	PayURL               string                          `json:"pay_url,omitempty"`
+	QRCode               string                          `json:"qr_code,omitempty"`
+	ClientSecret         string                          `json:"client_secret,omitempty"`
+	IntentID             string                          `json:"intent_id,omitempty"`
+	Currency             string                          `json:"currency,omitempty"`
+	CountryCode          string                          `json:"country_code,omitempty"`
+	PaymentEnv           string                          `json:"payment_env,omitempty"`
+	OAuth                *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
+	JSAPI                *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
+	JSAPIPayload         *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`
+	ExpiresAt            time.Time                       `json:"expires_at"`
+	PaymentMode          string                          `json:"payment_mode,omitempty"`
+	ResumeToken          string                          `json:"resume_token,omitempty"`
+}
+
+type PreviewPriceRequest struct {
+	UserID         int64   `json:"-"`
+	Amount         float64 `json:"amount"`
+	OrderType      string  `json:"order_type"`
+	PlanID         int64   `json:"plan_id"`
+	SubscriptionID int64   `json:"subscription_id"`
+	CouponCode     string  `json:"coupon_code"`
+	PaymentType    string  `json:"payment_type"`
+}
+
+type CouponInfo struct {
+	Code           string  `json:"code"`
+	Type           string  `json:"type"`
+	Value          float64 `json:"value"`
+	DiscountAmount float64 `json:"discount_amount"`
+}
+
+type PreviewPriceResponse struct {
+	BaseAmount           float64       `json:"base_amount"`
+	ThresholdDiscount    float64       `json:"threshold_discount"`
+	CouponDiscount       float64       `json:"coupon_discount"`
+	AfterDiscount        float64       `json:"after_discount"`
+	Fee                  float64       `json:"fee"`
+	PayAmount            float64       `json:"pay_amount"`
+	FeeRate              float64       `json:"fee_rate"`
+	AppliedThresholdRule *DiscountRule `json:"applied_threshold_rule,omitempty"`
+	CouponInfo           *CouponInfo   `json:"coupon_info,omitempty"`
 }
 
 type OrderListParams struct {
@@ -197,6 +230,8 @@ type PaymentService struct {
 	userGroupRateRepo UserGroupRateRepository
 	resumeService     *PaymentResumeService
 	affiliateService  *AffiliateService
+	discountService   *DiscountService
+	couponService     *CouponService
 }
 
 func (s *PaymentService) GetEntClient() *dbent.Client {
@@ -206,7 +241,16 @@ func (s *PaymentService) GetEntClient() *dbent.Client {
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, userGroupRateRepo UserGroupRateRepository, affiliateService *AffiliateService) *PaymentService {
 	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, userGroupRateRepo: userGroupRateRepo, affiliateService: affiliateService}
 	svc.resumeService = psNewPaymentResumeService(configService)
+	svc.discountService = NewDiscountService()
 	return svc
+}
+
+func (s *PaymentService) SetCouponService(couponService *CouponService) {
+	s.couponService = couponService
+}
+
+func (s *PaymentService) SetDiscountService(discountService *DiscountService) {
+	s.discountService = discountService
 }
 
 // --- Provider Registry ---

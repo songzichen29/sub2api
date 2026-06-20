@@ -627,6 +627,18 @@ const routes: RouteRecordRaw[] = [
       requiresPayment: true
     }
   },
+  {
+    path: '/admin/orders/coupons',
+    name: 'AdminPaymentCoupons',
+    component: () => import('@/views/admin/orders/AdminPaymentCouponsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Payment Coupons',
+      titleKey: 'nav.paymentCoupons',
+      requiresPayment: true
+    }
+  },
 
   // ==================== 404 Not Found ====================
   {

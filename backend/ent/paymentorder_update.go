@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	"github.com/Wei-Shaw/sub2api/ent/couponusage"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -151,6 +152,62 @@ func (_u *PaymentOrderUpdate) SetNillableFeeRate(v *float64) *PaymentOrderUpdate
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
 	_u.mutation.AddFeeRate(v)
+	return _u
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (_u *PaymentOrderUpdate) SetDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetDiscountAmount()
+	_u.mutation.SetDiscountAmount(v)
+	return _u
+}
+
+// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddDiscountAmount adds value to the "discount_amount" field.
+func (_u *PaymentOrderUpdate) AddDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddDiscountAmount(v)
+	return _u
+}
+
+// SetCouponCode sets the "coupon_code" field.
+func (_u *PaymentOrderUpdate) SetCouponCode(v string) *PaymentOrderUpdate {
+	_u.mutation.SetCouponCode(v)
+	return _u
+}
+
+// SetNillableCouponCode sets the "coupon_code" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableCouponCode(v *string) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetCouponCode(*v)
+	}
+	return _u
+}
+
+// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
+func (_u *PaymentOrderUpdate) SetCouponDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.ResetCouponDiscountAmount()
+	_u.mutation.SetCouponDiscountAmount(v)
+	return _u
+}
+
+// SetNillableCouponDiscountAmount sets the "coupon_discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdate) SetNillableCouponDiscountAmount(v *float64) *PaymentOrderUpdate {
+	if v != nil {
+		_u.SetCouponDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddCouponDiscountAmount adds value to the "coupon_discount_amount" field.
+func (_u *PaymentOrderUpdate) AddCouponDiscountAmount(v float64) *PaymentOrderUpdate {
+	_u.mutation.AddCouponDiscountAmount(v)
 	return _u
 }
 
@@ -813,6 +870,21 @@ func (_u *PaymentOrderUpdate) SetUser(v *User) *PaymentOrderUpdate {
 	return _u.SetUserID(v.ID)
 }
 
+// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
+func (_u *PaymentOrderUpdate) AddCouponUsageIDs(ids ...int64) *PaymentOrderUpdate {
+	_u.mutation.AddCouponUsageIDs(ids...)
+	return _u
+}
+
+// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
+func (_u *PaymentOrderUpdate) AddCouponUsages(v ...*CouponUsage) *PaymentOrderUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCouponUsageIDs(ids...)
+}
+
 // Mutation returns the PaymentOrderMutation object of the builder.
 func (_u *PaymentOrderUpdate) Mutation() *PaymentOrderMutation {
 	return _u.mutation
@@ -822,6 +894,27 @@ func (_u *PaymentOrderUpdate) Mutation() *PaymentOrderMutation {
 func (_u *PaymentOrderUpdate) ClearUser() *PaymentOrderUpdate {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
+func (_u *PaymentOrderUpdate) ClearCouponUsages() *PaymentOrderUpdate {
+	_u.mutation.ClearCouponUsages()
+	return _u
+}
+
+// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
+func (_u *PaymentOrderUpdate) RemoveCouponUsageIDs(ids ...int64) *PaymentOrderUpdate {
+	_u.mutation.RemoveCouponUsageIDs(ids...)
+	return _u
+}
+
+// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
+func (_u *PaymentOrderUpdate) RemoveCouponUsages(v ...*CouponUsage) *PaymentOrderUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCouponUsageIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -870,6 +963,11 @@ func (_u *PaymentOrderUpdate) check() error {
 	if v, ok := _u.mutation.UserName(); ok {
 		if err := paymentorder.UserNameValidator(v); err != nil {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CouponCode(); ok {
+		if err := paymentorder.CouponCodeValidator(v); err != nil {
+			return &ValidationError{Name: "coupon_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.coupon_code": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
@@ -979,6 +1077,21 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.DiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CouponCode(); ok {
+		_spec.SetField(paymentorder.FieldCouponCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CouponDiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCouponDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -1201,6 +1314,51 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{paymentorder.Label}
@@ -1343,6 +1501,62 @@ func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpd
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddFeeRate(v)
+	return _u
+}
+
+// SetDiscountAmount sets the "discount_amount" field.
+func (_u *PaymentOrderUpdateOne) SetDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetDiscountAmount()
+	_u.mutation.SetDiscountAmount(v)
+	return _u
+}
+
+// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddDiscountAmount adds value to the "discount_amount" field.
+func (_u *PaymentOrderUpdateOne) AddDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddDiscountAmount(v)
+	return _u
+}
+
+// SetCouponCode sets the "coupon_code" field.
+func (_u *PaymentOrderUpdateOne) SetCouponCode(v string) *PaymentOrderUpdateOne {
+	_u.mutation.SetCouponCode(v)
+	return _u
+}
+
+// SetNillableCouponCode sets the "coupon_code" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableCouponCode(v *string) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetCouponCode(*v)
+	}
+	return _u
+}
+
+// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
+func (_u *PaymentOrderUpdateOne) SetCouponDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.ResetCouponDiscountAmount()
+	_u.mutation.SetCouponDiscountAmount(v)
+	return _u
+}
+
+// SetNillableCouponDiscountAmount sets the "coupon_discount_amount" field if the given value is not nil.
+func (_u *PaymentOrderUpdateOne) SetNillableCouponDiscountAmount(v *float64) *PaymentOrderUpdateOne {
+	if v != nil {
+		_u.SetCouponDiscountAmount(*v)
+	}
+	return _u
+}
+
+// AddCouponDiscountAmount adds value to the "coupon_discount_amount" field.
+func (_u *PaymentOrderUpdateOne) AddCouponDiscountAmount(v float64) *PaymentOrderUpdateOne {
+	_u.mutation.AddCouponDiscountAmount(v)
 	return _u
 }
 
@@ -2005,6 +2219,21 @@ func (_u *PaymentOrderUpdateOne) SetUser(v *User) *PaymentOrderUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
+// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
+func (_u *PaymentOrderUpdateOne) AddCouponUsageIDs(ids ...int64) *PaymentOrderUpdateOne {
+	_u.mutation.AddCouponUsageIDs(ids...)
+	return _u
+}
+
+// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
+func (_u *PaymentOrderUpdateOne) AddCouponUsages(v ...*CouponUsage) *PaymentOrderUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCouponUsageIDs(ids...)
+}
+
 // Mutation returns the PaymentOrderMutation object of the builder.
 func (_u *PaymentOrderUpdateOne) Mutation() *PaymentOrderMutation {
 	return _u.mutation
@@ -2014,6 +2243,27 @@ func (_u *PaymentOrderUpdateOne) Mutation() *PaymentOrderMutation {
 func (_u *PaymentOrderUpdateOne) ClearUser() *PaymentOrderUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
+}
+
+// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
+func (_u *PaymentOrderUpdateOne) ClearCouponUsages() *PaymentOrderUpdateOne {
+	_u.mutation.ClearCouponUsages()
+	return _u
+}
+
+// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
+func (_u *PaymentOrderUpdateOne) RemoveCouponUsageIDs(ids ...int64) *PaymentOrderUpdateOne {
+	_u.mutation.RemoveCouponUsageIDs(ids...)
+	return _u
+}
+
+// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
+func (_u *PaymentOrderUpdateOne) RemoveCouponUsages(v ...*CouponUsage) *PaymentOrderUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCouponUsageIDs(ids...)
 }
 
 // Where appends a list predicates to the PaymentOrderUpdate builder.
@@ -2075,6 +2325,11 @@ func (_u *PaymentOrderUpdateOne) check() error {
 	if v, ok := _u.mutation.UserName(); ok {
 		if err := paymentorder.UserNameValidator(v); err != nil {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CouponCode(); ok {
+		if err := paymentorder.CouponCodeValidator(v); err != nil {
+			return &ValidationError{Name: "coupon_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.coupon_code": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
@@ -2201,6 +2456,21 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.DiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.CouponCode(); ok {
+		_spec.SetField(paymentorder.FieldCouponCode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CouponDiscountAmount(); ok {
+		_spec.SetField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedCouponDiscountAmount(); ok {
+		_spec.AddField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -2416,6 +2686,51 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   paymentorder.CouponUsagesTable,
+			Columns: []string{paymentorder.CouponUsagesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

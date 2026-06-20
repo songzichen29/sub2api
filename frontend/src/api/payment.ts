@@ -12,7 +12,10 @@ import type {
   CheckoutInfoResponse,
   CreateOrderRequest,
   CreateOrderResult,
-  PaymentOrder
+  PaymentOrder,
+  PricePreviewRequest,
+  PricePreviewResponse,
+  DiscountRule
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -45,6 +48,16 @@ export const paymentAPI = {
   /** Create a new payment order */
   createOrder(data: CreateOrderRequest) {
     return apiClient.post<CreateOrderResult>('/payment/orders', data)
+  },
+
+  /** Preview payment price breakdown without creating an order */
+  previewPrice(data: PricePreviewRequest) {
+    return apiClient.post<PricePreviewResponse>('/payment/preview-price', data)
+  },
+
+  /** Get enabled threshold discount rules */
+  getDiscountRules() {
+    return apiClient.get<DiscountRule[]>('/payment/discount-rules')
   },
 
   /** Get current user's orders */

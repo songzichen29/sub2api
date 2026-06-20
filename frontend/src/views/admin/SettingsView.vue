@@ -5810,6 +5810,80 @@
                   </p>
                 </div>
                 <!-- Row 5: Help image + text -->
+                <div class="rounded-lg border border-gray-200 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-dark-700">
+                    <div>
+                      <h3 class="text-sm font-medium text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.discountRules") }}
+                      </h3>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.discountRulesHint") }}
+                      </p>
+                    </div>
+                    <button type="button" class="btn btn-sm" @click="addDiscountRule">
+                      {{ t("admin.settings.payment.addDiscountRule") }}
+                    </button>
+                  </div>
+                  <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                      <thead>
+                        <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-900/40">
+                          <th class="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.payment.discountThreshold") }}
+                          </th>
+                          <th class="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.payment.discountType") }}
+                          </th>
+                          <th class="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.payment.discountValue") }}
+                          </th>
+                          <th class="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.payment.discountLabel") }}
+                          </th>
+                          <th class="w-24 px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">
+                            {{ t("common.enabled") }}
+                          </th>
+                          <th class="w-20 px-4 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                        <tr v-if="form.payment_discount_rules.length === 0">
+                          <td colspan="6" class="px-4 py-4 text-center text-gray-400">
+                            {{ t("admin.settings.payment.noDiscountRules") }}
+                          </td>
+                        </tr>
+                        <tr v-for="(rule, index) in form.payment_discount_rules" :key="index">
+                          <td class="px-4 py-2">
+                            <input v-model.number="rule.threshold" type="number" step="0.01" min="0" class="input" />
+                          </td>
+                          <td class="px-4 py-2">
+                            <Select v-model="rule.type" :options="discountTypeOptions" />
+                          </td>
+                          <td class="px-4 py-2">
+                            <input v-model.number="rule.value" type="number" step="0.01" min="0" class="input" />
+                          </td>
+                          <td class="px-4 py-2">
+                            <input v-model="rule.label" type="text" class="input" />
+                          </td>
+                          <td class="px-4 py-2">
+                            <Toggle v-model="rule.enabled" />
+                          </td>
+                          <td class="px-4 py-2 text-right">
+                            <button
+                              type="button"
+                              class="text-sm font-medium text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                              @click="removeDiscountRule(index)"
+                            >
+                              {{ t("common.delete") }}
+                            </button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Row 5: Help image + text -->
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="input-label">{{
@@ -6591,7 +6665,7 @@ import type {
   NotifyEmailEntry,
   Proxy,
 } from "@/types";
-import type { ProviderInstance } from "@/types/payment";
+import type { DiscountRule, ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
@@ -6717,6 +6791,11 @@ const paidUserRateBackfillSummary = computed(() => {
   }
   return t("admin.settings.payment.paidUserRateBackfillSkipped");
 });
+
+const discountTypeOptions = computed(() => [
+  { value: "rate", label: t("admin.settings.payment.discountTypeRate") },
+  { value: "reduce", label: t("admin.settings.payment.discountTypeReduce") },
+]);
 
 // Overload Cooldown (529) 状态
 const overloadCooldownLoading = ref(true);
@@ -7257,6 +7336,7 @@ const form = reactive<SettingsForm>({
   payment_order_timeout_minutes: 30,
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
+  payment_discount_rules: [],
   payment_paid_user_rate_enabled: false,
   payment_paid_user_rate_rules: [],
   payment_paid_user_rate_backfill: emptyPaidUserRateBackfill(),
@@ -7996,6 +8076,9 @@ async function loadSettings() {
     form.payment_paid_user_rate_rules = normalizePaidUserRateRules(
       settings.payment_paid_user_rate_rules,
     );
+    form.payment_discount_rules = normalizeDiscountRules(
+      settings.payment_discount_rules,
+    );
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
         defaultClaudeOAuthSystemPromptBlocks;
@@ -8169,6 +8252,36 @@ function addPaidUserRateRule() {
 
 function removePaidUserRateRule(index: number) {
   form.payment_paid_user_rate_rules.splice(index, 1);
+}
+
+function addDiscountRule() {
+  form.payment_discount_rules.push({
+    threshold: 0,
+    type: "rate",
+    value: 0.9,
+    label: "",
+    enabled: true,
+  });
+}
+
+function removeDiscountRule(index: number) {
+  form.payment_discount_rules.splice(index, 1);
+}
+
+function normalizeDiscountRules(
+  rules: DiscountRule[] | undefined,
+): DiscountRule[] {
+  if (!Array.isArray(rules)) return [];
+  return rules
+    .map((rule): DiscountRule => ({
+      threshold: Number(rule.threshold) || 0,
+      type: rule.type === "reduce" ? "reduce" : "rate",
+      value: Number(rule.value) || 0,
+      label: rule.label || "",
+      enabled: rule.enabled !== false,
+    }))
+    .filter((rule) => rule.threshold > 0 && rule.value > 0)
+    .sort((a, b) => a.threshold - b.threshold);
 }
 
 function normalizePaidUserRateRules(
@@ -8571,6 +8684,9 @@ async function saveSettings() {
       payment_balance_disabled: form.payment_balance_disabled,
       payment_balance_recharge_multiplier:
         Number(form.payment_balance_recharge_multiplier) || 1,
+      payment_discount_rules: normalizeDiscountRules(
+        form.payment_discount_rules,
+      ),
       payment_paid_user_rate_rules: normalizePaidUserRateRules(
         form.payment_paid_user_rate_rules,
       ),

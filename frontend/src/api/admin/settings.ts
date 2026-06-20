@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from "../client";
+import type { DiscountRule } from "@/types/payment";
 import type {
   CustomMenuItem,
   CustomEndpoint,
@@ -611,6 +612,7 @@ export interface SystemSettings {
   payment_enabled_types: string[];
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
+  payment_discount_rules: DiscountRule[];
   payment_paid_user_rate_enabled: boolean;
   payment_paid_user_rate_rules: PaymentPaidUserRateRule[];
   payment_paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus;
@@ -809,6 +811,7 @@ export interface UpdateSettingsRequest {
   payment_enabled_types?: string[];
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
+  payment_discount_rules?: DiscountRule[];
   payment_paid_user_rate_enabled?: boolean;
   payment_paid_user_rate_rules?: PaymentPaidUserRateRule[];
   payment_recharge_fee_rate?: number;

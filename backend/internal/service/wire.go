@@ -662,8 +662,10 @@ var ProviderSet = wire.NewSet(
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
+	NewDiscountService,
+	NewCouponService,
 	ProvidePaymentConfigService,
-	NewPaymentService,
+	ProvidePaymentService,
 	NewPaymentNotificationEmailBridge,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
@@ -677,6 +679,26 @@ var ProviderSet = wire.NewSet(
 // payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
 func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, userGroupRateRepo UserGroupRateRepository, key payment.EncryptionKey) *PaymentConfigService {
 	return NewPaymentConfigService(entClient, settingRepo, userGroupRateRepo, []byte(key))
+}
+
+func ProvidePaymentService(
+	entClient *dbent.Client,
+	registry *payment.Registry,
+	loadBalancer payment.LoadBalancer,
+	redeemService *RedeemService,
+	subscriptionSvc *SubscriptionService,
+	configService *PaymentConfigService,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	userGroupRateRepo UserGroupRateRepository,
+	affiliateService *AffiliateService,
+	discountService *DiscountService,
+	couponService *CouponService,
+) *PaymentService {
+	svc := NewPaymentService(entClient, registry, loadBalancer, redeemService, subscriptionSvc, configService, userRepo, groupRepo, userGroupRateRepo, affiliateService)
+	svc.SetDiscountService(discountService)
+	svc.SetCouponService(couponService)
+	return svc
 }
 
 // ProvideBalanceNotifyService creates BalanceNotifyService

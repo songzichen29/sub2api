@@ -3,6 +3,8 @@ package dto
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // CustomMenuItem represents a user-configured custom menu entry.
@@ -229,6 +231,7 @@ type SystemSettings struct {
 	PaymentEnabledTypes              []string                          `json:"payment_enabled_types"`
 	PaymentBalanceDisabled           bool                              `json:"payment_balance_disabled"`
 	PaymentBalanceRechargeMultiplier float64                           `json:"payment_balance_recharge_multiplier"`
+	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
 	PaymentPaidUserRateEnabled       bool                              `json:"payment_paid_user_rate_enabled"`
 	PaymentPaidUserRateRules         []PaymentPaidUserRateRule         `json:"payment_paid_user_rate_rules"`
 	PaymentPaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"payment_paid_user_rate_backfill"`

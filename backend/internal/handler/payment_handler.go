@@ -239,6 +239,7 @@ type CreateOrderRequest struct {
 	PlanID            int64   `json:"plan_id"`
 	SubscriptionID    int64   `json:"subscription_id"`
 	RenewalMode       string  `json:"renewal_mode"`
+	CouponCode        string  `json:"coupon_code"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -290,12 +291,49 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		PlanID:          req.PlanID,
 		SubscriptionID:  req.SubscriptionID,
 		RenewalMode:     req.RenewalMode,
+		CouponCode:      req.CouponCode,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, result)
+}
+
+// PreviewPrice previews payment price breakdown without creating an order.
+func (h *PaymentHandler) PreviewPrice(c *gin.Context) {
+	subject, ok := requireAuth(c)
+	if !ok {
+		return
+	}
+	var req service.PreviewPriceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	req.UserID = subject.UserID
+	result, err := h.paymentService.PreviewPrice(c.Request.Context(), req)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// GetDiscountRules returns enabled threshold discount rules.
+func (h *PaymentHandler) GetDiscountRules(c *gin.Context) {
+	cfg, err := h.configService.GetPaymentConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	rules := make([]service.DiscountRule, 0, len(cfg.DiscountRules))
+	for _, rule := range cfg.DiscountRules {
+		if rule.Enabled {
+			rules = append(rules, rule)
+		}
+	}
+	response.Success(c, rules)
 }
 
 func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeChatPaymentResumeClaims) error {
