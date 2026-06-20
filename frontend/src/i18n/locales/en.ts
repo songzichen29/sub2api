@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   // Home Page
   home: {
     viewOnGithub: 'View on GitHub',
@@ -7233,6 +7233,20 @@ export default {
       INVALID_STATUS: 'The current order status does not allow this operation.',
       BALANCE_NOT_ENOUGH: 'Refund amount exceeds balance.',
       REFUND_AMOUNT_EXCEEDED: 'Refund amount exceeds the recharge amount.',
+      INVALID_DISCOUNT_RULES: 'Invalid discount rule configuration. Please check thresholds, types, and values.',
+      COUPON_INVALID: 'Invalid or unknown coupon.',
+      COUPON_EXPIRED: 'This coupon has expired.',
+      COUPON_DISABLED: 'This coupon is disabled.',
+      COUPON_NOT_STARTED: 'This coupon is not active yet.',
+      COUPON_EXHAUSTED: 'This coupon has been fully used.',
+      COUPON_USER_LIMIT_REACHED: 'You have reached the usage limit for this coupon.',
+      COUPON_SCOPE_MISMATCH: 'This coupon is not valid for the current order type.',
+      COUPON_NOT_APPLICABLE: 'Coupons cannot be used for this order.',
+      COUPON_MIN_AMOUNT_NOT_MET: 'The order does not meet this coupon\'s minimum amount.',
+      INVALID_COUPON_TYPE: 'Invalid coupon type.',
+      INVALID_COUPON_VALUE: 'Invalid coupon value.',
+      INVALID_COUPON_SCOPE: 'Invalid coupon scope.',
+      INVALID_COUPON_LIMITS: 'Invalid coupon usage limits.',
       REFUND_FAILED: 'Refund failed.',
     },
     stripePay: 'Pay Now',
@@ -7538,3 +7552,4 @@ export default {
   },
 
 }
+
