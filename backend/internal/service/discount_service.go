@@ -140,6 +140,58 @@ func formatDiscountRules(rules []DiscountRule) string {
 	return string(data)
 }
 
+func parseQuickAmounts(raw string) []float64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var amounts []float64
+	if err := json.Unmarshal([]byte(raw), &amounts); err != nil {
+		return nil
+	}
+	normalized, err := normalizeQuickAmounts(amounts)
+	if err != nil {
+		return nil
+	}
+	return normalized
+}
+
+func normalizeQuickAmounts(amounts []float64) ([]float64, error) {
+	if amounts == nil {
+		return nil, nil
+	}
+	normalized := make([]float64, 0, len(amounts))
+	seen := map[string]struct{}{}
+	for _, amount := range amounts {
+		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+			return nil, infraerrors.BadRequest("INVALID_PAYMENT_QUICK_AMOUNTS", "quick amount must be greater than 0")
+		}
+		rounded := roundMoney(amount)
+		if math.Abs(amount-rounded) > 1e-9 {
+			return nil, infraerrors.BadRequest("INVALID_PAYMENT_QUICK_AMOUNTS", "quick amount allows at most 2 decimal places")
+		}
+		key := decimal.NewFromFloat(rounded).StringFixed(2)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, rounded)
+	}
+	sort.Float64s(normalized)
+	return normalized, nil
+}
+
+func formatQuickAmounts(amounts []float64) string {
+	if len(amounts) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(amounts)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
 func roundMoney(v float64) float64 {
 	return roundMoneyDecimal(decimal.NewFromFloat(v))
 }

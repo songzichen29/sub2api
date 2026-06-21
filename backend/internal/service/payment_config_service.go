@@ -29,6 +29,7 @@ const (
 	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
 	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
 	SettingDiscountRules        = "PAYMENT_DISCOUNT_RULES"
+	SettingQuickAmounts         = "PAYMENT_QUICK_AMOUNTS"
 	SettingPaidUserRateEnabled  = "PAID_USER_RATE_ENABLED"
 	SettingPaidUserRateRules    = "PAID_USER_RATE_RULES"
 	SettingPaidUserRateBackfill = "PAID_USER_RATE_BACKFILL"
@@ -103,6 +104,7 @@ type PaymentConfig struct {
 	BalanceDisabled           bool                              `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64                           `json:"balance_recharge_multiplier"`
 	DiscountRules             []DiscountRule                    `json:"discount_rules"`
+	QuickAmounts              []float64                         `json:"quick_amounts"`
 	PaidUserRateEnabled       bool                              `json:"paid_user_rate_enabled"`
 	PaidUserRateRules         []PaymentPaidUserRateRule         `json:"paid_user_rate_rules"`
 	PaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"paid_user_rate_backfill"`
@@ -134,6 +136,7 @@ type UpdatePaymentConfigRequest struct {
 	BalanceDisabled           *bool                     `json:"balance_disabled"`
 	BalanceRechargeMultiplier *float64                  `json:"balance_recharge_multiplier"`
 	DiscountRules             []DiscountRule            `json:"discount_rules"`
+	QuickAmounts              []float64                 `json:"quick_amounts"`
 	PaidUserRateEnabled       *bool                     `json:"paid_user_rate_enabled"`
 	PaidUserRateRules         []PaymentPaidUserRateRule `json:"paid_user_rate_rules"`
 	RechargeFeeRate           *float64                  `json:"recharge_fee_rate"`
@@ -258,7 +261,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 	keys := []string{
 		SettingPaymentEnabled, SettingMinRechargeAmount, SettingMaxRechargeAmount,
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
-		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingDiscountRules, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
+		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingDiscountRules, SettingQuickAmounts, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingPaidUserRateEnabled, SettingPaidUserRateRules, SettingPaidUserRateBackfill,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
@@ -308,6 +311,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
 		DiscountRules:             parseDiscountRules(vals[SettingDiscountRules]),
+		QuickAmounts:              parseQuickAmounts(vals[SettingQuickAmounts]),
 		PaidUserRateEnabled:       vals[SettingPaidUserRateEnabled] == "true",
 		PaidUserRateRules:         parsePaidUserRateRules(vals[SettingPaidUserRateRules]),
 		PaidUserRateBackfill:      parsePaidUserRateBackfillStatus(vals[SettingPaidUserRateBackfill]),
@@ -374,6 +378,10 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err != nil {
 		return err
 	}
+	quickAmounts, err := normalizeQuickAmounts(req.QuickAmounts)
+	if err != nil {
+		return err
+	}
 	paidUserRateRules, err := normalizePaidUserRateRules(req.PaidUserRateRules)
 	if err != nil {
 		return err
@@ -401,6 +409,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingBalancePayDisabled:                formatBoolOrEmpty(req.BalanceDisabled),
 		SettingBalanceRechargeMult:               formatPositiveFloat(req.BalanceRechargeMultiplier),
 		SettingDiscountRules:                     formatDiscountRules(discountRules),
+		SettingQuickAmounts:                      formatQuickAmounts(quickAmounts),
 		SettingPaidUserRateEnabled:               formatBoolOrEmpty(req.PaidUserRateEnabled),
 		SettingPaidUserRateRules:                 formatPaidUserRateRules(paidUserRateRules),
 		SettingRechargeFeeRate:                   formatNonNegativeFloat(req.RechargeFeeRate),

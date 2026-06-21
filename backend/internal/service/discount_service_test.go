@@ -59,3 +59,15 @@ func TestDiscountServiceApplyThresholdDiscount(t *testing.T) {
 		require.Equal(t, 100.0, got.AfterDiscount)
 	})
 }
+
+func TestNormalizeQuickAmounts(t *testing.T) {
+	got, err := normalizeQuickAmounts([]float64{100, 10, 30, 10, 30.5})
+	require.NoError(t, err)
+	require.Equal(t, []float64{10, 30, 30.5, 100}, got)
+
+	_, err = normalizeQuickAmounts([]float64{10.123})
+	require.Error(t, err)
+
+	_, err = normalizeQuickAmounts([]float64{0})
+	require.Error(t, err)
+}

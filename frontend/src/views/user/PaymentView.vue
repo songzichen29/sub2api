@@ -43,9 +43,11 @@
             <div class="card p-6">
               <AmountInput
                 v-model="amount"
-                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
+                :amounts="rechargeQuickAmounts"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
+                :discount-rules="discountRules"
+                :fee-rate="feeRate"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
               <p v-if="discountRuleHint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
@@ -524,6 +526,7 @@ async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promi
 }
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
+const defaultRechargeQuickAmounts = [1, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 
 function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
   if (typeof window === 'undefined' || !snapshot.orderId) return
@@ -632,7 +635,7 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, quick_amounts: [], recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -653,6 +656,18 @@ const balanceRechargeMultiplier = computed(() => {
   return multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const rechargeQuickAmounts = computed(() => {
+  const configured = Array.isArray(checkout.value.quick_amounts)
+    ? checkout.value.quick_amounts.filter((amount) => Number.isFinite(amount) && amount > 0)
+    : []
+  const amounts = new Set(configured.length > 0 ? configured : defaultRechargeQuickAmounts)
+  for (const rule of discountRules.value) {
+    if (rule.enabled !== false && rule.threshold > 0) {
+      amounts.add(Math.round(rule.threshold * 100) / 100)
+    }
+  }
+  return [...amounts].sort((a, b) => a - b)
+})
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length
@@ -737,10 +752,9 @@ const priceBreakdown = computed(() => {
 })
 
 const discountRuleHint = computed(() => {
-  const enabled = discountRules.value.filter(rule => rule.enabled)
+  const enabled = discountRules.value.filter(rule => rule.enabled !== false)
   if (enabled.length === 0) return ''
   return enabled
-    .slice(0, 3)
     .map((rule) => rule.label || (rule.type === 'rate'
       ? t('payment.thresholdRateHint', { threshold: rule.threshold, rate: Math.round(rule.value * 100) })
       : t('payment.thresholdReduceHint', { threshold: rule.threshold, amount: rule.value })))
@@ -1491,9 +1505,11 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
-    paymentAPI.getDiscountRules()
-      .then((rules) => { discountRules.value = rules.data || [] })
-      .catch(() => { discountRules.value = [] })
+    if (typeof paymentAPI.getDiscountRules === 'function') {
+      paymentAPI.getDiscountRules()
+        .then((rules) => { discountRules.value = rules.data || [] })
+        .catch(() => { discountRules.value = [] })
+    }
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {

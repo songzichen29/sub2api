@@ -5633,6 +5633,20 @@
                       }}
                     </p>
                   </div>
+                  <div class="md:col-span-2">
+                    <label class="input-label">{{
+                      t("admin.settings.payment.quickAmounts")
+                    }}</label>
+                    <input
+                      v-model="paymentQuickAmountsInput"
+                      type="text"
+                      class="input"
+                      :placeholder="t('admin.settings.payment.quickAmountsPlaceholder')"
+                    />
+                    <p class="mt-0.5 text-xs text-gray-400">
+                      {{ t("admin.settings.payment.quickAmountsHint") }}
+                    </p>
+                  </div>
                   <div>
                     <label class="input-label"
                       >{{ t("admin.settings.payment.orderTimeout") }}
@@ -6744,6 +6758,7 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
+const paymentQuickAmountsInput = ref("");
 const opsEmailConfigLoading = ref(false);
 const opsEmailConfig = ref<EmailNotificationConfig | null>(null);
 
@@ -7337,6 +7352,7 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_discount_rules: [],
+  payment_quick_amounts: [],
   payment_paid_user_rate_enabled: false,
   payment_paid_user_rate_rules: [],
   payment_paid_user_rate_backfill: emptyPaidUserRateBackfill(),
@@ -8079,6 +8095,12 @@ async function loadSettings() {
     form.payment_discount_rules = normalizeDiscountRules(
       settings.payment_discount_rules,
     );
+    form.payment_quick_amounts = normalizeQuickAmounts(
+      settings.payment_quick_amounts,
+    );
+    paymentQuickAmountsInput.value = formatQuickAmounts(
+      form.payment_quick_amounts,
+    );
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
         defaultClaudeOAuthSystemPromptBlocks;
@@ -8282,6 +8304,36 @@ function normalizeDiscountRules(
     }))
     .filter((rule) => rule.threshold > 0 && rule.value > 0)
     .sort((a, b) => a.threshold - b.threshold);
+}
+
+function normalizeQuickAmounts(amounts: number[] | undefined): number[] {
+  if (!Array.isArray(amounts)) return [];
+  const seen = new Set<string>();
+  return amounts
+    .map((amount) => Math.round((Number(amount) || 0) * 100) / 100)
+    .filter((amount) => amount > 0)
+    .filter((amount) => {
+      const key = amount.toFixed(2);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a - b);
+}
+
+function parseQuickAmountsInput(input: string): number[] {
+  return normalizeQuickAmounts(
+    input
+      .split(/[,，\s]+/)
+      .map((part) => Number(part.trim()))
+      .filter((amount) => Number.isFinite(amount)),
+  );
+}
+
+function formatQuickAmounts(amounts: number[]): string {
+  return normalizeQuickAmounts(amounts)
+    .map((amount) => (Number.isInteger(amount) ? String(amount) : amount.toFixed(2)))
+    .join(", ");
 }
 
 function normalizePaidUserRateRules(
@@ -8686,6 +8738,9 @@ async function saveSettings() {
         Number(form.payment_balance_recharge_multiplier) || 1,
       payment_discount_rules: normalizeDiscountRules(
         form.payment_discount_rules,
+      ),
+      payment_quick_amounts: parseQuickAmountsInput(
+        paymentQuickAmountsInput.value,
       ),
       payment_paid_user_rate_rules: normalizePaidUserRateRules(
         form.payment_paid_user_rate_rules,

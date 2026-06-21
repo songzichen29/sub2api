@@ -232,6 +232,7 @@ type SystemSettings struct {
 	PaymentBalanceDisabled           bool                              `json:"payment_balance_disabled"`
 	PaymentBalanceRechargeMultiplier float64                           `json:"payment_balance_recharge_multiplier"`
 	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
+	PaymentQuickAmounts              []float64                         `json:"payment_quick_amounts"`
 	PaymentPaidUserRateEnabled       bool                              `json:"payment_paid_user_rate_enabled"`
 	PaymentPaidUserRateRules         []PaymentPaidUserRateRule         `json:"payment_paid_user_rate_rules"`
 	PaymentPaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"payment_paid_user_rate_backfill"`

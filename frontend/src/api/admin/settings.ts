@@ -613,6 +613,7 @@ export interface SystemSettings {
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
   payment_discount_rules: DiscountRule[];
+  payment_quick_amounts: number[];
   payment_paid_user_rate_enabled: boolean;
   payment_paid_user_rate_rules: PaymentPaidUserRateRule[];
   payment_paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus;
@@ -812,6 +813,7 @@ export interface UpdateSettingsRequest {
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
   payment_discount_rules?: DiscountRule[];
+  payment_quick_amounts?: number[];
   payment_paid_user_rate_enabled?: boolean;
   payment_paid_user_rate_rules?: PaymentPaidUserRateRule[];
   payment_recharge_fee_rate?: number;
