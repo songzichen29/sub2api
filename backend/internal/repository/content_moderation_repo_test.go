@@ -37,7 +37,9 @@ SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
-    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.created_at
+    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.created_at,
+    CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
+    COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id WHERE l.id IS NOT NULL AND (l.request_id LIKE ? OR l.user_email LIKE ? OR l.api_key_name LIKE ? OR l.model LIKE ? OR l.input_excerpt LIKE ?)
 ORDER BY l.created_at DESC, l.id DESC
@@ -48,6 +50,7 @@ LIMIT ? OFFSET ?`)).
 			"endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score",
 			"category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error",
 			"violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "created_at",
+			"request_body_size", "request_body_message_count",
 		}))
 
 	items, pageResult, err := repo.ListLogs(context.Background(), filter)
@@ -99,18 +102,18 @@ func TestContentModerationRepositoryCreateLog_UsesExecInsert(t *testing.T) {
 INSERT INTO content_moderation_logs (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
     endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
-    category_scores, threshold_snapshot, input_excerpt, upstream_latency_ms, error,
+    category_scores, threshold_snapshot, input_excerpt, request_body, request_body_message_count, upstream_latency_ms, error,
     violation_count, auto_banned, email_sent, queue_delay_ms
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?
 )`)).
 		WithArgs(
 			"req-1", nil, "u@example.com", nil, "key-a", nil, "default",
 			"/v1/chat/completions", "openai", "gpt-4.1", "observe", "allow", false, "", float64(0),
-			"{}", "{}", "hello", nil, "",
+			"{}", "{}", "hello", nil, 0, nil, "",
 			0, false, false, nil,
 		).
 		WillReturnResult(sqlmock.NewResult(12, 1))
@@ -123,6 +126,44 @@ INSERT INTO content_moderation_logs (
 	}
 	if logEntry.CreatedAt.IsZero() {
 		t.Fatalf("expected CreatedAt to be set")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet: %v", err)
+	}
+}
+
+func TestContentModerationRepositoryGetLogRequestBody(t *testing.T) {
+	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo := &contentModerationRepository{db: db}
+	createdAt := time.Date(2026, 6, 21, 10, 30, 0, 0, time.UTC)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT id, request_id, request_body, created_at
+FROM content_moderation_logs
+WHERE id = ? AND request_body IS NOT NULL AND request_body <> ''
+LIMIT 1
+`)).
+		WithArgs(int64(12)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "request_id", "request_body", "created_at"}).
+			AddRow(int64(12), "req-1", `{"kind":"content_moderation_request_session"}`, createdAt))
+
+	result, err := repo.GetLogRequestBody(context.Background(), 12)
+	if err != nil {
+		t.Fatalf("GetLogRequestBody error: %v", err)
+	}
+	if result == nil || result.ID != 12 || result.RequestID != "req-1" {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	if result.Content == "" || result.Size != len([]byte(result.Content)) {
+		t.Fatalf("unexpected content metadata: %+v", result)
+	}
+	if result.Filename == "" {
+		t.Fatalf("expected filename")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("ExpectationsWereMet: %v", err)

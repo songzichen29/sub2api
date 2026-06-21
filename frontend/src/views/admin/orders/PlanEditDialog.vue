@@ -50,7 +50,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('payment.admin.fixedExpiresAt') }}</label>
-          <input v-model="planForm.expires_at_local" type="datetime-local" class="input" />
+          <input v-model="planForm.expires_at_local" type="datetime-local" step="1" class="input" />
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.fixedExpiresAtHint') }}</p>
         </div>
       </div>
@@ -153,7 +153,7 @@ function toDateTimeLocal(value?: string | null): string {
     date.getFullYear(),
     padDatePart(date.getMonth() + 1),
     padDatePart(date.getDate()),
-  ].join('-') + `T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`
+  ].join('-') + `T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`
 }
 
 function parseLocalDateTime(value: string): Date | null {

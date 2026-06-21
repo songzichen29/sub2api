@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -59,13 +60,14 @@ const (
 	ModerationAPIProtocolOpenAIModeration = "openai_moderation"
 	ModerationAPIProtocolAnthropicLLM     = "anthropic_llm"
 
-	defaultContentModerationBaseURL   = "https://api.openai.com"
-	defaultContentModerationModel     = "omni-moderation-latest"
-	defaultContentModerationTimeoutMS = 10000 // LLM 审核需要更长时间，默认 10 秒
-	maxContentModerationTimeoutMS     = 60000 // 最大 60 秒
-	maxModerationInputRunes           = 12000
-	maxModerationExcerptRunes         = 12000 // 保留完整用户输入用于审计，与 maxModerationInputRunes 一致
-	maxSystemPromptRunes              = 4000
+	defaultContentModerationBaseURL           = "https://api.openai.com"
+	defaultContentModerationModel             = "omni-moderation-latest"
+	defaultContentModerationTimeoutMS         = 10000 // LLM 审核需要更长时间，默认 10 秒
+	maxContentModerationTimeoutMS             = 60000 // 最大 60 秒
+	maxModerationInputRunes                   = 12000
+	maxModerationExcerptRunes                 = 12000 // 保留完整用户输入用于审计，与 maxModerationInputRunes 一致
+	maxContentModerationRequestBodyAuditBytes = 1024 * 1024
+	maxSystemPromptRunes                      = 4000
 
 	defaultContentModerationWorkerCount          = 4
 	maxContentModerationWorkerCount              = 32
@@ -97,6 +99,8 @@ const (
 	contentModerationCleanupTimeout  = 30 * time.Minute
 	contentModerationCleanupDelay    = 5 * time.Minute
 )
+
+var ErrInvalidContentModerationLogID = infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOG_ID", "风控记录 ID 无效")
 
 // defaultAnthropicModerationPrompt 是 Anthropic LLM 协议的默认系统提示词
 const defaultAnthropicModerationPrompt = `你是一个内容安全审核员。请对用户输入的内容进行风险评估。
@@ -406,33 +410,37 @@ type ContentModerationDecision struct {
 }
 
 type ContentModerationLog struct {
-	ID                int64              `json:"id"`
-	RequestID         string             `json:"request_id"`
-	UserID            *int64             `json:"user_id,omitempty"`
-	UserEmail         string             `json:"user_email"`
-	APIKeyID          *int64             `json:"api_key_id,omitempty"`
-	APIKeyName        string             `json:"api_key_name"`
-	GroupID           *int64             `json:"group_id,omitempty"`
-	GroupName         string             `json:"group_name"`
-	Endpoint          string             `json:"endpoint"`
-	Provider          string             `json:"provider"`
-	Model             string             `json:"model"`
-	Mode              string             `json:"mode"`
-	Action            string             `json:"action"`
-	Flagged           bool               `json:"flagged"`
-	HighestCategory   string             `json:"highest_category"`
-	HighestScore      float64            `json:"highest_score"`
-	CategoryScores    map[string]float64 `json:"category_scores"`
-	ThresholdSnapshot map[string]float64 `json:"threshold_snapshot"`
-	InputExcerpt      string             `json:"input_excerpt"`
-	UpstreamLatencyMS *int               `json:"upstream_latency_ms,omitempty"`
-	Error             string             `json:"error"`
-	ViolationCount    int                `json:"violation_count"`
-	AutoBanned        bool               `json:"auto_banned"`
-	EmailSent         bool               `json:"email_sent"`
-	UserStatus        string             `json:"user_status"`
-	QueueDelayMS      *int               `json:"queue_delay_ms,omitempty"`
-	CreatedAt         time.Time          `json:"created_at"`
+	ID                  int64              `json:"id"`
+	RequestID           string             `json:"request_id"`
+	UserID              *int64             `json:"user_id,omitempty"`
+	UserEmail           string             `json:"user_email"`
+	APIKeyID            *int64             `json:"api_key_id,omitempty"`
+	APIKeyName          string             `json:"api_key_name"`
+	GroupID             *int64             `json:"group_id,omitempty"`
+	GroupName           string             `json:"group_name"`
+	Endpoint            string             `json:"endpoint"`
+	Provider            string             `json:"provider"`
+	Model               string             `json:"model"`
+	Mode                string             `json:"mode"`
+	Action              string             `json:"action"`
+	Flagged             bool               `json:"flagged"`
+	HighestCategory     string             `json:"highest_category"`
+	HighestScore        float64            `json:"highest_score"`
+	CategoryScores      map[string]float64 `json:"category_scores"`
+	ThresholdSnapshot   map[string]float64 `json:"threshold_snapshot"`
+	InputExcerpt        string             `json:"input_excerpt"`
+	RequestBody         string             `json:"request_body,omitempty"`
+	HasRequestBody      bool               `json:"has_request_body"`
+	RequestBodySize     int                `json:"request_body_size"`
+	SessionMessageCount int                `json:"session_message_count,omitempty"`
+	UpstreamLatencyMS   *int               `json:"upstream_latency_ms,omitempty"`
+	Error               string             `json:"error"`
+	ViolationCount      int                `json:"violation_count"`
+	AutoBanned          bool               `json:"auto_banned"`
+	EmailSent           bool               `json:"email_sent"`
+	UserStatus          string             `json:"user_status"`
+	QueueDelayMS        *int               `json:"queue_delay_ms,omitempty"`
+	CreatedAt           time.Time          `json:"created_at"`
 }
 
 type ContentModerationLogFilter struct {
@@ -449,6 +457,51 @@ type ContentModerationCleanupResult struct {
 	DeletedHit    int64     `json:"deleted_hit"`
 	DeletedNonHit int64     `json:"deleted_non_hit"`
 	FinishedAt    time.Time `json:"finished_at"`
+}
+
+type ContentModerationLogRequestBody struct {
+	ID          int64     `json:"id"`
+	RequestID   string    `json:"request_id"`
+	Content     string    `json:"content"`
+	ContentType string    `json:"content_type"`
+	Filename    string    `json:"filename"`
+	Size        int       `json:"size"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type contentModerationRequestAuditBundle struct {
+	SchemaVersion       int       `json:"schema_version"`
+	Kind                string    `json:"kind"`
+	RequestID           string    `json:"request_id,omitempty"`
+	UserID              int64     `json:"user_id,omitempty"`
+	UserEmail           string    `json:"user_email,omitempty"`
+	APIKeyID            int64     `json:"api_key_id,omitempty"`
+	APIKeyName          string    `json:"api_key_name,omitempty"`
+	GroupID             *int64    `json:"group_id,omitempty"`
+	GroupName           string    `json:"group_name,omitempty"`
+	Endpoint            string    `json:"endpoint,omitempty"`
+	Provider            string    `json:"provider,omitempty"`
+	Model               string    `json:"model,omitempty"`
+	Protocol            string    `json:"protocol,omitempty"`
+	BoundarySource      string    `json:"boundary_source"`
+	SessionStartIndex   *int      `json:"session_start_index,omitempty"`
+	SessionEndIndex     *int      `json:"session_end_index,omitempty"`
+	SessionMessageCount int       `json:"session_message_count"`
+	SystemContextKeys   []string  `json:"system_context_keys,omitempty"`
+	AuditedExcerpt      string    `json:"audited_excerpt,omitempty"`
+	Truncated           bool      `json:"truncated"`
+	OriginalBytes       int       `json:"original_bytes"`
+	StoredBytes         int       `json:"stored_bytes"`
+	CreatedAt           time.Time `json:"created_at"`
+	RawRequest          any       `json:"raw_request"`
+}
+
+type contentModerationRequestBoundary struct {
+	Source     string
+	Count      int
+	StartIndex *int
+	EndIndex   *int
+	SystemKeys []string
 }
 
 type ContentModerationRuntimeStatus struct {
@@ -500,6 +553,7 @@ type ContentModerationClearHashesResult struct {
 type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
+	GetLogRequestBody(ctx context.Context, id int64) (*ContentModerationLogRequestBody, error)
 	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
 	// excludeCyberPolicy 为 true 时额外排除 cyber_policy 行）。
 	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error)
@@ -939,7 +993,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 					"keyword_blocking_mode", cfg.KeywordBlockingMode,
 					"keyword", keyword)
 				scores := map[string]float64{contentModerationKeywordCategory: 1.0}
-				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, content.ExcerptText(), nil, nil, "")
+				log := s.buildLog(input, cfg, ContentModerationActionKeywordBlock, true, contentModerationKeywordCategory, 1.0, scores, input.Body, content.ExcerptText(), nil, nil, "")
 				s.enqueueRecord(input, cfg, log, hashText, false, true)
 				return &ContentModerationDecision{
 					Allowed:         false,
@@ -986,7 +1040,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 				message = fmt.Sprintf("%s（hash: %s）", message, hashText)
 			}
 			scores := map[string]float64{"hash": 1.0}
-			log := s.buildLog(input, cfg, ContentModerationActionHashBlock, true, "hash", 1.0, scores, content.ExcerptText(), nil, nil, "")
+			log := s.buildLog(input, cfg, ContentModerationActionHashBlock, true, "hash", 1.0, scores, input.Body, content.ExcerptText(), nil, nil, "")
 			s.enqueueRecord(input, cfg, log, hashText, false, false)
 			return &ContentModerationDecision{
 				Allowed:    false,
@@ -1068,7 +1122,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 			s.asyncErrors.Add(1)
 		}
 		if cfg.RecordNonHits {
-			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
+			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
 			_ = s.repo.CreateLog(ctx, log)
 		}
 		return allow
@@ -1101,7 +1155,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		"latency_ms", latency,
 		"queue_delay_ms", queueDelay)
 	if flagged || cfg.RecordNonHits {
-		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, content.ExcerptText(), &latency, queueDelay, "")
+		log := s.buildLog(input, cfg, action, flagged, highestCategory, highestScore, result.CategoryScores, input.Body, content.ExcerptText(), &latency, queueDelay, "")
 		if queueDelay == nil && cfg.Mode == ContentModerationModePreBlock {
 			s.enqueueRecord(input, cfg, log, hashText, flagged, flagged)
 		} else {
@@ -1303,6 +1357,32 @@ func (s *ContentModerationService) ListLogs(ctx context.Context, filter ContentM
 		filter.Pagination.SortOrder = pagination.SortOrderDesc
 	}
 	return s.repo.ListLogs(ctx, filter)
+}
+
+func (s *ContentModerationService) GetLogRequestBody(ctx context.Context, id int64) (*ContentModerationLogRequestBody, error) {
+	if id <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOG_ID", "风控记录 ID 无效")
+	}
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.InternalServer("CONTENT_MODERATION_REPOSITORY_UNAVAILABLE", "风控记录仓储不可用")
+	}
+	result, err := s.repo.GetLogRequestBody(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || strings.TrimSpace(result.Content) == "" {
+		return nil, infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在")
+	}
+	if result.ContentType == "" {
+		result.ContentType = "application/json;charset=utf-8"
+	}
+	if result.Size <= 0 {
+		result.Size = len([]byte(result.Content))
+	}
+	if strings.TrimSpace(result.Filename) == "" {
+		result.Filename = contentModerationRequestBodyFilename(result.ID, result.RequestID, result.CreatedAt)
+	}
+	return result, nil
 }
 
 func (s *ContentModerationService) UnbanUser(ctx context.Context, userID int64) (*ContentModerationUnbanUserResult, error) {
@@ -1780,7 +1860,7 @@ func parseAnthropicModerationResult(text string) (*moderationAPIResult, error) {
 	}, nil
 }
 
-func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
+func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, rawBody []byte, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
 	var userID *int64
 	if input.UserID > 0 {
 		userID = &input.UserID
@@ -1795,29 +1875,230 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 	if !flagged {
 		inputExcerpt = redactContentModerationSecrets(text)
 	}
+	requestBody, requestBodySize, sessionMessageCount := prepareContentModerationRequestAuditBundle(input, text, rawBody, flagged)
 	return &ContentModerationLog{
-		RequestID:         input.RequestID,
-		UserID:            userID,
-		UserEmail:         input.UserEmail,
-		APIKeyID:          apiKeyID,
-		APIKeyName:        input.APIKeyName,
-		GroupID:           cloneInt64Ptr(input.GroupID),
-		GroupName:         input.GroupName,
-		Endpoint:          input.Endpoint,
-		Provider:          input.Provider,
-		Model:             input.Model,
-		Mode:              cfg.Mode,
-		Action:            action,
-		Flagged:           flagged,
-		HighestCategory:   highestCategory,
-		HighestScore:      highestScore,
-		CategoryScores:    cloneFloatMap(scores),
-		ThresholdSnapshot: cloneFloatMap(cfg.Thresholds),
-		InputExcerpt:      trimRunes(inputExcerpt, maxModerationExcerptRunes),
-		UpstreamLatencyMS: latency,
-		QueueDelayMS:      queueDelay,
-		Error:             errText,
+		RequestID:           input.RequestID,
+		UserID:              userID,
+		UserEmail:           input.UserEmail,
+		APIKeyID:            apiKeyID,
+		APIKeyName:          input.APIKeyName,
+		GroupID:             cloneInt64Ptr(input.GroupID),
+		GroupName:           input.GroupName,
+		Endpoint:            input.Endpoint,
+		Provider:            input.Provider,
+		Model:               input.Model,
+		Mode:                cfg.Mode,
+		Action:              action,
+		Flagged:             flagged,
+		HighestCategory:     highestCategory,
+		HighestScore:        highestScore,
+		CategoryScores:      cloneFloatMap(scores),
+		ThresholdSnapshot:   cloneFloatMap(cfg.Thresholds),
+		InputExcerpt:        trimRunes(inputExcerpt, maxModerationExcerptRunes),
+		RequestBody:         requestBody,
+		HasRequestBody:      requestBody != "",
+		RequestBodySize:     requestBodySize,
+		SessionMessageCount: sessionMessageCount,
+		UpstreamLatencyMS:   latency,
+		QueueDelayMS:        queueDelay,
+		Error:               errText,
 	}
+}
+
+func prepareContentModerationRequestAuditBundle(input ContentModerationCheckInput, auditedText string, rawBody []byte, flagged bool) (string, int, int) {
+	if !flagged || len(rawBody) == 0 {
+		return "", 0, 0
+	}
+
+	bodyText := redactContentModerationSecrets(string(rawBody))
+	var parsed any
+	if err := json.Unmarshal([]byte(bodyText), &parsed); err != nil {
+		parsed = bodyText
+	}
+	boundary := extractContentModerationRequestBoundary(parsed)
+	sourceTruncated := len(rawBody) > maxContentModerationRequestBodyAuditBytes
+	bundle := contentModerationRequestAuditBundle{
+		SchemaVersion:       1,
+		Kind:                "content_moderation_request_session",
+		RequestID:           input.RequestID,
+		UserID:              input.UserID,
+		UserEmail:           input.UserEmail,
+		APIKeyID:            input.APIKeyID,
+		APIKeyName:          input.APIKeyName,
+		GroupID:             cloneInt64Ptr(input.GroupID),
+		GroupName:           input.GroupName,
+		Endpoint:            input.Endpoint,
+		Provider:            input.Provider,
+		Model:               input.Model,
+		Protocol:            input.Protocol,
+		BoundarySource:      boundary.Source,
+		SessionStartIndex:   boundary.StartIndex,
+		SessionEndIndex:     boundary.EndIndex,
+		SessionMessageCount: boundary.Count,
+		SystemContextKeys:   boundary.SystemKeys,
+		AuditedExcerpt:      trimRunes(redactContentModerationSecrets(auditedText), maxModerationExcerptRunes),
+		Truncated:           sourceTruncated,
+		OriginalBytes:       len(rawBody),
+		CreatedAt:           time.Now().UTC(),
+		RawRequest:          parsed,
+	}
+	content, truncated := marshalBoundedContentModerationAuditBundle(bundle)
+	truncated = truncated || sourceTruncated
+	if content == "" {
+		return "", 0, 0
+	}
+	if truncated {
+		var bounded contentModerationRequestAuditBundle
+		if err := json.Unmarshal([]byte(content), &bounded); err == nil {
+			bounded.Truncated = true
+			bounded.StoredBytes = len([]byte(content))
+			if final, err := json.MarshalIndent(bounded, "", "  "); err == nil && len(final) <= maxContentModerationRequestBodyAuditBytes {
+				content = string(final)
+			}
+		}
+	}
+	return content, len([]byte(content)), boundary.Count
+}
+
+func marshalBoundedContentModerationAuditBundle(bundle contentModerationRequestAuditBundle) (string, bool) {
+	out, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return "", false
+	}
+	if len(out) <= maxContentModerationRequestBodyAuditBytes {
+		bundle.StoredBytes = len(out)
+		out, _ = json.MarshalIndent(bundle, "", "  ")
+		return string(out), false
+	}
+
+	rawText := fmt.Sprint(bundle.RawRequest)
+	truncatedRaw := truncateUTF8Bytes(rawText, maxContentModerationRequestBodyAuditBytes/2)
+	bundle.RawRequest = truncatedRaw
+	bundle.Truncated = true
+	out, err = json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return "", true
+	}
+	for len(out) > maxContentModerationRequestBodyAuditBytes && len(truncatedRaw) > 0 {
+		truncatedRaw = truncateUTF8Bytes(truncatedRaw, len([]byte(truncatedRaw))/2)
+		bundle.RawRequest = truncatedRaw
+		out, err = json.MarshalIndent(bundle, "", "  ")
+		if err != nil {
+			return "", true
+		}
+	}
+	if len(out) > maxContentModerationRequestBodyAuditBytes {
+		bundle.RawRequest = "[request body omitted: metadata exceeded storage limit]"
+		out, err = json.MarshalIndent(bundle, "", "  ")
+		if err != nil || len(out) > maxContentModerationRequestBodyAuditBytes {
+			return "", true
+		}
+	}
+	bundle.StoredBytes = len(out)
+	out, err = json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return "", true
+	}
+	return string(out), true
+}
+
+func extractContentModerationRequestBoundary(parsed any) contentModerationRequestBoundary {
+	boundary := contentModerationRequestBoundary{Source: "raw_request"}
+	root, ok := parsed.(map[string]any)
+	if !ok {
+		return boundary
+	}
+	for _, key := range []string{"system", "instructions"} {
+		if _, ok := root[key]; ok {
+			boundary.SystemKeys = append(boundary.SystemKeys, key)
+		}
+	}
+	if messages, ok := root["messages"].([]any); ok {
+		return contentModerationBoundaryFromArray("messages", messages, boundary.SystemKeys)
+	}
+	if input, ok := root["input"].([]any); ok {
+		return contentModerationBoundaryFromArray("input", input, boundary.SystemKeys)
+	}
+	if _, ok := root["input"].(string); ok {
+		start, end := 0, 0
+		return contentModerationRequestBoundary{Source: "input", Count: 1, StartIndex: &start, EndIndex: &end, SystemKeys: boundary.SystemKeys}
+	}
+	if contents, ok := root["contents"].([]any); ok {
+		return contentModerationBoundaryFromArray("contents", contents, boundary.SystemKeys)
+	}
+	return boundary
+}
+
+func contentModerationBoundaryFromArray(source string, values []any, systemKeys []string) contentModerationRequestBoundary {
+	boundary := contentModerationRequestBoundary{Source: source, Count: len(values), SystemKeys: systemKeys}
+	if len(values) > 0 {
+		start, end := 0, len(values)-1
+		boundary.StartIndex = &start
+		boundary.EndIndex = &end
+	}
+	for index, value := range values {
+		item, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		role, _ := item["role"].(string)
+		if strings.EqualFold(role, "system") {
+			boundary.SystemKeys = append(boundary.SystemKeys, fmt.Sprintf("%s[%d]", source, index))
+		}
+	}
+	return boundary
+}
+
+func truncateUTF8Bytes(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	raw := []byte(text)
+	if len(raw) <= limit {
+		return text
+	}
+	raw = raw[:limit]
+	for len(raw) > 0 && !utf8.Valid(raw) {
+		raw = raw[:len(raw)-1]
+	}
+	return string(raw)
+}
+
+func contentModerationRequestBodyFilename(id int64, requestID string, createdAt time.Time) string {
+	stamp := createdAt.UTC().Format("20060102T150405Z")
+	if createdAt.IsZero() {
+		stamp = time.Now().UTC().Format("20060102T150405Z")
+	}
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID = fmt.Sprintf("log-%d", id)
+	}
+	requestID = sanitizeFilenameComponent(requestID)
+	return fmt.Sprintf("risk-control-%d-%s-%s.json", id, stamp, requestID)
+}
+
+func sanitizeFilenameComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "request"
+	}
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if out == "" {
+		return "request"
+	}
+	if len(out) > 80 {
+		out = out[:80]
+	}
+	return out
 }
 
 func (s *ContentModerationService) persistContentModerationLog(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog, hashText string, recordHash bool, applySideEffects bool) {
@@ -2971,6 +3252,7 @@ type CyberPolicyRecordInput struct {
 	UpstreamStatus  int
 	UpstreamInTok   int
 	UpstreamOutTok  int
+	RequestBody     []byte
 }
 
 // RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
@@ -3025,6 +3307,20 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		Error:        trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
 		CreatedAt:    time.Now(),
 	}
+	log.RequestBody, log.RequestBodySize, log.SessionMessageCount = prepareContentModerationRequestAuditBundle(ContentModerationCheckInput{
+		RequestID:  in.RequestID,
+		UserID:     in.UserID,
+		UserEmail:  in.UserEmail,
+		APIKeyID:   in.APIKeyID,
+		APIKeyName: in.APIKeyName,
+		GroupID:    in.GroupID,
+		GroupName:  in.GroupName,
+		Endpoint:   in.Endpoint,
+		Provider:   "openai",
+		Model:      in.Model,
+		Body:       in.RequestBody,
+	}, in.UserInput, in.RequestBody, true)
+	log.HasRequestBody = log.RequestBody != ""
 	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
 	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
 	autoBanned := false

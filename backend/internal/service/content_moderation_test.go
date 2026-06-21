@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
@@ -92,6 +93,25 @@ func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentM
 
 func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error) {
 	return nil, nil, nil
+}
+
+func (r *contentModerationTestRepo) GetLogRequestBody(ctx context.Context, id int64) (*ContentModerationLogRequestBody, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, log := range r.logs {
+		if log.ID == id && strings.TrimSpace(log.RequestBody) != "" {
+			return &ContentModerationLogRequestBody{
+				ID:          log.ID,
+				RequestID:   log.RequestID,
+				Content:     log.RequestBody,
+				ContentType: "application/json;charset=utf-8",
+				Filename:    contentModerationRequestBodyFilename(log.ID, log.RequestID, log.CreatedAt),
+				Size:        len([]byte(log.RequestBody)),
+				CreatedAt:   log.CreatedAt,
+			}, nil
+		}
+	}
+	return nil, infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在")
 }
 
 func (r *contentModerationTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
@@ -394,10 +414,57 @@ func TestBuildContentModerationLog_RedactsInputExcerpt(t *testing.T) {
 		Provider:  "openai",
 	}
 
-	log := svc.buildLog(input, cfg, ContentModerationActionAllow, true, "sexual", 0.8, map[string]float64{"sexual": 0.8}, "hello sk-proj-1234567890abcdef", nil, nil, "")
+	log := svc.buildLog(input, cfg, ContentModerationActionAllow, false, "sexual", 0.8, map[string]float64{"sexual": 0.8}, nil, "hello sk-proj-1234567890abcdef", nil, nil, "")
 
 	require.NotContains(t, log.InputExcerpt, "sk-proj-1234567890abcdef")
 	require.Contains(t, log.InputExcerpt, "[已脱敏]")
+}
+
+func TestContentModerationRequestAuditBundle_FlaggedOnlyAndBoundary(t *testing.T) {
+	body := []byte(`{
+		"system":"keep safe",
+		"messages":[
+			{"role":"system","content":"policy"},
+			{"role":"user","content":"hello"},
+			{"role":"assistant","content":"ok"},
+			{"role":"user","content":"bad token=abc123456789xyz"}
+		]
+	}`)
+	input := ContentModerationCheckInput{
+		RequestID: "req-1",
+		Endpoint:  "/v1/chat/completions",
+		Provider:  "openai",
+		Model:     "gpt-4.1",
+		Protocol:  ContentModerationProtocolOpenAIChat,
+		Body:      body,
+	}
+
+	log := (&ContentModerationService{}).buildLog(input, defaultContentModerationConfig(), ContentModerationActionBlock, true, "sexual", 0.9, nil, body, "bad token=abc123456789xyz", nil, nil, "")
+
+	require.True(t, log.HasRequestBody)
+	require.NotEmpty(t, log.RequestBody)
+	require.Equal(t, 4, log.SessionMessageCount)
+	require.Contains(t, log.RequestBody, `"boundary_source": "messages"`)
+	require.Contains(t, log.RequestBody, `"session_start_index": 0`)
+	require.Contains(t, log.RequestBody, `"session_end_index": 3`)
+	require.Contains(t, log.RequestBody, `"system"`)
+	require.NotContains(t, log.RequestBody, "abc123456789xyz")
+
+	allowed := (&ContentModerationService{}).buildLog(input, defaultContentModerationConfig(), ContentModerationActionAllow, false, "", 0, nil, body, "ok", nil, nil, "")
+	require.False(t, allowed.HasRequestBody)
+	require.Empty(t, allowed.RequestBody)
+	require.Zero(t, allowed.RequestBodySize)
+}
+
+func TestContentModerationRequestAuditBundle_SizeLimit(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":"` + strings.Repeat("x", maxContentModerationRequestBodyAuditBytes+8192) + `"}]}`)
+
+	content, size, count := prepareContentModerationRequestAuditBundle(ContentModerationCheckInput{Protocol: ContentModerationProtocolOpenAIChat}, "x", body, true)
+
+	require.NotEmpty(t, content)
+	require.LessOrEqual(t, size, maxContentModerationRequestBodyAuditBytes)
+	require.Equal(t, 1, count)
+	require.Contains(t, content, `"truncated": true`)
 }
 
 func TestRedactContentModerationSecrets_LongHexAndTokens(t *testing.T) {
@@ -873,7 +940,7 @@ func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMem
 	require.Equal(t, "检查这张图", input.Text)
 	require.Equal(t, []string{"data:image/png;base64,aGVsbG8="}, input.Images)
 
-	log := (&ContentModerationService{}).buildLog(ContentModerationCheckInput{}, defaultContentModerationConfig(), ContentModerationActionAllow, false, "", 0, nil, input.ExcerptText(), nil, nil, "")
+	log := (&ContentModerationService{}).buildLog(ContentModerationCheckInput{}, defaultContentModerationConfig(), ContentModerationActionAllow, false, "", 0, nil, nil, input.ExcerptText(), nil, nil, "")
 	require.Equal(t, "检查这张图", log.InputExcerpt)
 	require.NotContains(t, log.InputExcerpt, "aGVsbG8=")
 }

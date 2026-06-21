@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -52,17 +53,17 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 INSERT INTO content_moderation_logs (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
     endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
-    category_scores, threshold_snapshot, input_excerpt, upstream_latency_ms, error,
+    category_scores, threshold_snapshot, input_excerpt, request_body, request_body_message_count, upstream_latency_ms, error,
     violation_count, auto_banned, email_sent, queue_delay_ms
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?
 )`,
 		log.RequestID, userID, log.UserEmail, apiKeyID, log.APIKeyName, groupID, log.GroupName,
 		log.Endpoint, log.Provider, log.Model, log.Mode, log.Action, log.Flagged, log.HighestCategory, log.HighestScore,
-		string(categoryScores), string(thresholdSnapshot), log.InputExcerpt, latency, log.Error,
+		string(categoryScores), string(thresholdSnapshot), log.InputExcerpt, nullableString(log.RequestBody), log.SessionMessageCount, latency, log.Error,
 		log.ViolationCount, log.AutoBanned, log.EmailSent, nullableIntPtr(log.QueueDelayMS),
 	)
 	if err != nil {
@@ -103,7 +104,9 @@ SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
-    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.created_at
+    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.created_at,
+    CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
+    COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
@@ -119,6 +122,7 @@ LIMIT ? OFFSET ?`,
 	for rows.Next() {
 		var item service.ContentModerationLog
 		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
+		var requestBodySize, sessionMessageCount sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
 			&item.ID,
@@ -148,6 +152,8 @@ LIMIT ? OFFSET ?`,
 			&item.UserStatus,
 			&queueDelay,
 			&item.CreatedAt,
+			&requestBodySize,
+			&sessionMessageCount,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan content moderation log: %w", err)
 		}
@@ -171,6 +177,13 @@ LIMIT ? OFFSET ?`,
 			v := int(queueDelay.Int64)
 			item.QueueDelayMS = &v
 		}
+		if requestBodySize.Valid && requestBodySize.Int64 > 0 {
+			item.HasRequestBody = true
+			item.RequestBodySize = int(requestBodySize.Int64)
+		}
+		if sessionMessageCount.Valid && sessionMessageCount.Int64 > 0 {
+			item.SessionMessageCount = int(sessionMessageCount.Int64)
+		}
 		item.CategoryScores = map[string]float64{}
 		_ = json.Unmarshal(scoresRaw, &item.CategoryScores)
 		item.ThresholdSnapshot = map[string]float64{}
@@ -181,6 +194,34 @@ LIMIT ? OFFSET ?`,
 		return nil, nil, fmt.Errorf("iterate content moderation logs: %w", err)
 	}
 	return items, paginationResultFromTotal(total, params), nil
+}
+
+func (r *contentModerationRepository) GetLogRequestBody(ctx context.Context, id int64) (*service.ContentModerationLogRequestBody, error) {
+	if id <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_CONTENT_MODERATION_LOG_ID", "风控记录 ID 无效")
+	}
+	var result service.ContentModerationLogRequestBody
+	var body sql.NullString
+	err := r.db.QueryRowContext(ctx, `
+SELECT id, request_id, request_body, created_at
+FROM content_moderation_logs
+WHERE id = ? AND request_body IS NOT NULL AND request_body <> ''
+LIMIT 1
+`, id).Scan(&result.ID, &result.RequestID, &body, &result.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在")
+		}
+		return nil, fmt.Errorf("get content moderation request body: %w", err)
+	}
+	if !body.Valid || strings.TrimSpace(body.String) == "" {
+		return nil, infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在")
+	}
+	result.Content = body.String
+	result.ContentType = "application/json;charset=utf-8"
+	result.Size = len([]byte(body.String))
+	result.Filename = contentModerationRequestBodyFilename(result.ID, result.RequestID, result.CreatedAt)
+	return &result, nil
 }
 
 func (r *contentModerationRepository) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
@@ -249,6 +290,46 @@ func nullableIntPtr(value *int) any {
 		return nil
 	}
 	return *value
+}
+
+func nullableString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
+}
+
+func contentModerationRequestBodyFilename(id int64, requestID string, createdAt time.Time) string {
+	stamp := createdAt.UTC().Format("20060102T150405Z")
+	if createdAt.IsZero() {
+		stamp = time.Now().UTC().Format("20060102T150405Z")
+	}
+	requestID = sanitizeFilenameComponent(requestID)
+	if requestID == "" {
+		requestID = fmt.Sprintf("log-%d", id)
+	}
+	return fmt.Sprintf("risk-control-%d-%s-%s.json", id, stamp, requestID)
+}
+
+func sanitizeFilenameComponent(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if len(out) > 80 {
+		out = out[:80]
+	}
+	return out
 }
 
 func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) ([]string, []any) {

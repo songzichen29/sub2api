@@ -178,6 +178,9 @@ export interface ContentModerationLog {
   category_scores: Record<string, number>
   threshold_snapshot: Record<string, number>
   input_excerpt: string
+  has_request_body: boolean
+  request_body_size: number
+  session_message_count?: number
   upstream_latency_ms: number | null
   error: string
   violation_count: number
@@ -210,6 +213,16 @@ export interface ContentModerationLogsResponse {
 export interface ContentModerationUnbanUserResponse {
   user_id: number
   status: string
+}
+
+export interface ContentModerationRequestBodyDownload {
+  id: number
+  request_id: string
+  content: string
+  content_type: string
+  filename: string
+  size: number
+  created_at: string
 }
 
 export interface DeleteFlaggedHashResponse {
@@ -261,6 +274,13 @@ export async function unbanUser(userID: number): Promise<ContentModerationUnbanU
   return data
 }
 
+export async function getLogRequestBody(logID: number): Promise<ContentModerationRequestBodyDownload> {
+  const { data } = await apiClient.get<ContentModerationRequestBodyDownload>(
+    `/admin/risk-control/logs/${logID}/request-body`
+  )
+  return data
+}
+
 export async function deleteFlaggedHash(inputHash: string): Promise<DeleteFlaggedHashResponse> {
   const { data } = await apiClient.delete<DeleteFlaggedHashResponse>('/admin/risk-control/hashes', {
     data: { input_hash: inputHash },
@@ -279,6 +299,7 @@ export const riskControlAPI = {
   getStatus,
   testAPIKeys,
   listLogs,
+  getLogRequestBody,
   unbanUser,
   deleteFlaggedHash,
   clearFlaggedHashes,

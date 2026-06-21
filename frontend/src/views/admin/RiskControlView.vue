@@ -233,6 +233,16 @@
                         <span class="min-w-0 flex-1 truncate">{{ inputSummaryText(row) }}</span>
                         <Icon name="eye" size="xs" class="flex-shrink-0 text-gray-300 transition-colors group-hover:text-primary-500 dark:text-gray-500" />
                       </button>
+                      <button
+                        v-if="row.has_request_body"
+                        type="button"
+                        class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-700"
+                        :disabled="downloadingRequestBodyID === row.id"
+                        @click.stop="downloadRequestBody(row)"
+                      >
+                        <Icon name="download" size="xs" :class="downloadingRequestBodyID === row.id ? 'animate-spin' : ''" />
+                        {{ t('admin.riskControl.downloadRequestBody') }}
+                      </button>
                     </td>
                   </tr>
                 </template>
@@ -890,6 +900,21 @@
                 {{ inputDetailRow.group_name }}
               </span>
             </div>
+            <div v-if="inputDetailRow.has_request_body" class="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-700/40">
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.riskControl.requestBodySize', { size: formatBytes(inputDetailRow.request_body_size || 0), count: inputDetailRow.session_message_count || 0 }) }}
+              </span>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+                :disabled="downloadingRequestBodyID === inputDetailRow.id"
+                @click="downloadRequestBody(inputDetailRow)"
+              >
+                <Icon name="download" size="xs" :class="downloadingRequestBodyID === inputDetailRow.id ? 'animate-spin' : ''" />
+                {{ t('admin.riskControl.downloadRequestBody') }}
+              </button>
+            </div>
+            <p v-else class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.requestBodyUnavailable') }}</p>
             <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
           </div>
         </div>
@@ -982,6 +1007,7 @@ const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
 const inputDetailRow = ref<ContentModerationLog | null>(null)
+const downloadingRequestBodyID = ref<number | null>(null)
 let statusTimer: number | null = null
 
 const configForm = reactive({
@@ -1560,6 +1586,42 @@ async function unbanUser(row: ContentModerationLog) {
   }
 }
 
+async function downloadRequestBody(row: ContentModerationLog) {
+  if (!row.has_request_body || downloadingRequestBodyID.value !== null) {
+    if (!row.has_request_body) appStore.showError(t('admin.riskControl.requestBodyUnavailable'))
+    return
+  }
+  downloadingRequestBodyID.value = row.id
+  try {
+    const result = await adminAPI.riskControl.getLogRequestBody(row.id)
+    const content = result.content || ''
+    const filename = safeDownloadFilename(result.filename || buildRequestBodyFilename(row, result.request_id))
+    const blob = new Blob([content], { type: result.content_type || 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.requestBodyDownloadFailed')))
+  } finally {
+    downloadingRequestBodyID.value = null
+  }
+}
+
+function buildRequestBodyFilename(row: ContentModerationLog, requestID?: string): string {
+  const stamp = row.created_at ? row.created_at.replace(/[:.]/g, '-').replace(/[^0-9TZ-]/gi, '-') : 'request'
+  return `risk-control-${row.id}-${stamp}-${requestID || row.request_id || 'request'}.json`
+}
+
+function safeDownloadFilename(value: string): string {
+  const cleaned = value.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-').replace(/^-+|-+$/g, '')
+  return cleaned || 'risk-control-request-body.json'
+}
+
 async function deleteFlaggedHash() {
   if (!isFlaggedHashInputValid.value || hashActionLoading.value) return
   hashActionLoading.value = true
@@ -1819,6 +1881,18 @@ function percentWidth(value: number): string {
 function latencyText(value: number | null): string {
   if (value === null || value === undefined) return '-'
   return `${value} ms`
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let index = 0
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024
+    index += 1
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
 function apiKeyRowKey(row: ContentModerationAPIKeyStatus, index: number): string {

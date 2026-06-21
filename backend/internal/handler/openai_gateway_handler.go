@@ -2379,6 +2379,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 				Endpoint:        inboundEndpoint,
 				Model:           model,
 				UserInput:       userBody,
+				RequestBody:     []byte(userBody),
 				UpstreamMessage: mark.Message,
 				UpstreamBody:    mark.Body,
 				UpstreamStatus:  mark.UpstreamStatus,
