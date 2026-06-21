@@ -438,7 +438,7 @@ func (s *GroupRepoSuite) TestUpdateSortOrders_BatchCaseWhen() {
 	s.Require().Equal(20, got3.SortOrder)
 }
 
-func (s *GroupRepoSuite) TestUpdateSortOrders_MissingGroupNoPartialUpdate() {
+func (s *GroupRepoSuite) TestUpdateSortOrders_MissingGroupIgnored() {
 	g1 := &service.Group{
 		Name:             "sort-no-partial",
 		Platform:         service.PlatformAnthropic,
@@ -449,20 +449,15 @@ func (s *GroupRepoSuite) TestUpdateSortOrders_MissingGroupNoPartialUpdate() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, g1))
 
-	before, err := s.repo.GetByID(s.ctx, g1.ID)
-	s.Require().NoError(err)
-	beforeSort := before.SortOrder
-
 	err = s.repo.UpdateSortOrders(s.ctx, []service.GroupSortOrderUpdate{
 		{ID: g1.ID, SortOrder: 99},
 		{ID: 99999999, SortOrder: 1},
 	})
-	s.Require().Error(err)
-	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+	s.Require().NoError(err)
 
 	after, err := s.repo.GetByID(s.ctx, g1.ID)
 	s.Require().NoError(err)
-	s.Require().Equal(beforeSort, after.SortOrder)
+	s.Require().Equal(99, after.SortOrder)
 }
 
 func (s *GroupRepoSuite) TestListWithFilters_AccountCount() {

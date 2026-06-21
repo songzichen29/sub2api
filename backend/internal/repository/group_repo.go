@@ -840,29 +840,42 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		return nil
 	}
 
-	// 与旧实现保持一致：任何不存在/已删除的分组都返回 not found，且不执行更新。
-	var existingCount int
+	// 排序保存来自可拖拽列表，可能与删除/禁用操作并发；对已经不存在或
+	// 已软删除的分组保持幂等忽略，避免前端因为过期列表拿到 404。
 	inClause, inArgs := buildGroupInt64InClause(groupIDs)
-	if err := scanSingleRow(
-		ctx,
-		r.sql,
-		fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE deleted_at IS NULL AND id IN (%s)`, quotedGroupsTable, inClause),
-		inArgs,
-		&existingCount,
-	); err != nil {
+	rows, err := r.sql.QueryContext(ctx, fmt.Sprintf(`SELECT id FROM %s WHERE deleted_at IS NULL AND id IN (%s)`, quotedGroupsTable, inClause), inArgs...)
+	if err != nil {
 		return err
 	}
-	if existingCount != len(groupIDs) {
-		return service.ErrGroupNotFound
+	defer rows.Close()
+
+	existingIDs := make([]int64, 0, len(groupIDs))
+	existingIDSet := make(map[int64]struct{}, len(groupIDs))
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return err
+		}
+		existingIDs = append(existingIDs, id)
+		existingIDSet[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(existingIDs) == 0 {
+		return nil
 	}
 
-	args := make([]any, 0, len(groupIDs)*3)
-	caseClauses := make([]string, 0, len(groupIDs))
+	args := make([]any, 0, len(existingIDs)*3)
+	caseClauses := make([]string, 0, len(existingIDs))
 	for _, id := range groupIDs {
+		if _, ok := existingIDSet[id]; !ok {
+			continue
+		}
 		caseClauses = append(caseClauses, "WHEN ? THEN ?")
 		args = append(args, id, sortOrderByID[id])
 	}
-	inClause, inArgs = buildGroupInt64InClause(groupIDs)
+	inClause, inArgs = buildGroupInt64InClause(existingIDs)
 	args = append(args, inArgs...)
 
 	query := fmt.Sprintf(`
@@ -874,19 +887,11 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		WHERE deleted_at IS NULL AND id IN (%s)
 	`, quotedGroupsTable, strings.Join(caseClauses, "\n\t\t\t"), inClause)
 
-	result, err := r.sql.ExecContext(ctx, query, args...)
-	if err != nil {
+	if _, err := r.sql.ExecContext(ctx, query, args...); err != nil {
 		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected != int64(len(groupIDs)) {
-		return service.ErrGroupNotFound
 	}
 
-	for _, id := range groupIDs {
+	for _, id := range existingIDs {
 		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &id, nil); err != nil {
 			logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group sort update failed: group=%d err=%v", id, err)
 		}

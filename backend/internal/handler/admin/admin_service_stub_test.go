@@ -73,7 +73,8 @@ type stubAdminService struct {
 		sortOrder string
 		calls     int
 	}
-	mu sync.Mutex
+	lastGroupSortUpdates []service.GroupSortOrderUpdate
+	mu                   sync.Mutex
 }
 
 func newStubAdminService() *stubAdminService {
@@ -629,6 +630,7 @@ func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int
 }
 
 func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {
+	s.lastGroupSortUpdates = append([]service.GroupSortOrderUpdate(nil), updates...)
 	return nil
 }
 

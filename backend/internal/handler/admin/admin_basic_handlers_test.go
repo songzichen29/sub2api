@@ -34,6 +34,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 
 	router.GET("/api/v1/admin/groups", groupHandler.List)
 	router.GET("/api/v1/admin/groups/all", groupHandler.GetAll)
+	router.PUT("/api/v1/admin/groups/sort-order", groupHandler.UpdateSortOrder)
 	router.GET("/api/v1/admin/groups/:id/available-models", groupHandler.GetAvailableModels)
 	router.GET("/api/v1/admin/groups/:id", groupHandler.GetByID)
 	router.POST("/api/v1/admin/groups", groupHandler.Create)
@@ -179,6 +180,18 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
+	body, _ := json.Marshal(map[string]any{
+		"updates": []map[string]any{
+			{"id": 2, "sort_order": 0},
+			{"id": 3, "sort_order": 10},
+		},
+	})
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/sort-order", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/2", nil)
 	router.ServeHTTP(rec, req)
@@ -189,7 +202,7 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	body, _ := json.Marshal(map[string]any{"name": "new", "platform": "anthropic", "subscription_type": "standard"})
+	body, _ = json.Marshal(map[string]any{"name": "new", "platform": "anthropic", "subscription_type": "standard"})
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
