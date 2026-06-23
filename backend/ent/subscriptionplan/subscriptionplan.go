@@ -35,6 +35,8 @@ const (
 	FieldFeatures = "features"
 	// FieldProductName holds the string denoting the product_name field in the database.
 	FieldProductName = "product_name"
+	// FieldMaxBuyCount holds the string denoting the max_buy_count field in the database.
+	FieldMaxBuyCount = "max_buy_count"
 	// FieldForSale holds the string denoting the for_sale field in the database.
 	FieldForSale = "for_sale"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
@@ -61,6 +63,7 @@ var Columns = []string{
 	FieldExpiresAt,
 	FieldFeatures,
 	FieldProductName,
+	FieldMaxBuyCount,
 	FieldForSale,
 	FieldSortOrder,
 	FieldCreatedAt,
@@ -167,6 +170,11 @@ func ByFeatures(opts ...sql.OrderTermOption) OrderOption {
 // ByProductName orders the results by the product_name field.
 func ByProductName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProductName, opts...).ToFunc()
+}
+
+// ByMaxBuyCount orders the results by the max_buy_count field.
+func ByMaxBuyCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxBuyCount, opts...).ToFunc()
 }
 
 // ByForSale orders the results by the for_sale field.

@@ -109,6 +109,11 @@ func ProductName(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldProductName, v))
 }
 
+// MaxBuyCount applies equality check predicate on the "max_buy_count" field. It's identical to MaxBuyCountEQ.
+func MaxBuyCount(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldMaxBuyCount, v))
+}
+
 // ForSale applies equality check predicate on the "for_sale" field. It's identical to ForSaleEQ.
 func ForSale(v bool) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldForSale, v))
@@ -722,6 +727,56 @@ func ProductNameEqualFold(v string) predicate.SubscriptionPlan {
 // ProductNameContainsFold applies the ContainsFold predicate on the "product_name" field.
 func ProductNameContainsFold(v string) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldContainsFold(FieldProductName, v))
+}
+
+// MaxBuyCountEQ applies the EQ predicate on the "max_buy_count" field.
+func MaxBuyCountEQ(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountNEQ applies the NEQ predicate on the "max_buy_count" field.
+func MaxBuyCountNEQ(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountIn applies the In predicate on the "max_buy_count" field.
+func MaxBuyCountIn(vs ...int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldMaxBuyCount, vs...))
+}
+
+// MaxBuyCountNotIn applies the NotIn predicate on the "max_buy_count" field.
+func MaxBuyCountNotIn(vs ...int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldMaxBuyCount, vs...))
+}
+
+// MaxBuyCountGT applies the GT predicate on the "max_buy_count" field.
+func MaxBuyCountGT(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountGTE applies the GTE predicate on the "max_buy_count" field.
+func MaxBuyCountGTE(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountLT applies the LT predicate on the "max_buy_count" field.
+func MaxBuyCountLT(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountLTE applies the LTE predicate on the "max_buy_count" field.
+func MaxBuyCountLTE(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldMaxBuyCount, v))
+}
+
+// MaxBuyCountIsNil applies the IsNil predicate on the "max_buy_count" field.
+func MaxBuyCountIsNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIsNull(FieldMaxBuyCount))
+}
+
+// MaxBuyCountNotNil applies the NotNil predicate on the "max_buy_count" field.
+func MaxBuyCountNotNil() predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotNull(FieldMaxBuyCount))
 }
 
 // ForSaleEQ applies the EQ predicate on the "for_sale" field.

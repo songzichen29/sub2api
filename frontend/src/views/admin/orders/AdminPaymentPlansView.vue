@@ -46,6 +46,11 @@
             {{ value && value > 0 ? `$${Number(value).toFixed(2)}` : t('payment.admin.unlimited') }}
           </span>
         </template>
+        <template #cell-max_buy_count="{ value }">
+          <span class="text-sm text-gray-700 dark:text-gray-300">
+            {{ value && value > 0 ? value : t('payment.admin.unlimited') }}
+          </span>
+        </template>
         <template #cell-for_sale="{ value, row }">
           <button
             type="button"
@@ -149,6 +154,7 @@ const planColumns = computed((): Column[] => [
   { key: 'price', label: t('payment.admin.price') },
   { key: 'validity_days', label: t('payment.admin.validityDays') },
   { key: 'quota_limit_usd', label: t('payment.admin.totalQuota') },
+  { key: 'max_buy_count', label: t('payment.admin.maxBuyCount') },
   { key: 'for_sale', label: t('payment.admin.forSale') },
   { key: 'sort_order', label: t('payment.admin.sortOrder') },
   { key: 'actions', label: t('common.actions') },

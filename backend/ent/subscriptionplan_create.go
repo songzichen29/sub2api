@@ -152,6 +152,20 @@ func (_c *SubscriptionPlanCreate) SetNillableProductName(v *string) *Subscriptio
 	return _c
 }
 
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (_c *SubscriptionPlanCreate) SetMaxBuyCount(v int) *SubscriptionPlanCreate {
+	_c.mutation.SetMaxBuyCount(v)
+	return _c
+}
+
+// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillableMaxBuyCount(v *int) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetMaxBuyCount(*v)
+	}
+	return _c
+}
+
 // SetForSale sets the "for_sale" field.
 func (_c *SubscriptionPlanCreate) SetForSale(v bool) *SubscriptionPlanCreate {
 	_c.mutation.SetForSale(v)
@@ -405,6 +419,10 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
 	}
+	if value, ok := _c.mutation.MaxBuyCount(); ok {
+		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+		_node.MaxBuyCount = &value
+	}
 	if value, ok := _c.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
 		_node.ForSale = value
@@ -650,6 +668,30 @@ func (u *SubscriptionPlanUpsert) SetProductName(v string) *SubscriptionPlanUpser
 // UpdateProductName sets the "product_name" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateProductName() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldProductName)
+	return u
+}
+
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (u *SubscriptionPlanUpsert) SetMaxBuyCount(v int) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldMaxBuyCount, v)
+	return u
+}
+
+// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdateMaxBuyCount() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldMaxBuyCount)
+	return u
+}
+
+// AddMaxBuyCount adds v to the "max_buy_count" field.
+func (u *SubscriptionPlanUpsert) AddMaxBuyCount(v int) *SubscriptionPlanUpsert {
+	u.Add(subscriptionplan.FieldMaxBuyCount, v)
+	return u
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (u *SubscriptionPlanUpsert) ClearMaxBuyCount() *SubscriptionPlanUpsert {
+	u.SetNull(subscriptionplan.FieldMaxBuyCount)
 	return u
 }
 
@@ -947,6 +989,34 @@ func (u *SubscriptionPlanUpsertOne) SetProductName(v string) *SubscriptionPlanUp
 func (u *SubscriptionPlanUpsertOne) UpdateProductName() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertOne) SetMaxBuyCount(v int) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetMaxBuyCount(v)
+	})
+}
+
+// AddMaxBuyCount adds v to the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertOne) AddMaxBuyCount(v int) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddMaxBuyCount(v)
+	})
+}
+
+// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdateMaxBuyCount() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateMaxBuyCount()
+	})
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertOne) ClearMaxBuyCount() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearMaxBuyCount()
 	})
 }
 
@@ -1417,6 +1487,34 @@ func (u *SubscriptionPlanUpsertBulk) SetProductName(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertBulk) UpdateProductName() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
+	})
+}
+
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertBulk) SetMaxBuyCount(v int) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetMaxBuyCount(v)
+	})
+}
+
+// AddMaxBuyCount adds v to the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertBulk) AddMaxBuyCount(v int) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddMaxBuyCount(v)
+	})
+}
+
+// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdateMaxBuyCount() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdateMaxBuyCount()
+	})
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (u *SubscriptionPlanUpsertBulk) ClearMaxBuyCount() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.ClearMaxBuyCount()
 	})
 }
 

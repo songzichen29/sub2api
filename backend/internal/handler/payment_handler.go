@@ -134,6 +134,17 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		planIDs = append(planIDs, p.ID)
 	}
 	salesMap, _ := h.configService.GetPlanSalesCountMap(ctx, planIDs)
+
+	// 查询当前用户的已购次数（用于限购展示）
+	var userBuyMap map[int64]int
+	subject, authOK := middleware2.GetAuthSubjectFromContext(c)
+	if authOK && subject.UserID > 0 {
+		userBuyMap, _ = h.configService.GetUserPlanPurchaseCountMap(ctx, subject.UserID, planIDs)
+	}
+	if userBuyMap == nil {
+		userBuyMap = make(map[int64]int)
+	}
+
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
@@ -145,7 +156,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, QuotaLimitUSD: p.QuotaLimitUsd, ExpiresAt: p.ExpiresAt, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName, SalesCount: salesMap[p.ID],
+			ProductName: p.ProductName, MaxBuyCount: p.MaxBuyCount, UserBuyCount: userBuyMap[p.ID], SalesCount: salesMap[p.ID],
 		})
 	}
 
@@ -198,6 +209,8 @@ type checkoutPlan struct {
 	ExpiresAt       *time.Time `json:"expires_at,omitempty"`
 	Features        []string   `json:"features"`
 	ProductName     string     `json:"product_name"`
+	MaxBuyCount     *int       `json:"max_buy_count,omitempty"`
+	UserBuyCount    int        `json:"user_buy_count,omitempty"`
 	SalesCount      int        `json:"sales_count"`
 }
 

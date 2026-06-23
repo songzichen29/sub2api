@@ -213,8 +213,33 @@ type CreatePlanRequest struct {
 	ExpiresAt     *time.Time `json:"expires_at"`
 	Features      string     `json:"features"`
 	ProductName   string     `json:"product_name"`
+	MaxBuyCount   *int       `json:"max_buy_count"`
 	ForSale       bool       `json:"for_sale"`
 	SortOrder     int        `json:"sort_order"`
+}
+
+// OptionalMaxBuyCount preserves patch semantics for per-user purchase limit:
+// omitted means "do not change"; null means "clear (unlimited)".
+type OptionalMaxBuyCount struct {
+	Set   bool
+	Value *int
+}
+
+func (f *OptionalMaxBuyCount) UnmarshalJSON(data []byte) error {
+	f.Set = true
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "null" || trimmed == "0" {
+		f.Value = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	if v > 0 {
+		f.Value = &v
+	}
+	return nil
 }
 
 type UpdatePlanRequest struct {
@@ -229,6 +254,7 @@ type UpdatePlanRequest struct {
 	ExpiresAt     OptionalPlanExpiresAt `json:"expires_at"`
 	Features      *string               `json:"features"`
 	ProductName   *string               `json:"product_name"`
+	MaxBuyCount   OptionalMaxBuyCount   `json:"max_buy_count"`
 	ForSale       *bool                 `json:"for_sale"`
 	SortOrder     *int                  `json:"sort_order"`
 }

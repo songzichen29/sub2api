@@ -190,6 +190,16 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if !group.IsSubscriptionType() {
 		return nil, infraerrors.BadRequest("GROUP_TYPE_MISMATCH", "group is not a subscription type")
 	}
+	if plan.MaxBuyCount != nil && *plan.MaxBuyCount > 0 {
+		bought, err := s.countUserPlanPurchases(ctx, req.UserID, plan.ID)
+		if err != nil {
+			return nil, fmt.Errorf("check purchase limit: %w", err)
+		}
+		if bought >= *plan.MaxBuyCount {
+			return nil, infraerrors.BadRequest("PLAN_PURCHASE_LIMIT_REACHED",
+				fmt.Sprintf("you have reached the purchase limit (%d) for this plan", *plan.MaxBuyCount))
+		}
+	}
 	if renewalMode != "" {
 		hasActiveSub, err := s.hasRenewableSubscription(ctx, req.UserID, plan.GroupID)
 		if err != nil {
@@ -222,6 +232,20 @@ func (s *PaymentService) hasRenewableSubscription(ctx context.Context, userID, g
 			usersubscription.ExpiresAtGT(now),
 		).
 		Exist(ctx)
+}
+
+func (s *PaymentService) countUserPlanPurchases(ctx context.Context, userID, planID int64) (int, error) {
+	if s == nil || s.entClient == nil {
+		return 0, nil
+	}
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.PlanIDEQ(planID),
+			paymentorder.OrderTypeEQ("subscription"),
+			paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED", "PARTIALLY_REFUNDED"),
+		).
+		Count(ctx)
 }
 
 func canRestartSubscriptionPeriod(now time.Time, sub *UserSubscription, group *Group, validityUnit string) bool {

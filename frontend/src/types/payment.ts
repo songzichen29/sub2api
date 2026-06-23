@@ -138,6 +138,8 @@ export interface SubscriptionPlan {
   expires_at?: string | null
   /** Stored as JSON string in backend; API layer should parse before use */
   features: string[]
+  max_buy_count?: number | null
+  user_buy_count?: number
   for_sale: boolean
   sort_order: number
   sales_count?: number

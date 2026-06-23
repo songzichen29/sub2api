@@ -55,6 +55,11 @@
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="input-label">{{ t('payment.admin.maxBuyCount') }}</label>
+          <input v-model.number="planForm.max_buy_count" type="number" step="1" min="0" class="input" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.maxBuyCountHint') }}</p>
+        </div>
         <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
       </div>
       <div>
@@ -117,7 +122,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null as number | string | null, expires_at_local: '', sort_order: 0, for_sale: true })
+const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null as number | string | null, expires_at_local: '', max_buy_count: null as number | string | null, sort_order: 0, for_sale: true })
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -172,14 +177,20 @@ function normalizeQuotaLimitUSD(value: number | string | null): number {
   return Number.isFinite(quota) && quota > 0 ? quota : 0
 }
 
+function normalizeMaxBuyCount(value: number | string | null): number | null {
+  if (value === null || value === '') return null
+  const count = Math.floor(Number(value))
+  return Number.isFinite(count) && count > 0 ? count : null
+}
+
 // Reset form when dialog opens
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', quota_limit_usd: props.plan.quota_limit_usd && props.plan.quota_limit_usd > 0 ? props.plan.quota_limit_usd : null, expires_at_local: toDateTimeLocal(props.plan.expires_at), sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', quota_limit_usd: props.plan.quota_limit_usd && props.plan.quota_limit_usd > 0 ? props.plan.quota_limit_usd : null, expires_at_local: toDateTimeLocal(props.plan.expires_at), max_buy_count: props.plan.max_buy_count && props.plan.max_buy_count > 0 ? props.plan.max_buy_count : null, sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null, expires_at_local: '', sort_order: 0, for_sale: true })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null, expires_at_local: '', max_buy_count: null, sort_order: 0, for_sale: true })
     planFeaturesText.value = ''
   }
 })
@@ -198,6 +209,7 @@ function buildPlanPayload() {
     validity_unit: planForm.validity_unit,
     quota_limit_usd: normalizeQuotaLimitUSD(planForm.quota_limit_usd),
     expires_at: expiresAt,
+    max_buy_count: normalizeMaxBuyCount(planForm.max_buy_count),
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,

@@ -75,6 +75,13 @@ func validatePlanQuotaLimit(quota *float64) error {
 	return nil
 }
 
+func validatePlanMaxBuyCount(v *int) error {
+	if v != nil && *v < 1 {
+		return infraerrors.BadRequest("PLAN_MAX_BUY_COUNT_INVALID", "max_buy_count must be >= 1")
+	}
+	return nil
+}
+
 func validatePlanExpiresAt(expiresAt *time.Time, now time.Time) error {
 	if expiresAt == nil {
 		return nil
@@ -113,6 +120,11 @@ func validatePlanPatch(req UpdatePlanRequest) error {
 	}
 	if req.ExpiresAt.Set {
 		if err := validatePlanExpiresAt(req.ExpiresAt.Value, time.Now()); err != nil {
+			return err
+		}
+	}
+	if req.MaxBuyCount.Set {
+		if err := validatePlanMaxBuyCount(req.MaxBuyCount.Value); err != nil {
 			return err
 		}
 	}
@@ -223,6 +235,39 @@ func (s *PaymentConfigService) GetPlanSalesCountMap(ctx context.Context, planIDs
 	return result, nil
 }
 
+// GetUserPlanPurchaseCountMap 返回指定用户在给定套餐 ID 列表中的已购次数（仅计算成功订单）。
+func (s *PaymentConfigService) GetUserPlanPurchaseCountMap(ctx context.Context, userID int64, planIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int)
+	if userID <= 0 || len(planIDs) == 0 {
+		return result, nil
+	}
+
+	type row struct {
+		PlanID int64 `json:"plan_id"`
+		Count  int   `json:"count"`
+	}
+
+	var rows []row
+	err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.PlanIDIn(planIDs...),
+			paymentorder.OrderTypeEQ("subscription"),
+			paymentorder.StatusIn("PAID", "RECHARGING", "COMPLETED", "PARTIALLY_REFUNDED"),
+		).
+		GroupBy(paymentorder.FieldPlanID).
+		Aggregate(dbent.Count()).
+		Scan(ctx, &rows)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
+		result[row.PlanID] = row.Count
+	}
+	return result, nil
+}
+
 func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanRequest) (*dbent.SubscriptionPlan, error) {
 	if err := validatePlanRequired(req.Name, req.GroupID, req.Price, req.ValidityDays, req.ValidityUnit, req.OriginalPrice); err != nil {
 		return nil, err
@@ -231,6 +276,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		return nil, err
 	}
 	if err := validatePlanExpiresAt(req.ExpiresAt, time.Now()); err != nil {
+		return nil, err
+	}
+	if err := validatePlanMaxBuyCount(req.MaxBuyCount); err != nil {
 		return nil, err
 	}
 	b := s.entClient.SubscriptionPlan.Create().
@@ -248,6 +296,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 	}
 	if req.ExpiresAt != nil {
 		b.SetExpiresAt(*req.ExpiresAt)
+	}
+	if req.MaxBuyCount != nil && *req.MaxBuyCount > 0 {
+		b.SetMaxBuyCount(*req.MaxBuyCount)
 	}
 	return b.Save(ctx)
 }
@@ -293,6 +344,13 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 			u.ClearExpiresAt()
 		} else {
 			u.SetExpiresAt(*req.ExpiresAt.Value)
+		}
+	}
+	if req.MaxBuyCount.Set {
+		if req.MaxBuyCount.Value == nil {
+			u.ClearMaxBuyCount()
+		} else {
+			u.SetMaxBuyCount(*req.MaxBuyCount.Value)
 		}
 	}
 	if req.Features != nil {

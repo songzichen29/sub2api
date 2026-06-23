@@ -34504,6 +34504,8 @@ type SubscriptionPlanMutation struct {
 	expires_at         *time.Time
 	features           *string
 	product_name       *string
+	max_buy_count      *int
+	addmax_buy_count   *int
 	for_sale           *bool
 	sort_order         *int
 	addsort_order      *int
@@ -35150,6 +35152,76 @@ func (m *SubscriptionPlanMutation) ResetProductName() {
 	m.product_name = nil
 }
 
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (m *SubscriptionPlanMutation) SetMaxBuyCount(i int) {
+	m.max_buy_count = &i
+	m.addmax_buy_count = nil
+}
+
+// MaxBuyCount returns the value of the "max_buy_count" field in the mutation.
+func (m *SubscriptionPlanMutation) MaxBuyCount() (r int, exists bool) {
+	v := m.max_buy_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMaxBuyCount returns the old "max_buy_count" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldMaxBuyCount(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMaxBuyCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMaxBuyCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMaxBuyCount: %w", err)
+	}
+	return oldValue.MaxBuyCount, nil
+}
+
+// AddMaxBuyCount adds i to the "max_buy_count" field.
+func (m *SubscriptionPlanMutation) AddMaxBuyCount(i int) {
+	if m.addmax_buy_count != nil {
+		*m.addmax_buy_count += i
+	} else {
+		m.addmax_buy_count = &i
+	}
+}
+
+// AddedMaxBuyCount returns the value that was added to the "max_buy_count" field in this mutation.
+func (m *SubscriptionPlanMutation) AddedMaxBuyCount() (r int, exists bool) {
+	v := m.addmax_buy_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (m *SubscriptionPlanMutation) ClearMaxBuyCount() {
+	m.max_buy_count = nil
+	m.addmax_buy_count = nil
+	m.clearedFields[subscriptionplan.FieldMaxBuyCount] = struct{}{}
+}
+
+// MaxBuyCountCleared returns if the "max_buy_count" field was cleared in this mutation.
+func (m *SubscriptionPlanMutation) MaxBuyCountCleared() bool {
+	_, ok := m.clearedFields[subscriptionplan.FieldMaxBuyCount]
+	return ok
+}
+
+// ResetMaxBuyCount resets all changes to the "max_buy_count" field.
+func (m *SubscriptionPlanMutation) ResetMaxBuyCount() {
+	m.max_buy_count = nil
+	m.addmax_buy_count = nil
+	delete(m.clearedFields, subscriptionplan.FieldMaxBuyCount)
+}
+
 // SetForSale sets the "for_sale" field.
 func (m *SubscriptionPlanMutation) SetForSale(b bool) {
 	m.for_sale = &b
@@ -35348,7 +35420,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 15)
+	fields := make([]string, 0, 16)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}
@@ -35381,6 +35453,9 @@ func (m *SubscriptionPlanMutation) Fields() []string {
 	}
 	if m.product_name != nil {
 		fields = append(fields, subscriptionplan.FieldProductName)
+	}
+	if m.max_buy_count != nil {
+		fields = append(fields, subscriptionplan.FieldMaxBuyCount)
 	}
 	if m.for_sale != nil {
 		fields = append(fields, subscriptionplan.FieldForSale)
@@ -35424,6 +35499,8 @@ func (m *SubscriptionPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.Features()
 	case subscriptionplan.FieldProductName:
 		return m.ProductName()
+	case subscriptionplan.FieldMaxBuyCount:
+		return m.MaxBuyCount()
 	case subscriptionplan.FieldForSale:
 		return m.ForSale()
 	case subscriptionplan.FieldSortOrder:
@@ -35463,6 +35540,8 @@ func (m *SubscriptionPlanMutation) OldField(ctx context.Context, name string) (e
 		return m.OldFeatures(ctx)
 	case subscriptionplan.FieldProductName:
 		return m.OldProductName(ctx)
+	case subscriptionplan.FieldMaxBuyCount:
+		return m.OldMaxBuyCount(ctx)
 	case subscriptionplan.FieldForSale:
 		return m.OldForSale(ctx)
 	case subscriptionplan.FieldSortOrder:
@@ -35557,6 +35636,13 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetProductName(v)
 		return nil
+	case subscriptionplan.FieldMaxBuyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMaxBuyCount(v)
+		return nil
 	case subscriptionplan.FieldForSale:
 		v, ok := value.(bool)
 		if !ok {
@@ -35608,6 +35694,9 @@ func (m *SubscriptionPlanMutation) AddedFields() []string {
 	if m.addquota_limit_usd != nil {
 		fields = append(fields, subscriptionplan.FieldQuotaLimitUsd)
 	}
+	if m.addmax_buy_count != nil {
+		fields = append(fields, subscriptionplan.FieldMaxBuyCount)
+	}
 	if m.addsort_order != nil {
 		fields = append(fields, subscriptionplan.FieldSortOrder)
 	}
@@ -35629,6 +35718,8 @@ func (m *SubscriptionPlanMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedValidityDays()
 	case subscriptionplan.FieldQuotaLimitUsd:
 		return m.AddedQuotaLimitUsd()
+	case subscriptionplan.FieldMaxBuyCount:
+		return m.AddedMaxBuyCount()
 	case subscriptionplan.FieldSortOrder:
 		return m.AddedSortOrder()
 	}
@@ -35675,6 +35766,13 @@ func (m *SubscriptionPlanMutation) AddField(name string, value ent.Value) error 
 		}
 		m.AddQuotaLimitUsd(v)
 		return nil
+	case subscriptionplan.FieldMaxBuyCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddMaxBuyCount(v)
+		return nil
 	case subscriptionplan.FieldSortOrder:
 		v, ok := value.(int)
 		if !ok {
@@ -35699,6 +35797,9 @@ func (m *SubscriptionPlanMutation) ClearedFields() []string {
 	if m.FieldCleared(subscriptionplan.FieldExpiresAt) {
 		fields = append(fields, subscriptionplan.FieldExpiresAt)
 	}
+	if m.FieldCleared(subscriptionplan.FieldMaxBuyCount) {
+		fields = append(fields, subscriptionplan.FieldMaxBuyCount)
+	}
 	return fields
 }
 
@@ -35721,6 +35822,9 @@ func (m *SubscriptionPlanMutation) ClearField(name string) error {
 		return nil
 	case subscriptionplan.FieldExpiresAt:
 		m.ClearExpiresAt()
+		return nil
+	case subscriptionplan.FieldMaxBuyCount:
+		m.ClearMaxBuyCount()
 		return nil
 	}
 	return fmt.Errorf("unknown SubscriptionPlan nullable field %s", name)
@@ -35762,6 +35866,9 @@ func (m *SubscriptionPlanMutation) ResetField(name string) error {
 		return nil
 	case subscriptionplan.FieldProductName:
 		m.ResetProductName()
+		return nil
+	case subscriptionplan.FieldMaxBuyCount:
+		m.ResetMaxBuyCount()
 		return nil
 	case subscriptionplan.FieldForSale:
 		m.ResetForSale()

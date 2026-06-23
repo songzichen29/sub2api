@@ -64,6 +64,10 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
+		field.Int("max_buy_count").
+			Optional().
+			Nillable().
+			Comment("Per-user purchase limit; NULL means unlimited"),
 		field.Bool("for_sale").
 			Default(true),
 		field.Int("sort_order").

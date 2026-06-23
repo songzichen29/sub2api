@@ -40,7 +40,22 @@
         </div>
       </div>
 
-      <!-- Group quota info (compact) -->
+      <!-- Purchase limit badge -->
+    <div v-if="plan.max_buy_count && plan.max_buy_count > 0" class="mb-2 flex items-center gap-1.5">
+      <span :class="[
+        'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+        purchaseLimitReached
+          ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400'
+          : 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400'
+      ]">
+        {{ purchaseLimitReached
+          ? t('payment.planCard.purchaseLimitReached')
+          : t('payment.planCard.purchaseLimit', { remaining: plan.max_buy_count - (plan.user_buy_count || 0), total: plan.max_buy_count })
+        }}
+      </span>
+    </div>
+
+    <!-- Group quota info (compact) -->
       <div class="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-dark-700/50">
         <div class="flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.rate') }}</span>
@@ -96,10 +111,16 @@
       <!-- Subscribe Button -->
       <button
         type="button"
-        :class="['w-full rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-[0.98]', btnClass]"
-        @click="emit('select', plan)"
+        :disabled="purchaseLimitReached"
+        :class="[
+          'w-full rounded-xl py-2.5 text-sm font-semibold transition-all',
+          purchaseLimitReached
+            ? 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-dark-600 dark:text-dark-400'
+            : btnClass + ' active:scale-[0.98]'
+        ]"
+        @click="!purchaseLimitReached && emit('select', plan)"
       >
-        {{ isRenewal ? t('payment.renewNow') : t('payment.subscribeNow') }}
+        {{ purchaseLimitReached ? t('payment.planCard.soldOut') : isRenewal ? t('payment.renewNow') : t('payment.subscribeNow') }}
       </button>
     </div>
   </div>
@@ -129,6 +150,11 @@ const platform = computed(() => props.plan.group_platform || '')
 const isRenewal = computed(() =>
   props.activeSubscriptions?.some(s => s.group_id === props.plan.group_id && s.status === 'active') ?? false
 )
+const purchaseLimitReached = computed(() => {
+  const limit = props.plan.max_buy_count
+  if (!limit || limit <= 0) return false
+  return (props.plan.user_buy_count || 0) >= limit
+})
 
 // Derived color classes from central config
 const accentClass = computed(() => platformAccentBarClass(platform.value))

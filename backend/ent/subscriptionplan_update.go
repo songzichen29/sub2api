@@ -235,6 +235,33 @@ func (_u *SubscriptionPlanUpdate) SetNillableProductName(v *string) *Subscriptio
 	return _u
 }
 
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) SetMaxBuyCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.ResetMaxBuyCount()
+	_u.mutation.SetMaxBuyCount(v)
+	return _u
+}
+
+// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableMaxBuyCount(v *int) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetMaxBuyCount(*v)
+	}
+	return _u
+}
+
+// AddMaxBuyCount adds value to the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) AddMaxBuyCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.AddMaxBuyCount(v)
+	return _u
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) ClearMaxBuyCount() *SubscriptionPlanUpdate {
+	_u.mutation.ClearMaxBuyCount()
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdate) SetForSale(v bool) *SubscriptionPlanUpdate {
 	_u.mutation.SetForSale(v)
@@ -405,6 +432,15 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MaxBuyCount(); ok {
+		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxBuyCount(); ok {
+		_spec.AddField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if _u.mutation.MaxBuyCountCleared() {
+		_spec.ClearField(subscriptionplan.FieldMaxBuyCount, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -645,6 +681,33 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableProductName(v *string) *Subscrip
 	return _u
 }
 
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) SetMaxBuyCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetMaxBuyCount()
+	_u.mutation.SetMaxBuyCount(v)
+	return _u
+}
+
+// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableMaxBuyCount(v *int) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetMaxBuyCount(*v)
+	}
+	return _u
+}
+
+// AddMaxBuyCount adds value to the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) AddMaxBuyCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddMaxBuyCount(v)
+	return _u
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) ClearMaxBuyCount() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearMaxBuyCount()
+	return _u
+}
+
 // SetForSale sets the "for_sale" field.
 func (_u *SubscriptionPlanUpdateOne) SetForSale(v bool) *SubscriptionPlanUpdateOne {
 	_u.mutation.SetForSale(v)
@@ -845,6 +908,15 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MaxBuyCount(); ok {
+		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxBuyCount(); ok {
+		_spec.AddField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if _u.mutation.MaxBuyCountCleared() {
+		_spec.ClearField(subscriptionplan.FieldMaxBuyCount, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
