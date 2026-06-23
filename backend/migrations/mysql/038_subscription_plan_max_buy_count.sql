@@ -9,7 +9,7 @@ SET @col_exists := (
 );
 
 SET @ddl := IF(@col_exists = 0,
-    'ALTER TABLE `subscription_plans` ADD COLUMN `max_buy_count` INT NULL COMMENT ''Per-user purchase limit; NULL means unlimited'' AFTER `features`',
+    'ALTER TABLE `subscription_plans` ADD COLUMN `max_buy_count` INT NULL COMMENT ''Per-user purchase limit, NULL means unlimited'' AFTER `features`',
     'SELECT 1'
 );
 PREPARE stmt FROM @ddl;
