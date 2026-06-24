@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div :class="['mx-auto space-y-6', containerMaxWidth]">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -668,11 +668,18 @@ const rechargeQuickAmounts = computed(() => {
   }
   return [...amounts].sort((a, b) => a - b)
 })
-// Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
+const containerMaxWidth = computed(() => {
+  if (activeTab.value === 'subscription' && !selectedPlan.value && paymentPhase.value === 'select') {
+    return 'max-w-7xl'
+  }
+  return 'max-w-4xl'
+})
+
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length
-  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2'
-  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
+  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2 sm:max-w-2xl sm:mx-auto'
+  if (n === 3) return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
+  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
 })
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
