@@ -494,6 +494,32 @@ func TestPresanitizeInvalidEncryptedReasoningItems_NestedInMessages(t *testing.T
 	require.Equal(t, validEC, gjson.GetBytes(body, "messages.0.content.1.encrypted_content").String(), "嵌套合法签名应保留")
 }
 
+func TestPresanitizeInvalidEncryptedReasoningItems_CompactionWithFunctionCallOutput(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{
+				"type":              "compaction",
+				"encrypted_content": "- **当前交接**：请继续完成回归点复测）",
+			},
+			map[string]any{
+				"type":    "function_call_output",
+				"call_id": "call_123",
+				"output":  "ok",
+			},
+		},
+	}
+
+	require.True(t, presanitizeInvalidEncryptedReasoningItems(reqBody, "test-account"))
+
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(body, "input.0.encrypted_content").Exists(), "compaction 普通文本不应作为 encrypted_content 透传")
+	require.Equal(t, "compaction", gjson.GetBytes(body, "input.0.type").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(body, "input.1.type").String())
+	require.Equal(t, "call_123", gjson.GetBytes(body, "input.1.call_id").String())
+}
+
 func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedContentOnce(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	wsFallbackServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

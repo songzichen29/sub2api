@@ -6398,7 +6398,7 @@ func presanitizeInvalidEncryptedReasoningItems(reqBody map[string]any, accountNa
 			itemID = fmt.Sprintf("item[%d]", dropCount)
 		}
 		logger.LegacyPrintf("service.openai_gateway",
-			"[OpenAI] presanitize: dropped invalid reasoning encrypted_content item_id=%q reason=%s (account: %s)",
+			"[OpenAI] presanitize: dropped invalid encrypted_content item_id=%q reason=%s (account: %s)",
 			itemID, reason, accountName)
 	}
 
@@ -6496,8 +6496,8 @@ func sanitizeEncryptedReasoningInputValue(value any, validateOnly bool, onDrop e
 }
 
 // sanitizeEncryptedReasoningInputMap 处理单个 map 节点。
-// validateOnly=true：仅移除 type=reasoning 且 encrypted_content 签名校验失败的条目。
-// validateOnly=false：无条件移除所有 type=reasoning 的 encrypted_content。
+// validateOnly=true：仅移除签名校验失败的 encrypted_content。
+// validateOnly=false：无条件移除所有签名型 encrypted_content 字段。
 func sanitizeEncryptedReasoningInputMap(inputItem map[string]any, validateOnly bool, onDrop encryptedContentDropCallback) (next any, changed bool, keep bool) {
 	for key, value := range inputItem {
 		nextValue, valueChanged, valueKeep := sanitizeEncryptedReasoningInputValue(value, validateOnly, onDrop)
@@ -6513,7 +6513,7 @@ func sanitizeEncryptedReasoningInputMap(inputItem map[string]any, validateOnly b
 	}
 
 	itemType, _ := inputItem["type"].(string)
-	if strings.TrimSpace(itemType) == "reasoning" {
+	if openAIEncryptedContentUsesGPTSignature(itemType) {
 		if ec, hasEncryptedContent := inputItem["encrypted_content"]; hasEncryptedContent {
 			shouldRemove := !validateOnly
 			dropReason := ""
@@ -6548,6 +6548,15 @@ func sanitizeEncryptedReasoningInputMap(inputItem map[string]any, validateOnly b
 	}
 
 	return inputItem, changed, true
+}
+
+func openAIEncryptedContentUsesGPTSignature(itemType string) bool {
+	switch strings.TrimSpace(itemType) {
+	case "reasoning", "compaction", "compaction_summary":
+		return true
+	default:
+		return false
+	}
 }
 
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
