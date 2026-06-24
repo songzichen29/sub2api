@@ -3199,10 +3199,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					}
 					setOpsUpstreamRequestBody(c, body)
 					httpInvalidEncryptedContentRetryTried = true
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content (account: %s)", account.Name)
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content action=drop_encrypted_reasoning_items (account: %s)", account.Name)
 					continue
 				}
-				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry because encrypted reasoning items are missing (account: %s)", account.Name)
+				nextPromptCacheKey, droppedSessionAnchor, skipReason := dropOpenAIInvalidEncryptedContentSessionAnchor(c, reqBody, account, promptCacheKey)
+				if droppedSessionAnchor {
+					promptCacheKey = nextPromptCacheKey
+					body, err = json.Marshal(reqBody)
+					if err != nil {
+						return nil, fmt.Errorf("serialize invalid_encrypted_content session retry body: %w", err)
+					}
+					setOpsUpstreamRequestBody(c, body)
+					httpInvalidEncryptedContentRetryTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content action=drop_session_anchor (account: %s)", account.Name)
+					continue
+				}
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry reason=%s (account: %s)", skipReason, account.Name)
 			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
@@ -6323,21 +6335,37 @@ func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 		return false
 	}
 
-	inputValue, has := reqBody["input"]
-	if !has {
-		return false
+	_, changed, _ := sanitizeEncryptedReasoningInputMap(reqBody)
+	return changed
+}
+
+func dropOpenAIInvalidEncryptedContentSessionAnchor(c *gin.Context, reqBody map[string]any, account *Account, promptCacheKey string) (string, bool, string) {
+	if account == nil || account.Type != AccountTypeOAuth {
+		return promptCacheKey, false, "missing_encrypted_reasoning_items_non_oauth"
+	}
+	if HasFunctionCallOutput(reqBody) {
+		return promptCacheKey, false, "missing_encrypted_reasoning_items_has_function_call_output"
 	}
 
-	nextInput, changed, keep := sanitizeEncryptedReasoningInputValue(inputValue)
-	if !changed {
-		return false
+	bodyPromptCacheKey := ""
+	if v, ok := reqBody["prompt_cache_key"].(string); ok {
+		bodyPromptCacheKey = strings.TrimSpace(v)
 	}
-	if !keep {
-		delete(reqBody, "input")
-		return true
+	hasBodySessionAnchor := strings.TrimSpace(promptCacheKey) != "" || bodyPromptCacheKey != ""
+	hasHeaderSessionAnchor := false
+	if c != nil && c.Request != nil {
+		hasHeaderSessionAnchor = strings.TrimSpace(c.GetHeader("session_id")) != "" || strings.TrimSpace(c.GetHeader("conversation_id")) != ""
 	}
-	reqBody["input"] = nextInput
-	return true
+	if !hasBodySessionAnchor && !hasHeaderSessionAnchor {
+		return promptCacheKey, false, "missing_encrypted_reasoning_items_and_session_anchor"
+	}
+
+	delete(reqBody, "prompt_cache_key")
+	if c != nil && c.Request != nil && c.Request.Header != nil {
+		c.Request.Header.Del("session_id")
+		c.Request.Header.Del("conversation_id")
+	}
+	return "", true, ""
 }
 
 func sanitizeEncryptedReasoningInputValue(value any) (next any, changed bool, keep bool) {
