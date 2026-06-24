@@ -6328,38 +6328,49 @@ func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 		return false
 	}
 
-	switch input := inputValue.(type) {
+	nextInput, changed, keep := sanitizeEncryptedReasoningInputValue(inputValue)
+	if !changed {
+		return false
+	}
+	if !keep {
+		delete(reqBody, "input")
+		return true
+	}
+	reqBody["input"] = nextInput
+	return true
+}
+
+func sanitizeEncryptedReasoningInputValue(value any) (next any, changed bool, keep bool) {
+	switch v := value.(type) {
 	case []any:
-		filtered := input[:0]
-		changed := false
-		for _, item := range input {
-			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+		filtered := v[:0]
+		for _, item := range v {
+			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item)
 			if itemChanged {
 				changed = true
 			}
-			if !keep {
+			if !itemKeep {
+				changed = true
 				continue
 			}
 			filtered = append(filtered, nextItem)
 		}
 		if !changed {
-			return false
+			return value, false, true
 		}
 		if len(filtered) == 0 {
-			delete(reqBody, "input")
-			return true
+			return nil, true, false
 		}
-		reqBody["input"] = filtered
-		return true
+		return filtered, true, true
 	case []map[string]any:
-		filtered := input[:0]
-		changed := false
-		for _, item := range input {
-			nextItem, itemChanged, keep := sanitizeEncryptedReasoningInputItem(item)
+		filtered := v[:0]
+		for _, item := range v {
+			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item)
 			if itemChanged {
 				changed = true
 			}
-			if !keep {
+			if !itemKeep {
+				changed = true
 				continue
 			}
 			nextMap, ok := nextItem.(map[string]any)
@@ -6370,55 +6381,45 @@ func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 			filtered = append(filtered, nextMap)
 		}
 		if !changed {
-			return false
+			return value, false, true
 		}
 		if len(filtered) == 0 {
-			delete(reqBody, "input")
-			return true
+			return nil, true, false
 		}
-		reqBody["input"] = filtered
-		return true
+		return filtered, true, true
 	case map[string]any:
-		nextItem, changed, keep := sanitizeEncryptedReasoningInputItem(input)
-		if !changed {
-			return false
-		}
-		if !keep {
-			delete(reqBody, "input")
-			return true
-		}
-		nextMap, ok := nextItem.(map[string]any)
-		if !ok {
-			return false
-		}
-		reqBody["input"] = nextMap
-		return true
+		return sanitizeEncryptedReasoningInputMap(v)
 	default:
-		return false
+		return value, false, true
 	}
 }
 
-func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep bool) {
-	inputItem, ok := item.(map[string]any)
-	if !ok {
-		return item, false, true
+func sanitizeEncryptedReasoningInputMap(inputItem map[string]any) (next any, changed bool, keep bool) {
+	for key, value := range inputItem {
+		nextValue, valueChanged, valueKeep := sanitizeEncryptedReasoningInputValue(value)
+		if !valueChanged {
+			continue
+		}
+		changed = true
+		if !valueKeep {
+			delete(inputItem, key)
+			continue
+		}
+		inputItem[key] = nextValue
 	}
 
 	itemType, _ := inputItem["type"].(string)
-	if strings.TrimSpace(itemType) != "reasoning" {
-		return item, false, true
+	if strings.TrimSpace(itemType) == "reasoning" {
+		if _, hasEncryptedContent := inputItem["encrypted_content"]; hasEncryptedContent {
+			delete(inputItem, "encrypted_content")
+			changed = true
+		}
+		if len(inputItem) == 1 {
+			return nil, true, false
+		}
 	}
 
-	_, hasEncryptedContent := inputItem["encrypted_content"]
-	if !hasEncryptedContent {
-		return item, false, true
-	}
-
-	delete(inputItem, "encrypted_content")
-	if len(inputItem) == 1 {
-		return nil, true, false
-	}
-	return inputItem, true, true
+	return inputItem, changed, true
 }
 
 func IsOpenAIResponsesCompactPathForTest(c *gin.Context) bool {
