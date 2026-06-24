@@ -526,7 +526,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentW
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.4-mini","stream":true,"prompt_cache_key":"cache-session","input":[{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.4-mini","stream":false,"prompt_cache_key":"cache-session","input":[{"type":"input_text","text":"hello"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
