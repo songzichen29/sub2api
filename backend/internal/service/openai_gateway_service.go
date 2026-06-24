@@ -2824,6 +2824,42 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		disablePatch()
 	}
 
+	if presanitizeInvalidEncryptedReasoningItems(reqBody, account.Name) {
+		bodyModified = true
+		disablePatch()
+	}
+
+	{
+		sessionID := ""
+		conversationID := ""
+		if c != nil && c.Request != nil {
+			sessionID = strings.TrimSpace(c.GetHeader("session_id"))
+			conversationID = strings.TrimSpace(c.GetHeader("conversation_id"))
+		}
+		replaySessionKey := resolveReasoningReplaySessionKey(promptCacheKey, sessionID, conversationID)
+		setReasoningReplayCacheContext(c, upstreamModel, replaySessionKey)
+
+		if replaySessionKey != "" && HasFunctionCallOutput(reqBody) {
+			if cachedItems, ok := GetReasoningReplayItems(upstreamModel, replaySessionKey); ok {
+				if inputArr, isArr := reqBody["input"].([]any); isArr {
+					filtered := filterReasoningReplayItemsForInput(cachedItems, inputArr)
+					if len(filtered) > 0 {
+						var replayAny []any
+						for _, item := range filtered {
+							replayAny = append(replayAny, item)
+						}
+						reqBody["input"] = insertReasoningReplayItemsIntoInput(inputArr, filtered)
+						bodyModified = true
+						disablePatch()
+						logger.LegacyPrintf("service.openai_gateway",
+							"[OpenAI] replay cache: injected %d items into input for function_call_output continuation (account: %s, model: %s)",
+							len(filtered), account.Name, upstreamModel)
+					}
+				}
+			}
+		}
+	}
+
 	// Apply OpenAI fast policy (参照 Claude BetaPolicy 的 fast-mode 过滤)：
 	// 针对 body 的 service_tier 字段（"priority" 即 fast，"flex"），按策略
 	// 执行 filter（删除字段）或 block（拒绝请求）。对 gpt-5.5 等模型屏蔽
@@ -2996,6 +3032,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if wsInvalidEncryptedContentRecoveryTried {
 				return false
 			}
+			clearReasoningReplayCacheOnError(c)
 			removedReasoningItems := trimOpenAIEncryptedReasoningItems(wsReqBody)
 			if !removedReasoningItems {
 				logOpenAIWSModeInfo(
@@ -3192,6 +3229,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
+				clearReasoningReplayCacheOnError(c)
 				if trimOpenAIEncryptedReasoningItems(reqBody) {
 					body, err = json.Marshal(reqBody)
 					if err != nil {
@@ -5697,6 +5735,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(
 				}
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if eventType == "response.completed" || eventType == "response.done" {
+				cacheReasoningReplayFromCompletedSSE(c, dataBytes)
+			}
 			return
 		}
 		if strings.TrimSpace(line) == "" {
@@ -6074,6 +6115,8 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	cacheReasoningReplayFromCompletedSSE(c, body)
+
 	c.Data(resp.StatusCode, contentType, body)
 
 	return &openaiNonStreamingResult{
@@ -6330,12 +6373,36 @@ func buildOpenAIResponsesURL(base string) string {
 	return buildOpenAIEndpointURL(base, "/v1/responses")
 }
 
+// trimOpenAIEncryptedReasoningItems 无条件移除所有 encrypted_content（重试场景）。
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
 	if len(reqBody) == 0 {
 		return false
 	}
 
-	_, changed, _ := sanitizeEncryptedReasoningInputMap(reqBody)
+	_, changed, _ := sanitizeEncryptedReasoningInputMap(reqBody, false, nil)
+	return changed
+}
+
+// presanitizeInvalidEncryptedReasoningItems 预清洗：仅移除签名校验不通过的
+// encrypted_content，合法内容保留。在发送上游请求前调用，避免明显非法的加密
+// 内容触发上游 400。accountName 用于日志标识。
+func presanitizeInvalidEncryptedReasoningItems(reqBody map[string]any, accountName string) bool {
+	if len(reqBody) == 0 {
+		return false
+	}
+
+	dropCount := 0
+	onDrop := func(itemID, reason string) {
+		dropCount++
+		if itemID == "" {
+			itemID = fmt.Sprintf("item[%d]", dropCount)
+		}
+		logger.LegacyPrintf("service.openai_gateway",
+			"[OpenAI] presanitize: dropped invalid reasoning encrypted_content item_id=%q reason=%s (account: %s)",
+			itemID, reason, accountName)
+	}
+
+	_, changed, _ := sanitizeEncryptedReasoningInputMap(reqBody, true, onDrop)
 	return changed
 }
 
@@ -6368,12 +6435,18 @@ func dropOpenAIInvalidEncryptedContentSessionAnchor(c *gin.Context, reqBody map[
 	return "", true, ""
 }
 
-func sanitizeEncryptedReasoningInputValue(value any) (next any, changed bool, keep bool) {
+// encryptedContentDropCallback 在预清洗模式下记录被删除的 encrypted_content 信息。
+type encryptedContentDropCallback func(itemID, reason string)
+
+// sanitizeEncryptedReasoningInputValue 递归遍历 value 中的所有结构。
+// validateOnly=true 时仅移除签名校验不通过的 encrypted_content（预清洗），
+// validateOnly=false 时无条件移除所有 encrypted_content（重试清洗）。
+func sanitizeEncryptedReasoningInputValue(value any, validateOnly bool, onDrop encryptedContentDropCallback) (next any, changed bool, keep bool) {
 	switch v := value.(type) {
 	case []any:
 		filtered := v[:0]
 		for _, item := range v {
-			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item)
+			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item, validateOnly, onDrop)
 			if itemChanged {
 				changed = true
 			}
@@ -6393,7 +6466,7 @@ func sanitizeEncryptedReasoningInputValue(value any) (next any, changed bool, ke
 	case []map[string]any:
 		filtered := v[:0]
 		for _, item := range v {
-			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item)
+			nextItem, itemChanged, itemKeep := sanitizeEncryptedReasoningInputValue(item, validateOnly, onDrop)
 			if itemChanged {
 				changed = true
 			}
@@ -6416,15 +6489,18 @@ func sanitizeEncryptedReasoningInputValue(value any) (next any, changed bool, ke
 		}
 		return filtered, true, true
 	case map[string]any:
-		return sanitizeEncryptedReasoningInputMap(v)
+		return sanitizeEncryptedReasoningInputMap(v, validateOnly, onDrop)
 	default:
 		return value, false, true
 	}
 }
 
-func sanitizeEncryptedReasoningInputMap(inputItem map[string]any) (next any, changed bool, keep bool) {
+// sanitizeEncryptedReasoningInputMap 处理单个 map 节点。
+// validateOnly=true：仅移除 type=reasoning 且 encrypted_content 签名校验失败的条目。
+// validateOnly=false：无条件移除所有 type=reasoning 的 encrypted_content。
+func sanitizeEncryptedReasoningInputMap(inputItem map[string]any, validateOnly bool, onDrop encryptedContentDropCallback) (next any, changed bool, keep bool) {
 	for key, value := range inputItem {
-		nextValue, valueChanged, valueKeep := sanitizeEncryptedReasoningInputValue(value)
+		nextValue, valueChanged, valueKeep := sanitizeEncryptedReasoningInputValue(value, validateOnly, onDrop)
 		if !valueChanged {
 			continue
 		}
@@ -6438,9 +6514,33 @@ func sanitizeEncryptedReasoningInputMap(inputItem map[string]any) (next any, cha
 
 	itemType, _ := inputItem["type"].(string)
 	if strings.TrimSpace(itemType) == "reasoning" {
-		if _, hasEncryptedContent := inputItem["encrypted_content"]; hasEncryptedContent {
-			delete(inputItem, "encrypted_content")
-			changed = true
+		if ec, hasEncryptedContent := inputItem["encrypted_content"]; hasEncryptedContent {
+			shouldRemove := !validateOnly
+			dropReason := ""
+			if validateOnly {
+				ecStr, isStr := ec.(string)
+				if !isStr {
+					shouldRemove = true
+					dropReason = fmt.Sprintf("encrypted_content must be a string, got %T", ec)
+				} else if ecStr != strings.TrimSpace(ecStr) {
+					shouldRemove = true
+					dropReason = "encrypted_content has leading or trailing whitespace"
+				} else if !openai.IsValidReasoningEncryptedContent(ecStr) {
+					shouldRemove = true
+					dropReason = "encrypted_content has invalid signature format"
+				}
+			}
+			if shouldRemove {
+				delete(inputItem, "encrypted_content")
+				changed = true
+				if onDrop != nil && dropReason != "" {
+					itemID := ""
+					if id, ok := inputItem["id"].(string); ok {
+						itemID = strings.TrimSpace(id)
+					}
+					onDrop(itemID, dropReason)
+				}
+			}
 		}
 		if len(inputItem) == 1 {
 			return nil, true, false

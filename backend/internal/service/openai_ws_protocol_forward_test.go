@@ -247,7 +247,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesInvalidEncryptedContentO
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_retry","input":[{"type":"reasoning","encrypted_content":"gAAA","summary":[{"type":"summary_text","text":"keep me"}]},{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_retry","input":[{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA","summary":[{"type":"summary_text","text":"keep me"}]},{"type":"input_text","text":"hello"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -333,7 +333,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesNestedInvalidEncryptedCo
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_nested_retry","input":[{"type":"message","role":"assistant","content":[{"type":"reasoning","encrypted_content":"gAAA","summary":[{"type":"summary_text","text":"keep nested"}]},{"type":"output_text","text":"visible"}]},{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_nested_retry","input":[{"type":"message","role":"assistant","content":[{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA","summary":[{"type":"summary_text","text":"keep nested"}]},{"type":"output_text","text":"visible"}]},{"type":"input_text","text":"hello"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -385,6 +385,113 @@ func TestTrimOpenAIEncryptedReasoningItems_CleansMessagesContent(t *testing.T) {
 	require.Equal(t, "keep messages summary", gjson.GetBytes(body, "messages.0.content.0.summary.0.text").String())
 	require.Equal(t, "text", gjson.GetBytes(body, "messages.0.content.1.type").String())
 	require.Equal(t, "visible", gjson.GetBytes(body, "messages.0.content.1.text").String())
+}
+
+func TestPresanitizeInvalidEncryptedReasoningItems_RemovesInvalidKeepsValid(t *testing.T) {
+	validEC := "gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": validEC,
+				"summary": []any{
+					map[string]any{"type": "summary_text", "text": "valid reasoning"},
+				},
+			},
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": "gAAA",
+				"summary": []any{
+					map[string]any{"type": "summary_text", "text": "invalid reasoning"},
+				},
+			},
+			map[string]any{"type": "input_text", "text": "hello"},
+		},
+	}
+
+	require.True(t, presanitizeInvalidEncryptedReasoningItems(reqBody, "test-account"))
+
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+	require.Equal(t, validEC, gjson.GetBytes(body, "input.0.encrypted_content").String(), "合法签名应保留")
+	require.Equal(t, "valid reasoning", gjson.GetBytes(body, "input.0.summary.0.text").String())
+	require.False(t, gjson.GetBytes(body, "input.1.encrypted_content").Exists(), "非法签名应被移除")
+	require.Equal(t, "reasoning", gjson.GetBytes(body, "input.1.type").String(), "reasoning item 本身应保留")
+	require.Equal(t, "invalid reasoning", gjson.GetBytes(body, "input.1.summary.0.text").String(), "summary 应保留")
+	require.Equal(t, "input_text", gjson.GetBytes(body, "input.2.type").String())
+}
+
+func TestPresanitizeInvalidEncryptedReasoningItems_AllValidNoChange(t *testing.T) {
+	validEC := "gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": validEC,
+			},
+			map[string]any{"type": "input_text", "text": "hello"},
+		},
+	}
+
+	require.False(t, presanitizeInvalidEncryptedReasoningItems(reqBody, "test-account"), "全部合法时不应有修改")
+
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+	require.Equal(t, validEC, gjson.GetBytes(body, "input.0.encrypted_content").String())
+}
+
+func TestPresanitizeInvalidEncryptedReasoningItems_NonStringType(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"input": []any{
+			map[string]any{
+				"type":              "reasoning",
+				"encrypted_content": 12345,
+			},
+		},
+	}
+
+	require.True(t, presanitizeInvalidEncryptedReasoningItems(reqBody, "test-account"))
+
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(body, "input.0.encrypted_content").Exists(), "非字符串 encrypted_content 应被移除")
+}
+
+func TestPresanitizeInvalidEncryptedReasoningItems_NestedInMessages(t *testing.T) {
+	validEC := "gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+		"messages": []any{
+			map[string]any{
+				"role": "assistant",
+				"content": []any{
+					map[string]any{
+						"type":              "reasoning",
+						"encrypted_content": "gAAA",
+						"summary": []any{
+							map[string]any{"type": "summary_text", "text": "invalid"},
+						},
+					},
+					map[string]any{
+						"type":              "reasoning",
+						"encrypted_content": validEC,
+					},
+				},
+			},
+		},
+	}
+
+	require.True(t, presanitizeInvalidEncryptedReasoningItems(reqBody, "test-account"))
+
+	body, err := json.Marshal(reqBody)
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(body, "messages.0.content.0.encrypted_content").Exists(), "嵌套非法签名应被移除")
+	require.Equal(t, "reasoning", gjson.GetBytes(body, "messages.0.content.0.type").String(), "reasoning item 本身应保留")
+	require.Equal(t, "invalid", gjson.GetBytes(body, "messages.0.content.0.summary.0.text").String(), "summary 应保留")
+	require.Equal(t, validEC, gjson.GetBytes(body, "messages.0.content.1.encrypted_content").String(), "嵌套合法签名应保留")
 }
 
 func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedContentOnce(t *testing.T) {
@@ -451,7 +558,7 @@ func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedC
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_retry_wrapped","input":[{"type":"reasoning","encrypted_content":"gAAA","summary":[{"type":"summary_text","text":"keep me too"}]},{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.1","stream":false,"previous_response_id":"resp_http_retry_wrapped","input":[{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA","summary":[{"type":"summary_text","text":"keep me too"}]},{"type":"input_text","text":"hello"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1733,7 +1840,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversOnce(t 
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":[{"type":"reasoning","encrypted_content":"gAAA"},{"type":"input_text","text":"hello"}]}`)
+	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":[{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"},{"type":"input_text","text":"hello"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -1952,7 +2059,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentRecoversSingleO
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":{"type":"reasoning","encrypted_content":"gAAA","summary":[{"type":"summary_text","text":"keep me"}]}}`)
+	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_encrypted","input":{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA","summary":[{"type":"summary_text","text":"keep me"}]}}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -2070,7 +2177,7 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentKeepsPreviousRe
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_function_call","input":[{"type":"reasoning","encrypted_content":"gAAA"},{"type":"function_call_output","call_id":"call_123","output":"ok"}]}`)
+	body := []byte(`{"model":"gpt-5.3-codex","stream":false,"previous_response_id":"resp_prev_function_call","input":[{"type":"reasoning","encrypted_content":"gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"},{"type":"function_call_output","call_id":"call_123","output":"ok"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)

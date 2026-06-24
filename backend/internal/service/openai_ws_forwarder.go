@@ -2197,6 +2197,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		}
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
+			cacheReasoningReplayFromCompletedSSE(c, message)
 		}
 		imageCounter.AddSSEData(message)
 
@@ -3013,6 +3014,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			if openAIWSEventShouldParseUsage(eventType) {
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
+				cacheReasoningReplayFromCompletedSSE(c, upstreamMessage)
 			}
 			imageCounter.AddSSEData(upstreamMessage)
 
