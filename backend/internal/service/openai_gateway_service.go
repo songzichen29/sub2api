@@ -3290,6 +3290,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			if !httpNoToolOutputRetryTried && isNoToolOutputFoundError(resp.StatusCode, upstreamMsg) {
 				if recoverNoToolOutputFound(reqBody) {
+					// 调试：统计重试 body 中 input 项的类型分布
+					if inputArr, ok := reqBody["input"].([]any); ok {
+						typeCounts := make(map[string]int)
+						for _, item := range inputArr {
+							if m, ok := item.(map[string]any); ok {
+								t, _ := m["type"].(string)
+								typeCounts[t]++
+							}
+						}
+						logger.LegacyPrintf("service.openai_gateway", "[OpenAI] no_tool_output retry body input types: %v (account: %s)", typeCounts, account.Name)
+					}
 					body, err = json.Marshal(reqBody)
 					if err != nil {
 						return nil, fmt.Errorf("serialize no_tool_output retry body: %w", err)
