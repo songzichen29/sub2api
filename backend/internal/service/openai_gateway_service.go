@@ -2818,16 +2818,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
-	// 仅在 WSv2 模式保留 previous_response_id，其他模式（HTTP/WSv1）统一过滤。
-	// 注意：该规则同样适用于 Codex CLI 请求，避免 WSv1 向上游透传不支持字段。
-	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 {
-		if _, has := reqBody["previous_response_id"]; has {
-			delete(reqBody, "previous_response_id")
-			bodyModified = true
-			markPatchDelete("previous_response_id")
-		}
-	}
-
 	if sanitizeEmptyBase64InputImagesInOpenAIRequestBodyMap(reqBody) {
 		bodyModified = true
 		disablePatch()
@@ -3265,13 +3255,18 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				clearReasoningReplayCacheOnError(c)
 				if trimOpenAIEncryptedReasoningItems(reqBody) {
+					previousResponseID, _ := reqBody["previous_response_id"].(string)
+					hasFunctionCallOutput := HasFunctionCallOutput(reqBody)
+					if strings.TrimSpace(previousResponseID) != "" && !hasFunctionCallOutput {
+						delete(reqBody, "previous_response_id")
+					}
 					body, err = json.Marshal(reqBody)
 					if err != nil {
 						return nil, fmt.Errorf("serialize invalid_encrypted_content retry body: %w", err)
 					}
 					setOpsUpstreamRequestBody(c, body)
 					httpInvalidEncryptedContentRetryTried = true
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content action=drop_encrypted_reasoning_items (account: %s)", account.Name)
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after invalid_encrypted_content action=drop_encrypted_reasoning_items previous_response_id_present=%v dropped_previous_response_id=%v (account: %s)", strings.TrimSpace(previousResponseID) != "", strings.TrimSpace(previousResponseID) != "" && !hasFunctionCallOutput, account.Name)
 					continue
 				}
 				nextPromptCacheKey, droppedSessionAnchor, skipReason := dropOpenAIInvalidEncryptedContentSessionAnchor(c, reqBody, account, promptCacheKey)
@@ -3355,6 +3350,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var firstTokenDiagnostics *openAIResponsesPreFirstTokenDiagnostics
 		imageCount := 0
 		var imageOutputSizes []string
+		responseID := ""
 		if reqStream {
 			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, upstreamHeadersAt, originalModel, upstreamModel, len(body))
 			if err != nil {
@@ -3366,6 +3362,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			firstTokenDiagnostics = streamResult.diagnostics
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			responseID = streamResult.responseID
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -3374,7 +3371,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			usage = nonStreamResult.usage
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			responseID = nonStreamResult.responseID
 		}
+		s.bindOpenAIResponseAccount(ctx, c, account, responseID)
 
 		// Extract and save Codex usage snapshot from response headers (for OAuth accounts)
 		if account.Type == AccountTypeOAuth {
@@ -3406,6 +3405,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 		forwardResult := &OpenAIForwardResult{
 			RequestID:            resp.Header.Get("x-request-id"),
+			ResponseID:           responseID,
 			Usage:                *usage,
 			Model:                originalModel,
 			UpstreamModel:        upstreamModel,
@@ -5360,6 +5360,7 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
 	usage                *OpenAIUsage
+	responseID           string
 	firstTokenMs         *int
 	upstreamFirstEventMs *int
 	diagnostics          *openAIResponsesPreFirstTokenDiagnostics
@@ -5370,6 +5371,7 @@ type openaiStreamingResult struct {
 type openaiNonStreamingResult struct {
 	*OpenAIUsage
 	usage            *OpenAIUsage
+	responseID       string
 	imageCount       int
 	imageOutputSizes []string
 }
@@ -5416,6 +5418,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	responseID := ""
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -5617,6 +5620,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
 			usage:                usage,
+			responseID:           responseID,
 			firstTokenMs:         firstTokenMs,
 			upstreamFirstEventMs: upstreamFirstEventMs,
 			diagnostics:          diagnostics,
@@ -5795,6 +5799,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(
 			s.parseSSEUsageBytes(dataBytes, usage)
 			if eventType == "response.completed" || eventType == "response.done" {
 				cacheReasoningReplayFromCompletedSSE(c, dataBytes)
+			}
+			if responseID == "" {
+				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			return
 		}
@@ -6100,6 +6107,36 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 	return openAIUsageFromGJSON(gjson.GetBytes(body, "response.usage"))
 }
 
+func extractOpenAIResponseIDFromJSONBytes(body []byte) string {
+	if len(body) == 0 || bytes.Equal(body, []byte("[DONE]")) || !gjson.ValidBytes(body) {
+		return ""
+	}
+	for _, path := range []string{"id", "response.id"} {
+		id := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if ClassifyOpenAIPreviousResponseIDKind(id) == OpenAIPreviousResponseIDKindResponseID {
+			return id
+		}
+	}
+	return ""
+}
+
+func (s *OpenAIGatewayService) bindOpenAIResponseAccount(ctx context.Context, c *gin.Context, account *Account, responseID string) {
+	if s == nil || account == nil {
+		return
+	}
+	responseID = strings.TrimSpace(responseID)
+	if ClassifyOpenAIPreviousResponseIDKind(responseID) != OpenAIPreviousResponseIDKindResponseID {
+		return
+	}
+	store := s.getOpenAIWSStateStore()
+	if store == nil {
+		return
+	}
+	groupID := getOpenAIGroupIDFromContext(c)
+	ttl := s.openAIWSResponseStickyTTL()
+	logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, store.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
+}
+
 func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 	if !value.Exists() || !value.IsObject() {
 		return OpenAIUsage{}, false
@@ -6180,6 +6217,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
@@ -6195,6 +6233,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
 	usage := &OpenAIUsage{}
+	responseID := ""
 	if ok {
 		if parsedUsage, parsed := extractOpenAIUsageFromJSONBytes(finalResponse); parsed {
 			*usage = parsedUsage
@@ -6215,6 +6254,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		}
 		// Correct tool calls in final response
 		body = s.correctToolCallsInResponseBody(body)
+		responseID = extractOpenAIResponseIDFromJSONBytes(body)
 	} else {
 		terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 		if terminalOK && terminalType == "response.failed" {
@@ -6229,6 +6269,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		body = []byte(bodyText)
+		responseID = extractOpenAIResponseIDFromSSEBody(bodyText)
 	}
 
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -6245,9 +6286,21 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	return &openaiNonStreamingResult{
 		OpenAIUsage:      usage,
 		usage:            usage,
+		responseID:       responseID,
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil
+}
+
+func extractOpenAIResponseIDFromSSEBody(body string) string {
+	responseID := ""
+	forEachOpenAISSEDataPayload(body, func(data []byte) {
+		if responseID != "" {
+			return
+		}
+		responseID = extractOpenAIResponseIDFromJSONBytes(data)
+	})
+	return responseID
 }
 
 func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
