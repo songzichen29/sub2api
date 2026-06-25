@@ -652,7 +652,8 @@ func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 		"ws_unsupported",
 		"auth_failed",
 		"invalid_encrypted_content",
-		"previous_response_not_found":
+		"previous_response_not_found",
+		"no_tool_output_found":
 		return reason, false
 	}
 
@@ -717,6 +718,14 @@ func resolveOpenAIWSFallbackErrorResponse(err error) (statusCode int, errType st
 		errType = "invalid_request_error"
 		if upstreamMessage == "" {
 			upstreamMessage = "previous response not found"
+		}
+	case "no_tool_output_found":
+		if statusCode == 0 {
+			statusCode = http.StatusBadRequest
+		}
+		errType = "invalid_request_error"
+		if upstreamMessage == "" {
+			upstreamMessage = "no tool output found for function call"
 		}
 	case "upgrade_required":
 		if statusCode == 0 {
@@ -2996,6 +3005,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		wsLastFailureReason := ""
 		wsPrevResponseRecoveryTried := false
 		wsInvalidEncryptedContentRecoveryTried := false
+		wsNoToolOutputRecoveryTried := false
 		recoverPrevResponseNotFound := func(attempt int) bool {
 			if wsPrevResponseRecoveryTried {
 				return false
@@ -3060,6 +3070,26 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			)
 			return true
 		}
+		recoverNoToolOutput := func(attempt int) bool {
+			if wsNoToolOutputRecoveryTried {
+				return false
+			}
+			if !recoverNoToolOutputFound(wsReqBody) {
+				logOpenAIWSModeInfo(
+					"reconnect_no_tool_output_recovery_skip account_id=%d attempt=%d reason=no_function_call_output_in_input",
+					account.ID,
+					attempt,
+				)
+				return false
+			}
+			wsNoToolOutputRecoveryTried = true
+			logOpenAIWSModeInfo(
+				"reconnect_no_tool_output_recovery account_id=%d attempt=%d action=drop_function_call_output_and_prev_response_id retry=1",
+				account.ID,
+				attempt,
+			)
+			return true
+		}
 		retryBudget := s.openAIWSRetryTotalBudget()
 		retryStartedAt := time.Now()
 	wsRetryLoop:
@@ -3097,6 +3127,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				continue
 			}
 			if reason == "invalid_encrypted_content" && recoverInvalidEncryptedContent(attempt) {
+				continue
+			}
+			if reason == "no_tool_output_found" && recoverNoToolOutput(attempt) {
 				continue
 			}
 			if retryable && attempt < maxAttempts {
@@ -3189,6 +3222,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
+	httpNoToolOutputRetryTried := false
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
@@ -3253,6 +3287,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					continue
 				}
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 invalid_encrypted_content retry reason=%s (account: %s)", skipReason, account.Name)
+			}
+			if !httpNoToolOutputRetryTried && isNoToolOutputFoundError(resp.StatusCode, upstreamMsg) {
+				if recoverNoToolOutputFound(reqBody) {
+					body, err = json.Marshal(reqBody)
+					if err != nil {
+						return nil, fmt.Errorf("serialize no_tool_output retry body: %w", err)
+					}
+					setOpsUpstreamRequestBody(c, body)
+					httpNoToolOutputRetryTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after no_tool_output_found action=drop_function_call_output_and_prev_response_id (account: %s)", account.Name)
+					continue
+				}
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 no_tool_output_found retry reason=no_function_call_output_in_input (account: %s)", account.Name)
 			}
 			if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 				upstreamDetail := ""
@@ -6433,6 +6480,44 @@ func dropOpenAIInvalidEncryptedContentSessionAnchor(c *gin.Context, reqBody map[
 		c.Request.Header.Del("conversation_id")
 	}
 	return "", true, ""
+}
+
+// isNoToolOutputFoundError 判断上游 400 响应是否为 "No tool output found for function call" 错误。
+// 该错误 code 为 null，只能通过 message 前缀匹配。
+func isNoToolOutputFoundError(statusCode int, upstreamMsg string) bool {
+	return statusCode == http.StatusBadRequest &&
+		strings.HasPrefix(upstreamMsg, "No tool output found for function call")
+}
+
+// recoverNoToolOutputFound 处理 "No tool output found for function call" 错误。
+// 策略：移除 input 中所有 function_call_output 项，清掉 previous_response_id，
+// 让请求以无工具续链的方式重试。返回 true 表示已修改请求体可以重试。
+func recoverNoToolOutputFound(reqBody map[string]any) bool {
+	input, ok := reqBody["input"].([]any)
+	if !ok || len(input) == 0 {
+		return false
+	}
+	filtered := make([]any, 0, len(input))
+	removed := 0
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+		itemType, _ := m["type"].(string)
+		if itemType == "function_call_output" {
+			removed++
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	if removed == 0 {
+		return false
+	}
+	reqBody["input"] = filtered
+	delete(reqBody, "previous_response_id")
+	return true
 }
 
 // encryptedContentDropCallback 在预清洗模式下记录被删除的 encrypted_content 信息。

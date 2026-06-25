@@ -4192,6 +4192,9 @@ func classifyOpenAIWSErrorEventFromRaw(codeRaw, errTypeRaw, msgRaw string) (stri
 		(strings.Contains(msg, "previous response") && strings.Contains(msg, "not found")) {
 		return "previous_response_not_found", true
 	}
+	if strings.Contains(msg, "no tool output found for function call") {
+		return "no_tool_output_found", true
+	}
 	if strings.Contains(errType, "server_error") || strings.Contains(code, "server_error") {
 		return "upstream_error_event", true
 	}

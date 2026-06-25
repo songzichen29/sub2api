@@ -514,10 +514,10 @@ func TestPresanitizeInvalidEncryptedReasoningItems_CompactionWithFunctionCallOut
 
 	body, err := json.Marshal(reqBody)
 	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(body, "input.0.encrypted_content").Exists(), "compaction 普通文本不应作为 encrypted_content 透传")
-	require.Equal(t, "compaction", gjson.GetBytes(body, "input.0.type").String())
-	require.Equal(t, "function_call_output", gjson.GetBytes(body, "input.1.type").String())
-	require.Equal(t, "call_123", gjson.GetBytes(body, "input.1.call_id").String())
+	inputArr := gjson.GetBytes(body, "input").Array()
+	require.Len(t, inputArr, 1, "非法 compaction 只剩 type 一个字段，整个节点应被移除")
+	require.Equal(t, "function_call_output", inputArr[0].Get("type").String())
+	require.Equal(t, "call_123", inputArr[0].Get("call_id").String())
 }
 
 func TestOpenAIGatewayService_Forward_HTTPIngressRetriesWrappedInvalidEncryptedContentOnce(t *testing.T) {
@@ -2222,4 +2222,139 @@ func TestOpenAIGatewayService_Forward_WSv2InvalidEncryptedContentKeepsPreviousRe
 	require.Equal(t, "call_123", gjson.GetBytes(requests[1], `input.0.call_id`).String())
 	require.Equal(t, "ok", gjson.GetBytes(requests[1], `input.0.output`).String())
 	require.Equal(t, "resp_prev_function_call", gjson.GetBytes(requests[1], "previous_response_id").String())
+}
+
+func TestIsNoToolOutputFoundError(t *testing.T) {
+	require.True(t, isNoToolOutputFoundError(400, "No tool output found for function call call_WxwK96bNaNbnbwAWnXrAwS4V."))
+	require.True(t, isNoToolOutputFoundError(400, "No tool output found for function call call_abc123."))
+	require.False(t, isNoToolOutputFoundError(400, "The encrypted content could not be verified."))
+	require.False(t, isNoToolOutputFoundError(500, "No tool output found for function call call_abc."))
+	require.False(t, isNoToolOutputFoundError(400, ""))
+}
+
+func TestRecoverNoToolOutputFound(t *testing.T) {
+	t.Run("移除 function_call_output 并清掉 previous_response_id", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model":                "gpt-5.5",
+			"previous_response_id": "resp_prev",
+			"input": []any{
+				map[string]any{"type": "input_text", "text": "hello"},
+				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "result"},
+			},
+		}
+		ok := recoverNoToolOutputFound(reqBody)
+		require.True(t, ok)
+		_, hasPrevResponseID := reqBody["previous_response_id"]
+		require.False(t, hasPrevResponseID, "previous_response_id 应被清除")
+
+		input := reqBody["input"].([]any)
+		require.Len(t, input, 1)
+		item := input[0].(map[string]any)
+		require.Equal(t, "input_text", item["type"])
+	})
+
+	t.Run("无 function_call_output 时返回 false", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model":                "gpt-5.5",
+			"previous_response_id": "resp_prev",
+			"input": []any{
+				map[string]any{"type": "input_text", "text": "hello"},
+			},
+		}
+		ok := recoverNoToolOutputFound(reqBody)
+		require.False(t, ok)
+		_, hasPrevResponseID := reqBody["previous_response_id"]
+		require.True(t, hasPrevResponseID, "previous_response_id 不应被修改")
+	})
+
+	t.Run("input 为空时返回 false", func(t *testing.T) {
+		reqBody := map[string]any{"model": "gpt-5.5"}
+		require.False(t, recoverNoToolOutputFound(reqBody))
+	})
+
+	t.Run("多个 function_call_output 全部移除", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model":                "gpt-5.5",
+			"previous_response_id": "resp_prev",
+			"input": []any{
+				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "r1"},
+				map[string]any{"type": "input_text", "text": "continue"},
+				map[string]any{"type": "function_call_output", "call_id": "call_2", "output": "r2"},
+			},
+		}
+		ok := recoverNoToolOutputFound(reqBody)
+		require.True(t, ok)
+		input := reqBody["input"].([]any)
+		require.Len(t, input, 1)
+		require.Equal(t, "input_text", input[0].(map[string]any)["type"])
+	})
+}
+
+func TestOpenAIGatewayService_Forward_HTTPRetriesNoToolOutputFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "custom-client/1.0")
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	upstream := &httpUpstreamSequenceRecorder{
+		responses: []*http.Response{
+			{
+				StatusCode: http.StatusBadRequest,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"error":{"code":null,"message":"No tool output found for function call call_abc123.","param":"input","type":"invalid_request_error"}}`,
+				)),
+			},
+			{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(
+					`{"id":"resp_no_tool_retry_ok","usage":{"input_tokens":1,"output_tokens":2,"input_tokens_details":{"cached_tokens":0}}}`,
+				)),
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     upstream,
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+	}
+
+	account := &Account{
+		ID:          201,
+		Name:        "openai-apikey-no-tool",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-test-no-tool",
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.5","stream":false,"previous_response_id":"resp_prev_no_tool","input":[{"type":"function_call_output","call_id":"call_abc123","output":"tool result"},{"type":"input_text","text":"continue"}]}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 2, upstream.callCount, "no_tool_output_found 应重试一次")
+	require.Len(t, upstream.bodies, 2)
+
+	firstBody := upstream.bodies[0]
+	secondBody := upstream.bodies[1]
+	require.Equal(t, "function_call_output", gjson.GetBytes(firstBody, "input.0.type").String(), "首次请求应包含 function_call_output")
+
+	for _, item := range gjson.GetBytes(secondBody, "input").Array() {
+		require.NotEqual(t, "function_call_output", item.Get("type").String(), "重试请求不应包含 function_call_output")
+	}
+	require.Equal(t, "input_text", gjson.GetBytes(secondBody, "input.0.type").String(), "重试请求应保留 input_text")
 }
