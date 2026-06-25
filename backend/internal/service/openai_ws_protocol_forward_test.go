@@ -2233,13 +2233,13 @@ func TestIsNoToolOutputFoundError(t *testing.T) {
 }
 
 func TestRecoverNoToolOutputFound(t *testing.T) {
-	t.Run("移除 function_call_output 并清掉 previous_response_id", func(t *testing.T) {
+	t.Run("移除孤立 function_call 并清掉 previous_response_id", func(t *testing.T) {
 		reqBody := map[string]any{
 			"model":                "gpt-5.5",
 			"previous_response_id": "resp_prev",
 			"input": []any{
 				map[string]any{"type": "input_text", "text": "hello"},
-				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "result"},
+				map[string]any{"type": "function_call", "call_id": "call_1", "name": "tool", "arguments": "{}"},
 			},
 		}
 		ok := recoverNoToolOutputFound(reqBody)
@@ -2253,12 +2253,14 @@ func TestRecoverNoToolOutputFound(t *testing.T) {
 		require.Equal(t, "input_text", item["type"])
 	})
 
-	t.Run("无 function_call_output 时返回 false", func(t *testing.T) {
+	t.Run("无未配对工具项时返回 false", func(t *testing.T) {
 		reqBody := map[string]any{
 			"model":                "gpt-5.5",
 			"previous_response_id": "resp_prev",
 			"input": []any{
 				map[string]any{"type": "input_text", "text": "hello"},
+				map[string]any{"type": "function_call", "call_id": "call_1", "name": "tool", "arguments": "{}"},
+				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "ok"},
 			},
 		}
 		ok := recoverNoToolOutputFound(reqBody)
@@ -2272,21 +2274,27 @@ func TestRecoverNoToolOutputFound(t *testing.T) {
 		require.False(t, recoverNoToolOutputFound(reqBody))
 	})
 
-	t.Run("多个 function_call_output 全部移除", func(t *testing.T) {
+	t.Run("移除所有未配对工具项并保留已配对工具项", func(t *testing.T) {
 		reqBody := map[string]any{
 			"model":                "gpt-5.5",
 			"previous_response_id": "resp_prev",
 			"input": []any{
-				map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "r1"},
+				map[string]any{"type": "function_call", "call_id": "call_keep", "name": "tool", "arguments": "{}"},
+				map[string]any{"type": "function_call_output", "call_id": "call_keep", "output": "ok"},
+				map[string]any{"type": "function_call", "call_id": "call_missing_output", "name": "tool", "arguments": "{}"},
 				map[string]any{"type": "input_text", "text": "continue"},
-				map[string]any{"type": "function_call_output", "call_id": "call_2", "output": "r2"},
+				map[string]any{"type": "function_call_output", "call_id": "call_missing_call", "output": "r2"},
 			},
 		}
 		ok := recoverNoToolOutputFound(reqBody)
 		require.True(t, ok)
 		input := reqBody["input"].([]any)
-		require.Len(t, input, 1)
-		require.Equal(t, "input_text", input[0].(map[string]any)["type"])
+		require.Len(t, input, 3)
+		require.Equal(t, "function_call", input[0].(map[string]any)["type"])
+		require.Equal(t, "call_keep", input[0].(map[string]any)["call_id"])
+		require.Equal(t, "function_call_output", input[1].(map[string]any)["type"])
+		require.Equal(t, "call_keep", input[1].(map[string]any)["call_id"])
+		require.Equal(t, "input_text", input[2].(map[string]any)["type"])
 	})
 
 	t.Run("同时移除 function_call 和 function_call_output", func(t *testing.T) {
@@ -2387,7 +2395,7 @@ func TestOpenAIGatewayService_Forward_HTTPRetriesNoToolOutputFound(t *testing.T)
 		},
 	}
 
-	body := []byte(`{"model":"gpt-5.5","stream":false,"previous_response_id":"resp_prev_no_tool","input":[{"type":"function_call_output","call_id":"call_abc123","output":"tool result"},{"type":"input_text","text":"continue"}]}`)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"previous_response_id":"resp_prev_no_tool","input":[{"type":"function_call","call_id":"call_abc123","name":"tool","arguments":"{}"},{"type":"input_text","text":"continue"}]}`)
 	result, err := svc.Forward(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -2396,10 +2404,11 @@ func TestOpenAIGatewayService_Forward_HTTPRetriesNoToolOutputFound(t *testing.T)
 
 	firstBody := upstream.bodies[0]
 	secondBody := upstream.bodies[1]
-	require.Equal(t, "function_call_output", gjson.GetBytes(firstBody, "input.0.type").String(), "首次请求应包含 function_call_output")
+	require.Equal(t, "function_call", gjson.GetBytes(firstBody, "input.0.type").String(), "首次请求应包含孤立 function_call")
 
 	for _, item := range gjson.GetBytes(secondBody, "input").Array() {
 		require.NotEqual(t, "function_call_output", item.Get("type").String(), "重试请求不应包含 function_call_output")
+		require.NotEqual(t, "function_call", item.Get("type").String(), "重试请求不应包含孤立 function_call")
 	}
 	require.Equal(t, "input_text", gjson.GetBytes(secondBody, "input.0.type").String(), "重试请求应保留 input_text")
 }

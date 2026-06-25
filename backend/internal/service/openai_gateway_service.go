@@ -3084,7 +3084,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			wsNoToolOutputRecoveryTried = true
 			logOpenAIWSModeInfo(
-				"reconnect_no_tool_output_recovery account_id=%d attempt=%d action=drop_function_call_output_and_prev_response_id retry=1",
+				"reconnect_no_tool_output_recovery account_id=%d attempt=%d action=repair_tool_call_pairs_and_drop_prev_response_id retry=1",
 				account.ID,
 				attempt,
 			)
@@ -3307,7 +3307,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 					}
 					setOpsUpstreamRequestBody(c, body)
 					httpNoToolOutputRetryTried = true
-					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after no_tool_output_found action=drop_function_call_output_and_prev_response_id (account: %s)", account.Name)
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying non-WSv2 request once after no_tool_output_found action=repair_tool_call_pairs_and_drop_prev_response_id (account: %s)", account.Name)
 					continue
 				}
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Skip non-WSv2 no_tool_output_found retry reason=no_function_call_output_in_input (account: %s)", account.Name)
@@ -6501,13 +6501,36 @@ func isNoToolOutputFoundError(statusCode int, upstreamMsg string) bool {
 }
 
 // recoverNoToolOutputFound 处理 "No tool output found for function call" 错误。
-// 策略：移除 input 中所有 function_call 和 function_call_output 项，清掉 previous_response_id，
-// 让请求以无工具续链的方式重试。返回 true 表示已修改请求体可以重试。
+// 策略：清掉 previous_response_id，并移除无法成对的工具调用/工具输出项。
+// 上游既会拒绝缺少 function_call 的 output，也会拒绝缺少 output 的
+// function_call；只删 output 会让孤立 function_call 继续触发同类 400。
 func recoverNoToolOutputFound(reqBody map[string]any) bool {
 	input, ok := reqBody["input"].([]any)
 	if !ok || len(input) == 0 {
 		return false
 	}
+
+	outputCallIDs := make(map[string]struct{})
+	callCallIDs := make(map[string]struct{})
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		itemType, _ := m["type"].(string)
+		callID, _ := m["call_id"].(string)
+		callID = strings.TrimSpace(callID)
+		if callID == "" {
+			continue
+		}
+		switch {
+		case isCodexToolCallOutputItemType(itemType):
+			outputCallIDs[callID] = struct{}{}
+		case isCodexToolCallContextItemType(itemType):
+			callCallIDs[callID] = struct{}{}
+		}
+	}
+
 	filtered := make([]any, 0, len(input))
 	removed := 0
 	for _, item := range input {
@@ -6517,9 +6540,27 @@ func recoverNoToolOutputFound(reqBody map[string]any) bool {
 			continue
 		}
 		itemType, _ := m["type"].(string)
-		if itemType == "function_call_output" || itemType == "function_call" {
-			removed++
-			continue
+		callID, _ := m["call_id"].(string)
+		callID = strings.TrimSpace(callID)
+		switch {
+		case isCodexToolCallOutputItemType(itemType):
+			if callID == "" {
+				removed++
+				continue
+			}
+			if _, ok := callCallIDs[callID]; !ok {
+				removed++
+				continue
+			}
+		case isCodexToolCallContextItemType(itemType):
+			if callID == "" {
+				removed++
+				continue
+			}
+			if _, ok := outputCallIDs[callID]; !ok {
+				removed++
+				continue
+			}
 		}
 		filtered = append(filtered, item)
 	}
