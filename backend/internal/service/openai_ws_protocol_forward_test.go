@@ -2288,6 +2288,51 @@ func TestRecoverNoToolOutputFound(t *testing.T) {
 		require.Len(t, input, 1)
 		require.Equal(t, "input_text", input[0].(map[string]any)["type"])
 	})
+
+	t.Run("同时移除 function_call 和 function_call_output", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model":                "gpt-5.5",
+			"previous_response_id": "resp_prev",
+			"input": []any{
+				map[string]any{"type": "function_call", "call_id": "fc_1", "name": "run_cmd", "arguments": "{}"},
+				map[string]any{"type": "input_text", "text": "hello"},
+				map[string]any{"type": "message", "role": "assistant", "content": "ok"},
+			},
+		}
+		ok := recoverNoToolOutputFound(reqBody)
+		require.True(t, ok)
+		input := reqBody["input"].([]any)
+		require.Len(t, input, 2)
+		require.Equal(t, "input_text", input[0].(map[string]any)["type"])
+		require.Equal(t, "message", input[1].(map[string]any)["type"])
+		_, hasPrev := reqBody["previous_response_id"]
+		require.False(t, hasPrev)
+	})
+
+	t.Run("只有 function_call 没有 function_call_output 也移除", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model": "gpt-5.5",
+			"input": []any{
+				map[string]any{"type": "function_call", "call_id": "fc_2"},
+				map[string]any{"type": "input_text", "text": "hello"},
+			},
+		}
+		ok := recoverNoToolOutputFound(reqBody)
+		require.True(t, ok)
+		input := reqBody["input"].([]any)
+		require.Len(t, input, 1)
+		require.Equal(t, "input_text", input[0].(map[string]any)["type"])
+	})
+
+	t.Run("无 function_call 也无 function_call_output 返回 false", func(t *testing.T) {
+		reqBody := map[string]any{
+			"model": "gpt-5.5",
+			"input": []any{
+				map[string]any{"type": "input_text", "text": "hello"},
+			},
+		}
+		require.False(t, recoverNoToolOutputFound(reqBody))
+	})
 }
 
 func TestOpenAIGatewayService_Forward_HTTPRetriesNoToolOutputFound(t *testing.T) {

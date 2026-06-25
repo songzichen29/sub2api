@@ -6501,7 +6501,7 @@ func isNoToolOutputFoundError(statusCode int, upstreamMsg string) bool {
 }
 
 // recoverNoToolOutputFound 处理 "No tool output found for function call" 错误。
-// 策略：移除 input 中所有 function_call_output 项，清掉 previous_response_id，
+// 策略：移除 input 中所有 function_call 和 function_call_output 项，清掉 previous_response_id，
 // 让请求以无工具续链的方式重试。返回 true 表示已修改请求体可以重试。
 func recoverNoToolOutputFound(reqBody map[string]any) bool {
 	input, ok := reqBody["input"].([]any)
@@ -6517,7 +6517,7 @@ func recoverNoToolOutputFound(reqBody map[string]any) bool {
 			continue
 		}
 		itemType, _ := m["type"].(string)
-		if itemType == "function_call_output" {
+		if itemType == "function_call_output" || itemType == "function_call" {
 			removed++
 			continue
 		}
