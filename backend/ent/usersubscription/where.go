@@ -145,6 +145,31 @@ func AllowDailyOverdraft(v bool) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldAllowDailyOverdraft, v))
 }
 
+// SkipWeekends applies equality check predicate on the "skip_weekends" field. It's identical to SkipWeekendsEQ.
+func SkipWeekends(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldSkipWeekends, v))
+}
+
+// WeekendSkipUserChangedAt applies equality check predicate on the "weekend_skip_user_changed_at" field. It's identical to WeekendSkipUserChangedAtEQ.
+func WeekendSkipUserChangedAt(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipOriginalExpiresAt applies equality check predicate on the "weekend_skip_original_expires_at" field. It's identical to WeekendSkipOriginalExpiresAtEQ.
+func WeekendSkipOriginalExpiresAt(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipAdminUpdatedAt applies equality check predicate on the "weekend_skip_admin_updated_at" field. It's identical to WeekendSkipAdminUpdatedAtEQ.
+func WeekendSkipAdminUpdatedAt(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedBy applies equality check predicate on the "weekend_skip_admin_updated_by" field. It's identical to WeekendSkipAdminUpdatedByEQ.
+func WeekendSkipAdminUpdatedBy(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
 // AssignedBy applies equality check predicate on the "assigned_by" field. It's identical to AssignedByEQ.
 func AssignedBy(v int64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldAssignedBy, v))
@@ -913,6 +938,216 @@ func AllowDailyOverdraftEQ(v bool) predicate.UserSubscription {
 // AllowDailyOverdraftNEQ applies the NEQ predicate on the "allow_daily_overdraft" field.
 func AllowDailyOverdraftNEQ(v bool) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldNEQ(FieldAllowDailyOverdraft, v))
+}
+
+// SkipWeekendsEQ applies the EQ predicate on the "skip_weekends" field.
+func SkipWeekendsEQ(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldSkipWeekends, v))
+}
+
+// SkipWeekendsNEQ applies the NEQ predicate on the "skip_weekends" field.
+func SkipWeekendsNEQ(v bool) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldSkipWeekends, v))
+}
+
+// WeekendSkipUserChangedAtEQ applies the EQ predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtNEQ applies the NEQ predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtIn applies the In predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldWeekendSkipUserChangedAt, vs...))
+}
+
+// WeekendSkipUserChangedAtNotIn applies the NotIn predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldWeekendSkipUserChangedAt, vs...))
+}
+
+// WeekendSkipUserChangedAtGT applies the GT predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtGTE applies the GTE predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtLT applies the LT predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtLTE applies the LTE predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldWeekendSkipUserChangedAt, v))
+}
+
+// WeekendSkipUserChangedAtIsNil applies the IsNil predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldWeekendSkipUserChangedAt))
+}
+
+// WeekendSkipUserChangedAtNotNil applies the NotNil predicate on the "weekend_skip_user_changed_at" field.
+func WeekendSkipUserChangedAtNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldWeekendSkipUserChangedAt))
+}
+
+// WeekendSkipOriginalExpiresAtEQ applies the EQ predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtNEQ applies the NEQ predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtIn applies the In predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldWeekendSkipOriginalExpiresAt, vs...))
+}
+
+// WeekendSkipOriginalExpiresAtNotIn applies the NotIn predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldWeekendSkipOriginalExpiresAt, vs...))
+}
+
+// WeekendSkipOriginalExpiresAtGT applies the GT predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtGTE applies the GTE predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtLT applies the LT predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtLTE applies the LTE predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldWeekendSkipOriginalExpiresAt, v))
+}
+
+// WeekendSkipOriginalExpiresAtIsNil applies the IsNil predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldWeekendSkipOriginalExpiresAt))
+}
+
+// WeekendSkipOriginalExpiresAtNotNil applies the NotNil predicate on the "weekend_skip_original_expires_at" field.
+func WeekendSkipOriginalExpiresAtNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldWeekendSkipOriginalExpiresAt))
+}
+
+// WeekendSkipAdminUpdatedAtEQ applies the EQ predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtNEQ applies the NEQ predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtNEQ(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtIn applies the In predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldWeekendSkipAdminUpdatedAt, vs...))
+}
+
+// WeekendSkipAdminUpdatedAtNotIn applies the NotIn predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtNotIn(vs ...time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldWeekendSkipAdminUpdatedAt, vs...))
+}
+
+// WeekendSkipAdminUpdatedAtGT applies the GT predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtGT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtGTE applies the GTE predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtGTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtLT applies the LT predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtLT(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtLTE applies the LTE predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtLTE(v time.Time) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldWeekendSkipAdminUpdatedAt, v))
+}
+
+// WeekendSkipAdminUpdatedAtIsNil applies the IsNil predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldWeekendSkipAdminUpdatedAt))
+}
+
+// WeekendSkipAdminUpdatedAtNotNil applies the NotNil predicate on the "weekend_skip_admin_updated_at" field.
+func WeekendSkipAdminUpdatedAtNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldWeekendSkipAdminUpdatedAt))
+}
+
+// WeekendSkipAdminUpdatedByEQ applies the EQ predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByNEQ applies the NEQ predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByNEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByIn applies the In predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldWeekendSkipAdminUpdatedBy, vs...))
+}
+
+// WeekendSkipAdminUpdatedByNotIn applies the NotIn predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByNotIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldWeekendSkipAdminUpdatedBy, vs...))
+}
+
+// WeekendSkipAdminUpdatedByGT applies the GT predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByGT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByGTE applies the GTE predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByGTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByLT applies the LT predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByLT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByLTE applies the LTE predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByLTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldWeekendSkipAdminUpdatedBy, v))
+}
+
+// WeekendSkipAdminUpdatedByIsNil applies the IsNil predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldWeekendSkipAdminUpdatedBy))
+}
+
+// WeekendSkipAdminUpdatedByNotNil applies the NotNil predicate on the "weekend_skip_admin_updated_by" field.
+func WeekendSkipAdminUpdatedByNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldWeekendSkipAdminUpdatedBy))
 }
 
 // AssignedByEQ applies the EQ predicate on the "assigned_by" field.

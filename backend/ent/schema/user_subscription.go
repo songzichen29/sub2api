@@ -84,6 +84,28 @@ func (UserSubscription) Fields() []ent.Field {
 		field.Bool("allow_daily_overdraft").
 			Default(false).
 			Comment("Whether this user subscription has enabled daily quota overdraft"),
+		field.Bool("skip_weekends").
+			Default(false).
+			Comment("Whether this subscription is unavailable on weekends and expiry is compensated"),
+		field.Time("weekend_skip_user_changed_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("When the user consumed the one-time weekend skip change opportunity"),
+		field.Time("weekend_skip_original_expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("Original expires_at before weekend skip first compensated the subscription"),
+		field.Time("weekend_skip_admin_updated_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("When an administrator last changed weekend skip state"),
+		field.Int64("weekend_skip_admin_updated_by").
+			Optional().
+			Nillable().
+			Comment("Administrator ID that last changed weekend skip state"),
 
 		field.Int64("assigned_by").
 			Optional().

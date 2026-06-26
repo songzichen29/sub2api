@@ -295,6 +295,20 @@ func (_u *GroupUpdate) SetNillableAllowDailyOverdraft(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (_u *GroupUpdate) SetAllowWeekendSkip(v bool) *GroupUpdate {
+	_u.mutation.SetAllowWeekendSkip(v)
+	return _u
+}
+
+// SetNillableAllowWeekendSkip sets the "allow_weekend_skip" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowWeekendSkip(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowWeekendSkip(*v)
+	}
+	return _u
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_u *GroupUpdate) SetDefaultValidityDays(v int) *GroupUpdate {
 	_u.mutation.ResetDefaultValidityDays()
@@ -1072,6 +1086,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(group.FieldAllowDailyOverdraft, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.AllowWeekendSkip(); ok {
+		_spec.SetField(group.FieldAllowWeekendSkip, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
@@ -1757,6 +1774,20 @@ func (_u *GroupUpdateOne) SetAllowDailyOverdraft(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableAllowDailyOverdraft(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetAllowDailyOverdraft(*v)
+	}
+	return _u
+}
+
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (_u *GroupUpdateOne) SetAllowWeekendSkip(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowWeekendSkip(v)
+	return _u
+}
+
+// SetNillableAllowWeekendSkip sets the "allow_weekend_skip" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowWeekendSkip(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowWeekendSkip(*v)
 	}
 	return _u
 }
@@ -2567,6 +2598,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(group.FieldAllowDailyOverdraft, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.AllowWeekendSkip(); ok {
+		_spec.SetField(group.FieldAllowWeekendSkip, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)

@@ -42,6 +42,11 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 		SetNillableQuotaLimitUsd(sub.QuotaLimitUSD).
 		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
+		SetSkipWeekends(sub.SkipWeekends).
+		SetNillableWeekendSkipUserChangedAt(sub.WeekendSkipUserChangedAt).
+		SetNillableWeekendSkipOriginalExpiresAt(sub.WeekendSkipOriginalExpiresAt).
+		SetNillableWeekendSkipAdminUpdatedAt(sub.WeekendSkipAdminUpdatedAt).
+		SetNillableWeekendSkipAdminUpdatedBy(sub.WeekendSkipAdminUpdatedBy).
 		SetNillableAssignedBy(sub.AssignedBy)
 
 	if sub.StartsAt.IsZero() {
@@ -130,9 +135,30 @@ func (r *userSubscriptionRepository) Update(ctx context.Context, sub *service.Us
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
 		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
+		SetSkipWeekends(sub.SkipWeekends).
 		SetNillableAssignedBy(sub.AssignedBy).
 		SetAssignedAt(sub.AssignedAt).
 		SetNotes(sub.Notes)
+	if sub.WeekendSkipUserChangedAt != nil {
+		builder.SetWeekendSkipUserChangedAt(*sub.WeekendSkipUserChangedAt)
+	} else {
+		builder.ClearWeekendSkipUserChangedAt()
+	}
+	if sub.WeekendSkipOriginalExpiresAt != nil {
+		builder.SetWeekendSkipOriginalExpiresAt(*sub.WeekendSkipOriginalExpiresAt)
+	} else {
+		builder.ClearWeekendSkipOriginalExpiresAt()
+	}
+	if sub.WeekendSkipAdminUpdatedAt != nil {
+		builder.SetWeekendSkipAdminUpdatedAt(*sub.WeekendSkipAdminUpdatedAt)
+	} else {
+		builder.ClearWeekendSkipAdminUpdatedAt()
+	}
+	if sub.WeekendSkipAdminUpdatedBy != nil {
+		builder.SetWeekendSkipAdminUpdatedBy(*sub.WeekendSkipAdminUpdatedBy)
+	} else {
+		builder.ClearWeekendSkipAdminUpdatedBy()
+	}
 	if sub.QuotaLimitUSD != nil {
 		builder.SetQuotaLimitUsd(*sub.QuotaLimitUSD)
 	} else {
@@ -656,6 +682,38 @@ func (r *userSubscriptionRepository) UpdateDailyOverdraft(ctx context.Context, i
 	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 }
 
+func (r *userSubscriptionRepository) UpdateWeekendSkip(ctx context.Context, sub *service.UserSubscription) error {
+	if sub == nil {
+		return service.ErrSubscriptionNilInput
+	}
+	client := clientFromContext(ctx, r.client)
+	builder := client.UserSubscription.UpdateOneID(sub.ID).
+		SetSkipWeekends(sub.SkipWeekends).
+		SetExpiresAt(sub.ExpiresAt)
+	if sub.WeekendSkipUserChangedAt != nil {
+		builder.SetWeekendSkipUserChangedAt(*sub.WeekendSkipUserChangedAt)
+	} else {
+		builder.ClearWeekendSkipUserChangedAt()
+	}
+	if sub.WeekendSkipOriginalExpiresAt != nil {
+		builder.SetWeekendSkipOriginalExpiresAt(*sub.WeekendSkipOriginalExpiresAt)
+	} else {
+		builder.ClearWeekendSkipOriginalExpiresAt()
+	}
+	if sub.WeekendSkipAdminUpdatedAt != nil {
+		builder.SetWeekendSkipAdminUpdatedAt(*sub.WeekendSkipAdminUpdatedAt)
+	} else {
+		builder.ClearWeekendSkipAdminUpdatedAt()
+	}
+	if sub.WeekendSkipAdminUpdatedBy != nil {
+		builder.SetWeekendSkipAdminUpdatedBy(*sub.WeekendSkipAdminUpdatedBy)
+	} else {
+		builder.ClearWeekendSkipAdminUpdatedBy()
+	}
+	_, err := builder.Save(ctx)
+	return translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
+}
+
 func (r *userSubscriptionRepository) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	client := clientFromContext(ctx, r.client)
 	n, err := client.UserSubscription.Update().
@@ -760,28 +818,33 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		return nil
 	}
 	out := &service.UserSubscription{
-		ID:                  m.ID,
-		UserID:              m.UserID,
-		GroupID:             m.GroupID,
-		StartsAt:            m.StartsAt,
-		ExpiresAt:           m.ExpiresAt,
-		Status:              m.Status,
-		ValidityUnit:        normalizeRepoSubscriptionValidityUnit(m.ValidityUnit),
-		DailyWindowStart:    m.DailyWindowStart,
-		WeeklyWindowStart:   m.WeeklyWindowStart,
-		MonthlyWindowStart:  m.MonthlyWindowStart,
-		DailyUsageUSD:       m.DailyUsageUsd,
-		WeeklyUsageUSD:      m.WeeklyUsageUsd,
-		MonthlyUsageUSD:     m.MonthlyUsageUsd,
-		QuotaLimitUSD:       m.QuotaLimitUsd,
-		QuotaUsedUSD:        m.QuotaUsedUsd,
-		AllowDailyOverdraft: m.AllowDailyOverdraft,
-		AssignedBy:          m.AssignedBy,
-		AssignedAt:          m.AssignedAt,
-		Notes:               derefString(m.Notes),
-		Source:              m.Source,
-		CreatedAt:           m.CreatedAt,
-		UpdatedAt:           m.UpdatedAt,
+		ID:                           m.ID,
+		UserID:                       m.UserID,
+		GroupID:                      m.GroupID,
+		StartsAt:                     m.StartsAt,
+		ExpiresAt:                    m.ExpiresAt,
+		Status:                       m.Status,
+		ValidityUnit:                 normalizeRepoSubscriptionValidityUnit(m.ValidityUnit),
+		DailyWindowStart:             m.DailyWindowStart,
+		WeeklyWindowStart:            m.WeeklyWindowStart,
+		MonthlyWindowStart:           m.MonthlyWindowStart,
+		DailyUsageUSD:                m.DailyUsageUsd,
+		WeeklyUsageUSD:               m.WeeklyUsageUsd,
+		MonthlyUsageUSD:              m.MonthlyUsageUsd,
+		QuotaLimitUSD:                m.QuotaLimitUsd,
+		QuotaUsedUSD:                 m.QuotaUsedUsd,
+		AllowDailyOverdraft:          m.AllowDailyOverdraft,
+		SkipWeekends:                 m.SkipWeekends,
+		WeekendSkipUserChangedAt:     m.WeekendSkipUserChangedAt,
+		WeekendSkipOriginalExpiresAt: m.WeekendSkipOriginalExpiresAt,
+		WeekendSkipAdminUpdatedAt:    m.WeekendSkipAdminUpdatedAt,
+		WeekendSkipAdminUpdatedBy:    m.WeekendSkipAdminUpdatedBy,
+		AssignedBy:                   m.AssignedBy,
+		AssignedAt:                   m.AssignedAt,
+		Notes:                        derefString(m.Notes),
+		Source:                       m.Source,
+		CreatedAt:                    m.CreatedAt,
+		UpdatedAt:                    m.UpdatedAt,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -813,6 +876,11 @@ func applyUserSubscriptionEntityToService(dst *service.UserSubscription, src *db
 	dst.ValidityUnit = normalizeRepoSubscriptionValidityUnit(src.ValidityUnit)
 	dst.QuotaLimitUSD = src.QuotaLimitUsd
 	dst.QuotaUsedUSD = src.QuotaUsedUsd
+	dst.SkipWeekends = src.SkipWeekends
+	dst.WeekendSkipUserChangedAt = src.WeekendSkipUserChangedAt
+	dst.WeekendSkipOriginalExpiresAt = src.WeekendSkipOriginalExpiresAt
+	dst.WeekendSkipAdminUpdatedAt = src.WeekendSkipAdminUpdatedAt
+	dst.WeekendSkipAdminUpdatedBy = src.WeekendSkipAdminUpdatedBy
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
 }

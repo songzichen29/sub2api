@@ -46,6 +46,8 @@ const (
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
 	// FieldAllowDailyOverdraft holds the string denoting the allow_daily_overdraft field in the database.
 	FieldAllowDailyOverdraft = "allow_daily_overdraft"
+	// FieldAllowWeekendSkip holds the string denoting the allow_weekend_skip field in the database.
+	FieldAllowWeekendSkip = "allow_weekend_skip"
 	// FieldDefaultValidityDays holds the string denoting the default_validity_days field in the database.
 	FieldDefaultValidityDays = "default_validity_days"
 	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
@@ -180,6 +182,7 @@ var Columns = []string{
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
 	FieldAllowDailyOverdraft,
+	FieldAllowWeekendSkip,
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldImageRateIndependent,
@@ -257,6 +260,8 @@ var (
 	SubscriptionTypeValidator func(string) error
 	// DefaultAllowDailyOverdraft holds the default value on creation for the "allow_daily_overdraft" field.
 	DefaultAllowDailyOverdraft bool
+	// DefaultAllowWeekendSkip holds the default value on creation for the "allow_weekend_skip" field.
+	DefaultAllowWeekendSkip bool
 	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
 	DefaultDefaultValidityDays int
 	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
@@ -374,6 +379,11 @@ func ByMonthlyLimitUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowDailyOverdraft orders the results by the allow_daily_overdraft field.
 func ByAllowDailyOverdraft(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowDailyOverdraft, opts...).ToFunc()
+}
+
+// ByAllowWeekendSkip orders the results by the allow_weekend_skip field.
+func ByAllowWeekendSkip(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowWeekendSkip, opts...).ToFunc()
 }
 
 // ByDefaultValidityDays orders the results by the default_validity_days field.

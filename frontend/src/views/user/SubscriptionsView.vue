@@ -126,6 +126,32 @@
               </label>
             </div>
 
+            <div
+              v-if="canConfigureWeekendSkip(subscription) || subscription.skip_weekends || subscription.weekend_skip_user_changed_at"
+              class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+            >
+              <label class="flex items-start justify-between gap-3">
+                <span>
+                  <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    跳过非工作日
+                  </span>
+                  <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">
+                    开启后周六、周日不可使用，系统会自动顺延到期时间。此设置只能自行开启一次。
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-60"
+                  :checked="subscription.skip_weekends"
+                  :disabled="!canConfigureWeekendSkip(subscription) || weekendSkipUpdatingId === subscription.id"
+                  @change="toggleWeekendSkip(subscription, ($event.target as HTMLInputElement).checked)"
+                />
+              </label>
+              <p v-if="subscription.weekend_skip_user_changed_at && !subscription.skip_weekends" class="mt-2 text-xs text-gray-500 dark:text-dark-400">
+                自助修改机会已使用，如需再次调整请联系管理员。
+              </p>
+            </div>
+
             <!-- Total Quota -->
             <div v-if="hasTotalQuota(subscription)" class="space-y-2">
               <div class="flex items-center justify-between">
@@ -351,6 +377,7 @@ const appStore = useAppStore()
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
 const overdraftUpdatingId = ref<number | null>(null)
+const weekendSkipUpdatingId = ref<number | null>(null)
 const renewalTarget = ref<UserSubscription | null>(null)
 
 async function loadSubscriptions() {
@@ -486,6 +513,13 @@ function canConfigureDailyOverdraft(subscription: UserSubscription): boolean {
     && subscription.group.daily_limit_usd > 0
 }
 
+function canConfigureWeekendSkip(subscription: UserSubscription): boolean {
+  return subscription.status === 'active'
+    && !!subscription.group?.allow_weekend_skip
+    && !subscription.skip_weekends
+    && !subscription.weekend_skip_user_changed_at
+}
+
 async function toggleDailyOverdraft(subscription: UserSubscription, enabled: boolean) {
   if (!canConfigureDailyOverdraft(subscription)) return
   const previous = subscription.allow_daily_overdraft
@@ -505,6 +539,29 @@ async function toggleDailyOverdraft(subscription: UserSubscription, enabled: boo
     appStore.showError(t('userSubscriptions.dailyOverdraftUpdateFailed'))
   } finally {
     overdraftUpdatingId.value = null
+  }
+}
+
+async function toggleWeekendSkip(subscription: UserSubscription, enabled: boolean) {
+  if (!enabled) {
+    subscription.skip_weekends = true
+    appStore.showError('跳过非工作日开启后不能自行关闭，请联系管理员。')
+    return
+  }
+  if (!canConfigureWeekendSkip(subscription)) return
+  const previous = subscription.skip_weekends
+  subscription.skip_weekends = enabled
+  weekendSkipUpdatingId.value = subscription.id
+  try {
+    const updated = await subscriptionsAPI.setWeekendSkip(subscription.id, enabled)
+    Object.assign(subscription, updated)
+    appStore.showSuccess('已开启跳过非工作日，到期时间已自动顺延')
+  } catch (error) {
+    subscription.skip_weekends = previous
+    console.error('Failed to update weekend skip:', error)
+    appStore.showError('跳过非工作日设置更新失败')
+  } finally {
+    weekendSkipUpdatingId.value = null
   }
 }
 

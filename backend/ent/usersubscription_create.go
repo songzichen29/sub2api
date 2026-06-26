@@ -245,6 +245,76 @@ func (_c *UserSubscriptionCreate) SetNillableAllowDailyOverdraft(v *bool) *UserS
 	return _c
 }
 
+// SetSkipWeekends sets the "skip_weekends" field.
+func (_c *UserSubscriptionCreate) SetSkipWeekends(v bool) *UserSubscriptionCreate {
+	_c.mutation.SetSkipWeekends(v)
+	return _c
+}
+
+// SetNillableSkipWeekends sets the "skip_weekends" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableSkipWeekends(v *bool) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetSkipWeekends(*v)
+	}
+	return _c
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (_c *UserSubscriptionCreate) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetWeekendSkipUserChangedAt(v)
+	return _c
+}
+
+// SetNillableWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableWeekendSkipUserChangedAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetWeekendSkipUserChangedAt(*v)
+	}
+	return _c
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (_c *UserSubscriptionCreate) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetWeekendSkipOriginalExpiresAt(v)
+	return _c
+}
+
+// SetNillableWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableWeekendSkipOriginalExpiresAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetWeekendSkipOriginalExpiresAt(*v)
+	}
+	return _c
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (_c *UserSubscriptionCreate) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionCreate {
+	_c.mutation.SetWeekendSkipAdminUpdatedAt(v)
+	return _c
+}
+
+// SetNillableWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableWeekendSkipAdminUpdatedAt(v *time.Time) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetWeekendSkipAdminUpdatedAt(*v)
+	}
+	return _c
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (_c *UserSubscriptionCreate) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionCreate {
+	_c.mutation.SetWeekendSkipAdminUpdatedBy(v)
+	return _c
+}
+
+// SetNillableWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableWeekendSkipAdminUpdatedBy(v *int64) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetWeekendSkipAdminUpdatedBy(*v)
+	}
+	return _c
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_c *UserSubscriptionCreate) SetAssignedBy(v int64) *UserSubscriptionCreate {
 	_c.mutation.SetAssignedBy(v)
@@ -424,6 +494,10 @@ func (_c *UserSubscriptionCreate) defaults() error {
 		v := usersubscription.DefaultAllowDailyOverdraft
 		_c.mutation.SetAllowDailyOverdraft(v)
 	}
+	if _, ok := _c.mutation.SkipWeekends(); !ok {
+		v := usersubscription.DefaultSkipWeekends
+		_c.mutation.SetSkipWeekends(v)
+	}
 	if _, ok := _c.mutation.AssignedAt(); !ok {
 		if usersubscription.DefaultAssignedAt == nil {
 			return fmt.Errorf("ent: uninitialized usersubscription.DefaultAssignedAt (forgotten import ent/runtime?)")
@@ -488,6 +562,9 @@ func (_c *UserSubscriptionCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
 		return &ValidationError{Name: "allow_daily_overdraft", err: errors.New(`ent: missing required field "UserSubscription.allow_daily_overdraft"`)}
+	}
+	if _, ok := _c.mutation.SkipWeekends(); !ok {
+		return &ValidationError{Name: "skip_weekends", err: errors.New(`ent: missing required field "UserSubscription.skip_weekends"`)}
 	}
 	if _, ok := _c.mutation.AssignedAt(); !ok {
 		return &ValidationError{Name: "assigned_at", err: errors.New(`ent: missing required field "UserSubscription.assigned_at"`)}
@@ -596,6 +673,26 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 	if value, ok := _c.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
 		_node.AllowDailyOverdraft = value
+	}
+	if value, ok := _c.mutation.SkipWeekends(); ok {
+		_spec.SetField(usersubscription.FieldSkipWeekends, field.TypeBool, value)
+		_node.SkipWeekends = value
+	}
+	if value, ok := _c.mutation.WeekendSkipUserChangedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipUserChangedAt, field.TypeTime, value)
+		_node.WeekendSkipUserChangedAt = &value
+	}
+	if value, ok := _c.mutation.WeekendSkipOriginalExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipOriginalExpiresAt, field.TypeTime, value)
+		_node.WeekendSkipOriginalExpiresAt = &value
+	}
+	if value, ok := _c.mutation.WeekendSkipAdminUpdatedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedAt, field.TypeTime, value)
+		_node.WeekendSkipAdminUpdatedAt = &value
+	}
+	if value, ok := _c.mutation.WeekendSkipAdminUpdatedBy(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64, value)
+		_node.WeekendSkipAdminUpdatedBy = &value
 	}
 	if value, ok := _c.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)
@@ -989,6 +1086,96 @@ func (u *UserSubscriptionUpsert) SetAllowDailyOverdraft(v bool) *UserSubscriptio
 // UpdateAllowDailyOverdraft sets the "allow_daily_overdraft" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateAllowDailyOverdraft() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldAllowDailyOverdraft)
+	return u
+}
+
+// SetSkipWeekends sets the "skip_weekends" field.
+func (u *UserSubscriptionUpsert) SetSkipWeekends(v bool) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldSkipWeekends, v)
+	return u
+}
+
+// UpdateSkipWeekends sets the "skip_weekends" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateSkipWeekends() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldSkipWeekends)
+	return u
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsert) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldWeekendSkipUserChangedAt, v)
+	return u
+}
+
+// UpdateWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateWeekendSkipUserChangedAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldWeekendSkipUserChangedAt)
+	return u
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsert) ClearWeekendSkipUserChangedAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldWeekendSkipUserChangedAt)
+	return u
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsert) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldWeekendSkipOriginalExpiresAt, v)
+	return u
+}
+
+// UpdateWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldWeekendSkipOriginalExpiresAt)
+	return u
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsert) ClearWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldWeekendSkipOriginalExpiresAt)
+	return u
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsert) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldWeekendSkipAdminUpdatedAt, v)
+	return u
+}
+
+// UpdateWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldWeekendSkipAdminUpdatedAt)
+	return u
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsert) ClearWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldWeekendSkipAdminUpdatedAt)
+	return u
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsert) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldWeekendSkipAdminUpdatedBy, v)
+	return u
+}
+
+// UpdateWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldWeekendSkipAdminUpdatedBy)
+	return u
+}
+
+// AddWeekendSkipAdminUpdatedBy adds v to the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsert) AddWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldWeekendSkipAdminUpdatedBy, v)
+	return u
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsert) ClearWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldWeekendSkipAdminUpdatedBy)
 	return u
 }
 
@@ -1402,6 +1589,111 @@ func (u *UserSubscriptionUpsertOne) SetAllowDailyOverdraft(v bool) *UserSubscrip
 func (u *UserSubscriptionUpsertOne) UpdateAllowDailyOverdraft() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateAllowDailyOverdraft()
+	})
+}
+
+// SetSkipWeekends sets the "skip_weekends" field.
+func (u *UserSubscriptionUpsertOne) SetSkipWeekends(v bool) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetSkipWeekends(v)
+	})
+}
+
+// UpdateSkipWeekends sets the "skip_weekends" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateSkipWeekends() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateSkipWeekends()
+	})
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsertOne) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipUserChangedAt(v)
+	})
+}
+
+// UpdateWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateWeekendSkipUserChangedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipUserChangedAt()
+	})
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsertOne) ClearWeekendSkipUserChangedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipUserChangedAt()
+	})
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsertOne) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipOriginalExpiresAt(v)
+	})
+}
+
+// UpdateWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipOriginalExpiresAt()
+	})
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsertOne) ClearWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipOriginalExpiresAt()
+	})
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsertOne) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipAdminUpdatedAt(v)
+	})
+}
+
+// UpdateWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipAdminUpdatedAt()
+	})
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsertOne) ClearWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipAdminUpdatedAt()
+	})
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertOne) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipAdminUpdatedBy(v)
+	})
+}
+
+// AddWeekendSkipAdminUpdatedBy adds v to the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertOne) AddWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddWeekendSkipAdminUpdatedBy(v)
+	})
+}
+
+// UpdateWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipAdminUpdatedBy()
+	})
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertOne) ClearWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipAdminUpdatedBy()
 	})
 }
 
@@ -1991,6 +2283,111 @@ func (u *UserSubscriptionUpsertBulk) SetAllowDailyOverdraft(v bool) *UserSubscri
 func (u *UserSubscriptionUpsertBulk) UpdateAllowDailyOverdraft() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateAllowDailyOverdraft()
+	})
+}
+
+// SetSkipWeekends sets the "skip_weekends" field.
+func (u *UserSubscriptionUpsertBulk) SetSkipWeekends(v bool) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetSkipWeekends(v)
+	})
+}
+
+// UpdateSkipWeekends sets the "skip_weekends" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateSkipWeekends() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateSkipWeekends()
+	})
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsertBulk) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipUserChangedAt(v)
+	})
+}
+
+// UpdateWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateWeekendSkipUserChangedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipUserChangedAt()
+	})
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearWeekendSkipUserChangedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipUserChangedAt()
+	})
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsertBulk) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipOriginalExpiresAt(v)
+	})
+}
+
+// UpdateWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipOriginalExpiresAt()
+	})
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearWeekendSkipOriginalExpiresAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipOriginalExpiresAt()
+	})
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsertBulk) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipAdminUpdatedAt(v)
+	})
+}
+
+// UpdateWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipAdminUpdatedAt()
+	})
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (u *UserSubscriptionUpsertBulk) ClearWeekendSkipAdminUpdatedAt() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipAdminUpdatedAt()
+	})
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertBulk) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetWeekendSkipAdminUpdatedBy(v)
+	})
+}
+
+// AddWeekendSkipAdminUpdatedBy adds v to the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertBulk) AddWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddWeekendSkipAdminUpdatedBy(v)
+	})
+}
+
+// UpdateWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateWeekendSkipAdminUpdatedBy()
+	})
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (u *UserSubscriptionUpsertBulk) ClearWeekendSkipAdminUpdatedBy() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearWeekendSkipAdminUpdatedBy()
 	})
 }
 

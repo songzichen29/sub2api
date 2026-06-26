@@ -97,6 +97,7 @@ type Group struct {
 	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
 	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
 	AllowDailyOverdraft  bool     `json:"allow_daily_overdraft"`
+	AllowWeekendSkip     bool     `json:"allow_weekend_skip"`
 
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool     `json:"allow_image_generation"`
@@ -581,16 +582,21 @@ type UserSubscription struct {
 	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`
 	MonthlyWindowStart *time.Time `json:"monthly_window_start"`
 
-	DailyUsageUSD       float64  `json:"daily_usage_usd"`
-	WeeklyUsageUSD      float64  `json:"weekly_usage_usd"`
-	MonthlyUsageUSD     float64  `json:"monthly_usage_usd"`
-	QuotaLimitUSD       *float64 `json:"quota_limit_usd,omitempty"`
-	QuotaUsedUSD        *float64 `json:"quota_used_usd,omitempty"`
-	QuotaRemainingUSD   *float64 `json:"quota_remaining_usd,omitempty"`
-	AllowDailyOverdraft bool     `json:"allow_daily_overdraft"`
-	OverdraftLimitUSD   float64  `json:"overdraft_limit_usd,omitempty"`
-	OverdraftUsedUSD    float64  `json:"overdraft_used_usd,omitempty"`
-	OverdraftDays       int      `json:"overdraft_days,omitempty"`
+	DailyUsageUSD                float64    `json:"daily_usage_usd"`
+	WeeklyUsageUSD               float64    `json:"weekly_usage_usd"`
+	MonthlyUsageUSD              float64    `json:"monthly_usage_usd"`
+	QuotaLimitUSD                *float64   `json:"quota_limit_usd,omitempty"`
+	QuotaUsedUSD                 *float64   `json:"quota_used_usd,omitempty"`
+	QuotaRemainingUSD            *float64   `json:"quota_remaining_usd,omitempty"`
+	AllowDailyOverdraft          bool       `json:"allow_daily_overdraft"`
+	OverdraftLimitUSD            float64    `json:"overdraft_limit_usd,omitempty"`
+	OverdraftUsedUSD             float64    `json:"overdraft_used_usd,omitempty"`
+	OverdraftDays                int        `json:"overdraft_days,omitempty"`
+	SkipWeekends                 bool       `json:"skip_weekends"`
+	WeekendSkipUserChangedAt     *time.Time `json:"weekend_skip_user_changed_at,omitempty"`
+	WeekendSkipOriginalExpiresAt *time.Time `json:"weekend_skip_original_expires_at,omitempty"`
+	WeekendSkipAdminUpdatedAt    *time.Time `json:"weekend_skip_admin_updated_at,omitempty"`
+	WeekendSkipAdminUpdatedBy    *int64     `json:"weekend_skip_admin_updated_by,omitempty"`
 
 	// Source 标识订阅来源（admin/redeem/payment），前端据此决定能否重置配额。
 	Source string `json:"source"`

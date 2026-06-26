@@ -326,6 +326,107 @@ func (_u *UserSubscriptionUpdate) SetNillableAllowDailyOverdraft(v *bool) *UserS
 	return _u
 }
 
+// SetSkipWeekends sets the "skip_weekends" field.
+func (_u *UserSubscriptionUpdate) SetSkipWeekends(v bool) *UserSubscriptionUpdate {
+	_u.mutation.SetSkipWeekends(v)
+	return _u
+}
+
+// SetNillableSkipWeekends sets the "skip_weekends" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableSkipWeekends(v *bool) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetSkipWeekends(*v)
+	}
+	return _u
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (_u *UserSubscriptionUpdate) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetWeekendSkipUserChangedAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableWeekendSkipUserChangedAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetWeekendSkipUserChangedAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (_u *UserSubscriptionUpdate) ClearWeekendSkipUserChangedAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearWeekendSkipUserChangedAt()
+	return _u
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (_u *UserSubscriptionUpdate) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetWeekendSkipOriginalExpiresAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableWeekendSkipOriginalExpiresAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetWeekendSkipOriginalExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (_u *UserSubscriptionUpdate) ClearWeekendSkipOriginalExpiresAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearWeekendSkipOriginalExpiresAt()
+	return _u
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (_u *UserSubscriptionUpdate) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionUpdate {
+	_u.mutation.SetWeekendSkipAdminUpdatedAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableWeekendSkipAdminUpdatedAt(v *time.Time) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetWeekendSkipAdminUpdatedAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (_u *UserSubscriptionUpdate) ClearWeekendSkipAdminUpdatedAt() *UserSubscriptionUpdate {
+	_u.mutation.ClearWeekendSkipAdminUpdatedAt()
+	return _u
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdate) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpdate {
+	_u.mutation.ResetWeekendSkipAdminUpdatedBy()
+	_u.mutation.SetWeekendSkipAdminUpdatedBy(v)
+	return _u
+}
+
+// SetNillableWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableWeekendSkipAdminUpdatedBy(v *int64) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetWeekendSkipAdminUpdatedBy(*v)
+	}
+	return _u
+}
+
+// AddWeekendSkipAdminUpdatedBy adds value to the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdate) AddWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpdate {
+	_u.mutation.AddWeekendSkipAdminUpdatedBy(v)
+	return _u
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdate) ClearWeekendSkipAdminUpdatedBy() *UserSubscriptionUpdate {
+	_u.mutation.ClearWeekendSkipAdminUpdatedBy()
+	return _u
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_u *UserSubscriptionUpdate) SetAssignedBy(v int64) *UserSubscriptionUpdate {
 	_u.mutation.SetAssignedBy(v)
@@ -636,6 +737,36 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SkipWeekends(); ok {
+		_spec.SetField(usersubscription.FieldSkipWeekends, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.WeekendSkipUserChangedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipUserChangedAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipUserChangedAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipUserChangedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipOriginalExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipOriginalExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipOriginalExpiresAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipOriginalExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipAdminUpdatedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipAdminUpdatedAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipAdminUpdatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipAdminUpdatedBy(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWeekendSkipAdminUpdatedBy(); ok {
+		_spec.AddField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64, value)
+	}
+	if _u.mutation.WeekendSkipAdminUpdatedByCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)
@@ -1096,6 +1227,107 @@ func (_u *UserSubscriptionUpdateOne) SetNillableAllowDailyOverdraft(v *bool) *Us
 	return _u
 }
 
+// SetSkipWeekends sets the "skip_weekends" field.
+func (_u *UserSubscriptionUpdateOne) SetSkipWeekends(v bool) *UserSubscriptionUpdateOne {
+	_u.mutation.SetSkipWeekends(v)
+	return _u
+}
+
+// SetNillableSkipWeekends sets the "skip_weekends" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableSkipWeekends(v *bool) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetSkipWeekends(*v)
+	}
+	return _u
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (_u *UserSubscriptionUpdateOne) SetWeekendSkipUserChangedAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetWeekendSkipUserChangedAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableWeekendSkipUserChangedAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetWeekendSkipUserChangedAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearWeekendSkipUserChangedAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearWeekendSkipUserChangedAt()
+	return _u
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (_u *UserSubscriptionUpdateOne) SetWeekendSkipOriginalExpiresAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetWeekendSkipOriginalExpiresAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableWeekendSkipOriginalExpiresAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetWeekendSkipOriginalExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearWeekendSkipOriginalExpiresAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearWeekendSkipOriginalExpiresAt()
+	return _u
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (_u *UserSubscriptionUpdateOne) SetWeekendSkipAdminUpdatedAt(v time.Time) *UserSubscriptionUpdateOne {
+	_u.mutation.SetWeekendSkipAdminUpdatedAt(v)
+	return _u
+}
+
+// SetNillableWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableWeekendSkipAdminUpdatedAt(v *time.Time) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetWeekendSkipAdminUpdatedAt(*v)
+	}
+	return _u
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (_u *UserSubscriptionUpdateOne) ClearWeekendSkipAdminUpdatedAt() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearWeekendSkipAdminUpdatedAt()
+	return _u
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdateOne) SetWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetWeekendSkipAdminUpdatedBy()
+	_u.mutation.SetWeekendSkipAdminUpdatedBy(v)
+	return _u
+}
+
+// SetNillableWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableWeekendSkipAdminUpdatedBy(v *int64) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetWeekendSkipAdminUpdatedBy(*v)
+	}
+	return _u
+}
+
+// AddWeekendSkipAdminUpdatedBy adds value to the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdateOne) AddWeekendSkipAdminUpdatedBy(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddWeekendSkipAdminUpdatedBy(v)
+	return _u
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (_u *UserSubscriptionUpdateOne) ClearWeekendSkipAdminUpdatedBy() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearWeekendSkipAdminUpdatedBy()
+	return _u
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (_u *UserSubscriptionUpdateOne) SetAssignedBy(v int64) *UserSubscriptionUpdateOne {
 	_u.mutation.SetAssignedBy(v)
@@ -1436,6 +1668,36 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if value, ok := _u.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(usersubscription.FieldAllowDailyOverdraft, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.SkipWeekends(); ok {
+		_spec.SetField(usersubscription.FieldSkipWeekends, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.WeekendSkipUserChangedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipUserChangedAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipUserChangedAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipUserChangedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipOriginalExpiresAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipOriginalExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipOriginalExpiresAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipOriginalExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipAdminUpdatedAt(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.WeekendSkipAdminUpdatedAtCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipAdminUpdatedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.WeekendSkipAdminUpdatedBy(); ok {
+		_spec.SetField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedWeekendSkipAdminUpdatedBy(); ok {
+		_spec.AddField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64, value)
+	}
+	if _u.mutation.WeekendSkipAdminUpdatedByCleared() {
+		_spec.ClearField(usersubscription.FieldWeekendSkipAdminUpdatedBy, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.AssignedAt(); ok {
 		_spec.SetField(usersubscription.FieldAssignedAt, field.TypeTime, value)

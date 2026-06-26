@@ -759,6 +759,7 @@ var (
 		{Name: "weekly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"mysql": "decimal(20,8)"}},
 		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"mysql": "decimal(20,8)"}},
 		{Name: "allow_daily_overdraft", Type: field.TypeBool, Default: false},
+		{Name: "allow_weekend_skip", Type: field.TypeBool, Default: false},
 		{Name: "default_validity_days", Type: field.TypeInt, Default: 30},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_independent", Type: field.TypeBool, Default: false},
@@ -816,7 +817,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[30]},
+				Columns: []*schema.Column{GroupsColumns[31]},
 			},
 		},
 	}
@@ -1827,6 +1828,11 @@ var (
 		{Name: "quota_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"mysql": "decimal(20,8)"}},
 		{Name: "quota_used_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,10)"}},
 		{Name: "allow_daily_overdraft", Type: field.TypeBool, Default: false},
+		{Name: "skip_weekends", Type: field.TypeBool, Default: false},
+		{Name: "weekend_skip_user_changed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "weekend_skip_original_expires_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "weekend_skip_admin_updated_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "weekend_skip_admin_updated_by", Type: field.TypeInt64, Nullable: true},
 		{Name: "assigned_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
 		{Name: "notes", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
 		{Name: "source", Type: field.TypeString, Size: 20, Default: "admin"},
@@ -1842,19 +1848,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "user_subscriptions_groups_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[20]},
+				Columns:    []*schema.Column{UserSubscriptionsColumns[25]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "user_subscriptions_users_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[21]},
+				Columns:    []*schema.Column{UserSubscriptionsColumns[26]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "user_subscriptions_users_assigned_subscriptions",
-				Columns:    []*schema.Column{UserSubscriptionsColumns[22]},
+				Columns:    []*schema.Column{UserSubscriptionsColumns[27]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -1863,12 +1869,12 @@ var (
 			{
 				Name:    "usersubscription_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[21]},
+				Columns: []*schema.Column{UserSubscriptionsColumns[26]},
 			},
 			{
 				Name:    "usersubscription_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[20]},
+				Columns: []*schema.Column{UserSubscriptionsColumns[25]},
 			},
 			{
 				Name:    "usersubscription_status",
@@ -1883,17 +1889,17 @@ var (
 			{
 				Name:    "usersubscription_user_id_status_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[21], UserSubscriptionsColumns[6], UserSubscriptionsColumns[5]},
+				Columns: []*schema.Column{UserSubscriptionsColumns[26], UserSubscriptionsColumns[6], UserSubscriptionsColumns[5]},
 			},
 			{
 				Name:    "usersubscription_assigned_by",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[22]},
+				Columns: []*schema.Column{UserSubscriptionsColumns[27]},
 			},
 			{
 				Name:    "usersubscription_user_id_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{UserSubscriptionsColumns[21], UserSubscriptionsColumns[20]},
+				Columns: []*schema.Column{UserSubscriptionsColumns[26], UserSubscriptionsColumns[25]},
 			},
 			{
 				Name:    "usersubscription_deleted_at",

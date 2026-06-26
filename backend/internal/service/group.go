@@ -26,6 +26,7 @@ type Group struct {
 	WeeklyLimitUSD       *float64
 	MonthlyLimitUSD      *float64
 	AllowDailyOverdraft  bool
+	AllowWeekendSkip     bool
 	DefaultValidityDays  int
 
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）

@@ -82,11 +82,23 @@ export async function setDailyOverdraft(
   return response.data
 }
 
+export async function setWeekendSkip(
+  subscriptionId: number,
+  enabled: boolean
+): Promise<UserSubscription> {
+  const response = await apiClient.put<UserSubscription>(
+    `/subscriptions/${subscriptionId}/weekend-skip`,
+    { enabled }
+  )
+  return response.data
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
   getSubscriptionProgress,
-  setDailyOverdraft
+  setDailyOverdraft,
+  setWeekendSkip
 }

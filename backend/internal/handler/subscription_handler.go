@@ -94,6 +94,10 @@ type SetDailyOverdraftRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+type SetWeekendSkipRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // SetDailyOverdraft lets the current user enable/disable daily overdraft for one subscription.
 // PUT /api/v1/subscriptions/:id/daily-overdraft
 func (h *SubscriptionHandler) SetDailyOverdraft(c *gin.Context) {
@@ -113,6 +117,36 @@ func (h *SubscriptionHandler) SetDailyOverdraft(c *gin.Context) {
 		return
 	}
 	sub, err := h.subscriptionService.SetUserDailyOverdraft(c.Request.Context(), subject.UserID, id, req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromService(sub))
+}
+
+// SetWeekendSkip lets the current user enable weekend skip once for one subscription.
+// PUT /api/v1/subscriptions/:id/weekend-skip
+func (h *SubscriptionHandler) SetWeekendSkip(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not found in context")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid subscription id")
+		return
+	}
+	var req SetWeekendSkipRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+	if !req.Enabled {
+		response.ErrorFrom(c, service.ErrWeekendSkipDisableNotAllowed)
+		return
+	}
+	sub, err := h.subscriptionService.EnableUserWeekendSkip(c.Request.Context(), subject.UserID, id)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

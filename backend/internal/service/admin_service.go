@@ -228,6 +228,7 @@ type CreateGroupInput struct {
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
 	AllowDailyOverdraft  bool     // allow daily quota overdraft into subscription validity-day pool
+	AllowWeekendSkip     bool     // allow users to enable weekend skip for subscriptions
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration bool
 	ImageRateIndependent bool
@@ -270,6 +271,7 @@ type UpdateGroupInput struct {
 	WeeklyLimitUSD       *float64 // 周限额 (USD)
 	MonthlyLimitUSD      *float64 // 月限额 (USD)
 	AllowDailyOverdraft  *bool    // allow daily quota overdraft into subscription validity-day pool
+	AllowWeekendSkip     *bool    // allow users to enable weekend skip for subscriptions
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration *bool
 	ImageRateIndependent *bool
@@ -1765,9 +1767,11 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
 	allowDailyOverdraft := input.AllowDailyOverdraft
+	allowWeekendSkip := input.AllowWeekendSkip
 	if subscriptionType != SubscriptionTypeSubscription {
 		dailyLimitResetPrice = nil
 		allowDailyOverdraft = false
+		allowWeekendSkip = false
 	}
 	if allowDailyOverdraft && dailyLimit == nil {
 		return nil, errors.New("allow_daily_overdraft requires a daily limit")
@@ -1853,6 +1857,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowDailyOverdraft:             allowDailyOverdraft,
+		AllowWeekendSkip:                allowWeekendSkip,
 		AllowImageGeneration:            input.AllowImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
 		ImageRateMultiplier:             imageRateMultiplier,
@@ -2043,9 +2048,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.AllowDailyOverdraft != nil {
 		group.AllowDailyOverdraft = *input.AllowDailyOverdraft
 	}
+	if input.AllowWeekendSkip != nil {
+		group.AllowWeekendSkip = *input.AllowWeekendSkip
+	}
 	if group.SubscriptionType != SubscriptionTypeSubscription {
 		group.DailyLimitResetPrice = nil
 		group.AllowDailyOverdraft = false
+		group.AllowWeekendSkip = false
 	}
 	if group.AllowDailyOverdraft && group.DailyLimitUSD == nil {
 		return nil, errors.New("allow_daily_overdraft requires a daily limit")

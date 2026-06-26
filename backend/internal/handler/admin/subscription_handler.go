@@ -296,6 +296,10 @@ type ResetSubscriptionQuotaRequest struct {
 	Monthly bool `json:"monthly"`
 }
 
+type SetWeekendSkipRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // ResetQuota resets daily, weekly, and/or monthly usage for a subscription.
 // POST /api/v1/admin/subscriptions/:id/reset-quota
 func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
@@ -314,6 +318,45 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		return
 	}
 	sub, err := h.subscriptionService.AdminResetQuota(c.Request.Context(), subscriptionID, req.Daily, req.Weekly, req.Monthly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
+// SetWeekendSkip lets an admin enable or disable weekend skip for a subscription.
+// PUT /api/v1/admin/subscriptions/:id/weekend-skip
+func (h *SubscriptionHandler) SetWeekendSkip(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	var req SetWeekendSkipRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	adminID := getAdminIDFromContext(c)
+	sub, err := h.subscriptionService.AdminSetWeekendSkip(c.Request.Context(), adminID, subscriptionID, req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
+// ResetWeekendSkipUserChange resets the user's one-time weekend skip change marker.
+// POST /api/v1/admin/subscriptions/:id/weekend-skip/reset-user-change
+func (h *SubscriptionHandler) ResetWeekendSkipUserChange(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	adminID := getAdminIDFromContext(c)
+	sub, err := h.subscriptionService.AdminResetWeekendSkipUserChange(c.Request.Context(), adminID, subscriptionID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

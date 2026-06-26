@@ -63,6 +63,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowDailyOverdraft(groupIn.AllowDailyOverdraft).
+		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
@@ -142,6 +143,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
 		SetAllowDailyOverdraft(groupIn.AllowDailyOverdraft).
+		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).

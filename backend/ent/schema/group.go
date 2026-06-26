@@ -78,6 +78,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_daily_overdraft").
 			Default(false).
 			Comment("Allow subscription daily quota overdraft into weekly/monthly period pool"),
+		field.Bool("allow_weekend_skip").
+			Default(false).
+			Comment("Allow users to enable weekend skip for subscriptions in this group"),
 		field.Int("default_validity_days").
 			Default(30),
 

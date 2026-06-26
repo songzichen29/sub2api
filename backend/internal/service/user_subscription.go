@@ -35,6 +35,12 @@ type UserSubscription struct {
 	QuotaLimitUSD       *float64
 	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
+	SkipWeekends        bool
+
+	WeekendSkipUserChangedAt     *time.Time
+	WeekendSkipOriginalExpiresAt *time.Time
+	WeekendSkipAdminUpdatedAt    *time.Time
+	WeekendSkipAdminUpdatedBy    *int64
 
 	AssignedBy *int64
 	AssignedAt time.Time

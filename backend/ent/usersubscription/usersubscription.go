@@ -51,6 +51,16 @@ const (
 	FieldQuotaUsedUsd = "quota_used_usd"
 	// FieldAllowDailyOverdraft holds the string denoting the allow_daily_overdraft field in the database.
 	FieldAllowDailyOverdraft = "allow_daily_overdraft"
+	// FieldSkipWeekends holds the string denoting the skip_weekends field in the database.
+	FieldSkipWeekends = "skip_weekends"
+	// FieldWeekendSkipUserChangedAt holds the string denoting the weekend_skip_user_changed_at field in the database.
+	FieldWeekendSkipUserChangedAt = "weekend_skip_user_changed_at"
+	// FieldWeekendSkipOriginalExpiresAt holds the string denoting the weekend_skip_original_expires_at field in the database.
+	FieldWeekendSkipOriginalExpiresAt = "weekend_skip_original_expires_at"
+	// FieldWeekendSkipAdminUpdatedAt holds the string denoting the weekend_skip_admin_updated_at field in the database.
+	FieldWeekendSkipAdminUpdatedAt = "weekend_skip_admin_updated_at"
+	// FieldWeekendSkipAdminUpdatedBy holds the string denoting the weekend_skip_admin_updated_by field in the database.
+	FieldWeekendSkipAdminUpdatedBy = "weekend_skip_admin_updated_by"
 	// FieldAssignedBy holds the string denoting the assigned_by field in the database.
 	FieldAssignedBy = "assigned_by"
 	// FieldAssignedAt holds the string denoting the assigned_at field in the database.
@@ -120,6 +130,11 @@ var Columns = []string{
 	FieldQuotaLimitUsd,
 	FieldQuotaUsedUsd,
 	FieldAllowDailyOverdraft,
+	FieldSkipWeekends,
+	FieldWeekendSkipUserChangedAt,
+	FieldWeekendSkipOriginalExpiresAt,
+	FieldWeekendSkipAdminUpdatedAt,
+	FieldWeekendSkipAdminUpdatedBy,
 	FieldAssignedBy,
 	FieldAssignedAt,
 	FieldNotes,
@@ -168,6 +183,8 @@ var (
 	DefaultQuotaUsedUsd float64
 	// DefaultAllowDailyOverdraft holds the default value on creation for the "allow_daily_overdraft" field.
 	DefaultAllowDailyOverdraft bool
+	// DefaultSkipWeekends holds the default value on creation for the "skip_weekends" field.
+	DefaultSkipWeekends bool
 	// DefaultAssignedAt holds the default value on creation for the "assigned_at" field.
 	DefaultAssignedAt func() time.Time
 	// DefaultSource holds the default value on creation for the "source" field.
@@ -272,6 +289,31 @@ func ByQuotaUsedUsd(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowDailyOverdraft orders the results by the allow_daily_overdraft field.
 func ByAllowDailyOverdraft(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowDailyOverdraft, opts...).ToFunc()
+}
+
+// BySkipWeekends orders the results by the skip_weekends field.
+func BySkipWeekends(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSkipWeekends, opts...).ToFunc()
+}
+
+// ByWeekendSkipUserChangedAt orders the results by the weekend_skip_user_changed_at field.
+func ByWeekendSkipUserChangedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipUserChangedAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipOriginalExpiresAt orders the results by the weekend_skip_original_expires_at field.
+func ByWeekendSkipOriginalExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipOriginalExpiresAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipAdminUpdatedAt orders the results by the weekend_skip_admin_updated_at field.
+func ByWeekendSkipAdminUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipAdminUpdatedAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipAdminUpdatedBy orders the results by the weekend_skip_admin_updated_by field.
+func ByWeekendSkipAdminUpdatedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipAdminUpdatedBy, opts...).ToFunc()
 }
 
 // ByAssignedBy orders the results by the assigned_by field.

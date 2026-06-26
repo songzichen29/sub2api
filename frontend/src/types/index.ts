@@ -515,6 +515,7 @@ export interface Group {
   daily_limit_usd: number | null
   daily_limit_reset_price: number | null
   allow_daily_overdraft: boolean
+  allow_weekend_skip: boolean
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   // 图片生成计费配置
@@ -630,6 +631,7 @@ export interface CreateGroupRequest {
   daily_limit_usd?: number | null
   daily_limit_reset_price?: number | null
   allow_daily_overdraft?: boolean
+  allow_weekend_skip?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -660,6 +662,7 @@ export interface UpdateGroupRequest {
   daily_limit_usd?: number | null
   daily_limit_reset_price?: number | null
   allow_daily_overdraft?: boolean
+  allow_weekend_skip?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
@@ -1561,6 +1564,11 @@ export interface UserSubscription {
   quota_used_usd?: number | null
   quota_remaining_usd?: number | null
   allow_daily_overdraft: boolean
+  skip_weekends: boolean
+  weekend_skip_user_changed_at?: string | null
+  weekend_skip_original_expires_at?: string | null
+  weekend_skip_admin_updated_at?: string | null
+  weekend_skip_admin_updated_by?: number | null
   overdraft_limit_usd?: number
   overdraft_used_usd?: number
   overdraft_days?: number

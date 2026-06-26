@@ -55,6 +55,16 @@ type UserSubscription struct {
 	QuotaUsedUsd float64 `json:"quota_used_usd,omitempty"`
 	// Whether this user subscription has enabled daily quota overdraft
 	AllowDailyOverdraft bool `json:"allow_daily_overdraft,omitempty"`
+	// Whether this subscription is unavailable on weekends and expiry is compensated
+	SkipWeekends bool `json:"skip_weekends,omitempty"`
+	// When the user consumed the one-time weekend skip change opportunity
+	WeekendSkipUserChangedAt *time.Time `json:"weekend_skip_user_changed_at,omitempty"`
+	// Original expires_at before weekend skip first compensated the subscription
+	WeekendSkipOriginalExpiresAt *time.Time `json:"weekend_skip_original_expires_at,omitempty"`
+	// When an administrator last changed weekend skip state
+	WeekendSkipAdminUpdatedAt *time.Time `json:"weekend_skip_admin_updated_at,omitempty"`
+	// Administrator ID that last changed weekend skip state
+	WeekendSkipAdminUpdatedBy *int64 `json:"weekend_skip_admin_updated_by,omitempty"`
 	// AssignedBy holds the value of the "assigned_by" field.
 	AssignedBy *int64 `json:"assigned_by,omitempty"`
 	// AssignedAt holds the value of the "assigned_at" field.
@@ -131,15 +141,15 @@ func (*UserSubscription) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case usersubscription.FieldAllowDailyOverdraft:
+		case usersubscription.FieldAllowDailyOverdraft, usersubscription.FieldSkipWeekends:
 			values[i] = new(sql.NullBool)
 		case usersubscription.FieldDailyUsageUsd, usersubscription.FieldWeeklyUsageUsd, usersubscription.FieldMonthlyUsageUsd, usersubscription.FieldQuotaLimitUsd, usersubscription.FieldQuotaUsedUsd:
 			values[i] = new(sql.NullFloat64)
-		case usersubscription.FieldID, usersubscription.FieldUserID, usersubscription.FieldGroupID, usersubscription.FieldAssignedBy:
+		case usersubscription.FieldID, usersubscription.FieldUserID, usersubscription.FieldGroupID, usersubscription.FieldWeekendSkipAdminUpdatedBy, usersubscription.FieldAssignedBy:
 			values[i] = new(sql.NullInt64)
 		case usersubscription.FieldStatus, usersubscription.FieldValidityUnit, usersubscription.FieldNotes, usersubscription.FieldSource:
 			values[i] = new(sql.NullString)
-		case usersubscription.FieldCreatedAt, usersubscription.FieldUpdatedAt, usersubscription.FieldDeletedAt, usersubscription.FieldStartsAt, usersubscription.FieldExpiresAt, usersubscription.FieldDailyWindowStart, usersubscription.FieldWeeklyWindowStart, usersubscription.FieldMonthlyWindowStart, usersubscription.FieldAssignedAt:
+		case usersubscription.FieldCreatedAt, usersubscription.FieldUpdatedAt, usersubscription.FieldDeletedAt, usersubscription.FieldStartsAt, usersubscription.FieldExpiresAt, usersubscription.FieldDailyWindowStart, usersubscription.FieldWeeklyWindowStart, usersubscription.FieldMonthlyWindowStart, usersubscription.FieldWeekendSkipUserChangedAt, usersubscription.FieldWeekendSkipOriginalExpiresAt, usersubscription.FieldWeekendSkipAdminUpdatedAt, usersubscription.FieldAssignedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -274,6 +284,40 @@ func (_m *UserSubscription) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field allow_daily_overdraft", values[i])
 			} else if value.Valid {
 				_m.AllowDailyOverdraft = value.Bool
+			}
+		case usersubscription.FieldSkipWeekends:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field skip_weekends", values[i])
+			} else if value.Valid {
+				_m.SkipWeekends = value.Bool
+			}
+		case usersubscription.FieldWeekendSkipUserChangedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field weekend_skip_user_changed_at", values[i])
+			} else if value.Valid {
+				_m.WeekendSkipUserChangedAt = new(time.Time)
+				*_m.WeekendSkipUserChangedAt = value.Time
+			}
+		case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field weekend_skip_original_expires_at", values[i])
+			} else if value.Valid {
+				_m.WeekendSkipOriginalExpiresAt = new(time.Time)
+				*_m.WeekendSkipOriginalExpiresAt = value.Time
+			}
+		case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field weekend_skip_admin_updated_at", values[i])
+			} else if value.Valid {
+				_m.WeekendSkipAdminUpdatedAt = new(time.Time)
+				*_m.WeekendSkipAdminUpdatedAt = value.Time
+			}
+		case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field weekend_skip_admin_updated_by", values[i])
+			} else if value.Valid {
+				_m.WeekendSkipAdminUpdatedBy = new(int64)
+				*_m.WeekendSkipAdminUpdatedBy = value.Int64
 			}
 		case usersubscription.FieldAssignedBy:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -420,6 +464,29 @@ func (_m *UserSubscription) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_daily_overdraft=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowDailyOverdraft))
+	builder.WriteString(", ")
+	builder.WriteString("skip_weekends=")
+	builder.WriteString(fmt.Sprintf("%v", _m.SkipWeekends))
+	builder.WriteString(", ")
+	if v := _m.WeekendSkipUserChangedAt; v != nil {
+		builder.WriteString("weekend_skip_user_changed_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WeekendSkipOriginalExpiresAt; v != nil {
+		builder.WriteString("weekend_skip_original_expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WeekendSkipAdminUpdatedAt; v != nil {
+		builder.WriteString("weekend_skip_admin_updated_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.WeekendSkipAdminUpdatedBy; v != nil {
+		builder.WriteString("weekend_skip_admin_updated_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	if v := _m.AssignedBy; v != nil {
 		builder.WriteString("assigned_by=")

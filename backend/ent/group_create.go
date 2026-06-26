@@ -231,6 +231,20 @@ func (_c *GroupCreate) SetNillableAllowDailyOverdraft(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (_c *GroupCreate) SetAllowWeekendSkip(v bool) *GroupCreate {
+	_c.mutation.SetAllowWeekendSkip(v)
+	return _c
+}
+
+// SetNillableAllowWeekendSkip sets the "allow_weekend_skip" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowWeekendSkip(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowWeekendSkip(*v)
+	}
+	return _c
+}
+
 // SetDefaultValidityDays sets the "default_validity_days" field.
 func (_c *GroupCreate) SetDefaultValidityDays(v int) *GroupCreate {
 	_c.mutation.SetDefaultValidityDays(v)
@@ -688,6 +702,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowDailyOverdraft
 		_c.mutation.SetAllowDailyOverdraft(v)
 	}
+	if _, ok := _c.mutation.AllowWeekendSkip(); !ok {
+		v := group.DefaultAllowWeekendSkip
+		_c.mutation.SetAllowWeekendSkip(v)
+	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
@@ -803,6 +821,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowDailyOverdraft(); !ok {
 		return &ValidationError{Name: "allow_daily_overdraft", err: errors.New(`ent: missing required field "Group.allow_daily_overdraft"`)}
+	}
+	if _, ok := _c.mutation.AllowWeekendSkip(); !ok {
+		return &ValidationError{Name: "allow_weekend_skip", err: errors.New(`ent: missing required field "Group.allow_weekend_skip"`)}
 	}
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)}
@@ -943,6 +964,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowDailyOverdraft(); ok {
 		_spec.SetField(group.FieldAllowDailyOverdraft, field.TypeBool, value)
 		_node.AllowDailyOverdraft = value
+	}
+	if value, ok := _c.mutation.AllowWeekendSkip(); ok {
+		_spec.SetField(group.FieldAllowWeekendSkip, field.TypeBool, value)
+		_node.AllowWeekendSkip = value
 	}
 	if value, ok := _c.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
@@ -1419,6 +1444,18 @@ func (u *GroupUpsert) SetAllowDailyOverdraft(v bool) *GroupUpsert {
 // UpdateAllowDailyOverdraft sets the "allow_daily_overdraft" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowDailyOverdraft() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowDailyOverdraft)
+	return u
+}
+
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (u *GroupUpsert) SetAllowWeekendSkip(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowWeekendSkip, v)
+	return u
+}
+
+// UpdateAllowWeekendSkip sets the "allow_weekend_skip" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowWeekendSkip() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowWeekendSkip)
 	return u
 }
 
@@ -2091,6 +2128,20 @@ func (u *GroupUpsertOne) SetAllowDailyOverdraft(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowDailyOverdraft() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowDailyOverdraft()
+	})
+}
+
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (u *GroupUpsertOne) SetAllowWeekendSkip(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowWeekendSkip(v)
+	})
+}
+
+// UpdateAllowWeekendSkip sets the "allow_weekend_skip" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowWeekendSkip() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowWeekendSkip()
 	})
 }
 
@@ -2988,6 +3039,20 @@ func (u *GroupUpsertBulk) SetAllowDailyOverdraft(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowDailyOverdraft() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowDailyOverdraft()
+	})
+}
+
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (u *GroupUpsertBulk) SetAllowWeekendSkip(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowWeekendSkip(v)
+	})
+}
+
+// UpdateAllowWeekendSkip sets the "allow_weekend_skip" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowWeekendSkip() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowWeekendSkip()
 	})
 }
 

@@ -365,6 +365,8 @@ func subscriptionValidateErrorMessageCN(err error) string {
 		return "订阅已过期"
 	case errors.Is(err, service.ErrSubscriptionSuspended):
 		return "订阅已暂停"
+	case errors.Is(err, service.ErrSubscriptionWeekendDisabled):
+		return "当前订阅已开启跳过非工作日，周六、周日不可使用，订阅有效期已自动顺延。"
 	case errors.Is(err, service.ErrDailyLimitExceeded):
 		return "已超过每日使用限额"
 	case errors.Is(err, service.ErrWeeklyLimitExceeded):
@@ -387,6 +389,8 @@ func mapSubscriptionLookupError(err error) (code string, msg string) {
 		return "SUBSCRIPTION_SUSPENDED", "订阅已暂停，请联系管理员。"
 	case errors.Is(err, service.ErrSubscriptionNotStarted):
 		return "SUBSCRIPTION_NOT_STARTED", "订阅尚未生效，请稍后再试。"
+	case errors.Is(err, service.ErrSubscriptionWeekendDisabled):
+		return "SUBSCRIPTION_WEEKEND_DISABLED", "当前订阅已开启跳过非工作日，周六、周日不可使用，订阅有效期已自动顺延。"
 	case errors.Is(err, service.ErrSubscriptionNotFound):
 		return "SUBSCRIPTION_NOT_FOUND", "未找到该分组下的有效订阅，可能尚未订阅或订阅已被撤销。"
 	default:

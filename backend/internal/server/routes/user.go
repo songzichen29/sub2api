@@ -117,6 +117,7 @@ func RegisterUserRoutes(
 			subscriptions.GET("/progress", h.Subscription.GetProgress)
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 			subscriptions.PUT("/:id/daily-overdraft", h.Subscription.SetDailyOverdraft)
+			subscriptions.PUT("/:id/weekend-skip", h.Subscription.SetWeekendSkip)
 		}
 
 		// 渠道监控（用户只读）

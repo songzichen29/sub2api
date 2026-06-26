@@ -138,6 +138,24 @@ export async function resetQuota(
   return data
 }
 
+export async function setWeekendSkip(
+  id: number,
+  enabled: boolean
+): Promise<UserSubscription> {
+  const { data } = await apiClient.put<UserSubscription>(
+    `/admin/subscriptions/${id}/weekend-skip`,
+    { enabled }
+  )
+  return data
+}
+
+export async function resetWeekendSkipUserChange(id: number): Promise<UserSubscription> {
+  const { data } = await apiClient.post<UserSubscription>(
+    `/admin/subscriptions/${id}/weekend-skip/reset-user-change`
+  )
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -189,6 +207,8 @@ export const subscriptionsAPI = {
   extend,
   revoke,
   resetQuota,
+  setWeekendSkip,
+  resetWeekendSkipUserChange,
   listByGroup,
   listByUser
 }

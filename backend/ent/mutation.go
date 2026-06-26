@@ -17370,6 +17370,7 @@ type GroupMutation struct {
 	monthly_limit_usd                       *float64
 	addmonthly_limit_usd                    *float64
 	allow_daily_overdraft                   *bool
+	allow_weekend_skip                      *bool
 	default_validity_days                   *int
 	adddefault_validity_days                *int
 	allow_image_generation                  *bool
@@ -18244,6 +18245,42 @@ func (m *GroupMutation) OldAllowDailyOverdraft(ctx context.Context) (v bool, err
 // ResetAllowDailyOverdraft resets all changes to the "allow_daily_overdraft" field.
 func (m *GroupMutation) ResetAllowDailyOverdraft() {
 	m.allow_daily_overdraft = nil
+}
+
+// SetAllowWeekendSkip sets the "allow_weekend_skip" field.
+func (m *GroupMutation) SetAllowWeekendSkip(b bool) {
+	m.allow_weekend_skip = &b
+}
+
+// AllowWeekendSkip returns the value of the "allow_weekend_skip" field in the mutation.
+func (m *GroupMutation) AllowWeekendSkip() (r bool, exists bool) {
+	v := m.allow_weekend_skip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowWeekendSkip returns the old "allow_weekend_skip" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowWeekendSkip(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowWeekendSkip is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowWeekendSkip requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowWeekendSkip: %w", err)
+	}
+	return oldValue.AllowWeekendSkip, nil
+}
+
+// ResetAllowWeekendSkip resets all changes to the "allow_weekend_skip" field.
+func (m *GroupMutation) ResetAllowWeekendSkip() {
+	m.allow_weekend_skip = nil
 }
 
 // SetDefaultValidityDays sets the "default_validity_days" field.
@@ -19674,7 +19711,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 37)
+	fields := make([]string, 0, 38)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -19719,6 +19756,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.allow_daily_overdraft != nil {
 		fields = append(fields, group.FieldAllowDailyOverdraft)
+	}
+	if m.allow_weekend_skip != nil {
+		fields = append(fields, group.FieldAllowWeekendSkip)
 	}
 	if m.default_validity_days != nil {
 		fields = append(fields, group.FieldDefaultValidityDays)
@@ -19824,6 +19864,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MonthlyLimitUsd()
 	case group.FieldAllowDailyOverdraft:
 		return m.AllowDailyOverdraft()
+	case group.FieldAllowWeekendSkip:
+		return m.AllowWeekendSkip()
 	case group.FieldDefaultValidityDays:
 		return m.DefaultValidityDays()
 	case group.FieldAllowImageGeneration:
@@ -19907,6 +19949,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMonthlyLimitUsd(ctx)
 	case group.FieldAllowDailyOverdraft:
 		return m.OldAllowDailyOverdraft(ctx)
+	case group.FieldAllowWeekendSkip:
+		return m.OldAllowWeekendSkip(ctx)
 	case group.FieldDefaultValidityDays:
 		return m.OldDefaultValidityDays(ctx)
 	case group.FieldAllowImageGeneration:
@@ -20064,6 +20108,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowDailyOverdraft(v)
+		return nil
+	case group.FieldAllowWeekendSkip:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowWeekendSkip(v)
 		return nil
 	case group.FieldDefaultValidityDays:
 		v, ok := value.(int)
@@ -20558,6 +20609,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowDailyOverdraft:
 		m.ResetAllowDailyOverdraft()
+		return nil
+	case group.FieldAllowWeekendSkip:
+		m.ResetAllowWeekendSkip()
 		return nil
 	case group.FieldDefaultValidityDays:
 		m.ResetDefaultValidityDays()
@@ -48814,46 +48868,52 @@ func (m *UserPlatformQuotaMutation) ResetEdge(name string) error {
 // UserSubscriptionMutation represents an operation that mutates the UserSubscription nodes in the graph.
 type UserSubscriptionMutation struct {
 	config
-	op                      Op
-	typ                     string
-	id                      *int64
-	created_at              *time.Time
-	updated_at              *time.Time
-	deleted_at              *time.Time
-	starts_at               *time.Time
-	expires_at              *time.Time
-	status                  *string
-	validity_unit           *string
-	daily_window_start      *time.Time
-	weekly_window_start     *time.Time
-	monthly_window_start    *time.Time
-	daily_usage_usd         *float64
-	adddaily_usage_usd      *float64
-	weekly_usage_usd        *float64
-	addweekly_usage_usd     *float64
-	monthly_usage_usd       *float64
-	addmonthly_usage_usd    *float64
-	quota_limit_usd         *float64
-	addquota_limit_usd      *float64
-	quota_used_usd          *float64
-	addquota_used_usd       *float64
-	allow_daily_overdraft   *bool
-	assigned_at             *time.Time
-	notes                   *string
-	source                  *string
-	clearedFields           map[string]struct{}
-	user                    *int64
-	cleareduser             bool
-	group                   *int64
-	clearedgroup            bool
-	assigned_by_user        *int64
-	clearedassigned_by_user bool
-	usage_logs              map[int64]struct{}
-	removedusage_logs       map[int64]struct{}
-	clearedusage_logs       bool
-	done                    bool
-	oldValue                func(context.Context) (*UserSubscription, error)
-	predicates              []predicate.UserSubscription
+	op                               Op
+	typ                              string
+	id                               *int64
+	created_at                       *time.Time
+	updated_at                       *time.Time
+	deleted_at                       *time.Time
+	starts_at                        *time.Time
+	expires_at                       *time.Time
+	status                           *string
+	validity_unit                    *string
+	daily_window_start               *time.Time
+	weekly_window_start              *time.Time
+	monthly_window_start             *time.Time
+	daily_usage_usd                  *float64
+	adddaily_usage_usd               *float64
+	weekly_usage_usd                 *float64
+	addweekly_usage_usd              *float64
+	monthly_usage_usd                *float64
+	addmonthly_usage_usd             *float64
+	quota_limit_usd                  *float64
+	addquota_limit_usd               *float64
+	quota_used_usd                   *float64
+	addquota_used_usd                *float64
+	allow_daily_overdraft            *bool
+	skip_weekends                    *bool
+	weekend_skip_user_changed_at     *time.Time
+	weekend_skip_original_expires_at *time.Time
+	weekend_skip_admin_updated_at    *time.Time
+	weekend_skip_admin_updated_by    *int64
+	addweekend_skip_admin_updated_by *int64
+	assigned_at                      *time.Time
+	notes                            *string
+	source                           *string
+	clearedFields                    map[string]struct{}
+	user                             *int64
+	cleareduser                      bool
+	group                            *int64
+	clearedgroup                     bool
+	assigned_by_user                 *int64
+	clearedassigned_by_user          bool
+	usage_logs                       map[int64]struct{}
+	removedusage_logs                map[int64]struct{}
+	clearedusage_logs                bool
+	done                             bool
+	oldValue                         func(context.Context) (*UserSubscription, error)
+	predicates                       []predicate.UserSubscription
 }
 
 var _ ent.Mutation = (*UserSubscriptionMutation)(nil)
@@ -49768,6 +49828,259 @@ func (m *UserSubscriptionMutation) ResetAllowDailyOverdraft() {
 	m.allow_daily_overdraft = nil
 }
 
+// SetSkipWeekends sets the "skip_weekends" field.
+func (m *UserSubscriptionMutation) SetSkipWeekends(b bool) {
+	m.skip_weekends = &b
+}
+
+// SkipWeekends returns the value of the "skip_weekends" field in the mutation.
+func (m *UserSubscriptionMutation) SkipWeekends() (r bool, exists bool) {
+	v := m.skip_weekends
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSkipWeekends returns the old "skip_weekends" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldSkipWeekends(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSkipWeekends is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSkipWeekends requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSkipWeekends: %w", err)
+	}
+	return oldValue.SkipWeekends, nil
+}
+
+// ResetSkipWeekends resets all changes to the "skip_weekends" field.
+func (m *UserSubscriptionMutation) ResetSkipWeekends() {
+	m.skip_weekends = nil
+}
+
+// SetWeekendSkipUserChangedAt sets the "weekend_skip_user_changed_at" field.
+func (m *UserSubscriptionMutation) SetWeekendSkipUserChangedAt(t time.Time) {
+	m.weekend_skip_user_changed_at = &t
+}
+
+// WeekendSkipUserChangedAt returns the value of the "weekend_skip_user_changed_at" field in the mutation.
+func (m *UserSubscriptionMutation) WeekendSkipUserChangedAt() (r time.Time, exists bool) {
+	v := m.weekend_skip_user_changed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeekendSkipUserChangedAt returns the old "weekend_skip_user_changed_at" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldWeekendSkipUserChangedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeekendSkipUserChangedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeekendSkipUserChangedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeekendSkipUserChangedAt: %w", err)
+	}
+	return oldValue.WeekendSkipUserChangedAt, nil
+}
+
+// ClearWeekendSkipUserChangedAt clears the value of the "weekend_skip_user_changed_at" field.
+func (m *UserSubscriptionMutation) ClearWeekendSkipUserChangedAt() {
+	m.weekend_skip_user_changed_at = nil
+	m.clearedFields[usersubscription.FieldWeekendSkipUserChangedAt] = struct{}{}
+}
+
+// WeekendSkipUserChangedAtCleared returns if the "weekend_skip_user_changed_at" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) WeekendSkipUserChangedAtCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldWeekendSkipUserChangedAt]
+	return ok
+}
+
+// ResetWeekendSkipUserChangedAt resets all changes to the "weekend_skip_user_changed_at" field.
+func (m *UserSubscriptionMutation) ResetWeekendSkipUserChangedAt() {
+	m.weekend_skip_user_changed_at = nil
+	delete(m.clearedFields, usersubscription.FieldWeekendSkipUserChangedAt)
+}
+
+// SetWeekendSkipOriginalExpiresAt sets the "weekend_skip_original_expires_at" field.
+func (m *UserSubscriptionMutation) SetWeekendSkipOriginalExpiresAt(t time.Time) {
+	m.weekend_skip_original_expires_at = &t
+}
+
+// WeekendSkipOriginalExpiresAt returns the value of the "weekend_skip_original_expires_at" field in the mutation.
+func (m *UserSubscriptionMutation) WeekendSkipOriginalExpiresAt() (r time.Time, exists bool) {
+	v := m.weekend_skip_original_expires_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeekendSkipOriginalExpiresAt returns the old "weekend_skip_original_expires_at" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldWeekendSkipOriginalExpiresAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeekendSkipOriginalExpiresAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeekendSkipOriginalExpiresAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeekendSkipOriginalExpiresAt: %w", err)
+	}
+	return oldValue.WeekendSkipOriginalExpiresAt, nil
+}
+
+// ClearWeekendSkipOriginalExpiresAt clears the value of the "weekend_skip_original_expires_at" field.
+func (m *UserSubscriptionMutation) ClearWeekendSkipOriginalExpiresAt() {
+	m.weekend_skip_original_expires_at = nil
+	m.clearedFields[usersubscription.FieldWeekendSkipOriginalExpiresAt] = struct{}{}
+}
+
+// WeekendSkipOriginalExpiresAtCleared returns if the "weekend_skip_original_expires_at" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) WeekendSkipOriginalExpiresAtCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldWeekendSkipOriginalExpiresAt]
+	return ok
+}
+
+// ResetWeekendSkipOriginalExpiresAt resets all changes to the "weekend_skip_original_expires_at" field.
+func (m *UserSubscriptionMutation) ResetWeekendSkipOriginalExpiresAt() {
+	m.weekend_skip_original_expires_at = nil
+	delete(m.clearedFields, usersubscription.FieldWeekendSkipOriginalExpiresAt)
+}
+
+// SetWeekendSkipAdminUpdatedAt sets the "weekend_skip_admin_updated_at" field.
+func (m *UserSubscriptionMutation) SetWeekendSkipAdminUpdatedAt(t time.Time) {
+	m.weekend_skip_admin_updated_at = &t
+}
+
+// WeekendSkipAdminUpdatedAt returns the value of the "weekend_skip_admin_updated_at" field in the mutation.
+func (m *UserSubscriptionMutation) WeekendSkipAdminUpdatedAt() (r time.Time, exists bool) {
+	v := m.weekend_skip_admin_updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeekendSkipAdminUpdatedAt returns the old "weekend_skip_admin_updated_at" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldWeekendSkipAdminUpdatedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeekendSkipAdminUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeekendSkipAdminUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeekendSkipAdminUpdatedAt: %w", err)
+	}
+	return oldValue.WeekendSkipAdminUpdatedAt, nil
+}
+
+// ClearWeekendSkipAdminUpdatedAt clears the value of the "weekend_skip_admin_updated_at" field.
+func (m *UserSubscriptionMutation) ClearWeekendSkipAdminUpdatedAt() {
+	m.weekend_skip_admin_updated_at = nil
+	m.clearedFields[usersubscription.FieldWeekendSkipAdminUpdatedAt] = struct{}{}
+}
+
+// WeekendSkipAdminUpdatedAtCleared returns if the "weekend_skip_admin_updated_at" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) WeekendSkipAdminUpdatedAtCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldWeekendSkipAdminUpdatedAt]
+	return ok
+}
+
+// ResetWeekendSkipAdminUpdatedAt resets all changes to the "weekend_skip_admin_updated_at" field.
+func (m *UserSubscriptionMutation) ResetWeekendSkipAdminUpdatedAt() {
+	m.weekend_skip_admin_updated_at = nil
+	delete(m.clearedFields, usersubscription.FieldWeekendSkipAdminUpdatedAt)
+}
+
+// SetWeekendSkipAdminUpdatedBy sets the "weekend_skip_admin_updated_by" field.
+func (m *UserSubscriptionMutation) SetWeekendSkipAdminUpdatedBy(i int64) {
+	m.weekend_skip_admin_updated_by = &i
+	m.addweekend_skip_admin_updated_by = nil
+}
+
+// WeekendSkipAdminUpdatedBy returns the value of the "weekend_skip_admin_updated_by" field in the mutation.
+func (m *UserSubscriptionMutation) WeekendSkipAdminUpdatedBy() (r int64, exists bool) {
+	v := m.weekend_skip_admin_updated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWeekendSkipAdminUpdatedBy returns the old "weekend_skip_admin_updated_by" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldWeekendSkipAdminUpdatedBy(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWeekendSkipAdminUpdatedBy is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWeekendSkipAdminUpdatedBy requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWeekendSkipAdminUpdatedBy: %w", err)
+	}
+	return oldValue.WeekendSkipAdminUpdatedBy, nil
+}
+
+// AddWeekendSkipAdminUpdatedBy adds i to the "weekend_skip_admin_updated_by" field.
+func (m *UserSubscriptionMutation) AddWeekendSkipAdminUpdatedBy(i int64) {
+	if m.addweekend_skip_admin_updated_by != nil {
+		*m.addweekend_skip_admin_updated_by += i
+	} else {
+		m.addweekend_skip_admin_updated_by = &i
+	}
+}
+
+// AddedWeekendSkipAdminUpdatedBy returns the value that was added to the "weekend_skip_admin_updated_by" field in this mutation.
+func (m *UserSubscriptionMutation) AddedWeekendSkipAdminUpdatedBy() (r int64, exists bool) {
+	v := m.addweekend_skip_admin_updated_by
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearWeekendSkipAdminUpdatedBy clears the value of the "weekend_skip_admin_updated_by" field.
+func (m *UserSubscriptionMutation) ClearWeekendSkipAdminUpdatedBy() {
+	m.weekend_skip_admin_updated_by = nil
+	m.addweekend_skip_admin_updated_by = nil
+	m.clearedFields[usersubscription.FieldWeekendSkipAdminUpdatedBy] = struct{}{}
+}
+
+// WeekendSkipAdminUpdatedByCleared returns if the "weekend_skip_admin_updated_by" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) WeekendSkipAdminUpdatedByCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldWeekendSkipAdminUpdatedBy]
+	return ok
+}
+
+// ResetWeekendSkipAdminUpdatedBy resets all changes to the "weekend_skip_admin_updated_by" field.
+func (m *UserSubscriptionMutation) ResetWeekendSkipAdminUpdatedBy() {
+	m.weekend_skip_admin_updated_by = nil
+	m.addweekend_skip_admin_updated_by = nil
+	delete(m.clearedFields, usersubscription.FieldWeekendSkipAdminUpdatedBy)
+}
+
 // SetAssignedBy sets the "assigned_by" field.
 func (m *UserSubscriptionMutation) SetAssignedBy(i int64) {
 	m.assigned_by_user = &i
@@ -50120,7 +50433,7 @@ func (m *UserSubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserSubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 22)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, usersubscription.FieldCreatedAt)
 	}
@@ -50174,6 +50487,21 @@ func (m *UserSubscriptionMutation) Fields() []string {
 	}
 	if m.allow_daily_overdraft != nil {
 		fields = append(fields, usersubscription.FieldAllowDailyOverdraft)
+	}
+	if m.skip_weekends != nil {
+		fields = append(fields, usersubscription.FieldSkipWeekends)
+	}
+	if m.weekend_skip_user_changed_at != nil {
+		fields = append(fields, usersubscription.FieldWeekendSkipUserChangedAt)
+	}
+	if m.weekend_skip_original_expires_at != nil {
+		fields = append(fields, usersubscription.FieldWeekendSkipOriginalExpiresAt)
+	}
+	if m.weekend_skip_admin_updated_at != nil {
+		fields = append(fields, usersubscription.FieldWeekendSkipAdminUpdatedAt)
+	}
+	if m.weekend_skip_admin_updated_by != nil {
+		fields = append(fields, usersubscription.FieldWeekendSkipAdminUpdatedBy)
 	}
 	if m.assigned_by_user != nil {
 		fields = append(fields, usersubscription.FieldAssignedBy)
@@ -50231,6 +50559,16 @@ func (m *UserSubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.QuotaUsedUsd()
 	case usersubscription.FieldAllowDailyOverdraft:
 		return m.AllowDailyOverdraft()
+	case usersubscription.FieldSkipWeekends:
+		return m.SkipWeekends()
+	case usersubscription.FieldWeekendSkipUserChangedAt:
+		return m.WeekendSkipUserChangedAt()
+	case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+		return m.WeekendSkipOriginalExpiresAt()
+	case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+		return m.WeekendSkipAdminUpdatedAt()
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		return m.WeekendSkipAdminUpdatedBy()
 	case usersubscription.FieldAssignedBy:
 		return m.AssignedBy()
 	case usersubscription.FieldAssignedAt:
@@ -50284,6 +50622,16 @@ func (m *UserSubscriptionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldQuotaUsedUsd(ctx)
 	case usersubscription.FieldAllowDailyOverdraft:
 		return m.OldAllowDailyOverdraft(ctx)
+	case usersubscription.FieldSkipWeekends:
+		return m.OldSkipWeekends(ctx)
+	case usersubscription.FieldWeekendSkipUserChangedAt:
+		return m.OldWeekendSkipUserChangedAt(ctx)
+	case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+		return m.OldWeekendSkipOriginalExpiresAt(ctx)
+	case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+		return m.OldWeekendSkipAdminUpdatedAt(ctx)
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		return m.OldWeekendSkipAdminUpdatedBy(ctx)
 	case usersubscription.FieldAssignedBy:
 		return m.OldAssignedBy(ctx)
 	case usersubscription.FieldAssignedAt:
@@ -50427,6 +50775,41 @@ func (m *UserSubscriptionMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetAllowDailyOverdraft(v)
 		return nil
+	case usersubscription.FieldSkipWeekends:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSkipWeekends(v)
+		return nil
+	case usersubscription.FieldWeekendSkipUserChangedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeekendSkipUserChangedAt(v)
+		return nil
+	case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeekendSkipOriginalExpiresAt(v)
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeekendSkipAdminUpdatedAt(v)
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWeekendSkipAdminUpdatedBy(v)
+		return nil
 	case usersubscription.FieldAssignedBy:
 		v, ok := value.(int64)
 		if !ok {
@@ -50478,6 +50861,9 @@ func (m *UserSubscriptionMutation) AddedFields() []string {
 	if m.addquota_used_usd != nil {
 		fields = append(fields, usersubscription.FieldQuotaUsedUsd)
 	}
+	if m.addweekend_skip_admin_updated_by != nil {
+		fields = append(fields, usersubscription.FieldWeekendSkipAdminUpdatedBy)
+	}
 	return fields
 }
 
@@ -50496,6 +50882,8 @@ func (m *UserSubscriptionMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedQuotaLimitUsd()
 	case usersubscription.FieldQuotaUsedUsd:
 		return m.AddedQuotaUsedUsd()
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		return m.AddedWeekendSkipAdminUpdatedBy()
 	}
 	return nil, false
 }
@@ -50540,6 +50928,13 @@ func (m *UserSubscriptionMutation) AddField(name string, value ent.Value) error 
 		}
 		m.AddQuotaUsedUsd(v)
 		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddWeekendSkipAdminUpdatedBy(v)
+		return nil
 	}
 	return fmt.Errorf("unknown UserSubscription numeric field %s", name)
 }
@@ -50562,6 +50957,18 @@ func (m *UserSubscriptionMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usersubscription.FieldQuotaLimitUsd) {
 		fields = append(fields, usersubscription.FieldQuotaLimitUsd)
+	}
+	if m.FieldCleared(usersubscription.FieldWeekendSkipUserChangedAt) {
+		fields = append(fields, usersubscription.FieldWeekendSkipUserChangedAt)
+	}
+	if m.FieldCleared(usersubscription.FieldWeekendSkipOriginalExpiresAt) {
+		fields = append(fields, usersubscription.FieldWeekendSkipOriginalExpiresAt)
+	}
+	if m.FieldCleared(usersubscription.FieldWeekendSkipAdminUpdatedAt) {
+		fields = append(fields, usersubscription.FieldWeekendSkipAdminUpdatedAt)
+	}
+	if m.FieldCleared(usersubscription.FieldWeekendSkipAdminUpdatedBy) {
+		fields = append(fields, usersubscription.FieldWeekendSkipAdminUpdatedBy)
 	}
 	if m.FieldCleared(usersubscription.FieldAssignedBy) {
 		fields = append(fields, usersubscription.FieldAssignedBy)
@@ -50597,6 +51004,18 @@ func (m *UserSubscriptionMutation) ClearField(name string) error {
 		return nil
 	case usersubscription.FieldQuotaLimitUsd:
 		m.ClearQuotaLimitUsd()
+		return nil
+	case usersubscription.FieldWeekendSkipUserChangedAt:
+		m.ClearWeekendSkipUserChangedAt()
+		return nil
+	case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+		m.ClearWeekendSkipOriginalExpiresAt()
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+		m.ClearWeekendSkipAdminUpdatedAt()
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		m.ClearWeekendSkipAdminUpdatedBy()
 		return nil
 	case usersubscription.FieldAssignedBy:
 		m.ClearAssignedBy()
@@ -50665,6 +51084,21 @@ func (m *UserSubscriptionMutation) ResetField(name string) error {
 		return nil
 	case usersubscription.FieldAllowDailyOverdraft:
 		m.ResetAllowDailyOverdraft()
+		return nil
+	case usersubscription.FieldSkipWeekends:
+		m.ResetSkipWeekends()
+		return nil
+	case usersubscription.FieldWeekendSkipUserChangedAt:
+		m.ResetWeekendSkipUserChangedAt()
+		return nil
+	case usersubscription.FieldWeekendSkipOriginalExpiresAt:
+		m.ResetWeekendSkipOriginalExpiresAt()
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedAt:
+		m.ResetWeekendSkipAdminUpdatedAt()
+		return nil
+	case usersubscription.FieldWeekendSkipAdminUpdatedBy:
+		m.ResetWeekendSkipAdminUpdatedBy()
 		return nil
 	case usersubscription.FieldAssignedBy:
 		m.ResetAssignedBy()

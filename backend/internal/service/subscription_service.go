@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
 	"golang.org/x/sync/singleflight"
 )
@@ -42,11 +43,16 @@ var (
 	ErrSubscriptionNilInput       = infraerrors.BadRequest("SUBSCRIPTION_NIL_INPUT", "subscription input cannot be nil")
 	ErrAdjustWouldExpire          = infraerrors.BadRequest("ADJUST_WOULD_EXPIRE", "adjustment would result in expired subscription (remaining days must be > 0)")
 	// 重置配额相关错误
-	ErrPaidSubscriptionImmutable   = infraerrors.Forbidden("SUBSCRIPTION_PAID_IMMUTABLE", "paid subscriptions cannot be reset")
-	ErrNoLimitsConfigured          = infraerrors.BadRequest("SUBSCRIPTION_NO_LIMITS", "subscription group has no usage limits configured, nothing to reset")
-	ErrInvalidResetTarget          = infraerrors.BadRequest("SUBSCRIPTION_INVALID_RESET_TARGET", "selected window cannot be reset (either not configured or is the upper-bound window)")
-	ErrDailyLimitResetNotAvailable = infraerrors.BadRequest("DAILY_LIMIT_RESET_NOT_AVAILABLE", "daily limit reset is not available for this subscription")
-	ErrDailyOverdraftNotAvailable  = infraerrors.BadRequest("DAILY_OVERDRAFT_NOT_AVAILABLE", "daily overdraft is not available for this subscription")
+	ErrPaidSubscriptionImmutable    = infraerrors.Forbidden("SUBSCRIPTION_PAID_IMMUTABLE", "paid subscriptions cannot be reset")
+	ErrNoLimitsConfigured           = infraerrors.BadRequest("SUBSCRIPTION_NO_LIMITS", "subscription group has no usage limits configured, nothing to reset")
+	ErrInvalidResetTarget           = infraerrors.BadRequest("SUBSCRIPTION_INVALID_RESET_TARGET", "selected window cannot be reset (either not configured or is the upper-bound window)")
+	ErrDailyLimitResetNotAvailable  = infraerrors.BadRequest("DAILY_LIMIT_RESET_NOT_AVAILABLE", "daily limit reset is not available for this subscription")
+	ErrDailyOverdraftNotAvailable   = infraerrors.BadRequest("DAILY_OVERDRAFT_NOT_AVAILABLE", "daily overdraft is not available for this subscription")
+	ErrWeekendSkipNotAllowed        = infraerrors.BadRequest("WEEKEND_SKIP_NOT_ALLOWED", "weekend skip is not available for this subscription")
+	ErrWeekendSkipAlreadyChanged    = infraerrors.BadRequest("WEEKEND_SKIP_ALREADY_CHANGED", "weekend skip can only be changed once by user")
+	ErrWeekendSkipAlreadyEnabled    = infraerrors.BadRequest("WEEKEND_SKIP_ALREADY_ENABLED", "weekend skip is already enabled")
+	ErrWeekendSkipDisableNotAllowed = infraerrors.BadRequest("WEEKEND_SKIP_DISABLE_NOT_ALLOWED", "weekend skip cannot be disabled by user")
+	ErrSubscriptionWeekendDisabled  = infraerrors.Forbidden("SUBSCRIPTION_WEEKEND_DISABLED", "subscription is not available on weekends")
 )
 
 // SubscriptionService 订阅服务
@@ -238,12 +244,21 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		}
 		var newExpiresAt time.Time
 
+		renewDuration := time.Duration(validityDays) * 24 * time.Hour
 		if existingSub.ExpiresAt.After(now) {
 			// 未过期：从当前过期时间累加
-			newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
+			if existingSub.SkipWeekends {
+				newExpiresAt = addWeekendSkippedDuration(existingSub.ExpiresAt, renewDuration)
+			} else {
+				newExpiresAt = existingSub.ExpiresAt.AddDate(0, 0, validityDays)
+			}
 		} else {
 			// 已过期：从当前时间开始计算
-			newExpiresAt = now.AddDate(0, 0, validityDays)
+			if existingSub.SkipWeekends {
+				newExpiresAt = addWeekendSkippedDuration(now, renewDuration)
+			} else {
+				newExpiresAt = now.AddDate(0, 0, validityDays)
+			}
 		}
 
 		// 确保不超过最大过期时间
@@ -850,7 +865,14 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 
 	// 计算新的过期时间
 	var newExpiresAt time.Time
-	if isExpired {
+	if sub.SkipWeekends && days > 0 {
+		adjustDuration := time.Duration(days) * 24 * time.Hour
+		if isExpired {
+			newExpiresAt = addWeekendSkippedDuration(now, adjustDuration)
+		} else {
+			newExpiresAt = addWeekendSkippedDuration(sub.ExpiresAt, adjustDuration)
+		}
+	} else if isExpired {
 		// 已过期：从当前时间开始增加天数
 		newExpiresAt = now.AddDate(0, 0, days)
 	} else {
@@ -1078,6 +1100,148 @@ func (s *SubscriptionService) SetUserDailyOverdraft(ctx context.Context, userID,
 		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
 	}
 	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func isWeekendTime(t time.Time) bool {
+	t = t.In(timezone.Location())
+	return t.Weekday() == time.Saturday || t.Weekday() == time.Sunday
+}
+
+func nextWorkingTime(t time.Time) time.Time {
+	loc := timezone.Location()
+	t = t.In(loc)
+	for isWeekendTime(t) {
+		start := timezone.StartOfDay(t)
+		t = start.AddDate(0, 0, 1)
+	}
+	return t
+}
+
+func addWeekendSkippedDuration(start time.Time, duration time.Duration) time.Time {
+	if duration <= 0 {
+		return start
+	}
+	current := nextWorkingTime(start)
+	remaining := duration
+	for remaining > 0 {
+		if isWeekendTime(current) {
+			current = nextWorkingTime(current)
+			continue
+		}
+		dayEnd := timezone.StartOfDay(current).AddDate(0, 0, 1)
+		available := dayEnd.Sub(current)
+		if available <= 0 {
+			current = dayEnd
+			continue
+		}
+		if remaining <= available {
+			return current.Add(remaining)
+		}
+		remaining -= available
+		current = dayEnd
+	}
+	return current
+}
+
+func (s *SubscriptionService) EnableUserWeekendSkip(ctx context.Context, userID, subscriptionID int64) (*UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.UserID != userID {
+		return nil, ErrSubscriptionNotFound
+	}
+	now := timezone.Now()
+	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) || now.Before(sub.StartsAt) {
+		return nil, ErrSubscriptionNotFound
+	}
+	if sub.Group == nil || !sub.Group.AllowWeekendSkip || !sub.Group.IsSubscriptionType() {
+		return nil, ErrWeekendSkipNotAllowed
+	}
+	if sub.WeekendSkipUserChangedAt != nil {
+		return nil, ErrWeekendSkipAlreadyChanged
+	}
+	if sub.SkipWeekends {
+		return nil, ErrWeekendSkipAlreadyEnabled
+	}
+	oldExpiresAt := sub.ExpiresAt
+	sub.SkipWeekends = true
+	sub.WeekendSkipUserChangedAt = &now
+	if sub.WeekendSkipOriginalExpiresAt == nil {
+		original := oldExpiresAt
+		sub.WeekendSkipOriginalExpiresAt = &original
+	}
+	sub.ExpiresAt = addWeekendSkippedDuration(now, oldExpiresAt.Sub(now))
+	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+		return nil, err
+	}
+	s.invalidateSubscriptionRuntimeCache(ctx, sub)
+	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func (s *SubscriptionService) AdminSetWeekendSkip(ctx context.Context, adminID, subscriptionID int64, enabled bool) (*UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	now := timezone.Now()
+	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
+		return nil, ErrSubscriptionExpired
+	}
+	if enabled && !sub.SkipWeekends {
+		oldExpiresAt := sub.ExpiresAt
+		if sub.WeekendSkipOriginalExpiresAt == nil {
+			original := oldExpiresAt
+			sub.WeekendSkipOriginalExpiresAt = &original
+		}
+		sub.ExpiresAt = addWeekendSkippedDuration(now, oldExpiresAt.Sub(now))
+	}
+	sub.SkipWeekends = enabled
+	sub.WeekendSkipAdminUpdatedAt = &now
+	sub.WeekendSkipAdminUpdatedBy = &adminID
+	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+		return nil, err
+	}
+	s.invalidateSubscriptionRuntimeCache(ctx, sub)
+	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func (s *SubscriptionService) AdminResetWeekendSkipUserChange(ctx context.Context, adminID, subscriptionID int64) (*UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	now := timezone.Now()
+	sub.WeekendSkipUserChangedAt = nil
+	sub.WeekendSkipAdminUpdatedAt = &now
+	sub.WeekendSkipAdminUpdatedBy = &adminID
+	if err := s.userSubRepo.Update(ctx, sub); err != nil {
+		return nil, err
+	}
+	s.invalidateSubscriptionRuntimeCache(ctx, sub)
+	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func (s *SubscriptionService) invalidateSubscriptionRuntimeCache(ctx context.Context, sub *UserSubscription) {
+	if s == nil || sub == nil {
+		return
+	}
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.subCacheL1 != nil {
+		s.subCacheL1.Wait()
+	}
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
 }
 
 // ListUserSubscriptions 获取用户的所有订阅
@@ -1532,6 +1696,9 @@ func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *U
 	}
 	if sub.IsExpired() {
 		return false, ErrSubscriptionExpired
+	}
+	if sub.SkipWeekends && isWeekendTime(now) {
+		return false, ErrSubscriptionWeekendDisabled
 	}
 
 	// 2. 内存中修正过期窗口的用量，确保 CheckUsageLimits 不会误拒绝用户

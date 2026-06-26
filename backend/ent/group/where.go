@@ -130,6 +130,11 @@ func AllowDailyOverdraft(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowDailyOverdraft, v))
 }
 
+// AllowWeekendSkip applies equality check predicate on the "allow_weekend_skip" field. It's identical to AllowWeekendSkipEQ.
+func AllowWeekendSkip(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowWeekendSkip, v))
+}
+
 // DefaultValidityDays applies equality check predicate on the "default_validity_days" field. It's identical to DefaultValidityDaysEQ.
 func DefaultValidityDays(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultValidityDays, v))
@@ -943,6 +948,16 @@ func AllowDailyOverdraftEQ(v bool) predicate.Group {
 // AllowDailyOverdraftNEQ applies the NEQ predicate on the "allow_daily_overdraft" field.
 func AllowDailyOverdraftNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowDailyOverdraft, v))
+}
+
+// AllowWeekendSkipEQ applies the EQ predicate on the "allow_weekend_skip" field.
+func AllowWeekendSkipEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowWeekendSkip, v))
+}
+
+// AllowWeekendSkipNEQ applies the NEQ predicate on the "allow_weekend_skip" field.
+func AllowWeekendSkipNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowWeekendSkip, v))
 }
 
 // DefaultValidityDaysEQ applies the EQ predicate on the "default_validity_days" field.

@@ -150,6 +150,9 @@
                     <span v-if="row.allow_daily_overdraft">
                       {{ t("admin.groups.subscription.overdraftShort") }}
                     </span>
+                    <span v-if="row.allow_weekend_skip">
+                      · 跳过非工作日
+                    </span>
                   </span>
                   <span
                     v-if="
@@ -671,6 +674,22 @@
                 </span>
                 <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.groups.subscription.allowDailyOverdraftHint") }}
+                </span>
+              </span>
+            </label>
+
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <input
+                v-model="createForm.allow_weekend_skip"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  允许用户跳过非工作日
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  用户可自行开启一次，开启后周六、周日不可使用并自动顺延到期时间。
                 </span>
               </span>
             </label>
@@ -1892,6 +1911,21 @@
                 </span>
                 <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                   {{ t("admin.groups.subscription.allowDailyOverdraftHint") }}
+                </span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <input
+                v-model="editForm.allow_weekend_skip"
+                type="checkbox"
+                class="mt-1 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span>
+                <span class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  允许用户跳过非工作日
+                </span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                  用户可自行开启一次，开启后周六、周日不可使用并自动顺延到期时间。
                 </span>
               </span>
             </label>
@@ -3190,6 +3224,7 @@ const createForm = reactive({
   daily_limit_usd: null as number | null,
   daily_limit_reset_price: null as number | null,
   allow_daily_overdraft: false,
+  allow_weekend_skip: false,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3477,6 +3512,7 @@ const editForm = reactive({
   daily_limit_usd: null as number | null,
   daily_limit_reset_price: null as number | null,
   allow_daily_overdraft: false,
+  allow_weekend_skip: false,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
   // 图片生成计费配置
@@ -3767,6 +3803,7 @@ const closeCreateModal = () => {
   createForm.daily_limit_usd = null;
   createForm.daily_limit_reset_price = null;
   createForm.allow_daily_overdraft = false;
+  createForm.allow_weekend_skip = false;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
   createForm.allow_image_generation = false;
@@ -3901,6 +3938,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.daily_limit_reset_price = group.daily_limit_reset_price;
   editForm.allow_daily_overdraft = group.allow_daily_overdraft ?? false;
+  editForm.allow_weekend_skip = group.allow_weekend_skip ?? false;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -4102,6 +4140,7 @@ watch(
       createForm.fallback_group_id_on_invalid_request = null;
     } else {
       createForm.allow_daily_overdraft = false;
+      createForm.allow_weekend_skip = false;
     }
   },
 );

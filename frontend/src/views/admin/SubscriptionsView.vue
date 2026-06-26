@@ -446,6 +446,22 @@
                 <span class="text-xs">{{ t('admin.subscriptions.resetQuota') }}</span>
               </button>
               <button
+                v-if="row.status === 'active'"
+                @click="toggleWeekendSkip(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              >
+                <Icon name="calendar" size="sm" />
+                <span class="text-xs">{{ row.skip_weekends ? '关闭周末' : '跳过周末' }}</span>
+              </button>
+              <button
+                v-if="row.weekend_skip_user_changed_at"
+                @click="resetWeekendSkipChange(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">重置机会</span>
+              </button>
+              <button
                 v-if="row.status === 'active' || row.status === 'quota_exhausted'"
                 @click="handleRevoke(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
@@ -1591,6 +1607,26 @@ const handleResetQuota = (subscription: UserSubscription) => {
   resetSelection.weekly = isResetWindowEnabled(subscription, 'weekly')
   resetSelection.monthly = isResetWindowEnabled(subscription, 'monthly')
   showResetQuotaConfirm.value = true
+}
+
+const toggleWeekendSkip = async (subscription: UserSubscription) => {
+  try {
+    await adminAPI.subscriptions.setWeekendSkip(subscription.id, !subscription.skip_weekends)
+    appStore.showSuccess(subscription.skip_weekends ? '已关闭跳过非工作日' : '已开启跳过非工作日，到期时间已顺延')
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || '跳过非工作日设置更新失败')
+  }
+}
+
+const resetWeekendSkipChange = async (subscription: UserSubscription) => {
+  try {
+    await adminAPI.subscriptions.resetWeekendSkipUserChange(subscription.id)
+    appStore.showSuccess('已重置用户修改机会')
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || '重置用户修改机会失败')
+  }
 }
 
 const closeResetQuotaDialog = () => {
