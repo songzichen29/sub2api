@@ -17,5 +17,6 @@ type SubscriptionCacheData struct {
 	QuotaLimitUSD       *float64
 	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
+	SkipWeekends        bool
 	Version             int64
 }

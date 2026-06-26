@@ -337,6 +337,48 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DisabledDayOverdraftRep
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }
 
+func TestBillingCacheServiceCheckSubscriptionEligibility_RejectsWeekendSkippedCache(t *testing.T) {
+	oldNow := weekendSkipNow
+	weekendSkipNow = func() time.Time { return time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { weekendSkipNow = oldNow })
+
+	now := weekendSkipNow()
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:       SubscriptionStatusActive,
+		StartsAt:     now.Add(-24 * time.Hour),
+		ExpiresAt:    now.Add(24 * time.Hour),
+		SkipWeekends: true,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription}
+
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+
+	require.ErrorIs(t, err, ErrSubscriptionWeekendDisabled)
+}
+
+func TestBillingCacheServiceCheckSubscriptionEligibility_AllowsWeekendWhenDisabled(t *testing.T) {
+	oldNow := weekendSkipNow
+	weekendSkipNow = func() time.Time { return time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { weekendSkipNow = oldNow })
+
+	now := weekendSkipNow()
+	cache := &billingCacheSubscriptionStub{data: &SubscriptionCacheData{
+		Status:       SubscriptionStatusActive,
+		StartsAt:     now.Add(-24 * time.Hour),
+		ExpiresAt:    now.Add(24 * time.Hour),
+		SkipWeekends: false,
+	}}
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
+	t.Cleanup(svc.Stop)
+	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription}
+
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+
+	require.NoError(t, err)
+}
+
 func TestBillingCacheServiceCheckSubscriptionEligibility_RechecksStaleDailyLimitCache(t *testing.T) {
 	daily := 80.0
 	now := time.Now()

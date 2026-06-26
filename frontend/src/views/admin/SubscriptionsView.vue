@@ -761,6 +761,46 @@
       @cancel="showRevokeDialog = false"
     />
 
+    <BaseDialog
+      :show="showWeekendSkipConfirm"
+      :title="weekendSkipTarget?.enabled ? '开启跳过非工作日' : '关闭跳过非工作日'"
+      width="narrow"
+      @close="closeWeekendSkipConfirm"
+    >
+      <div v-if="weekendSkipTarget" class="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+        <p>
+          {{ weekendSkipTarget.enabled ? '开启后周六、周日不可使用，系统会把周末时间补偿到到期时间。' : '关闭后周六、周日恢复可用，系统会把剩余工作日时长换算回自然日到期时间。' }}
+        </p>
+        <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div class="flex justify-between gap-3 py-1">
+            <span class="text-gray-500 dark:text-dark-400">当前到期时间</span>
+            <span class="font-medium">{{ formatDateTime(weekendSkipTarget.preview.current_expires_at) }}</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1">
+            <span class="text-gray-500 dark:text-dark-400">调整后到期时间</span>
+            <span class="font-medium">{{ formatDateTime(weekendSkipTarget.preview.preview_expires_at) }}</span>
+          </div>
+          <div class="flex justify-between gap-3 py-1">
+            <span class="text-gray-500 dark:text-dark-400">本次时间变化</span>
+            <span :class="weekendSkipTarget.preview.delta_seconds >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">
+              {{ formatDeltaSeconds(weekendSkipTarget.preview.delta_seconds) }}
+            </span>
+          </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-dark-400">
+          请确认到期时间变化无误后再继续。
+        </p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="closeWeekendSkipConfirm">{{ t('common.cancel') }}</button>
+          <button type="button" class="btn btn-primary" :disabled="weekendSkipSubmitting" @click="confirmWeekendSkipToggle">
+            {{ weekendSkipSubmitting ? t('common.processing') : t('common.confirm') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
+
     <!-- Reset Quota Multi-Select Dialog -->
     <BaseDialog
       :show="showResetQuotaConfirm"
@@ -928,6 +968,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import type { WeekendSkipPreview } from '@/api/admin/subscriptions'
 import type {
   UserSubscription,
   Group,
@@ -1140,6 +1181,13 @@ const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
+const showWeekendSkipConfirm = ref(false)
+const weekendSkipSubmitting = ref(false)
+const weekendSkipTarget = ref<{
+  subscription: UserSubscription
+  enabled: boolean
+  preview: WeekendSkipPreview
+} | null>(null)
 
 const assignForm = reactive({
   user_id: null as number | null,
@@ -1609,13 +1657,51 @@ const handleResetQuota = (subscription: UserSubscription) => {
   showResetQuotaConfirm.value = true
 }
 
+const formatDeltaSeconds = (seconds: number): string => {
+  const sign = seconds > 0 ? '+' : seconds < 0 ? '-' : ''
+  const abs = Math.abs(seconds)
+  const days = Math.floor(abs / 86400)
+  const hours = Math.floor((abs % 86400) / 3600)
+  const minutes = Math.floor((abs % 3600) / 60)
+  const parts: string[] = []
+  if (days) parts.push(`${days} 天`)
+  if (hours) parts.push(`${hours} 小时`)
+  if (minutes || parts.length === 0) parts.push(`${minutes} 分钟`)
+  return `${sign}${parts.join(' ')}`
+}
+
 const toggleWeekendSkip = async (subscription: UserSubscription) => {
   try {
-    await adminAPI.subscriptions.setWeekendSkip(subscription.id, !subscription.skip_weekends)
-    appStore.showSuccess(subscription.skip_weekends ? '已关闭跳过非工作日' : '已开启跳过非工作日，到期时间已顺延')
+    const enabled = !subscription.skip_weekends
+    const preview = await adminAPI.subscriptions.previewWeekendSkip(subscription.id, enabled)
+    weekendSkipTarget.value = { subscription, enabled, preview }
+    showWeekendSkipConfirm.value = true
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || '获取跳过非工作日预览失败')
+  }
+}
+
+const closeWeekendSkipConfirm = () => {
+  showWeekendSkipConfirm.value = false
+  weekendSkipTarget.value = null
+  weekendSkipSubmitting.value = false
+}
+
+const confirmWeekendSkipToggle = async () => {
+  if (!weekendSkipTarget.value || weekendSkipSubmitting.value) return
+  weekendSkipSubmitting.value = true
+  try {
+    await adminAPI.subscriptions.setWeekendSkip(
+      weekendSkipTarget.value.subscription.id,
+      weekendSkipTarget.value.enabled
+    )
+    appStore.showSuccess(weekendSkipTarget.value.enabled ? '已开启跳过非工作日，到期时间已调整' : '已关闭跳过非工作日，到期时间已回算')
+    closeWeekendSkipConfirm()
     await loadSubscriptions()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || '跳过非工作日设置更新失败')
+  } finally {
+    weekendSkipSubmitting.value = false
   }
 }
 

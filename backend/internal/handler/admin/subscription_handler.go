@@ -347,6 +347,27 @@ func (h *SubscriptionHandler) SetWeekendSkip(c *gin.Context) {
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
 }
 
+// PreviewWeekendSkip previews expiry changes before an admin toggles weekend skip.
+// POST /api/v1/admin/subscriptions/:id/weekend-skip/preview
+func (h *SubscriptionHandler) PreviewWeekendSkip(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	var req SetWeekendSkipRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	preview, err := h.subscriptionService.AdminPreviewWeekendSkip(c.Request.Context(), subscriptionID, req.Enabled)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
 // ResetWeekendSkipUserChange resets the user's one-time weekend skip change marker.
 // POST /api/v1/admin/subscriptions/:id/weekend-skip/reset-user-change
 func (h *SubscriptionHandler) ResetWeekendSkipUserChange(c *gin.Context) {

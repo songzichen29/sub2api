@@ -149,6 +149,26 @@ export async function setWeekendSkip(
   return data
 }
 
+export interface WeekendSkipPreview {
+  subscription_id: number
+  enabled: boolean
+  current_expires_at: string
+  preview_expires_at: string
+  delta_seconds: number
+  reason: string
+}
+
+export async function previewWeekendSkip(
+  id: number,
+  enabled: boolean
+): Promise<WeekendSkipPreview> {
+  const { data } = await apiClient.post<WeekendSkipPreview>(
+    `/admin/subscriptions/${id}/weekend-skip/preview`,
+    { enabled }
+  )
+  return data
+}
+
 export async function resetWeekendSkipUserChange(id: number): Promise<UserSubscription> {
   const { data } = await apiClient.post<UserSubscription>(
     `/admin/subscriptions/${id}/weekend-skip/reset-user-change`
@@ -207,6 +227,7 @@ export const subscriptionsAPI = {
   extend,
   revoke,
   resetQuota,
+  previewWeekendSkip,
   setWeekendSkip,
   resetWeekendSkipUserChange,
   listByGroup,

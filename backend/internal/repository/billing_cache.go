@@ -60,6 +60,7 @@ const (
 	subFieldQuotaLimitUSD       = "quota_limit_usd"
 	subFieldQuotaUsedUSD        = "quota_used_usd"
 	subFieldAllowDailyOverdraft = "allow_daily_overdraft"
+	subFieldSkipWeekends        = "skip_weekends"
 	subFieldVersion             = "version"
 )
 
@@ -251,6 +252,10 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 		result.AllowDailyOverdraft = overdraftStr == "1" || strings.EqualFold(overdraftStr, "true")
 	}
 
+	if skipWeekendsStr, ok := data[subFieldSkipWeekends]; ok {
+		result.SkipWeekends = skipWeekendsStr == "1" || strings.EqualFold(skipWeekendsStr, "true")
+	}
+
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
 	}
@@ -275,6 +280,7 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		subFieldMonthlyUsage:        data.MonthlyUsage,
 		subFieldQuotaUsedUSD:        data.QuotaUsedUSD,
 		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
+		subFieldSkipWeekends:        data.SkipWeekends,
 		subFieldVersion:             data.Version,
 	}
 	if data.QuotaLimitUSD != nil {

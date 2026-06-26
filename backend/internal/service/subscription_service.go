@@ -79,6 +79,15 @@ type DailyLimitResetPaymentTarget struct {
 	Price        float64
 }
 
+type WeekendSkipPreview struct {
+	SubscriptionID   int64     `json:"subscription_id"`
+	Enabled          bool      `json:"enabled"`
+	CurrentExpiresAt time.Time `json:"current_expires_at"`
+	PreviewExpiresAt time.Time `json:"preview_expires_at"`
+	DeltaSeconds     int64     `json:"delta_seconds"`
+	Reason           string    `json:"reason"`
+}
+
 // NewSubscriptionService 创建订阅服务
 func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscriptionRepository, billingCacheService *BillingCacheService, entClient *dbent.Client, cfg *config.Config) *SubscriptionService {
 	svc := &SubscriptionService{
@@ -1107,6 +1116,8 @@ func isWeekendTime(t time.Time) bool {
 	return t.Weekday() == time.Saturday || t.Weekday() == time.Sunday
 }
 
+var weekendSkipNow = timezone.Now
+
 func nextWorkingTime(t time.Time) time.Time {
 	loc := timezone.Location()
 	t = t.In(loc)
@@ -1141,6 +1152,34 @@ func addWeekendSkippedDuration(start time.Time, duration time.Duration) time.Tim
 		current = dayEnd
 	}
 	return current
+}
+
+func weekendSkippedDurationBetween(start, end time.Time) time.Duration {
+	if !end.After(start) {
+		return 0
+	}
+	current := start.In(timezone.Location())
+	end = end.In(timezone.Location())
+	var total time.Duration
+	for current.Before(end) {
+		if isWeekendTime(current) {
+			next := timezone.StartOfDay(current).AddDate(0, 0, 1)
+			if next.After(end) {
+				next = end
+			}
+			current = next
+			continue
+		}
+		dayEnd := timezone.StartOfDay(current).AddDate(0, 0, 1)
+		if dayEnd.After(end) {
+			dayEnd = end
+		}
+		if dayEnd.After(current) {
+			total += dayEnd.Sub(current)
+		}
+		current = dayEnd
+	}
+	return total
 }
 
 func (s *SubscriptionService) EnableUserWeekendSkip(ctx context.Context, userID, subscriptionID int64) (*UserSubscription, error) {
@@ -1201,6 +1240,9 @@ func (s *SubscriptionService) AdminSetWeekendSkip(ctx context.Context, adminID, 
 			sub.WeekendSkipOriginalExpiresAt = &original
 		}
 		sub.ExpiresAt = addWeekendSkippedDuration(now, oldExpiresAt.Sub(now))
+	} else if !enabled && sub.SkipWeekends {
+		remainingUsable := weekendSkippedDurationBetween(now, sub.ExpiresAt)
+		sub.ExpiresAt = now.Add(remainingUsable)
 	}
 	sub.SkipWeekends = enabled
 	sub.WeekendSkipAdminUpdatedAt = &now
@@ -1210,6 +1252,38 @@ func (s *SubscriptionService) AdminSetWeekendSkip(ctx context.Context, adminID, 
 	}
 	s.invalidateSubscriptionRuntimeCache(ctx, sub)
 	return s.userSubRepo.GetByID(ctx, sub.ID)
+}
+
+func (s *SubscriptionService) AdminPreviewWeekendSkip(ctx context.Context, subscriptionID int64, enabled bool) (*WeekendSkipPreview, error) {
+	if subscriptionID <= 0 {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	now := timezone.Now()
+	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
+		return nil, ErrSubscriptionExpired
+	}
+	previewExpiresAt := sub.ExpiresAt
+	reason := "unchanged"
+	if enabled && !sub.SkipWeekends {
+		previewExpiresAt = addWeekendSkippedDuration(now, sub.ExpiresAt.Sub(now))
+		reason = "enable_compensates_weekends"
+	} else if !enabled && sub.SkipWeekends {
+		remainingUsable := weekendSkippedDurationBetween(now, sub.ExpiresAt)
+		previewExpiresAt = now.Add(remainingUsable)
+		reason = "disable_converts_to_natural_time"
+	}
+	return &WeekendSkipPreview{
+		SubscriptionID:   sub.ID,
+		Enabled:          enabled,
+		CurrentExpiresAt: sub.ExpiresAt,
+		PreviewExpiresAt: previewExpiresAt,
+		DeltaSeconds:     int64(previewExpiresAt.Sub(sub.ExpiresAt).Seconds()),
+		Reason:           reason,
+	}, nil
 }
 
 func (s *SubscriptionService) AdminResetWeekendSkipUserChange(ctx context.Context, adminID, subscriptionID int64) (*UserSubscription, error) {

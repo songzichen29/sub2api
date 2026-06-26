@@ -48,6 +48,7 @@ type subscriptionCacheData struct {
 	QuotaLimitUSD       *float64
 	QuotaUsedUSD        float64
 	AllowDailyOverdraft bool
+	SkipWeekends        bool
 	Version             int64
 }
 
@@ -455,6 +456,7 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 		QuotaLimitUSD:       data.QuotaLimitUSD,
 		QuotaUsedUSD:        data.QuotaUsedUSD,
 		AllowDailyOverdraft: data.AllowDailyOverdraft,
+		SkipWeekends:        data.SkipWeekends,
 		Version:             data.Version,
 	}
 }
@@ -472,6 +474,7 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 		QuotaLimitUSD:       data.QuotaLimitUSD,
 		QuotaUsedUSD:        data.QuotaUsedUSD,
 		AllowDailyOverdraft: data.AllowDailyOverdraft,
+		SkipWeekends:        data.SkipWeekends,
 		Version:             data.Version,
 	}
 }
@@ -495,6 +498,7 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 		QuotaLimitUSD:       sub.QuotaLimitUSD,
 		QuotaUsedUSD:        sub.QuotaUsedUSD,
 		AllowDailyOverdraft: sub.AllowDailyOverdraft,
+		SkipWeekends:        sub.SkipWeekends,
 		Version:             sub.UpdatedAt.Unix(),
 	}, nil
 }
@@ -914,6 +918,10 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		QuotaLimitUSD:       subData.QuotaLimitUSD,
 		QuotaUsedUSD:        subData.QuotaUsedUSD,
 		AllowDailyOverdraft: subData.AllowDailyOverdraft,
+		SkipWeekends:        subData.SkipWeekends,
+	}
+	if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
+		return ErrSubscriptionWeekendDisabled
 	}
 	if subscription != nil {
 		if subData.QuotaLimitUSD == nil && subscription.QuotaLimitUSD != nil {
@@ -927,7 +935,12 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	needsDayOverdraftAccounting := group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
 	if group != nil && group.AllowsDailyOverdraft() && subscription != nil {
 		cacheSub.AllowDailyOverdraft = subscription.AllowDailyOverdraft
+		cacheSub.SkipWeekends = subscription.SkipWeekends
 		subData.AllowDailyOverdraft = subscription.AllowDailyOverdraft
+		subData.SkipWeekends = subscription.SkipWeekends
+		if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
+			return ErrSubscriptionWeekendDisabled
+		}
 		if subData.ValidityUnit == "" && subscription.ValidityUnit != "" {
 			cacheSub.ValidityUnit = normalizeSubscriptionValidityUnit(subscription.ValidityUnit)
 			subData.ValidityUnit = cacheSub.ValidityUnit
@@ -959,6 +972,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			cacheSub.QuotaLimitUSD = freshSub.QuotaLimitUSD
 			cacheSub.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
+			cacheSub.SkipWeekends = freshSub.SkipWeekends
 			subData.StartsAt = freshSub.StartsAt
 			subData.ExpiresAt = freshSub.ExpiresAt
 			subData.ValidityUnit = cacheSub.ValidityUnit
@@ -969,6 +983,10 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			subData.QuotaLimitUSD = freshSub.QuotaLimitUSD
 			subData.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			subData.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
+			subData.SkipWeekends = freshSub.SkipWeekends
+			if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
+				return ErrSubscriptionWeekendDisabled
+			}
 			s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
 				Status:              freshSub.Status,
 				StartsAt:            freshSub.StartsAt,
@@ -981,6 +999,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				QuotaLimitUSD:       freshSub.QuotaLimitUSD,
 				QuotaUsedUSD:        freshSub.QuotaUsedUSD,
 				AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
+				SkipWeekends:        freshSub.SkipWeekends,
 				Version:             freshSub.UpdatedAt.Unix(),
 			})
 			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
@@ -1037,6 +1056,9 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 	if err != nil || freshSub == nil {
 		return false
 	}
+	if freshSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
+		return false
+	}
 	if !freshSub.CheckDailyLimit(group, 0) ||
 		!freshSub.CheckWeeklyLimit(group, 0) ||
 		!freshSub.CheckMonthlyLimit(group, 0) ||
@@ -1058,6 +1080,7 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 			QuotaLimitUSD:       freshSub.QuotaLimitUSD,
 			QuotaUsedUSD:        freshSub.QuotaUsedUSD,
 			AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
+			SkipWeekends:        freshSub.SkipWeekends,
 			Version:             freshSub.UpdatedAt.Unix(),
 		})
 	}
