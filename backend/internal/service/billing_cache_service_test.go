@@ -339,7 +339,18 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DisabledDayOverdraftRep
 
 func TestBillingCacheServiceCheckSubscriptionEligibility_RejectsWeekendSkippedCache(t *testing.T) {
 	oldNow := weekendSkipNow
-	weekendSkipNow = func() time.Time { return time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC) }
+	weekendSkipNow = func() time.Time {
+		// Use an upcoming Saturday relative to real now, so ExpiresAt = now+24h
+		// stays in the future and the real-time expiry check
+		// (billing_cache_service.go checkSubscriptionEligibility) does not fire
+		// before the weekend check. Keeps the test deterministic regardless of
+		// the real calendar date.
+		t := time.Now()
+		for t.Weekday() != time.Saturday {
+			t = t.Add(24 * time.Hour)
+		}
+		return t
+	}
 	t.Cleanup(func() { weekendSkipNow = oldNow })
 
 	now := weekendSkipNow()
@@ -360,7 +371,18 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_RejectsWeekendSkippedCa
 
 func TestBillingCacheServiceCheckSubscriptionEligibility_AllowsWeekendWhenDisabled(t *testing.T) {
 	oldNow := weekendSkipNow
-	weekendSkipNow = func() time.Time { return time.Date(2026, 6, 27, 10, 0, 0, 0, time.UTC) }
+	weekendSkipNow = func() time.Time {
+		// Use an upcoming Saturday relative to real now, so ExpiresAt = now+24h
+		// stays in the future and the real-time expiry check
+		// (billing_cache_service.go checkSubscriptionEligibility) does not fire
+		// before the weekend check. Keeps the test deterministic regardless of
+		// the real calendar date.
+		t := time.Now()
+		for t.Weekday() != time.Saturday {
+			t = t.Add(24 * time.Hour)
+		}
+		return t
+	}
 	t.Cleanup(func() { weekendSkipNow = oldNow })
 
 	now := weekendSkipNow()
