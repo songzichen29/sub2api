@@ -13,6 +13,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 
@@ -264,23 +266,39 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		return nil, fmt.Errorf("token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 
-	return &tokenResp, nil
-}
 
 func createReqClient(proxyURL string) (*req.Client, error) {
-	// 禁用 CookieJar，确保每次授权都是干净的会话
+	// 使用 Node.js 24.x uTLS 指纹替代 Go 默认 TLS（Go 默认 = Chrome 指纹）
+	tlsProfile := &tlsfingerprint.Profile{} // nil profile = defaults (Node.js 24.x)
+	dialer := tlsfingerprint.NewDialer(tlsProfile, nil)
+
+	transport := &http.Transport{
+		DialTLSContext:     dialer.DialTLSContext,
+		ForceAttemptHTTP2:  false,
+		MaxIdleConns:       10,
+		IdleConnTimeout:    90 * time.Second,
+	}
+
+	// 如果有代理，通过代理建立 TCP 连接
+	if trimmed, _, err := proxyurl.Parse(proxyURL); err == nil && trimmed != "" {
+		parsedProxy, err := url.Parse(trimmed)
+		if err == nil {
+			switch parsedProxy.Scheme {
+			case "socks5", "socks5h":
+				socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(tlsProfile, parsedProxy)
+				transport.DialTLSContext = socks5Dialer.DialTLSContext
+			case "http", "https":
+				httpDialer := tlsfingerprint.NewHTTPProxyDialer(tlsProfile, parsedProxy)
+				transport.DialTLSContext = httpDialer.DialTLSContext
+			}
+		}
+	}
+
 	client := req.C().
 		SetTimeout(60 * time.Second).
-
-		SetCookieJar(nil) // 禁用 CookieJar
-
-	trimmed, _, err := proxyurl.Parse(proxyURL)
-	if err != nil {
-		return nil, err
-	}
-	if trimmed != "" {
-		client.SetProxyURL(trimmed)
-	}
+		SetTransport(transport).
+		SetCookieJar(nil)
 
 	return client, nil
+
 }
