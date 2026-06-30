@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/google/uuid"
 )
 
@@ -95,6 +96,10 @@ type TelemetryService struct {
 	// Process metrics simulator state
 	processStart time.Time
 	baseMemory   int64
+	// httpClient uses the Node.js 24.x uTLS fingerprint (R-P2), matching the
+	// upstream API/OAuth paths so telemetry to api.anthropic.com does not leak
+	// Go's default crypto/tls fingerprint.
+	httpClient *http.Client
 }
 
 // TelemetrySession tracks state for a single account's "Claude Code session".
@@ -210,6 +215,7 @@ func NewTelemetryService(cfg TelemetryConfig) *TelemetryService {
 	if cfg.MaxRetries <= 0 {
 		cfg.MaxRetries = telemetryMaxRetries
 	}
+	tlsDialer := tlsfingerprint.NewDialer(&tlsfingerprint.Profile{}, nil) // defaults = Node.js 24.x
 	s := &TelemetryService{
 		cfg:          cfg,
 		eventCh:      make(chan TelemetryEvent, telemetryMaxQueueSize),
@@ -217,6 +223,15 @@ func NewTelemetryService(cfg TelemetryConfig) *TelemetryService {
 		sessions:     make(map[int64]*TelemetrySession),
 		processStart: time.Now(),
 		baseMemory:   int64(100 + rand.Intn(80)) << 20, // 100-180 MB base
+		httpClient: &http.Client{
+			Timeout: telemetryAPITimeout,
+			Transport: &http.Transport{
+				DialTLSContext:    tlsDialer.DialTLSContext,
+				ForceAttemptHTTP2: false,
+				MaxIdleConns:      10,
+				IdleConnTimeout:   90 * time.Second,
+			},
+		},
 	}
 	return s
 }
@@ -487,7 +502,10 @@ func (s *TelemetryService) sendGroup(events []telemetryWireEvent, token string, 
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	client := &http.Client{Timeout: telemetryAPITimeout}
+	client := s.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: telemetryAPITimeout}
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if attempt < s.cfg.MaxRetries {
