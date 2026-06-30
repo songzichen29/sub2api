@@ -6680,7 +6680,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT, enableCCH := true, false, false
+	enableFP, enableMPT, enableCCH := true, false, true
 	if s.settingService != nil {
 		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
@@ -6713,9 +6713,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if fingerprint != nil {
 		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
 	}
-	// CCH 签名：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）
+	// CCH：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）。
+	// 默认开启；关闭时移除占位符，避免原样发送未签名的 cch=00000。
 	if enableCCH {
 		body = signBillingHeaderCCH(body)
+	} else {
+		body = stripCCHPlaceholder(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))

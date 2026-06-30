@@ -65,6 +65,20 @@ func signBillingHeaderCCH(body []byte) []byte {
 	return cchPlaceholderRe.ReplaceAll(body, []byte("${1}"+cch+"${3}"))
 }
 
+// cchPlaceholderStripRe matches the literal " cch=00000;" placeholder (with the
+// leading space) so it can be removed when CCH signing is disabled. It only
+// matches the 5-zero placeholder sub2api injects, never a real signed 5-hex cch.
+var cchPlaceholderStripRe = regexp.MustCompile(` cch=00000;`)
+
+// stripCCHPlaceholder removes the unsigned cch=00000 placeholder from the billing
+// header. Used when enableCCH is false so the raw placeholder is never sent.
+func stripCCHPlaceholder(body []byte) []byte {
+	if !cchPlaceholderStripRe.Match(body) {
+		return body
+	}
+	return cchPlaceholderStripRe.ReplaceAll(body, []byte(""))
+}
+
 // xxHash64Seeded computes xxHash64 of data with a custom seed.
 func xxHash64Seeded(data []byte, seed uint64) uint64 {
 	d := xxhash.NewWithSeed(seed)

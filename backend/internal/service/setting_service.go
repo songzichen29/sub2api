@@ -2476,20 +2476,23 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 				fingerprintUnification:           true,
 				metadataPassthrough:              false,
-				cchSigning:                       false,
+				cchSigning:                       true,
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
+			return gatewayForwardingSettingsResult{fp: true, cch: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 			fp = v == "true"
 		}
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
-		cch := values[SettingKeyEnableCCHSigning] == "true"
+		cch := true
+		if v, ok := values[SettingKeyEnableCCHSigning]; ok && v != "" {
+			cch = v == "true"
+		}
 		systemPromptInjection := true
 		if v, ok := values[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {
 			systemPromptInjection = v == "true"
@@ -2526,7 +2529,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true}
+	return gatewayForwardingSettingsResult{fp: true, cch: true, claudeOAuthSystemPromptInjection: true}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -3636,7 +3639,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.EnableFingerprintUnification = true // default: enabled (current behavior)
 	}
 	result.EnableMetadataPassthrough = settings[SettingKeyEnableMetadataPassthrough] == "true"
-	result.EnableCCHSigning = settings[SettingKeyEnableCCHSigning] == "true"
+	if v, ok := settings[SettingKeyEnableCCHSigning]; ok && v != "" {
+		result.EnableCCHSigning = v == "true"
+	} else {
+		result.EnableCCHSigning = true // default: enabled (xxHash64 CCH signing)
+	}
 	if v, ok := settings[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {
 		result.EnableClaudeOAuthSystemPromptInjection = v == "true"
 	} else {
