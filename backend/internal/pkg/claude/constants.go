@@ -84,33 +84,33 @@ const CLICurrentVersion = "2.1.196"
 
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
 // 用于 OAuth 账号伪装成 Claude Code 时使用。
-// 顺序与真实 CLI 抓包一致。
+// 顺序与真实 CLI getAllModelBetas + configureEffortParams 的 push 顺序一致。
 //
-// beta 令牌来源：基于 Claude Code v2.1.88 源码 (utils/betas.ts getAllModelBetas)，
-// 并跟踪到 v2.1.161 的实际流量。
+// beta 令牌来源：Claude Code v2.1.196 源码 (utils/betas.ts getAllModelBetas +
+// services/api/claude.ts configureEffortParams)。
 //
-// 真实 Claude Code CLI 对非 Haiku 模型的标准 beta：
+// 真实 Claude Code CLI 对非 Haiku 模型的标准 beta（顺序）：
 //   claude-code-20250219, oauth-2025-04-20, context-1m-2025-08-07,
 //   interleaved-thinking-2025-05-14, redact-thinking-2026-02-12,
 //   context-management-2025-06-27, prompt-caching-scope-2026-01-05,
-//   effort-2025-11-24 (v2.1.161+), extended-cache-ttl-2025-04-11 (v2.1.161+)
+//   effort-2025-11-24
 //
-// 使用建议：
-//   - OAuth 账号 + 非 haiku：追加这整份列表，再按需保留 client 带来的 beta。
-//   - OAuth 账号 + haiku：Anthropic 对 haiku 不做 third-party 判定，使用 HaikuBetaHeader 即可。
-//   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
-//   - 不默认加入 redact-thinking：避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
-//     对于 Claude 4+ 模型（1M context），必须包含 context-1m，否则与真实 CLI 流量不一致。
+// 注意：
+//   - redact-thinking：真实交互式 1P 会话会发送，必须包含，否则与真实 CLI 流量不一致。
+//   - extended-cache-ttl：不在此默认集——真实 CC 仅在请求体含 cache_control ttl=1h 时由 SDK
+//     附加；无条件发送反而偏离真实流量，已从默认列表移除。
+//   - 对于 Claude 4+ 模型（1M context），必须包含 context-1m。
+//   - OAuth 账号 + haiku：使用 HaikuBetaHeader；API-key 账号：使用 APIKeyBetaHeader。
 func FullClaudeCodeMimicryBetas() []string {
 	return []string{
 		BetaClaudeCode,
 		BetaOAuth,
 		BetaContext1M,
 		BetaInterleavedThinking,
+		BetaRedactThinking,
+		BetaContextManagement,
 		BetaPromptCachingScope,
 		BetaEffort,
-		BetaContextManagement,
-		BetaExtendedCacheTTL,
 	}
 }
 
