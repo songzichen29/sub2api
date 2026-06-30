@@ -9,6 +9,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -16,7 +17,7 @@ import (
 const defaultClaudeUsageURL = "https://api.anthropic.com/api/oauth/usage"
 
 // 默认 User-Agent，与用户抓包的请求一致
-const defaultUsageUserAgent = "claude-code/2.1.7"
+const defaultUsageUserAgent = "claude-code/" + claude.CLICurrentVersion
 
 type claudeUsageService struct {
 	usageURL          string
@@ -54,7 +55,7 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 	}
 
 	// 设置请求头（与抓包一致，但不设置 Accept-Encoding，让 Go 自动处理压缩）
-	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+opts.AccessToken)
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
