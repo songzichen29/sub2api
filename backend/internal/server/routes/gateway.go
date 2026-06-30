@@ -131,6 +131,23 @@ func RegisterGatewayRoutes(
 		})
 	}
 
+	// Anthropic auxiliary endpoints that real Claude Code fetches alongside
+	// /v1/messages (GrowthBook feature flags at /api/features/:key, bootstrap
+	// config at /api/claude_cli/bootstrap). Intercept them and proxy to
+	// api.anthropic.com with the account's OAuth token over uTLS+h2, serving a
+	// per-account cached copy. Same auth middleware as the /v1 gateway group.
+	anthropicAux := r.Group("/api")
+	anthropicAux.Use(bodyLimit)
+	anthropicAux.Use(clientRequestID)
+	anthropicAux.Use(opsErrorLogger)
+	anthropicAux.Use(endpointNorm)
+	anthropicAux.Use(gin.HandlerFunc(apiKeyAuth))
+	anthropicAux.Use(requireGroupAnthropic)
+	{
+		anthropicAux.GET("/features/:key", h.Gateway.FeaturesProxy)
+		anthropicAux.GET("/claude_cli/bootstrap", h.Gateway.BootstrapProxy)
+	}
+
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
 	gemini := r.Group("/v1beta")
 	gemini.Use(bodyLimit)

@@ -490,6 +490,7 @@ func ProvideGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	proxyCache AnthropicProxyCache,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *GatewayService {
 	return NewGatewayService(
@@ -519,6 +520,7 @@ func ProvideGatewayService(
 		channelService,
 		resolver,
 		balanceNotifyService,
+		proxyCache,
 		userPlatformQuotaRepo,
 	)
 }

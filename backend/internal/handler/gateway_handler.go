@@ -2081,3 +2081,37 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 	}
 	return mode
 }
+
+// FeaturesProxy proxies GET /api/features/:key (GrowthBook feature flags) to
+// api.anthropic.com for the request's group, using an OAuth account's token
+// over uTLS+h2 and serving a per-account cached copy when available.
+func (h *GatewayHandler) FeaturesProxy(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	featureKey := c.Param("key")
+	status, contentType, body, err := h.gatewayService.ProxyGrowthBookFeature(c.Request.Context(), apiKey.GroupID, featureKey)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy feature request")
+		return
+	}
+	c.Data(status, contentType, body)
+}
+
+// BootstrapProxy proxies GET /api/claude_cli/bootstrap to api.anthropic.com
+// with the OAuth account's token and oauth beta header, per-account cached.
+func (h *GatewayHandler) BootstrapProxy(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	status, contentType, body, err := h.gatewayService.ProxyBootstrap(c.Request.Context(), apiKey.GroupID)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy bootstrap request")
+		return
+	}
+	c.Data(status, contentType, body)
+}
