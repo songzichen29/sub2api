@@ -638,6 +638,7 @@ type GatewayService struct {
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	telemetryHook         *TelemetryHook // v2.1.196 telemetry simulation
+	proxyCache            AnthropicProxyCache
 }
 
 // NewGatewayService creates a new GatewayService
@@ -668,6 +669,7 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	proxyCache AnthropicProxyCache,
 	userPlatformQuotaRepos ...UserPlatformQuotaRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
@@ -722,6 +724,7 @@ func NewGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		telemetryHook:         telemetryHook,
+		proxyCache:            proxyCache,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -10437,4 +10440,94 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
+}
+
+// ProxyGrowthBookFeature proxies GET /api/features/:key to api.anthropic.com
+// using an OAuth account selected from the group, caching the response per
+// account (6h). Real Claude Code fetches GrowthBook feature flags alongside
+// messages; serving them from the gateway over uTLS+h2 with the account's own
+// token keeps the client indistinguishable from a real CC client.
+func (s *GatewayService) ProxyGrowthBookFeature(ctx context.Context, groupID *int64, featureKey string) (status int, contentType string, body []byte, err error) {
+	return s.proxyAnthropicGet(ctx, groupID,
+		"https://api.anthropic.com/api/features/"+url.PathEscape(featureKey),
+		claude.BetaOAuth,
+		"anthropic_proxy:feature:%d:"+featureKey,
+		6*time.Hour)
+}
+
+// ProxyBootstrap proxies GET /api/claude_cli/bootstrap to api.anthropic.com
+// using an OAuth account's token with the oauth beta header, cached per
+// account. Real Claude Code fetches bootstrap config at startup.
+func (s *GatewayService) ProxyBootstrap(ctx context.Context, groupID *int64) (status int, contentType string, body []byte, err error) {
+	return s.proxyAnthropicGet(ctx, groupID,
+		"https://api.anthropic.com/api/claude_cli/bootstrap",
+		claude.BetaOAuth,
+		"anthropic_proxy:bootstrap:%d",
+		6*time.Hour)
+}
+
+// proxyAnthropicGet selects an OAuth account in the group, serves a cached copy
+// if present, otherwise performs an authenticated GET to upstreamURL over the
+// uTLS+h2 upstream path and caches successful (200) responses per account.
+// cacheKeyTmpl must contain exactly one %d which is filled with the account ID.
+func (s *GatewayService) proxyAnthropicGet(ctx context.Context, groupID *int64, upstreamURL, betaHeader, cacheKeyTmpl string, ttl time.Duration) (status int, contentType string, body []byte, err error) {
+	account, err := s.SelectAccount(ctx, groupID, "")
+	if err != nil {
+		return 0, "", nil, fmt.Errorf("select account: %w", err)
+	}
+	cacheKey := fmt.Sprintf(cacheKeyTmpl, account.ID)
+
+	if s.proxyCache != nil {
+		if cached, gerr := s.proxyCache.Get(ctx, cacheKey); gerr == nil && cached != "" {
+			return http.StatusOK, "application/json", []byte(cached), nil
+		}
+	}
+
+	token, tokenType, err := s.GetAccessToken(ctx, account)
+	if err != nil {
+		return 0, "", nil, fmt.Errorf("get access token: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, upstreamURL, nil)
+	if err != nil {
+		return 0, "", nil, err
+	}
+	switch tokenType {
+	case "oauth", "service_account", "setup_token":
+		req.Header.Set("Authorization", "Bearer "+token)
+	default:
+		req.Header.Set("x-api-key", token)
+	}
+	if betaHeader != "" {
+		req.Header.Set("anthropic-beta", betaHeader)
+	}
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("User-Agent", "claude-cli/"+claude.CLICurrentVersion+" (external, cli)")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+	if err != nil {
+		return 0, "", nil, fmt.Errorf("upstream GET %s: %w", upstreamURL, err)
+	}
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, "", nil, fmt.Errorf("read upstream body: %w", err)
+	}
+	contentType = resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+
+	// Cache only successful responses; transient errors re-fetch next time.
+	if resp.StatusCode == http.StatusOK && s.proxyCache != nil {
+		_ = s.proxyCache.Set(ctx, cacheKey, string(body), ttl)
+	}
+	return resp.StatusCode, contentType, body, nil
 }
