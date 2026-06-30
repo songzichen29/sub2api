@@ -39,7 +39,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:-}
       - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY:-}
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-America/Los_Angeles}
       # OpenAI HTTP upstream protocol/timeout
       - GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT=${GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT:-0}
       - GATEWAY_OPENAI_HTTP2_ENABLED=${GATEWAY_OPENAI_HTTP2_ENABLED:-true}
@@ -80,7 +80,7 @@ services:
       - MYSQL_USER=${DATABASE_USER:-sub2api}
       - MYSQL_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
       - MYSQL_ROOT_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-America/Los_Angeles}
     networks:
       - sub2api-network
     healthcheck:
@@ -104,7 +104,7 @@ services:
           --appendfsync everysec
           ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
-      - TZ=${TZ:-Asia/Shanghai}
+      - TZ=${TZ:-America/Los_Angeles}
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
       - sub2api-network

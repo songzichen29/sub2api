@@ -610,7 +610,6 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 }
 
 func (s *TelemetryService) buildEnv() *telemetryEnv {
-	hostname, _ := os.Hostname()
 	kernel := detectKernelVersion()
 	distroID, distroVer := detectLinuxDistro()
 
@@ -633,7 +632,7 @@ func (s *TelemetryService) buildEnv() *telemetryEnv {
 		Version:               claude.CLICurrentVersion,
 		VersionBase:           claude.CLICurrentVersion,
 		BuildTime:             "2026-06-29T00:53:27Z",
-		DeploymentEnvironment: detectDeploymentEnv(hostname),
+		DeploymentEnvironment: detectDeploymentEnv(),
 		Shell:                 "/bin/bash",
 		Vcs:                   "git",
 		LinuxDistroID:         distroID,
@@ -729,11 +728,10 @@ func (s *TelemetryService) accountSessionID(accountID int64) string {
 }
 
 // detectDeploymentEnv returns a deployment environment string.
-func detectDeploymentEnv(hostname string) string {
-	if hostname == "" {
-		return "unknown-linux"
-	}
-	return fmt.Sprintf("unknown-%s", hostname)
+// Deliberately does NOT embed the host hostname — that would leak real
+// infrastructure identity in telemetry. Returns a generic value.
+func detectDeploymentEnv() string {
+	return "unknown"
 }
 
 // detectKernelVersion reads the kernel version from /proc/version.
