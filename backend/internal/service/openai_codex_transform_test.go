@@ -1200,11 +1200,11 @@ func TestIsInstructionsEmpty(t *testing.T) {
 	}
 }
 
-func TestFilterCodexInput_DropsReasoningItemsRegardlessOfPreserveReferences(t *testing.T) {
-	// Reasoning items in input[] reference rs_* IDs that were emitted by
+func TestFilterCodexInput_DropsBareReasoningReferencesRegardlessOfPreserveReferences(t *testing.T) {
+	// Bare reasoning items in input[] reference rs_* IDs that were emitted by
 	// chatgpt.com under store=false (forced by applyCodexOAuthTransform).
 	// They are never persisted upstream, so forwarding them produces a
-	// guaranteed 404 ("Item with id 'rs_...' not found"). Drop them
+	// guaranteed 404 ("Item with id 'rs_...' not found"). Drop those
 	// regardless of preserveReferences. See: Wei-Shaw/sub2api issue #1957.
 
 	build := func() []any {
@@ -1229,10 +1229,10 @@ func TestFilterCodexInput_DropsReasoningItemsRegardlessOfPreserveReferences(t *t
 				item, ok := raw.(map[string]any)
 				require.True(t, ok)
 				require.NotEqual(t, "reasoning", item["type"],
-					"reasoning items must be dropped from input on the OAuth path")
+					"bare rs_* reasoning references must be dropped from input on the OAuth path")
 				if id, ok := item["id"].(string); ok {
 					require.False(t, strings.HasPrefix(id, "rs_"),
-						"no item carrying an rs_* id should survive the filter")
+						"no bare item carrying an rs_* id should survive the filter")
 				}
 			}
 
@@ -1250,5 +1250,41 @@ func TestFilterCodexInput_DropsReasoningItemsRegardlessOfPreserveReferences(t *t
 			require.Equal(t, 1, gotTypes["function_call_output"])
 			require.Equal(t, 0, gotTypes["reasoning"])
 		})
+	}
+}
+
+func TestFilterCodexInput_PreservesEncryptedReasoningItems(t *testing.T) {
+	validEC := "gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"
+	input := []any{
+		map[string]any{"type": "message", "id": "msg_0", "role": "user", "content": "hi"},
+		map[string]any{
+			"type":              "reasoning",
+			"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+			"encrypted_content": validEC,
+			"summary":           []any{map[string]any{"type": "summary_text", "text": "keep reasoning"}},
+		},
+		map[string]any{
+			"type":              "reasoning",
+			"encrypted_content": "gAAA",
+			"summary":           []any{map[string]any{"type": "summary_text", "text": "drop invalid"}},
+		},
+		map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "{}"},
+	}
+
+	filtered := filterCodexInput(input, true)
+	require.Len(t, filtered, 3)
+
+	reasoning, ok := filtered[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "reasoning", reasoning["type"])
+	require.Equal(t, validEC, reasoning["encrypted_content"])
+	require.Equal(t, "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344", reasoning["id"])
+
+	for _, raw := range filtered {
+		item, ok := raw.(map[string]any)
+		require.True(t, ok)
+		if item["type"] == "reasoning" {
+			require.NotEqual(t, "gAAA", item["encrypted_content"])
+		}
 	}
 }

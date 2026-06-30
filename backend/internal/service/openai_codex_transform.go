@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	openaiPkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 var codexModelMap = map[string]string{
@@ -1012,11 +1014,13 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 		typ, _ := m["type"].(string)
 
-		// chatgpt.com codex backend (OAuth path) does not persist reasoning
-		// items because applyCodexOAuthTransform forces store=false. Any rs_*
-		// reference replayed in input is guaranteed to 404 upstream
-		// ("Item with id 'rs_...' not found"). Drop reasoning items entirely.
-		if typ == "reasoning" {
+		// chatgpt.com codex backend (OAuth path) does not persist rs_* item
+		// references because applyCodexOAuthTransform forces store=false. A bare
+		// reasoning item that only carries an rs_* id is guaranteed to 404 upstream
+		// ("Item with id 'rs_...' not found"). However, Responses clients can also
+		// replay self-contained reasoning items via encrypted_content; keeping those
+		// preserves interleaved thinking without depending on server-side storage.
+		if typ == "reasoning" && !isForwardableCodexReasoningItem(m) {
 			continue
 		}
 
@@ -1112,6 +1116,17 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		filtered = append(filtered, newItem)
 	}
 	return filtered
+}
+
+func isForwardableCodexReasoningItem(item map[string]any) bool {
+	if item == nil {
+		return false
+	}
+	ec, ok := item["encrypted_content"].(string)
+	if !ok {
+		return false
+	}
+	return openaiPkg.IsValidReasoningEncryptedContent(ec)
 }
 
 func isCodexToolCallItemType(typ string) bool {
