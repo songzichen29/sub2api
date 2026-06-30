@@ -42,7 +42,7 @@ func (h *TelemetryHook) OnSessionEnd(accountID int64) {
 }
 
 // OnAPIQuery sends telemetry before an API call.
-func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, accountUUID string) {
+func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, accountUUID, token string) {
 	if h.svc == nil {
 		return
 	}
@@ -57,11 +57,12 @@ func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, 
 			"stream": true,
 		},
 		Timestamp: time.Now(),
+		Token:     token,
 	})
 }
 
 // OnAPIResponse sends telemetry after an API call.
-func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, model, accountUUID string, success bool, durationMs float64, statusCode int, tokenCount int64) {
+func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, model, accountUUID, token string, success bool, durationMs float64, statusCode int, tokenCount int64) {
 	if h.svc == nil {
 		return
 	}
@@ -82,6 +83,7 @@ func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, mode
 			"input_tokens": tokenCount,
 		},
 		Timestamp: time.Now(),
+		Token:     token,
 	})
 }
 
@@ -125,19 +127,19 @@ func EnsureTelemetryStarted(h *TelemetryHook, accountID int64, accountUUID, mode
 }
 
 // RecordAPIStart records telemetry before the upstream HTTP call.
-func RecordAPIStart(h *TelemetryHook, accountID int64, deviceID, sessionID, model, accountUUID string) {
+func RecordAPIStart(h *TelemetryHook, accountID int64, deviceID, sessionID, model, accountUUID, token string) {
 	if h == nil {
 		return
 	}
-	h.OnAPIQuery(accountID, deviceID, sessionID, model, accountUUID)
+	h.OnAPIQuery(accountID, deviceID, sessionID, model, accountUUID, token)
 }
 
 // RecordAPIEnd records telemetry after the upstream HTTP call.
-func RecordAPIEnd(h *TelemetryHook, accountID int64, deviceID, sessionID, model, accountUUID string, success bool, durationMs float64, statusCode int, tokenCount int64) {
+func RecordAPIEnd(h *TelemetryHook, accountID int64, deviceID, sessionID, model, accountUUID, token string, success bool, durationMs float64, statusCode int, tokenCount int64) {
 	if h == nil {
 		return
 	}
-	h.OnAPIResponse(accountID, deviceID, sessionID, model, accountUUID, success, durationMs, statusCode, tokenCount)
+	h.OnAPIResponse(accountID, deviceID, sessionID, model, accountUUID, token, success, durationMs, statusCode, tokenCount)
 }
 
 // statusCodeFromResp extracts the HTTP status code safely.

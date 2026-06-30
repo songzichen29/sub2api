@@ -63,6 +63,10 @@ type TelemetryEvent struct {
 	UserType    string                 `json:"-"`
 	Extra       map[string]interface{} `json:"-"`
 	Timestamp   time.Time              `json:"-"`
+	// Token carries the per-account OAuth bearer used to authorize the
+	// batch POST to /api/event_logging/batch. Empty = use service fallback
+	// (cfg.Token) or send unauthenticated.
+	Token string `json:"-"`
 }
 
 // TelemetryConfig holds configuration for the telemetry service.
@@ -109,6 +113,10 @@ type TelemetrySession struct {
 type telemetryWireEvent struct {
 	EventType string           `json:"event_type"`
 	EventData telemetryPayload `json:"event_data"`
+	// Token is the per-account OAuth bearer for this event (not serialized).
+	// sendBatch partitions events by Token so each POST carries the correct
+	// Authorization header.
+	Token string `json:"-"`
 }
 
 type telemetryPayload struct {
@@ -425,6 +433,31 @@ func (s *TelemetryService) sendBatch(events []telemetryWireEvent, attempt int) {
 	if len(events) == 0 {
 		return
 	}
+	// Partition events by auth token so each batch POST carries the correct
+	// per-account OAuth bearer. Events with an empty token fall back to the
+	// service-level cfg.Token; if that is also empty they are sent anonymously.
+	byToken := make(map[string][]telemetryWireEvent)
+	order := make([]string, 0, 2)
+	for _, ev := range events {
+		tok := ev.Token
+		if tok == "" {
+			tok = s.cfg.Token
+		}
+		if _, ok := byToken[tok]; !ok {
+			order = append(order, tok)
+		}
+		byToken[tok] = append(byToken[tok], ev)
+	}
+	for _, tok := range order {
+		s.sendGroup(byToken[tok], tok, attempt)
+	}
+}
+
+// sendGroup POSTs a single homogeneously-authenticated batch of events.
+func (s *TelemetryService) sendGroup(events []telemetryWireEvent, token string, attempt int) {
+	if len(events) == 0 {
+		return
+	}
 
 	payload := map[string]interface{}{
 		"events": events,
@@ -449,13 +482,9 @@ func (s *TelemetryService) sendBatch(events []telemetryWireEvent, attempt int) {
 	req.Header.Set("User-Agent", "claude-code/"+claude.CLICurrentVersion)
 	req.Header.Set("x-service-name", "claude-code")
 
-	// Add auth if available.
-	if s.cfg.Token != "" {
-		if s.cfg.TokenType == "oauth" {
-			req.Header.Set("Authorization", "Bearer "+s.cfg.Token)
-		} else {
-			req.Header.Set("x-api-key", s.cfg.Token)
-		}
+	// Per-account OAuth bearer (preferred) or service-level fallback token.
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	client := &http.Client{Timeout: telemetryAPITimeout}
@@ -467,16 +496,15 @@ func (s *TelemetryService) sendBatch(events []telemetryWireEvent, attempt int) {
 				delay = telemetryBackoffMax
 			}
 			time.Sleep(time.Duration(delay) * time.Millisecond)
-			s.sendBatch(events, attempt+1)
+			s.sendGroup(events, token, attempt+1)
 		}
 		return
 	}
 	defer resp.Body.Close()
 
 	// On 401, retry once without auth.
-	if resp.StatusCode == 401 && s.cfg.Token != "" && attempt == 0 {
-		s.cfg.Token = "" // strip auth for retry
-		s.sendBatch(events, attempt+1)
+	if resp.StatusCode == 401 && token != "" && attempt == 0 {
+		s.sendGroup(events, "", attempt+1)
 		return
 	}
 
@@ -487,7 +515,7 @@ func (s *TelemetryService) sendBatch(events []telemetryWireEvent, attempt int) {
 				delay = telemetryBackoffMax
 			}
 			time.Sleep(time.Duration(delay) * time.Millisecond)
-			s.sendBatch(events, attempt+1)
+			s.sendGroup(events, token, attempt+1)
 		}
 	}
 }
@@ -559,6 +587,7 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 	return telemetryWireEvent{
 		EventType: "ClaudeCodeInternalEvent",
 		EventData: p,
+		Token:     ev.Token,
 	}
 }
 

@@ -677,6 +677,17 @@ func NewGatewayService(
 		userPlatformQuotaRepo = userPlatformQuotaRepos[0]
 	}
 	var telemetryHook *TelemetryHook
+	// Wire v2.1.196 telemetry simulation. Per-account OAuth tokens are
+	// attached to each event at the Forward() call sites and used to
+	// authorize the batch POST to /api/event_logging/batch (sendBatch
+	// partitions events by token). No-wire instantiation avoids touching
+	// the generated wire_gen.go.
+	telemetrySvc := NewTelemetryService(TelemetryConfig{
+		BaseURL: "https://api.anthropic.com",
+		Enabled: true,
+	})
+	telemetrySvc.Start(context.Background())
+	telemetryHook = NewTelemetryHook(telemetrySvc)
 
 	svc := &GatewayService{
 		accountRepo:           accountRepo,
@@ -5044,12 +5055,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 		callStart := time.Now()
 		if shouldMimicClaudeCode && s.telemetryHook != nil {
-			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"))
+			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token)
 		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		callDuration := time.Since(callStart).Seconds() * 1000
 		if shouldMimicClaudeCode && s.telemetryHook != nil {
-			RecordAPIEnd(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
+			RecordAPIEnd(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token, err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
 		}
 		if err != nil {
 			if resp != nil && resp.Body != nil {
