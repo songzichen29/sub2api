@@ -672,8 +672,11 @@ func NewGatewayService(
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
+	var userPlatformQuotaRepo UserPlatformQuotaRepository
+	if len(userPlatformQuotaRepos) > 0 {
 		userPlatformQuotaRepo = userPlatformQuotaRepos[0]
 	}
+	var telemetryHook *TelemetryHook
 
 	svc := &GatewayService{
 		accountRepo:           accountRepo,
@@ -9035,7 +9038,7 @@ type billingDeps struct {
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 
-	cfg                   *config.Config
+	cfg *config.Config
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {

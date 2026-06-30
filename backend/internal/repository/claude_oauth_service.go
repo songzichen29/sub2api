@@ -9,12 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 
@@ -215,7 +214,7 @@ func (s *claudeOAuthService) ExchangeCodeForToken(ctx context.Context, code, cod
 		SetContext(ctx).
 		SetHeader("Accept", "application/json").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "claude-code/" + claude.CLICurrentVersion).
+		SetHeader("User-Agent", "claude-code/"+claude.CLICurrentVersion).
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -253,7 +252,7 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		SetContext(ctx).
 		SetHeader("Accept", "application/json").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("User-Agent", "claude-code/" + claude.CLICurrentVersion).
+		SetHeader("User-Agent", "claude-code/"+claude.CLICurrentVersion).
 		SetBody(reqBody).
 		SetSuccessResult(&tokenResp).
 		Post(s.tokenURL)
@@ -266,6 +265,8 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 		return nil, fmt.Errorf("token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
 	}
 
+	return &tokenResp, nil
+}
 
 func createReqClient(proxyURL string) (*req.Client, error) {
 	// 使用 Node.js 24.x uTLS 指纹替代 Go 默认 TLS（Go 默认 = Chrome 指纹）
@@ -273,10 +274,10 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 	dialer := tlsfingerprint.NewDialer(tlsProfile, nil)
 
 	transport := &http.Transport{
-		DialTLSContext:     dialer.DialTLSContext,
-		ForceAttemptHTTP2:  false,
-		MaxIdleConns:       10,
-		IdleConnTimeout:    90 * time.Second,
+		DialTLSContext:    dialer.DialTLSContext,
+		ForceAttemptHTTP2: false,
+		MaxIdleConns:      10,
+		IdleConnTimeout:   90 * time.Second,
 	}
 
 	// 如果有代理，通过代理建立 TCP 连接
@@ -296,9 +297,8 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 
 	client := req.C().
 		SetTimeout(60 * time.Second).
-		SetTransport(transport).
 		SetCookieJar(nil)
+	client.GetClient().Transport = transport
 
 	return client, nil
-
 }
