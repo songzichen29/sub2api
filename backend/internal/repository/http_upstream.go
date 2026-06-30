@@ -1085,53 +1085,64 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 //   - profile: TLS 指纹配置
 //
 // 返回:
-//   - *http.Transport: 配置好的 Transport 实例
+//   - http.RoundTripper: H2RoundTripper（h2 优先、h1 回退，均走 utls 指纹）
 //   - error: 配置错误
 //
 // 代理类型处理:
 //   - nil/空: 直连，使用 TLSFingerprintDialer
 //   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (http.RoundTripper, error) {
+	if profile == nil {
+		profile = &tlsfingerprint.Profile{}
+	}
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
+		// HTTP/2 is handled by the H2RoundTripper wrapper (ALPN h2). This
+		// transport is the HTTP/1.1 fallback and must stay on http/1.1.
 		ForceAttemptHTTP2: false,
 	}
 
+	// h2 profile: identical fingerprint, but ALPN advertises h2 first so the
+	// JA4 ALPN segment matches real Bun-based Claude Code (which offers h2).
+	h2Profile := *profile
+	h2Profile.ALPNProtocols = []string{"h2", "http/1.1"}
+
 	// 根据代理类型选择合适的 TLS 指纹 Dialer
 	if proxyURL == nil {
-		// 直连：使用 TLSFingerprintDialer
+		// 直连：h1 + h2 都用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
-		dialer := tlsfingerprint.NewDialer(profile, nil)
-		transport.DialTLSContext = dialer.DialTLSContext
-	} else {
-		scheme := strings.ToLower(proxyURL.Scheme)
-		switch scheme {
-		case "socks5", "socks5h":
-			// SOCKS5 代理：使用 SOCKS5ProxyDialer
-			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
-			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = socks5Dialer.DialTLSContext
-		case "http", "https":
-			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
-			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
-			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
-			transport.DialTLSContext = httpDialer.DialTLSContext
-		default:
-			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
-			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
-				return nil, err
-			}
-		}
+		transport.DialTLSContext = tlsfingerprint.NewDialer(profile, nil).DialTLSContext
+		h2Dialer := tlsfingerprint.NewDialer(&h2Profile, nil)
+		return tlsfingerprint.NewH2RoundTripper(transport, h2Dialer.DialTLSContext), nil
 	}
 
-	return transport, nil
+	scheme := strings.ToLower(proxyURL.Scheme)
+	switch scheme {
+	case "socks5", "socks5h":
+		// SOCKS5 代理：h1 + h2 都用 SOCKS5ProxyDialer
+		slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
+		transport.DialTLSContext = tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL).DialTLSContext
+		h2Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(&h2Profile, proxyURL)
+		return tlsfingerprint.NewH2RoundTripper(transport, h2Dialer.DialTLSContext), nil
+	case "http", "https":
+		// HTTP/HTTPS 代理：h1 + h2 都用 HTTPProxyDialer（CONNECT 隧道）
+		slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
+		transport.DialTLSContext = tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL).DialTLSContext
+		h2Dialer := tlsfingerprint.NewHTTPProxyDialer(&h2Profile, proxyURL)
+		return tlsfingerprint.NewH2RoundTripper(transport, h2Dialer.DialTLSContext), nil
+	default:
+		// 未知代理类型，回退到普通代理配置（无 TLS 指纹/h2）
+		slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
+		if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+			return nil, err
+		}
+		return transport, nil
+	}
 }
 
 // trackedBody 带跟踪功能的响应体包装器
