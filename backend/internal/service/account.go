@@ -808,6 +808,31 @@ func (a *Account) GetExtraString(key string) string {
 	return ""
 }
 
+// ExtraBool returns the bool stored under key in the account's Extra map and
+// whether it was explicitly set as a bool. Callers use the ok flag to
+// distinguish "absent" (apply a default) from an explicit true/false override.
+func (a *Account) ExtraBool(key string) (value bool, ok bool) {
+	if a.Extra == nil {
+		return false, false
+	}
+	if v, exists := a.Extra[key]; exists {
+		if b, isBool := v.(bool); isBool {
+			return b, true
+		}
+	}
+	return false, false
+}
+
+// IsTelemetryEnabled reports whether v2.1.196 telemetry simulation is active
+// for this account. Defaults to true (on); admins can disable it per account by
+// setting enable_telemetry=false.
+func (a *Account) IsTelemetryEnabled() bool {
+	if b, ok := a.ExtraBool("enable_telemetry"); ok {
+		return b
+	}
+	return true
+}
+
 func (a *Account) GetClaudeUserID() string {
 	if v := strings.TrimSpace(a.GetExtraString("claude_user_id")); v != "" {
 		return v

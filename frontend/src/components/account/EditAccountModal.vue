@@ -2325,6 +2325,16 @@
           </div>
         </div>
 
+        <!-- Anti-Detection section heading -->
+        <div class="mt-2 mb-1">
+          <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            反检测 / Anti-Detection
+          </h4>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            仅 Anthropic OAuth/SetupToken 账号生效；可对单账号关闭
+          </p>
+        </div>
+
         <!-- TLS Fingerprint -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2381,6 +2391,60 @@
                 :class="[
                   'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
                   sessionIdMaskingEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- CCH Signing (anti-detection) -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">CCH 签名</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                对 billing header 的 cch 字段做 xxHash64 签名（默认开）
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="cchSigningEnabled = !cchSigningEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                cchSigningEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  cchSigningEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <!-- Telemetry simulation (anti-detection, v2.1.196) -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">遥测模拟 (v2.1.196)</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                向 /api/event_logging/batch 上报 tengu_* 事件（默认开）
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="telemetryEnabled = !telemetryEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                telemetryEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  telemetryEnabled ? 'translate-x-5' : 'translate-x-0'
                 ]"
               />
             </button>
@@ -2799,6 +2863,8 @@ const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
+const cchSigningEnabled = ref(true) // per-account CCH signing (default on)
+const telemetryEnabled = ref(true)  // per-account v2.1.196 telemetry (default on)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
@@ -3789,6 +3855,12 @@ function loadQuotaControlSettings(account: Account) {
     sessionIdMaskingEnabled.value = true
   }
 
+  // Load per-account anti-detection toggles (default on unless explicitly false)
+  cchSigningEnabled.value =
+    (account.extra as Record<string, unknown> | undefined)?.enable_cch_signing !== false
+  telemetryEnabled.value =
+    (account.extra as Record<string, unknown> | undefined)?.enable_telemetry !== false
+
   // Load cache TTL override setting
   if (account.cache_ttl_override_enabled === true) {
     cacheTTLOverrideEnabled.value = true
@@ -4371,6 +4443,20 @@ const handleSubmit = async () => {
         newExtra.session_id_masking_enabled = true
       } else {
         delete newExtra.session_id_masking_enabled
+      }
+
+      // Per-account CCH signing toggle (absent = default on; explicit false opts out)
+      if (cchSigningEnabled.value) {
+        delete newExtra.enable_cch_signing
+      } else {
+        newExtra.enable_cch_signing = false
+      }
+
+      // Per-account v2.1.196 telemetry toggle (absent = default on)
+      if (telemetryEnabled.value) {
+        delete newExtra.enable_telemetry
+      } else {
+        newExtra.enable_telemetry = false
       }
 
       // Cache TTL override setting

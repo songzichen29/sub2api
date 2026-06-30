@@ -4890,7 +4890,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// --- v2.1.196 telemetry integration: send events for OAuth+mimic accounts ---
 	var telemetrySessionID, telemetryDeviceID string
-	if shouldMimicClaudeCode && s.telemetryHook != nil {
+	if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 		accountUUID := account.GetExtraString("account_uuid")
 		telemetrySessionID, telemetryDeviceID = EnsureTelemetryStarted(s.telemetryHook, account.ID, accountUUID, reqModel)
 	}
@@ -5052,17 +5052,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		setOpsUpstreamRequestBody(c, wireBody)
 
 		// 发送请求
-		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 		}
-		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 		}
 		callStart := time.Now()
-		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token)
 		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		callDuration := time.Since(callStart).Seconds() * 1000
-		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 			RecordAPIEnd(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token, err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
 		}
 		if err != nil {
@@ -6686,6 +6686,13 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	enableFP, enableMPT, enableCCH := true, false, true
 	if s.settingService != nil {
 		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
+	}
+	// Per-account cch override: admins can disable CCH signing for a single
+	// account (defaults to the global setting when unset).
+	if account != nil {
+		if v, ok := account.ExtraBool("enable_cch_signing"); ok {
+			enableCCH = v
+		}
 	}
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
