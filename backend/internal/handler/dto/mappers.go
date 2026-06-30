@@ -762,6 +762,7 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		ValidityDays:                 nil,
 		CreatedAt:                    sub.CreatedAt,
 		UpdatedAt:                    sub.UpdatedAt,
+		RevokedAt:                    sub.DeletedAt,
 		LastUsedAt:                   sub.LastUsedAt,
 		User:                         UserFromServiceShallow(sub.User),
 		Group:                        GroupFromServiceShallow(sub.Group),

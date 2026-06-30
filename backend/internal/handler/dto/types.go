@@ -605,8 +605,9 @@ type UserSubscription struct {
 	// 订阅来源对应的原始卡型有效期天数；支付生成的订阅会携带，普通历史订阅可能为空。
 	ValidityDays *int `json:"validity_days,omitempty"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 
 	// LastUsedAt 是非持久化字段：service 层从 usage_logs 聚合 MAX(created_at)
 	// 填入，未使用过的订阅返回 null。

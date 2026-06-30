@@ -550,6 +550,7 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		subscriptions.POST("/:id/weekend-skip/preview", h.Admin.Subscription.PreviewWeekendSkip)
 		subscriptions.PUT("/:id/weekend-skip", h.Admin.Subscription.SetWeekendSkip)
 		subscriptions.POST("/:id/weekend-skip/reset-user-change", h.Admin.Subscription.ResetWeekendSkipUserChange)
+		subscriptions.POST("/:id/revoke", h.Admin.Subscription.Revoke)
 		subscriptions.DELETE("/:id", h.Admin.Subscription.Revoke)
 	}
 

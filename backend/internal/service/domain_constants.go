@@ -109,6 +109,8 @@ const (
 	SubscriptionStatusExpired        = domain.SubscriptionStatusExpired
 	SubscriptionStatusSuspended      = domain.SubscriptionStatusSuspended
 	SubscriptionStatusQuotaExhausted = domain.SubscriptionStatusQuotaExhausted
+	// SubscriptionStatusRevoked ? soft-deleted ??? API ??????? status ???
+	SubscriptionStatusRevoked = "revoked"
 )
 
 // LinuxDoConnectSyntheticEmailDomain 是 LinuxDo Connect 用户的合成邮箱后缀（RFC 保留域名）。
