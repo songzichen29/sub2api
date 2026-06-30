@@ -1,5 +1,8 @@
 // Package tlsfingerprint provides TLS fingerprint simulation for HTTP clients.
-// It uses the utls library to create TLS connections that mimic Node.js/Claude Code clients.
+// It uses the utls library to create TLS connections with a Node.js 24.x
+// (OpenSSL) ClientHello. This is a Node.js stand-in, NOT the real Claude Code
+// fingerprint: real Claude Code v2.1.196 is a Bun-compiled binary (BoringSSL),
+// whose ClientHello differs in cipher/extension order, ALPN, and ECH behavior.
 package tlsfingerprint
 
 import (
@@ -53,8 +56,20 @@ type SOCKS5ProxyDialer struct {
 	proxyURL *url.URL
 }
 
-// Default TLS fingerprint values captured from Claude Code (Node.js 24.x)
-// Captured via tls-fingerprint-web capture server
+// Default TLS fingerprint values model a Node.js 24.x (OpenSSL) client.
+//
+// This is a Node.js stand-in, not the real Claude Code fingerprint (real CC
+// v2.1.196 is Bun/BoringSSL). It keeps the gateway internally consistent —
+// the API, OAuth and telemetry paths all share this profile — but it is an
+// identifiable divergence from real Bun CC traffic.
+//
+// Known divergences (tracked separately):
+//   - ALPN advertises only http/1.1; real Bun offers h2. This shows up in the
+//     JA4 ALPN segment ("h1" vs Bun's "h2"). R-P5 will add real h2 support.
+//
+// The hashes below were captured from a Node.js 24.x ClientHello via
+// tls-fingerprint-web; re-verify against a fresh capture before relying on
+// them, and re-capture from real Bun CC if Bun fidelity becomes the goal.
 // JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
 // JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
 var (
