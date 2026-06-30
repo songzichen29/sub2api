@@ -4,6 +4,7 @@ package tlsfingerprint
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -246,8 +247,35 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	}
 	slog.Debug("tls_fingerprint_http_proxy_tunnel_established")
 
-	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint
-	return performTLSHandshake(ctx, conn, d.profile, addr)
+	// Step 4: Perform TLS handshake on the tunnel with utls fingerprint.
+	// The bufio reader above may have pre-read bytes beyond the CONNECT 200
+	// response (some proxies pipeline data immediately after 200 OK). The raw
+	// conn does not see those buffered bytes, so drain br and prepend them to
+	// the handshake conn — otherwise the TLS handshake reads an incomplete
+	// ServerHello and fails intermittently.
+	var handshakeConn net.Conn = conn
+	if n := br.Buffered(); n > 0 {
+		buffered, _ := br.Peek(n)
+		head := make([]byte, n)
+		copy(head, buffered)
+		handshakeConn = &prefixConn{Conn: conn, r: bytes.NewReader(head)}
+	}
+	return performTLSHandshake(ctx, handshakeConn, d.profile, addr)
+}
+
+// prefixConn is a net.Conn that yields the bytes in r before reading from the
+// underlying Conn. It feeds bytes pre-buffered by a bufio.Reader (e.g. bytes
+// read past an HTTP CONNECT response) into the TLS handshake.
+type prefixConn struct {
+	net.Conn
+	r *bytes.Reader
+}
+
+func (c *prefixConn) Read(p []byte) (int, error) {
+	if c.r.Len() > 0 {
+		return c.r.Read(p)
+	}
+	return c.Conn.Read(p)
 }
 
 // DialTLSContext establishes a TLS connection with the configured fingerprint.
