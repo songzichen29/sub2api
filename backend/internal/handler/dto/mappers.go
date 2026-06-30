@@ -236,8 +236,10 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		SessionWindowEnd:        a.SessionWindowEnd,
 		SessionWindowStatus:     a.SessionWindowStatus,
 		GroupIDs:                a.GroupIDs,
-		// Tags 兜底为空切片——确保前端 TypeScript `tags: string[]` 永远不会拿到 null。
-		Tags: safeAccountTagsForDTO(a.Tags),
+		// Tags falls back to an empty slice so frontend TypeScript `tags: string[]` never receives null.
+		Tags:            safeAccountTagsForDTO(a.Tags),
+		ParentAccountID: a.ParentAccountID,
+		QuotaDimension:  a.QuotaDimension,
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）

@@ -44,6 +44,7 @@ var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSch
 var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
+	Platform                   string
 	GroupID                    *int64
 	SessionHash                string
 	StickyAccountID            int64
@@ -1051,8 +1052,31 @@ func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Ac
 	return s.service.isOpenAIAccountTransportCompatible(account, requiredTransport)
 }
 
+func (s *defaultOpenAIAccountScheduler) lookupShadowParentAccount(ctx context.Context, id int64) *Account {
+	if s == nil || s.service == nil {
+		return nil
+	}
+	if s.service.schedulerSnapshot != nil {
+		if account, err := s.service.schedulerSnapshot.GetAccount(ctx, id); err == nil && account != nil {
+			return account
+		}
+	}
+	if s.service.accountRepo == nil {
+		return nil
+	}
+	account, _ := s.service.accountRepo.GetByID(ctx, id)
+	return account
+}
+
 func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.Context, account *Account, req OpenAIAccountScheduleRequest) bool {
 	if account == nil {
+		return false
+	}
+	platform := strings.TrimSpace(req.Platform)
+	if platform == "" {
+		platform = PlatformOpenAI
+	}
+	if account.Platform != platform {
 		return false
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
@@ -1062,6 +1086,14 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(ctx context.C
 	// TopK candidate pool can be filled with paused accounts and the later fresh/DB
 	// rechecks won't reach healthy accounts that fell outside TopK.
 	if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, account); paused {
+		return false
+	}
+	// 母账号健康联动：影子账号的凭据来自母账号，母账号不可调度时影子也不应被选中。
+	// Parent-health gate: shadow borrows the parent's credentials; an unschedulable
+	// parent must block the shadow across all scheduler paths.
+	if !parentHealthyForShadow(account, func(id int64) *Account {
+		return s.lookupShadowParentAccount(ctx, id)
+	}) {
 		return false
 	}
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
@@ -1320,6 +1352,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	}
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+		Platform:                   PlatformOpenAI,
 		GroupID:                    groupID,
 		SessionHash:                sessionHash,
 		StickyAccountID:            stickyAccountID,

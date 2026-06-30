@@ -914,9 +914,19 @@ export interface Account {
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
 
-  // 管理员维度标签（自由打的字符串数组）。仅用于列表筛选和视觉识别，
-  // 不参与调度 / 权限 / 计费。后端规范化后返回（小写、去重、字典序）。
+  // Account labels normalized by backend (lowercase, unique, sorted).
+  // Used by filtering, bulk operations, and UI display.
   tags?: string[]
+
+  // Linked spark shadow account fields.
+  parent_account_id?: number | null
+  quota_dimension?: string
+  // Parent display fields populated by backend list endpoints.
+  parent_email?: string
+  parent_plan_type?: string
+  parent_privacy_mode?: string
+  parent_subscription_expires_at?: string
+  parent_chatgpt_account_id?: string
 }
 
 // Account Usage types
@@ -1201,6 +1211,8 @@ export interface AdminDataPayload {
   exported_at: string
   proxies: AdminDataProxy[]
   accounts: AdminDataAccount[]
+  // Number of spark shadow accounts skipped during export.
+  skipped_shadows?: number
 }
 
 export interface AdminDataProxy {

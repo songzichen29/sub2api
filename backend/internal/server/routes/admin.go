@@ -333,10 +333,13 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
-		// 上游模型探测（账号新增/编辑时用 base_url+api_key 拉模型列表）
+		// Probe upstream models with base_url+api_key when creating/editing accounts.
 		accounts.POST("/probe-models", h.Admin.Account.ProbeUpstreamModels)
-		// Grok 专用旧接口保留兼容。
+		// Keep legacy Grok probe endpoint for compatibility.
 		accounts.POST("/grok/probe-models", h.Admin.Account.ProbeGrokUpstreamModels)
+
+		// Spark shadow account route.
+		accounts.POST("/:id/shadow", h.Admin.OpenAIOAuth.CreateShadow)
 
 		// Claude OAuth routes
 		accounts.POST("/generate-auth-url", h.Admin.OAuth.GenerateAuthURL)

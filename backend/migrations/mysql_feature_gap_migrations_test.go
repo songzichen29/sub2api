@@ -116,6 +116,32 @@ func TestMySQLUsageLogUpstreamFirstEventMsMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLAccountSparkShadowMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("042_account_spark_shadow.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'accounts'")
+	require.Contains(t, sql, "column_name = 'parent_account_id'")
+	require.Contains(t, sql, "ADD COLUMN `parent_account_id` BIGINT NULL")
+	require.Contains(t, sql, "column_name = 'quota_dimension'")
+	require.Contains(t, sql, "ADD COLUMN `quota_dimension` VARCHAR(20) NOT NULL DEFAULT ''global''")
+	require.Contains(t, sql, "chk_accounts_quota_dimension")
+	require.Contains(t, sql, "CHECK (`quota_dimension` IN (''global'', ''spark''))")
+	require.Contains(t, sql, "chk_accounts_parent_dimension")
+	require.Contains(t, sql, "`parent_account_id` IS NOT NULL")
+	require.Contains(t, sql, "`quota_dimension` <> ''global''")
+	require.Contains(t, sql, "chk_accounts_parent_not_self")
+	require.Contains(t, sql, "`parent_account_id` <> `id`")
+	require.Contains(t, sql, "column_name = 'spark_shadow_parent_key'")
+	require.Contains(t, sql, "GENERATED ALWAYS AS")
+	require.Contains(t, sql, "CASE WHEN `quota_dimension` = ''spark'' AND `deleted_at` IS NULL THEN `parent_account_id` ELSE NULL END")
+	require.Contains(t, sql, "CREATE INDEX `idx_accounts_parent_account_id` ON `accounts` (`parent_account_id`)")
+	require.Contains(t, sql, "CREATE UNIQUE INDEX `uq_accounts_spark_shadow_per_parent` ON `accounts` (`spark_shadow_parent_key`)")
+	require.Contains(t, sql, "FOREIGN KEY (`parent_account_id`) REFERENCES `accounts` (`id`) ON DELETE RESTRICT")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

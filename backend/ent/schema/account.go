@@ -197,14 +197,22 @@ func (Account) Fields() []ent.Field {
 			Nillable().
 			MaxLen(20),
 
-		// tags: 管理员维度的轻量标签集合（字符串数组，MySQL 用 JSON 列存储）。
-		// 仅用于列表筛选和视觉识别——不参与调度/权限/计费链路。
-		// 规范化由 service.NormalizeAccountTags 负责（trim/小写/去重/长度数量校验）。
-		// 列由 SQL 迁移 mysql/005_add_account_tags.sql 显式添加；MySQL 不支持
-		// PostgreSQL 的 GIN 索引，筛选走 JSON_CONTAINS 全表扫（规模可控）。
+		// tags: optional account labels stored as JSON in MySQL.
+		// Used by account filtering, bulk operations, and UI display.
+		// service.NormalizeAccountTags trims, deduplicates, sorts, and bounds the list before persistence.
+		// Migration: mysql/005_add_account_tags.sql; filtering uses JSON_CONTAINS instead of PostgreSQL GIN.
 		field.JSON("tags", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.MySQL: "json"}),
+
+		field.Int64("parent_account_id").
+			Optional().
+			Nillable().
+			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
+		field.Enum("quota_dimension").
+			Values("global", "spark").
+			Default("global").
+			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
 	}
 }
 
@@ -220,6 +228,14 @@ func (Account) Edges() []ent.Edge {
 		// 使用已有的 proxy_id 外键字段
 		edge.To("proxy", Proxy.Type).
 			Field("proxy_id").
+			Unique(),
+		// children/parent: linked spark shadow relationship.
+		// parent_account_id is nullable, and the active one-shadow-per-parent rule
+		// is enforced by the partial unique index in migration 154a.
+		edge.To("children", Account.Type).
+			Annotations(entsql.OnDelete(entsql.Restrict)).
+			From("parent").
+			Field("parent_account_id").
 			Unique(),
 		// usage_logs: 该账户的使用日志
 		edge.To("usage_logs", UsageLog.Type),
@@ -244,5 +260,6 @@ func (Account) Indexes() []ent.Index {
 		index.Fields("platform", "priority"),
 		index.Fields("priority", "status"),
 		index.Fields("deleted_at"), // 软删除查询优化
+		index.Fields("parent_account_id"),
 	}
 }
