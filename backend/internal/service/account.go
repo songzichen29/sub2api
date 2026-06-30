@@ -833,6 +833,16 @@ func (a *Account) IsTelemetryEnabled() bool {
 	return true
 }
 
+// IsGrowthBookProxyEnabled reports whether the proactive GrowthBook experiment
+// proxy runs for this account. Defaults to true (on); admins can disable it per
+// account by setting enable_growthbook_proxy=false.
+func (a *Account) IsGrowthBookProxyEnabled() bool {
+	if b, ok := a.ExtraBool("enable_growthbook_proxy"); ok {
+		return b
+	}
+	return true
+}
+
 func (a *Account) GetClaudeUserID() string {
 	if v := strings.TrimSpace(a.GetExtraString("claude_user_id")); v != "" {
 		return v

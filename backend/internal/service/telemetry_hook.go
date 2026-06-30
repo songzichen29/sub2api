@@ -149,3 +149,12 @@ func statusCodeFromResp(resp *http.Response, err error) int {
 	}
 	return 0
 }
+
+// EnqueueGrowthbookExperiments reports GrowthBook experiment exposures to the
+// 1P event log as GrowthbookExperimentEvent for the account.
+func (h *TelemetryHook) EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
+	if h.svc == nil {
+		return
+	}
+	h.svc.EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID, exposures)
+}

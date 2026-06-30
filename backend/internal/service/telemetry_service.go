@@ -83,11 +83,12 @@ type TelemetryConfig struct {
 
 // TelemetryService manages periodic batching and sending of telemetry events.
 type TelemetryService struct {
-	cfg      TelemetryConfig
-	eventCh  chan TelemetryEvent
-	done     chan struct{}
-	wg       sync.WaitGroup
-	mu       sync.Mutex
+	cfg          TelemetryConfig
+	eventCh      chan TelemetryEvent
+	experimentCh chan telemetryWireEvent
+	done         chan struct{}
+	wg           sync.WaitGroup
+	mu           sync.Mutex
 	batch    []telemetryWireEvent
 	attempts int
 	// Per-account session tracking
@@ -116,8 +117,11 @@ type TelemetrySession struct {
 
 // telemetryWireEvent is the JSON shape sent to the endpoint.
 type telemetryWireEvent struct {
-	EventType string           `json:"event_type"`
-	EventData telemetryPayload `json:"event_data"`
+	EventType string `json:"event_type"`
+	// EventData is the serialized event_data payload. For ClaudeCodeInternalEvent
+	// it is a marshaled telemetryPayload; for GrowthbookExperimentEvent it is a
+	// marshaled growthbookExperimentEventData.
+	EventData json.RawMessage `json:"event_data"`
 	// Token is the per-account OAuth bearer for this event (not serialized).
 	// sendBatch partitions events by Token so each POST carries the correct
 	// Authorization header.
@@ -219,6 +223,7 @@ func NewTelemetryService(cfg TelemetryConfig) *TelemetryService {
 	s := &TelemetryService{
 		cfg:          cfg,
 		eventCh:      make(chan TelemetryEvent, telemetryMaxQueueSize),
+		experimentCh: make(chan telemetryWireEvent, telemetryMaxQueueSize),
 		done:         make(chan struct{}),
 		sessions:     make(map[int64]*TelemetrySession),
 		processStart: time.Now(),
@@ -413,6 +418,14 @@ func (s *TelemetryService) loop(ctx context.Context) {
 				s.flushLocked()
 			}
 			s.mu.Unlock()
+		case ev := <-s.experimentCh:
+			// Pre-built GrowthbookExperimentEvent wire events (no buildPayload).
+			s.mu.Lock()
+			s.batch = append(s.batch, ev)
+			if len(s.batch) >= s.cfg.MaxBatchSize {
+				s.flushLocked()
+			}
+			s.mu.Unlock()
 		case <-ticker.C:
 			s.mu.Lock()
 			if len(s.batch) > 0 {
@@ -602,9 +615,10 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		p.AdditionalMetadata = base64.StdEncoding.EncodeToString(extraJSON)
 	}
 
+	raw, _ := json.Marshal(p)
 	return telemetryWireEvent{
 		EventType: "ClaudeCodeInternalEvent",
-		EventData: p,
+		EventData: raw,
 		Token:     ev.Token,
 	}
 }
@@ -886,11 +900,66 @@ func BuildTelemetryEvent(
 		p.AdditionalMetadata = base64.StdEncoding.EncodeToString(b)
 	}
 
+	eventRaw, _ := json.Marshal(p)
 	event := telemetryWireEvent{
 		EventType: "ClaudeCodeInternalEvent",
-		EventData: p,
+		EventData: eventRaw,
 	}
 
 	logger.LegacyPrintf("service.telemetry", "Sending %s event for account (device=%s session=%s)", eventName, deviceID[:16]+"...", sessionID[:8]+"...")
 	return sendTelemetry(config.BaseURL, config.Token, config.TokenType, []telemetryWireEvent{event})
+}
+
+// growthbookExperimentEventData is the event_data payload for a
+// GrowthbookExperimentEvent (mirrors claude-code GrowthbookExperimentEvent proto:
+// event_id, timestamp, experiment_id, variation_id, environment, user_attributes,
+// device_id, session_id).
+type growthbookExperimentEventData struct {
+	EventID        string `json:"event_id"`
+	Timestamp      string `json:"timestamp,omitempty"`
+	ExperimentID   string `json:"experiment_id,omitempty"`
+	VariationID    int    `json:"variation_id"`
+	Environment    string `json:"environment,omitempty"`
+	UserAttributes string `json:"user_attributes,omitempty"`
+	DeviceID       string `json:"device_id,omitempty"`
+	SessionID      string `json:"session_id,omitempty"`
+}
+
+// EnqueueGrowthbookExperiments builds one GrowthbookExperimentEvent wire event
+// per exposure and feeds them to the batch loop. Each carries the account's
+// OAuth token so sendBatch authenticates the POST per-account. Non-blocking;
+// drops on a full queue.
+func (s *TelemetryService) EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
+	if !s.cfg.Enabled || len(exposures) == 0 {
+		return
+	}
+	userAttributes, _ := json.Marshal(map[string]any{
+		"id":        deviceID,
+		"deviceID":  deviceID,
+		"sessionId": sessionID,
+		"platform":  "linux",
+	})
+	for _, ex := range exposures {
+		data := growthbookExperimentEventData{
+			EventID:        uuid.NewString(),
+			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+			ExperimentID:   ex.ExperimentID,
+			VariationID:    ex.VariationID,
+			Environment:    "production",
+			UserAttributes: string(userAttributes),
+			DeviceID:       deviceID,
+			SessionID:      sessionID,
+		}
+		raw, _ := json.Marshal(data)
+		ev := telemetryWireEvent{
+			EventType: "GrowthbookExperimentEvent",
+			EventData: raw,
+			Token:     token,
+		}
+		select {
+		case s.experimentCh <- ev:
+		default:
+			// queue full -> drop
+		}
+	}
 }

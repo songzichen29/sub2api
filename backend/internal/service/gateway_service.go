@@ -4996,6 +4996,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, err
 	}
 
+	// GrowthBook experiment proxy: on the first OAuth mimic request for this
+	// account, fetch experiment assignments from api.anthropic.com (remoteEval,
+	// uTLS+h2) and report them as GrowthbookExperimentEvent telemetry, so the
+	// account is not in a "zero-experiment-participation" state (a detection
+	// signal vs real CC, which logs exposures at startup). Fire-and-forget; the
+	// Redis marker in ensureGrowthBookExperiments dedupes within 6h.
+	if shouldMimicClaudeCode && telemetryDeviceID != "" && account.IsOAuth() {
+		s.ensureGrowthBookExperiments(ctx, account, token, telemetryDeviceID, telemetrySessionID)
+	}
+
 	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

@@ -2451,6 +2451,33 @@
           </div>
         </div>
 
+        <!-- GrowthBook experiment proxy (anti-detection) -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">GrowthBook 实验代理</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                首次请求主动拉取实验分配并上报 GrowthbookExperimentEvent（默认开）
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="growthbookProxyEnabled = !growthbookProxyEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                growthbookProxyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  growthbookProxyEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
         <!-- Cache TTL Override -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
@@ -2865,6 +2892,7 @@ const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cchSigningEnabled = ref(true) // per-account CCH signing (default on)
 const telemetryEnabled = ref(true)  // per-account v2.1.196 telemetry (default on)
+const growthbookProxyEnabled = ref(true) // per-account GrowthBook experiment proxy (default on)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
 const customBaseUrlEnabled = ref(false)
@@ -3860,6 +3888,8 @@ function loadQuotaControlSettings(account: Account) {
     (account.extra as Record<string, unknown> | undefined)?.enable_cch_signing !== false
   telemetryEnabled.value =
     (account.extra as Record<string, unknown> | undefined)?.enable_telemetry !== false
+  growthbookProxyEnabled.value =
+    (account.extra as Record<string, unknown> | undefined)?.enable_growthbook_proxy !== false
 
   // Load cache TTL override setting
   if (account.cache_ttl_override_enabled === true) {
@@ -4457,6 +4487,13 @@ const handleSubmit = async () => {
         delete newExtra.enable_telemetry
       } else {
         newExtra.enable_telemetry = false
+      }
+
+      // Per-account GrowthBook experiment proxy toggle (absent = default on)
+      if (growthbookProxyEnabled.value) {
+        delete newExtra.enable_growthbook_proxy
+      } else {
+        newExtra.enable_growthbook_proxy = false
       }
 
       // Cache TTL override setting
