@@ -637,6 +637,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	telemetryHook         *TelemetryHook // v2.1.196 telemetry simulation
 }
 
 // NewGatewayService creates a new GatewayService
@@ -671,8 +672,6 @@ func NewGatewayService(
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
-	var userPlatformQuotaRepo UserPlatformQuotaRepository
-	if len(userPlatformQuotaRepos) > 0 {
 		userPlatformQuotaRepo = userPlatformQuotaRepos[0]
 	}
 
@@ -708,6 +707,7 @@ func NewGatewayService(
 		resolver:              resolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		telemetryHook:         telemetryHook,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -4871,6 +4871,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
+	// --- v2.1.196 telemetry integration: send events for OAuth+mimic accounts ---
+	var telemetrySessionID, telemetryDeviceID string
+	if shouldMimicClaudeCode && s.telemetryHook != nil {
+		accountUUID := account.GetExtraString("account_uuid")
+		telemetrySessionID, telemetryDeviceID = EnsureTelemetryStarted(s.telemetryHook, account.ID, accountUUID, reqModel)
+	}
+	// ---
+
 	if shouldMimicClaudeCode {
 		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
 		// 风格的 system prompt）。原因：第三方工具（opencode 等）会发 "You are Claude
@@ -5027,7 +5035,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		setOpsUpstreamRequestBody(c, wireBody)
 
 		// 发送请求
+		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		}
+		if shouldMimicClaudeCode && s.telemetryHook != nil {
+		}
+		callStart := time.Now()
+		if shouldMimicClaudeCode && s.telemetryHook != nil {
+			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"))
+		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		callDuration := time.Since(callStart).Seconds() * 1000
+		if shouldMimicClaudeCode && s.telemetryHook != nil {
+			RecordAPIEnd(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
+		}
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -9014,6 +9034,7 @@ type billingDeps struct {
 	deferredService       *DeferredService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+
 	cfg                   *config.Config
 }
 

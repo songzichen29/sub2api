@@ -18,6 +18,7 @@ const (
 	BetaTokenCounting            = "token-counting-2024-11-01"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
+	BetaWebSearch                = "web-search-2025-03-05"
 
 	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
 	BetaPromptCachingScope = "prompt-caching-scope-2026-01-05"
@@ -25,6 +26,20 @@ const (
 	BetaRedactThinking     = "redact-thinking-2026-02-12"
 	BetaContextManagement  = "context-management-2025-06-27"
 	BetaExtendedCacheTTL   = "extended-cache-ttl-2025-04-11"
+
+	// v2.1.196 binary 中新发现的 beta 令牌（参考用，按需加入 mimicry）
+	BetaContextHint        = "context-hint-2026-04-09"
+	BetaConversationSystem = "conversation-system-2026-04-07"
+	BetaManagedAgents      = "managed-agents-2026-04-01"
+	BetaStructuredOutputs  = "structured-outputs-2025-12-15"
+	BetaTaskBudgets        = "task-budgets-2026-03-13"
+	BetaTokenCount         = "token-count-2026-05-13"
+	BetaUserProfiles       = "user-profiles-2026-03-24"
+	BetaSideFallback       = "side-fallback-2026-06-01"
+	BetaFallbackCredit     = "fallback-credit-2026-06-01"
+	BetaCodeExecution      = "code-execution-2025-08-25"
+	BetaAdvisorTool        = "advisor-tool-2026-03-01"
+	BetaAfkMode            = "afk-mode-2026-01-31"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
@@ -71,15 +86,26 @@ const CLICurrentVersion = "2.1.161"
 // 用于 OAuth 账号伪装成 Claude Code 时使用。
 // 顺序与真实 CLI 抓包一致。
 //
+// beta 令牌来源：基于 Claude Code v2.1.88 源码 (utils/betas.ts getAllModelBetas)，
+// 并跟踪到 v2.1.161 的实际流量。
+//
+// 真实 Claude Code CLI 对非 Haiku 模型的标准 beta：
+//   claude-code-20250219, oauth-2025-04-20, context-1m-2025-08-07,
+//   interleaved-thinking-2025-05-14, redact-thinking-2026-02-12,
+//   context-management-2025-06-27, prompt-caching-scope-2026-01-05,
+//   effort-2025-11-24 (v2.1.161+), extended-cache-ttl-2025-04-11 (v2.1.161+)
+//
 // 使用建议：
 //   - OAuth 账号 + 非 haiku：追加这整份列表，再按需保留 client 带来的 beta。
 //   - OAuth 账号 + haiku：Anthropic 对 haiku 不做 third-party 判定，使用 HaikuBetaHeader 即可。
 //   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
-//   - 不默认加入 redact-thinking，避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
+//   - 不默认加入 redact-thinking：避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
+//     对于 Claude 4+ 模型（1M context），必须包含 context-1m，否则与真实 CLI 流量不一致。
 func FullClaudeCodeMimicryBetas() []string {
 	return []string{
 		BetaClaudeCode,
 		BetaOAuth,
+		BetaContext1M,
 		BetaInterleavedThinking,
 		BetaPromptCachingScope,
 		BetaEffort,
