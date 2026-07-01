@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -121,28 +120,25 @@ func (rt *orderedH1RoundTripper) roundTripOnConn(req *http.Request, pc *pooledH1
 	if rt.responseHeaderTimeout > 0 {
 		_ = pc.conn.SetReadDeadline(time.Now().Add(rt.responseHeaderTimeout))
 	}
-	pc.bytesRead.Store(0)
 	resp, err := http.ReadResponse(pc.br, req)
-	bytesRead := pc.bytesRead.Load()
 	if rt.responseHeaderTimeout > 0 {
 		_ = pc.conn.SetReadDeadline(time.Time{})
 	}
 	if err != nil {
 		stopWatchingContext()
-		return nil, reused && bytesRead == 0 && isRetryableStaleConnError(err), err
+		return nil, reused && isRetryableStaleConnError(err), err
 	}
 
 	mayReuse := !req.Close && !resp.Close
 	fullyRead := responseBodyAlreadyConsumed(req, resp)
-	body := &pooledH1ResponseBody{
+	resp.Body = &pooledH1ResponseBody{
 		ReadCloser: resp.Body,
 		rt:         rt,
 		pc:         pc,
 		stopCtx:    stopWatchingContext,
 		mayReuse:   mayReuse,
+		fullyRead:  fullyRead,
 	}
-	body.fullyRead.Store(fullyRead)
-	resp.Body = body
 	return resp, false, nil
 }
 
@@ -154,7 +150,7 @@ func (rt *orderedH1RoundTripper) getConn(ctx context.Context, addr string) (*poo
 			if err != nil {
 				return nil, false, err
 			}
-			return newPooledH1Conn(addr, conn), false, nil
+			return &pooledH1Conn{addr: addr, conn: conn, br: bufio.NewReader(conn)}, false, nil
 		}
 		if pc.expired(rt.idleConnTimeout) || !pc.healthy() {
 			pc.close()
@@ -251,32 +247,12 @@ func (rt *orderedH1RoundTripper) CloseIdleConnections() {
 }
 
 type pooledH1Conn struct {
-	addr      string
-	conn      net.Conn
-	br        *bufio.Reader
-	idleAt    time.Time
-	bytesRead atomic.Int64
+	addr   string
+	conn   net.Conn
+	br     *bufio.Reader
+	idleAt time.Time
 
 	closeOnce sync.Once
-}
-
-func newPooledH1Conn(addr string, conn net.Conn) *pooledH1Conn {
-	pc := &pooledH1Conn{addr: addr, conn: conn}
-	pc.br = bufio.NewReader(&h1ConnReadTracker{conn: conn, bytesRead: &pc.bytesRead})
-	return pc
-}
-
-type h1ConnReadTracker struct {
-	conn      net.Conn
-	bytesRead *atomic.Int64
-}
-
-func (r *h1ConnReadTracker) Read(p []byte) (int, error) {
-	n, err := r.conn.Read(p)
-	if n > 0 {
-		r.bytesRead.Add(int64(n))
-	}
-	return n, err
 }
 
 func (pc *pooledH1Conn) close() {
@@ -331,7 +307,7 @@ type pooledH1ResponseBody struct {
 	stopCtx  func()
 	mayReuse bool
 
-	fullyRead atomic.Bool
+	fullyRead bool
 	closeOnce sync.Once
 	closeErr  error
 }
@@ -339,7 +315,7 @@ type pooledH1ResponseBody struct {
 func (b *pooledH1ResponseBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
 	if errors.Is(err, io.EOF) {
-		b.fullyRead.Store(true)
+		b.fullyRead = true
 	}
 	return n, err
 }
@@ -350,7 +326,7 @@ func (b *pooledH1ResponseBody) Close() error {
 		if b.stopCtx != nil {
 			b.stopCtx()
 		}
-		if b.mayReuse && b.fullyRead.Load() {
+		if b.mayReuse && b.fullyRead {
 			b.rt.putIdleConn(b.pc)
 		} else if b.pc != nil {
 			b.pc.close()
@@ -360,24 +336,19 @@ func (b *pooledH1ResponseBody) Close() error {
 }
 
 func watchRequestContext(ctx context.Context, pc *pooledH1Conn) func() {
-	if ctx == nil || ctx.Done() == nil {
-		return func() {}
-	}
 	done := make(chan struct{})
-	stopped := make(chan struct{})
+	var once sync.Once
+	stop := func() {
+		once.Do(func() { close(done) })
+	}
 	go func() {
-		defer close(stopped)
 		select {
 		case <-ctx.Done():
 			pc.close()
 		case <-done:
 		}
 	}()
-	var once sync.Once
-	return func() {
-		once.Do(func() { close(done) })
-		<-stopped
-	}
+	return stop
 }
 
 func writeFull(w io.Writer, b []byte) (int, error) {
