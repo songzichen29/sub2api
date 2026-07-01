@@ -3,6 +3,8 @@ package service
 import (
 	"net/http"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // headerWireCasing 定义每个白名单 header 在真实 Claude CLI 抓包中的准确大小写。
@@ -46,42 +48,11 @@ var headerWireCasing = map[string]string{
 	"x-client-request-id":      "x-client-request-id",
 }
 
-// headerWireOrder 定义真实 Claude CLI 发送 header 的顺序（基于抓包）。
-// 用于 debug log 按此顺序输出，便于与抓包结果直接对比。
-var headerWireOrder = []string{
-	"Accept",
-	"Authorization",
-	"Content-Type",
-	"User-Agent",
-	"X-Claude-Code-Session-Id",
-	"X-Stainless-Arch",
-	"X-Stainless-Lang",
-	"X-Stainless-OS",
-	"X-Stainless-Package-Version",
-	"X-Stainless-Retry-Count",
-	"X-Stainless-Runtime",
-	"X-Stainless-Runtime-Version",
-	"X-Stainless-Timeout",
-	"anthropic-beta",
-	"anthropic-dangerous-direct-browser-access",
-	"anthropic-version",
-	"x-app",
-}
-
-// ClaudeCodeHeaderWireOrder returns the application-level HTTP/1.1 header order
-// captured from Claude Code v2.1.197. Transport headers (Connection, Host,
-// Accept-Encoding, Content-Length) are written after this list by the custom
-// Anthropic H1 round tripper.
-func ClaudeCodeHeaderWireOrder() []string {
-	out := make([]string, len(headerWireOrder))
-	copy(out, headerWireOrder)
-	return out
-}
-
-// headerWireOrderSet 用于快速判断某个 key 是否在 headerWireOrder 中（按 lowercase 匹配）。
+// headerWireOrderSet 用于快速判断某个 key 是否在 Claude Code wire order 中（按 lowercase 匹配）。
 var headerWireOrderSet map[string]struct{}
 
 func init() {
+	headerWireOrder := claude.ClaudeCodeHeaderWireOrder()
 	headerWireOrderSet = make(map[string]struct{}, len(headerWireOrder))
 	for _, k := range headerWireOrder {
 		headerWireOrderSet[strings.ToLower(k)] = struct{}{}
@@ -155,6 +126,8 @@ func getHeaderRaw(h http.Header, key string) string {
 // sortHeadersByWireOrder 按照真实 Claude CLI 的 header 顺序返回排序后的 key 列表。
 // 在 headerWireOrder 中定义的 key 按其顺序排列，未定义的 key 追加到末尾。
 func sortHeadersByWireOrder(h http.Header) []string {
+	headerWireOrder := claude.ClaudeCodeHeaderWireOrder()
+
 	// 构建 lowercase -> actual map key 的映射
 	present := make(map[string]string, len(h))
 	for k := range h {

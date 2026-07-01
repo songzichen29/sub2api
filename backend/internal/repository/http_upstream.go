@@ -1138,7 +1138,7 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 	}
 
 	if upstreamProfile != service.HTTPUpstreamProfileOpenAI && dialTLS != nil {
-		return newOrderedH1RoundTripper(dialTLS, settings.responseHeaderTimeout), nil
+		return newOrderedH1RoundTripper(dialTLS, settings.responseHeaderTimeout, settings.idleConnTimeout, settings.maxIdleConnsPerHost), nil
 	}
 	return transport, nil
 }

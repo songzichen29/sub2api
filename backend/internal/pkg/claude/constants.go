@@ -95,6 +95,38 @@ func HasContext1MMarker(model string) bool {
 	return strings.Contains(strings.ToLower(model), "[1m]")
 }
 
+// claudeCodeHeaderWireOrder is the application-level HTTP/1.1 header order
+// captured from Claude Code v2.1.197. Transport headers (Connection, Host,
+// Accept-Encoding, Content-Length) are written after this list by the custom
+// Anthropic H1 round tripper.
+var claudeCodeHeaderWireOrder = []string{
+	"Accept",
+	"Authorization",
+	"Content-Type",
+	"User-Agent",
+	"X-Claude-Code-Session-Id",
+	"X-Stainless-Arch",
+	"X-Stainless-Lang",
+	"X-Stainless-OS",
+	"X-Stainless-Package-Version",
+	"X-Stainless-Retry-Count",
+	"X-Stainless-Runtime",
+	"X-Stainless-Runtime-Version",
+	"X-Stainless-Timeout",
+	"anthropic-beta",
+	"anthropic-dangerous-direct-browser-access",
+	"anthropic-version",
+	"x-app",
+}
+
+// ClaudeCodeHeaderWireOrder returns a copy of the captured Claude Code
+// application header order.
+func ClaudeCodeHeaderWireOrder() []string {
+	out := make([]string, len(claudeCodeHeaderWireOrder))
+	copy(out, claudeCodeHeaderWireOrder)
+	return out
+}
+
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的 beta 列表，
 // 用于 telemetry event_data.betas。默认不包含 context-1m；该 beta 必须通过
 // FullClaudeCodeMimicryBetasForModel 按模型名中的 [1m] 标记条件化加入。
