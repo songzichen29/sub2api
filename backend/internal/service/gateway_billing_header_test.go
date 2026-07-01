@@ -101,6 +101,33 @@ func TestComputeClaudeCodeFingerprint_UsesJSUTF16Indexing(t *testing.T) {
 	}
 }
 
+func TestComputeClaudeCodeFingerprint_SkipsSystemReminderMeta(t *testing.T) {
+	body := []byte(`{
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type":"text","text":"<system-reminder>Use the TodoWrite tool.</system-reminder>"},
+				{"type":"text","text":"hi"}
+			]
+		}]
+	}`)
+	require.Equal(t, "hi", extractFirstUserText(body))
+	require.Equal(t, "0df", computeClaudeCodeFingerprint(body, "2.1.197"))
+}
+
+func TestComputeClaudeCodeFingerprint_StripsLeadingSystemReminderBeforeUnicodeText(t *testing.T) {
+	body := []byte(`{
+		"messages": [{
+			"role": "user",
+			"content": [
+				{"type":"text","text":"<system-reminder>meta</system-reminder>\nabcd😀efghijklmnopqrstu"}
+			]
+		}]
+	}`)
+	require.Equal(t, "abcd😀efghijklmnopqrstu", extractFirstUserText(body))
+	require.Equal(t, "55f", computeClaudeCodeFingerprint(body, "2.1.197"))
+}
+
 func TestSignBillingHeaderCCH(t *testing.T) {
 	t.Run("replaces placeholder with hash", func(t *testing.T) {
 		body := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.63.a43; cc_entrypoint=cli; cch=00000;"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)

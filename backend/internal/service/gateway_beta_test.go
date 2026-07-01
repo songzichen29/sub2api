@@ -162,6 +162,10 @@ func TestClaudeCodeOAuthMimicryRequestBetas_Context1MOnlyForMarkedModel(t *testi
 	plain := claude.ClaudeCodeOAuthMimicryRequestBetasForModel("claude-sonnet-4-5-20250929")
 	require.NotContains(t, plain, claude.BetaContext1M)
 	require.Contains(t, plain, claude.BetaOAuth)
+	require.Contains(t, plain, claude.BetaExtendedCacheTTL)
+	require.NotContains(t, plain, claude.BetaAdvisorTool)
+	require.NotContains(t, plain, claude.BetaEffort)
+	require.NotContains(t, plain, claude.BetaAfkMode)
 
 	marked := claude.ClaudeCodeOAuthMimicryRequestBetasForModel("claude-sonnet-4-5 [1m]")
 	require.Equal(t, []string{
@@ -174,6 +178,7 @@ func TestClaudeCodeOAuthMimicryRequestBetas_Context1MOnlyForMarkedModel(t *testi
 		claude.BetaContextManagement,
 		claude.BetaPromptCachingScope,
 		claude.BetaMidConversationSystem,
+		claude.BetaExtendedCacheTTL,
 	}, marked)
 }
 

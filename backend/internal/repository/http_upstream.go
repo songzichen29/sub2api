@@ -1086,7 +1086,8 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 //   - profile: TLS 指纹配置
 //
 // 返回:
-//   - http.RoundTripper: H2RoundTripper（h2 优先、h1 回退，均走 utls 指纹）
+//   - http.RoundTripper: Anthropic 默认路径使用手写 HTTP/1.1（utls + 固定 header 顺序）；
+//     OpenAI profile 继续使用标准 http.Transport。
 //   - error: 配置错误
 //
 // 代理类型处理:
@@ -1108,41 +1109,24 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		ForceAttemptHTTP2: false,
 	}
 
-	// HTTP/2 over uTLS is only added for the Anthropic path, where real Claude
-	// Code (Bun) negotiates h2. The OpenAI path has its own h2 handling
-	// (GATEWAY_OPENAI_HTTP2) and callers/tests expect a raw *http.Transport,
-	// so it is left unwrapped.
-	wrapH2 := upstreamProfile != service.HTTPUpstreamProfileOpenAI
-
-	// h2 profile: identical fingerprint, but ALPN advertises h2 first so the
-	// JA4 ALPN segment matches real Bun-based Claude Code (which offers h2).
-	h2Profile := *profile
-	h2Profile.ALPNProtocols = []string{"h2", "http/1.1"}
-
-	var h2Dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	var dialTLS func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	if proxyURL == nil {
 		// 直连
 		slog.Debug("tls_fingerprint_transport_direct")
-		transport.DialTLSContext = tlsfingerprint.NewDialer(profile, nil).DialTLSContext
-		if wrapH2 {
-			h2Dial = tlsfingerprint.NewDialer(&h2Profile, nil).DialTLSContext
-		}
+		dialTLS = tlsfingerprint.NewDialer(profile, nil).DialTLSContext
+		transport.DialTLSContext = dialTLS
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {
 		case "socks5", "socks5h":
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
-			transport.DialTLSContext = tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL).DialTLSContext
-			if wrapH2 {
-				h2Dial = tlsfingerprint.NewSOCKS5ProxyDialer(&h2Profile, proxyURL).DialTLSContext
-			}
+			dialTLS = tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL).DialTLSContext
+			transport.DialTLSContext = dialTLS
 		case "http", "https":
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
-			transport.DialTLSContext = tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL).DialTLSContext
-			if wrapH2 {
-				h2Dial = tlsfingerprint.NewHTTPProxyDialer(&h2Profile, proxyURL).DialTLSContext
-			}
+			dialTLS = tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL).DialTLSContext
+			transport.DialTLSContext = dialTLS
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹/h2）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
@@ -1153,8 +1137,8 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		}
 	}
 
-	if wrapH2 && h2Dial != nil {
-		return tlsfingerprint.NewH2RoundTripper(transport, h2Dial), nil
+	if upstreamProfile != service.HTTPUpstreamProfileOpenAI && dialTLS != nil {
+		return newOrderedH1RoundTripper(dialTLS, settings.responseHeaderTimeout), nil
 	}
 	return transport, nil
 }

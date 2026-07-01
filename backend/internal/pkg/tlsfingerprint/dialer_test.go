@@ -55,7 +55,7 @@ func TestDialerBasicConnection(t *testing.T) {
 
 // TestJA3Fingerprint verifies the JA3/JA4 fingerprint matches expected value.
 // This test uses tls.peet.ws to verify the fingerprint.
-// Expected JA3 hash: 44f88fca027f27bab4bb08d4af15f23e (Bun/Node.js v26.3.0)
+// Expected JA3 hash: dc782a9d905fdcee1223a3d4e8108bc6 (Bun/Node.js v26.3.0)
 // Expected JA4: t13d1714h1_5b57614c22b0_7baf387fc6ff
 func TestJA3Fingerprint(t *testing.T) {
 	skipNetworkTest(t)
@@ -108,7 +108,7 @@ func TestJA3Fingerprint(t *testing.T) {
 	t.Logf("PeetPrint Hash: %s", fpResp.TLS.PeetPrintHash)
 
 	// Verify JA3 hash matches expected value (Bun/Node.js v26.3.0 default)
-	expectedJA3Hash := "44f88fca027f27bab4bb08d4af15f23e"
+	expectedJA3Hash := "dc782a9d905fdcee1223a3d4e8108bc6"
 	if fpResp.TLS.JA3Hash == expectedJA3Hash {
 		t.Logf("✓ JA3 hash matches expected value: %s", expectedJA3Hash)
 	} else {
@@ -143,8 +143,8 @@ func TestJA3Fingerprint(t *testing.T) {
 		t.Logf("Warning: JA3 does not contain expected TLS 1.3 cipher suites")
 	}
 
-	// Verify extension list (14 extensions, Bun/Node.js v26.3.0 order)
-	expectedExtensions := "0-65037-23-65281-10-11-35-16-5-13-18-51-45-43"
+	// Verify extension list (13 extensions, Bun/Node.js v26.3.0 order)
+	expectedExtensions := "0-23-65281-10-11-35-16-5-13-18-51-45-43"
 	if strings.Contains(fpResp.TLS.JA3, expectedExtensions) {
 		t.Logf("✓ JA3 contains expected extension list: %s", expectedExtensions)
 	} else {
@@ -297,7 +297,7 @@ func TestAllProfiles(t *testing.T) {
 	profiles := []TestProfileExpectation{
 		{
 			// Default profile (Bun/Node.js v26.3.0)
-			// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
+			// JA3 Hash: dc782a9d905fdcee1223a3d4e8108bc6
 			// JA4: t13d1714h1_5b57614c22b0_7baf387fc6ff
 			Profile: &Profile{
 				Name:         "default_node_v24",

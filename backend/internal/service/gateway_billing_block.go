@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 	"unicode/utf16"
 
 	"github.com/tidwall/gjson"
@@ -55,7 +56,10 @@ func jsUTF8BytesForCodeUnit(cu uint16) []byte {
 	return []byte(string(rune(cu)))
 }
 
-// extractFirstUserText 提取 messages 中第一条 user 消息的首段 text 内容。
+// extractFirstUserText 提取 messages 中第一条非 meta 的 user 文本。
+// 真实 Claude Code 的 computeFingerprint 使用第一条 !isMeta 的 user 消息文本；
+// wire body 中可能在用户消息前带 <system-reminder>...</system-reminder>
+// meta 块，必须先剥离/跳过，不能把 meta 内容计入 cc_version 指纹。
 // 兼容 string 和 []block 两种 content 格式。
 func extractFirstUserText(body []byte) string {
 	messages := gjson.GetBytes(body, "messages")
@@ -69,22 +73,63 @@ func extractFirstUserText(body []byte) string {
 		}
 		content := msg.Get("content")
 		if content.Type == gjson.String {
-			first = content.String()
-			return false
+			if text, ok := stripLeadingSystemReminderMeta(content.String()); ok {
+				first = text
+				return false
+			}
+			return true
 		}
 		if content.IsArray() {
+			found := false
 			content.ForEach(func(_, block gjson.Result) bool {
 				if block.Get("type").String() == "text" {
-					first = block.Get("text").String()
-					return false
+					if text, ok := stripLeadingSystemReminderMeta(block.Get("text").String()); ok {
+						first = text
+						found = true
+						return false
+					}
 				}
 				return true
 			})
-			return false
+			return !found
 		}
-		return false
+		return true
 	})
 	return first
+}
+
+const (
+	systemReminderOpenTag  = "<system-reminder>"
+	systemReminderCloseTag = "</system-reminder>"
+)
+
+func stripLeadingSystemReminderMeta(text string) (string, bool) {
+	if text == "" {
+		return "", false
+	}
+	out := text
+	removed := false
+	for {
+		trimmed := strings.TrimLeft(out, " \t\r\n")
+		if !strings.HasPrefix(trimmed, systemReminderOpenTag) {
+			if removed {
+				out = trimmed
+			}
+			break
+		}
+		end := strings.Index(trimmed, systemReminderCloseTag)
+		if end < 0 {
+			// Malformed reminder: treat it as real text rather than silently
+			// deleting user-visible content.
+			return text, strings.TrimSpace(text) != ""
+		}
+		out = trimmed[end+len(systemReminderCloseTag):]
+		removed = true
+	}
+	if strings.TrimSpace(out) == "" {
+		return "", false
+	}
+	return out, true
 }
 
 // buildBillingAttributionText 构造 system 数组的 billing attribution 文本。

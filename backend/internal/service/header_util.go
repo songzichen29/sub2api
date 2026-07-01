@@ -9,11 +9,18 @@ import (
 // Go 的 HTTP server 解析请求时会将所有 header key 转为 Canonical 形式（如 x-app → X-App），
 // 此 map 用于在转发时恢复到真实的 wire format。
 //
-// 来源：对真实 Claude CLI (claude-cli/2.1.81) 到 api.anthropic.com 的 HTTPS 流量抓包。
+// 来源：对真实 Claude Code v2.1.197 到 api.anthropic.com 的 HTTP/1.1 明文流量抓包。
 var headerWireCasing = map[string]string{
 	// Title case
-	"accept":     "Accept",
-	"user-agent": "User-Agent",
+	"accept":            "Accept",
+	"authorization":     "Authorization",
+	"content-type":      "Content-Type",
+	"user-agent":        "User-Agent",
+	"accept-encoding":   "Accept-Encoding",
+	"content-length":    "Content-Length",
+	"connection":        "Connection",
+	"host":              "Host",
+	"transfer-encoding": "Transfer-Encoding",
 
 	// X-Stainless-* 保持 SDK 原始大小写
 	"x-stainless-retry-count":     "X-Stainless-Retry-Count",
@@ -31,44 +38,44 @@ var headerWireCasing = map[string]string{
 	"anthropic-version":                         "anthropic-version",
 	"anthropic-beta":                            "anthropic-beta",
 	"x-app":                                     "x-app",
-	"content-type":                              "content-type",
 	"accept-language":                           "accept-language",
 	"sec-fetch-mode":                            "sec-fetch-mode",
-	"accept-encoding":                           "accept-encoding",
-	"authorization":                             "authorization",
 
 	// Claude Code 2.1.87+ 新增 header
 	"x-claude-code-session-id": "X-Claude-Code-Session-Id",
 	"x-client-request-id":      "x-client-request-id",
-	"content-length":           "content-length",
 }
 
 // headerWireOrder 定义真实 Claude CLI 发送 header 的顺序（基于抓包）。
 // 用于 debug log 按此顺序输出，便于与抓包结果直接对比。
 var headerWireOrder = []string{
 	"Accept",
-	"X-Stainless-Retry-Count",
-	"X-Stainless-Timeout",
-	"X-Stainless-Lang",
-	"X-Stainless-Package-Version",
-	"X-Stainless-OS",
-	"X-Stainless-Arch",
-	"X-Stainless-Runtime",
-	"X-Stainless-Runtime-Version",
-	"anthropic-dangerous-direct-browser-access",
-	"anthropic-version",
-	"authorization",
-	"x-app",
+	"Authorization",
+	"Content-Type",
 	"User-Agent",
 	"X-Claude-Code-Session-Id",
-	"content-type",
+	"X-Stainless-Arch",
+	"X-Stainless-Lang",
+	"X-Stainless-OS",
+	"X-Stainless-Package-Version",
+	"X-Stainless-Retry-Count",
+	"X-Stainless-Runtime",
+	"X-Stainless-Runtime-Version",
+	"X-Stainless-Timeout",
 	"anthropic-beta",
-	"x-client-request-id",
-	"accept-language",
-	"sec-fetch-mode",
-	"accept-encoding",
-	"content-length",
-	"x-stainless-helper-method",
+	"anthropic-dangerous-direct-browser-access",
+	"anthropic-version",
+	"x-app",
+}
+
+// ClaudeCodeHeaderWireOrder returns the application-level HTTP/1.1 header order
+// captured from Claude Code v2.1.197. Transport headers (Connection, Host,
+// Accept-Encoding, Content-Length) are written after this list by the custom
+// Anthropic H1 round tripper.
+func ClaudeCodeHeaderWireOrder() []string {
+	out := make([]string, len(headerWireOrder))
+	copy(out, headerWireOrder)
+	return out
 }
 
 // headerWireOrderSet 用于快速判断某个 key 是否在 headerWireOrder 中（按 lowercase 匹配）。

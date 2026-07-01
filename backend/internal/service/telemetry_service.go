@@ -634,7 +634,7 @@ func applyTelemetryHeaders(req *http.Request) {
 	setHeaderRaw(req.Header, "Content-Type", "application/json")
 	setHeaderRaw(req.Header, "User-Agent", "claude-code/"+claude.CLICurrentVersion)
 	setHeaderRaw(req.Header, "x-service-name", "claude-code")
-	setHeaderRaw(req.Header, "Accept-Encoding", "gzip, deflate, br")
+	setHeaderRaw(req.Header, "Accept-Encoding", "gzip, deflate, br, zstd")
 }
 
 // buildPayload converts an internal TelemetryEvent to the wire format.

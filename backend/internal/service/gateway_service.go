@@ -6817,9 +6817,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// this as a legitimate Claude Code request; without it, the request is
 			// rejected as third-party ("out of extra usage").
 			// Haiku models are exempt from third-party detection and don't need it.
-			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
+			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking, claude.BetaExtendedCacheTTL}
 			if claude.HasContext1MMarker(modelID) {
-				requiredBetas = []string{claude.BetaOAuth, claude.BetaContext1M, claude.BetaInterleavedThinking}
+				requiredBetas = []string{claude.BetaOAuth, claude.BetaContext1M, claude.BetaInterleavedThinking, claude.BetaExtendedCacheTTL}
 			}
 			if !strings.Contains(strings.ToLower(modelID), "haiku") {
 				requiredBetas = claude.ClaudeCodeOAuthMimicryRequestBetasForModel(modelID)
@@ -7350,11 +7350,6 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 	setHeaderRaw(req.Header, "Accept", "application/json")
 	if isStream {
 		setHeaderRaw(req.Header, "x-stainless-helper-method", "stream")
-	}
-	// Real Claude CLI 每个请求都会生成一个新的 UUID 放在 x-client-request-id。
-	// 上游会以此作为会话/请求指纹的一部分，缺失或重复都可能触发第三方判定。
-	if getHeaderRaw(req.Header, "x-client-request-id") == "" {
-		setHeaderRaw(req.Header, "x-client-request-id", uuid.NewString())
 	}
 }
 
@@ -10557,7 +10552,7 @@ func (s *GatewayService) proxyAnthropicGet(ctx context.Context, groupID *int64, 
 	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("User-Agent", "claude-cli/"+claude.CLICurrentVersion+" (external, cli)")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

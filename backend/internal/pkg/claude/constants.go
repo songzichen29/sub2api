@@ -146,6 +146,7 @@ func ClaudeCodeOAuthMimicryRequestBetasForModel(model string) []string {
 		BetaContextManagement,
 		BetaPromptCachingScope,
 		BetaMidConversationSystem,
+		BetaExtendedCacheTTL,
 	)
 	return betas
 }
@@ -166,7 +167,7 @@ var DefaultHeaders = map[string]string{
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
-	"Accept-Encoding":                           "gzip, deflate, br",
+	"Accept-Encoding":                           "gzip, deflate, br, zstd",
 }
 
 // Model 表示一个 Claude 模型

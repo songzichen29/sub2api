@@ -1,8 +1,7 @@
 // Package tlsfingerprint provides TLS fingerprint simulation for HTTP clients.
 // It uses the utls library to create TLS connections with a Node.js 24.x
 // (OpenSSL) ClientHello. This is a Node.js stand-in, NOT the real Claude Code
-// fingerprint: real Claude Code v2.1.197 is a Bun-compiled binary (BoringSSL),
-// whose ClientHello differs in cipher/extension order, ALPN, and ECH behavior.
+// fingerprint: real Claude Code v2.1.197 is a Bun-compiled binary (BoringSSL).
 package tlsfingerprint
 
 import (
@@ -59,7 +58,10 @@ type SOCKS5ProxyDialer struct {
 // Default TLS fingerprint values captured from Claude Code (Bun/Node.js v26.3.0).
 // Captured via tls-fingerprint-web capture server and shared by API, OAuth,
 // telemetry, and GrowthBook paths so api.anthropic.com never falls back to Go TLS.
-// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
+// JA3 Hash: dc782a9d905fdcee1223a3d4e8108bc6 for hostname/SNI
+//
+//	e97f5146a7009cc2918b50e903b6ff8d for IP/no-SNI captures
+//
 // JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
 var (
 	// defaultCipherSuites contains the 17 cipher suites from Bun/Node.js v26.3.0
@@ -343,7 +345,6 @@ func toUTLSCurves(curves []uint16) []utls.CurveID {
 // Used when Profile.Extensions is empty.
 var defaultExtensionOrder = []uint16{
 	0,     // server_name
-	65037, // encrypted_client_hello
 	23,    // extended_master_secret
 	65281, // renegotiation_info
 	10,    // supported_groups
@@ -460,10 +461,10 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 			extensions = append(extensions, &utls.SignatureAlgorithmsCertExtension{SupportedSignatureAlgorithms: signatureAlgorithms})
 		case 51: // key_share
 			extensions = append(extensions, &utls.KeyShareExtension{KeyShares: keyShares})
-		case 0xfe0d: // encrypted_client_hello (ECH, 65037)
-			// Send GREASE ECH with random payload — mimics Node.js behavior when no real ECHConfig is available.
-			// An empty GenericExtension causes "error decoding message" from servers that validate ECH format.
-			extensions = append(extensions, &utls.GREASEEncryptedClientHelloExtension{})
+		case 0xfe0d: // encrypted_client_hello
+			// Real Claude Code v2.1.197 captures have has_ech=false; ignore
+			// stale custom profiles that still list this extension.
+			continue
 		case 0xff01: // renegotiation_info
 			extensions = append(extensions, &utls.RenegotiationInfoExtension{})
 		default:
