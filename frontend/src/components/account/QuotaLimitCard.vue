@@ -92,7 +92,7 @@ watch(localEnabled, (val) => {
 
 // Common timezone options
 const timezoneOptions = [
-  'UTC', 'Asia/Shanghai', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Kolkata',
+  'UTC', 'America/Los_Angeles', 'Asia/Tokyo', 'Asia/Seoul', 'Asia/Singapore', 'Asia/Kolkata',
   'Asia/Dubai', 'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'America/Sao_Paulo', 'Australia/Sydney', 'Pacific/Auckland',

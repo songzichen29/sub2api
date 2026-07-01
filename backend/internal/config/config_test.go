@@ -808,11 +808,11 @@ func TestConfigAddressHelpers(t *testing.T) {
 	}
 
 	dbCfg.Password = ""
-	if !strings.Contains(dbCfg.DSNWithTimezone("Asia/Shanghai"), "loc=Asia%2FShanghai") {
-		t.Fatalf("DatabaseConfig.DSNWithTimezone() should include loc=Asia%%2FShanghai: %q", dbCfg.DSNWithTimezone("Asia/Shanghai"))
+	if !strings.Contains(dbCfg.DSNWithTimezone("America/Los_Angeles"), "loc=America%2FLos_Angeles") {
+		t.Fatalf("DatabaseConfig.DSNWithTimezone() should include loc=America%%2FLos_Angeles: %q", dbCfg.DSNWithTimezone("America/Los_Angeles"))
 	}
 
-	if !strings.Contains(dbCfg.DSNWithTimezone(""), "loc=Asia%2FShanghai") {
+	if !strings.Contains(dbCfg.DSNWithTimezone(""), "loc=America%2FLos_Angeles") {
 		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use default timezone")
 	}
 	if !strings.Contains(dbCfg.DSNWithTimezone("UTC"), "tls=false") {
@@ -1028,12 +1028,12 @@ func TestDatabaseDSNWithTimezone_WithPassword(t *testing.T) {
 		DBName:   "db",
 		SSLMode:  "prefer",
 	}
-	got := d.DSNWithTimezone("Asia/Shanghai")
+	got := d.DSNWithTimezone("America/Los_Angeles")
 	if !strings.Contains(got, "u:p@tcp(localhost:3306)/db") {
 		t.Fatalf("DSNWithTimezone should include mysql auth segment: %q", got)
 	}
-	if !strings.Contains(got, "loc=Asia%2FShanghai") {
-		t.Fatalf("DSNWithTimezone should include loc=Asia%%2FShanghai: %q", got)
+	if !strings.Contains(got, "loc=America%2FLos_Angeles") {
+		t.Fatalf("DSNWithTimezone should include loc=America%%2FLos_Angeles: %q", got)
 	}
 	if !strings.Contains(got, "tls=preferred") {
 		t.Fatalf("DSNWithTimezone should include tls=preferred: %q", got)

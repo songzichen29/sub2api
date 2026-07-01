@@ -124,19 +124,20 @@ func TestMergeAnthropicBetaDropping_DroppedBetas(t *testing.T) {
 	require.Contains(t, got, "fast-mode-2026-02-01")
 }
 
-func TestFullClaudeCodeMimicryBetas_IncludesRedactThinking(t *testing.T) {
+func TestFullClaudeCodeMimicryBetas_MatchesTelemetrySequence(t *testing.T) {
 	required := claude.FullClaudeCodeMimicryBetas()
 
-	// redact-thinking IS part of the default mimicry set: real Claude Code
-	// sends it for interactive first-party sessions, so omitting it diverges
-	// from real CLI traffic.
-	require.Contains(t, required, claude.BetaRedactThinking)
-	require.Contains(t, required, claude.BetaClaudeCode)
-	require.Contains(t, required, claude.BetaOAuth)
-	require.Contains(t, required, claude.BetaInterleavedThinking)
-	// extended-cache-ttl must NOT be in the default set: real CC only attaches
-	// it (via the SDK) when the request body has a cache_control ttl=1h.
-	require.NotContains(t, required, claude.BetaExtendedCacheTTL)
+	require.Equal(t, []string{
+		claude.BetaClaudeCode,
+		claude.BetaContext1M,
+		claude.BetaInterleavedThinking,
+		claude.BetaRedactThinking,
+		claude.BetaThinkingTokenCount,
+		claude.BetaContextManagement,
+		claude.BetaPromptCachingScope,
+		claude.BetaMidConversationSystem,
+	}, required)
+	require.NotContains(t, required, claude.BetaOAuth)
 }
 
 func TestMergeAnthropicBetaDropping_PreservesIncomingRedactThinking(t *testing.T) {

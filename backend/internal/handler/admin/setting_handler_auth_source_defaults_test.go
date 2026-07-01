@@ -164,7 +164,7 @@ func TestSettingHandler_GetSettings_DefaultSubscriptionsIncludeTimeRange(t *test
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{
 		values: map[string]string{
-			service.SettingKeyDefaultSubscriptions: `[{"group_id":11,"starts_at":"2030-01-01T00:00:00+08:00","expires_at":"2030-02-01T00:00:00+08:00"}]`,
+			service.SettingKeyDefaultSubscriptions: `[{"group_id":11,"starts_at":"2030-01-01T00:00:00-08:00","expires_at":"2030-02-01T00:00:00-08:00"}]`,
 		},
 	}
 	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
@@ -189,8 +189,8 @@ func TestSettingHandler_GetSettings_DefaultSubscriptionsIncludeTimeRange(t *test
 	first, ok := subs[0].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, float64(11), first["group_id"])
-	require.Equal(t, "2029-12-31T16:00:00Z", first["starts_at"])
-	require.Equal(t, "2030-01-31T16:00:00Z", first["expires_at"])
+	require.Equal(t, "2030-01-01T08:00:00Z", first["starts_at"])
+	require.Equal(t, "2030-02-01T08:00:00Z", first["expires_at"])
 }
 
 func TestSettingHandler_UpdateSettings_PersistsDefaultSubscriptionTimeRange(t *testing.T) {

@@ -1058,6 +1058,7 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
+		DisableCompression:    true,
 	}
 	switch protocolMode {
 	case upstreamProtocolModeOpenAIH2:
@@ -1102,7 +1103,9 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		ForceAttemptHTTP2:     false,
+		DisableCompression:    true,
+		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
+		ForceAttemptHTTP2: false,
 	}
 
 	// HTTP/2 over uTLS is only added for the Anthropic path, where real Claude

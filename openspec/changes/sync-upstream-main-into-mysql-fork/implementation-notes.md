@@ -1,8 +1,8 @@
-﻿# Implementation Notes: sync-upstream-main-into-mysql-fork
+# Implementation Notes: sync-upstream-main-into-mysql-fork
 
 ## Baseline
 
-- Recorded at: 2026-06-17 00:26:52 +08:00
+- Recorded at: 2026-06-16 16:26:52Z
 - Current branch before sync: `merge/upstream-main-into-pgsql-mysql-20260426`
 - Current HEAD before sync: `b6e0d0f7e6f2abcb392370684118213e585aeb86`
 - Upstream head: `4a5665da5b2c6b83c4597844ea6e573746c821b1`

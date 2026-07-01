@@ -2118,7 +2118,7 @@ func buildOpenAIImagesFreeConversationRequest(parsed *OpenAIImagesRequest, uploa
 		"model":                    openAIFreeImageConversationModel,
 		"client_prepare_state":     "sent",
 		"timezone_offset_min":      -480,
-		"timezone":                 "Asia/Shanghai",
+		"timezone":                 "America/Los_Angeles",
 		"conversation_mode":        map[string]any{"kind": "primary_assistant"},
 		"enable_message_followups": true,
 		"system_hints":             []any{"picture_v2"},
@@ -2432,7 +2432,7 @@ func prepareOpenAIFreeImageConversation(
 		"model":                 openAIFreeImageConversationModel,
 		"client_prepare_state":  "success",
 		"timezone_offset_min":   -480,
-		"timezone":              "Asia/Shanghai",
+		"timezone":              "America/Los_Angeles",
 		"conversation_mode":     map[string]any{"kind": "primary_assistant"},
 		"system_hints":          []any{"picture_v2"},
 		"partial_query": map[string]any{

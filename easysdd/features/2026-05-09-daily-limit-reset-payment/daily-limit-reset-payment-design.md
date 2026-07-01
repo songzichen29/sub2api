@@ -197,7 +197,7 @@ POST /api/v1/payment/orders
   "payment_type": "alipay",
   "order_type": "daily_limit_reset",
   "qr_code": "https://qr.alipay.com/...",
-  "expires_at": "2026-05-09T02:30:00+08:00"
+  "expires_at": "2026-05-08T11:30:00-07:00"
 }
 ```
 

@@ -204,13 +204,13 @@ func TestParseDefaultSubscriptions_NormalizesValues(t *testing.T) {
 }
 
 func TestParseDefaultSubscriptions_AcceptsExplicitTimeRange(t *testing.T) {
-	got := parseDefaultSubscriptions(`[{"group_id":11,"starts_at":"2030-01-01T00:00:00+08:00","expires_at":"2030-02-01T00:00:00+08:00"}]`)
+	got := parseDefaultSubscriptions(`[{"group_id":11,"starts_at":"2030-01-01T00:00:00-08:00","expires_at":"2030-02-01T00:00:00-08:00"}]`)
 	require.Len(t, got, 1)
 	require.Equal(t, int64(11), got[0].GroupID)
 	require.NotNil(t, got[0].StartsAt)
 	require.NotNil(t, got[0].ExpiresAt)
-	require.Equal(t, "2029-12-31T16:00:00Z", *got[0].StartsAt)
-	require.Equal(t, "2030-01-31T16:00:00Z", *got[0].ExpiresAt)
+	require.Equal(t, "2030-01-01T08:00:00Z", *got[0].StartsAt)
+	require.Equal(t, "2030-02-01T08:00:00Z", *got[0].ExpiresAt)
 	require.Equal(t, 0, got[0].ValidityDays)
 }
 

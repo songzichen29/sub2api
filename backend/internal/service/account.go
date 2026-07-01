@@ -823,7 +823,7 @@ func (a *Account) ExtraBool(key string) (value bool, ok bool) {
 	return false, false
 }
 
-// IsTelemetryEnabled reports whether v2.1.196 telemetry simulation is active
+// IsTelemetryEnabled reports whether v2.1.197 telemetry simulation is active
 // for this account. Defaults to true (on); admins can disable it per account by
 // setting enable_telemetry=false.
 func (a *Account) IsTelemetryEnabled() bool {
@@ -1714,23 +1714,32 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 	return a.Platform == PlatformAnthropic && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
-// IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
-// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+// IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装。
+// 所有发往 Anthropic 官方 API 的 Anthropic 平台账号默认启用，避免任何
+// api.anthropic.com 连接回落到 Go 默认 TLS 指纹；账号 extra 中显式设置
+// enable_tls_fingerprint=false/0/no/off 时才关闭。
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if a == nil || a.Platform != PlatformAnthropic {
 		return false
 	}
 	if a.Extra == nil {
-		return false
+		return true
 	}
 	if v, ok := a.Extra["enable_tls_fingerprint"]; ok {
 		if enabled, ok := v.(bool); ok {
 			return enabled
 		}
+		if s, ok := v.(string); ok {
+			s = strings.TrimSpace(strings.ToLower(s))
+			if s == "false" || s == "0" || s == "no" || s == "off" {
+				return false
+			}
+			if s == "true" || s == "1" || s == "yes" || s == "on" {
+				return true
+			}
+		}
 	}
-	return false
+	return true
 }
 
 // GetTLSFingerprintProfileID 获取账号绑定的 TLS 指纹模板 ID

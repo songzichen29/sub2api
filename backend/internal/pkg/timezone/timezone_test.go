@@ -7,23 +7,23 @@ import (
 
 func TestInit(t *testing.T) {
 	// Test with valid timezone
-	err := Init("Asia/Shanghai")
+	err := Init("America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("Init failed with valid timezone: %v", err)
 	}
 
 	// Verify time.Local was set
-	if time.Local.String() != "Asia/Shanghai" {
+	if time.Local.String() != "America/Los_Angeles" {
 		t.Errorf("time.Local not set correctly, got %s", time.Local.String())
 	}
 
 	// Verify our location variable
-	if Location().String() != "Asia/Shanghai" {
+	if Location().String() != "America/Los_Angeles" {
 		t.Errorf("Location() not set correctly, got %s", Location().String())
 	}
 
 	// Test Name()
-	if Name() != "Asia/Shanghai" {
+	if Name() != "America/Los_Angeles" {
 		t.Errorf("Name() not set correctly, got %s", Name())
 	}
 }
@@ -42,19 +42,20 @@ func TestTimeNowAffected(t *testing.T) {
 	}
 	utcNow := time.Now()
 
-	// Switch to Shanghai (UTC+8)
-	if err := Init("Asia/Shanghai"); err != nil {
-		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	// Switch to Los Angeles (DST-aware UTC-7/UTC-8)
+	if err := Init("America/Los_Angeles"); err != nil {
+		t.Fatalf("Init failed with America/Los_Angeles: %v", err)
 	}
-	shanghaiNow := time.Now()
+	laNow := time.Now()
 
 	// The times should be the same instant, but different timezone representation
-	// Shanghai should be 8 hours ahead in display
+	// Los Angeles offset depends on DST for the current instant
 	_, utcOffset := utcNow.Zone()
-	_, shanghaiOffset := shanghaiNow.Zone()
+	_, laOffset := laNow.Zone()
 
-	expectedDiff := 8 * 3600 // 8 hours in seconds
-	actualDiff := shanghaiOffset - utcOffset
+	_, expectedLAOffset := utcNow.In(Location()).Zone()
+	expectedDiff := expectedLAOffset - utcOffset
+	actualDiff := laOffset - utcOffset
 
 	if actualDiff != expectedDiff {
 		t.Errorf("Timezone offset difference incorrect: expected %d, got %d", expectedDiff, actualDiff)
@@ -62,8 +63,8 @@ func TestTimeNowAffected(t *testing.T) {
 }
 
 func TestToday(t *testing.T) {
-	if err := Init("Asia/Shanghai"); err != nil {
-		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	if err := Init("America/Los_Angeles"); err != nil {
+		t.Fatalf("Init failed with America/Los_Angeles: %v", err)
 	}
 
 	today := Today()
@@ -81,8 +82,8 @@ func TestToday(t *testing.T) {
 }
 
 func TestStartOfDay(t *testing.T) {
-	if err := Init("Asia/Shanghai"); err != nil {
-		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	if err := Init("America/Los_Angeles"); err != nil {
+		t.Fatalf("Init failed with America/Los_Angeles: %v", err)
 	}
 
 	// Create a time at 15:30:45
@@ -99,8 +100,8 @@ func TestTruncateVsStartOfDay(t *testing.T) {
 	// This test demonstrates why Truncate(24*time.Hour) can be problematic
 	// and why StartOfDay is more reliable for timezone-aware code
 
-	if err := Init("Asia/Shanghai"); err != nil {
-		t.Fatalf("Init failed with Asia/Shanghai: %v", err)
+	if err := Init("America/Los_Angeles"); err != nil {
+		t.Fatalf("Init failed with America/Los_Angeles: %v", err)
 	}
 
 	now := Now()
@@ -137,7 +138,7 @@ func TestDSTAwareness(t *testing.T) {
 }
 
 func TestStartOfWeek_Boundaries(t *testing.T) {
-	if err := Init("Asia/Shanghai"); err != nil {
+	if err := Init("America/Los_Angeles"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	t.Cleanup(func() { _ = Init("UTC") })

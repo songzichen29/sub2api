@@ -11,9 +11,9 @@ import (
 )
 
 func TestPSStartOfDayUTC_UsesConfiguredTimezoneBoundary(t *testing.T) {
-	require.NoError(t, timezone.Init("Asia/Shanghai"))
+	require.NoError(t, timezone.Init("America/Los_Angeles"))
 
-	loc, err := time.LoadLocation("Asia/Shanghai")
+	loc, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
 
 	ts := time.Date(2026, 5, 10, 15, 4, 5, 0, loc)

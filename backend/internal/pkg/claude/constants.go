@@ -20,26 +20,28 @@ const (
 	BetaFastMode                 = "fast-mode-2026-02-01"
 	BetaWebSearch                = "web-search-2025-03-05"
 
-	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
+	// 新增（对齐官方 CLI 2.1.19x 以来的流量）
 	BetaPromptCachingScope = "prompt-caching-scope-2026-01-05"
 	BetaEffort             = "effort-2025-11-24"
 	BetaRedactThinking     = "redact-thinking-2026-02-12"
 	BetaContextManagement  = "context-management-2025-06-27"
 	BetaExtendedCacheTTL   = "extended-cache-ttl-2025-04-11"
 
-	// v2.1.196 binary 中新发现的 beta 令牌（参考用，按需加入 mimicry）
-	BetaContextHint        = "context-hint-2026-04-09"
-	BetaConversationSystem = "conversation-system-2026-04-07"
-	BetaManagedAgents      = "managed-agents-2026-04-01"
-	BetaStructuredOutputs  = "structured-outputs-2025-12-15"
-	BetaTaskBudgets        = "task-budgets-2026-03-13"
-	BetaTokenCount         = "token-count-2026-05-13"
-	BetaUserProfiles       = "user-profiles-2026-03-24"
-	BetaSideFallback       = "side-fallback-2026-06-01"
-	BetaFallbackCredit     = "fallback-credit-2026-06-01"
-	BetaCodeExecution      = "code-execution-2025-08-25"
-	BetaAdvisorTool        = "advisor-tool-2026-03-01"
-	BetaAfkMode            = "afk-mode-2026-01-31"
+	// v2.1.197 binary / 真实 telemetry 中确认的 beta 令牌（参考用，按需加入 mimicry）
+	BetaContextHint           = "context-hint-2026-04-09"
+	BetaMidConversationSystem = "mid-conversation-system-2026-04-07"
+	BetaConversationSystem    = BetaMidConversationSystem // backward-compatible alias
+	BetaManagedAgents         = "managed-agents-2026-04-01"
+	BetaStructuredOutputs     = "structured-outputs-2025-12-15"
+	BetaTaskBudgets           = "task-budgets-2026-03-13"
+	BetaThinkingTokenCount    = "thinking-token-count-2026-05-13"
+	BetaTokenCount            = BetaThinkingTokenCount // backward-compatible alias
+	BetaUserProfiles          = "user-profiles-2026-03-24"
+	BetaSideFallback          = "side-fallback-2026-06-01"
+	BetaFallbackCredit        = "fallback-credit-2026-06-01"
+	BetaCodeExecution         = "code-execution-2025-08-25"
+	BetaAdvisorTool           = "advisor-tool-2026-03-01"
+	BetaAfkMode               = "afk-mode-2026-01-31"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
@@ -73,44 +75,57 @@ const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + 
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
 // DefaultCacheControlTTL 是网关代理为自己生成的 cache_control 块默认使用的 ttl。
-// 真实 Claude Code CLI 当前使用 "1h"，但本仓策略是"客户端透传 ttl 优先；
-// 客户端缺省时统一使用 5m"，这样既不浪费 1h 缓存额度，也保留客户端自定义能力。
-const DefaultCacheControlTTL = "5m"
+// 真实 Claude Code CLI v2.1.197 当前使用 "1h"。
+const DefaultCacheControlTTL = "1h"
 
 // CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
-const CLICurrentVersion = "2.1.196"
+const CLICurrentVersion = "2.1.197"
+
+// CLIBuildTime 是从 Claude Code v2.1.197 native binary 中提取的真实 build_time。
+const CLIBuildTime = "2026-06-29T19:08:42Z"
 
 // FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
-// 用于 OAuth 账号伪装成 Claude Code 时使用。
-// 顺序与真实 CLI getAllModelBetas + configureEffortParams 的 push 顺序一致。
+// 用于 telemetry event_data.betas；顺序与真实 Claude Code v2.1.197 telemetry 样本一致。
 //
-// beta 令牌来源：Claude Code v2.1.196 源码 (utils/betas.ts getAllModelBetas +
-// services/api/claude.ts configureEffortParams)。
+// 注意：真实 telemetry 的 betas 字段不包含 oauth-2025-04-20；API 请求 header
+// 的 anthropic-beta 仍需要 OAuth token。请求 header 请使用
+// ClaudeCodeOAuthMimicryRequestBetas。
 //
-// 真实 Claude Code CLI 对非 Haiku 模型的标准 beta（顺序）：
-//   claude-code-20250219, oauth-2025-04-20, context-1m-2025-08-07,
-//   interleaved-thinking-2025-05-14, redact-thinking-2026-02-12,
-//   context-management-2025-06-27, prompt-caching-scope-2026-01-05,
-//   effort-2025-11-24
+// 真实 telemetry 主序列：
 //
-// 注意：
-//   - redact-thinking：真实交互式 1P 会话会发送，必须包含，否则与真实 CLI 流量不一致。
-//   - extended-cache-ttl：不在此默认集——真实 CC 仅在请求体含 cache_control ttl=1h 时由 SDK
-//     附加；无条件发送反而偏离真实流量，已从默认列表移除。
-//   - 对于 Claude 4+ 模型（1M context），必须包含 context-1m。
-//   - OAuth 账号 + haiku：使用 HaikuBetaHeader；API-key 账号：使用 APIKeyBetaHeader。
+//	claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,
+//	redact-thinking-2026-02-12,thinking-token-count-2026-05-13,
+//	context-management-2025-06-27,prompt-caching-scope-2026-01-05,
+//	mid-conversation-system-2026-04-07
 func FullClaudeCodeMimicryBetas() []string {
+	return []string{
+		BetaClaudeCode,
+		BetaContext1M,
+		BetaInterleavedThinking,
+		BetaRedactThinking,
+		BetaThinkingTokenCount,
+		BetaContextManagement,
+		BetaPromptCachingScope,
+		BetaMidConversationSystem,
+	}
+}
+
+// ClaudeCodeOAuthMimicryRequestBetas 返回 OAuth mimic 路径中 API 请求 header
+// anthropic-beta 应使用的 beta 集合。它刻意与 telemetry betas 区分：header 需要
+// oauth-2025-04-20，而 telemetry 的 betas 字段不包含该 token。
+func ClaudeCodeOAuthMimicryRequestBetas() []string {
 	return []string{
 		BetaClaudeCode,
 		BetaOAuth,
 		BetaContext1M,
 		BetaInterleavedThinking,
 		BetaRedactThinking,
+		BetaThinkingTokenCount,
 		BetaContextManagement,
 		BetaPromptCachingScope,
-		BetaEffort,
+		BetaMidConversationSystem,
 	}
 }
 
@@ -130,6 +145,7 @@ var DefaultHeaders = map[string]string{
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	"Accept-Encoding":                           "gzip, deflate, br",
 }
 
 // Model 表示一个 Claude 模型

@@ -829,12 +829,13 @@ func TestGatewayService_AnthropicOAuth_ForwardPreservesBillingHeaderSystemBlock(
 			require.Equal(t, claudeCodeSystemPromptExpansion, arr[2].Get("text").String())
 			require.Equal(t, "ephemeral", arr[2].Get("cache_control.type").String())
 
-			// 原始 system prompt 应迁移至 messages 中
+			// mimic 路径不应注入真实 CLI 不会发送的 [System Instructions] 合成消息。
 			messages := gjson.GetBytes(upstream.lastBody, "messages")
 			require.True(t, messages.IsArray())
 			firstMsg := messages.Array()[0]
 			require.Equal(t, "user", firstMsg.Get("role").String())
-			require.Contains(t, firstMsg.Get("content.0.text").String(), "x-anthropic-billing-header keep")
+			require.NotContains(t, firstMsg.Get("content.0.text").String(), "[System Instructions]")
+			require.NotContains(t, string(upstream.lastBody), "Understood. I will follow these instructions.")
 		})
 	}
 }

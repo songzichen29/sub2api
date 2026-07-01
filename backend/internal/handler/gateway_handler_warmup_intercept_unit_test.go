@@ -172,6 +172,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // channelService
 		nil, // resolver
 		nil, // balanceNotifyService
+		nil, // telemetryService
 		nil, // userPlatformQuotaRepo
 	)
 

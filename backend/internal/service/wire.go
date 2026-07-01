@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -84,6 +85,26 @@ func ProvideClaudeTokenProvider(
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(ClaudeProviderRefreshPolicy())
 	return p
+}
+
+// ProvideTelemetryService creates and starts the Claude Code 1P telemetry service.
+func ProvideTelemetryService(
+	cfg *config.Config,
+	httpUpstream HTTPUpstream,
+	claudeTokenProvider *ClaudeTokenProvider,
+	accountRepo AccountRepository,
+) *TelemetryService {
+	_ = cfg
+	svc := NewTelemetryService(TelemetryConfig{
+		Enabled:       true,
+		BaseURL:       "https://api.anthropic.com",
+		HTTPUpstream:  httpUpstream,
+		TokenProvider: claudeTokenProvider,
+		AccountRepo:   accountRepo,
+		TLSProfile:    &tlsfingerprint.Profile{Name: "Built-in Default (Bun/Node.js v26.3.0)"},
+	})
+	svc.Start(context.Background())
+	return svc
 }
 
 // ProvideOpenAITokenProvider creates OpenAITokenProvider with OAuthRefreshAPI injection
@@ -491,6 +512,7 @@ func ProvideGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	proxyCache AnthropicProxyCache,
+	telemetryService *TelemetryService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *GatewayService {
 	return NewGatewayService(
@@ -521,6 +543,7 @@ func ProvideGatewayService(
 		resolver,
 		balanceNotifyService,
 		proxyCache,
+		telemetryService,
 		userPlatformQuotaRepo,
 	)
 }
@@ -653,6 +676,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewErrorPassthroughService,
 	NewTLSFingerprintProfileService,
+	ProvideTelemetryService,
 	NewDigestSessionStore,
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,

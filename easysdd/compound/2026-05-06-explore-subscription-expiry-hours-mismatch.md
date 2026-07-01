@@ -23,7 +23,7 @@ flowchart TD
   A[用户看到 8 小时过期] --> B{是否来自内部 user_subscriptions?}
   B -- 否 --> C[UI 读的是别的过期字段\n如外部账号 subscription_expires_at / 订单倒计时]
   B -- 是 --> D{时间语义是否一致?}
-  D -- 否 --> E[存在时区/运行实例混用问题\n同库中有 UTC 与 Asia/Shanghai 混写迹象]
+  D -- 否 --> E[存在时区/运行实例混用问题\n同库中有 UTC 与 America/Los_Angeles 混写迹象]
   D -- 是 --> F[前端显示逻辑另有 bug]
 ```
 
@@ -56,7 +56,7 @@ flowchart TD
    - 结论：支付页摘要也不是“8 小时过期”文案来源。
 
 6. `backend/internal/config/config.go:991-1009` 与数据库变量实查
-   - DSN 强制 `loc=Asia/Shanghai`；但数据库 `time_zone=SYSTEM`、`system_time_zone=UTC`。
+   - DSN 强制 `loc=America/Los_Angeles`；但数据库 `time_zone=SYSTEM`、`system_time_zone=UTC`。
    - 同时 `user_subscriptions.id=52` 的 `updated_at` 出现比 `created_at` 更早的表象（`07:33` vs `10:17`），说明同库已有 UTC/上海时间语义混用迹象。
    - 结论：系统存在时区混写风险，值得继续查具体是哪个 UI/服务在读或写了偏移后的过期时间。
 

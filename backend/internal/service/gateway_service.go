@@ -637,7 +637,8 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
-	telemetryHook         *TelemetryHook // v2.1.196 telemetry simulation
+	telemetryHook         *TelemetryHook // Claude Code telemetry simulation
+	telemetryService      *TelemetryService
 	proxyCache            AnthropicProxyCache
 }
 
@@ -670,6 +671,7 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	proxyCache AnthropicProxyCache,
+	telemetryService *TelemetryService,
 	userPlatformQuotaRepos ...UserPlatformQuotaRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
@@ -679,17 +681,9 @@ func NewGatewayService(
 		userPlatformQuotaRepo = userPlatformQuotaRepos[0]
 	}
 	var telemetryHook *TelemetryHook
-	// Wire v2.1.196 telemetry simulation. Per-account OAuth tokens are
-	// attached to each event at the Forward() call sites and used to
-	// authorize the batch POST to /api/event_logging/batch (sendBatch
-	// partitions events by token). No-wire instantiation avoids touching
-	// the generated wire_gen.go.
-	telemetrySvc := NewTelemetryService(TelemetryConfig{
-		BaseURL: "https://api.anthropic.com",
-		Enabled: true,
-	})
-	telemetrySvc.Start(context.Background())
-	telemetryHook = NewTelemetryHook(telemetrySvc)
+	if telemetryService != nil {
+		telemetryHook = NewTelemetryHook(telemetryService)
+	}
 
 	svc := &GatewayService{
 		accountRepo:           accountRepo,
@@ -724,6 +718,7 @@ func NewGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		telemetryHook:         telemetryHook,
+		telemetryService:      telemetryService,
 		proxyCache:            proxyCache,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
@@ -739,6 +734,12 @@ func NewGatewayService(
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
+}
+
+func (s *GatewayService) Stop() {
+	if s != nil && s.telemetryService != nil {
+		s.telemetryService.Stop()
+	}
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -1314,7 +1315,7 @@ func ensureClaudeOAuthMetadataUserID(body []byte, userID string) ([]byte, bool) 
 	trimmedRaw := strings.TrimSpace(metadata.Raw)
 	if strings.HasPrefix(trimmedRaw, "{") {
 		existing := metadata.Get("user_id")
-		if existing.Exists() && existing.Type == gjson.String && existing.String() != "" {
+		if existing.Exists() && existing.Type == gjson.String && existing.String() != "" && ParseMetadataUserID(existing.String()) != nil {
 			return body, false
 		}
 		return setJSONValueBytes(body, "metadata.user_id", userID)
@@ -1424,7 +1425,7 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 	if parsed == nil || account == nil {
 		return ""
 	}
-	if parsed.MetadataUserID != "" {
+	if parsed.MetadataUserID != "" && ParseMetadataUserID(parsed.MetadataUserID) != nil {
 		return ""
 	}
 
@@ -1495,7 +1496,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 	normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 
 	if s.identityService != nil && c != nil && c.Request != nil {
-		if fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header); err == nil && fp != nil {
+		if fp, err := s.identityService.GetOrCreateMimicFingerprint(ctx, account.ID); err == nil && fp != nil {
 			mimicMPT := false
 			if s.settingService != nil {
 				_, mimicMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
@@ -1547,7 +1548,7 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 	if account == nil {
 		return ""
 	}
-	if existing := gjson.GetBytes(body, "metadata.user_id").String(); existing != "" {
+	if existing := gjson.GetBytes(body, "metadata.user_id").String(); existing != "" && ParseMetadataUserID(existing) != nil {
 		return ""
 	}
 
@@ -4285,11 +4286,9 @@ func injectClaudeCodePrompt(body []byte, system any) []byte {
 	return result
 }
 
-// rewriteSystemForNonClaudeCode 将非 Claude Code 客户端的 system prompt 迁移至 messages，
-// system 字段仅保留 Claude Code 标识提示词。
-// Anthropic 基于 system 参数内容检测第三方应用，仅前置追加 Claude Code 提示词
-// 无法通过检测，因为后续内容仍为非 Claude Code 格式。
-// 策略：将原始 system prompt 提取并注入为 user/assistant 消息对，system 仅保留 Claude Code 标识。
+// rewriteSystemForNonClaudeCode 将非 Claude Code 客户端的 system 改写为
+// Claude Code CLI 的 system block 布局；不向 messages 注入真实 CLI 不存在
+// 的合成 user/assistant 消息。
 func rewriteSystemForNonClaudeCode(body []byte, system any) []byte {
 	return rewriteSystemForNonClaudeCodeWithPromptBlocks(body, system, "", "")
 }
@@ -4466,27 +4465,10 @@ func ValidateClaudeOAuthSystemPromptBlocksConfig(raw string) error {
 }
 
 func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expansionPrompt string, blocksConfig string) []byte {
-	system = normalizeSystemParam(system)
+	_ = system
 	expansionPrompt = defaultClaudeOAuthExpansionPrompt(expansionPrompt)
 
-	// 1. 提取原始 system prompt 文本
-	var originalSystemText string
-	switch v := system.(type) {
-	case string:
-		originalSystemText = strings.TrimSpace(v)
-	case []any:
-		var parts []string
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				if text, ok := m["text"].(string); ok && strings.TrimSpace(text) != "" {
-					parts = append(parts, text)
-				}
-			}
-		}
-		originalSystemText = strings.Join(parts, "\n\n")
-	}
-
-	// 2. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
+	// 1. 构造 system 数组，对齐真实 Claude Code CLI 的 3-block 形态：
 	//    [0] billing attribution block（cc_version={cliVer}.{fp}; cc_entrypoint=cli; cch=00000;）
 	//    [1] "You are Claude Code..." 身份前缀 block（默认不带 cache_control）
 	//    [2] 工具无关的通用提示词扩充 block（带 cache_control 作为稳定缓存断点）
@@ -4513,41 +4495,9 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 		return body
 	}
 
-	// 3. 将原始 system prompt 作为 user/assistant 消息对注入到 messages 开头
-	//    模型仍通过 messages 接收完整指令，保留客户端功能
-	ccPromptTrimmed := strings.TrimSpace(claudeCodeSystemPrompt)
-	if originalSystemText != "" && originalSystemText != ccPromptTrimmed && !hasClaudeCodePrefix(originalSystemText) {
-		instrMsg, err1 := json.Marshal(map[string]any{
-			"role": "user",
-			"content": []map[string]any{
-				{"type": "text", "text": "[System Instructions]\n" + originalSystemText},
-			},
-		})
-		ackMsg, err2 := json.Marshal(map[string]any{
-			"role": "assistant",
-			"content": []map[string]any{
-				{"type": "text", "text": "Understood. I will follow these instructions."},
-			},
-		})
-		if err1 != nil || err2 != nil {
-			logger.LegacyPrintf("service.gateway", "Warning: failed to marshal system-to-messages injection")
-			return out
-		}
-
-		// 重建 messages 数组：[instruction, ack, ...originalMessages]
-		items := [][]byte{instrMsg, ackMsg}
-		messagesResult := gjson.GetBytes(out, "messages")
-		if messagesResult.IsArray() {
-			messagesResult.ForEach(func(_, msg gjson.Result) bool {
-				items = append(items, []byte(msg.Raw))
-				return true
-			})
-		}
-
-		if next, setOk := setJSONRawBytes(out, "messages", buildJSONArrayRaw(items)); setOk {
-			out = next
-		}
-	}
+	// 2. 不再把原始 third-party system 合成为 [System Instructions] + ack
+	//    消息。真实 Claude Code 不会向 messages 注入这组 user/assistant 对；
+	//    为了协议层结构一致，mimic 路径只保留 Claude Code system blocks。
 
 	return out
 }
@@ -4888,13 +4838,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	isClaudeCode := IsClaudeCodeClient(ctx) || isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
-	// --- v2.1.196 telemetry integration: send events for OAuth+mimic accounts ---
 	var telemetrySessionID, telemetryDeviceID string
-	if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
-		accountUUID := account.GetExtraString("account_uuid")
-		telemetrySessionID, telemetryDeviceID = EnsureTelemetryStarted(s.telemetryHook, account.ID, accountUUID, reqModel)
-	}
-	// ---
 
 	if shouldMimicClaudeCode {
 		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
@@ -4919,7 +4863,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// 两种情况下 enforceCacheControlLimit 都会兜底处理上限。
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: !systemRewritten}
 		if s.identityService != nil {
-			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
+			fp, err := s.identityService.GetOrCreateMimicFingerprint(ctx, account.ID)
 			if err == nil && fp != nil {
 				// metadata 透传开启时跳过 metadata 注入
 				_, mimicMPT, _ := s.settingService.GetGatewayForwardingSettings(ctx)
@@ -4996,22 +4940,33 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, err
 	}
 
-	// GrowthBook experiment proxy: on the first OAuth mimic request for this
-	// account, fetch experiment assignments from api.anthropic.com (remoteEval,
-	// uTLS+h2) and report them as GrowthbookExperimentEvent telemetry, so the
-	// account is not in a "zero-experiment-participation" state (a detection
-	// signal vs real CC, which logs exposures at startup). Fire-and-forget; the
-	// Redis marker in ensureGrowthBookExperiments dedupes within 6h.
-	if shouldMimicClaudeCode && telemetryDeviceID != "" && account.IsOAuth() {
-		s.ensureGrowthBookExperiments(ctx, account, token, telemetryDeviceID, telemetrySessionID)
-	}
-
 	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
 			proxyURL = account.Proxy.URL()
 		}
+	}
+
+	if shouldMimicClaudeCode {
+		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+			if parsed := ParseMetadataUserID(uid); parsed != nil {
+				telemetryDeviceID = parsed.DeviceID
+				telemetrySessionID = parsed.SessionID
+			}
+		}
+		if s.telemetryHook != nil && account.IsTelemetryEnabled() && telemetryDeviceID != "" && telemetrySessionID != "" {
+			telemetrySessionID, telemetryDeviceID = EnsureTelemetryStarted(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, account.GetExtraString("account_uuid"), reqModel)
+		}
+	}
+
+	// GrowthBook experiment proxy: on the first OAuth mimic request for this
+	// account, fetch experiment assignments from api.anthropic.com (remoteEval,
+	// uTLS+h2) and report them as GrowthbookExperimentEvent telemetry, so the
+	// account is not in a "zero-experiment-participation" state. Call this only
+	// after telemetry IDs are parsed from the final metadata.user_id.
+	if shouldMimicClaudeCode && telemetryDeviceID != "" && account.IsOAuth() {
+		s.ensureGrowthBookExperiments(ctx, account, token, telemetryDeviceID, telemetrySessionID)
 	}
 
 	// 解析 TLS 指纹 profile（同一请求生命周期内不变，避免重试循环中重复解析）
@@ -5062,10 +5017,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		setOpsUpstreamRequestBody(c, wireBody)
 
 		// 发送请求
-		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
-		}
-		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
-		}
 		callStart := time.Now()
 		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
 			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token)
@@ -6706,7 +6657,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 	if account.IsOAuth() && s.identityService != nil {
 		// 1. 获取或创建指纹（包含随机生成的ClientID）
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
+		fp, err := s.identityService.GetOrCreateMimicFingerprint(ctx, account.ID)
 		if err != nil {
 			logger.LegacyPrintf("service.gateway", "Warning: failed to get fingerprint for account %d: %v", account.ID, err)
 			// 失败时降级为透传原始headers
@@ -6806,7 +6757,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// Haiku models are exempt from third-party detection and don't need it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
 			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = claude.FullClaudeCodeMimicryBetas()
+				requiredBetas = claude.ClaudeCodeOAuthMimicryRequestBetas()
 			}
 			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 		} else {
@@ -6829,11 +6780,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
+	if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+		if parsed := ParseMetadataUserID(uid); parsed != nil && parsed.SessionID != "" {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 		}
 	}
 
@@ -9713,6 +9662,20 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	if shouldMimicClaudeCode {
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: true}
+		if s.identityService != nil {
+			if fp, err := s.identityService.GetOrCreateMimicFingerprint(ctx, account.ID); err == nil && fp != nil {
+				mimicMPT := false
+				if s.settingService != nil {
+					_, mimicMPT, _ = s.settingService.GetGatewayForwardingSettings(ctx)
+				}
+				if !mimicMPT {
+					if uid := s.buildOAuthMetadataUserIDFromBody(ctx, account, fp, body); uid != "" {
+						normalizeOpts.injectMetadata = true
+						normalizeOpts.metadataUserID = uid
+					}
+				}
+			}
+		}
 		body, reqModel = normalizeClaudeOAuthRequestBody(body, reqModel, normalizeOpts)
 
 		body = s.rewriteMessageCacheControlIfEnabled(ctx, body)
@@ -10078,13 +10041,13 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
+	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, true
 	if s.settingService != nil {
 		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
-		fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, clientHeaders)
+		fp, err := s.identityService.GetOrCreateMimicFingerprint(ctx, account.ID)
 		if err == nil {
 			ctFingerprint = fp
 			if !ctEnableMPT {
@@ -10154,7 +10117,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			applyClaudeCodeMimicHeaders(req, false)
 
 			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			requiredBetas := append(claude.FullClaudeCodeMimicryBetas(), claude.BetaTokenCounting)
+			requiredBetas := append(claude.ClaudeCodeOAuthMimicryRequestBetas(), claude.BetaTokenCounting)
 			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, ctEffectiveDropSet))
 		} else {
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
@@ -10183,11 +10146,9 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 
 	// 同步 X-Claude-Code-Session-Id 头：取 body 中已处理的 metadata.user_id 的 session_id 覆盖
-	if sessionHeader := getHeaderRaw(req.Header, "X-Claude-Code-Session-Id"); sessionHeader != "" {
-		if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
-			if parsed := ParseMetadataUserID(uid); parsed != nil {
-				setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
-			}
+	if uid := gjson.GetBytes(body, "metadata.user_id").String(); uid != "" {
+		if parsed := ParseMetadataUserID(uid); parsed != nil && parsed.SessionID != "" {
+			setHeaderRaw(req.Header, "X-Claude-Code-Session-Id", parsed.SessionID)
 		}
 	}
 

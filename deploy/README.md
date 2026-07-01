@@ -211,7 +211,7 @@ docker compose down -v
 | `SERVER_PORT` | No | `8080` | Server port |
 | `ADMIN_EMAIL` | No | `admin@sub2api.local` | Admin email |
 | `ADMIN_PASSWORD` | No | *(auto-generated)* | Admin password |
-| `TZ` | No | `Asia/Shanghai` | Timezone |
+| `TZ` | No | `America/Los_Angeles` | Timezone |
 | `GEMINI_OAUTH_CLIENT_ID` | No | *(builtin)* | Google OAuth client ID (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_CLIENT_SECRET` | No | *(builtin)* | Google OAuth client secret (Gemini OAuth). Leave empty to use the built-in Gemini CLI client. |
 | `GEMINI_OAUTH_SCOPES` | No | *(default)* | OAuth scopes (Gemini OAuth) |

@@ -296,7 +296,7 @@ export async function clearGroupRPMOverrides(id: number): Promise<{ message: str
 
 /**
  * Get usage summary (today + cumulative cost) for all groups
- * @param timezone - IANA timezone string (e.g. "Asia/Shanghai")
+ * @param timezone - IANA timezone string (e.g. "America/Los_Angeles")
  * @returns Array of group usage summaries
  */
 export async function getUsageSummary(

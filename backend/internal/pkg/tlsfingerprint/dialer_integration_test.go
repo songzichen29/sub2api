@@ -40,7 +40,7 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 
 // TestJA3Fingerprint verifies the JA3/JA4 fingerprint matches expected value.
 // This test uses tls.peet.ws to verify the fingerprint.
-// Expected JA3 hash: 44f88fca027f27bab4bb08d4af15f23e (Node.js 24.x)
+// Expected JA3 hash: 44f88fca027f27bab4bb08d4af15f23e (Bun/Node.js v26.3.0)
 // Expected JA4: t13d1714h1_5b57614c22b0_7baf387fc6ff
 func TestJA3Fingerprint(t *testing.T) {
 	if testing.Short() {
@@ -114,7 +114,7 @@ func TestAllProfiles(t *testing.T) {
 	// These profiles are from config.yaml gateway.tls_fingerprint.profiles
 	profiles := []TestProfileExpectation{
 		{
-			// Default profile (Node.js 24.x)
+			// Default profile (Bun/Node.js v26.3.0)
 			Profile: &Profile{
 				Name:         "default_node_v24",
 				EnableGREASE: false,

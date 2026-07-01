@@ -3632,7 +3632,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
-	// cch_signing=false, claude_oauth_system_prompt_injection=true)
+	// cch_signing=true, claude_oauth_system_prompt_injection=true)
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {

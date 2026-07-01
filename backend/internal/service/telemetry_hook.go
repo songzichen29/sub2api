@@ -1,9 +1,6 @@
 package service
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -23,14 +20,14 @@ func NewTelemetryHook(svc *TelemetryService) *TelemetryHook {
 }
 
 // OnSessionStart should be called when a new session begins for an OAuth account.
-// It sends tengu_started and the feature sequence asynchronously.
-func (h *TelemetryHook) OnSessionStart(accountID int64, accountUUID, model string) (sessionID, deviceID string) {
+// The deviceID/sessionID must come from the final metadata.user_id so telemetry,
+// request body, and X-Claude-Code-Session-Id are one coherent identity.
+func (h *TelemetryHook) OnSessionStart(accountID int64, deviceID, sessionID, accountUUID, model string) (string, string) {
 	if h.svc == nil {
 		return "", ""
 	}
-	deviceID = deriveDeviceID(accountID)
-	ses := h.svc.EnsureSession(accountID, deviceID, accountUUID, model)
-	return ses.SessionID, deviceID
+	ses := h.svc.EnsureSession(accountID, deviceID, sessionID, accountUUID, model)
+	return ses.SessionID, ses.DeviceID
 }
 
 // OnSessionEnd sends tengu_exit for an account.
@@ -54,7 +51,8 @@ func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, 
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"stream": true,
+			"stream":        true,
+			"renderer_mode": "fullscreen",
 		},
 		Timestamp: time.Now(),
 		Token:     token,
@@ -78,9 +76,10 @@ func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, mode
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"duration_ms":  durationMs,
-			"status_code":  statusCode,
-			"input_tokens": tokenCount,
+			"duration_ms":   durationMs,
+			"status_code":   statusCode,
+			"input_tokens":  tokenCount,
+			"renderer_mode": "fullscreen",
 		},
 		Timestamp: time.Now(),
 		Token:     token,
@@ -104,26 +103,20 @@ func (h *TelemetryHook) OnToolUse(accountID int64, deviceID, sessionID, model, a
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"tool_name": toolName,
+			"tool_name":     toolName,
+			"renderer_mode": "fullscreen",
 		},
 		Timestamp: time.Now(),
 	})
 }
 
-// deriveDeviceID generates a stable device ID for an account.
-func deriveDeviceID(accountID int64) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("sub2api-device-seed-2026-%d", accountID)))
-	return hex.EncodeToString(hash[:])
-}
-
 // EnsureTelemetryStarted is the main integration point called from GatewayService.Forward().
-// It should be called at the beginning of Forward, for OAuth accounts with mimicClaudeCode=true.
 // Returns sessionID and deviceID for use in subsequent events.
-func EnsureTelemetryStarted(h *TelemetryHook, accountID int64, accountUUID, model string) (sessionID, deviceID string) {
+func EnsureTelemetryStarted(h *TelemetryHook, accountID int64, deviceID, sessionID, accountUUID, model string) (string, string) {
 	if h == nil {
 		return "", ""
 	}
-	return h.OnSessionStart(accountID, accountUUID, model)
+	return h.OnSessionStart(accountID, deviceID, sessionID, accountUUID, model)
 }
 
 // RecordAPIStart records telemetry before the upstream HTTP call.
@@ -152,9 +145,9 @@ func statusCodeFromResp(resp *http.Response, err error) int {
 
 // EnqueueGrowthbookExperiments reports GrowthBook experiment exposures to the
 // 1P event log as GrowthbookExperimentEvent for the account.
-func (h *TelemetryHook) EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
+func (h *TelemetryHook) EnqueueGrowthbookExperiments(accountID int64, token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
 	if h.svc == nil {
 		return
 	}
-	h.svc.EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID, exposures)
+	h.svc.EnqueueGrowthbookExperiments(accountID, token, deviceID, sessionID, accountUUID, exposures)
 }

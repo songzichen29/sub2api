@@ -2424,13 +2424,13 @@
           </div>
         </div>
 
-        <!-- Telemetry simulation (anti-detection, v2.1.196) -->
+        <!-- Telemetry simulation (anti-detection, v2.1.197) -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="flex items-center justify-between">
             <div>
-              <label class="input-label mb-0">遥测模拟 (v2.1.196)</label>
+              <label class="input-label mb-0">遥测模拟 (v2.1.197)</label>
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                向 /api/event_logging/batch 上报 tengu_* 事件（默认开）
+                向 /api/event_logging/v2/batch 上报 tengu_* 事件（默认开）
               </p>
             </div>
             <button
@@ -2891,7 +2891,7 @@ const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cchSigningEnabled = ref(true) // per-account CCH signing (default on)
-const telemetryEnabled = ref(true)  // per-account v2.1.196 telemetry (default on)
+const telemetryEnabled = ref(true)  // per-account v2.1.197 telemetry (default on)
 const growthbookProxyEnabled = ref(true) // per-account GrowthBook experiment proxy (default on)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -4482,7 +4482,7 @@ const handleSubmit = async () => {
         newExtra.enable_cch_signing = false
       }
 
-      // Per-account v2.1.196 telemetry toggle (absent = default on)
+      // Per-account v2.1.197 telemetry toggle (absent = default on)
       if (telemetryEnabled.value) {
         delete newExtra.enable_telemetry
       } else {

@@ -74,10 +74,11 @@ func extractFirstUserText(body []byte) string {
 //
 // 形态严格对齐真实 Claude Code CLI：
 //
-//	x-anthropic-billing-header: cc_version=2.1.196.{fp}; cc_entrypoint=cli; cch=00000;
+//	x-anthropic-billing-header: cc_version=2.1.197.{fp}; cc_entrypoint=cli; cch=00000;
 //
-// cch=00000 是占位符：buildUpstreamRequest 在所有 body 修改完成后，若 enableCCH
-// 开启则用 signBillingHeaderCCH 替换为 xxHash64 5-hex 签名；若关闭则由
+// Claude Code v2.1.197 的 native binary 在 attribution block 中包含
+// cch=00000; 占位符；网关在 buildUpstreamRequest 的最终 body 阶段用
+// signBillingHeaderCCH 执行等价替换。若管理员关闭 CCH signing，则由
 // stripCCHPlaceholder 移除，确保不会原样发出未签名的 cch=00000。
 //
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的

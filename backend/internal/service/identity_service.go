@@ -76,21 +76,59 @@ func NewIdentityService(cache IdentityCache) *IdentityService {
 // 如果缓存存在，检测user-agent版本，新版本则更新
 // 如果缓存不存在，生成随机ClientID并从请求头创建指纹，然后缓存
 func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID int64, headers http.Header) (*Fingerprint, error) {
+	return s.getOrCreateFingerprintWithHeaders(ctx, accountID, headers, false)
+}
+
+// GetOrCreateMimicFingerprint 获取或创建 OAuth mimic 路径专用指纹。
+// 该路径不能信任第三方客户端传入的 User-Agent / x-stainless-*，否则
+// metadata.user_id 的格式判断会和最终被强制覆盖的 claude-cli header 分裂。
+func (s *IdentityService) GetOrCreateMimicFingerprint(ctx context.Context, accountID int64) (*Fingerprint, error) {
+	return s.getOrCreateFingerprintWithHeaders(ctx, accountID, nil, true)
+}
+
+func (s *IdentityService) getOrCreateFingerprintWithHeaders(ctx context.Context, accountID int64, headers http.Header, forceDefault bool) (*Fingerprint, error) {
+	if headers == nil {
+		headers = http.Header{}
+	}
+	if forceDefault {
+		headers = http.Header{}
+	}
 	// 尝试从缓存获取指纹
 	cached, err := s.cache.GetFingerprint(ctx, accountID)
 	if err == nil && cached != nil {
 		needWrite := false
 
-		// 检查客户端的user-agent是否是更新版本
-		clientUA := headers.Get("User-Agent")
-		if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
-			// 版本升级：merge 语义 — 仅更新请求中实际携带的字段，保留缓存值
-			// 避免缺失的头被硬编码默认值覆盖（如新 CLI 版本 + 旧 SDK 默认值的不一致）
-			mergeHeadersIntoFingerprint(cached, headers)
-			needWrite = true
-			logger.LegacyPrintf("service.identity", "Updated fingerprint for account %d: %s (merge update)", accountID, clientUA)
-		} else if time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {
-			// 距上次写入超过24小时，续期TTL
+		if forceDefault {
+			// mimic 路径始终使用当前目标 CLI 指纹；保留已生成的 ClientID。
+			if cached.UserAgent != defaultFingerprint.UserAgent ||
+				cached.StainlessLang != defaultFingerprint.StainlessLang ||
+				cached.StainlessPackageVersion != defaultFingerprint.StainlessPackageVersion ||
+				cached.StainlessOS != defaultFingerprint.StainlessOS ||
+				cached.StainlessArch != defaultFingerprint.StainlessArch ||
+				cached.StainlessRuntime != defaultFingerprint.StainlessRuntime ||
+				cached.StainlessRuntimeVersion != defaultFingerprint.StainlessRuntimeVersion {
+				cached.UserAgent = defaultFingerprint.UserAgent
+				cached.StainlessLang = defaultFingerprint.StainlessLang
+				cached.StainlessPackageVersion = defaultFingerprint.StainlessPackageVersion
+				cached.StainlessOS = defaultFingerprint.StainlessOS
+				cached.StainlessArch = defaultFingerprint.StainlessArch
+				cached.StainlessRuntime = defaultFingerprint.StainlessRuntime
+				cached.StainlessRuntimeVersion = defaultFingerprint.StainlessRuntimeVersion
+				needWrite = true
+			}
+		} else {
+			// 检查客户端的user-agent是否是更新版本
+			clientUA := headers.Get("User-Agent")
+			if clientUA != "" && isNewerVersion(clientUA, cached.UserAgent) {
+				// 版本升级：merge 语义 — 仅更新请求中实际携带的字段，保留缓存值
+				// 避免缺失的头被硬编码默认值覆盖（如新 CLI 版本 + 旧 SDK 默认值的不一致）
+				mergeHeadersIntoFingerprint(cached, headers)
+				needWrite = true
+				logger.LegacyPrintf("service.identity", "Updated fingerprint for account %d: %s (merge update)", accountID, clientUA)
+			}
+		}
+
+		if !needWrite && time.Since(time.Unix(cached.UpdatedAt, 0)) > 24*time.Hour {
 			needWrite = true
 		}
 

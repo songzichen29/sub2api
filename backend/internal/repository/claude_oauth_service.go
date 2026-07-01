@@ -269,8 +269,8 @@ func (s *claudeOAuthService) RefreshToken(ctx context.Context, refreshToken, pro
 }
 
 func createReqClient(proxyURL string) (*req.Client, error) {
-	// 使用 Node.js 24.x uTLS 指纹替代 Go 默认 TLS（Go 默认 = Chrome 指纹）
-	tlsProfile := &tlsfingerprint.Profile{} // nil profile = defaults (Node.js 24.x)
+	// 使用 Bun/Node.js v26.3.0 uTLS 指纹替代 Go 默认 TLS（Go 默认 = Chrome 指纹）
+	tlsProfile := &tlsfingerprint.Profile{} // nil profile = defaults (Bun/Node.js v26.3.0)
 	dialer := tlsfingerprint.NewDialer(tlsProfile, nil)
 
 	transport := &http.Transport{

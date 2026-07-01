@@ -3,9 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +11,6 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"os"
-	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,8 +28,8 @@ const (
 	// telemetryMaxBatchSize is max events per POST.
 	telemetryMaxBatchSize = 200
 
-	// telemetryEventEndpoint is the 1P event logging endpoint.
-	telemetryEventEndpoint = "/api/event_logging/batch"
+	// telemetryEventEndpoint is the 1P event logging endpoint used by Claude Code v2.1.197.
+	telemetryEventEndpoint = "/api/event_logging/v2/batch"
 
 	// telemetryAPITimeout for POST requests.
 	telemetryAPITimeout = 10 * time.Second
@@ -56,7 +51,7 @@ const (
 type TelemetryEvent struct {
 	EventName   string                 `json:"event_name"`
 	AccountID   int64                  `json:"-"` // for routing
-	DeviceID    string                 `json:"-"` // from identity service
+	DeviceID    string                 `json:"-"` // from identity service metadata.user_id.device_id
 	SessionID   string                 `json:"-"`
 	Model       string                 `json:"-"`
 	AccountUUID string                 `json:"-"`
@@ -64,9 +59,8 @@ type TelemetryEvent struct {
 	UserType    string                 `json:"-"`
 	Extra       map[string]interface{} `json:"-"`
 	Timestamp   time.Time              `json:"-"`
-	// Token carries the per-account OAuth bearer used to authorize the
-	// batch POST to /api/event_logging/batch. Empty = use service fallback
-	// (cfg.Token) or send unauthenticated.
+	// Token is an optional per-request fallback OAuth bearer; normal gateway
+	// operation resolves auth by AccountID via TokenProvider/AccountRepo.
 	Token string `json:"-"`
 }
 
@@ -74,33 +68,32 @@ type TelemetryEvent struct {
 type TelemetryConfig struct {
 	BaseURL         string
 	Enabled         bool
-	Token           string // OAuth access token for auth
+	Token           string // optional fallback OAuth access token for auth
 	TokenType       string // "oauth" or "apikey"
 	FlushIntervalMS int
 	MaxBatchSize    int
 	MaxRetries      int
+	HTTPUpstream    HTTPUpstream
+	TokenProvider   *ClaudeTokenProvider
+	AccountRepo     AccountRepository
+	TLSProfile      *tlsfingerprint.Profile
 }
 
 // TelemetryService manages periodic batching and sending of telemetry events.
 type TelemetryService struct {
-	cfg          TelemetryConfig
-	eventCh      chan TelemetryEvent
-	experimentCh chan telemetryWireEvent
-	done         chan struct{}
-	wg           sync.WaitGroup
-	mu           sync.Mutex
+	cfg      TelemetryConfig
+	eventCh  chan TelemetryEvent
+	wireCh   chan telemetryWireEvent
+	done     chan struct{}
+	wg       sync.WaitGroup
+	mu       sync.Mutex
+	stopOnce sync.Once
 	batch    []telemetryWireEvent
-	attempts int
 	// Per-account session tracking
 	sessionsMu sync.RWMutex
 	sessions   map[int64]*TelemetrySession
 	// Process metrics simulator state
 	processStart time.Time
-	baseMemory   int64
-	// httpClient uses the Node.js 24.x uTLS fingerprint (R-P2), matching the
-	// upstream API/OAuth paths so telemetry to api.anthropic.com does not leak
-	// Go's default crypto/tls fingerprint.
-	httpClient *http.Client
 }
 
 // TelemetrySession tracks state for a single account's "Claude Code session".
@@ -109,6 +102,7 @@ type TelemetrySession struct {
 	SessionID    string
 	DeviceID     string
 	Model        string
+	AccountUUID  string
 	StartedAt    time.Time
 	APIRequests  int64
 	FeaturesSent bool
@@ -117,72 +111,60 @@ type TelemetrySession struct {
 
 // telemetryWireEvent is the JSON shape sent to the endpoint.
 type telemetryWireEvent struct {
+	AccountID int64  `json:"-"`
+	Token     string `json:"-"`
 	EventType string `json:"event_type"`
 	// EventData is the serialized event_data payload. For ClaudeCodeInternalEvent
 	// it is a marshaled telemetryPayload; for GrowthbookExperimentEvent it is a
 	// marshaled growthbookExperimentEventData.
 	EventData json.RawMessage `json:"event_data"`
-	// Token is the per-account OAuth bearer for this event (not serialized).
-	// sendBatch partitions events by Token so each POST carries the correct
-	// Authorization header.
-	Token string `json:"-"`
 }
 
 type telemetryPayload struct {
-	EventName          string          `json:"event_name,omitempty"`
-	EventID            string          `json:"event_id"`
-	ClientTimestamp    string          `json:"client_timestamp"`
-	DeviceID           string          `json:"device_id,omitempty"`
-	SessionID          string          `json:"session_id,omitempty"`
-	Model              string          `json:"model,omitempty"`
-	UserType           string          `json:"user_type,omitempty"`
-	Betas              string          `json:"betas,omitempty"`
-	Entrypoint         string          `json:"entrypoint,omitempty"`
-	IsInteractive      bool            `json:"is_interactive"`
-	ClientType         string          `json:"client_type,omitempty"`
-	Env                *telemetryEnv   `json:"env,omitempty"`
-	Process            string          `json:"process,omitempty"` // base64(processMetricsJSON)
-	Auth               *telemetryAuth  `json:"auth,omitempty"`
-	AdditionalMetadata string          `json:"additional_metadata,omitempty"` // base64(json)
-	Core               telemetryCore   `json:"core,omitempty"`
-	Email              string          `json:"email,omitempty"`
-}
-
-type telemetryCore struct {
-	SessionID   string `json:"session_id"`
-	Model       string `json:"model"`
-	UserType    string `json:"user_type"`
-	Betas       string `json:"betas,omitempty"`
-	IsInteractive bool   `json:"is_interactive"`
-	ClientType  string `json:"client_type"`
+	EventName          string         `json:"event_name,omitempty"`
+	EventID            string         `json:"event_id"`
+	ClientTimestamp    string         `json:"client_timestamp"`
+	DeviceID           string         `json:"device_id,omitempty"`
+	SessionID          string         `json:"session_id,omitempty"`
+	Model              string         `json:"model,omitempty"`
+	UserType           string         `json:"user_type,omitempty"`
+	Betas              string         `json:"betas,omitempty"`
+	Entrypoint         string         `json:"entrypoint,omitempty"`
+	IsInteractive      bool           `json:"is_interactive"`
+	ClientType         string         `json:"client_type,omitempty"`
+	Env                *telemetryEnv  `json:"env,omitempty"`
+	Process            string         `json:"process,omitempty"` // base64(processMetricsJSON)
+	Auth               *telemetryAuth `json:"auth,omitempty"`
+	AdditionalMetadata string         `json:"additional_metadata,omitempty"` // base64(json)
+	Email              string         `json:"email,omitempty"`
 }
 
 type telemetryEnv struct {
-	Platform              string   `json:"platform"`
-	PlatformRaw           string   `json:"platform_raw"`
-	Arch                  string   `json:"arch"`
-	NodeVersion           string   `json:"node_version"`
-	Terminal              string   `json:"terminal"`
-	PackageManagers       string   `json:"package_managers"`
-	Runtimes              string   `json:"runtimes"`
-	IsRunningWithBun      bool     `json:"is_running_with_bun"`
-	IsCi                  bool     `json:"is_ci"`
-	IsClaubbit            bool     `json:"is_claubbit"`
-	IsGithubAction        bool     `json:"is_github_action"`
-	IsClaudeCodeAction    bool     `json:"is_claude_code_action"`
-	IsClaudeAiAuth        bool     `json:"is_claude_ai_auth"`
-	IsClaudeCodeRemote    bool     `json:"is_claude_code_remote"`
-	IsConductor           bool     `json:"is_conductor"`
-	IsLocalAgentMode      bool     `json:"is_local_agent_mode"`
-	Version               string   `json:"version"`
-	VersionBase           string   `json:"version_base,omitempty"`
-	BuildTime             string   `json:"build_time"`
-	DeploymentEnvironment string   `json:"deployment_environment"`
-	Shell                 string   `json:"shell,omitempty"`
-	Vcs                   string   `json:"vcs,omitempty"`
-	LinuxDistroID         string   `json:"linux_distro_id,omitempty"`
-	LinuxDistroVersion    string   `json:"linux_distro_version,omitempty"`
-	LinuxKernel           string   `json:"linux_kernel,omitempty"`
+	Platform              string `json:"platform"`
+	NodeVersion           string `json:"node_version"`
+	Terminal              string `json:"terminal"`
+	PackageManagers       string `json:"package_managers"`
+	Runtimes              string `json:"runtimes"`
+	IsRunningWithBun      bool   `json:"is_running_with_bun"`
+	IsCi                  bool   `json:"is_ci"`
+	IsClaubbit            bool   `json:"is_claubbit"`
+	IsGithubAction        bool   `json:"is_github_action"`
+	IsClaudeCodeAction    bool   `json:"is_claude_code_action"`
+	IsClaudeAiAuth        bool   `json:"is_claude_ai_auth"`
+	Version               string `json:"version"`
+	Arch                  string `json:"arch"`
+	IsClaudeCodeRemote    bool   `json:"is_claude_code_remote"`
+	DeploymentEnvironment string `json:"deployment_environment"`
+	IsConductor           bool   `json:"is_conductor"`
+	VersionBase           string `json:"version_base,omitempty"`
+	BuildTime             string `json:"build_time"`
+	IsLocalAgentMode      bool   `json:"is_local_agent_mode"`
+	LinuxDistroID         string `json:"linux_distro_id,omitempty"`
+	LinuxDistroVersion    string `json:"linux_distro_version,omitempty"`
+	LinuxKernel           string `json:"linux_kernel,omitempty"`
+	Vcs                   string `json:"vcs,omitempty"`
+	PlatformRaw           string `json:"platform_raw"`
+	Shell                 string `json:"shell,omitempty"`
 }
 
 type telemetryAuth struct {
@@ -192,15 +174,15 @@ type telemetryAuth struct {
 
 // processMetricsJSON is the shape marshal'd then base64'd into the Process field.
 type processMetricsJSON struct {
-	Uptime           float64       `json:"uptime"`
-	RSS              int64         `json:"rss"`
-	HeapTotal        int64         `json:"heapTotal"`
-	HeapUsed         int64         `json:"heapUsed"`
-	External         int64         `json:"external"`
-	ArrayBuffers     int64         `json:"arrayBuffers"`
-	ConstrainedMemory int64        `json:"constrainedMemory"`
-	CPUUsage         cpuUsage      `json:"cpuUsage"`
-	CPUPercent       float64       `json:"cpuPercent"`
+	Uptime            float64  `json:"uptime"`
+	RSS               int64    `json:"rss"`
+	HeapTotal         int64    `json:"heapTotal"`
+	HeapUsed          int64    `json:"heapUsed"`
+	External          int64    `json:"external"`
+	ArrayBuffers      int64    `json:"arrayBuffers"`
+	ConstrainedMemory int64    `json:"constrainedMemory"`
+	CPUUsage          cpuUsage `json:"cpuUsage"`
+	CPUPercent        *float64 `json:"cpuPercent,omitempty"`
 }
 
 type cpuUsage struct {
@@ -219,24 +201,13 @@ func NewTelemetryService(cfg TelemetryConfig) *TelemetryService {
 	if cfg.MaxRetries <= 0 {
 		cfg.MaxRetries = telemetryMaxRetries
 	}
-	tlsDialer := tlsfingerprint.NewDialer(&tlsfingerprint.Profile{}, nil) // defaults = Node.js 24.x
 	s := &TelemetryService{
 		cfg:          cfg,
 		eventCh:      make(chan TelemetryEvent, telemetryMaxQueueSize),
-		experimentCh: make(chan telemetryWireEvent, telemetryMaxQueueSize),
+		wireCh:       make(chan telemetryWireEvent, telemetryMaxQueueSize),
 		done:         make(chan struct{}),
 		sessions:     make(map[int64]*TelemetrySession),
 		processStart: time.Now(),
-		baseMemory:   int64(100 + rand.Intn(80)) << 20, // 100-180 MB base
-		httpClient: &http.Client{
-			Timeout: telemetryAPITimeout,
-			Transport: &http.Transport{
-				DialTLSContext:    tlsDialer.DialTLSContext,
-				ForceAttemptHTTP2: false,
-				MaxIdleConns:      10,
-				IdleConnTimeout:   90 * time.Second,
-			},
-		},
 	}
 	return s
 }
@@ -252,11 +223,13 @@ func (s *TelemetryService) Start(ctx context.Context) {
 
 // Stop gracefully shuts down the telemetry service.
 func (s *TelemetryService) Stop() {
-	if !s.cfg.Enabled {
+	if s == nil || !s.cfg.Enabled {
 		return
 	}
-	close(s.done)
-	s.wg.Wait()
+	s.stopOnce.Do(func() {
+		close(s.done)
+		s.wg.Wait()
+	})
 }
 
 // Send enqueues a telemetry event (non-blocking, drops on full queue).
@@ -273,22 +246,37 @@ func (s *TelemetryService) Send(ev TelemetryEvent) {
 
 // EnsureSession creates or returns an existing session for this account.
 // Also sends tengu_started if this is the first request in the session.
-func (s *TelemetryService) EnsureSession(accountID int64, deviceID, accountUUID, model string) *TelemetrySession {
+func (s *TelemetryService) EnsureSession(accountID int64, deviceID, sessionID, accountUUID, model string) *TelemetrySession {
 	s.sessionsMu.Lock()
 	defer s.sessionsMu.Unlock()
 
 	if ses, ok := s.sessions[accountID]; ok {
+		if deviceID != "" {
+			ses.DeviceID = deviceID
+		}
+		if sessionID != "" {
+			ses.SessionID = sessionID
+		}
+		if model != "" {
+			ses.Model = model
+		}
+		if accountUUID != "" {
+			ses.AccountUUID = accountUUID
+		}
 		ses.APIRequests++
 		return ses
 	}
 
-	sessionID := uuid.NewString()
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
 	ses := &TelemetrySession{
-		AccountID: accountID,
-		SessionID: sessionID,
-		DeviceID:  deviceID,
-		Model:     model,
-		StartedAt: time.Now(),
+		AccountID:   accountID,
+		SessionID:   sessionID,
+		DeviceID:    deviceID,
+		Model:       model,
+		AccountUUID: accountUUID,
+		StartedAt:   time.Now(),
 	}
 	s.sessions[accountID] = ses
 
@@ -329,10 +317,11 @@ func (s *TelemetryService) MarkExit(accountID int64) {
 		DeviceID:    ses.DeviceID,
 		SessionID:   ses.SessionID,
 		Model:       ses.Model,
-		AccountUUID: "", // will be filled by buildPayload
+		AccountUUID: ses.AccountUUID,
 		Extra: map[string]interface{}{
 			"last_session_duration_sec": math.Round(sessionDuration*10) / 10,
 			"last_session_api_requests": ses.APIRequests,
+			"renderer_mode":             "fullscreen",
 		},
 		Timestamp: time.Now(),
 	})
@@ -348,8 +337,9 @@ func (s *TelemetryService) OnAPIRequest(accountID int64, deviceID, sessionID, mo
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"duration_ms": durationMs,
-			"status_code": statusCode,
+			"duration_ms":   durationMs,
+			"status_code":   statusCode,
+			"renderer_mode": "fullscreen",
 		},
 		Timestamp: time.Now(),
 	})
@@ -357,7 +347,8 @@ func (s *TelemetryService) OnAPIRequest(accountID int64, deviceID, sessionID, mo
 
 // sendFeatureSequence sends the canonical Claude Code feature event sequence.
 func (s *TelemetryService) sendFeatureSequence(accountID int64, deviceID, sessionID, model, accountUUID string) {
-	// Real Claude Code sends these in ~300ms at startup.
+	// Real Claude Code sends these around startup. Keep names conservative: they
+	// occur frequently in the local telemetry samples and carry only feature_name.
 	features := []string{
 		"skill_load_commands_dir",
 		"plugin_load_manifest",
@@ -378,14 +369,14 @@ func (s *TelemetryService) sendFeatureSequence(accountID int64, deviceID, sessio
 			Model:       model,
 			AccountUUID: accountUUID,
 			Extra: map[string]interface{}{
-				"feature_name": f,
+				"feature_name":  f,
+				"renderer_mode": "fullscreen",
 			},
 			Timestamp: time.Now(),
 		})
 		time.Sleep(time.Duration(5+rand.Intn(30)) * time.Millisecond)
 	}
 
-	// Also send a few more events that real CLI sends.
 	s.Send(TelemetryEvent{
 		EventName:   "tengu_shell_set_cwd",
 		AccountID:   accountID,
@@ -393,14 +384,21 @@ func (s *TelemetryService) sendFeatureSequence(accountID int64, deviceID, sessio
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Timestamp:   time.Now(),
+		Extra: map[string]interface{}{
+			"renderer_mode": "fullscreen",
+		},
+		Timestamp: time.Now(),
 	})
 }
 
 // loop is the main background worker.
 func (s *TelemetryService) loop(ctx context.Context) {
 	defer s.wg.Done()
-	ticker := time.NewTicker(telemetryBatchInterval)
+	interval := telemetryBatchInterval
+	if s.cfg.FlushIntervalMS > 0 {
+		interval = time.Duration(s.cfg.FlushIntervalMS) * time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -418,8 +416,7 @@ func (s *TelemetryService) loop(ctx context.Context) {
 				s.flushLocked()
 			}
 			s.mu.Unlock()
-		case ev := <-s.experimentCh:
-			// Pre-built GrowthbookExperimentEvent wire events (no buildPayload).
+		case ev := <-s.wireCh:
 			s.mu.Lock()
 			s.batch = append(s.batch, ev)
 			if len(s.batch) >= s.cfg.MaxBatchSize {
@@ -461,94 +458,181 @@ func (s *TelemetryService) sendBatch(events []telemetryWireEvent, attempt int) {
 	if len(events) == 0 {
 		return
 	}
-	// Partition events by auth token so each batch POST carries the correct
-	// per-account OAuth bearer. Events with an empty token fall back to the
-	// service-level cfg.Token; if that is also empty they are sent anonymously.
-	byToken := make(map[string][]telemetryWireEvent)
-	order := make([]string, 0, 2)
-	for _, ev := range events {
-		tok := ev.Token
-		if tok == "" {
-			tok = s.cfg.Token
-		}
-		if _, ok := byToken[tok]; !ok {
-			order = append(order, tok)
-		}
-		byToken[tok] = append(byToken[tok], ev)
-	}
-	for _, tok := range order {
-		s.sendGroup(byToken[tok], tok, attempt)
+
+	// 1P telemetry auth is account-scoped. A single global queue can collect
+	// events from different OAuth accounts before a flush; never send those under
+	// the first account's bearer token. Partition while preserving first-seen
+	// account order so every POST uses the matching account token/proxy.
+	for _, group := range groupTelemetryEventsByAccount(events) {
+		s.sendAccountBatch(group.accountID, group.token, group.events, attempt)
 	}
 }
 
-// sendGroup POSTs a single homogeneously-authenticated batch of events.
-func (s *TelemetryService) sendGroup(events []telemetryWireEvent, token string, attempt int) {
-	if len(events) == 0 {
-		return
-	}
+type telemetryAccountEventGroup struct {
+	accountID int64
+	token     string
+	events    []telemetryWireEvent
+}
 
-	payload := map[string]interface{}{
-		"events": events,
+func groupTelemetryEventsByAccount(events []telemetryWireEvent) []telemetryAccountEventGroup {
+	groups := make([]telemetryAccountEventGroup, 0, 1)
+	index := make(map[int64]int)
+	for _, ev := range events {
+		accountID := ev.AccountID
+		if pos, ok := index[accountID]; ok {
+			if groups[pos].token == "" && ev.Token != "" {
+				groups[pos].token = ev.Token
+			}
+			groups[pos].events = append(groups[pos].events, ev)
+			continue
+		}
+		index[accountID] = len(groups)
+		groups = append(groups, telemetryAccountEventGroup{accountID: accountID, token: ev.Token, events: []telemetryWireEvent{ev}})
 	}
+	return groups
+}
+
+func (s *TelemetryService) sendAccountBatch(accountID int64, token string, events []telemetryWireEvent, attempt int) {
+	payload := map[string]interface{}{"events": events}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		slog.Error("telemetry: failed to marshal batch", "error", err)
 		return
 	}
 
+	if err := s.doTelemetryPOST(context.Background(), body, accountID, token, true); err != nil {
+		if attempt < s.cfg.MaxRetries {
+			delay := telemetryBackoffBase * (1 << attempt)
+			if delay > telemetryBackoffMax {
+				delay = telemetryBackoffMax
+			}
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+			s.sendAccountBatch(accountID, token, events, attempt+1)
+		}
+	}
+}
+
+func (s *TelemetryService) doTelemetryPOST(ctx context.Context, body []byte, accountID int64, eventToken string, withAuth bool) error {
 	baseURL := s.cfg.BaseURL
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
 	}
-	url := baseURL + telemetryEventEndpoint
+	url := strings.TrimRight(baseURL, "/") + telemetryEventEndpoint
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		return
+		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "claude-code/"+claude.CLICurrentVersion)
-	req.Header.Set("x-service-name", "claude-code")
+	applyTelemetryHeaders(req)
 
-	// Per-account OAuth bearer (preferred) or service-level fallback token.
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
+	proxyURL, concurrency := s.resolveTelemetryProxy(ctx, accountID)
 
-	client := s.httpClient
-	if client == nil {
-		client = &http.Client{Timeout: telemetryAPITimeout}
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if attempt < s.cfg.MaxRetries {
-			delay := telemetryBackoffBase * (1 << attempt)
-			if delay > telemetryBackoffMax {
-				delay = telemetryBackoffMax
+	if withAuth {
+		token, tokenType := s.resolveAuthToken(ctx, accountID, eventToken)
+		if token != "" {
+			if tokenType == "apikey" {
+				setHeaderRaw(req.Header, "x-api-key", token)
+			} else {
+				setHeaderRaw(req.Header, "Authorization", "Bearer "+token)
+				setHeaderRaw(req.Header, "anthropic-beta", claude.BetaOAuth)
 			}
-			time.Sleep(time.Duration(delay) * time.Millisecond)
-			s.sendGroup(events, token, attempt+1)
 		}
-		return
+	}
+
+	resp, err := s.doHTTPRequest(req, accountID, proxyURL, concurrency)
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 
-	// On 401, retry once without auth.
-	if resp.StatusCode == 401 && token != "" && attempt == 0 {
-		s.sendGroup(events, "", attempt+1)
-		return
+	if resp.StatusCode == http.StatusUnauthorized && withAuth {
+		return s.doTelemetryPOST(ctx, body, accountID, "", false)
 	}
-
 	if resp.StatusCode >= 400 {
-		if attempt < s.cfg.MaxRetries {
-			delay := telemetryBackoffBase * (1 << attempt)
-			if delay > telemetryBackoffMax {
-				delay = telemetryBackoffMax
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("telemetry send failed (status %d): %s", resp.StatusCode, string(b))
+	}
+	return nil
+}
+
+func (s *TelemetryService) resolveAuthToken(ctx context.Context, accountID int64, eventToken string) (string, string) {
+	if accountID > 0 && s.cfg.AccountRepo != nil {
+		if account, err := s.cfg.AccountRepo.GetByID(ctx, accountID); err == nil && account != nil {
+			if account.Type == AccountTypeOAuth && s.cfg.TokenProvider != nil {
+				if token, err := s.cfg.TokenProvider.GetAccessToken(ctx, account); err == nil && strings.TrimSpace(token) != "" {
+					return token, "oauth"
+				}
 			}
-			time.Sleep(time.Duration(delay) * time.Millisecond)
-			s.sendGroup(events, token, attempt+1)
+			if account.IsOAuth() {
+				if token := strings.TrimSpace(account.GetCredential("access_token")); token != "" {
+					return token, "oauth"
+				}
+			}
+			if account.Type == AccountTypeAPIKey {
+				if token := strings.TrimSpace(account.GetCredential("api_key")); token != "" {
+					return token, "apikey"
+				}
+			}
+			if account.Type == AccountTypeServiceAccount && s.cfg.TokenProvider != nil {
+				if token, err := s.cfg.TokenProvider.GetAccessToken(ctx, account); err == nil && strings.TrimSpace(token) != "" {
+					return token, "oauth"
+				}
+			}
 		}
 	}
+	if strings.TrimSpace(eventToken) != "" {
+		return strings.TrimSpace(eventToken), "oauth"
+	}
+	if strings.TrimSpace(s.cfg.Token) == "" {
+		return "", ""
+	}
+	return s.cfg.Token, s.cfg.TokenType
+}
+
+func (s *TelemetryService) resolveTelemetryProxy(ctx context.Context, accountID int64) (string, int) {
+	if accountID <= 0 || s.cfg.AccountRepo == nil {
+		return "", 0
+	}
+	account, err := s.cfg.AccountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return "", 0
+	}
+	if account.ProxyID != nil && account.Proxy != nil && account.Proxy.IsActive() {
+		return account.Proxy.URL(), account.Concurrency
+	}
+	return "", account.Concurrency
+}
+
+func (s *TelemetryService) doHTTPRequest(req *http.Request, accountID int64, proxyURL string, concurrency int) (*http.Response, error) {
+	if s.cfg.HTTPUpstream != nil {
+		return s.cfg.HTTPUpstream.DoWithTLS(req, proxyURL, accountID, concurrency, s.telemetryTLSProfile())
+	}
+	dialer := tlsfingerprint.NewDialer(s.telemetryTLSProfile(), nil)
+	client := &http.Client{
+		Timeout: telemetryAPITimeout,
+		Transport: &http.Transport{
+			DialTLSContext:     dialer.DialTLSContext,
+			DisableCompression: true,
+			ForceAttemptHTTP2:  false,
+			MaxIdleConns:       10,
+			IdleConnTimeout:    90 * time.Second,
+		},
+	}
+	return client.Do(req)
+}
+
+func (s *TelemetryService) telemetryTLSProfile() *tlsfingerprint.Profile {
+	if s.cfg.TLSProfile != nil {
+		return s.cfg.TLSProfile
+	}
+	return &tlsfingerprint.Profile{Name: "Built-in Default (Bun/Node.js v26.3.0)"}
+}
+
+func applyTelemetryHeaders(req *http.Request) {
+	setHeaderRaw(req.Header, "Content-Type", "application/json")
+	setHeaderRaw(req.Header, "User-Agent", "claude-code/"+claude.CLICurrentVersion)
+	setHeaderRaw(req.Header, "x-service-name", "claude-code")
+	setHeaderRaw(req.Header, "Accept-Encoding", "gzip, deflate, br")
 }
 
 // buildPayload converts an internal TelemetryEvent to the wire format.
@@ -558,7 +642,6 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		now = time.Now()
 	}
 
-	// Derive device ID from account if not set.
 	deviceID := ev.DeviceID
 	if deviceID == "" {
 		deviceID = s.accountDeviceID(ev.AccountID)
@@ -568,167 +651,129 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		sessionID = s.accountSessionID(ev.AccountID)
 	}
 
-	// Build betas for mimicry.
-	betas := claude.FullClaudeCodeMimicryBetas()
-	betasStr := ""
-	for i, b := range betas {
-		if i > 0 {
-			betasStr += ","
-		}
-		betasStr += b
-	}
-
-	// Generate realistic process metrics.
-	processMetrics := s.generateProcessMetrics()
+	betasStr := strings.Join(claude.FullClaudeCodeMimicryBetas(), ",")
 
 	p := telemetryPayload{
 		EventName:       ev.EventName,
 		EventID:         uuid.NewString(),
-		ClientTimestamp: now.UTC().Format(time.RFC3339Nano),
+		ClientTimestamp: now.UTC().Format("2006-01-02T15:04:05.000Z"),
 		DeviceID:        deviceID,
 		SessionID:       sessionID,
 		Model:           ev.Model,
-		UserType:        "external",
+		UserType:        defaultString(ev.UserType, "external"),
 		Betas:           betasStr,
+		Env:             s.buildEnv(),
 		Entrypoint:      "cli",
 		IsInteractive:   true,
 		ClientType:      "cli",
-		Env:             s.buildEnv(),
-		Process:         processMetrics,
-		Core: telemetryCore{
-			SessionID:     sessionID,
-			Model:         ev.Model,
-			UserType:      "external",
-			Betas:         betasStr,
-			IsInteractive: true,
-			ClientType:    "cli",
-		},
+		Process:         s.generateProcessMetrics(),
 	}
 
-	if ev.AccountUUID != "" {
-		p.Auth = &telemetryAuth{AccountUUID: ev.AccountUUID}
+	if ev.AccountUUID != "" || ev.OrgUUID != "" {
+		p.Auth = &telemetryAuth{AccountUUID: ev.AccountUUID, OrganizationUUID: ev.OrgUUID}
 	}
 
-	// Embed extra data as additional_metadata (base64 JSON).
-	if len(ev.Extra) > 0 {
-		extraJSON, _ := json.Marshal(ev.Extra)
+	additional := map[string]interface{}{"renderer_mode": "fullscreen"}
+	for k, v := range ev.Extra {
+		if strings.HasPrefix(k, "_PROTO_") {
+			continue
+		}
+		additional[k] = v
+	}
+	if len(additional) > 0 {
+		extraJSON, _ := json.Marshal(additional)
 		p.AdditionalMetadata = base64.StdEncoding.EncodeToString(extraJSON)
 	}
 
 	raw, _ := json.Marshal(p)
-	return telemetryWireEvent{
-		EventType: "ClaudeCodeInternalEvent",
-		EventData: raw,
-		Token:     ev.Token,
-	}
+	return telemetryWireEvent{AccountID: ev.AccountID, Token: ev.Token, EventType: "ClaudeCodeInternalEvent", EventData: raw}
 }
-
 func (s *TelemetryService) buildEnv() *telemetryEnv {
-	kernel := detectKernelVersion()
-	distroID, distroVer := detectLinuxDistro()
-
 	return &telemetryEnv{
 		Platform:              "linux",
-		PlatformRaw:           "linux",
-		Arch:                  runtime.GOARCH,
-		NodeVersion:           "v26.3.0",  // v2.1.196 uses Node v26.3.0 (Bun's bundled Node compat)
-		Terminal:              "unknown",
+		NodeVersion:           "v26.3.0",
+		Terminal:              "gnome-terminal",
 		PackageManagers:       "npm",
 		Runtimes:              "node",
-		IsRunningWithBun:      true,       // CRITICAL: Bun-compiled binary
+		IsRunningWithBun:      true,
 		IsCi:                  false,
 		IsClaubbit:            false,
 		IsGithubAction:        false,
 		IsClaudeCodeAction:    false,
-		IsClaudeAiAuth:        false,      // OAuth user (not API key)
-		IsClaudeCodeRemote:    false,
-		IsConductor:           false,
+		IsClaudeAiAuth:        false,
 		Version:               claude.CLICurrentVersion,
+		Arch:                  "x64",
+		IsClaudeCodeRemote:    false,
+		DeploymentEnvironment: "unknown-linux",
+		IsConductor:           false,
 		VersionBase:           claude.CLICurrentVersion,
-		BuildTime:             "2026-06-29T00:53:27Z",
-		DeploymentEnvironment: detectDeploymentEnv(),
-		Shell:                 "/bin/bash",
-		Vcs:                   "git",
-		LinuxDistroID:         distroID,
-		LinuxDistroVersion:    distroVer,
-		LinuxKernel:           kernel,
+		BuildTime:             claude.CLIBuildTime,
 		IsLocalAgentMode:      false,
+		LinuxDistroID:         "ubuntu",
+		LinuxDistroVersion:    "22.04",
+		LinuxKernel:           "6.2.0-26-generic",
+		Vcs:                   "git",
+		PlatformRaw:           "linux",
+		Shell:                 "bash",
 	}
 }
 
 // generateProcessMetrics returns base64-encoded realistic Bun-style process metrics JSON.
-// IMPORTANT: Claude Code v2.1.196 uses Bun (JSC), not Node.js (V8).
-// Bun's memory model: heapUsed can EXCEED heapTotal (unlike Node.js).
-// Pattern: heapUsed ~108MB > heapTotal ~59MB, rss ~314MB (real data from v2.1.196).
+// IMPORTANT: Claude Code v2.1.197 uses Bun (JSC), not Node.js (V8).
+// Bun's memory model: heapUsed can exceed heapTotal.
 func (s *TelemetryService) generateProcessMetrics() string {
 	uptime := time.Since(s.processStart).Seconds()
+	if uptime < 0 {
+		uptime = 0
+	}
 
-	// Bun/JSC memory pattern: heapUsed often exceeds heapTotal
-	timeFactor := uptime / 3600.0
-	baseHeapTotal := int64(50 + rand.Intn(30)) << 20   // 50-80 MB
-	baseHeapUsed  := int64(90 + rand.Intn(50)) << 20   // 90-140 MB (> heapTotal)
-	baseRSS       := int64(250 + rand.Intn(100)) << 20 // 250-350 MB
+	baseHeapTotal := int64(50+rand.Intn(30)) << 20 // 50-80 MB
+	baseHeapUsed := int64(95+rand.Intn(65)) << 20  // 95-160 MB (> heapTotal often)
+	baseRSS := int64(280+rand.Intn(130)) << 20     // 280-410 MB
+	growth := uptime / 7200.0
 
-	// Small growth over time
-	heapTotal := baseHeapTotal + int64(float64(baseHeapTotal)*0.01*timeFactor)
-	heapUsed  := baseHeapUsed + int64(float64(baseHeapUsed)*0.015*timeFactor)
-	rss       := baseRSS + int64(float64(baseRSS)*0.01*timeFactor) + int64(rand.Intn(20<<20))
-
-	// external and arrayBuffers
-	external     := int64(30 + rand.Intn(50)) << 20  // 30-80 MB
-	arrayBuffers := int64(2 + rand.Intn(8)) << 20    // 2-10 MB
-
-	// CPU: idle ~3-8%, API calls spike to 20-80%
-	cpuBase := float64(runtime.NumCPU()) * 2.0
-	cpuPercent := cpuBase + float64(rand.Intn(15)) + 10*math.Sin(uptime/15.0)
-
-	// constrainedMemory = system total memory (typically 128GB+)
-	constrainedMemory := getSystemMemory()
+	heapTotal := baseHeapTotal + int64(float64(baseHeapTotal)*0.01*growth)
+	heapUsed := baseHeapUsed + int64(float64(baseHeapUsed)*0.015*growth)
+	rss := baseRSS + int64(float64(baseRSS)*0.01*growth) + int64(rand.Intn(24<<20))
+	external := int64(45+rand.Intn(75)) << 20
+	arrayBuffers := int64(6+rand.Intn(26)) << 20
+	constrainedMemory := int64(134686142464)
 
 	pm := processMetricsJSON{
-		Uptime:            math.Round(uptime*100) / 100,
+		Uptime:            math.Round(uptime*1e6) / 1e6,
 		RSS:               rss,
 		HeapTotal:         heapTotal,
-		HeapUsed:          heapUsed,    // NOTE: Bun: heapUsed > heapTotal is NORMAL
+		HeapUsed:          heapUsed,
 		External:          external,
 		ArrayBuffers:      arrayBuffers,
 		ConstrainedMemory: constrainedMemory,
 		CPUUsage: cpuUsage{
-			User:   int64(uptime * 1e6 * float64(runtime.NumCPU()) * 0.25),
-			System: int64(uptime * 1e6 * float64(runtime.NumCPU()) * 0.05),
+			User:   int64(uptime*180000) + int64(rand.Intn(250000)),
+			System: int64(uptime*45000) + int64(rand.Intn(90000)),
 		},
-		CPUPercent: math.Round(cpuPercent*100) / 100,
+	}
+	// Real samples include cpuPercent sparsely (~31%).
+	if rand.Intn(100) < 31 {
+		cpuPercent := math.Round((2.5+rand.Float64()*22.5)*100) / 100
+		pm.CPUPercent = &cpuPercent
 	}
 
 	b, _ := json.Marshal(pm)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// getSystemMemory returns the system's total memory in bytes.
-func getSystemMemory() int64 {
-	// Try to read from /proc/meminfo on Linux
-	data, err := os.ReadFile("/proc/meminfo")
-	if err != nil {
-		return 128 << 30 // fallback 128GB
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "MemTotal:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 2 {
-				kb, err := strconv.ParseInt(fields[1], 10, 64)
-				if err == nil {
-					return kb * 1024
-				}
-			}
-		}
-	}
-	return 128 << 30
-}
-
-// accountDeviceID derives a stable device ID from account ID.
+// accountDeviceID is a last-resort fallback. Gateway integration passes the
+// parsed metadata.user_id.device_id so telemetry, header, and body share one value.
 func (s *TelemetryService) accountDeviceID(accountID int64) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("sub2api-device-%d", accountID)))
-	return hex.EncodeToString(hash[:])
+	if accountID <= 0 {
+		return ""
+	}
+	s.sessionsMu.RLock()
+	defer s.sessionsMu.RUnlock()
+	if ses, ok := s.sessions[accountID]; ok {
+		return ses.DeviceID
+	}
+	return ""
 }
 
 // accountSessionID returns the current session ID for an account.
@@ -741,54 +786,18 @@ func (s *TelemetryService) accountSessionID(accountID int64) string {
 	return uuid.NewString()
 }
 
-// detectDeploymentEnv returns a deployment environment string.
-// Deliberately does NOT embed the host hostname — that would leak real
-// infrastructure identity in telemetry. Returns a generic value.
-func detectDeploymentEnv() string {
-	return "unknown"
-}
-
-// detectKernelVersion reads the kernel version from /proc/version.
-func detectKernelVersion() string {
-	data, err := os.ReadFile("/proc/version")
-	if err != nil {
-		return "6.2.0"
-	}
-	fields := bytes.Fields(data)
-	if len(fields) >= 3 {
-		return string(fields[2])
-	}
-	return "6.2.0"
-}
-
-// detectLinuxDistro reads /etc/os-release for distro info.
-func detectLinuxDistro() (id, version string) {
-	data, err := os.ReadFile("/etc/os-release")
-	if err != nil {
-		return "ubuntu", "22.04"
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, "ID=") {
-			id = strings.Trim(strings.TrimPrefix(line, "ID="), `"`)
-		}
-		if strings.HasPrefix(line, "VERSION_ID=") {
-			version = strings.Trim(strings.TrimPrefix(line, "VERSION_ID="), `"`)
-		}
-	}
-	if id == "" {
-		id = "ubuntu"
-	}
-	if version == "" {
-		version = "22.04"
-	}
-	return id, version
-}
-
 func boolToEvent(ok bool, yes, no string) string {
 	if ok {
 		return yes
 	}
 	return no
+}
+
+func defaultString(v, fallback string) string {
+	if v != "" {
+		return v
+	}
+	return fallback
 }
 
 // --- HTTP client helper for the telemetry endpoint ---
@@ -798,115 +807,32 @@ func sendTelemetry(baseURL, token, tokenType string, events []telemetryWireEvent
 	if len(events) == 0 {
 		return nil
 	}
-	if baseURL == "" {
-		baseURL = "https://api.anthropic.com"
-	}
-	url := baseURL + telemetryEventEndpoint
-
+	s := NewTelemetryService(TelemetryConfig{Enabled: true, BaseURL: baseURL, Token: token, TokenType: tokenType})
 	payload := map[string]interface{}{"events": events}
 	body, _ := json.Marshal(payload)
-
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "claude-code/"+claude.CLICurrentVersion)
-	req.Header.Set("x-service-name", "claude-code")
-
-	if token != "" {
-		if tokenType == "oauth" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		} else {
-			req.Header.Set("x-api-key", token)
-		}
-	}
-
-	client := &http.Client{Timeout: telemetryAPITimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// On 401, retry once without auth.
-	if resp.StatusCode == 401 && token != "" {
-		req.Header.Del("Authorization")
-		req.Header.Del("x-api-key")
-		resp2, err2 := client.Do(req)
-		if err2 != nil {
-			return err2
-		}
-		defer resp2.Body.Close()
-		if resp2.StatusCode >= 400 {
-			body, _ := io.ReadAll(resp2.Body)
-			return fmt.Errorf("telemetry send failed (status %d): %s", resp2.StatusCode, string(body))
-		}
-		return nil
-	}
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("telemetry send failed (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	return nil
+	return s.doTelemetryPOST(context.Background(), body, 0, "", true)
 }
 
 // BuildTelemetryEvent is a helper to build a single event and send it synchronously.
-// This is used for critical events like tengu_started/tengu_exit.
+// This is used for critical events like tengu_started/tengu_exit and tests.
 func BuildTelemetryEvent(
 	eventName string,
 	deviceID, sessionID, model, accountUUID string,
 	extra map[string]interface{},
 	config TelemetryConfig,
 ) error {
-	betas := claude.FullClaudeCodeMimicryBetas()
-	betasStr := ""
-	for i, b := range betas {
-		if i > 0 {
-			betasStr += ","
-		}
-		betasStr += b
-	}
+	s := NewTelemetryService(TelemetryConfig{Enabled: true})
+	event := s.buildPayload(TelemetryEvent{
+		EventName:   eventName,
+		DeviceID:    deviceID,
+		SessionID:   sessionID,
+		Model:       model,
+		AccountUUID: accountUUID,
+		Extra:       extra,
+		Timestamp:   time.Now(),
+	})
 
-	p := telemetryPayload{
-		EventName:       eventName,
-		EventID:         uuid.NewString(),
-		ClientTimestamp: time.Now().UTC().Format(time.RFC3339Nano),
-		DeviceID:        deviceID,
-		SessionID:       sessionID,
-		Model:           model,
-		UserType:        "external",
-		Betas:           betasStr,
-		Entrypoint:      "cli",
-		IsInteractive:   true,
-		ClientType:      "cli",
-		Core: telemetryCore{
-			SessionID:     sessionID,
-			Model:         model,
-			UserType:      "external",
-			Betas:         betasStr,
-			IsInteractive: true,
-			ClientType:    "cli",
-		},
-	}
-
-	if accountUUID != "" {
-		p.Auth = &telemetryAuth{AccountUUID: accountUUID}
-	}
-	if len(extra) > 0 {
-		b, _ := json.Marshal(extra)
-		p.AdditionalMetadata = base64.StdEncoding.EncodeToString(b)
-	}
-
-	eventRaw, _ := json.Marshal(p)
-	event := telemetryWireEvent{
-		EventType: "ClaudeCodeInternalEvent",
-		EventData: eventRaw,
-	}
-
-	logger.LegacyPrintf("service.telemetry", "Sending %s event for account (device=%s session=%s)", eventName, deviceID[:16]+"...", sessionID[:8]+"...")
+	logger.LegacyPrintf("service.telemetry", "Sending %s event for account (device=%s session=%s)", eventName, safePrefix(deviceID, 16), safePrefix(sessionID, 8))
 	return sendTelemetry(config.BaseURL, config.Token, config.TokenType, []telemetryWireEvent{event})
 }
 
@@ -926,11 +852,10 @@ type growthbookExperimentEventData struct {
 }
 
 // EnqueueGrowthbookExperiments builds one GrowthbookExperimentEvent wire event
-// per exposure and feeds them to the batch loop. Each carries the account's
-// OAuth token so sendBatch authenticates the POST per-account. Non-blocking;
-// drops on a full queue.
-func (s *TelemetryService) EnqueueGrowthbookExperiments(token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
-	if !s.cfg.Enabled || len(exposures) == 0 {
+// per exposure and feeds them to the batch loop. Events carry AccountID (and an
+// optional current OAuth token fallback) so sendBatch authenticates per account.
+func (s *TelemetryService) EnqueueGrowthbookExperiments(accountID int64, token, deviceID, sessionID, accountUUID string, exposures []growthbookExposure) {
+	if s == nil || !s.cfg.Enabled || len(exposures) == 0 {
 		return
 	}
 	userAttributes, _ := json.Marshal(map[string]any{
@@ -951,15 +876,18 @@ func (s *TelemetryService) EnqueueGrowthbookExperiments(token, deviceID, session
 			SessionID:      sessionID,
 		}
 		raw, _ := json.Marshal(data)
-		ev := telemetryWireEvent{
-			EventType: "GrowthbookExperimentEvent",
-			EventData: raw,
-			Token:     token,
-		}
+		ev := telemetryWireEvent{AccountID: accountID, Token: token, EventType: "GrowthbookExperimentEvent", EventData: raw}
 		select {
-		case s.experimentCh <- ev:
+		case s.wireCh <- ev:
 		default:
-			// queue full -> drop
+			// Drop on full queue to avoid blocking request handling.
 		}
 	}
+}
+
+func safePrefix(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

@@ -25,7 +25,7 @@ describe('admin affiliates api', () => {
       search: '1410134718@qq.com',
       sort_by: 'created_at',
       sort_order: 'desc',
-      timezone: 'Asia/Shanghai',
+      timezone: 'America/Los_Angeles',
     })
 
     expect(get).toHaveBeenCalledWith('/admin/affiliates/invites', {
@@ -37,7 +37,7 @@ describe('admin affiliates api', () => {
         end_at: undefined,
         sort_by: 'created_at',
         sort_order: 'desc',
-        timezone: 'Asia/Shanghai',
+        timezone: 'America/Los_Angeles',
       },
     })
   })
@@ -49,7 +49,7 @@ describe('admin affiliates api', () => {
       search: '1410134718@qq.com',
       sort_by: 'created_at',
       sort_order: 'desc',
-      timezone: 'Asia/Shanghai',
+      timezone: 'America/Los_Angeles',
     })
 
     expect(get).toHaveBeenCalledWith('/admin/affiliates/rebates', {
@@ -61,7 +61,7 @@ describe('admin affiliates api', () => {
         end_at: undefined,
         sort_by: 'created_at',
         sort_order: 'desc',
-        timezone: 'Asia/Shanghai',
+        timezone: 'America/Los_Angeles',
       },
     })
   })

@@ -60,7 +60,7 @@ func (s *GatewayService) ensureGrowthBookExperiments(ctx context.Context, accoun
 		if len(exposures) == 0 || s.telemetryHook == nil {
 			return
 		}
-		s.telemetryHook.EnqueueGrowthbookExperiments(token, deviceID, sessionID, account.GetExtraString("account_uuid"), exposures)
+		s.telemetryHook.EnqueueGrowthbookExperiments(account.ID, token, deviceID, sessionID, account.GetExtraString("account_uuid"), exposures)
 	}()
 }
 

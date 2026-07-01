@@ -33,7 +33,7 @@
 | TLS 指纹选择 | `enable_tls_fingerprint` / `tls_fingerprint_profile_id` | 关 | uTLS Node.js 24.x 指纹（API 转发路径走 h2） |
 | 会话 ID 伪装 | `session_id_masking_enabled` | 关 | 15 分钟内固定 `metadata.user_id` 的 session |
 | CCH 签名 | `enable_cch_signing` | 开 | billing header cch 字段 xxHash64 签名 |
-| 遥测模拟 | `enable_telemetry` | 开 | 向 `/api/event_logging/batch` 上报 tengu_* 事件 |
+| 遥测模拟 | `enable_telemetry` | 开 | 向 `/api/event_logging/v2/batch` 上报 tengu_* 事件 |
 | GrowthBook 实验代理 | `enable_growthbook_proxy` | 开 | 主动拉取实验并上报 GrowthbookExperimentEvent |
 
 > cch 签名与遥测的全局默认亦可在系统设置中调整；账户级字段会覆盖全局。

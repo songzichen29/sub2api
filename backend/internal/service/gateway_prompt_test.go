@@ -330,14 +330,11 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantMessagesLen: 1,
 		},
 		{
-			name:             "custom string system - migrated to messages",
-			body:             `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
-			system:           "You are a personal assistant running inside OpenClaw.",
-			wantSystemText:   claudeCodeSystemPrompt,
-			wantMessagesLen:  3, // instruction + ack + original
-			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nYou are a personal assistant running inside OpenClaw.",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			name:            "custom string system - no synthetic messages",
+			body:            `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
+			system:          "You are a personal assistant running inside OpenClaw.",
+			wantSystemText:  claudeCodeSystemPrompt,
+			wantMessagesLen: 1,
 		},
 		{
 			name:            "system equals Claude Code prompt - no messages injected",
@@ -347,17 +344,14 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantMessagesLen: 1,
 		},
 		{
-			name: "array system with custom blocks - text joined and migrated",
+			name: "array system with custom blocks - no synthetic messages",
 			body: `{"model":"claude-3","messages":[{"role":"user","content":"hello"}]}`,
 			system: []any{
 				map[string]any{"type": "text", "text": "First instruction"},
 				map[string]any{"type": "text", "text": "Second instruction"},
 			},
-			wantSystemText:   claudeCodeSystemPrompt,
-			wantMessagesLen:  3,
-			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nFirst instruction\n\nSecond instruction",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			wantSystemText:  claudeCodeSystemPrompt,
+			wantMessagesLen: 1,
 		},
 		{
 			name:            "empty array system - no messages injected",
@@ -367,14 +361,11 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantMessagesLen: 1,
 		},
 		{
-			name:             "json.RawMessage string system",
-			body:             `{"model":"claude-3","system":"Custom prompt","messages":[{"role":"user","content":"hello"}]}`,
-			system:           json.RawMessage(`"Custom prompt"`),
-			wantSystemText:   claudeCodeSystemPrompt,
-			wantMessagesLen:  3,
-			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nCustom prompt",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			name:            "json.RawMessage string system - no synthetic messages",
+			body:            `{"model":"claude-3","system":"Custom prompt","messages":[{"role":"user","content":"hello"}]}`,
+			system:          json.RawMessage(`"Custom prompt"`),
+			wantSystemText:  claudeCodeSystemPrompt,
+			wantMessagesLen: 1,
 		},
 		{
 			name:            "json.RawMessage nil system",
@@ -384,14 +375,11 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			wantMessagesLen: 1,
 		},
 		{
-			name:             "multiple original messages preserved",
-			body:             `{"model":"claude-3","messages":[{"role":"user","content":"msg1"},{"role":"assistant","content":"resp1"},{"role":"user","content":"msg2"}]}`,
-			system:           "Be helpful",
-			wantSystemText:   claudeCodeSystemPrompt,
-			wantMessagesLen:  5, // 2 injected + 3 original
-			wantFirstMsgRole: "user",
-			wantFirstMsgText: "[System Instructions]\nBe helpful",
-			wantAckMsgText:   "Understood. I will follow these instructions.",
+			name:            "multiple original messages preserved",
+			body:            `{"model":"claude-3","messages":[{"role":"user","content":"msg1"},{"role":"assistant","content":"resp1"},{"role":"user","content":"msg2"}]}`,
+			system:          "Be helpful",
+			wantSystemText:  claudeCodeSystemPrompt,
+			wantMessagesLen: 3,
 		},
 	}
 
@@ -434,35 +422,15 @@ func TestRewriteSystemForNonClaudeCode(t *testing.T) {
 			require.True(t, ok, "expansion block should have cache_control")
 			require.Equal(t, "ephemeral", cc["type"])
 
-			// 检查 messages
+			// 检查 messages：真实 Claude Code 不注入 [System Instructions] + ack 合成消息。
 			messages, ok := parsed["messages"].([]any)
 			require.True(t, ok, "messages should be an array")
 			require.Len(t, messages, tt.wantMessagesLen)
 
-			if tt.wantFirstMsgRole != "" && len(messages) >= 2 {
-				// 检查注入的 instruction 消息
+			if tt.wantFirstMsgRole != "" && len(messages) >= 1 {
 				firstMsg, ok := messages[0].(map[string]any)
 				require.True(t, ok)
 				require.Equal(t, tt.wantFirstMsgRole, firstMsg["role"])
-
-				firstContent, ok := firstMsg["content"].([]any)
-				require.True(t, ok)
-				require.Len(t, firstContent, 1)
-				firstBlock, ok := firstContent[0].(map[string]any)
-				require.True(t, ok)
-				require.Equal(t, tt.wantFirstMsgText, firstBlock["text"])
-
-				// 检查注入的 ack 消息
-				ackMsg, ok := messages[1].(map[string]any)
-				require.True(t, ok)
-				require.Equal(t, "assistant", ackMsg["role"])
-
-				ackContent, ok := ackMsg["content"].([]any)
-				require.True(t, ok)
-				require.Len(t, ackContent, 1)
-				ackBlock, ok := ackContent[0].(map[string]any)
-				require.True(t, ok)
-				require.Equal(t, tt.wantAckMsgText, ackBlock["text"])
 			}
 		})
 	}

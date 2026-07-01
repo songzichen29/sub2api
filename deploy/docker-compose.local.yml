@@ -111,7 +111,7 @@ services:
       # - Usage statistics "today" boundary
       # - Subscription expiry times
       # - Log timestamps
-      # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
+      # Common values: America/Los_Angeles, America/New_York, Europe/London, UTC
       # =======================================================================
       - TZ=${TZ:-America/Los_Angeles}
 

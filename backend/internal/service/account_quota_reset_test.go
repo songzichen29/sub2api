@@ -51,7 +51,7 @@ func TestNextFixedDailyReset_MidnightReset(t *testing.T) {
 }
 
 func TestNextFixedDailyReset_NonUTCTimezone(t *testing.T) {
-	tz, err := time.LoadLocation("Asia/Shanghai")
+	tz, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
 
 	// 2026-03-14 07:00 UTC = 2026-03-14 15:00 CST, reset hour = 9 (CST)
@@ -301,7 +301,7 @@ func TestValidateQuotaResetConfig_ValidFixed(t *testing.T) {
 		"quota_weekly_reset_mode": "fixed",
 		"quota_weekly_reset_day":  float64(1),
 		"quota_weekly_reset_hour": float64(0),
-		"quota_reset_timezone":    "Asia/Shanghai",
+		"quota_reset_timezone":    "America/Los_Angeles",
 	}
 	assert.NoError(t, ValidateQuotaResetConfig(extra))
 }
@@ -517,13 +517,13 @@ func TestComputeQuotaResetAt_FixedWeekly_SetsResetAt(t *testing.T) {
 }
 
 func TestComputeQuotaResetAt_FixedDaily_WithTimezone(t *testing.T) {
-	tz, err := time.LoadLocation("Asia/Shanghai")
+	tz, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
 
 	extra := map[string]any{
 		"quota_daily_reset_mode": "fixed",
 		"quota_daily_reset_hour": float64(9),
-		"quota_reset_timezone":   "Asia/Shanghai",
+		"quota_reset_timezone":   "America/Los_Angeles",
 	}
 	ComputeQuotaResetAt(extra)
 	resetAtStr, ok := extra["quota_daily_reset_at"].(string)
@@ -531,7 +531,7 @@ func TestComputeQuotaResetAt_FixedDaily_WithTimezone(t *testing.T) {
 
 	resetAt, err := time.Parse(time.RFC3339, resetAtStr)
 	require.NoError(t, err)
-	// In Shanghai timezone, the hour should be 9
+	// In Los Angeles timezone, the hour should be 9
 	assert.Equal(t, 9, resetAt.In(tz).Hour())
 }
 

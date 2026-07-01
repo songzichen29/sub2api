@@ -7474,7 +7474,7 @@ const form = reactive<SettingsForm>({
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
-  enable_cch_signing: false,
+  enable_cch_signing: true,
   enable_claude_oauth_system_prompt_injection: true,
   claude_oauth_system_prompt: "",
   claude_oauth_system_prompt_blocks: defaultClaudeOAuthSystemPromptBlocks,

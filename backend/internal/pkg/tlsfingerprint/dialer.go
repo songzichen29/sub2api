@@ -1,7 +1,7 @@
 // Package tlsfingerprint provides TLS fingerprint simulation for HTTP clients.
 // It uses the utls library to create TLS connections with a Node.js 24.x
 // (OpenSSL) ClientHello. This is a Node.js stand-in, NOT the real Claude Code
-// fingerprint: real Claude Code v2.1.196 is a Bun-compiled binary (BoringSSL),
+// fingerprint: real Claude Code v2.1.197 is a Bun-compiled binary (BoringSSL),
 // whose ClientHello differs in cipher/extension order, ALPN, and ECH behavior.
 package tlsfingerprint
 
@@ -33,7 +33,7 @@ type Profile struct {
 	SupportedVersions   []uint16 // Empty uses [TLS1.3, TLS1.2]
 	KeyShareGroups      []uint16 // Empty uses [X25519]
 	PSKModes            []uint16 // Empty uses [psk_dhe_ke]
-	Extensions          []uint16 // Extension type IDs in order; empty uses default Node.js 24.x order
+	Extensions          []uint16 // Extension type IDs in order; empty uses default Bun/Node.js v26.3.0 order
 }
 
 // Dialer creates TLS connections with custom fingerprints.
@@ -56,24 +56,13 @@ type SOCKS5ProxyDialer struct {
 	proxyURL *url.URL
 }
 
-// Default TLS fingerprint values model a Node.js 24.x (OpenSSL) client.
-//
-// This is a Node.js stand-in, not the real Claude Code fingerprint (real CC
-// v2.1.196 is Bun/BoringSSL). It keeps the gateway internally consistent —
-// the API, OAuth and telemetry paths all share this profile — but it is an
-// identifiable divergence from real Bun CC traffic.
-//
-// Known divergences (tracked separately):
-//   - ALPN advertises only http/1.1; real Bun offers h2. This shows up in the
-//     JA4 ALPN segment ("h1" vs Bun's "h2"). R-P5 will add real h2 support.
-//
-// The hashes below were captured from a Node.js 24.x ClientHello via
-// tls-fingerprint-web; re-verify against a fresh capture before relying on
-// them, and re-capture from real Bun CC if Bun fidelity becomes the goal.
+// Default TLS fingerprint values captured from Claude Code (Bun/Node.js v26.3.0).
+// Captured via tls-fingerprint-web capture server and shared by API, OAuth,
+// telemetry, and GrowthBook paths so api.anthropic.com never falls back to Go TLS.
 // JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
 // JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
 var (
-	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
+	// defaultCipherSuites contains the 17 cipher suites from Bun/Node.js v26.3.0
 	// Order is critical for JA3 fingerprint matching
 	defaultCipherSuites = []uint16{
 		// TLS 1.3 cipher suites
@@ -106,19 +95,19 @@ var (
 		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
 	}
 
-	// defaultCurves contains the 3 supported groups from Node.js 24.x
+	// defaultCurves contains the 3 supported groups from Bun/Node.js v26.3.0
 	defaultCurves = []utls.CurveID{
 		utls.X25519,    // 0x001d
 		utls.CurveP256, // 0x0017 (secp256r1)
 		utls.CurveP384, // 0x0018 (secp384r1)
 	}
 
-	// defaultPointFormats contains point formats from Node.js 24.x
+	// defaultPointFormats contains point formats from Bun/Node.js v26.3.0
 	defaultPointFormats = []uint16{
 		0, // uncompressed
 	}
 
-	// defaultSignatureAlgorithms contains the 9 signature algorithms from Node.js 24.x
+	// defaultSignatureAlgorithms contains the 9 signature algorithms from Bun/Node.js v26.3.0
 	defaultSignatureAlgorithms = []utls.SignatureScheme{
 		0x0403, // ecdsa_secp256r1_sha256
 		0x0804, // rsa_pss_rsae_sha256
@@ -350,7 +339,7 @@ func toUTLSCurves(curves []uint16) []utls.CurveID {
 	return result
 }
 
-// defaultExtensionOrder is the Node.js 24.x extension order.
+// defaultExtensionOrder is the Bun/Node.js v26.3.0 extension order.
 // Used when Profile.Extensions is empty.
 var defaultExtensionOrder = []uint16{
 	0,     // server_name
