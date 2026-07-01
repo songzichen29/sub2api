@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -169,6 +170,85 @@ func TestOrderedH1RoundTripperCloseIdleConnectionsClearsPool(t *testing.T) {
 	require.Equal(t, int64(2), dialCount.Load())
 }
 
+func TestOrderedH1RoundTripperPostCloseCancelDoesNotClosePooledConnection(t *testing.T) {
+	addr, closeServer, _ := startRawH1TestServer(t, func(_ int64, conn net.Conn, _ *http.Request) bool {
+		writeRawH1Response(t, conn, "ok")
+		return true
+	})
+	defer closeServer()
+
+	var dialCount atomic.Int64
+	rt := newOrderedH1RoundTripper(testDialer(addr, &dialCount), time.Second, time.Minute, 4)
+	url := "https://" + addr + "/v1/messages"
+
+	for i := 0; i < 50; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(`{"model":"x"}`))
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		_, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		cancel()
+	}
+	require.Equal(t, int64(1), dialCount.Load(), "post-close context cancellation must not close an already pooled connection")
+}
+
+func TestOrderedH1RoundTripperPooledResponseBodyConcurrentReadCloseRace(t *testing.T) {
+	rc := newBlockingEOFReadCloser()
+	body := &pooledH1ResponseBody{
+		ReadCloser: rc,
+		stopCtx:    func() {},
+		mayReuse:   false,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := body.Read(make([]byte, 1))
+		errCh <- err
+	}()
+	<-rc.started
+
+	require.NoError(t, body.Close())
+	require.ErrorIs(t, <-errCh, io.EOF)
+}
+
+func TestOrderedH1RoundTripperDoesNotRetryAfterPartialResponseBytes(t *testing.T) {
+	var requestCount atomic.Int64
+	addr, closeServer, _ := startRawH1TestServer(t, func(_ int64, conn net.Conn, _ *http.Request) bool {
+		switch requestCount.Add(1) {
+		case 1:
+			writeRawH1Response(t, conn, "ok")
+			return true
+		case 2:
+			_, err := io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-L")
+			require.NoError(t, err)
+			return false
+		default:
+			writeRawH1Response(t, conn, "retry-should-not-happen")
+			return true
+		}
+	})
+	defer closeServer()
+
+	var dialCount atomic.Int64
+	rt := newOrderedH1RoundTripper(testDialer(addr, &dialCount), time.Second, time.Minute, 4)
+	url := "https://" + addr + "/v1/messages"
+
+	require.Equal(t, "ok", roundTripBody(t, rt, url))
+
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(`{"model":"x"}`))
+	require.NoError(t, err)
+	resp, err := rt.RoundTrip(req)
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	require.Error(t, err)
+	require.Equal(t, int64(1), dialCount.Load(), "partial response bytes mean the POST must not be retried")
+	require.Equal(t, int64(2), requestCount.Load())
+}
+
 func testDialer(addr string, dialCount *atomic.Int64) func(context.Context, string, string) (net.Conn, error) {
 	return func(ctx context.Context, _, _ string) (net.Conn, error) {
 		dialCount.Add(1)
@@ -188,6 +268,31 @@ func roundTripBody(t *testing.T, rt *orderedH1RoundTripper, url string) string {
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	return string(body)
+}
+
+type blockingEOFReadCloser struct {
+	started     chan struct{}
+	unblock     chan struct{}
+	startOnce   sync.Once
+	unblockOnce sync.Once
+}
+
+func newBlockingEOFReadCloser() *blockingEOFReadCloser {
+	return &blockingEOFReadCloser{
+		started: make(chan struct{}),
+		unblock: make(chan struct{}),
+	}
+}
+
+func (r *blockingEOFReadCloser) Read(_ []byte) (int, error) {
+	r.startOnce.Do(func() { close(r.started) })
+	<-r.unblock
+	return 0, io.EOF
+}
+
+func (r *blockingEOFReadCloser) Close() error {
+	r.unblockOnce.Do(func() { close(r.unblock) })
+	return nil
 }
 
 func writeRawH1Response(t *testing.T, conn net.Conn, body string) {
