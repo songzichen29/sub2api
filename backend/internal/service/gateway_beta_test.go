@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -129,7 +130,6 @@ func TestFullClaudeCodeMimicryBetas_MatchesTelemetrySequence(t *testing.T) {
 
 	require.Equal(t, []string{
 		claude.BetaClaudeCode,
-		claude.BetaContext1M,
 		claude.BetaInterleavedThinking,
 		claude.BetaRedactThinking,
 		claude.BetaThinkingTokenCount,
@@ -138,6 +138,50 @@ func TestFullClaudeCodeMimicryBetas_MatchesTelemetrySequence(t *testing.T) {
 		claude.BetaMidConversationSystem,
 	}, required)
 	require.NotContains(t, required, claude.BetaOAuth)
+	require.NotContains(t, required, claude.BetaContext1M)
+}
+
+func TestFullClaudeCodeMimicryBetas_Context1MOnlyForMarkedModel(t *testing.T) {
+	plain := claude.FullClaudeCodeMimicryBetasForModel("claude-sonnet-4-5-20250929")
+	require.NotContains(t, plain, claude.BetaContext1M)
+
+	marked := claude.FullClaudeCodeMimicryBetasForModel("claude-sonnet-4-5 [1m]")
+	require.Equal(t, []string{
+		claude.BetaClaudeCode,
+		claude.BetaContext1M,
+		claude.BetaInterleavedThinking,
+		claude.BetaRedactThinking,
+		claude.BetaThinkingTokenCount,
+		claude.BetaContextManagement,
+		claude.BetaPromptCachingScope,
+		claude.BetaMidConversationSystem,
+	}, marked)
+}
+
+func TestClaudeCodeOAuthMimicryRequestBetas_Context1MOnlyForMarkedModel(t *testing.T) {
+	plain := claude.ClaudeCodeOAuthMimicryRequestBetasForModel("claude-sonnet-4-5-20250929")
+	require.NotContains(t, plain, claude.BetaContext1M)
+	require.Contains(t, plain, claude.BetaOAuth)
+
+	marked := claude.ClaudeCodeOAuthMimicryRequestBetasForModel("claude-sonnet-4-5 [1m]")
+	require.Equal(t, []string{
+		claude.BetaClaudeCode,
+		claude.BetaOAuth,
+		claude.BetaContext1M,
+		claude.BetaInterleavedThinking,
+		claude.BetaRedactThinking,
+		claude.BetaThinkingTokenCount,
+		claude.BetaContextManagement,
+		claude.BetaPromptCachingScope,
+		claude.BetaMidConversationSystem,
+	}, marked)
+}
+
+func TestRequiredAnthropicBetaDropping_DoesNotMergeClientBetas(t *testing.T) {
+	required := claude.ClaudeCodeOAuthMimicryRequestBetasForModel("claude-sonnet-4-5-20250929")
+	got := requiredAnthropicBetaDropping(required, droppedBetaSet())
+	require.NotContains(t, got, "weird-client-beta")
+	require.Equal(t, strings.Join(required, ","), got)
 }
 
 func TestMergeAnthropicBetaDropping_PreservesIncomingRedactThinking(t *testing.T) {

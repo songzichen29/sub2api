@@ -70,6 +70,37 @@ func TestSyncBillingHeaderVersion(t *testing.T) {
 	}
 }
 
+func TestComputeClaudeCodeFingerprint_UsesJSUTF16Indexing(t *testing.T) {
+	tests := []struct {
+		name      string
+		firstText string
+		want      string
+	}{
+		{
+			name:      "chinese counts as one JS code unit",
+			firstText: "abcd中文efghijklmnopqrstu",
+			want:      "28b",
+		},
+		{
+			name:      "emoji surrogate half matches JS string index",
+			firstText: "abcd😀efghijklmnopqrstu",
+			want:      "55f",
+		},
+		{
+			name:      "mixed chinese and emoji",
+			firstText: "你好世界abcdefg😀hijklmnop",
+			want:      "058",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"messages":[{"role":"user","content":[{"type":"text","text":%q}]}]}`, tt.firstText))
+			require.Equal(t, tt.want, computeClaudeCodeFingerprint(body, "2.1.197"))
+		})
+	}
+}
+
 func TestSignBillingHeaderCCH(t *testing.T) {
 	t.Run("replaces placeholder with hash", func(t *testing.T) {
 		body := []byte(`{"system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=2.1.63.a43; cc_entrypoint=cli; cch=00000;"}],"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)

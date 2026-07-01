@@ -84,6 +84,7 @@ func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Accou
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("anthropic-beta", claude.BetaOAuth)
 	req.Header.Set("User-Agent", "claude-cli/"+claude.CLICurrentVersion+" (external, cli)")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

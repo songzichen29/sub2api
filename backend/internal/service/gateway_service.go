@@ -4477,8 +4477,8 @@ func rewriteSystemForNonClaudeCodeWithPromptBlocks(body []byte, system any, expa
 	//    区别于真实 CLI。这里注入 claudeCodeSystemPromptExpansion（中性段落）把形态做到
 	//    接近真实，同时不注入会污染被代理用户行为的工具专属指令。
 	//
-	//    billing block 的 cch=00000 是占位符，会被 buildUpstreamRequest 里的
-	//    signBillingHeaderCCH 替换成 xxhash64 签名。缺失 billing block 的系统 payload
+	//    billing block 的 cch=00000 是占位符；默认会在 buildUpstreamRequest 里
+	//    被 stripCCHPlaceholder 移除，只有显式开启实验签名时才替换。缺失 billing block 的系统 payload
 	//    是 Anthropic 判定第三方的关键信号之一（真实 CLI 每个请求都带）。
 	systemBlocks, blockErr := buildClaudeOAuthSystemPromptBlocksJSON(body, expansionPrompt, blocksConfig)
 	if blockErr != nil {
@@ -4969,6 +4969,42 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		s.ensureGrowthBookExperiments(ctx, account, token, telemetryDeviceID, telemetrySessionID)
 	}
 
+	shouldRecordAPITelemetry := func() bool {
+		return shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled()
+	}
+	telemetryAccountUUID := account.GetExtraString("account_uuid")
+	apiTelemetryEnd := struct {
+		pending    bool
+		success    bool
+		durationMs float64
+		statusCode int
+		tokens     int64
+	}{}
+	setAPITelemetryEnd := func(success bool, durationMs float64, statusCode int, tokenCount int64) {
+		apiTelemetryEnd.pending = true
+		apiTelemetryEnd.success = success
+		apiTelemetryEnd.durationMs = durationMs
+		apiTelemetryEnd.statusCode = statusCode
+		apiTelemetryEnd.tokens = tokenCount
+	}
+	defer func() {
+		if apiTelemetryEnd.pending && shouldRecordAPITelemetry() {
+			RecordAPIEnd(
+				s.telemetryHook,
+				account.ID,
+				telemetryDeviceID,
+				telemetrySessionID,
+				reqModel,
+				telemetryAccountUUID,
+				token,
+				apiTelemetryEnd.success,
+				apiTelemetryEnd.durationMs,
+				apiTelemetryEnd.statusCode,
+				apiTelemetryEnd.tokens,
+			)
+		}
+	}()
+
 	// 解析 TLS 指纹 profile（同一请求生命周期内不变，避免重试循环中重复解析）
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 
@@ -5018,14 +5054,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 		// 发送请求
 		callStart := time.Now()
-		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
-			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token)
+		if shouldRecordAPITelemetry() {
+			RecordAPIStart(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, telemetryAccountUUID, token)
 		}
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 		callDuration := time.Since(callStart).Seconds() * 1000
-		if shouldMimicClaudeCode && s.telemetryHook != nil && account.IsTelemetryEnabled() {
-			RecordAPIEnd(s.telemetryHook, account.ID, telemetryDeviceID, telemetrySessionID, reqModel, account.GetExtraString("account_uuid"), token, err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
-		}
+		setAPITelemetryEnd(err == nil && resp != nil && resp.StatusCode < 400, callDuration, statusCodeFromResp(resp, err), 0)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5104,7 +5138,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					releaseRetryCtx()
 					if buildErr == nil {
 						setOpsUpstreamRequestBody(c, retryWireBody)
+						retryCallStart := time.Now()
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+						retryCallDuration := time.Since(retryCallStart).Seconds() * 1000
+						setAPITelemetryEnd(retryErr == nil && retryResp != nil && retryResp.StatusCode < 400, retryCallDuration, statusCodeFromResp(retryResp, retryErr), 0)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
@@ -5140,7 +5177,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									releaseRetryCtx2()
 									if buildErr2 == nil {
 										setOpsUpstreamRequestBody(c, retryWireBody2)
+										retryCallStart2 := time.Now()
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
+										retryCallDuration2 := time.Since(retryCallStart2).Seconds() * 1000
+										setAPITelemetryEnd(retryErr2 == nil && retryResp2 != nil && retryResp2.StatusCode < 400, retryCallDuration2, statusCodeFromResp(retryResp2, retryErr2), 0)
 										if retryErr2 == nil {
 											resp = retryResp2
 											break
@@ -5212,7 +5252,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
 							setOpsUpstreamRequestBody(c, budgetWireBody)
+							budgetCallStart := time.Now()
 							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							budgetCallDuration := time.Since(budgetCallStart).Seconds() * 1000
+							setAPITelemetryEnd(retryErr == nil && budgetRetryResp != nil && budgetRetryResp.StatusCode < 400, budgetCallDuration, statusCodeFromResp(budgetRetryResp, retryErr), 0)
 							if retryErr == nil {
 								resp = budgetRetryResp
 								break
@@ -5421,6 +5464,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
+			if apiTelemetryEnd.pending {
+				apiTelemetryEnd.success = false
+				if apiTelemetryEnd.statusCode < 400 {
+					apiTelemetryEnd.statusCode = http.StatusBadGateway
+				}
+			}
 			var sseErr *sseStreamErrorEventError
 			if errors.As(err, &sseErr) {
 				// 上游 HTTP 200 + SSE 流体内出现 event:error 帧。
@@ -5471,8 +5520,22 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	} else {
 		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
+			if apiTelemetryEnd.pending {
+				apiTelemetryEnd.success = false
+				if apiTelemetryEnd.statusCode < 400 {
+					apiTelemetryEnd.statusCode = http.StatusBadGateway
+				}
+			}
 			return nil, err
 		}
+	}
+	if usage == nil {
+		usage = &ClaudeUsage{}
+	}
+	if apiTelemetryEnd.pending {
+		apiTelemetryEnd.success = true
+		apiTelemetryEnd.statusCode = resp.StatusCode
+		apiTelemetryEnd.tokens = int64(usage.InputTokens)
 	}
 
 	return &ForwardResult{
@@ -6644,7 +6707,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// OAuth账号：应用统一指纹和metadata重写（受设置开关控制）
 	var fingerprint *Fingerprint
-	enableFP, enableMPT, enableCCH := true, false, true
+	enableFP, enableMPT, enableCCH := true, false, false
 	if s.settingService != nil {
 		enableFP, enableMPT, enableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
 	}
@@ -6684,8 +6747,8 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if fingerprint != nil {
 		body = syncBillingHeaderVersion(body, fingerprint.UserAgent)
 	}
-	// CCH：将 cch=00000 占位符替换为 xxHash64 签名（需在所有 body 修改之后）。
-	// 默认开启；关闭时移除占位符，避免原样发送未签名的 cch=00000。
+	// CCH：真实算法仍待独立逆向验证。默认关闭并移除占位符，避免发送错误签名；
+	// 仅在管理员显式启用 per-account/global 实验开关时才替换。
 	if enableCCH {
 		body = signBillingHeaderCCH(body)
 	} else {
@@ -6746,20 +6809,22 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		if mimicClaudeCode {
 			// 非 Claude Code 客户端：按 opencode 的策略处理：
 			// - 强制 Claude Code 指纹相关请求头（尤其是 user-agent/x-stainless/x-app）
-			// - 保留 incoming beta 的同时，确保 OAuth 所需 beta 存在
+			// - 不采纳客户端传入的 anthropic-beta，只发送网关按模型计算出的集合
 			applyClaudeCodeMimicHeaders(req, reqStream)
 
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
 			// Claude Code OAuth credentials are scoped to Claude Code.
 			// Non-haiku models MUST include claude-code beta for Anthropic to recognize
 			// this as a legitimate Claude Code request; without it, the request is
 			// rejected as third-party ("out of extra usage").
 			// Haiku models are exempt from third-party detection and don't need it.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
-			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = claude.ClaudeCodeOAuthMimicryRequestBetas()
+			if claude.HasContext1MMarker(modelID) {
+				requiredBetas = []string{claude.BetaOAuth, claude.BetaContext1M, claude.BetaInterleavedThinking}
 			}
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
+			if !strings.Contains(strings.ToLower(modelID), "haiku") {
+				requiredBetas = claude.ClaudeCodeOAuthMimicryRequestBetasForModel(modelID)
+			}
+			setHeaderRaw(req.Header, "anthropic-beta", requiredAnthropicBetaDropping(requiredBetas, effectiveDropSet))
 		} else {
 			// Claude Code 客户端：尽量透传原始 header，仅补齐 oauth beta
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
@@ -6988,6 +7053,11 @@ func mergeAnthropicBetaDropping(required []string, incoming string, drop map[str
 		out = append(out, p)
 	}
 	return strings.Join(out, ",")
+}
+
+func requiredAnthropicBetaDropping(required []string, drop map[string]struct{}) string {
+	header := strings.Join(required, ",")
+	return stripBetaTokensWithSet(header, drop)
 }
 
 // stripBetaTokens removes the given beta tokens from a comma-separated header value.
@@ -10041,9 +10111,14 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// OAuth 账号：应用统一指纹和重写 userID（受设置开关控制）
 	// 如果启用了会话ID伪装，会在重写后替换 session 部分为固定值
-	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, true
+	ctEnableFP, ctEnableMPT, ctEnableCCH := true, false, false
 	if s.settingService != nil {
 		ctEnableFP, ctEnableMPT, ctEnableCCH = s.settingService.GetGatewayForwardingSettings(ctx)
+	}
+	if account != nil {
+		if v, ok := account.ExtraBool("enable_cch_signing"); ok {
+			ctEnableCCH = v
+		}
 	}
 	var ctFingerprint *Fingerprint
 	if account.IsOAuth() && s.identityService != nil {
@@ -10067,6 +10142,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 	if ctEnableCCH {
 		body = signBillingHeaderCCH(body)
+	} else {
+		body = stripCCHPlaceholder(body)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
@@ -10116,9 +10193,8 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		if mimicClaudeCode {
 			applyClaudeCodeMimicHeaders(req, false)
 
-			incomingBeta := getHeaderRaw(req.Header, "anthropic-beta")
-			requiredBetas := append(claude.ClaudeCodeOAuthMimicryRequestBetas(), claude.BetaTokenCounting)
-			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, ctEffectiveDropSet))
+			requiredBetas := append(append([]string{}, claude.ClaudeCodeOAuthMimicryRequestBetasForModel(modelID)...), claude.BetaTokenCounting)
+			setHeaderRaw(req.Header, "anthropic-beta", requiredAnthropicBetaDropping(requiredBetas, ctEffectiveDropSet))
 		} else {
 			clientBetaHeader := getHeaderRaw(req.Header, "anthropic-beta")
 			if clientBetaHeader == "" {
@@ -10481,6 +10557,7 @@ func (s *GatewayService) proxyAnthropicGet(ctx context.Context, groupID *int64, 
 	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 	req.Header.Set("User-Agent", "claude-cli/"+claude.CLICurrentVersion+" (external, cli)")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

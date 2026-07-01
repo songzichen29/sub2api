@@ -51,8 +51,7 @@ func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, 
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"stream":        true,
-			"renderer_mode": "fullscreen",
+			"stream": true,
 		},
 		Timestamp: time.Now(),
 		Token:     token,
@@ -76,10 +75,9 @@ func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, mode
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"duration_ms":   durationMs,
-			"status_code":   statusCode,
-			"input_tokens":  tokenCount,
-			"renderer_mode": "fullscreen",
+			"duration_ms":  durationMs,
+			"status_code":  statusCode,
+			"input_tokens": tokenCount,
 		},
 		Timestamp: time.Now(),
 		Token:     token,
@@ -103,8 +101,7 @@ func (h *TelemetryHook) OnToolUse(accountID int64, deviceID, sessionID, model, a
 		Model:       model,
 		AccountUUID: accountUUID,
 		Extra: map[string]interface{}{
-			"tool_name":     toolName,
-			"renderer_mode": "fullscreen",
+			"tool_name": toolName,
 		},
 		Timestamp: time.Now(),
 	})

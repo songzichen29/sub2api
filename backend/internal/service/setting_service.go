@@ -2476,20 +2476,20 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 				fingerprintUnification:           true,
 				metadataPassthrough:              false,
-				cchSigning:                       true,
+				cchSigning:                       false,
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, cch: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
+			return gatewayForwardingSettingsResult{fp: true, cch: false, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 			fp = v == "true"
 		}
 		mp := values[SettingKeyEnableMetadataPassthrough] == "true"
-		cch := true
+		cch := false
 		if v, ok := values[SettingKeyEnableCCHSigning]; ok && v != "" {
 			cch = v == "true"
 		}
@@ -2529,7 +2529,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, cch: true, claudeOAuthSystemPromptInjection: true}
+	return gatewayForwardingSettingsResult{fp: true, cch: false, claudeOAuthSystemPromptInjection: true}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -3632,7 +3632,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
-	// cch_signing=true, claude_oauth_system_prompt_injection=true)
+	// cch_signing=false, claude_oauth_system_prompt_injection=true)
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
 	} else {
@@ -3642,7 +3642,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if v, ok := settings[SettingKeyEnableCCHSigning]; ok && v != "" {
 		result.EnableCCHSigning = v == "true"
 	} else {
-		result.EnableCCHSigning = true // default: enabled (xxHash64 CCH signing)
+		result.EnableCCHSigning = false // default: disabled; strip cch placeholder
 	}
 	if v, ok := settings[SettingKeyEnableClaudeOAuthSystemPromptInjection]; ok && v != "" {
 		result.EnableClaudeOAuthSystemPromptInjection = v == "true"

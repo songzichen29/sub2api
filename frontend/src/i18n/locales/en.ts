@@ -5892,7 +5892,7 @@
         metadataPassthrough: 'Metadata Passthrough',
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',
-        cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
+        cchSigningHint: 'Experimentally sign the billing header with CCH. Default off; when disabled, the cch placeholder is stripped.',
         claudeOAuthSystemPromptInjection: 'Claude OAuth System Blocks',
         claudeOAuthSystemPromptInjectionHint: 'Inject Claude Code-like system blocks for Claude OAuth requests from non-Claude-Code clients. Enabled by default.',
         claudeOAuthSystemPrompt: 'Claude OAuth Expansion Prompt',

@@ -2890,7 +2890,7 @@ const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
 const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
-const cchSigningEnabled = ref(true) // per-account CCH signing (default on)
+const cchSigningEnabled = ref(false) // per-account experimental CCH signing (default off)
 const telemetryEnabled = ref(true)  // per-account v2.1.197 telemetry (default on)
 const growthbookProxyEnabled = ref(true) // per-account GrowthBook experiment proxy (default on)
 const cacheTTLOverrideEnabled = ref(false)
@@ -3883,9 +3883,9 @@ function loadQuotaControlSettings(account: Account) {
     sessionIdMaskingEnabled.value = true
   }
 
-  // Load per-account anti-detection toggles (default on unless explicitly false)
+  // Load per-account anti-detection toggles (CCH default off; telemetry/GrowthBook default on)
   cchSigningEnabled.value =
-    (account.extra as Record<string, unknown> | undefined)?.enable_cch_signing !== false
+    (account.extra as Record<string, unknown> | undefined)?.enable_cch_signing === true
   telemetryEnabled.value =
     (account.extra as Record<string, unknown> | undefined)?.enable_telemetry !== false
   growthbookProxyEnabled.value =
@@ -4475,11 +4475,11 @@ const handleSubmit = async () => {
         delete newExtra.session_id_masking_enabled
       }
 
-      // Per-account CCH signing toggle (absent = default on; explicit false opts out)
+      // Per-account CCH signing toggle (absent = default off; explicit true opts in)
       if (cchSigningEnabled.value) {
-        delete newExtra.enable_cch_signing
+        newExtra.enable_cch_signing = true
       } else {
-        newExtra.enable_cch_signing = false
+        delete newExtra.enable_cch_signing
       }
 
       // Per-account v2.1.197 telemetry toggle (absent = default on)

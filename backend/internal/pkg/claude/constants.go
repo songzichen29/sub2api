@@ -1,6 +1,8 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
+import "strings"
+
 // Claude Code 客户端相关常量
 
 // Beta header 常量
@@ -86,47 +88,66 @@ const CLICurrentVersion = "2.1.197"
 // CLIBuildTime 是从 Claude Code v2.1.197 native binary 中提取的真实 build_time。
 const CLIBuildTime = "2026-06-29T19:08:42Z"
 
-// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
-// 用于 telemetry event_data.betas；顺序与真实 Claude Code v2.1.197 telemetry 样本一致。
+// HasContext1MMarker reports whether a model string is explicitly marked for
+// Claude Code's 1M-context beta. Real Claude Code adds context-1m only when the
+// selected model/env model contains the literal "[1m]" marker.
+func HasContext1MMarker(model string) bool {
+	return strings.Contains(strings.ToLower(model), "[1m]")
+}
+
+// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的 beta 列表，
+// 用于 telemetry event_data.betas。默认不包含 context-1m；该 beta 必须通过
+// FullClaudeCodeMimicryBetasForModel 按模型名中的 [1m] 标记条件化加入。
+func FullClaudeCodeMimicryBetas() []string {
+	return FullClaudeCodeMimicryBetasForModel("")
+}
+
+// FullClaudeCodeMimicryBetasForModel 返回 telemetry event_data.betas；顺序与
+// Claude Code v2.1.197 telemetry 样本一致，但 context-1m 仅在模型含 [1m] 时加入。
 //
 // 注意：真实 telemetry 的 betas 字段不包含 oauth-2025-04-20；API 请求 header
 // 的 anthropic-beta 仍需要 OAuth token。请求 header 请使用
-// ClaudeCodeOAuthMimicryRequestBetas。
-//
-// 真实 telemetry 主序列：
-//
-//	claude-code-20250219,context-1m-2025-08-07,interleaved-thinking-2025-05-14,
-//	redact-thinking-2026-02-12,thinking-token-count-2026-05-13,
-//	context-management-2025-06-27,prompt-caching-scope-2026-01-05,
-//	mid-conversation-system-2026-04-07
-func FullClaudeCodeMimicryBetas() []string {
-	return []string{
-		BetaClaudeCode,
-		BetaContext1M,
+// ClaudeCodeOAuthMimicryRequestBetasForModel。
+func FullClaudeCodeMimicryBetasForModel(model string) []string {
+	betas := []string{BetaClaudeCode}
+	if HasContext1MMarker(model) {
+		betas = append(betas, BetaContext1M)
+	}
+	betas = append(betas,
 		BetaInterleavedThinking,
 		BetaRedactThinking,
 		BetaThinkingTokenCount,
 		BetaContextManagement,
 		BetaPromptCachingScope,
 		BetaMidConversationSystem,
-	}
+	)
+	return betas
 }
 
 // ClaudeCodeOAuthMimicryRequestBetas 返回 OAuth mimic 路径中 API 请求 header
-// anthropic-beta 应使用的 beta 集合。它刻意与 telemetry betas 区分：header 需要
-// oauth-2025-04-20，而 telemetry 的 betas 字段不包含该 token。
+// anthropic-beta 应使用的 beta 集合。默认不包含 context-1m；该 beta 必须通过
+// ClaudeCodeOAuthMimicryRequestBetasForModel 按模型名中的 [1m] 标记条件化加入。
 func ClaudeCodeOAuthMimicryRequestBetas() []string {
-	return []string{
-		BetaClaudeCode,
-		BetaOAuth,
-		BetaContext1M,
+	return ClaudeCodeOAuthMimicryRequestBetasForModel("")
+}
+
+// ClaudeCodeOAuthMimicryRequestBetasForModel 返回 OAuth mimic 路径中 API 请求
+// header anthropic-beta 应使用的 beta 集合。它刻意与 telemetry betas 区分：
+// header 需要 oauth-2025-04-20，而 telemetry 的 betas 字段不包含该 token。
+func ClaudeCodeOAuthMimicryRequestBetasForModel(model string) []string {
+	betas := []string{BetaClaudeCode, BetaOAuth}
+	if HasContext1MMarker(model) {
+		betas = append(betas, BetaContext1M)
+	}
+	betas = append(betas,
 		BetaInterleavedThinking,
 		BetaRedactThinking,
 		BetaThinkingTokenCount,
 		BetaContextManagement,
 		BetaPromptCachingScope,
 		BetaMidConversationSystem,
-	}
+	)
+	return betas
 }
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。

@@ -3,7 +3,9 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -651,7 +653,8 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		sessionID = s.accountSessionID(ev.AccountID)
 	}
 
-	betasStr := strings.Join(claude.FullClaudeCodeMimicryBetas(), ",")
+	acct := s.resolveTelemetryAccountContext(ev, deviceID)
+	betasStr := strings.Join(claude.FullClaudeCodeMimicryBetasForModel(ev.Model), ",")
 
 	p := telemetryPayload{
 		EventName:       ev.EventName,
@@ -662,20 +665,26 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		Model:           ev.Model,
 		UserType:        defaultString(ev.UserType, "external"),
 		Betas:           betasStr,
-		Env:             s.buildEnv(),
+		Env:             s.buildEnv(acct.isClaudeAIAuth),
 		Entrypoint:      "cli",
 		IsInteractive:   true,
 		ClientType:      "cli",
-		Process:         s.generateProcessMetrics(),
+		Process:         s.generateProcessMetrics(ev.AccountID, deviceID, acct.constrainedMemory),
 	}
 
-	if ev.AccountUUID != "" || ev.OrgUUID != "" {
-		p.Auth = &telemetryAuth{AccountUUID: ev.AccountUUID, OrganizationUUID: ev.OrgUUID}
+	if acct.accountUUID != "" || acct.orgUUID != "" {
+		p.Auth = &telemetryAuth{AccountUUID: acct.accountUUID, OrganizationUUID: acct.orgUUID}
 	}
 
-	additional := map[string]interface{}{"renderer_mode": "fullscreen"}
+	additional := make(map[string]interface{}, len(ev.Extra)+1)
+	if shouldAttachRendererMode(ev.EventName) {
+		additional["renderer_mode"] = "fullscreen"
+	}
 	for k, v := range ev.Extra {
 		if strings.HasPrefix(k, "_PROTO_") {
+			continue
+		}
+		if k == "renderer_mode" && !shouldAttachRendererMode(ev.EventName) {
 			continue
 		}
 		additional[k] = v
@@ -688,7 +697,75 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 	raw, _ := json.Marshal(p)
 	return telemetryWireEvent{AccountID: ev.AccountID, Token: ev.Token, EventType: "ClaudeCodeInternalEvent", EventData: raw}
 }
-func (s *TelemetryService) buildEnv() *telemetryEnv {
+
+type telemetryAccountContext struct {
+	accountUUID       string
+	orgUUID           string
+	isClaudeAIAuth    bool
+	constrainedMemory int64
+}
+
+func (s *TelemetryService) resolveTelemetryAccountContext(ev TelemetryEvent, deviceID string) telemetryAccountContext {
+	ctx := telemetryAccountContext{
+		accountUUID:       strings.TrimSpace(ev.AccountUUID),
+		orgUUID:           strings.TrimSpace(ev.OrgUUID),
+		constrainedMemory: stableConstrainedMemory(ev.AccountID, deviceID),
+	}
+	if ev.AccountID <= 0 || s == nil || s.cfg.AccountRepo == nil {
+		return ctx
+	}
+	account, err := s.cfg.AccountRepo.GetByID(context.Background(), ev.AccountID)
+	if err != nil || account == nil {
+		return ctx
+	}
+	ctx.isClaudeAIAuth = account.IsOAuth()
+	if ctx.accountUUID == "" {
+		ctx.accountUUID = strings.TrimSpace(firstNonEmptyTelemetryString(
+			account.GetExtraString("account_uuid"),
+			account.GetCredential("account_uuid"),
+		))
+	}
+	if ctx.orgUUID == "" {
+		ctx.orgUUID = strings.TrimSpace(firstNonEmptyTelemetryString(
+			account.GetExtraString("org_uuid"),
+			account.GetExtraString("organization_uuid"),
+			account.GetCredential("org_uuid"),
+			account.GetCredential("organization_uuid"),
+		))
+	}
+	return ctx
+}
+
+func shouldAttachRendererMode(eventName string) bool {
+	name := strings.ToLower(eventName)
+	for _, marker := range []string{"keybinding", "tip", "status_line", "render"} {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func stableConstrainedMemory(accountID int64, deviceID string) int64 {
+	material := fmt.Sprintf("sub2api-constrained-memory:%d:%s", accountID, deviceID)
+	if accountID <= 0 && strings.TrimSpace(deviceID) == "" {
+		material = "sub2api-constrained-memory:default"
+	}
+	sum := sha256.Sum256([]byte(material))
+	gb := int64(64 + binary.BigEndian.Uint64(sum[:8])%193) // 64..256 GiB inclusive
+	return gb << 30
+}
+
+func firstNonEmptyTelemetryString(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func (s *TelemetryService) buildEnv(isClaudeAIAuth bool) *telemetryEnv {
 	return &telemetryEnv{
 		Platform:              "linux",
 		NodeVersion:           "v26.3.0",
@@ -700,7 +777,7 @@ func (s *TelemetryService) buildEnv() *telemetryEnv {
 		IsClaubbit:            false,
 		IsGithubAction:        false,
 		IsClaudeCodeAction:    false,
-		IsClaudeAiAuth:        false,
+		IsClaudeAiAuth:        isClaudeAIAuth,
 		Version:               claude.CLICurrentVersion,
 		Arch:                  "x64",
 		IsClaudeCodeRemote:    false,
@@ -721,7 +798,7 @@ func (s *TelemetryService) buildEnv() *telemetryEnv {
 // generateProcessMetrics returns base64-encoded realistic Bun-style process metrics JSON.
 // IMPORTANT: Claude Code v2.1.197 uses Bun (JSC), not Node.js (V8).
 // Bun's memory model: heapUsed can exceed heapTotal.
-func (s *TelemetryService) generateProcessMetrics() string {
+func (s *TelemetryService) generateProcessMetrics(accountID int64, deviceID string, constrainedMemory int64) string {
 	uptime := time.Since(s.processStart).Seconds()
 	if uptime < 0 {
 		uptime = 0
@@ -737,7 +814,9 @@ func (s *TelemetryService) generateProcessMetrics() string {
 	rss := baseRSS + int64(float64(baseRSS)*0.01*growth) + int64(rand.Intn(24<<20))
 	external := int64(45+rand.Intn(75)) << 20
 	arrayBuffers := int64(6+rand.Intn(26)) << 20
-	constrainedMemory := int64(134686142464)
+	if constrainedMemory <= 0 {
+		constrainedMemory = stableConstrainedMemory(accountID, deviceID)
+	}
 
 	pm := processMetricsJSON{
 		Uptime:            math.Round(uptime*1e6) / 1e6,
@@ -867,7 +946,7 @@ func (s *TelemetryService) EnqueueGrowthbookExperiments(accountID int64, token, 
 	for _, ex := range exposures {
 		data := growthbookExperimentEventData{
 			EventID:        uuid.NewString(),
-			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+			Timestamp:      time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 			ExperimentID:   ex.ExperimentID,
 			VariationID:    ex.VariationID,
 			Environment:    "production",
