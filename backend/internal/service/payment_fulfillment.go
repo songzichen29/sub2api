@@ -660,13 +660,25 @@ func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, clien
 		"baseAmount": baseAmount,
 		"status":     "reserved",
 	})
+	if paymentAuditDialect(client) == dialect.Postgres {
+		query, args := buildAffiliateRebateAuditClaimQuery(client, oid, string(detail))
+		rows, err := client.QueryContext(ctx, query, args...)
+		if err != nil {
+			return false, err
+		}
+		defer func() { _ = rows.Close() }()
+		return rows.Next(), rows.Err()
+	}
 	query, args := buildAffiliateRebateAuditClaimQuery(client, oid, string(detail))
-	rows, err := client.QueryContext(ctx, query, args...)
+	res, err := client.ExecContext(ctx, query, args...)
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = rows.Close() }()
-	return rows.Next(), rows.Err()
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func buildAffiliateRebateAuditClaimQuery(client *dbent.Client, orderID, detail string) (string, []any) {
@@ -685,16 +697,14 @@ ON CONFLICT (order_id, action) DO NOTHING
 RETURNING id`, nowExpr), []any{orderID, detail}
 	}
 	return fmt.Sprintf(`
-INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
+INSERT IGNORE INTO payment_audit_logs (order_id, action, detail, operator, created_at)
 SELECT ?, 'AFFILIATE_REBATE_APPLIED', ?, 'system', %s
 WHERE NOT EXISTS (
 	SELECT 1
 	FROM payment_audit_logs
 	WHERE order_id = ?
 	  AND action IN ('AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')
-)
-ON CONFLICT (order_id, action) DO NOTHING
-RETURNING id`, nowExpr), []any{orderID, detail, orderID}
+)`, nowExpr), []any{orderID, detail, orderID}
 }
 
 func paymentAuditCurrentTimestampExpr(client *dbent.Client) string {

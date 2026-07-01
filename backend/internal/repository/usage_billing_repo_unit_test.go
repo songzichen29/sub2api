@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -14,8 +13,9 @@ import (
 )
 
 const (
-	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
-	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
+	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \?, updated_at = NOW\(\)\s+WHERE id = \? AND deleted_at IS NULL AND balance >= \?`
+	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \?, updated_at = NOW\(\)\s+WHERE id = \? AND deleted_at IS NULL`
+	selectBalanceSQL            = `SELECT balance FROM users WHERE id = \?`
 )
 
 func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
@@ -27,8 +27,11 @@ func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(conditionalBalanceDeductSQL).
-		WithArgs(2.5, int64(42)).
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(2.5, int64(42), 2.5).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceSQL).
+		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(7.5))
 	mock.ExpectCommit()
 
@@ -49,11 +52,14 @@ func TestDeductUsageBillingBalance_RecordsOverdraftWhenGuardMisses(t *testing.T)
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(conditionalBalanceDeductSQL).
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42), 10.0).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(overdraftBalanceDeductSQL).
 		WithArgs(10.0, int64(42)).
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(overdraftBalanceDeductSQL).
-		WithArgs(10.0, int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceSQL).
+		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(-5.0))
 	mock.ExpectCommit()
 
@@ -74,11 +80,14 @@ func TestApplyUsageBillingEffects_FlagsBalanceOverdraft(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(conditionalBalanceDeductSQL).
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42), 10.0).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(overdraftBalanceDeductSQL).
 		WithArgs(10.0, int64(42)).
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(overdraftBalanceDeductSQL).
-		WithArgs(10.0, int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceSQL).
+		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(-5.0))
 	mock.ExpectCommit()
 
@@ -104,12 +113,12 @@ func TestDeductUsageBillingBalance_ReturnsUserNotFoundWhenNoUserUpdated(t *testi
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(conditionalBalanceDeductSQL).
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42), 10.0).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(overdraftBalanceDeductSQL).
 		WithArgs(10.0, int64(42)).
-		WillReturnError(sql.ErrNoRows)
-	mock.ExpectQuery(overdraftBalanceDeductSQL).
-		WithArgs(10.0, int64(42)).
-		WillReturnError(sql.ErrNoRows)
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectRollback()
 
 	_, _, err = deductUsageBillingBalance(ctx, tx, 42, 10)
