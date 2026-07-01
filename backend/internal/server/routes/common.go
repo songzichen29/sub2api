@@ -49,7 +49,10 @@ func registerClaudeCodeCompatibilityRoutes(r *gin.Engine) {
 			"dateUpdated": time.Now().UTC().Format(time.RFC3339),
 		})
 	}
-	r.GET("/api/features/:clientKey", features)
+	// 注意：GET /api/features/:key 已由 gateway.go 的 FeaturesProxy 认证代理接管
+	// （用 OAuth 账号 token 代理上游 api.anthropic.com 并按账号缓存），不得在此重复
+	// 注册——否则同前缀下 :clientKey 与 :key 参数名不一致会触发 Gin radix tree 注册
+	// panic。common 兼容层仅保留 eval/sub 等 SDK 端点。
 	r.POST("/api/eval/:clientKey", features)
 	r.GET("/sub/:clientKey", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
@@ -87,12 +90,9 @@ func registerClaudeCodeCompatibilityRoutes(r *gin.Engine) {
 
 	// Claude Code bootstrap/profile/settings/policy/usage endpoints observed in
 	// v2.1.197. Responses are intentionally minimal but schema-compatible.
-	r.GET("/api/claude_cli/bootstrap", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"client_data":              gin.H{},
-			"additional_model_options": []gin.H{},
-		})
-	})
+	// 注意：GET /api/claude_cli/bootstrap 已由 gateway.go 的 BootstrapProxy 认证代理
+	// 接管（代理上游并按账号缓存），不得在此重复注册，否则同路径两套 handler 会触发
+	// Gin 注册 panic。
 	r.GET("/api/claude_cli_profile", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"account":      gin.H{},

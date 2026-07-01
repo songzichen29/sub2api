@@ -17,7 +17,13 @@ import (
 func newGatewayRoutesTestRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	attachGatewayRoutesForTest(router)
+	return router
+}
 
+// attachGatewayRoutesForTest 将 gateway 路由挂载到已存在的 engine 上，便于其他测试
+// （如 common 与 gateway 路由冲突检测）在同一 engine 上叠加注册，复刻生产启动顺序。
+func attachGatewayRoutesForTest(router *gin.Engine) {
 	RegisterGatewayRoutes(
 		router,
 		&handler.Handlers{
@@ -38,8 +44,6 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 		nil,
 		&config.Config{},
 	)
-
-	return router
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
