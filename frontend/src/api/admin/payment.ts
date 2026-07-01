@@ -6,78 +6,12 @@
 import { apiClient } from '../client'
 import type {
   DashboardStats,
-  DailyPaymentStat,
   PaymentOrder,
   PaymentChannel,
   SubscriptionPlan,
   ProviderInstance
 } from '@/types/payment'
-import type { DiscountRule } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
-import type { PaymentPaidUserRateBackfillStatus } from './settings'
-
-export type PaymentCouponType = 'fixed' | 'percent'
-export type PaymentCouponScope = 'all' | 'balance' | 'subscription'
-export type PaymentCouponStatus = 'active' | 'disabled' | 'archived'
-export type PaymentCouponUsageStatus = 'used' | 'refunded'
-
-export interface PaymentCoupon {
-  id: number
-  code: string
-  type: PaymentCouponType
-  value: number
-  min_amount: number
-  max_discount: number
-  scope: PaymentCouponScope
-  max_uses: number
-  used_count: number
-  per_user_limit: number
-  status: PaymentCouponStatus
-  starts_at?: string
-  expires_at?: string
-  notes: string
-  created_at: string
-  updated_at: string
-}
-
-export interface PaymentCouponUsage {
-  id: number
-  coupon_id: number
-  user_id: number
-  order_id: number
-  discount_amount: number
-  used_at: string
-  status: PaymentCouponUsageStatus
-}
-
-export interface CreatePaymentCouponRequest {
-  code?: string
-  type: PaymentCouponType
-  value: number
-  min_amount?: number
-  max_discount?: number
-  scope?: PaymentCouponScope
-  max_uses?: number
-  per_user_limit?: number
-  starts_at?: number
-  expires_at?: number
-  notes?: string
-}
-
-export interface UpdatePaymentCouponRequest {
-  code?: string
-  type?: PaymentCouponType
-  value?: number
-  min_amount?: number
-  max_discount?: number
-  scope?: PaymentCouponScope
-  max_uses?: number
-  per_user_limit?: number
-  status?: PaymentCouponStatus
-  starts_at?: number
-  expires_at?: number
-  notes?: string
-}
 
 /** Admin-facing payment config returned by GET /admin/payment/config */
 export interface AdminPaymentConfig {
@@ -90,10 +24,6 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
-  discount_rules?: DiscountRule[]
-  paid_user_rate_enabled: boolean
-  paid_user_rate_rules: Array<{ group_id: number; rate_multiplier: number; assigned_users?: number }>
-  paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
@@ -112,14 +42,81 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
-  discount_rules?: DiscountRule[]
-  paid_user_rate_enabled?: boolean
-  paid_user_rate_rules?: Array<{ group_id: number; rate_multiplier: number }>
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
   help_image_url?: string
   help_text?: string
+}
+
+export interface RefundResult {
+  success: boolean
+  warning?: string
+  require_force?: boolean
+  balance_deducted?: number
+  subscription_days_deducted?: number
+}
+
+export type PaymentCouponType = 'fixed' | 'percent'
+export type PaymentCouponScope = 'all' | 'balance' | 'subscription'
+export type PaymentCouponStatus = 'active' | 'disabled' | 'archived'
+
+export interface PaymentCoupon {
+  id: number
+  code: string
+  type: PaymentCouponType
+  value: number
+  min_amount: number
+  max_discount: number
+  scope: PaymentCouponScope
+  max_uses: number
+  used_count: number
+  per_user_limit: number
+  status: PaymentCouponStatus
+  starts_at?: string | null
+  expires_at?: string | null
+  notes: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PaymentCouponUsage {
+  id: number
+  coupon_id: number
+  user_id: number
+  order_id: number
+  discount_amount: number
+  used_at: string
+  status: string
+}
+
+export interface CreatePaymentCouponRequest {
+  code?: string
+  type: PaymentCouponType
+  value: number
+  min_amount: number
+  max_discount: number
+  scope: PaymentCouponScope
+  max_uses: number
+  per_user_limit: number
+  starts_at?: number | null
+  expires_at?: number | null
+  notes?: string
+}
+
+export interface UpdatePaymentCouponRequest {
+  code?: string
+  type?: PaymentCouponType
+  value?: number
+  min_amount?: number
+  max_discount?: number
+  scope?: PaymentCouponScope
+  max_uses?: number
+  per_user_limit?: number
+  status?: PaymentCouponStatus
+  starts_at?: number | null
+  expires_at?: number | null
+  notes?: string
 }
 
 export const adminPaymentAPI = {
@@ -132,44 +129,7 @@ export const adminPaymentAPI = {
 
   /** Update payment configuration */
   updateConfig(data: UpdatePaymentConfigRequest) {
-    return apiClient.put<AdminPaymentConfig>('/admin/payment/config', data)
-  },
-
-  // ==================== Coupons ====================
-
-  /** Get payment coupons (paginated) */
-  listCoupons(params?: {
-    page?: number
-    page_size?: number
-    status?: string
-    search?: string
-  }) {
-    return apiClient.get<BasePaginationResponse<PaymentCoupon>>('/admin/payment/coupons', { params })
-  },
-
-  /** Get one payment coupon */
-  getCoupon(id: number) {
-    return apiClient.get<PaymentCoupon>(`/admin/payment/coupons/${id}`)
-  },
-
-  /** Create payment coupon */
-  createCoupon(data: CreatePaymentCouponRequest) {
-    return apiClient.post<PaymentCoupon>('/admin/payment/coupons', data)
-  },
-
-  /** Update payment coupon */
-  updateCoupon(id: number, data: UpdatePaymentCouponRequest) {
-    return apiClient.put<PaymentCoupon>(`/admin/payment/coupons/${id}`, data)
-  },
-
-  /** Archive payment coupon */
-  deleteCoupon(id: number) {
-    return apiClient.delete(`/admin/payment/coupons/${id}`)
-  },
-
-  /** Get coupon usage records */
-  listCouponUsages(id: number, params?: { page?: number; page_size?: number }) {
-    return apiClient.get<BasePaginationResponse<PaymentCouponUsage>>(`/admin/payment/coupons/${id}/usages`, { params })
+    return apiClient.put('/admin/payment/config', data)
   },
 
   // ==================== Dashboard ====================
@@ -181,9 +141,9 @@ export const adminPaymentAPI = {
     })
   },
 
-  /** Get payment daily statistics for a fixed date range */
-  getDailyStats(params: { start: string; end: string }) {
-    return apiClient.get<DailyPaymentStat[]>('/admin/payment/daily-stats', { params })
+  /** Get payment daily statistics for a date range */
+  getDailyStats(params: { start: string; end: string; timezone?: string }) {
+    return apiClient.get<DashboardStats['daily_series']>('/admin/payment/daily-stats', { params })
   },
 
   // ==================== Orders ====================
@@ -218,14 +178,46 @@ export const adminPaymentAPI = {
     return apiClient.post(`/admin/payment/orders/${id}/retry`)
   },
 
-  /** Preview refund amount */
-  previewRefund(id: number, data: { amount?: number; refund_mode?: 'full' | 'proportional' }) {
-    return apiClient.post<{ refund_amount: number; max_refundable_amount: number; calculated_automatically: boolean }>(`/admin/payment/orders/${id}/refund-preview`, data)
+  /** Process a refund */
+  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean }) {
+    return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund`, data)
   },
 
-  /** Process a refund */
-  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean; refund_mode?: 'full' | 'proportional' }) {
-    return apiClient.post(`/admin/payment/orders/${id}/refund`, data)
+  /** Query and finalize a pending refund */
+  queryRefund(id: number) {
+    return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund/query`)
+  },
+
+  // ==================== Coupons ====================
+
+  /** List coupons */
+  listCoupons(params?: {
+    page?: number
+    page_size?: number
+    status?: string
+    search?: string
+  }) {
+    return apiClient.get<BasePaginationResponse<PaymentCoupon>>('/admin/payment/coupons', { params })
+  },
+
+  /** Create coupon */
+  createCoupon(data: CreatePaymentCouponRequest) {
+    return apiClient.post<PaymentCoupon>('/admin/payment/coupons', data)
+  },
+
+  /** Update coupon */
+  updateCoupon(id: number, data: UpdatePaymentCouponRequest) {
+    return apiClient.put<PaymentCoupon>(`/admin/payment/coupons/${id}`, data)
+  },
+
+  /** Delete/archive coupon */
+  deleteCoupon(id: number) {
+    return apiClient.delete(`/admin/payment/coupons/${id}`)
+  },
+
+  /** List coupon usage records */
+  listCouponUsages(id: number, params?: { page?: number; page_size?: number }) {
+    return apiClient.get<BasePaginationResponse<PaymentCouponUsage>>(`/admin/payment/coupons/${id}/usages`, { params })
   },
 
   // ==================== Channels ====================

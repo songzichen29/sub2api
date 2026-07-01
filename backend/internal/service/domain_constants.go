@@ -422,6 +422,8 @@ const (
 
 	// SettingKeyMaxClaudeCodeVersion 最高 Claude Code 版本号限制 (semver, 如 "3.0.0"，空值=不检查)
 	SettingKeyMaxClaudeCodeVersion = "max_claude_code_version"
+	SettingKeyMinCodexVersion      = "min_codex_version"
+	SettingKeyMaxCodexVersion      = "max_codex_version"
 
 	// SettingKeyAllowUngroupedKeyScheduling 允许未分组 API Key 调度（默认 false：未分组 Key 返回 403）
 	SettingKeyAllowUngroupedKeyScheduling = "allow_ungrouped_key_scheduling"
@@ -451,7 +453,12 @@ const (
 	// SettingKeyOpenAICodexUserAgent OpenAI Codex 完整 User-Agent（空值使用内置默认）
 	// 当客户端 UA 被识别为浏览器（Chrome/Firefox/Safari/Edge 等）时，转发给 OpenAI 上游前会替换为此值，
 	// 用于避免 Cloudflare 对浏览器型 UA 的质询拦截。
-	SettingKeyOpenAICodexUserAgent = "openai_codex_user_agent"
+	SettingKeyCodexCLIOnlyBlacklist                  = "codex_cli_only_blacklist"
+	SettingKeyCodexCLIOnlyWhitelist                  = "codex_cli_only_whitelist"
+	SettingKeyCodexCLIOnlyAllowAppServerClients      = "codex_cli_only_allow_app_server_clients"
+	SettingKeyCodexCLIOnlyAllowBodyEngineFingerprint = "codex_cli_only_allow_body_engine_fingerprint"
+	SettingKeyCodexCLIOnlyEngineFingerprintSignals   = "codex_cli_only_engine_fingerprint_signals"
+	SettingKeyOpenAICodexUserAgent                   = "openai_codex_user_agent"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认 false）。
 	// 仅在账号 codex_cli_only 开启时生效；开启后无需逐账号配置 codex_cli_only_allowed_clients。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

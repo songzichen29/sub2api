@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div :class="['mx-auto space-y-6', containerMaxWidth]">
+    <div class="mx-auto max-w-4xl space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -21,6 +21,7 @@
             :payment-type="paymentState.paymentType"
             :pay-url="paymentState.payUrl"
             :order-type="paymentState.orderType"
+            :currency="paymentState.currency || selectedCurrency"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
             @settled="onPaymentSettled"
@@ -43,14 +44,11 @@
             <div class="card p-6">
               <AmountInput
                 v-model="amount"
-                :amounts="rechargeQuickAmounts"
+                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
                 :min="globalMinAmount"
                 :max="globalMaxAmount"
-                :discount-rules="discountRules"
-                :fee-rate="feeRate"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-              <p v-if="discountRuleHint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
             </div>
             <div v-if="enabledMethods.length >= 1" class="card p-6">
               <PaymentMethodSelector
@@ -60,29 +58,19 @@
               />
             </div>
             <div v-if="validAmount > 0" class="card p-6">
-              <CouponInput
-                v-model="couponCode"
-                :loading="pricePreviewLoading"
-                :error="!!couponMessage && couponMessageIsError"
-                :message="couponMessage"
-                @apply="refreshPricePreview"
-              />
-            </div>
-            <div v-if="validAmount > 0" class="card p-6">
-              <PriceBreakdown
-                :base-amount="priceBreakdown.baseAmount"
-                :threshold-discount="priceBreakdown.thresholdDiscount"
-                :coupon-discount="priceBreakdown.couponDiscount"
-                :fee="priceBreakdown.fee"
-                :pay-amount="priceBreakdown.payAmount"
-                :fee-rate="priceBreakdown.feeRate"
-                :base-label="t('payment.paymentAmount')"
-                :threshold-label="t('payment.thresholdDiscount')"
-                :coupon-label="t('payment.couponDiscount')"
-                :fee-label="t('payment.fee')"
-                :pay-label="t('payment.actualPay')"
-              />
-              <div class="mt-2 space-y-2 text-sm">
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(validAmount) }}</span>
+                </div>
+                <div v-if="feeRate > 0" class="flex justify-between">
+                  <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                  <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(feeAmount) }}</span>
+                </div>
+                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                  <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(totalAmount) }}</span>
+                </div>
                 <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
@@ -97,69 +85,8 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
               </span>
-              <span v-else>{{ t('payment.createOrder') }} ¥{{ priceBreakdown.payAmount.toFixed(2) }}</span>
+              <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
             </button>
-            </template>
-          </template>
-          <!-- Daily limit reset Tab -->
-          <template v-else-if="activeTab === 'daily_limit_reset'">
-            <div v-if="!selectedDailyResetSubscription" class="card py-16 text-center">
-              <p class="text-gray-500 dark:text-gray-400">{{ t('payment.dailyReset.notAvailable') }}</p>
-            </div>
-            <template v-else>
-              <div class="card p-5">
-                <div class="mb-3 flex flex-wrap items-center gap-2">
-                  <span :class="['rounded-md border px-2 py-0.5 text-xs font-medium', platformBadgeClass(selectedDailyResetSubscription.group?.platform || '')]">
-                    {{ platformLabel(selectedDailyResetSubscription.group?.platform || '') }}
-                  </span>
-                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">
-                    {{ selectedDailyResetSubscription.group?.name || t('payment.groupFallback', { id: selectedDailyResetSubscription.group_id }) }}
-                  </h3>
-                </div>
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('userSubscriptions.daily') }}</span>
-                    <span class="text-gray-900 dark:text-white">
-                      ${{ (selectedDailyResetSubscription.daily_usage_usd || 0).toFixed(2) }} /
-                      ${{ selectedDailyResetSubscription.group?.daily_limit_usd?.toFixed(2) }}
-                    </span>
-                  </div>
-                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.dailyReset.price') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ dailyResetPrice.toFixed(2) }}</span>
-                  </div>
-                </div>
-              </div>
-              <div v-if="enabledMethods.length >= 1" class="card p-6">
-                <PaymentMethodSelector
-                  :methods="dailyResetMethodOptions"
-                  :selected="selectedMethod"
-                  @select="selectedMethod = $event"
-                />
-              </div>
-              <div v-if="feeRate > 0 && dailyResetPrice > 0" class="card p-6">
-                <div class="space-y-2 text-sm">
-                  <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ dailyResetPrice.toFixed(2) }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ dailyResetFeeAmount.toFixed(2) }}</span>
-                  </div>
-                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
-                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ dailyResetTotalAmount.toFixed(2) }}</span>
-                  </div>
-                </div>
-              </div>
-              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitDailyReset || submitting" @click="confirmDailyLimitReset">
-                <span v-if="submitting" class="flex items-center justify-center gap-2">
-                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                  {{ t('common.processing') }}
-                </span>
-                <span v-else>{{ t('payment.dailyReset.payAndReset') }} ¥{{ dailyResetTotalAmount.toFixed(2) }}</span>
-              </button>
             </template>
           </template>
           <!-- Subscribe Tab -->
@@ -177,20 +104,15 @@
                 <!-- Price -->
                 <div class="flex items-baseline gap-2">
                   <span v-if="selectedPlan.original_price" class="text-sm text-gray-400 line-through dark:text-gray-500">
-                    ¥{{ selectedPlan.original_price }}
+                    {{ formatSelectedSubscriptionPaymentAmount(selectedPlan.original_price) }}
                   </span>
-                  <span :class="['text-3xl font-bold', planTextClass]">¥{{ selectedPlan.price }}</span>
+                  <span :class="['text-3xl font-bold', planTextClass]">{{ formatSelectedSubscriptionPaymentAmount(selectedPlan.price) }}</span>
                   <span class="text-sm text-gray-500 dark:text-gray-400">/ {{ planValiditySuffix }}</span>
                 </div>
                 <!-- Description -->
                 <p v-if="selectedPlan.description" class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                   {{ selectedPlan.description }}
                 </p>
-                <div v-if="renewalNotice" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                  <p class="font-medium">{{ renewalNoticeTitle }}</p>
-                  <p class="mt-1 leading-relaxed">{{ renewalNotice }}</p>
-                </div>
-                <p v-if="discountRuleHint" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
                   <div>
@@ -199,27 +121,19 @@
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
                     </div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd != null && selectedPlan.daily_limit_usd > 0">
+                  <div v-if="selectedPlan.daily_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.daily_limit_usd) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.daily_limit_usd }}</div>
                   </div>
-                  <div v-if="planHasTotalQuota(selectedPlan)">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.totalQuota') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.quota_limit_usd) }}</div>
-                  </div>
-                  <div v-if="getPlanOverdraftLimit(selectedPlan) !== null">
-                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.overdraftTotal') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(getPlanOverdraftLimit(selectedPlan)) }}</div>
-                  </div>
-                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.weekly_limit_usd != null && selectedPlan.weekly_limit_usd > 0">
+                  <div v-if="selectedPlan.weekly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.weeklyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.weekly_limit_usd) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.weekly_limit_usd }}</div>
                   </div>
-                  <div v-if="getPlanOverdraftLimit(selectedPlan) === null && selectedPlan.monthly_limit_usd != null && selectedPlan.monthly_limit_usd > 0">
+                  <div v-if="selectedPlan.monthly_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
-                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ formatUSD(selectedPlan.monthly_limit_usd) }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
                   </div>
-                  <div v-if="!planHasAnyQuotaLimit(selectedPlan)">
+                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -232,36 +146,28 @@
                   @select="selectedMethod = $event"
                 />
               </div>
-              <div v-if="selectedPlan.price > 0" class="card p-6">
-                <CouponInput
-                  v-model="couponCode"
-                  :loading="pricePreviewLoading"
-                  :error="!!couponMessage && couponMessageIsError"
-                  :message="couponMessage"
-                  @apply="refreshPricePreview"
-                />
-              </div>
-              <div v-if="selectedPlan.price > 0" class="card p-6">
-                <PriceBreakdown
-                  :base-amount="priceBreakdown.baseAmount"
-                  :threshold-discount="priceBreakdown.thresholdDiscount"
-                  :coupon-discount="priceBreakdown.couponDiscount"
-                  :fee="priceBreakdown.fee"
-                  :pay-amount="priceBreakdown.payAmount"
-                  :fee-rate="priceBreakdown.feeRate"
-                  :base-label="t('payment.amountLabel')"
-                  :threshold-label="t('payment.thresholdDiscount')"
-                  :coupon-label="t('payment.couponDiscount')"
-                  :fee-label="t('payment.fee')"
-                  :pay-label="t('payment.actualPay')"
-                />
+              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subPaymentAmount) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(subFeeAmount) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
+                  </div>
+                </div>
               </div>
               <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitSubscription || submitting" @click="confirmSubscribe">
                 <span v-if="submitting" class="flex items-center justify-center gap-2">
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} ¥{{ priceBreakdown.payAmount.toFixed(2) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(subTotalAmount) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -288,9 +194,8 @@
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
-                        <span v-if="subscriptionHasTotalQuota(sub)">{{ t('payment.planCard.totalQuota') }}: ${{ formatUSD(sub.quota_used_usd) }} / ${{ formatUSD(sub.quota_limit_usd) }}</span>
-                        <span v-if="subscriptionIsUnlimited(sub)">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
-                        <span v-if="sub.expires_at">{{ getRemainingSubscriptionText(sub.expires_at) }}</span>
+                        <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                        <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
                       </div>
                     </div>
@@ -322,44 +227,7 @@
             </button>
             <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.selectPlan') }}</h3>
             <div class="space-y-4">
-              <div v-if="renewalModalNotice" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
-                <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
-              </div>
               <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="renewalModeTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="renewalModeTarget = null">
-          <div class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-lg dark:border-dark-700 dark:bg-dark-900">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.renewalMode.title') }}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-              {{ t('payment.renewalMode.message') }}
-            </p>
-            <div class="mt-4 space-y-3">
-              <button
-                type="button"
-                class="w-full rounded-lg border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
-                @click="confirmRenewalMode('extend')"
-              >
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
-                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
-              </button>
-              <button
-                type="button"
-                class="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                @click="confirmRenewalMode('restart')"
-              >
-                <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
-                <span class="mt-1 block text-xs text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
-              </button>
-            </div>
-            <div class="mt-4 flex justify-end">
-              <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
             </div>
           </div>
         </div>
@@ -387,13 +255,10 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PricePreviewResponse, DiscountRule } from '@/types/payment'
-import type { UserSubscription } from '@/types'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
-import CouponInput from '@/components/payment/CouponInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import PriceBreakdown from '@/components/payment/PriceBreakdown.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
@@ -407,16 +272,16 @@ import {
   writePaymentRecoverySnapshot,
 } from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel } from '@/utils/platformColors'
-import { formatRemainingDuration } from '@/utils/format'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
-import { buildRenewalNoticeText, getRenewalModeLabel } from './renewalNotice'
 
-const { t } = useI18n()
+const i18n = useI18n()
+const { t } = i18n
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -427,29 +292,19 @@ const appStore = useAppStore()
 const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
 
-function getRemainingSubscriptionText(expiresAt: string): string {
-  const remaining = formatRemainingDuration(expiresAt)
-  return remaining ? t('userSubscriptions.exactRemaining', { time: remaining }) : t('userSubscriptions.status.expired')
+function getDaysRemaining(expiresAt: string): number {
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
 }
 
 const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-type PaymentTab = 'recharge' | 'subscription' | 'daily_limit_reset'
-
-const activeTab = ref<PaymentTab>('recharge')
+const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
-const couponCode = ref('')
-const pricePreview = ref<PricePreviewResponse | null>(null)
-const pricePreviewLoading = ref(false)
-const couponMessage = ref('')
-const couponMessageIsError = ref(false)
-const discountRules = ref<DiscountRule[]>([])
-const selectedDailyResetSubscriptionId = ref<number | null>(null)
-const renewalModeTarget = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -458,8 +313,6 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
-  subscriptionId?: number
-  renewalMode?: 'extend' | 'restart'
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -482,6 +335,10 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     payUrl: '',
     outTradeNo: '',
     clientSecret: '',
+    intentId: '',
+    currency: '',
+    countryCode: '',
+    paymentEnv: '',
     payAmount: 0,
     orderType: '',
     paymentMode: '',
@@ -526,7 +383,6 @@ async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promi
 }
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
-const defaultRechargeQuickAmounts = [1, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000]
 
 function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
   if (typeof window === 'undefined' || !snapshot.orderId) return
@@ -563,7 +419,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; subscriptionId?: number; renewalMode?: 'extend' | 'restart'; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -584,16 +440,6 @@ function buildWechatOAuthAuthorizeUrl(
     } else {
       redirectUrl.searchParams.delete('plan_id')
     }
-    if (context.subscriptionId) {
-      redirectUrl.searchParams.set('subscription_id', String(context.subscriptionId))
-    } else {
-      redirectUrl.searchParams.delete('subscription_id')
-    }
-    if (context.renewalMode) {
-      redirectUrl.searchParams.set('renewal_mode', context.renewalMode)
-    } else {
-      redirectUrl.searchParams.delete('renewal_mode')
-    }
 
     if (context.orderAmount > 0) {
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
@@ -609,23 +455,20 @@ function buildWechatOAuthAuthorizeUrl(
 }
 
 function onPaymentDone() {
-  const shouldRefreshSubscriptions = paymentState.value.orderType === 'subscription'
-    || paymentState.value.orderType === 'daily_limit_reset'
+  const wasSubscription = paymentState.value.orderType === 'subscription'
   resetPayment()
   selectedPlan.value = null
-  if (shouldRefreshSubscriptions) {
+  if (wasSubscription) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
 }
 
-async function onPaymentSuccess() {
-  const resultState = { ...paymentState.value }
+function onPaymentSuccess() {
   removeRecoverySnapshot()
   authStore.refreshUser()
-  if (resultState.orderType === 'subscription' || resultState.orderType === 'daily_limit_reset') {
+  if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
-  await redirectToPaymentResult(resultState)
 }
 
 function onPaymentSettled() {
@@ -635,16 +478,13 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, quick_amounts: [], recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
-  const result: { key: PaymentTab; label: string }[] = []
+  const result: { key: 'recharge' | 'subscription'; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
-  if (activeTab.value === 'daily_limit_reset') {
-    result.push({ key: 'daily_limit_reset', label: t('payment.dailyReset.tab') })
-  }
   return result
 })
 
@@ -653,33 +493,15 @@ const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
-  return multiplier > 0 ? multiplier : 1
+  return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 })
 const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
-const rechargeQuickAmounts = computed(() => {
-  const configured = Array.isArray(checkout.value.quick_amounts)
-    ? checkout.value.quick_amounts.filter((amount) => Number.isFinite(amount) && amount > 0)
-    : []
-  const amounts = new Set(configured.length > 0 ? configured : defaultRechargeQuickAmounts)
-  for (const rule of discountRules.value) {
-    if (rule.enabled !== false && rule.threshold > 0) {
-      amounts.add(Math.round(rule.threshold * 100) / 100)
-    }
-  }
-  return [...amounts].sort((a, b) => a - b)
-})
-const containerMaxWidth = computed(() => {
-  if (activeTab.value === 'subscription' && !selectedPlan.value && paymentPhase.value === 'select') {
-    return 'max-w-7xl'
-  }
-  return 'max-w-4xl'
-})
 
+// Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
   const n = checkout.value.plans.length
-  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2 sm:max-w-2xl sm:mx-auto'
-  if (n === 3) return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
-  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+  if (n <= 2) return 'grid grid-cols-1 gap-5 sm:grid-cols-2'
+  return 'grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3'
 })
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
@@ -708,6 +530,46 @@ const globalMaxAmount = computed(() => {
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
+const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string }).value || '')
+  }
+  return undefined
+})
+
+function currencyFractionDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency,
+    }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
+}
+
+function roundPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.round(value * factor) / factor
+}
+
+function ceilPaymentAmount(value: number, currency: string): number {
+  if (!Number.isFinite(value)) return 0
+  const factor = 10 ** currencyFractionDigits(currency)
+  return Math.ceil(value * factor) / factor
+}
+
+function formatSelectedPaymentAmount(value: number): string {
+  return formatPaymentAmount(value, selectedCurrency.value, localeCode.value)
+}
+
+function formatSelectedSubscriptionPaymentAmount(value: number): string {
+  return formatSelectedPaymentAmount(roundPaymentAmount(value, selectedCurrency.value))
+}
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
@@ -732,42 +594,6 @@ const totalAmount = computed(() =>
     : validAmount.value
 )
 
-const priceBreakdown = computed(() => {
-  if (pricePreview.value) {
-    return {
-      baseAmount: pricePreview.value.base_amount,
-      thresholdDiscount: pricePreview.value.threshold_discount,
-      couponDiscount: pricePreview.value.coupon_discount,
-      fee: pricePreview.value.fee,
-      payAmount: pricePreview.value.pay_amount,
-      feeRate: pricePreview.value.fee_rate,
-    }
-  }
-  const base = activeTab.value === 'subscription'
-    ? selectedPlan.value?.price ?? 0
-    : validAmount.value
-  const fee = activeTab.value === 'subscription' ? subFeeAmount.value : feeAmount.value
-  const pay = activeTab.value === 'subscription' ? subTotalAmount.value : totalAmount.value
-  return {
-    baseAmount: base,
-    thresholdDiscount: 0,
-    couponDiscount: 0,
-    fee,
-    payAmount: pay,
-    feeRate: feeRate.value,
-  }
-})
-
-const discountRuleHint = computed(() => {
-  const enabled = discountRules.value.filter(rule => rule.enabled !== false)
-  if (enabled.length === 0) return ''
-  return enabled
-    .map((rule) => rule.label || (rule.type === 'rate'
-      ? t('payment.thresholdRateHint', { threshold: rule.threshold, rate: Math.round(rule.value * 100) })
-      : t('payment.thresholdReduceHint', { threshold: rule.threshold, amount: rule.value })))
-    .join(' · ')
-})
-
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
@@ -777,8 +603,8 @@ const amountError = computed(() => {
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max })
+    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
+    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
   }
   return ''
 })
@@ -789,201 +615,46 @@ const canSubmit = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-// Subscription-specific: method options based on plan price
-const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const planPrice = selectedPlan.value?.price ?? 0
-  return enabledMethods.value.map((type) => {
-    const ml = visibleMethods.value[type]
-    return {
-      type,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(planPrice, type),
-    }
-  })
+const subPaymentAmount = computed(() => {
+  const price = selectedPlan.value?.price ?? 0
+  return roundPaymentAmount(price, selectedCurrency.value)
 })
 
 const subFeeAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return 0
-  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return 0
+  return ceilPaymentAmount((subPaymentAmount.value * feeRate.value) / 100, selectedCurrency.value)
 })
 
 const subTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || subPaymentAmount.value <= 0) return subPaymentAmount.value
+  return roundPaymentAmount(subPaymentAmount.value + subFeeAmount.value, selectedCurrency.value)
+})
+
+function subscriptionTotalAmountForCurrency(value: number, currency: string): number {
+  const paymentAmount = roundPaymentAmount(value, currency)
+  if (feeRate.value <= 0 || paymentAmount <= 0) return paymentAmount
+  const fee = ceilPaymentAmount((paymentAmount * feeRate.value) / 100, currency)
+  return roundPaymentAmount(paymentAmount + fee, currency)
+}
+
+// Subscription-specific: method options based on gateway pay amount
+const subMethodOptions = computed<PaymentMethodOption[]>(() => {
   const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return price
-  return Math.round((price + subFeeAmount.value) * 100) / 100
+  return enabledMethods.value.map((type) => {
+    const ml = visibleMethods.value[type]
+    const currency = normalizePaymentCurrency(ml?.currency)
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
+    }
+  })
 })
 
 const canSubmitSubscription = computed(() =>
   selectedPlan.value !== null
-    && amountFitsMethod(selectedPlan.value.price, selectedMethod.value)
+    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
-)
-
-const selectedDailyResetSubscription = computed<UserSubscription | null>(() => {
-  const id = selectedDailyResetSubscriptionId.value
-  if (!id) return null
-  return activeSubscriptions.value.find(sub => sub.id === id) ?? null
-})
-
-const dailyResetPrice = computed(() => {
-  const price = selectedDailyResetSubscription.value?.group?.daily_limit_reset_price ?? 0
-  return price > 0 ? price : 0
-})
-
-const dailyResetMethodOptions = computed<PaymentMethodOption[]>(() =>
-  enabledMethods.value.map((type) => {
-    const ml = visibleMethods.value[type]
-    return {
-      type,
-      fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(dailyResetPrice.value, type),
-    }
-  })
-)
-
-const dailyResetFeeAmount = computed(() => {
-  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return 0
-  return Math.ceil(((dailyResetPrice.value * feeRate.value) / 100) * 100) / 100
-})
-
-const dailyResetTotalAmount = computed(() => {
-  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return dailyResetPrice.value
-  return Math.round((dailyResetPrice.value + dailyResetFeeAmount.value) * 100) / 100
-})
-
-const canSubmitDailyReset = computed(() =>
-  selectedDailyResetSubscription.value !== null
-    && dailyResetPrice.value > 0
-    && amountFitsMethod(dailyResetPrice.value, selectedMethod.value)
-    && selectedLimit.value?.available !== false
-)
-
-function findActiveSubscriptionByGroup(groupId: number | null | undefined): UserSubscription | null {
-  if (!groupId) return null
-  return activeSubscriptions.value.find((sub) =>
-    sub.group_id === groupId
-      && (sub.status === 'active' || sub.status === 'quota_exhausted')
-      && (!sub.expires_at || new Date(sub.expires_at).getTime() > Date.now())
-  ) ?? null
-}
-
-function getOverdraftLimit(sub: UserSubscription | null | undefined): number | null {
-  return sub?.allow_daily_overdraft && typeof sub.overdraft_limit_usd === 'number' && sub.overdraft_limit_usd > 0
-    ? sub.overdraft_limit_usd
-    : null
-}
-
-function getOverdraftUsed(sub: UserSubscription | null | undefined): number {
-  return sub?.overdraft_used_usd ?? 0
-}
-
-function getPlanOverdraftLimit(plan: SubscriptionPlan | null | undefined): number | null {
-  if (!plan?.allow_daily_overdraft || plan.daily_limit_usd == null || plan.daily_limit_usd <= 0) {
-    return null
-  }
-  const days = computePlanValidityDays(plan)
-  if (days == null || days <= 0) return null
-  return plan.daily_limit_usd * days
-}
-
-function formatUSD(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '0.00'
-  return value.toFixed(2)
-}
-
-function planHasTotalQuota(plan: SubscriptionPlan | null | undefined): boolean {
-  return plan?.quota_limit_usd != null && plan.quota_limit_usd > 0
-}
-
-function planHasAnyQuotaLimit(plan: SubscriptionPlan | null | undefined): boolean {
-  if (!plan) return false
-  return planHasTotalQuota(plan)
-    || (plan.daily_limit_usd != null && plan.daily_limit_usd > 0)
-    || (plan.weekly_limit_usd != null && plan.weekly_limit_usd > 0)
-    || (plan.monthly_limit_usd != null && plan.monthly_limit_usd > 0)
-    || getPlanOverdraftLimit(plan) !== null
-}
-
-function subscriptionHasTotalQuota(sub: UserSubscription | null | undefined): boolean {
-  return sub?.quota_limit_usd != null && sub.quota_limit_usd > 0
-}
-
-function subscriptionIsUnlimited(sub: UserSubscription): boolean {
-  return !subscriptionHasTotalQuota(sub)
-    && (sub.group?.daily_limit_usd == null || sub.group.daily_limit_usd <= 0)
-    && (sub.group?.weekly_limit_usd == null || sub.group.weekly_limit_usd <= 0)
-    && (sub.group?.monthly_limit_usd == null || sub.group.monthly_limit_usd <= 0)
-    && getOverdraftLimit(sub) === null
-}
-
-function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
-  if (subscriptionHasTotalQuota(sub)) {
-    return (sub.quota_remaining_usd ?? Math.max((sub.quota_limit_usd || 0) - (sub.quota_used_usd || 0), 0)) > 0
-  }
-  const group = sub.group
-  if (!group) return false
-  const overdraftLimit = getOverdraftLimit(sub)
-  if (overdraftLimit !== null) {
-    return getOverdraftUsed(sub) < overdraftLimit
-  }
-  const dailyRemaining = group.daily_limit_usd != null && group.daily_limit_usd > 0
-    ? Math.max(group.daily_limit_usd - (sub.daily_usage_usd || 0), 0)
-    : 0
-  const weeklyRemaining = group.weekly_limit_usd != null && group.weekly_limit_usd > 0
-    ? Math.max(group.weekly_limit_usd - (sub.weekly_usage_usd || 0), 0)
-    : 0
-  const monthlyRemaining = group.monthly_limit_usd != null && group.monthly_limit_usd > 0
-    ? Math.max(group.monthly_limit_usd - (sub.monthly_usage_usd || 0), 0)
-    : 0
-  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
-    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
-    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
-    && !subscriptionHasTotalQuota(sub)
-  return hasUnlimitedQuota || dailyRemaining > 0 || weeklyRemaining > 0 || monthlyRemaining > 0
-}
-
-function computePlanValidityDays(plan: SubscriptionPlan | null | undefined): number | null {
-  if (!plan) return null
-  if (plan.expires_at) {
-    const expiresAt = new Date(plan.expires_at)
-    const diffMs = expiresAt.getTime() - Date.now()
-    if (Number.isNaN(diffMs) || diffMs <= 0) return 0
-    return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
-  }
-  const days = plan.validity_days || 0
-  switch (plan.validity_unit) {
-    case 'week':
-    case 'weeks':
-      return days * 7
-    case 'month':
-    case 'months':
-      return days * 30
-    default:
-      return days
-  }
-}
-
-function buildRenewalNoticeForSubscription(sub: UserSubscription | null): string {
-  if (!sub || !subscriptionHasRemainingQuota(sub)) return ''
-  const renewalDays = selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null
-  return buildRenewalNoticeText(sub, t, renewalDays)
-}
-
-const renewalNoticeTitle = computed(() =>
-  getRenewalModeLabel(selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null, t)
-)
-
-const selectedPlanActiveSubscription = computed(() =>
-  findActiveSubscriptionByGroup(selectedPlan.value?.group_id)
-)
-
-const renewalNotice = computed(() =>
-  buildRenewalNoticeForSubscription(selectedPlanActiveSubscription.value)
-)
-
-const renewalModalNotice = computed(() =>
-  buildRenewalNoticeForSubscription(findActiveSubscriptionByGroup(renewGroupId.value))
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
@@ -993,34 +664,6 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   if (available) selectedMethod.value = available
 })
 
-watch(() => [dailyResetPrice.value, selectedMethod.value] as const, ([price, method]) => {
-  if (activeTab.value !== 'daily_limit_reset' || price <= 0 || amountFitsMethod(price, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(price, m))
-  if (available) selectedMethod.value = available
-})
-
-let previewTimer: number | undefined
-watch(
-  () => [activeTab.value, validAmount.value, selectedPlan.value?.id ?? 0, selectedMethod.value, couponCode.value] as const,
-  () => {
-    window.clearTimeout(previewTimer)
-    if (activeTab.value === 'daily_limit_reset') {
-      pricePreview.value = null
-      couponMessage.value = ''
-      return
-    }
-    const baseAmount = activeTab.value === 'subscription' ? selectedPlan.value?.price ?? 0 : validAmount.value
-    if (baseAmount <= 0) {
-      pricePreview.value = null
-      couponMessage.value = ''
-      return
-    }
-    previewTimer = window.setTimeout(() => {
-      refreshPricePreview()
-    }, 250)
-  }
-)
-
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
   const m = selectedMethod.value
@@ -1028,6 +671,7 @@ const paymentButtonClass = computed(() => {
   if (m.includes('alipay')) return 'btn-alipay'
   if (m.includes('wxpay')) return 'btn-wxpay'
   if (m === 'stripe') return 'btn-stripe'
+  if (m === 'airwallex') return 'btn-airwallex'
   return 'btn-primary'
 })
 
@@ -1045,12 +689,6 @@ const renewalPlans = computed(() => {
 
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
-  if (selectedPlan.value.expires_at) {
-    const expiresAt = new Date(selectedPlan.value.expires_at)
-    if (!Number.isNaN(expiresAt.getTime())) {
-      return t('payment.planCard.untilDate', { date: expiresAt.toLocaleString() })
-    }
-  }
   const u = selectedPlan.value.validity_unit || 'day'
   if (u === 'month') return t('payment.perMonth')
   if (u === 'year') return t('payment.perYear')
@@ -1059,9 +697,6 @@ const planValiditySuffix = computed(() => {
 
 function selectPlan(plan: SubscriptionPlan) {
   selectedPlan.value = plan
-  couponCode.value = ''
-  pricePreview.value = null
-  couponMessage.value = ''
   errorMessage.value = ''
 }
 
@@ -1069,44 +704,7 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   showRenewalModal.value = false
   renewGroupId.value = null
   selectedPlan.value = plan
-  couponCode.value = ''
-  pricePreview.value = null
-  couponMessage.value = ''
   errorMessage.value = ''
-}
-
-async function refreshPricePreview() {
-  const orderType: OrderType = activeTab.value === 'subscription' ? 'subscription' : 'balance'
-  const baseAmount = orderType === 'subscription' ? selectedPlan.value?.price ?? 0 : validAmount.value
-  if (baseAmount <= 0) {
-    pricePreview.value = null
-    return
-  }
-  pricePreviewLoading.value = true
-  couponMessage.value = ''
-  couponMessageIsError.value = false
-  try {
-    const response = await paymentAPI.previewPrice({
-      amount: baseAmount,
-      order_type: orderType,
-      plan_id: orderType === 'subscription' ? selectedPlan.value?.id : undefined,
-      coupon_code: couponCode.value.trim() || undefined,
-      payment_type: selectedMethod.value || undefined,
-    })
-    pricePreview.value = response.data
-    if (couponCode.value.trim()) {
-      couponMessage.value = response.data.coupon_discount > 0
-        ? t('payment.couponApplied')
-        : t('payment.couponNoDiscount')
-      couponMessageIsError.value = false
-    }
-  } catch (error) {
-    pricePreview.value = null
-    couponMessage.value = extractI18nErrorMessage(error, t, 'payment.errors', t('payment.couponInvalid')) || extractApiErrorMessage(error) || t('payment.couponInvalid')
-    couponMessageIsError.value = true
-  } finally {
-    pricePreviewLoading.value = false
-  }
 }
 
 function closeRenewalModal() {
@@ -1121,37 +719,7 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  if (shouldAskRenewalMode(selectedPlan.value)) {
-    renewalModeTarget.value = selectedPlan.value
-    return
-  }
-  await submitSubscriptionOrder(
-    findActiveSubscriptionByGroup(selectedPlan.value.group_id) ? 'extend' : undefined,
-  )
-}
-
-function shouldAskRenewalMode(plan: SubscriptionPlan): boolean {
-  if (!findActiveSubscriptionByGroup(plan.group_id)) return false
-  const renewalDays = computePlanValidityDays(plan)
-  return renewalDays != null && renewalDays > 1
-}
-
-async function submitSubscriptionOrder(renewalMode?: 'extend' | 'restart') {
-  if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, { renewalMode })
-}
-
-async function confirmRenewalMode(mode: 'extend' | 'restart') {
-  renewalModeTarget.value = null
-  await submitSubscriptionOrder(mode)
-}
-
-async function confirmDailyLimitReset() {
-  const sub = selectedDailyResetSubscription.value
-  if (!sub || dailyResetPrice.value <= 0 || submitting.value) return
-  await createOrder(dailyResetPrice.value, 'daily_limit_reset', undefined, {
-    subscriptionId: sub.id,
-  })
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -1160,22 +728,15 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
   try {
-    const requestVisibleMethod = normalizeVisibleMethod(requestType) || requestType
-    const requestFromMobile = isMobileDevice()
-    const requestQrCapableDesktopOrder = requestFromMobile && requestVisibleMethod === 'alipay'
-    const requestIsMobile = requestFromMobile && !requestQrCapableDesktopOrder
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
-      subscriptionId: options.subscriptionId,
-      renewalMode: options.renewalMode,
-      couponCode: orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
-      isMobile: requestIsMobile,
-      isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
-      forceQRCode: !!(checkout.value.alipay_force_qrcode && requestVisibleMethod === 'alipay'),
+      isMobile: isMobileDevice(),
+      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      forceQRCode: !!(checkout.value.alipay_force_qrcode && normalizeVisibleMethod(requestType) === 'alipay'),
     })
     if (options.openid) {
       payload.openid = options.openid
@@ -1234,8 +795,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         paymentType: visibleMethod,
         orderType,
         planId,
-        subscriptionId: options.subscriptionId,
-        renewalMode: options.renewalMode,
         orderAmount,
       })
       return
@@ -1277,8 +836,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
-              subscriptionId: options.subscriptionId,
-              renewalMode: options.renewalMode,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -1297,8 +854,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
-          subscriptionId: options.subscriptionId,
-          renewalMode: options.renewalMode,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -1328,8 +883,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
-      subscriptionId: options.subscriptionId,
-      renewalMode: options.renewalMode,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -1357,8 +910,6 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
-  subscriptionId?: number
-  renewalMode?: 'extend' | 'restart'
   paymentType: string
   attempted: boolean
 }
@@ -1408,9 +959,6 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
-      subscriptionId: context.subscriptionId,
-      renewalMode: context.renewalMode,
-      couponCode: context.orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1490,8 +1038,6 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
-      subscriptionId: resume.subscriptionId,
-      renewalMode: resume.renewalMode,
       isResume: true,
     })
     return
@@ -1501,8 +1047,6 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
-      subscriptionId: resume.subscriptionId,
-      renewalMode: resume.renewalMode,
       isResume: true,
     })
   }
@@ -1512,11 +1056,6 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
-    if (typeof paymentAPI.getDiscountRules === 'function') {
-      paymentAPI.getDiscountRules()
-        .then((rules) => { discountRules.value = rules.data || [] })
-        .catch(() => { discountRules.value = [] })
-    }
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {
@@ -1525,16 +1064,6 @@ onMounted(async () => {
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       })
       selectedMethod.value = sorted[0]
-    }
-    const queryPaymentType = typeof route.query.payment_type === 'string'
-      ? normalizeVisibleMethod(route.query.payment_type) || route.query.payment_type
-      : ''
-    if (queryPaymentType && enabledMethods.value.includes(queryPaymentType)) {
-      selectedMethod.value = queryPaymentType
-    }
-    const queryAmount = typeof route.query.amount === 'string' ? Number(route.query.amount) : NaN
-    if (Number.isFinite(queryAmount) && queryAmount > 0) {
-      amount.value = queryAmount
     }
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
@@ -1564,23 +1093,9 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }
-    if (route.query.tab === 'daily_limit_reset') {
-      activeTab.value = 'daily_limit_reset'
-      await subscriptionStore.fetchActiveSubscriptions(true)
-      const subscriptionId = typeof route.query.subscription_id === 'string'
-        ? Number(route.query.subscription_id)
-        : NaN
-      selectedDailyResetSubscriptionId.value = Number.isFinite(subscriptionId) && subscriptionId > 0
-        ? subscriptionId
-        : null
-    }
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
-      if (typeof route.query.plan_id === 'string') {
-        const planId = Number(route.query.plan_id)
-        selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
-      }
       if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)

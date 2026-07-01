@@ -129,7 +129,7 @@ security:
     # 默认 CSP 策略（如果静态资源托管在其他域名，请自行覆盖）
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
-    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）
@@ -320,6 +320,19 @@ gateway:
       queue: 0.7
       error_rate: 0.8
       ttft: 0.5
+      # use-it-or-lose-it：倾向「会话窗口最早重置」的账号，剩余重置时间越短得分越高。
+      # 0 表示关闭（默认，不改变原有行为）；调大可让即将重置的账号被优先用尽。
+      reset: 0.0
+      # 倾向 7d 剩余额度更健康的账号；0 表示关闭（默认，不改变原有行为），小流量灰度可设为 0.3。
+      quota_headroom: 0.0
+  # OpenAI 高级调度器补充配置
+  openai_scheduler:
+    # 是否允许 session_hash sticky 在账号健康度恶化时临时逃逸；false 可一键回退旧行为
+    sticky_escape_enabled: true
+    # TTFT EWMA 超过该阈值（毫秒）时跳过 sticky，默认 15s，避免轻微抖动就逃逸
+    sticky_escape_ttft_ms: 15000
+    # 错误率 EWMA 超过该阈值时跳过 sticky，默认 0.5，仅在明显降级时触发
+    sticky_escape_error_rate: 0.5
   # OpenAI HTTP upstream protocol strategy.
   # OpenAI HTTP 上游协议策略（默认 HTTP/2；代理明确不兼容时可临时回退 HTTP/1.1）。
   openai_http2:
@@ -413,9 +426,16 @@ gateway:
     # Fallback max waiting queue size
     # 兜底最大排队长度
     fallback_max_waiting: 100
+    # Prefer the account whose session window resets soonest (use-it-or-lose-it).
+    # 负载感知选择时优先用尽「会话窗口最早重置」的账号；false 保持
+    # 原有「优先级 → 负载率 → LRU」行为（默认）。
+    prefer_soonest_reset: false
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true
+    # Tiny in-process TTL for batch load reads in milliseconds (0 disables)
+    # 调度批量负载读取的进程内短缓存 TTL（毫秒，0 表示禁用）
+    load_batch_cache_ttl_ms: 200
     # Slot cleanup interval (duration)
     # 并发槽位清理周期（时间段）
     slot_cleanup_interval: 30s
@@ -436,12 +456,7 @@ gateway:
     # outbox 积压触发重建阈值（行数）
     outbox_backlog_rebuild_rows: 10000
     # 全量重建周期（秒），0 表示禁用
-    # full_rebuild_interval_seconds: 300
-    # OAuth 账号额度预检查：当 OAuth 账号的 Codex 速率限制使用率超过此阈值时，
-    # 在调度阶段直接跳过该账号，避免请求到上游后才发现额度不足。
-    # 适用于 OpenAI OAuth（ChatGPT）账号，基于响应头被动采集的数据。
-    # 0 表示禁用预检查。建议值 90（即使用率 >= 90% 时跳过）。
-    openai_oauth_quota_threshold: 0
+    full_rebuild_interval_seconds: 300
   # TLS fingerprint simulation / TLS 指纹伪装
   # Default profile "claude_cli_v2" simulates Node.js 20.x
   # 默认模板 "claude_cli_v2" 模拟 Node.js 20.x 指纹
@@ -760,8 +775,8 @@ concurrency:
   ping_interval: 10
 
 # =============================================================================
-# Database Configuration (MySQL)
-# 数据库配置 (MySQL)
+# Database Configuration (PostgreSQL)
+# 数据库配置 (PostgreSQL)
 # =============================================================================
 database:
   # Database host address
@@ -769,10 +784,10 @@ database:
   host: "localhost"
   # Database port
   # 数据库端口
-  port: 3306
+  port: 5432
   # Database username
   # 数据库用户名
-  user: "root"
+  user: "postgres"
   # Database password
   # 数据库密码
   password: "your_secure_password_here"
@@ -782,8 +797,8 @@ database:
   # SSL mode: disable, prefer, require, verify-ca, verify-full
   # SSL 模式：disable（禁用）, prefer（优先加密，默认）, require（要求）, verify-ca（验证CA）, verify-full（完全验证）
   # 默认值为 "prefer"，数据库支持 SSL 时自动使用加密连接，不支持时回退明文
-  sslmode: "disable"
-  # Max open connections (高并发场景建议 256+，需配合 MySQL max_connections 调整)
+  sslmode: "prefer"
+  # Max open connections (高并发场景建议 256+，需配合 PostgreSQL max_connections 调整)
   # 最大打开连接数
   max_open_conns: 256
   # Max idle connections (建议为 max_open_conns 的 50%，减少频繁建连开销)
@@ -1014,6 +1029,13 @@ billing:
     # Number of requests to allow in half-open state
     # 半开状态允许通过的请求数
     half_open_requests: 3
+  # Conservative minimum balance required before forwarding balance-billed requests.
+  # Set to 0 to only require balance > 0.
+  # 余额计费请求转发前要求的保守最小余额；设为 0 则仅要求余额 > 0。
+  minimum_balance_reserve: 0.000001
+  # Cache TTL (seconds) for per-user × per-platform quota records
+  # 用户 × 平台 quota 缓存 TTL（秒），默认 86400=1天，覆盖典型 daily 窗口
+  user_platform_quota_cache_ttl_seconds: 86400
 
 # =============================================================================
 # Turnstile Configuration

@@ -149,21 +149,12 @@ type openAIRecordUsageSubRepoStub struct {
 	incrementCalls int
 	incrementErr   error
 	lastCtxErr     error
-	statusCalls    int
-	lastStatus     string
 }
 
 func (s *openAIRecordUsageSubRepoStub) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	s.incrementCalls++
 	s.lastCtxErr = ctx.Err()
 	return s.incrementErr
-}
-
-func (s *openAIRecordUsageSubRepoStub) UpdateStatus(ctx context.Context, subscriptionID int64, status string) error {
-	s.statusCalls++
-	s.lastStatus = status
-	s.lastCtxErr = ctx.Err()
-	return nil
 }
 
 type openAIRecordUsageAPIKeyQuotaStub struct {
@@ -233,6 +224,8 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 		nil,
 		nil,
 		nil,
+		nil,
+		nil, // userPlatformQuotaRepo
 	)
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		rateRepo,
@@ -370,6 +363,7 @@ func TestOpenAIGatewayServiceRecordUsage_MissingPricingRecordsZeroCostUsageLog(t
 	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
 	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
 }
+
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4
@@ -797,6 +791,37 @@ func TestOpenAIGatewayServiceRecordUsage_PrefersClientRequestIDOverUpstreamReque
 	require.Equal(t, "client:openai-client-stable-123", usageRepo.lastLog.RequestID)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_WSModePrefersUpstreamRequestIDOverClientRequestID(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	ctx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "openai-ws-connection-123")
+	err := svc.RecordUsage(ctx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:    "resp_openai_ws_turn_456",
+			OpenAIWSMode: true,
+			Usage: OpenAIUsage{
+				InputTokens:  8,
+				OutputTokens: 4,
+			},
+			Model:    "gpt-5.1",
+			Duration: time.Second,
+		},
+		APIKey:  &APIKey{ID: 10050},
+		User:    &User{ID: 20050},
+		Account: &Account{ID: 30050},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Equal(t, "resp_openai_ws_turn_456", billingRepo.lastCmd.RequestID)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "resp_openai_ws_turn_456", usageRepo.lastLog.RequestID)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{}
 	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
@@ -1095,38 +1120,6 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	require.NotNil(t, usageRepo.lastLog.GroupID)
 	require.Equal(t, int64(11), *usageRepo.lastLog.GroupID)
 	require.Equal(t, 1, userRepo.deductCalls)
-}
-
-func TestOpenAIGatewayServiceRecordUsage_PersistsUpstreamFirstEventMs(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	subRepo := &openAIRecordUsageSubRepoStub{}
-	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
-	upstreamFirstEventMs := 450
-	firstTokenMs := 1230
-
-	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{
-			RequestID:            "resp_upstream_first_event",
-			Model:                "gpt-5.1",
-			Stream:               true,
-			Duration:             2 * time.Second,
-			FirstTokenMs:         &firstTokenMs,
-			UpstreamFirstEventMs: &upstreamFirstEventMs,
-			Usage: OpenAIUsage{
-				InputTokens:  20,
-				OutputTokens: 10,
-			},
-		},
-		APIKey:  &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.0}},
-		User:    &User{ID: 20},
-		Account: &Account{ID: 30},
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.Equal(t, &firstTokenMs, usageRepo.lastLog.FirstTokenMs)
-	require.Equal(t, &upstreamFirstEventMs, usageRepo.lastLog.UpstreamFirstEventMs)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_BillsMappedRequestsUsingRequestedModel(t *testing.T) {
@@ -1836,85 +1829,6 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 	require.InDelta(t, 0.80, cost.TotalCost, 1e-12)
 	require.InDelta(t, 0.80, cost.ActualCost, 1e-12)
-}
-
-func TestApplyUsageBillingMarksSubscriptionQuotaExhaustedAfterBilling(t *testing.T) {
-	now := time.Now()
-	subRepo := &openAIRecordUsageSubRepoStub{}
-	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
-	weeklyLimit := 10.0
-	applied, err := applyUsageBilling(context.Background(), "req-quota-exhausted", nil, &postUsageBillingParams{
-		Cost: &CostBreakdown{
-			TotalCost:  2,
-			ActualCost: 2,
-		},
-		User:    &User{ID: 1},
-		Account: &Account{ID: 2, Type: AccountTypeAPIKey},
-		APIKey: &APIKey{
-			ID: 3,
-			Group: &Group{
-				ID:             4,
-				WeeklyLimitUSD: &weeklyLimit,
-			},
-		},
-		Subscription: &UserSubscription{
-			ID:             5,
-			UserID:         1,
-			GroupID:        4,
-			Status:         SubscriptionStatusActive,
-			StartsAt:       now.Add(-time.Hour),
-			ExpiresAt:      now.Add(time.Hour),
-			WeeklyUsageUSD: 8,
-		},
-		IsSubscriptionBill: true,
-	}, &billingDeps{
-		userSubRepo:     subRepo,
-		deferredService: NewDeferredService(nil, nil, time.Second),
-	}, billingRepo)
-
-	require.NoError(t, err)
-	require.True(t, applied)
-	require.Equal(t, 1, subRepo.statusCalls)
-	require.Equal(t, SubscriptionStatusQuotaExhausted, subRepo.lastStatus)
-}
-
-func TestApplyUsageBillingDoesNotMarkSubscriptionQuotaExhaustedForDailyOnlyLimit(t *testing.T) {
-	now := time.Now()
-	subRepo := &openAIRecordUsageSubRepoStub{}
-	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
-	dailyLimit := 10.0
-	applied, err := applyUsageBilling(context.Background(), "req-daily-only", nil, &postUsageBillingParams{
-		Cost: &CostBreakdown{
-			TotalCost:  2,
-			ActualCost: 2,
-		},
-		User:    &User{ID: 1},
-		Account: &Account{ID: 2, Type: AccountTypeAPIKey},
-		APIKey: &APIKey{
-			ID: 3,
-			Group: &Group{
-				ID:            4,
-				DailyLimitUSD: &dailyLimit,
-			},
-		},
-		Subscription: &UserSubscription{
-			ID:            5,
-			UserID:        1,
-			GroupID:       4,
-			Status:        SubscriptionStatusActive,
-			StartsAt:      now.Add(-time.Hour),
-			ExpiresAt:     now.Add(time.Hour),
-			DailyUsageUSD: 8,
-		},
-		IsSubscriptionBill: true,
-	}, &billingDeps{
-		userSubRepo:     subRepo,
-		deferredService: NewDeferredService(nil, nil, time.Second),
-	}, billingRepo)
-
-	require.NoError(t, err)
-	require.True(t, applied)
-	require.Zero(t, subRepo.statusCalls)
 }
 
 func TestRecordUsageMarksCyberRequestType(t *testing.T) {

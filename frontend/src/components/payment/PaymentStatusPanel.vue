@@ -9,7 +9,7 @@
           <div class="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
             <Icon name="check" size="lg" class="text-green-500" />
           </div>
-          <p class="text-lg font-bold text-gray-900 dark:text-white">{{ successTitle }}</p>
+          <p class="text-lg font-bold text-gray-900 dark:text-white">{{ props.orderType === 'subscription' ? t('payment.result.subscriptionSuccess') : t('payment.result.success') }}</p>
           <div v-if="paidOrder" class="w-full rounded-xl bg-gray-50 p-4 dark:bg-dark-800">
             <div class="space-y-2 text-sm">
               <div class="flex justify-between">
@@ -22,11 +22,11 @@
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' : '¥' }}{{ paidOrder.amount.toFixed(2) }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ paidOrder.amount.toFixed(2) }}</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-                <span class="font-medium text-gray-900 dark:text-white">¥{{ paidOrder.pay_amount.toFixed(2) }}</span>
+                <span class="font-medium text-gray-900 dark:text-white">{{ formatGatewayAmount(paidOrder.pay_amount, paidOrder.currency) }}</span>
               </div>
             </div>
           </div>
@@ -75,13 +75,7 @@
         <div class="flex flex-col items-center space-y-4">
           <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ scanTitle }}</p>
           <div :class="['relative rounded-lg border-2 p-4', qrBorderClass]">
-            <img
-              v-if="qrImageUrl"
-              :src="qrImageUrl"
-              :alt="scanTitle"
-              class="mx-auto h-[220px] w-[220px] select-auto object-contain"
-            />
-            <canvas v-else ref="qrCanvas" class="mx-auto"></canvas>
+            <canvas ref="qrCanvas" class="mx-auto"></canvas>
             <!-- Brand logo overlay -->
             <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
               <span :class="['rounded-full p-2 shadow ring-2 ring-white', qrLogoBgClass]">
@@ -128,13 +122,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePaymentStore } from '@/stores/payment'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
+import { currencySymbol, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
 import QRCode from 'qrcode'
@@ -148,35 +143,44 @@ const props = defineProps<{
   paymentType: string
   payUrl?: string
   orderType?: string
+  currency?: string
 }>()
 
 type PaymentOutcome = 'success' | 'cancelled' | 'expired'
 
 const emit = defineEmits<{ done: []; success: []; settled: [outcome: PaymentOutcome] }>()
 
-const { t } = useI18n()
+const i18n = useI18n()
+const { t } = i18n
 const paymentStore = usePaymentStore()
 const appStore = useAppStore()
 
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
-const qrImageUrl = ref('')
 const remainingSeconds = ref(0)
 const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
+const paymentCurrency = computed(() => normalizePaymentCurrency(props.currency))
+const creditedAmountSymbol = currencySymbol('USD')
+const localeCode = computed(() => {
+  const raw = i18n.locale as unknown
+  if (typeof raw === 'string') return raw
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    return String((raw as { value?: string }).value || '')
+  }
+  return undefined
+})
 
 // Terminal outcome: null = still active, 'success' | 'cancelled' | 'expired'
 const outcome = ref<PaymentOutcome | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
-let isResumingFromBackground = false
-let activePollIntervalMs = 3000
-let panelMountedAt = 0
+let verifyAttempts = 0
+let lastVerifyAt = 0
 
-const FAST_POLL_WINDOW_MS = 30_000
-const FAST_POLL_INTERVAL_MS = 1500
-const NORMAL_POLL_INTERVAL_MS = 3000
+const VERIFY_RETRY_INTERVAL_MS = 15000
+const VERIFY_RETRY_MAX_ATTEMPTS = 6
 
 const isAlipay = computed(() => props.paymentType.includes('alipay'))
 const isWxpay = computed(() => props.paymentType.includes('wxpay'))
@@ -205,17 +209,15 @@ const scanHint = computed(() => {
   return ''
 })
 
-const successTitle = computed(() => {
-  if (props.orderType === 'subscription') return t('payment.result.subscriptionSuccess')
-  if (props.orderType === 'daily_limit_reset') return t('payment.result.dailyResetSuccess')
-  return t('payment.result.success')
-})
-
 const countdownDisplay = computed(() => {
   const m = Math.floor(remainingSeconds.value / 60)
   const s = remainingSeconds.value % 60
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 })
+
+function formatGatewayAmount(value: number, currency?: string | null): string {
+  return formatPaymentAmount(value, currency || paymentCurrency.value, localeCode.value)
+}
 
 function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
@@ -238,26 +240,39 @@ function setOutcome(next: PaymentOutcome) {
 
 async function renderQR() {
   await nextTick()
-  if (!qrUrl.value) return
-  const qrOptions = {
-    width: 220,
-    margin: 2,
-    errorCorrectionLevel: 'M' as const,
+  if (!qrCanvas.value || !qrUrl.value) return
+  await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
+    width: 220, margin: 2,
+    errorCorrectionLevel: 'M',
+  })
+}
+
+async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder> {
+  if (!isWxpay.value) return order
+  const outTradeNo = String(order.out_trade_no || '').trim()
+  if (!outTradeNo) return order
+  const normalizedStatus = String(order.status || '').trim().toUpperCase()
+  if (normalizedStatus !== 'PENDING') return order
+  const now = Date.now()
+  if (verifyAttempts >= VERIFY_RETRY_MAX_ATTEMPTS || now - lastVerifyAt < VERIFY_RETRY_INTERVAL_MS) {
+    return order
   }
+
+  lastVerifyAt = now
+  verifyAttempts += 1
   try {
-    qrImageUrl.value = await QRCode.toDataURL(qrUrl.value, qrOptions)
-    return
+    const result = await paymentAPI.verifyOrder(outTradeNo)
+    return result.data ?? order
   } catch {
-    qrImageUrl.value = ''
+    return order
   }
-  if (!qrCanvas.value) return
-  await QRCode.toCanvas(qrCanvas.value, qrUrl.value, qrOptions)
 }
 
 async function pollStatus() {
   if (!props.orderId || outcome.value) return
-  const order = await paymentStore.pollOrderStatus(props.orderId)
+  let order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
+  order = await tryRecoverPendingOrder(order)
   if (isSuccessStatus(order.status)) {
     cleanup()
     paidOrder.value = order
@@ -269,39 +284,6 @@ async function pollStatus() {
   } else if (order.status === 'EXPIRED' || order.status === 'FAILED') {
     cleanup()
     setOutcome('expired')
-  }
-}
-
-function desiredPollIntervalMs(): number {
-  if (!panelMountedAt) return NORMAL_POLL_INTERVAL_MS
-  return Date.now() - panelMountedAt < FAST_POLL_WINDOW_MS
-    ? FAST_POLL_INTERVAL_MS
-    : NORMAL_POLL_INTERVAL_MS
-}
-
-function restartPollTimer() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-  if (!props.orderId || outcome.value) return
-  activePollIntervalMs = desiredPollIntervalMs()
-  pollTimer = setInterval(() => {
-    if (desiredPollIntervalMs() !== activePollIntervalMs) {
-      restartPollTimer()
-      return
-    }
-    void pollStatus()
-  }, activePollIntervalMs)
-}
-
-async function pollStatusImmediatelyOnResume() {
-  if (isResumingFromBackground || !props.orderId || outcome.value) return
-  isResumingFromBackground = true
-  try {
-    await pollStatus()
-  } finally {
-    isResumingFromBackground = false
   }
 }
 
@@ -335,41 +317,18 @@ function cleanup() {
   if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
 }
 
-function handleVisibilityChange() {
-  if (!document.hidden) {
-    void pollStatusImmediatelyOnResume()
-  }
+// Initialize on mount
+qrUrl.value = props.qrCode
+verifyAttempts = 0
+lastVerifyAt = 0
+let seconds = 30 * 60
+if (props.expiresAt) {
+  seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
 }
-
-function handleWindowFocus() {
-  void pollStatusImmediatelyOnResume()
-}
-
-function handlePageShow() {
-  void pollStatusImmediatelyOnResume()
-}
-
-onMounted(() => {
-  panelMountedAt = Date.now()
-  qrUrl.value = props.qrCode
-  let seconds = 30 * 60
-  if (props.expiresAt) {
-    seconds = Math.floor((new Date(props.expiresAt).getTime() - Date.now()) / 1000)
-  }
-  startCountdown(seconds)
-  restartPollTimer()
-  renderQR()
-
-  document.addEventListener('visibilitychange', handleVisibilityChange)
-  window.addEventListener('focus', handleWindowFocus)
-  window.addEventListener('pageshow', handlePageShow)
-})
+startCountdown(seconds)
+pollTimer = setInterval(pollStatus, 3000)
+renderQR()
 
 watch(() => qrUrl.value, () => renderQR())
-onUnmounted(() => {
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-  window.removeEventListener('focus', handleWindowFocus)
-  window.removeEventListener('pageshow', handlePageShow)
-  cleanup()
-})
+onUnmounted(() => cleanup())
 </script>

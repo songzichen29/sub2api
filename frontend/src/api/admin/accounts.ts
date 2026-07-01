@@ -15,8 +15,10 @@ import type {
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
-  AdminDataImportApply,
   AdminDataImportResult,
+  CodexSessionImportRequest,
+  CodexSessionImportResult,
+  OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 } from '@/types'
@@ -41,8 +43,6 @@ export async function list(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    /** 标签 OR 筛选；多个标签会序列化为 ?tags=a&tags=b（repeat 格式，与后端 c.QueryArray 兼容），后端命中任一标签即返回。 */
-    tags?: string[]
   },
   options?: {
     signal?: AbortSignal
@@ -54,10 +54,6 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
-    // tags 是 string[]，axios 默认会序列化为 tags[]=a&tags[]=b（带方括号），
-    // 但后端 Gin 的 c.QueryArray("tags") 期望的是 tags=a&tags=b（repeat 无括号）。
-    // indexes: null 显式禁用方括号，让 axios 用 repeat 格式。
-    paramsSerializer: { indexes: null },
     signal: options?.signal
   })
   return data
@@ -82,8 +78,6 @@ export async function listWithEtag(
     lite?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    /** 标签 OR 筛选；序列化规则同 list()。 */
-    tags?: string[]
   },
   options?: {
     signal?: AbortSignal
@@ -101,8 +95,6 @@ export async function listWithEtag(
       page_size: pageSize,
       ...filters
     },
-    // 与 list() 同样需要 repeat 格式（tags=a&tags=b）以匹配后端 c.QueryArray。
-    paramsSerializer: { indexes: null },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
@@ -176,18 +168,6 @@ export async function deleteAccount(id: number): Promise<{ message: string }> {
 }
 
 /**
- * Duplicate an existing account: copy credentials and base configuration into
- * a brand-new account. Group bindings and runtime state are NOT copied; the
- * new name is auto-suffixed (e.g. "X - 副本").
- * @param id - Source account ID
- * @returns Newly created account
- */
-export async function duplicate(id: number): Promise<Account> {
-  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`)
-  return data
-}
-
-/**
  * Toggle account status
  * @param id - Account ID
  * @param status - New status
@@ -195,6 +175,16 @@ export async function duplicate(id: number): Promise<Account> {
  */
 export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<Account> {
   return update(id, { status })
+}
+
+/**
+ * Duplicate an existing account.
+ * The backend copies credentials and base configuration into a new account while
+ * resetting runtime state.
+ */
+export async function duplicate(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`)
+  return data
 }
 
 /**
@@ -508,6 +498,39 @@ export async function syncUpstreamModels(id: number): Promise<SyncUpstreamModels
   return data
 }
 
+export interface SyncUpstreamPreviewParams {
+  platform: string
+  type: string
+  base_url?: string
+  api_key: string
+}
+
+/**
+ * Preview upstream models without a saved account (create-flow)
+ * @param params - Connection credentials
+ * @returns List of model IDs returned by the upstream
+ */
+export async function syncUpstreamModelsPreview(params: SyncUpstreamPreviewParams): Promise<SyncUpstreamModelsResult> {
+  const { data } = await apiClient.post<SyncUpstreamModelsResult>('/admin/accounts/models/sync-upstream-preview', params)
+  return data
+}
+
+/**
+ * Probe upstream models with credentials from the create/edit form.
+ */
+export async function probeUpstreamModels(params: SyncUpstreamPreviewParams): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>('/admin/accounts/probe-models', params)
+  return data
+}
+
+/**
+ * List all account tags for autocomplete/filtering.
+ */
+export async function listTags(): Promise<string[]> {
+  const { data } = await apiClient.get<{ tags?: string[] }>('/admin/accounts/tags')
+  return Array.isArray(data.tags) ? data.tags : []
+}
+
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -576,15 +599,14 @@ export async function exportData(options?: {
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
-    tags?: string[]
   }
   includeProxies?: boolean
 }): Promise<AdminDataPayload> {
-  const params: Record<string, string | string[]> = {}
+  const params: Record<string, string> = {}
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order, tags } = options.filters
+    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
@@ -593,36 +615,32 @@ export async function exportData(options?: {
     if (search) params.search = search
     if (sort_by) params.sort_by = sort_by
     if (sort_order) params.sort_order = sort_order
-    if (Array.isArray(tags) && tags.length > 0) params.tags = tags
   }
   if (options?.includeProxies === false) {
     params.include_proxies = 'false'
   }
-  const { data } = await apiClient.get<AdminDataPayload>('/admin/accounts/data', {
-    params,
-    paramsSerializer: { indexes: null }
-  })
+  const { data } = await apiClient.get<AdminDataPayload>('/admin/accounts/data', { params })
   return data
 }
 
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
-  // 导入应用块（feature 2026-05-06-account-import-apply）：admin 在弹窗里勾选并
-  // 填值的字段。后端按指针非 nil 判定是否应用，所以前端必须严格跳过未勾选的字段
-  // （从 payload 整体省略，不要发 null 或默认值）。
-  apply?: AdminDataImportApply
 }): Promise<AdminDataImportResult> {
-  const body: Record<string, unknown> = {
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
-  }
-  // 仅在 apply 非 undefined 时把它放进 body；这样不勾选任何字段时
-  // POST body 里完全不出现 apply 键，等价旧版本行为。
-  if (payload.apply !== undefined) {
-    body.apply = payload.apply
-  }
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', body)
+  })
+  return data
+}
+
+export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
+  const { data } = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload)
+  return data
+}
+
+export async function createOpenAICodexPAT(payload: OpenAICodexPATCreateRequest): Promise<Account> {
+  const { data } = await apiClient.post<Account>('/admin/openai/create-from-codex-pat', payload)
   return data
 }
 
@@ -634,42 +652,6 @@ export async function getAntigravityDefaultModelMapping(): Promise<Record<string
   const { data } = await apiClient.get<Record<string, string>>(
     '/admin/accounts/antigravity/default-model-mapping'
   )
-  return data
-}
-
-/**
- * Probe Grok upstream (grok2api gateway) available models.
- * Used by account create/edit forms before the account is saved — backend
- * directly calls GET <base_url>/v1/models with Bearer <api_key>.
- */
-export async function probeGrokUpstreamModels(baseUrl: string, apiKey: string): Promise<string[]> {
-  const { data } = await apiClient.post<string[]>(
-    '/admin/accounts/grok/probe-models',
-    { base_url: baseUrl, api_key: apiKey }
-  )
-  return data
-}
-
-export interface ProbeUpstreamModelsPayload {
-  platform: string
-  type: string
-  base_url?: string
-  api_key: string
-}
-
-/**
- * Probe API Key/upstream account available models using base_url + api_key.
- */
-export async function probeUpstreamModels(payload: ProbeUpstreamModelsPayload): Promise<string[]> {
-  const { data } = await apiClient.post<string[]>('/admin/accounts/probe-models', payload)
-  return data
-}
-
-/**
- * Probe saved account available models using stored credentials.
- */
-export async function probeAccountUpstreamModels(id: number): Promise<string[]> {
-  const { data } = await apiClient.post<string[]>(`/admin/accounts/${id}/probe-models`)
   return data
 }
 
@@ -756,20 +738,6 @@ export async function setPrivacy(id: number): Promise<Account> {
 }
 
 /**
- * 拉取所有未删除账号的标签字典（去重 + 字典序），用于 AccountTagsInput 的自动补全候选。
- *
- * 后端 GET /admin/accounts/tags 返回 { tags: string[] }，此处剥壳直接返回数组。
- * 前端组件应在打开输入或聚焦时按需调用，结果可缓存到 store 但 TTL 不要太长——
- * 新增账号会改变字典内容，建议每次打开 modal 重新拉取。
- */
-export async function listTags(options?: { signal?: AbortSignal }): Promise<string[]> {
-  const { data } = await apiClient.get<{ tags?: string[] }>('/admin/accounts/tags', {
-    signal: options?.signal
-  })
-  return Array.isArray(data?.tags) ? data.tags : []
-}
-
-/**
  * OpenAI / Codex rate-limit reset feature: query and reset upstream usage.
  */
 export interface OpenAIRateLimitWindow {
@@ -847,8 +815,8 @@ export const accountsAPI = {
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,
-  duplicate,
   toggleStatus,
+  duplicate,
   testAccount,
   refreshCredentials,
   applyOAuthCredentials,
@@ -865,6 +833,9 @@ export const accountsAPI = {
   setSchedulable,
   getAvailableModels,
   syncUpstreamModels,
+  syncUpstreamModelsPreview,
+  probeUpstreamModels,
+  listTags,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,
@@ -875,14 +846,12 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  importCodexSession,
+  createOpenAICodexPAT,
   getAntigravityDefaultModelMapping,
-  probeGrokUpstreamModels,
-  probeUpstreamModels,
-  probeAccountUpstreamModels,
   batchClearError,
   batchRefresh,
   setPrivacy,
-  listTags,
   revertProxyFallback,
   queryOpenAIQuota,
   resetOpenAIQuota

@@ -13,15 +13,16 @@ import (
 )
 
 type opsSystemLogCleanupRequest struct {
-	TimeRange string `json:"time_range"`
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
+	TimeRange string `json:"time_range"`
 
 	Level           string `json:"level"`
 	Component       string `json:"component"`
 	RequestID       string `json:"request_id"`
 	ClientRequestID string `json:"client_request_id"`
 	UserID          *int64 `json:"user_id"`
+	APIKeyID        *int64 `json:"api_key_id"`
 	AccountID       *int64 `json:"account_id"`
 	Platform        string `json:"platform"`
 	Model           string `json:"model"`
@@ -72,6 +73,14 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		}
 		filter.UserID = &id
 	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		id, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || id <= 0 {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+		filter.APIKeyID = &id
+	}
 	if v := strings.TrimSpace(c.Query("account_id")); v != "" {
 		id, parseErr := strconv.ParseInt(v, 10, 64)
 		if parseErr != nil || id <= 0 {
@@ -112,6 +121,12 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 		response.BadRequest(c, "Invalid request body")
 		return
 	}
+	if strings.TrimSpace(req.TimeRange) != "" {
+		if _, ok := parseOpsDuration(strings.TrimSpace(req.TimeRange)); !ok {
+			response.BadRequest(c, "Invalid time_range")
+			return
+		}
+	}
 
 	parseTS := func(raw string) (*time.Time, error) {
 		raw = strings.TrimSpace(raw)
@@ -137,18 +152,9 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 		response.BadRequest(c, "Invalid end_time")
 		return
 	}
-	if start == nil && end == nil {
-		if tr := strings.TrimSpace(req.TimeRange); tr != "" {
-			dur, ok := parseOpsDuration(tr)
-			if !ok {
-				response.BadRequest(c, "Invalid time_range")
-				return
-			}
-			resolvedEnd := time.Now()
-			resolvedStart := resolvedEnd.Add(-dur)
-			start = &resolvedStart
-			end = &resolvedEnd
-		}
+	if req.APIKeyID != nil && *req.APIKeyID <= 0 {
+		response.BadRequest(c, "Invalid api_key_id")
+		return
 	}
 
 	filter := &service.OpsSystemLogCleanupFilter{
@@ -159,6 +165,7 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 		RequestID:       strings.TrimSpace(req.RequestID),
 		ClientRequestID: strings.TrimSpace(req.ClientRequestID),
 		UserID:          req.UserID,
+		APIKeyID:        req.APIKeyID,
 		AccountID:       req.AccountID,
 		Platform:        strings.TrimSpace(req.Platform),
 		Model:           strings.TrimSpace(req.Model),

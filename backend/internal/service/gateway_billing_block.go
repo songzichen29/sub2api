@@ -72,13 +72,14 @@ func extractFirstUserText(body []byte) string {
 
 // buildBillingAttributionText 构造 system 数组的 billing attribution 文本。
 //
-// 形态严格对齐真实 Claude Code CLI：
+// 形态对齐真实 Claude Code CLI：
 //
-//	x-anthropic-billing-header: cc_version=2.1.196.{fp}; cc_entrypoint=cli; cch=00000;
+//	x-anthropic-billing-header: cc_version=2.1.161.{fp}; cc_entrypoint=cli;
 //
-// cch=00000 是占位符：buildUpstreamRequest 在所有 body 修改完成后，若 enableCCH
-// 开启则用 signBillingHeaderCCH 替换为 xxHash64 5-hex 签名；若关闭则由
-// stripCCHPlaceholder 移除，确保不会原样发出未签名的 cch=00000。
+// 注意：新版 Claude Code CLI 已不再发送 cch=... 签名字段（见 issue #3358）。我们
+// 随之去掉了 cch 段——继续注入它反而会让伪装请求偏离真实 CLI 流量。cc_version +
+// cc_entrypoint=cli 仍保留：它们是客户端识别（claude_code_validator）与 Anthropic
+// 第一方判定都依赖的稳定信号。
 //
 // 此 block 不带 cache_control（与真实 CLI 一致；cache breakpoint 由后续的
 // Claude Code prompt block 承担）。
@@ -88,7 +89,7 @@ func buildBillingAttributionText(body []byte, cliVersion string) (string, error)
 	}
 	fp := computeClaudeCodeFingerprint(body, cliVersion)
 	return fmt.Sprintf(
-		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli; cch=00000;",
+		"x-anthropic-billing-header: cc_version=%s.%s; cc_entrypoint=cli;",
 		cliVersion, fp,
 	), nil
 }

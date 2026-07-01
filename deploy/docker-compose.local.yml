@@ -7,7 +7,7 @@
 #
 # Quick Start:
 #   1. Copy .env.example to .env and configure
-#   2. mkdir -p data mysql_data redis_data
+#   2. mkdir -p data postgres_data redis_data
 #   3. docker-compose -f docker-compose.local.yml up -d
 #   4. Check logs: docker-compose -f docker-compose.local.yml logs -f sub2api
 #   5. Access: http://localhost:8080
@@ -35,7 +35,7 @@ services:
       - "${BIND_HOST:-0.0.0.0}:${SERVER_PORT:-8080}:8080"
     volumes:
       # Local directory mapping for easy migration
-      - ./data:/app/data
+      - ./data:/app/data:Z
       # Optional: Mount custom config.yaml (uncomment and create the file first)
       # Copy config.example.yaml to config.yaml, modify it, then uncomment:
       # - ./config.yaml:/app/data/config.yaml
@@ -54,13 +54,13 @@ services:
       - RUN_MODE=${RUN_MODE:-standard}
 
       # =======================================================================
-      # Database Configuration (MySQL)
+      # Database Configuration (PostgreSQL)
       # =======================================================================
-      - DATABASE_HOST=mysql
-      - DATABASE_PORT=3306
-      - DATABASE_USER=${DATABASE_USER:-sub2api}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
-      - DATABASE_DBNAME=${DATABASE_DBNAME:-sub2api}
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
       - DATABASE_SSLMODE=disable
       - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-50}
       - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-10}
@@ -113,7 +113,7 @@ services:
       # - Log timestamps
       # Common values: Asia/Shanghai, America/New_York, Europe/London, UTC
       # =======================================================================
-      - TZ=${TZ:-America/Los_Angeles}
+      - TZ=${TZ:-Asia/Shanghai}
 
       # =======================================================================
       # Gemini OAuth Configuration (for Gemini accounts)
@@ -166,7 +166,7 @@ services:
       - GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS=${GATEWAY_IMAGE_CONCURRENCY_WAIT_TIMEOUT_SECONDS:-30}
       - GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS=${GATEWAY_IMAGE_CONCURRENCY_MAX_WAITING_REQUESTS:-100}
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -180,11 +180,11 @@ services:
       start_period: 30s
 
   # ===========================================================================
-  # MySQL Database
+  # PostgreSQL Database
   # ===========================================================================
-  mysql:
-    image: mysql:8.0
-    container_name: sub2api-mysql
+  postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-postgres
     restart: unless-stopped
     ulimits:
       nofile:
@@ -192,24 +192,23 @@ services:
         hard: 100000
     volumes:
       # Local directory mapping for easy migration
-      - ./mysql_data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci
+      - ./postgres_data:/var/lib/postgresql/data:Z
     environment:
-      - MYSQL_DATABASE=${DATABASE_DBNAME:-sub2api}
-      - MYSQL_USER=${DATABASE_USER:-sub2api}
-      - MYSQL_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
-      - MYSQL_ROOT_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
-      - TZ=${TZ:-America/Los_Angeles}
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - PGDATA=/var/lib/postgresql/data
+      - TZ=${TZ:-Asia/Shanghai}
     networks:
       - sub2api-network
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     # 注意：不暴露端口到宿主机，应用通过内部网络连接
-    # 如需调试，可临时添加：ports: ["127.0.0.1:3307:3306"]
+    # 如需调试，可临时添加：ports: ["127.0.0.1:5433:5432"]
 
   # ===========================================================================
   # Redis Cache
@@ -224,7 +223,7 @@ services:
         hard: 100000
     volumes:
       # Local directory mapping for easy migration
-      - ./redis_data:/data
+      - ./redis_data:/data:Z
     command: >
         sh -c '
           redis-server
@@ -233,7 +232,7 @@ services:
           --appendfsync everysec
           ${REDIS_PASSWORD:+--requirepass "$REDIS_PASSWORD"}'
     environment:
-      - TZ=${TZ:-America/Los_Angeles}
+      - TZ=${TZ:-Asia/Shanghai}
       # REDISCLI_AUTH is used by redis-cli for authentication (safer than -a flag)
       - REDISCLI_AUTH=${REDIS_PASSWORD:-}
     networks:
