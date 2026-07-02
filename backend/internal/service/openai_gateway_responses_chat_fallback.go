@@ -284,8 +284,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state := apicompat.NewChatCompletionsToResponsesStreamState(originalModel)
 	var usage OpenAIUsage
 	var firstTokenMs *int
+	var upstreamFirstEventMs *int
 	clientDisconnected := false
 	sawDone := false
+	recordUpstreamFirstEvent := func() {
+		if upstreamFirstEventMs != nil {
+			return
+		}
+		ms := int(time.Since(startTime).Milliseconds())
+		upstreamFirstEventMs = &ms
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+	}
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
@@ -330,6 +339,7 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 		if payload == "" {
 			continue
 		}
+		recordUpstreamFirstEvent()
 		if payload == "[DONE]" {
 			sawDone = true
 			break
@@ -362,16 +372,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 			)
 		}
 		return &OpenAIForwardResult{
-			RequestID:       requestID,
-			Usage:           usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ReasoningEffort: reasoningEffort,
-			ServiceTier:     serviceTier,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:            requestID,
+			Usage:                usage,
+			Model:                originalModel,
+			BillingModel:         billingModel,
+			UpstreamModel:        upstreamModel,
+			ReasoningEffort:      reasoningEffort,
+			ServiceTier:          serviceTier,
+			Stream:               true,
+			Duration:             time.Since(startTime),
+			FirstTokenMs:         firstTokenMs,
+			UpstreamFirstEventMs: upstreamFirstEventMs,
 		}, fmt.Errorf("stream usage incomplete: %w", err)
 	}
 
@@ -392,16 +403,17 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                originalModel,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		ReasoningEffort:      reasoningEffort,
+		ServiceTier:          serviceTier,
+		Stream:               true,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		UpstreamFirstEventMs: upstreamFirstEventMs,
 	}, nil
 }
 

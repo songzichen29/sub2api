@@ -146,6 +146,10 @@ func TestForwardResponses_ForceChatCompletionsRoutesStreamingToChatCompletions(t
 	require.Equal(t, 3, result.Usage.OutputTokens)
 	require.True(t, result.Stream)
 	require.NotNil(t, result.FirstTokenMs)
+	require.NotNil(t, result.UpstreamFirstEventMs)
+	gotUpstreamFirstEvent, ok := c.Get(OpsOpenAIUpstreamFirstEventMsKey)
+	require.True(t, ok)
+	require.Equal(t, int64(*result.UpstreamFirstEventMs), gotUpstreamFirstEvent)
 }
 
 func TestForwardResponses_AutoSupportedAccountStillUsesResponsesEndpoint(t *testing.T) {
