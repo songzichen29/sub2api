@@ -123,6 +123,8 @@ export default {
     dateRangeToday: '今日',
     dateRange7d: '7 天',
     dateRange30d: '30 天',
+    dateRange90d: '90 天',
+    dateRangeCustom: '自定义',
     dateRangeHint: '仅影响下方模型用量统计，不影响总额度、已用额度和剩余额度。',
     apply: '应用',
     used: '已使用',

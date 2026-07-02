@@ -123,6 +123,8 @@
     dateRangeToday: 'Today',
     dateRange7d: '7 Days',
     dateRange30d: '30 Days',
+    dateRange90d: '90 Days',
+    dateRangeCustom: 'Custom',
     dateRangeHint: 'Only affects the model usage statistics below. Total quota, used quota, and remaining quota are unchanged.',
     apply: 'Apply',
     used: 'Used',
