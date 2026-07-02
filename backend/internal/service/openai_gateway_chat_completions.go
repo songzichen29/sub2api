@@ -39,6 +39,22 @@ var cursorResponsesUnsupportedFields = []string{
 	"stream_options",
 }
 
+var apiKeyResponsesOutputCapFields = []string{
+	"max_output_tokens",
+	"max_completion_tokens",
+}
+
+func stripAPIKeyResponsesOutputCaps(body []byte) ([]byte, error) {
+	var err error
+	for _, field := range apiKeyResponsesOutputCapFields {
+		body, err = sjson.DeleteBytes(body, field)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return body, nil
+}
+
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
 // the response back to Chat Completions format.
@@ -206,6 +222,11 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	}
 
 	if account.Type == AccountTypeAPIKey {
+		responsesBody, err = stripAPIKeyResponsesOutputCaps(responsesBody)
+		if err != nil {
+			return nil, fmt.Errorf("strip apikey responses output caps: %w", err)
+		}
+
 		if trimmedKey := strings.TrimSpace(promptCacheKey); trimmedKey != "" {
 			var reqBody map[string]any
 			if err := json.Unmarshal(responsesBody, &reqBody); err != nil {

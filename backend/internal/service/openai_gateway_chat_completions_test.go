@@ -218,6 +218,49 @@ func TestForwardAsChatCompletions_APIKeyPropagatesPromptCacheKeyInResponsesBody(
 	require.Equal(t, generateSessionUUID(isolateOpenAISessionID(99, "cache-key-123")), upstream.lastReq.Header.Get("session_id"))
 }
 
+func TestForwardAsChatCompletions_APIKeyStripsResponsesOutputCaps(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"stream":false,"max_tokens":1000,"max_completion_tokens":1000}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_chat_strip_output_caps"}},
+		Body:       io.NopCloser(strings.NewReader(`{"error":{"type":"invalid_request_error","message":"stop before response parsing"}}`)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          &config.Config{},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          2550,
+		Name:        "openai-compatible",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key": "sk-compatible",
+		},
+		Extra: map[string]any{
+			"openai_responses_supported": true,
+		},
+	}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "https://api.openai.com/v1/responses", upstream.lastReq.URL.String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "max_output_tokens").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "max_completion_tokens").Exists())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "max_tokens").Exists())
+	require.Equal(t, "gpt-5.4", gjson.GetBytes(upstream.lastBody, "model").String())
+}
+
 func TestForwardAsChatCompletions_OAuthDoesNotInjectDefaultInstructions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
