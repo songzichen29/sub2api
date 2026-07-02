@@ -1479,9 +1479,10 @@ func TestFilterCodexInput_PreservesReasoningSummaryAndContent(t *testing.T) {
 }
 
 // TestFilterCodexInput_PreservesReasoningInMixedInput exercises contract 7:
-// reasoning items are stripped of their rs_* ids but kept (with
-// encrypted_content) while message / function_call / function_call_output
-// items flow through unchanged, with tool-call pairing (call_id) intact.
+// encrypted reasoning items are stripped of their rs_* ids but kept, while bare
+// reasoning is only kept outside continuation mode; message / function_call /
+// function_call_output items flow through unchanged, with tool-call pairing
+// (call_id) intact.
 func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 	build := func() []any {
 		return []any{
@@ -1508,8 +1509,16 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 		preserve := preserve
 		t.Run(fmt.Sprintf("preserveReferences=%v", preserve), func(t *testing.T) {
 			filtered := filterCodexInput(build(), preserve)
-			// Nothing is dropped: both reasoning items are now preserved.
-			require.Len(t, filtered, 5)
+			if preserve {
+				// Continuation requests preserve references/call ids; a bare rs_*
+				// reasoning item would still behave like an upstream lookup, so it
+				// is dropped while encrypted reasoning is kept.
+				require.Len(t, filtered, 4)
+			} else {
+				// Non-continuation requests keep bare reasoning as an id-less schema
+				// shell with summary backfilled.
+				require.Len(t, filtered, 5)
+			}
 
 			byType := make(map[string][]map[string]any)
 			for _, raw := range filtered {
@@ -1524,8 +1533,11 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 				}
 			}
 
-			// Both reasoning items kept, ids stripped, summary present.
-			require.Len(t, byType["reasoning"], 2)
+			expectedReasoning := 2
+			if preserve {
+				expectedReasoning = 1
+			}
+			require.Len(t, byType["reasoning"], expectedReasoning)
 			for _, r := range byType["reasoning"] {
 				_, hasID := r["id"]
 				require.False(t, hasID)
@@ -1570,7 +1582,8 @@ func TestFilterCodexInput_PreservesEncryptedReasoningItems(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "reasoning", reasoning["type"])
 	require.Equal(t, validEC, reasoning["encrypted_content"])
-	require.Equal(t, "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344", reasoning["id"])
+	_, hasID := reasoning["id"]
+	require.False(t, hasID)
 
 	for _, raw := range filtered {
 		item, ok := raw.(map[string]any)

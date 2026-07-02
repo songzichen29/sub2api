@@ -1072,19 +1072,17 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		typ, _ := m["type"].(string)
 
 		// chatgpt.com codex (OAuth path) runs with store=false (forced by
-		// applyCodexOAuthTransform). Replaying a reasoning item with its rs_*
-		// id but no encrypted_content 404s upstream ("Item with id 'rs_...'
-		// not found") — the 404 is triggered by the id lookup, not by the
-		// reasoning item itself. So strip the id (always, independent of
-		// PreserveReferences) yet keep the item: under store=false
-		// encrypted_content is the official channel for carrying reasoning
-		// context across turns, and dropping the whole item silently degrades
-		// multi-turn agent reasoning. Preserve encrypted_content/content/
-		// summary and every other field verbatim. Upstream additionally
-		// requires a summary field — a missing one is rejected with 400
-		// "Missing required parameter 'input[N].summary'" — so backfill an
-		// empty array when it is absent. Contracts verified end-to-end against
-		// chatgpt.com codex (gpt-5.5); see issue #1957.
+		// applyCodexOAuthTransform). Reasoning items therefore need careful
+		// handling:
+		//   - valid encrypted_content is the self-contained cross-turn channel and
+		//     must survive;
+		//   - invalid encrypted_content is dropped before forwarding to avoid a
+		//     deterministic invalid_encrypted_content rejection;
+		//   - bare rs_* reasoning in a tool-continuation request still represents
+		//     an upstream item lookup and 404s, so drop it when references/call
+		//     ids are being preserved;
+		//   - outside continuation, keep a bare shell with id stripped and summary
+		//     backfilled so the upstream schema remains valid.
 		// compaction_summary items (cmp_*) are the other encrypted_content
 		// carrier. Verified against the live backend: they require
 		// encrypted_content (a missing one is rejected with 400), and with it
@@ -1093,10 +1091,20 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		// below (id stripped when !PreserveReferences, encrypted_content
 		// preserved either way), which is safe and needs no special-casing.
 		if typ == "reasoning" {
+			if ec, hasEncryptedContent := m["encrypted_content"]; hasEncryptedContent {
+				ecString, ok := ec.(string)
+				if !ok || !isPlausibleCodexReasoningEncryptedContent(ecString) {
+					continue
+				}
+			} else if opts.PreserveReferences {
+				continue
+			}
+
 			newItem := make(map[string]any, len(m))
 			for key, value := range m {
 				if key == "id" {
-					// rs_* id replayed under store=false 404s; strip it.
+					// rs_* id replayed under store=false 404s; strip it
+					// unconditionally for reasoning items.
 					continue
 				}
 				newItem[key] = value
@@ -1201,6 +1209,30 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		filtered = append(filtered, newItem)
 	}
 	return filtered
+}
+
+func isPlausibleCodexReasoningEncryptedContent(raw string) bool {
+	// The live value is Fernet-like and starts with gAAAA. Keep this check loose:
+	// several unit tests intentionally use short synthetic encrypted_content
+	// fixtures, while obviously malformed values such as "gAAA" should still be
+	// filtered before they reach the upstream Codex transform.
+	if raw == "" || raw != strings.TrimSpace(raw) {
+		return false
+	}
+	if len(raw) <= len("gAAAA") || !strings.HasPrefix(raw, "gAAAA") {
+		return false
+	}
+	for _, r := range raw {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '=':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func isForwardableCodexReasoningItem(item map[string]any) bool {
