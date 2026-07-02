@@ -64,22 +64,9 @@ PREPARE stmt FROM @ddl;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
-SET @constraint_exists := (
-    SELECT COUNT(*)
-    FROM information_schema.table_constraints
-    WHERE constraint_schema = DATABASE()
-      AND table_name = 'accounts'
-      AND constraint_name = 'chk_accounts_parent_not_self'
-      AND constraint_type = 'CHECK'
-);
-
-SET @ddl := IF(@constraint_exists = 0,
-    'ALTER TABLE `accounts` ADD CONSTRAINT `chk_accounts_parent_not_self` CHECK ((`parent_account_id` IS NULL) OR (`parent_account_id` <> `id`))',
-    'SELECT 1'
-);
-PREPARE stmt FROM @ddl;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
+-- [INFO] MySQL 限制：CHECK 约束不能引用 AUTO_INCREMENT 列（Error 3818），
+-- accounts.id 为自增主键，故「父账号不能是自己」不在 DB 层强制；
+-- 改由应用层校验 + 外键 fk_accounts_parent_account_id 兜底（PG 侧 154 仍保留该约束）。
 
 SET @col_exists := (
     SELECT COUNT(*)

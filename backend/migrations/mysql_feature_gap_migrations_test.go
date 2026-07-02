@@ -131,8 +131,8 @@ func TestMySQLAccountSparkShadowMigrationExists(t *testing.T) {
 	require.Contains(t, sql, "chk_accounts_parent_dimension")
 	require.Contains(t, sql, "`parent_account_id` IS NOT NULL")
 	require.Contains(t, sql, "`quota_dimension` <> ''global''")
-	require.Contains(t, sql, "chk_accounts_parent_not_self")
-	require.Contains(t, sql, "`parent_account_id` <> `id`")
+	// [INFO] MySQL CHECK 不能引用自增列（Error 3818），042 不再创建 chk_accounts_parent_not_self。
+	require.NotContains(t, sql, "chk_accounts_parent_not_self")
 	require.Contains(t, sql, "column_name = 'spark_shadow_parent_key'")
 	require.Contains(t, sql, "GENERATED ALWAYS AS")
 	require.Contains(t, sql, "CASE WHEN `quota_dimension` = ''spark'' AND `deleted_at` IS NULL THEN `parent_account_id` ELSE NULL END")
