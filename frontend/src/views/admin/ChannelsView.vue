@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <AppLayout>
     <TablePageLayout>
       <template #filters>
@@ -291,7 +291,7 @@
                   type="button"
                   class="rounded-md border border-primary-200 px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-900/20"
                   :disabled="importingModelsByPlatform[section.platform] || section.group_ids.length === 0"
-                  @click="importModelsFromGroupAccounts(section)"
+                  @click="importSectionModelsFromAccounts(sIdx)"
                 >
                   <span v-if="importingModelsByPlatform[section.platform]">{{ t('common.loading') }}</span>
                   <span v-else>{{ t('admin.channels.form.importModelsFromAccounts') }}</span>
