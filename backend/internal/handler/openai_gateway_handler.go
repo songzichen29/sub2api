@@ -1042,7 +1042,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	}
 
 	previousResponseID, _ := reqBody["previous_response_id"].(string)
-	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContext {
+	if strings.TrimSpace(previousResponseID) != "" || validation.HasToolCallContextForAllCallIDs {
 		return true
 	}
 

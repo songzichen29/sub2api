@@ -75,6 +75,28 @@ func TestHasToolCallContext(t *testing.T) {
 	}))
 }
 
+func TestValidateFunctionCallOutputContextRequiresMatchingToolCallContext(t *testing.T) {
+	valid := ValidateFunctionCallOutputContext(map[string]any{
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": "fc_1"},
+			map[string]any{"type": "function_call_output", "call_id": "fc_1"},
+		},
+	})
+	require.True(t, valid.HasFunctionCallOutput)
+	require.True(t, valid.HasToolCallContext)
+	require.True(t, valid.HasToolCallContextForAllCallIDs)
+
+	mismatch := ValidateFunctionCallOutputContext(map[string]any{
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": "fc_1"},
+			map[string]any{"type": "function_call_output", "call_id": "fc_3"},
+		},
+	})
+	require.True(t, mismatch.HasFunctionCallOutput)
+	require.True(t, mismatch.HasToolCallContext)
+	require.False(t, mismatch.HasToolCallContextForAllCallIDs)
+}
+
 func TestFunctionCallOutputCallIDs(t *testing.T) {
 	// 仅提取工具输出的非空 call_id，去重后返回。
 	require.Empty(t, FunctionCallOutputCallIDs(nil))

@@ -11,6 +11,7 @@ type ToolContinuationSignals struct {
 	HasFunctionCallOutput              bool
 	HasFunctionCallOutputMissingCallID bool
 	HasToolCallContext                 bool
+	HasToolCallContextForAllCallIDs    bool
 	HasItemReference                   bool
 	HasItemReferenceForAllCallIDs      bool
 	FunctionCallOutputCallIDs          []string
@@ -20,6 +21,7 @@ type ToolContinuationSignals struct {
 type FunctionCallOutputValidation struct {
 	HasFunctionCallOutput              bool
 	HasToolCallContext                 bool
+	HasToolCallContextForAllCallIDs    bool
 	HasFunctionCallOutputMissingCallID bool
 	HasItemReferenceForAllCallIDs      bool
 }
@@ -97,6 +99,7 @@ func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSign
 	}
 
 	var callIDs map[string]struct{}
+	var toolCallIDs map[string]struct{}
 	var referenceIDs map[string]struct{}
 
 	for _, item := range input {
@@ -108,8 +111,13 @@ func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSign
 		switch {
 		case isCodexToolCallContextItemType(itemType):
 			callID, _ := itemMap["call_id"].(string)
-			if strings.TrimSpace(callID) != "" {
+			callID = strings.TrimSpace(callID)
+			if callID != "" {
 				signals.HasToolCallContext = true
+				if toolCallIDs == nil {
+					toolCallIDs = make(map[string]struct{})
+				}
+				toolCallIDs[callID] = struct{}{}
 			}
 		case isCodexToolCallOutputItemType(itemType):
 			signals.HasFunctionCallOutput = true
@@ -142,6 +150,7 @@ func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSign
 	}
 	signals.FunctionCallOutputCallIDs = make([]string, 0, len(callIDs))
 	allReferenced := len(referenceIDs) > 0
+	allToolContext := len(toolCallIDs) > 0
 	for callID := range callIDs {
 		signals.FunctionCallOutputCallIDs = append(signals.FunctionCallOutputCallIDs, callID)
 		if allReferenced {
@@ -149,8 +158,14 @@ func AnalyzeToolContinuationSignals(reqBody map[string]any) ToolContinuationSign
 				allReferenced = false
 			}
 		}
+		if allToolContext {
+			if _, ok := toolCallIDs[callID]; !ok {
+				allToolContext = false
+			}
+		}
 	}
 	signals.HasItemReferenceForAllCallIDs = allReferenced
+	signals.HasToolCallContextForAllCallIDs = allToolContext
 	return signals
 }
 
@@ -167,6 +182,7 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 	}
 
 	var callIDs map[string]struct{}
+	var toolCallIDs map[string]struct{}
 	var referenceIDs map[string]struct{}
 	input.ForEach(func(_, item gjson.Result) bool {
 		if !item.IsObject() {
@@ -186,8 +202,13 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 			}
 			callIDs[callID] = struct{}{}
 		case isCodexToolCallContextItemType(itemType):
-			if strings.TrimSpace(item.Get("call_id").String()) != "" {
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID != "" {
 				result.HasToolCallContext = true
+				if toolCallIDs == nil {
+					toolCallIDs = make(map[string]struct{})
+				}
+				toolCallIDs[callID] = struct{}{}
 			}
 		case itemType == "item_reference":
 			idValue := strings.TrimSpace(item.Get("id").String())
@@ -199,9 +220,22 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 			}
 			referenceIDs[idValue] = struct{}{}
 		}
-		return !result.HasFunctionCallOutput || !result.HasToolCallContext
+		return true
 	})
-	if !result.HasFunctionCallOutput || result.HasToolCallContext || len(callIDs) == 0 || len(referenceIDs) == 0 {
+	if !result.HasFunctionCallOutput || len(callIDs) == 0 {
+		return result
+	}
+	if len(toolCallIDs) > 0 {
+		allToolContext := true
+		for callID := range callIDs {
+			if _, ok := toolCallIDs[callID]; !ok {
+				allToolContext = false
+				break
+			}
+		}
+		result.HasToolCallContextForAllCallIDs = allToolContext
+	}
+	if len(referenceIDs) == 0 {
 		return result
 	}
 	allReferenced := true
@@ -217,8 +251,8 @@ func ValidateFunctionCallOutputContextBytes(body []byte) FunctionCallOutputValid
 
 // ValidateFunctionCallOutputContext 为 handler 提供低开销校验结果：
 // 1) 无工具输出直接返回
-// 2) 若已存在工具调用上下文则提前返回
-// 3) 仅在无工具上下文时才构建 call_id / item_reference 集合
+// 2) 工具调用上下文必须覆盖所有工具输出 call_id 才视为可关联
+// 3) item_reference 也必须覆盖所有工具输出 call_id 才视为可关联
 // 字段名保留 FunctionCallOutput 是为了兼容既有调用点；语义覆盖所有 Codex 工具输出。
 func ValidateFunctionCallOutputContext(reqBody map[string]any) FunctionCallOutputValidation {
 	result := FunctionCallOutputValidation{}
@@ -230,6 +264,8 @@ func ValidateFunctionCallOutputContext(reqBody map[string]any) FunctionCallOutpu
 		return result
 	}
 
+	callIDs := make(map[string]struct{})
+	toolCallIDs := make(map[string]struct{})
 	for _, item := range input {
 		itemMap, ok := item.(map[string]any)
 		if !ok {
@@ -239,22 +275,35 @@ func ValidateFunctionCallOutputContext(reqBody map[string]any) FunctionCallOutpu
 		switch {
 		case isCodexToolCallOutputItemType(itemType):
 			result.HasFunctionCallOutput = true
+			callID, _ := itemMap["call_id"].(string)
+			callID = strings.TrimSpace(callID)
+			if callID != "" {
+				callIDs[callID] = struct{}{}
+			}
 		case isCodexToolCallContextItemType(itemType):
 			callID, _ := itemMap["call_id"].(string)
-			if strings.TrimSpace(callID) != "" {
+			callID = strings.TrimSpace(callID)
+			if callID != "" {
 				result.HasToolCallContext = true
+				toolCallIDs[callID] = struct{}{}
 			}
 		}
-		if result.HasFunctionCallOutput && result.HasToolCallContext {
-			return result
-		}
 	}
 
-	if !result.HasFunctionCallOutput || result.HasToolCallContext {
+	if !result.HasFunctionCallOutput {
 		return result
 	}
+	if len(callIDs) > 0 && len(toolCallIDs) > 0 {
+		allToolContext := true
+		for callID := range callIDs {
+			if _, ok := toolCallIDs[callID]; !ok {
+				allToolContext = false
+				break
+			}
+		}
+		result.HasToolCallContextForAllCallIDs = allToolContext
+	}
 
-	callIDs := make(map[string]struct{})
 	referenceIDs := make(map[string]struct{})
 	for _, item := range input {
 		itemMap, ok := item.(map[string]any)
