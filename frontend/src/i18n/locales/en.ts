@@ -131,13 +131,16 @@
     detailInfo: 'Detail Information',
     tokenStats: 'Token Statistics',
     modelStats: 'Model Usage Statistics',
+    dailyDetail: 'Daily Detail',
     // Table headers
+    date: 'Date',
     model: 'Model',
     requests: 'Requests',
     inputTokens: 'Input Tokens',
     outputTokens: 'Output Tokens',
     cacheCreationTokens: 'Cache Creation',
     cacheReadTokens: 'Cache Read',
+    cacheWriteTokens: 'Cache Write',
     totalTokens: 'Total Tokens',
     cost: 'Cost',
     // Status
@@ -177,6 +180,7 @@
     totalCost: 'Total Cost',
     avgDuration: 'Avg Duration',
     noModelStats: 'No model usage statistics in the selected range',
+    noDailyUsage: 'No daily usage in the selected range',
     // Messages
     enterApiKey: 'Please enter an API Key',
     querySuccess: 'Query successful',
@@ -747,6 +751,7 @@
     },
     allGroups: 'All Groups',
     allStatus: 'All Status',
+    columnSettings: 'Column Settings',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
@@ -901,6 +906,10 @@
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
+    tabs: {
+      usage: 'Usage',
+      errors: 'Error Requests'
+    },
     costDetails: 'Cost Breakdown',
     tokenDetails: 'Token Breakdown',
     cacheTtlOverriddenHint: 'Cache TTL Override enabled',
@@ -961,6 +970,10 @@
     unknown: 'Unknown',
     in: 'In',
     out: 'Out',
+    cacheTotal: 'Cache',
+    cacheBreakdown: 'Cache Token Breakdown',
+    cacheCreationTokensLabel: 'Cache Creation',
+    cacheReadTokensLabel: 'Cache Read',
     cacheHit: 'Cache hit',
     cacheCreate: 'Cache create',
     cacheHitRate: 'Cache hit rate',
@@ -974,6 +987,9 @@
     imageBillingSize: 'Billing size',
     imageInputSize: 'Input size',
     imageOutputSize: 'Output size',
+    imageOutputTokens: 'Image Output Tokens',
+    imageOutputCost: 'Image Output Cost',
+    imageOutputTokenPrice: 'Image Output Price',
     imageSizeSource: 'Size source',
     imageSizeBreakdown: 'Size breakdown',
     imageSizeSourceOutput: 'Upstream output',
@@ -1016,6 +1032,7 @@
       time: 'Time',
       empty: 'No error requests',
       keyDeleted: 'Key deleted',
+      failedToLoad: 'Failed to load error requests',
       categories: {
         auth: 'Auth failed',
         rate_limit: 'Rate limited',
@@ -2662,6 +2679,7 @@
       refreshStatus: 'Refresh Status',
       records: 'Audit Records',
       recordsHint: 'Shows hits, blocks, errors, and sampled records.',
+      matchedKeyword: 'Matched Keyword',
       saveConfig: 'Save Moderation Config',
       statusFailed: 'Failed to load runtime status',
       enabled: 'Enable Content Moderation',
@@ -3558,6 +3576,9 @@
       vertexSaJsonMissingClientEmail: 'Service Account JSON is missing client_email',
       vertexSaJsonInvalid: 'Service Account JSON format is invalid',
       vertexSaJsonRequired: 'Please upload a Service Account JSON',
+      antigravityProjectIdLabel: 'Antigravity Project ID',
+      antigravityProjectIdPlaceholder: 'Enter Antigravity Project ID',
+      antigravityProjectIdHint: 'Only used by Antigravity OAuth accounts; leave empty to keep the existing configuration.',
       oauthSetupToken: 'OAuth / Setup Token',
       addMethod: 'Add Method',
       setupTokenLongLived: 'Setup Token (Long-lived)',
@@ -3597,6 +3618,9 @@
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        codexCLIOnlyAppServer: 'Allow Codex app-server',
+        codexCLIOnlyAppServerDesc:
+          'Only applies when "Codex official clients only" is enabled. Allows Codex app-server clients in addition to the default official clients.',
         responsesMode: 'Responses API support',
         responsesModeDesc:
           'Only applies to OpenAI API Key accounts. Auto follows probe results; force modes override probing.',
@@ -3608,6 +3632,16 @@
         responsesStatusAutoUnknown: 'Auto probe: unknown',
         responsesStatusForcedResponses: 'Forced Responses',
         responsesStatusForcedChatCompletions: 'Forced Chat Completions',
+        responsesModeTextDisabledHint: 'Text-generation endpoint capability is disabled, so Responses API support mode has no effect.',
+        endpointCapabilities: 'Endpoint Capabilities',
+        endpointCapabilitiesDesc:
+          'Select which OpenAI endpoint capabilities this account may serve. At least one capability is kept; disabling text generation excludes this account from Chat Completions/Responses text requests.',
+        capabilityResponses: 'Text generation: Responses',
+        capabilityChatCompletions: 'Text generation: Chat Completions',
+        capabilityResponsesAuto: 'Text generation: Responses (auto probe)',
+        capabilityChatCompletionsAuto: 'Text generation: Chat Completions (auto probe)',
+        capabilityTextAuto: 'Text generation: auto',
+        capabilityEmbeddings: 'Embeddings',
         codexImageGenerationBridge: 'Codex image-generation bridge',
         codexImageGenerationBridgeDesc:
           'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
@@ -3687,6 +3721,8 @@
       poolModeRetryCount: 'Same-Account Retries',
       poolModeRetryCountHint:
         'Only applies in pool mode. Use 0 to disable in-place retry. Default {default}, maximum {max}.',
+      poolModeRetryStatusCodes: 'Pool Mode Retry Status Codes',
+      poolModeRetryStatusCodesHint: 'Only applies in pool mode. Separate with commas; leave empty to use default: {default}.',
       customErrorCodes: 'Custom Error Codes',
       customErrorCodesHint: 'Only stop scheduling for selected error codes',
       customErrorCodesWarning:
@@ -4308,6 +4344,8 @@
       openaiQuotaReset: {
         count: 'Credits',
         reset: 'Reset',
+        confirmTitle: 'Confirm OpenAI quota window reset',
+        confirmMessage: 'Spend 1 reset credit to reset the currently available windows? Remaining credits: {count}.',
         countTooltipLoad: 'Click to load the available reset-credit count',
         countTooltipRefresh: 'Click to refresh the available reset-credit count',
         resetTooltipReady: 'Consume 1 reset credit to immediately restore the window',
@@ -7251,6 +7289,7 @@
       failed: 'Failed',
       refund_requested: 'Refund Requested',
       refunding: 'Refunding',
+      refund_pending: 'Refund Pending',
       refunded: 'Refunded',
       partially_refunded: 'Partially Refunded',
       refund_failed: 'Refund Failed',
@@ -7597,6 +7636,8 @@
       subscriptionRefundExpired: 'This subscription has expired and can no longer be refunded.',
       confirmRefund: 'Confirm Refund',
       refundSuccess: 'Refund successful',
+      refundPending: 'Refund submitted, waiting for payment provider confirmation',
+      queryRefundStatus: 'Query Refund Status',
       refundInfo: 'Refund Info',
       refundEnabled: 'Refund Enabled',
       allowUserRefund: 'Allow User Refund',
@@ -7706,4 +7747,3 @@
   },
 
 }
-
