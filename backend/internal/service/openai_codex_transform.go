@@ -240,25 +240,32 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		})
 		reqBody["input"] = input
 		result.Modified = true
-	} else if inputStr, ok := reqBody["input"].(string); ok {
-		// ChatGPT codex endpoint requires input to be a list, not a string.
-		// Convert string input to the expected message array format.
-		trimmed := strings.TrimSpace(inputStr)
-		if trimmed != "" {
-			reqBody["input"] = []any{
-				map[string]any{
-					"type":    "message",
-					"role":    "user",
-					"content": inputStr,
-				},
-			}
-		} else {
-			reqBody["input"] = []any{}
-		}
+	} else if normalizeOpenAIResponsesStringInputToMessageArray(reqBody) {
 		result.Modified = true
 	}
 
 	return result
+}
+
+func normalizeOpenAIResponsesStringInputToMessageArray(reqBody map[string]any) bool {
+	inputStr, ok := reqBody["input"].(string)
+	if !ok {
+		return false
+	}
+	// Some Codex-compatible Responses upstreams require input to be a list, not
+	// a string. Convert string input to the equivalent message array format.
+	if strings.TrimSpace(inputStr) == "" {
+		reqBody["input"] = []any{}
+		return true
+	}
+	reqBody["input"] = []any{
+		map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": inputStr,
+		},
+	}
+	return true
 }
 
 func normalizeCodexToolChoice(reqBody map[string]any) bool {

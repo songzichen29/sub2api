@@ -2931,6 +2931,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 	}
 
+	if account.Type == AccountTypeAPIKey &&
+		account.Platform == PlatformOpenAI &&
+		!IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) &&
+		normalizeOpenAIResponsesStringInputToMessageArray(reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
+
 	// Handle max_output_tokens based on platform and account type.
 	// OpenAI API-key compatible upstreams often reject Responses-only output cap
 	// fields. Strip them even for Codex CLI traffic; OAuth keeps native Responses
