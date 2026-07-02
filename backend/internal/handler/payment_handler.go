@@ -536,8 +536,9 @@ func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
 	response.Success(c, enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order))
 }
 
-// PublicOrderResult is the limited order info returned by the public verify endpoint.
-// No user details are exposed — only payment status information.
+// PublicOrderResult is returned after a signed resume-token lookup. The token
+// proves possession of the checkout session, so the result keeps the legacy
+// frontend contract needed by payment result pages.
 type PublicOrderResult struct {
 	ID                        int64      `json:"id"`
 	OutTradeNo                string     `json:"out_trade_no"`
@@ -569,6 +570,18 @@ type PublicOrderResult struct {
 	GroupName                 string     `json:"group_name,omitempty"`
 }
 
+// PublicOrderVerifyResult is returned by the legacy anonymous out_trade_no
+// lookup. Keep this intentionally minimal because out_trade_no is not secret.
+type PublicOrderVerifyResult struct {
+	OutTradeNo  string     `json:"out_trade_no"`
+	Status      string     `json:"status"`
+	Paid        bool       `json:"paid"`
+	CreatedAt   time.Time  `json:"created_at"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	PaidAt      *time.Time `json:"paid_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
 func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 	if order == nil || order.PaymentOrder == nil {
 		return PublicOrderResult{}
@@ -596,12 +609,40 @@ func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 		SubscriptionGroupID:       order.SubscriptionGroupID,
 		SubscriptionID:            order.SubscriptionID,
 		SubscriptionDays:          order.SubscriptionDays,
-		SubscriptionPlanExpiresAt: order.SubscriptionPlanExpiresAt,
+		SubscriptionPlanExpiresAt: order.PaymentOrder.SubscriptionPlanExpiresAt,
 		CanRefund:                 order.CanRefund,
 		SubscriptionExpiresAt:     order.SubscriptionExpiresAt,
 		SubscriptionRemainingDays: order.SubscriptionRemainingDays,
 		ProductName:               order.ProductName,
 		GroupName:                 order.GroupName,
+	}
+}
+
+func buildPublicOrderVerifyResult(order *dbent.PaymentOrder) PublicOrderVerifyResult {
+	return PublicOrderVerifyResult{
+		OutTradeNo:  order.OutTradeNo,
+		Status:      order.Status,
+		Paid:        publicOrderStatusPaid(order.Status),
+		CreatedAt:   order.CreatedAt,
+		ExpiresAt:   order.ExpiresAt,
+		PaidAt:      order.PaidAt,
+		CompletedAt: order.CompletedAt,
+	}
+}
+
+func publicOrderStatusPaid(status string) bool {
+	switch status {
+	case service.OrderStatusPaid,
+		service.OrderStatusCompleted,
+		service.OrderStatusRefundRequested,
+		service.OrderStatusRefunding,
+		service.OrderStatusRefundPending,
+		service.OrderStatusPartiallyRefunded,
+		service.OrderStatusRefunded,
+		service.OrderStatusRefundFailed:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -620,7 +661,7 @@ func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, buildPublicOrderResult(enrichPaymentOrderForResponse(c.Request.Context(), h.paymentService, order)))
+	response.Success(c, buildPublicOrderVerifyResult(order))
 }
 
 // ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.

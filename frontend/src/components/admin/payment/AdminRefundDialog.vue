@@ -35,15 +35,15 @@
         </div>
         <div class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ order?.amount?.toFixed(2) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order?.amount?.toFixed(2) }}</span>
         </div>
         <div class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white">¥{{ order?.pay_amount?.toFixed(2) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol }}{{ order?.pay_amount?.toFixed(2) }}</span>
         </div>
         <div v-if="actuallyRefunded > 0" class="mt-1 flex justify-between text-sm">
           <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.alreadyRefunded') }}</span>
-          <span class="font-medium text-red-600 dark:text-red-400">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ actuallyRefunded.toFixed(2) }}</span>
+          <span class="font-medium text-red-600 dark:text-red-400">{{ creditedAmountSymbol }}{{ actuallyRefunded.toFixed(2) }}</span>
         </div>
       </div>
 
@@ -66,11 +66,11 @@
         <div v-if="form.deduct_balance && userBalance != null" class="mt-3 grid grid-cols-2 gap-3">
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
             <div class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.userBalance') }}</div>
-            <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ userBalance.toFixed(2) }}</div>
+            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ userBalance.toFixed(2) }}</div>
           </div>
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
             <div class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderAmount') }}</div>
-            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ order?.amount?.toFixed(2) }}</div>
+            <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ creditedAmountSymbol }}{{ order?.amount?.toFixed(2) }}</div>
           </div>
         </div>
 
@@ -92,65 +92,23 @@
       </div>
 
       <!-- Refund Amount -->
-      <div v-if="isSubscriptionOrder" class="space-y-2">
-        <label class="input-label">{{ t('payment.admin.refundMode') }}</label>
-        <div class="space-y-2">
-          <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-3 text-sm dark:border-dark-600">
-            <input
-              v-model="form.refund_mode"
-              type="radio"
-              value="proportional"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-            <div class="min-w-0">
-              <div class="font-medium text-gray-900 dark:text-white">{{ t('payment.admin.proportionalRefund') }}</div>
-              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.proportionalRefundHint') }}</div>
-            </div>
-          </label>
-          <label class="flex items-start gap-3 rounded-md border border-gray-200 px-3 py-3 text-sm dark:border-dark-600">
-            <input
-              v-model="form.refund_mode"
-              type="radio"
-              value="full"
-              class="mt-0.5 h-4 w-4 border-gray-300 text-primary-600 focus:ring-primary-500"
-            />
-            <div class="min-w-0">
-              <div class="font-medium text-gray-900 dark:text-white">{{ t('payment.admin.fullRefund') }}</div>
-              <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.fullRefundHint') }}</div>
-            </div>
-          </label>
-        </div>
-      </div>
-
-      <!-- Refund Amount -->
       <div>
         <label class="input-label">{{ t('payment.admin.refundAmount') }}</label>
         <div class="relative">
-          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ order?.order_type === 'balance' ? '$' : '¥' }}</span>
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ creditedAmountSymbol }}</span>
           <input
             v-model.number="form.amount"
             type="number"
             step="0.01"
-            :min="isSubscriptionOrder && form.refund_mode === 'proportional' ? 0 : 0.01"
+            min="0.01"
             :max="maxRefundable"
             class="input pl-7"
-            :readonly="isSubscriptionOrder && form.refund_mode === 'proportional'"
-            :required="!(isSubscriptionOrder && form.refund_mode === 'proportional')"
+            required
           />
         </div>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('payment.admin.maxRefundable') }}: {{ order?.order_type === 'balance' ? '$' : '¥' }}{{ maxRefundable.toFixed(2) }}
+          {{ t('payment.admin.maxRefundable') }}: {{ creditedAmountSymbol }}{{ maxRefundable.toFixed(2) }}
         </p>
-        <p v-if="isSubscriptionOrder && form.refund_mode === 'proportional'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('payment.admin.proportionalAmountHint') }}
-        </p>
-        <div v-if="isSubscriptionOrder && form.refund_mode === 'proportional'" class="mt-3 rounded-md border border-gray-200 px-3 py-3 dark:border-dark-600">
-          <div class="flex items-center justify-between gap-3 text-sm">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('payment.admin.estimatedRefundAmount') }}</span>
-            <span v-if="previewLoading" class="text-gray-500 dark:text-gray-400">{{ t('common.processing') }}</span>
-            <span v-else class="font-medium text-gray-900 dark:text-white">{{ order?.order_type === 'balance' ? '$' : '¥' }}{{ (previewAmount ?? 0).toFixed(2) }}</span>
-          </div>
-        </div>
       </div>
 
       <!-- Reason -->
@@ -195,7 +153,7 @@
         <button
           type="submit"
           form="refund-form"
-          :disabled="submitting || (!isSubscriptionOrder && form.amount <= 0) || (isSubscriptionOrder && form.refund_mode === 'full' && form.amount <= 0) || (requireForce && !form.force)"
+          :disabled="submitting || form.amount <= 0 || (requireForce && !form.force)"
           class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 dark:focus:ring-offset-dark-800"
         >
           {{ submitting ? t('common.processing') : t('payment.admin.confirmRefund') }}
@@ -206,12 +164,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed, watch, ref } from 'vue'
+import { reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { formatOrderDateTime } from '@/components/payment/orderUtils'
-import { adminPaymentAPI } from '@/api/admin/payment'
+import { currencySymbol } from '@/components/payment/currency'
 
 const { t } = useI18n()
 
@@ -225,22 +183,22 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'confirm', data: { amount: number; reason: string; deduct_balance: boolean; force: boolean; refund_mode?: 'full' | 'proportional' }): void
+  (e: 'confirm', data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }): void
   (e: 'cancel'): void
 }>()
+
+const creditedAmountSymbol = currencySymbol('USD')
+
+const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
 
 const form = reactive({
   amount: 0,
   reason: '',
   deduct_balance: true,
   force: false,
-  refund_mode: 'full' as 'full' | 'proportional',
 })
 
-const previewAmount = ref<number | null>(null)
-const previewLoading = ref(false)
-
-// In REFUND_REQUESTED status, refund_amount is the REQUESTED amount, not actually refunded.
+// In REFUND_REQUESTED / REFUND_PENDING status, refund_amount is requested/pending, not actually refunded.
 // Only PARTIALLY_REFUNDED / REFUNDED have real refund amounts.
 const actuallyRefunded = computed(() => {
   if (!props.order) return 0
@@ -259,39 +217,17 @@ const balanceInsufficient = computed(() => {
   return props.userBalance < props.order.amount
 })
 
-const isSubscriptionOrder = computed(() => props.order?.order_type === 'subscription')
-
 watch(() => props.show, (val) => {
   if (val && props.order) {
-    form.refund_mode = isSubscriptionOrder.value ? 'proportional' : 'full'
     // For REFUND_REQUESTED, pre-fill with the requested amount
-    if (!isSubscriptionOrder.value && props.order.status === 'REFUND_REQUESTED' && props.order.refund_amount) {
+    if (props.order.status === 'REFUND_REQUESTED' && props.order.refund_amount) {
       form.amount = props.order.refund_amount
-    } else if (isSubscriptionOrder.value && form.refund_mode === 'proportional') {
-      form.amount = 0
     } else {
       form.amount = maxRefundable.value
     }
     form.reason = props.order.refund_request_reason || ''
     form.deduct_balance = true
     form.force = false
-    if (isSubscriptionOrder.value && form.refund_mode === 'proportional') {
-      void loadPreviewAmount()
-    } else {
-      previewAmount.value = null
-    }
-  } else {
-    previewAmount.value = null
-  }
-})
-
-watch(() => form.refund_mode, (mode) => {
-  if (!isSubscriptionOrder.value) return
-  form.amount = mode === 'proportional' ? 0 : maxRefundable.value
-  if (mode === 'proportional') {
-    void loadPreviewAmount()
-  } else {
-    previewAmount.value = null
   }
 })
 
@@ -299,34 +235,9 @@ function formatDateTime(dateStr: string): string {
   return formatOrderDateTime(dateStr)
 }
 
-async function loadPreviewAmount() {
-  if (!props.order || !isSubscriptionOrder.value || form.refund_mode !== 'proportional') {
-    previewAmount.value = null
-    return
-  }
-  previewLoading.value = true
-  try {
-    const res = await adminPaymentAPI.previewRefund(props.order.id, { amount: 0, refund_mode: 'proportional' })
-    previewAmount.value = res.data.refund_amount
-  } catch {
-    previewAmount.value = null
-  } finally {
-    previewLoading.value = false
-  }
-}
-
 function handleSubmit() {
-  const amount = isSubscriptionOrder.value && form.refund_mode === 'proportional' ? 0 : form.amount
-  if (amount < 0 || amount > maxRefundable.value) return
-  if (!isSubscriptionOrder.value && amount <= 0) return
-  if (isSubscriptionOrder.value && form.refund_mode === 'full' && amount <= 0) return
+  if (form.amount <= 0 || form.amount > maxRefundable.value) return
   if (props.requireForce && !form.force) return
-  emit('confirm', {
-    amount,
-    reason: form.reason,
-    deduct_balance: form.deduct_balance,
-    force: form.force,
-    refund_mode: isSubscriptionOrder.value ? form.refund_mode : undefined,
-  })
+  emit('confirm', { ...form })
 }
 </script>

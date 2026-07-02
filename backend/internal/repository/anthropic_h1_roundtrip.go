@@ -381,7 +381,8 @@ func isRetryableStaleConnError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "connection reset by peer") ||
 		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "use of closed network connection")
+		strings.Contains(msg, "use of closed network connection") ||
+		strings.Contains(msg, "connection was aborted")
 }
 
 func responseBodyAlreadyConsumed(req *http.Request, resp *http.Response) bool {

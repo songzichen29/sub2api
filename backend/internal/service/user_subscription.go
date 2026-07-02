@@ -51,6 +51,7 @@ type UserSubscription struct {
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	DeletedAt *time.Time
 
 	// LastUsedAt 是非持久化字段，由 SubscriptionService.List/GetByID 等读路径
 	// 通过聚合 usage_logs 后批量填充，与 user.LastUsedAt 同源同范式。

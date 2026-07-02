@@ -34,10 +34,10 @@
     </header>
 
     <!-- Main Content -->
-    <main class="flex-1 w-full max-w-7xl mx-auto px-6 py-8">
+    <main class="flex-1 w-full max-w-5xl mx-auto px-6 py-12">
       <!-- Hero -->
-      <div class="text-center mb-8">
-        <h1 class="text-2xl sm:text-3xl font-bold tracking-tight mb-2 text-gray-900 dark:text-white">
+      <div class="text-center mb-12">
+        <h1 class="text-3xl sm:text-4xl font-bold tracking-tight mb-3 text-gray-900 dark:text-white">
           {{ t('keyUsage.title') }}
         </h1>
         <p class="text-gray-500 dark:text-dark-400 text-base max-w-md mx-auto">
@@ -46,7 +46,7 @@
       </div>
 
       <!-- Input Section -->
-      <div class="max-w-xl mx-auto mb-8">
+      <div class="max-w-xl mx-auto mb-14">
         <div class="flex gap-3">
           <div class="flex-1 relative">
             <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
@@ -93,6 +93,38 @@
           {{ t('keyUsage.privacyNote') }}
         </p>
 
+        <!-- Date Range Picker -->
+        <div v-if="showDatePicker" class="mt-4">
+          <div class="flex flex-wrap items-center gap-2 justify-center">
+            <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.dateRange') }}</span>
+            <button
+              v-for="range in dateRanges"
+              :key="range.key"
+              @click="setDateRange(range.key)"
+              class="text-xs px-3 py-1.5 rounded-lg border transition-all"
+              :class="currentRange === range.key
+                ? 'bg-primary-500 text-white border-primary-500'
+                : 'border-gray-200 bg-white text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200 hover:border-primary-300 dark:hover:border-dark-600'"
+            >{{ range.label }}</button>
+            <div v-if="currentRange === 'custom'" class="flex items-center gap-2 ml-1">
+              <input
+                v-model="customStartDate"
+                type="date"
+                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
+              />
+              <span class="text-xs text-gray-400">-</span>
+              <input
+                v-model="customEndDate"
+                type="date"
+                class="input-ring text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-900 dark:border-dark-700 dark:bg-dark-900 dark:text-white"
+              />
+              <button
+                @click="queryKey"
+                class="text-xs px-3 py-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600"
+              >{{ t('keyUsage.apply') }}</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Results Container -->
@@ -121,205 +153,237 @@
         </div>
 
         <!-- Result Content -->
-        <div v-else-if="resultData" class="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-          <div class="space-y-4">
-            <!-- Status Badge -->
-            <div v-if="statusInfo" class="fade-up flex items-center">
-              <div class="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white/90 px-4 py-2 shadow-sm backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/90">
-                <span
-                  class="w-2.5 h-2.5 rounded-full pulse-dot"
-                  :class="statusInfo.isActive ? 'bg-emerald-500' : 'bg-rose-500'"
-                ></span>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ statusInfo.label }}</span>
-                <span class="text-xs text-gray-400 dark:text-dark-500">|</span>
-                <span class="text-xs text-gray-500 dark:text-dark-400">{{ statusInfo.statusText }}</span>
-              </div>
+        <div v-else-if="resultData" class="space-y-6">
+          <!-- Status Badge -->
+          <div v-if="statusInfo" class="fade-up flex items-center justify-center mb-2">
+            <div class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-200 bg-white/90 shadow-sm backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/90">
+              <span
+                class="w-2.5 h-2.5 rounded-full pulse-dot"
+                :class="statusInfo.isActive ? 'bg-emerald-500' : 'bg-rose-500'"
+              ></span>
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ statusInfo.label }}</span>
+              <span class="text-xs text-gray-400 dark:text-dark-500">|</span>
+              <span class="text-xs text-gray-500 dark:text-dark-400">{{ statusInfo.statusText }}</span>
             </div>
+          </div>
 
-            <!-- Ring Cards Grid -->
-            <div v-if="ringItems.length > 0" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div
-                v-for="(ring, i) in ringItems"
-                :key="i"
-                class="fade-up rounded-xl border border-gray-200 bg-white/90 p-5 backdrop-blur-sm dark:border-dark-700 dark:bg-dark-900/90"
-                :class="`fade-up-delay-${Math.min(i + 1, 4)}`"
-              >
-                <div class="mb-4 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold text-gray-500 dark:text-dark-400">
-                    {{ ring.title }}
-                  </h3>
-                  <!-- Clock icon -->
-                  <svg v-if="ring.iconType === 'clock'" class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                  </svg>
-                  <!-- Calendar icon -->
-                  <svg v-else-if="ring.iconType === 'calendar'" class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                  </svg>
-                  <!-- Dollar icon -->
-                  <svg v-else class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                  </svg>
-                </div>
-                <div class="flex justify-center">
-                  <div class="relative">
-                    <svg class="w-36 h-36" viewBox="0 0 160 160">
-                      <circle cx="80" cy="80" r="68" fill="none" :stroke="ringTrackColor" stroke-width="10"/>
-                      <circle
-                        class="progress-ring"
-                        cx="80" cy="80" r="68" fill="none"
-                        :stroke="`url(#ring-grad-${i})`"
-                        stroke-width="10" stroke-linecap="round"
-                        :stroke-dasharray="CIRCUMFERENCE.toFixed(2)"
-                        :stroke-dashoffset="getRingOffset(ring)"
-                      />
-                      <defs>
-                        <linearGradient :id="`ring-grad-${i}`" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" :stop-color="RING_GRADIENTS[i % 4].from"/>
-                          <stop offset="100%" :stop-color="RING_GRADIENTS[i % 4].to"/>
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                    <div class="absolute inset-0 flex flex-col items-center justify-center">
-                      <template v-if="ring.isBalance">
-                        <span class="text-2xl font-bold tabular-nums" :style="{ color: RING_GRADIENTS[i % 4].from }">
-                          {{ ring.amount }}
-                        </span>
-                      </template>
-                      <template v-else>
-                        <span class="text-2xl font-bold tabular-nums text-gray-900 dark:text-white">
-                          {{ displayPcts[i] ?? 0 }}%
-                        </span>
-                        <span class="text-xs text-gray-500 dark:text-dark-400 mt-0.5">{{ t('keyUsage.used') }}</span>
-                        <span
-                          class="text-xs font-semibold mt-1 tabular-nums"
-                          :style="{ color: RING_GRADIENTS[i % 4].from }"
-                        >{{ ring.amount }}</span>
-                        <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
-                          ⟳ {{ formatResetTime(ring.resetAt) }}
-                        </p>
-                      </template>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Detail Card -->
+          <!-- Ring Cards Grid -->
+          <div v-if="ringItems.length > 0" :class="ringGridClass">
             <div
-              v-if="detailRows.length > 0"
-              class="fade-up fade-up-delay-3 rounded-xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+              v-for="(ring, i) in ringItems"
+              :key="i"
+              class="fade-up rounded-2xl border border-gray-200 bg-white/90 p-8 backdrop-blur-sm transition-all duration-300 hover:shadow-lg dark:border-dark-700 dark:bg-dark-900/90"
+              :class="`fade-up-delay-${Math.min(i + 1, 4)}`"
             >
-              <div class="px-5 py-4 border-b border-gray-200 dark:border-dark-700">
-                <h3 class="text-sm font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.detailInfo') }}</h3>
+              <div class="flex items-center justify-between mb-6">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">
+                  {{ ring.title }}
+                </h3>
+                <!-- Clock icon -->
+                <svg v-if="ring.iconType === 'clock'" class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+                <!-- Calendar icon -->
+                <svg v-else-if="ring.iconType === 'calendar'" class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <!-- Dollar icon -->
+                <svg v-else class="w-5 h-5 text-gray-400 dark:text-dark-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
               </div>
-              <div class="divide-y divide-gray-100 dark:divide-dark-800">
-                <div
-                  v-for="(row, i) in detailRows"
-                  :key="i"
-                  class="px-5 py-3 flex items-center justify-between gap-3"
-                >
-                  <div class="flex min-w-0 items-center gap-3">
-                    <div class="w-8 h-8 rounded-lg flex flex-shrink-0 items-center justify-center" :class="row.iconBg">
-                      <svg
-                        class="w-4 h-4"
-                        :class="row.iconColor"
-                        viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                        v-html="row.iconSvg"
-                      ></svg>
-                    </div>
-                    <span class="truncate text-sm text-gray-700 dark:text-dark-200">{{ row.label }}</span>
+              <div class="flex justify-center">
+                <div class="relative">
+                  <svg class="w-44 h-44" viewBox="0 0 160 160">
+                    <circle cx="80" cy="80" r="68" fill="none" :stroke="ringTrackColor" stroke-width="10"/>
+                    <circle
+                      class="progress-ring"
+                      cx="80" cy="80" r="68" fill="none"
+                      :stroke="`url(#ring-grad-${i})`"
+                      stroke-width="10" stroke-linecap="round"
+                      :stroke-dasharray="CIRCUMFERENCE.toFixed(2)"
+                      :stroke-dashoffset="getRingOffset(ring)"
+                    />
+                    <defs>
+                      <linearGradient :id="`ring-grad-${i}`" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" :stop-color="RING_GRADIENTS[i % 4].from"/>
+                        <stop offset="100%" :stop-color="RING_GRADIENTS[i % 4].to"/>
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <template v-if="ring.isBalance">
+                      <span class="text-2xl font-bold tabular-nums" :style="{ color: RING_GRADIENTS[i % 4].from }">
+                        {{ ring.amount }}
+                      </span>
+                    </template>
+                    <template v-else>
+                      <span class="text-3xl font-bold tabular-nums text-gray-900 dark:text-white">
+                        {{ displayPcts[i] ?? 0 }}%
+                      </span>
+                      <span class="text-xs text-gray-500 dark:text-dark-400 mt-0.5">{{ t('keyUsage.used') }}</span>
+                      <span
+                        class="text-sm font-semibold mt-1 tabular-nums"
+                        :style="{ color: RING_GRADIENTS[i % 4].from }"
+                      >{{ ring.amount }}</span>
+                      <p v-if="ring.resetAt && formatResetTime(ring.resetAt)" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 tabular-nums">
+                        ⟳ {{ formatResetTime(ring.resetAt) }}
+                      </p>
+                    </template>
                   </div>
-                  <span class="text-right text-sm font-semibold tabular-nums" :class="row.valueClass || 'text-gray-900 dark:text-white'">
-                    {{ row.value }}
-                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="space-y-4">
-            <!-- Model Stats Table -->
-            <div
-              class="fade-up fade-up-delay-4 rounded-xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
-            >
-              <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700">
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <h3 class="text-sm font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.modelStats') }}</h3>
-                  <div v-if="showDatePicker" class="flex flex-wrap items-center gap-2">
-                    <span class="text-xs text-gray-500 dark:text-dark-400">{{ t('keyUsage.dateRange') }}</span>
-                    <button
-                      v-for="range in dateRanges"
-                      :key="range.key"
-                      @click="setDateRange(range.key)"
-                      :disabled="isModelStatsQuerying"
-                      class="rounded-lg border px-3 py-1.5 text-xs transition-colors disabled:opacity-60"
-                      :class="currentRange === range.key
-                        ? 'bg-primary-500 text-white border-primary-500'
-                        : 'border-gray-200 bg-white text-gray-700 dark:border-dark-700 dark:bg-dark-900 dark:text-dark-200 hover:border-primary-300 dark:hover:border-dark-600'"
-                    >{{ range.label }}</button>
+          <!-- Detail Card -->
+          <div
+            v-if="detailRows.length > 0"
+            class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.detailInfo') }}</h3>
+            </div>
+            <div class="divide-y divide-gray-100 dark:divide-dark-800">
+              <div
+                v-for="(row, i) in detailRows"
+                :key="i"
+                class="px-8 py-4 flex items-center justify-between"
+              >
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="row.iconBg">
+                    <svg
+                      class="w-4 h-4"
+                      :class="row.iconColor"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                      v-html="row.iconSvg"
+                    ></svg>
                   </div>
+                  <span class="text-sm text-gray-700 dark:text-dark-200">{{ row.label }}</span>
                 </div>
-                <p v-if="showDatePicker" class="mt-2 text-xs text-gray-400 dark:text-dark-500">
-                  {{ t('keyUsage.dateRangeHint') }}
-                </p>
-              </div>
-              <div v-if="modelStats.length > 0" class="max-h-[420px] overflow-auto">
-                <table class="w-full min-w-[760px]">
-                  <thead class="sticky top-0 z-10">
-                    <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
-                      <th class="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.model') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheCreationTokens') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') }}</th>
-                      <th class="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr
-                      v-for="(m, i) in modelStats"
-                      :key="i"
-                      class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
-                    >
-                      <td class="px-4 py-3 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white">{{ m.model || '-' }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.requests) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.input_tokens) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.output_tokens) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_creation_tokens) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_read_tokens) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.total_tokens) }}</td>
-                      <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(m.actual_cost != null ? m.actual_cost : m.cost) }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div v-else class="px-5 py-10 text-center text-sm text-gray-500 dark:text-dark-400">
-                {{ isModelStatsQuerying ? t('keyUsage.querying') : t('keyUsage.noModelStats') }}
+                <span class="text-sm font-semibold tabular-nums" :class="row.valueClass || 'text-gray-900 dark:text-white'">
+                  {{ row.value }}
+                </span>
               </div>
             </div>
+          </div>
 
-            <!-- Usage Stats Card -->
-            <div
-              v-if="usageStatCells.length > 0"
-              class="fade-up fade-up-delay-3 rounded-xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
-            >
-              <div class="px-5 py-4 border-b border-gray-200 dark:border-dark-700">
-                <h3 class="text-sm font-semibold text-gray-500 dark:text-dark-400">{{ t('keyUsage.tokenStats') }}</h3>
+          <!-- Usage Stats Card -->
+          <div
+            v-if="usageStatCells.length > 0"
+            class="fade-up fade-up-delay-3 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.tokenStats') }}</h3>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-100 dark:bg-dark-800">
+              <div
+                v-for="(cell, i) in usageStatCells"
+                :key="i"
+                class="bg-white px-6 py-4 dark:bg-dark-900"
+              >
+                <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ cell.label }}</div>
+                <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ cell.value }}</div>
               </div>
-              <div class="grid grid-cols-2 gap-px bg-gray-100 dark:bg-dark-800 md:grid-cols-4">
-                <div
-                  v-for="(cell, i) in usageStatCells"
-                  :key="i"
-                  class="bg-white px-4 py-3 dark:bg-dark-900"
+            </div>
+          </div>
+
+          <!-- Daily Usage Table -->
+          <div
+            v-if="showDailyUsage"
+            class="fade-up fade-up-delay-4 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="flex flex-col gap-3 px-8 py-5 border-b border-gray-200 dark:border-dark-700 sm:flex-row sm:items-center sm:justify-between">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.dailyDetail') }}</h3>
+              <div class="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-dark-700 dark:bg-dark-950">
+                <button
+                  v-for="option in dailyUsageOptions"
+                  :key="option.value"
+                  @click="setDailyUsageDays(option.value)"
+                  class="min-w-12 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                  :class="dailyUsageDays === option.value
+                    ? 'bg-primary-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-800'"
                 >
-                  <div class="text-xs text-gray-500 dark:text-dark-400 mb-1">{{ cell.label }}</div>
-                  <div class="text-sm font-semibold tabular-nums text-gray-900 dark:text-white">{{ cell.value }}</div>
-                </div>
+                  {{ option.label }}
+                </button>
               </div>
+            </div>
+            <div v-if="dailyUsageRows.length > 0" class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.date') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheWriteTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in dailyUsageRows"
+                    :key="row.date"
+                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                  >
+                    <td class="px-4 py-3 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white">{{ row.date }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.requests) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.input_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.output_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.cache_read_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(row.cache_write_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(row.actual_cost != null ? row.actual_cost : row.cost) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="px-8 py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+              {{ t('keyUsage.noDailyUsage') }}
+            </div>
+          </div>
+
+          <!-- Model Stats Table -->
+          <div
+            v-if="modelStats.length > 0"
+            class="fade-up fade-up-delay-4 rounded-2xl border border-gray-200 bg-white/90 backdrop-blur-sm overflow-hidden dark:border-dark-700 dark:bg-dark-900/90"
+          >
+            <div class="px-8 py-5 border-b border-gray-200 dark:border-dark-700">
+              <h3 class="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.modelStats') }}</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr class="border-b border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950">
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.model') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.requests') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.inputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.outputTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheCreationTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cacheReadTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.totalTokens') }}</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-dark-400">{{ t('keyUsage.cost') }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(m, i) in modelStats"
+                    :key="i"
+                    class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                  >
+                    <td class="px-4 py-3 text-sm font-medium whitespace-nowrap text-gray-900 dark:text-white">{{ m.model || '-' }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.requests) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.input_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.output_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_creation_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.cache_read_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right text-gray-700 dark:text-dark-200">{{ fmtNum(m.total_tokens) }}</td>
+                    <td class="px-4 py-3 text-sm tabular-nums text-right font-medium text-gray-900 dark:text-white">{{ usd(m.actual_cost != null ? m.actual_cost : m.cost) }}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -358,6 +422,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { buildGatewayUrl } from '@/api/client'
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -386,46 +451,75 @@ const currentYear = computed(() => new Date().getFullYear())
 const apiKey = ref('')
 const keyVisible = ref(false)
 const isQuerying = ref(false)
-const isModelStatsQuerying = ref(false)
 const showResults = ref(false)
 const showLoading = ref(false)
 const showDatePicker = ref(false)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const resultData = ref<any>(null)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const modelStatsData = ref<any[]>([])
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
 
 // ==================== Date Range State ====================
 
-type DateRangeKey = 'today' | '7d' | '30d'
+type DateRangeKey = 'today' | '7d' | '30d' | 'custom'
 const currentRange = ref<DateRangeKey>('today')
+const customStartDate = ref('')
+const customEndDate = ref('')
+const dailyUsageDays = ref<7 | 30 | 90>(30)
 
 const dateRanges = computed(() => [
   { key: 'today' as const, label: t('keyUsage.dateRangeToday') },
   { key: '7d' as const, label: t('keyUsage.dateRange7d') },
   { key: '30d' as const, label: t('keyUsage.dateRange30d') },
+  { key: 'custom' as const, label: t('keyUsage.dateRangeCustom') },
+])
+
+const dailyUsageOptions = computed(() => [
+  { value: 7 as const, label: t('keyUsage.dateRange7d') },
+  { value: 30 as const, label: t('keyUsage.dateRange30d') },
+  { value: 90 as const, label: t('keyUsage.dateRange90d') },
 ])
 
 function setDateRange(key: DateRangeKey) {
   currentRange.value = key
-  refreshModelStats()
+  if (key !== 'custom') {
+    queryKey()
+  }
 }
 
 function getDateParams(): string {
   const now = new Date()
   const fmt = (d: Date) => d.toISOString().split('T')[0]
+  const params = new URLSearchParams()
 
-  const end = fmt(now)
-  let start: string
-  switch (currentRange.value) {
-    case 'today': start = end; break
-    case '7d': start = fmt(new Date(now.getTime() - 7 * 86400000)); break
-    case '30d': start = fmt(new Date(now.getTime() - 30 * 86400000)); break
-    default: start = fmt(new Date(now.getTime() - 30 * 86400000))
+  if (currentRange.value === 'custom') {
+    if (customStartDate.value && customEndDate.value) {
+      params.set('start_date', customStartDate.value)
+      params.set('end_date', customEndDate.value)
+    }
+  } else {
+    const end = fmt(now)
+    let start: string
+    switch (currentRange.value) {
+      case 'today': start = end; break
+      case '7d': start = fmt(new Date(now.getTime() - 7 * 86400000)); break
+      case '30d': start = fmt(new Date(now.getTime() - 30 * 86400000)); break
+      default: start = fmt(new Date(now.getTime() - 30 * 86400000))
+    }
+    params.set('start_date', start)
+    params.set('end_date', end)
   }
-  return `start_date=${start}&end_date=${end}`
+  params.set('days', String(dailyUsageDays.value))
+  params.set('timezone', getBrowserTimezone())
+  return params.toString()
+}
+
+function setDailyUsageDays(days: 7 | 30 | 90) {
+  if (dailyUsageDays.value === days) return
+  dailyUsageDays.value = days
+  if (resultData.value && apiKey.value.trim()) {
+    queryKey()
+  }
 }
 
 // ==================== Ring Animation ====================
@@ -540,26 +634,15 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
-        const used = getKeyUsageOverdraftUsed(sub)
-        const pct = Math.min(Math.round((used / sub.overdraft_limit_usd) * 100), 100)
-        items.push({
-          title: t('keyUsage.totalQuota'),
-          pct,
-          amount: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`,
-          iconType: 'calendar',
-        })
-      } else {
-        const limits = [
-          { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
-          { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
-          { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
-        ]
-        for (const l of limits) {
-          if (l.limit != null && l.limit > 0) {
-            const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-            items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
-          }
+      const limits = [
+        { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
+        { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
+        { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
+      ]
+      for (const l of limits) {
+        if (l.limit != null && l.limit > 0) {
+          const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
+          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
         }
       }
     }
@@ -569,6 +652,13 @@ const ringItems = computed<RingItem[]>(() => {
   }
 
   return items
+})
+
+const ringGridClass = computed(() => {
+  const len = ringItems.value.length
+  if (len === 1) return 'grid grid-cols-1 max-w-md mx-auto gap-6'
+  if (len === 2) return 'grid grid-cols-1 md:grid-cols-2 gap-6'
+  return 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'
 })
 
 interface DetailRow {
@@ -642,35 +732,26 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
-        const used = getKeyUsageOverdraftUsed(sub)
-        const pct = (used / sub.overdraft_limit_usd) * 100
+      if (sub.daily_limit_usd > 0) {
+        const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '总' : 'T'})`, value: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
         })
-      } else {
-        if (sub.daily_limit_usd > 0) {
-          const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
-          rows.push({
-            iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
-          })
-        }
-        if (sub.weekly_limit_usd > 0) {
-          const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
-          rows.push({
-            iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
-          })
-        }
-        if (sub.monthly_limit_usd > 0) {
-          const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
-          rows.push({
-            iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
-          })
-        }
+      }
+      if (sub.weekly_limit_usd > 0) {
+        const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
+        rows.push({
+          iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
+        })
+      }
+      if (sub.monthly_limit_usd > 0) {
+        const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
+        rows.push({
+          iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
+        })
       }
       if (sub.expires_at) {
         rows.push({
@@ -725,7 +806,25 @@ const usageStatCells = computed<StatCell[]>(() => {
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const modelStats = computed<any[]>(() => modelStatsData.value)
+const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
+
+interface DailyUsageRow {
+  date: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  cost: number
+  actual_cost?: number
+}
+
+const dailyUsageRows = computed<DailyUsageRow[]>(() => {
+  const rows = resultData.value?.daily_usage
+  return Array.isArray(rows) ? rows : []
+})
+
+const showDailyUsage = computed(() => Boolean(resultData.value && Array.isArray(resultData.value.daily_usage)))
 
 // ==================== Utility Functions ====================
 
@@ -746,66 +845,19 @@ function formatDate(iso: string | null | undefined): string {
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-function isDayValidityUnit(unit?: string | null): boolean {
-  const normalized = (unit || 'day').trim().toLowerCase()
-  return normalized === '' || normalized === 'day' || normalized === 'days'
-}
-
-function getKeyUsageOverdraftUsed(sub: any): number {
-  const limit = typeof sub.overdraft_limit_usd === 'number' ? sub.overdraft_limit_usd : 0
-  if (!sub.allow_daily_overdraft || limit <= 0) return 0
-  if (!isDayValidityUnit(sub.validity_unit)) {
-    return Math.min(sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0, limit)
+function getBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
   }
-
-  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
-  const dailyLimit = typeof sub.daily_limit_usd === 'number' ? sub.daily_limit_usd : 0
-  if (!Number.isFinite(startsAt) || dailyLimit <= 0) {
-    return Math.min(sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0, limit)
-  }
-
-  const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
-  const validityDays = Math.max(1, Math.ceil(limit / dailyLimit))
-  const expiredQuota = Math.min(dailyLimit * Math.min(elapsedDays, validityDays), limit)
-  const currentDailyUsage = getKeyUsageCurrentDailyWindowUsage(sub)
-  const effectiveUsed = expiredQuota + currentDailyUsage
-  const actualUsed = sub.weekly_usage_usd ?? sub.overdraft_used_usd ?? 0
-  return Math.min(Math.max(actualUsed, effectiveUsed), limit)
-}
-
-function getKeyUsageCurrentDailyWindowUsage(sub: any): number {
-  if (!sub.daily_window_start || !sub.starts_at) return 0
-
-  const startsAt = new Date(sub.starts_at).getTime()
-  const dailyWindowStart = new Date(sub.daily_window_start).getTime()
-  if (!Number.isFinite(startsAt) || !Number.isFinite(dailyWindowStart)) return 0
-
-  const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
-  const currentWindowStart = startsAt + elapsedDays * dayMs
-  if (dailyWindowStart !== currentWindowStart) return 0
-
-  return Math.max(sub.daily_usage_usd || 0, 0)
 }
 
 // ==================== API Query ====================
 
 async function fetchUsage(key: string) {
-  const res = await fetch('/v1/usage', {
-    headers: { 'Authorization': 'Bearer ' + key },
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => null)
-    const msg = body?.error?.message || body?.message || `${t('keyUsage.queryFailed')} (${res.status})`
-    throw new Error(msg)
-  }
-  return await res.json()
-}
-
-async function fetchModelStats(key: string) {
   const dateParams = getDateParams()
-  const url = '/v1/usage/model-stats' + (dateParams ? '?' + dateParams : '')
+  const url = buildGatewayUrl('/v1/usage') + (dateParams ? '?' + dateParams : '')
   const res = await fetch(url, {
     headers: { 'Authorization': 'Bearer ' + key },
   })
@@ -815,25 +867,6 @@ async function fetchModelStats(key: string) {
     throw new Error(msg)
   }
   return await res.json()
-}
-
-async function refreshModelStats() {
-  if (isModelStatsQuerying.value) return
-  const key = apiKey.value.trim()
-  if (!key) {
-    appStore.showInfo(t('keyUsage.enterApiKey'))
-    return
-  }
-
-  isModelStatsQuerying.value = true
-  try {
-    const data = await fetchModelStats(key)
-    modelStatsData.value = data?.model_stats || []
-  } catch (err) {
-    appStore.showError((err as Error).message || t('keyUsage.queryFailedRetry'))
-  } finally {
-    isModelStatsQuerying.value = false
-  }
 }
 
 async function queryKey() {
@@ -848,12 +881,10 @@ async function queryKey() {
   showResults.value = true
   showLoading.value = true
   resultData.value = null
-  modelStatsData.value = []
 
   try {
     const data = await fetchUsage(key)
     resultData.value = data
-    modelStatsData.value = data?.model_stats || []
     showLoading.value = false
     showDatePicker.value = true
 

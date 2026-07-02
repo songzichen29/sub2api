@@ -25,15 +25,6 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
-      <div>
-        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
-        <AccountTagsInput
-          v-model="form.tags"
-          :suggestions="tagSuggestions"
-          :placeholder="t('admin.accounts.tags.placeholder')"
-        />
-        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
-      </div>
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -80,29 +71,7 @@
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="mb-2 flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
-            <div class="flex items-center gap-3">
-              <button
-                v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
-                type="button"
-                class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-                @click="applyUpstreamModelsToWhitelist"
-              >
-                应用拉取结果到白名单（{{ upstreamModels.length }}）
-              </button>
-              <button
-                type="button"
-                class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
-                :disabled="upstreamModelsProbing"
-                @click="probeCurrentUpstreamModels"
-              >
-                <span v-if="upstreamModelsProbing">拉取中…</span>
-                <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
-              </button>
-            </div>
-          </div>
-          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
             v-if="isOpenAIModelRestrictionDisabled"
@@ -170,12 +139,7 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector
-                v-model="allowedModels"
-                :platform="account?.platform || 'anthropic'"
-                :dynamic-models="upstreamModels"
-                :account-id="account?.id"
-              />
+              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -206,60 +170,51 @@
               </div>
 
             <!-- Model Mapping List -->
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="space-y-2"
+                class="flex items-center gap-2"
               >
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model="mapping.from"
-                    type="text"
-                    class="input flex-1"
-                    :placeholder="t('admin.accounts.requestModel')"
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
                   />
-                  <svg
-                    class="h-4 w-4 flex-shrink-0 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M14 5l7 7m0 0l-7 7m7-7H3"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                  <input
-                    v-model="mapping.to"
-                    type="text"
-                    class="input flex-1"
-                    :placeholder="t('admin.accounts.actualModel')"
-                  />
-                  <button
-                    type="button"
-                    @click="removeModelMapping(index)"
-                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                  >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <input
-                  :data-testid="`model-mapping-note-${index}`"
-                  v-model="mapping.note"
-                  type="text"
-                  class="input"
-                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
-                />
+                </button>
               </div>
             </div>
 
@@ -348,6 +303,18 @@
                   max: MAX_POOL_MODE_RETRY_COUNT
                 })
               }}
+            </p>
+          </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
+            <input
+              v-model="poolModeRetryStatusCodesInput"
+              type="text"
+              class="input"
+              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
             </p>
           </div>
         </div>
@@ -452,55 +419,6 @@
 
       </div>
 
-      <!-- 第三方面板用量查询 (仅 apikey 类型) -->
-      <div
-        v-if="account.type === 'apikey'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-3"
-      >
-        <div class="mb-2">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.usageQuery.hint') }}
-          </p>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
-          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
-        </label>
-        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
-            <select v-model="usageQueryProvider" class="input">
-              <option value="newapi">newapi</option>
-            </select>
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
-            <input
-              v-model="usageQueryBaseUrl"
-              type="text"
-              class="input"
-              placeholder="https://newapi.example.com"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
-            <input
-              v-model="usageQueryAccessToken"
-              type="password"
-              class="input font-mono"
-              autocomplete="new-password"
-              :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
-            />
-            <p class="input-hint">{{ t('admin.accounts.usageQuery.editTokenHint') }}</p>
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
-            <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
-          </div>
-        </div>
-      </div>
-
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
         v-if="account.platform === 'openai' && account.type === 'oauth'"
@@ -565,60 +483,51 @@
               </p>
             </div>
 
-            <div v-if="modelMappings.length > 0" class="mb-3 space-y-3">
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="'oauth-' + getModelMappingKey(mapping)"
-                class="space-y-2"
+                class="flex items-center gap-2"
               >
-                <div class="flex items-center gap-2">
-                  <input
-                    v-model="mapping.from"
-                    type="text"
-                    class="input flex-1"
-                    :placeholder="t('admin.accounts.requestModel')"
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
                   />
-                  <svg
-                    class="h-4 w-4 flex-shrink-0 text-gray-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
                       stroke-width="2"
-                      d="M14 5l7 7m0 0l-7 7m7-7H3"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                  <input
-                    v-model="mapping.to"
-                    type="text"
-                    class="input flex-1"
-                    :placeholder="t('admin.accounts.actualModel')"
-                  />
-                  <button
-                    type="button"
-                    @click="removeModelMapping(index)"
-                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-                  >
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
-                <input
-                  :data-testid="`model-mapping-note-${index}`"
-                  v-model="mapping.note"
-                  type="text"
-                  class="input"
-                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
-                />
+                </button>
               </div>
             </div>
 
@@ -654,271 +563,19 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
-            :placeholder="account.platform === 'grok' ? 'http://grok2api:8000' : 'https://cloudcode-pa.googleapis.com'"
+            placeholder="https://cloudcode-pa.googleapis.com"
           />
-          <p class="input-hint">
-            <template v-if="account.platform === 'grok'">grok2api 服务的访问地址(同机部署填 http://localhost:8000,docker compose 内填服务名)</template>
-            <template v-else>{{ t('admin.accounts.upstream.baseUrlHint') }}</template>
-          </p>
+          <p class="input-hint">{{ t('admin.accounts.upstream.baseUrlHint') }}</p>
         </div>
         <div>
-          <label class="input-label">{{ account.platform === 'grok' ? 'grok2api 网关 API Key' : t('admin.accounts.upstream.apiKey') }}</label>
+          <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
           <input
             v-model="editApiKey"
             type="password"
             class="input font-mono"
-            :placeholder="account.platform === 'grok' ? '留空保持原值,grok2api config.toml 里 [app] api_key' : 'sk-...'"
+            placeholder="sk-..."
           />
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
-        </div>
-
-        <!-- Grok 模型限制(可选): 白名单/映射 -->
-        <div v-if="account.platform === 'grok'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="mb-2 flex items-center justify-between">
-            <label class="input-label mb-0">{{ t('admin.accounts.modelRestriction') }}</label>
-            <div class="flex items-center gap-3">
-              <button
-                v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
-                type="button"
-                class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-                @click="applyUpstreamModelsToWhitelist"
-              >
-                应用拉取结果到白名单（{{ upstreamModels.length }}）
-              </button>
-              <button
-                type="button"
-                class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
-                :disabled="upstreamModelsProbing"
-                @click="probeCurrentUpstreamModels"
-              >
-                <span v-if="upstreamModelsProbing">拉取中…</span>
-                <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
-              </button>
-            </div>
-          </div>
-          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
-
-          <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'whitelist'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              {{ t('admin.accounts.modelWhitelist') }}
-            </button>
-            <button
-              type="button"
-              @click="modelRestrictionMode = 'mapping'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
-            >
-              {{ t('admin.accounts.modelMapping') }}
-            </button>
-          </div>
-
-          <!-- Whitelist Mode -->
-          <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector
-              v-model="allowedModels"
-              platform="grok"
-              :dynamic-models="upstreamModels"
-            />
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
-              <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
-            </p>
-          </div>
-
-          <!-- Mapping Mode -->
-          <div v-else class="space-y-3">
-            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="space-y-2">
-              <div class="flex items-center gap-2">
-                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
-                <span class="text-gray-400">→</span>
-                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-                <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
-                  <Icon name="trash" size="sm" />
-                </button>
-              </div>
-              <input
-                v-model="mapping.note"
-                type="text"
-                class="input"
-                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
-              />
-            </div>
-            <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
-              + {{ t('admin.accounts.addMapping') }}
-            </button>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="preset in getPresetMappingsByPlatform('grok')"
-                :key="`${preset.from}->${preset.to}`"
-                type="button"
-                @click="addPresetMapping(preset.from, preset.to)"
-                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
-              >
-                + {{ preset.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Grok Pool Mode Section -->
-        <div v-if="account.platform === 'grok'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="mb-3 flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.poolMode') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.poolModeHint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="poolModeEnabled = !poolModeEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                poolModeEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  poolModeEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-          <div v-if="poolModeEnabled" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-            <p class="text-xs text-blue-700 dark:text-blue-400">
-              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
-              {{ t('admin.accounts.poolModeInfo') }}
-            </p>
-          </div>
-          <div v-if="poolModeEnabled" class="mt-3">
-            <label class="input-label">{{ t('admin.accounts.poolModeRetryCount') }}</label>
-            <input
-              v-model.number="poolModeRetryCount"
-              type="number"
-              min="0"
-              :max="MAX_POOL_MODE_RETRY_COUNT"
-              step="1"
-              class="input"
-            />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{
-                t('admin.accounts.poolModeRetryCountHint', {
-                  default: DEFAULT_POOL_MODE_RETRY_COUNT,
-                  max: MAX_POOL_MODE_RETRY_COUNT
-                })
-              }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Grok Custom Error Codes Section -->
-        <div v-if="account.platform === 'grok'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div class="mb-3 flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.customErrorCodes') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.customErrorCodesHint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="customErrorCodesEnabled = !customErrorCodesEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                customErrorCodesEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  customErrorCodesEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-
-          <div v-if="customErrorCodesEnabled" class="space-y-3">
-            <div class="rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
-              <p class="text-xs text-amber-700 dark:text-amber-400">
-                <Icon name="exclamationTriangle" size="sm" class="mr-1 inline" :stroke-width="2" />
-                {{ t('admin.accounts.customErrorCodesWarning') }}
-              </p>
-            </div>
-
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="code in commonErrorCodes"
-                :key="code.value"
-                type="button"
-                @click="toggleErrorCode(code.value)"
-                :class="[
-                  'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-                  selectedErrorCodes.includes(code.value)
-                    ? 'bg-red-100 text-red-700 ring-1 ring-red-500 dark:bg-red-900/30 dark:text-red-400'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-                ]"
-              >
-                {{ code.value }} {{ code.label }}
-              </button>
-            </div>
-
-            <div class="flex items-center gap-2">
-              <input
-                v-model.number="customErrorCodeInput"
-                type="number"
-                min="100"
-                max="599"
-                class="input flex-1"
-                :placeholder="t('admin.accounts.enterErrorCode')"
-                @keyup.enter="addCustomErrorCode"
-              />
-              <button type="button" @click="addCustomErrorCode" class="btn btn-secondary px-3">
-                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            <div class="flex flex-wrap gap-1.5">
-              <span
-                v-for="code in selectedErrorCodes.sort((a, b) => a - b)"
-                :key="code"
-                class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-sm font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
-              >
-                {{ code }}
-                <button
-                  type="button"
-                  @click="removeErrorCode(code)"
-                  class="hover:text-red-900 dark:hover:text-red-300"
-                >
-                  <Icon name="x" size="sm" :stroke-width="2" />
-                </button>
-              </span>
-              <span v-if="selectedErrorCodes.length === 0" class="text-xs text-gray-400">
-                {{ t('admin.accounts.noneSelectedUsesDefault') }}
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -1252,22 +909,13 @@
 
           <!-- Mapping Mode -->
           <div v-else class="space-y-3">
-            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="space-y-2">
-              <div class="flex items-center gap-2">
-                <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
-                <span class="text-gray-400">→</span>
-                <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
-                <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
-                  <Icon name="trash" size="sm" />
-                </button>
-              </div>
-              <input
-                :data-testid="`model-mapping-note-${index}`"
-                v-model="mapping.note"
-                type="text"
-                class="input"
-                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
-              />
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+              <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
+              <span class="text-gray-400">→</span>
+              <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
+              <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
             </div>
             <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
               + {{ t('admin.accounts.addMapping') }}
@@ -1337,7 +985,34 @@
               }}
             </p>
           </div>
+          <div v-if="poolModeEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.poolModeRetryStatusCodes') }}</label>
+            <input
+              v-model="poolModeRetryStatusCodesInput"
+              type="text"
+              class="input"
+              :placeholder="DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ')"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
+            </p>
+          </div>
         </div>
+      </div>
+
+      <div
+        v-if="account.platform === 'antigravity' && account.type === 'oauth'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <label class="input-label">{{ t('admin.accounts.antigravityProjectIdLabel') }}</label>
+        <input
+          v-model="antigravityProjectId"
+          data-testid="antigravity-project-id-input"
+          type="text"
+          class="input font-mono"
+          :placeholder="t('admin.accounts.antigravityProjectIdPlaceholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.antigravityProjectIdHint') }}</p>
       </div>
 
       <!-- Antigravity model restriction (applies to all antigravity types) -->
@@ -1362,11 +1037,11 @@
             </button>
           </div>
 
-          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-3">
+          <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
               :key="getAntigravityModelMappingKey(mapping)"
-              class="space-y-2"
+              class="space-y-1"
             >
               <div class="flex items-center gap-2">
                 <input
@@ -1406,13 +1081,6 @@
                   </svg>
                 </button>
               </div>
-              <input
-                :data-testid="`antigravity-model-mapping-note-${index}`"
-                v-model="mapping.note"
-                type="text"
-                class="input"
-                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
-              />
               <!-- 校验错误提示 -->
               <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
                 {{ t('admin.accounts.wildcardOnlyAtEnd') }}
@@ -1628,8 +1296,11 @@
         </div>
       </div>
 
-      <div>
-        <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
+      <div v-if="!isSparkShadow">
+        <div class="mb-1 flex items-center gap-2">
+          <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
+          <ProxyAdBanner />
+        </div>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
@@ -1777,6 +1448,62 @@
           <div class="w-52">
             <Select v-model="openaiResponsesWebSocketV2Mode" :options="openAIWSModeOptions" />
           </div>
+        </div>
+      </div>
+
+      <!-- OpenAI APIKey Responses API support mode -->
+      <div
+        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
+        class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.responsesMode') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.responsesModeDesc') }}
+            </p>
+          </div>
+          <div class="w-56">
+            <Select
+              v-model="openAIResponsesMode"
+              :options="openAIResponsesModeOptions"
+              :disabled="!openAITextGenerationCapabilityEnabled"
+              data-testid="openai-responses-mode-select"
+            />
+          </div>
+        </div>
+        <div
+          v-if="openAITextGenerationCapabilityEnabled"
+          class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+        >
+          <span class="font-medium">{{ t(openAIResponsesStatusKey) }}</span>
+        </div>
+        <div
+          v-else
+          class="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          data-testid="openai-responses-mode-not-applicable"
+        >
+          {{ t('admin.accounts.openai.responsesModeTextDisabledHint') }}
+        </div>
+        <div>
+          <label class="input-label mb-2 block">{{ t('admin.accounts.openai.endpointCapabilities') }}</label>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in openAIEndpointCapabilityOptions"
+              :key="option.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-dark-600"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+                :data-testid="`openai-endpoint-capability-${option.value}`"
+                :checked="openAIEndpointCapabilities.includes(option.value)"
+                @change="toggleOpenAIEndpointCapability(option.value, $event)"
+              />
+              <span class="text-gray-700 dark:text-gray-200">{{ option.label }}</span>
+            </label>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.openai.endpointCapabilitiesDesc') }}</p>
         </div>
       </div>
 
@@ -1961,30 +1688,31 @@
             />
           </button>
         </div>
-      </div>
-
-      <!-- OpenAI APIKey Responses API support mode -->
-      <div
-        v-if="account?.platform === 'openai' && account?.type === 'apikey'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-3"
-      >
-        <div class="flex items-center justify-between gap-4">
+        <div
+          v-if="codexCLIOnlyEnabled"
+          class="mt-4 flex items-center justify-between border-l-2 border-gray-200 pl-4 dark:border-dark-600"
+        >
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.responsesMode') }}</label>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexCLIOnlyAppServer') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.responsesModeDesc') }}
+              {{ t('admin.accounts.openai.codexCLIOnlyAppServerDesc') }}
             </p>
           </div>
-          <div class="w-56">
-            <Select
-              v-model="openAIResponsesMode"
-              :options="openAIResponsesModeOptions"
-              data-testid="openai-responses-mode-select"
+          <button
+            type="button"
+            @click="codexCLIOnlyAppServerEnabled = !codexCLIOnlyAppServerEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyAppServerEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyAppServerEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
             />
-          </div>
-        </div>
-        <div class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-          <span class="font-medium">{{ t(openAIResponsesStatusKey) }}</span>
+          </button>
         </div>
       </div>
 
@@ -2016,37 +1744,28 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
-          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-3">
+          <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
               :key="getOpenAICompactModelMappingKey(mapping)"
-              class="space-y-2"
+              class="flex items-center gap-2"
             >
-              <div class="flex items-center gap-2">
-                <input
-                  v-model="mapping.from"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.fromModel')"
-                />
-                <span class="text-gray-400">→</span>
-                <input
-                  v-model="mapping.to"
-                  type="text"
-                  class="input flex-1"
-                  :placeholder="t('admin.accounts.toModel')"
-                />
-                <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
-                  <Icon name="trash" size="sm" />
-                </button>
-              </div>
               <input
-                :data-testid="`openai-compact-model-mapping-note-${index}`"
-                v-model="mapping.note"
+                v-model="mapping.from"
                 type="text"
-                class="input"
-                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.fromModel')"
               />
+              <span class="text-gray-400">→</span>
+              <input
+                v-model="mapping.to"
+                type="text"
+                class="input flex-1"
+                :placeholder="t('admin.accounts.toModel')"
+              />
+              <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
+                <Icon name="trash" size="sm" />
+              </button>
             </div>
           </div>
           <button type="button" @click="addOpenAICompactModelMapping" class="btn btn-secondary text-sm">
@@ -2080,6 +1799,84 @@
               ]"
             />
           </button>
+        </div>
+      </div>
+
+      <div
+        v-if="account?.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.autoPause5hDisabled') }}</label>
+            <button
+              type="button"
+              @click="autoPause5hDisabled = !autoPause5hDisabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                autoPause5hDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              data-testid="auto-pause-5h-disabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  autoPause5hDisabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause5hThreshold') }}</label>
+          <input
+            v-model.number="autoPause5hThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            :disabled="autoPause5hDisabled"
+            data-testid="auto-pause-5h-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="input-label mb-0">{{ t('admin.accounts.autoPause7dDisabled') }}</label>
+            <button
+              type="button"
+              @click="autoPause7dDisabled = !autoPause7dDisabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                autoPause7dDisabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+              data-testid="auto-pause-7d-disabled"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  autoPause7dDisabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <p class="input-hint">{{ t('admin.accounts.autoPauseDisabledHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.autoPause7dThreshold') }}</label>
+          <input
+            v-model.number="autoPause7dThreshold"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="input"
+            :disabled="autoPause7dDisabled"
+            data-testid="auto-pause-7d-threshold"
+          />
+          <p class="input-hint">{{ t('admin.accounts.autoPauseThresholdHint') }}</p>
         </div>
       </div>
 
@@ -2323,16 +2120,6 @@
               </button>
             </div>
           </div>
-        </div>
-
-        <!-- Anti-Detection section heading -->
-        <div class="mt-2 mb-1">
-          <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            反检测 / Anti-Detection
-          </h4>
-          <p class="text-xs text-gray-500 dark:text-gray-400">
-            仅 Anthropic OAuth/SetupToken 账号生效；可对单账号关闭
-          </p>
         </div>
 
         <!-- TLS Fingerprint -->
@@ -2695,18 +2482,22 @@ import type {
   AdminGroup,
   CheckMixedChannelResponse,
   OpenAICompactMode,
-  OpenAIResponsesMode
+  OpenAIResponsesMode,
+  OpenAIEndpointCapability
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
+import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
-import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import {
+  applyAntigravityProjectID,
+  applyInterceptWarmup
+} from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -2723,10 +2514,8 @@ import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
-  buildModelMappingNotesObject,
   splitModelMappingObject,
-  isValidWildcardPattern,
-  type ModelMappingRow
+  isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 
 interface Props {
@@ -2746,6 +2535,10 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
+// Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
+// 故隐藏代理选择器。
+const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
@@ -2757,7 +2550,11 @@ const baseUrlHint = computed(() => {
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
-type ModelMapping = ModelMappingRow
+// Model mapping type
+interface ModelMapping {
+  from: string
+  to: string
+}
 
 interface TempUnschedRuleForm {
   error_code: number | null
@@ -2788,68 +2585,56 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
-
-// Grok 上游模型探测：编辑时优先用账号已存的 base_url+api_key 重新拉
-// （账号已入库,可直接走 GET /admin/accounts/:id/models,后端会调上游 /v1/models）
-// 上游模型探测：优先用当前表单中的 base_url + api_key，api_key 留空时让后端使用已保存凭据。
-const upstreamModels = ref<string[]>([])
-const upstreamModelsProbing = ref(false)
-const upstreamModelsProbeError = ref('')
-const probeCurrentUpstreamModels = async () => {
-  upstreamModelsProbeError.value = ''
-  const baseURL = (editBaseUrl.value || '').trim()
-  const apiKey = (editApiKey.value || '').trim()
-
-  upstreamModelsProbing.value = true
-  try {
-    const account = props.account
-    if (baseURL && apiKey && account) {
-      upstreamModels.value = await adminAPI.accounts.probeUpstreamModels({
-        platform: account.platform,
-        type: account.type,
-        base_url: baseURL,
-        api_key: apiKey
-      })
-    } else if (account?.id) {
-      upstreamModels.value = await adminAPI.accounts.probeAccountUpstreamModels(account.id)
-    } else {
-      upstreamModelsProbeError.value = '请填写 Base URL 和 API Key'
-    }
-    if (upstreamModels.value.length === 0 && !upstreamModelsProbeError.value) {
-      upstreamModelsProbeError.value = '上游返回空模型列表'
-    }
-    // 拉取成功后自动同步白名单：仅当白名单模式且当前为空时填充。
-    if (
-      upstreamModels.value.length > 0 &&
-      modelRestrictionMode.value === 'whitelist' &&
-      allowedModels.value.length === 0
-    ) {
-      allowedModels.value = [...upstreamModels.value]
-    }
-  } catch (e: any) {
-    upstreamModels.value = []
-    upstreamModelsProbeError.value = e?.response?.data?.error?.message || e?.message || '拉取失败'
-  } finally {
-    upstreamModelsProbing.value = false
-  }
-}
-
-// 把拉取结果一键应用到白名单（覆盖当前选择）
-const applyUpstreamModelsToWhitelist = () => {
-  if (upstreamModels.value.length === 0) return
-  allowedModels.value = [...upstreamModels.value]
-}
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
+const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
+const poolModeRetryStatusCodesInput = ref('')
+
+function parsePoolModeRetryStatusCodes(input: string): number[] {
+  if (!input || !input.trim()) return []
+  const seen = new Set<number>()
+  const out: number[] = []
+  for (const token of input.split(/[,\s]+/)) {
+    const trimmed = token.trim()
+    if (!trimmed) continue
+    const n = Number(trimmed)
+    if (!Number.isFinite(n) || !Number.isInteger(n)) continue
+    if (n < 100 || n > 599) continue
+    if (seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  return out.sort((a, b) => a - b)
+}
+
+function formatPoolModeRetryStatusCodes(value: unknown): string {
+  if (!Array.isArray(value)) return ''
+  const out: number[] = []
+  const seen = new Set<number>()
+  for (const v of value) {
+    const n = typeof v === 'string' ? Number(v.trim()) : Number(v)
+    if (!Number.isFinite(n) || !Number.isInteger(n)) continue
+    if (n < 100 || n > 599) continue
+    if (seen.has(n)) continue
+    seen.add(n)
+    out.push(n)
+  }
+  return out.sort((a, b) => a - b).join(', ')
+}
 const customErrorCodesEnabled = ref(false)
 const selectedErrorCodes = ref<number[]>([])
 const customErrorCodeInput = ref<number | null>(null)
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
+const autoPause5hThreshold = ref<number | null>(null)
+const autoPause7dThreshold = ref<number | null>(null)
+const autoPause5hDisabled = ref(false)
+const autoPause7dDisabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
+const antigravityProjectId = ref('')
 const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
@@ -2902,9 +2687,11 @@ const customBaseUrl = ref('')
 const openaiPassthroughEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
 const anthropicPassthroughEnabled = ref(false)
@@ -2934,12 +2721,6 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
-// 第三方面板用量查询（仅 apikey 类型）
-const usageQueryEnabled = ref(false)
-const usageQueryProvider = ref<'newapi'>('newapi')
-const usageQueryBaseUrl = ref('')
-const usageQueryAccessToken = ref('')
-const usageQueryUserId = ref('')
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
   { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
@@ -3014,6 +2795,85 @@ const openAIResponsesModeOptions = computed(() => [
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
   { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
 ])
+const openAITextEndpointCapabilityLabel = computed(() => {
+  if (openAIResponsesMode.value === 'force_responses') {
+    return t('admin.accounts.openai.capabilityResponses')
+  }
+  if (openAIResponsesMode.value === 'force_chat_completions') {
+    return t('admin.accounts.openai.capabilityChatCompletions')
+  }
+  const extra = props.account?.extra as Record<string, unknown> | undefined
+  if (extra?.openai_responses_supported === true) {
+    return t('admin.accounts.openai.capabilityResponsesAuto')
+  }
+  if (extra?.openai_responses_supported === false) {
+    return t('admin.accounts.openai.capabilityChatCompletionsAuto')
+  }
+  return t('admin.accounts.openai.capabilityTextAuto')
+})
+const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
+  { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+])
+const openAITextGenerationCapabilityEnabled = computed(() =>
+  openAIEndpointCapabilities.value.includes('chat_completions')
+)
+
+const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const selected = allowed.filter((value) => values.includes(value))
+  return selected.length > 0 ? selected : allowed
+}
+
+const readOpenAIEndpointCapabilities = (credentials?: Record<string, unknown>): OpenAIEndpointCapability[] => {
+  const raw = credentials?.openai_capabilities
+  if (Array.isArray(raw)) {
+    return normalizeOpenAIEndpointCapabilities(
+      raw.filter((value): value is OpenAIEndpointCapability =>
+        value === 'chat_completions' || value === 'embeddings'
+      )
+    )
+  }
+  if (raw !== null && typeof raw === 'object') {
+    const capabilityMap = raw as Record<string, unknown>
+    return normalizeOpenAIEndpointCapabilities(
+      openAIEndpointCapabilityOptions.value
+        .map((option) => option.value)
+        .filter((value) => capabilityMap[value] === true)
+    )
+  }
+  return ['chat_completions', 'embeddings']
+}
+
+const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
+  if (openAIEndpointCapabilities.value.includes(capability)) {
+    if (openAIEndpointCapabilities.value.length <= 1) {
+      const input = event?.target as HTMLInputElement | null
+      if (input) input.checked = true
+      return
+    }
+    openAIEndpointCapabilities.value = openAIEndpointCapabilities.value.filter(
+      (value) => value !== capability
+    )
+    if (!openAITextGenerationCapabilityEnabled.value) {
+      openAIResponsesMode.value = 'auto'
+    }
+    return
+  }
+  openAIEndpointCapabilities.value = normalizeOpenAIEndpointCapabilities([
+    ...openAIEndpointCapabilities.value,
+    capability
+  ])
+}
+
+const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
+  const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
+  if (capabilities.length === 2) {
+    delete credentials.openai_capabilities
+    return
+  }
+  credentials.openai_capabilities = capabilities
+}
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
   if (mode === 'force_responses' || mode === 'force_chat_completions') {
     return mode
@@ -3092,49 +2952,6 @@ const defaultBaseUrl = computed(() => {
   return 'https://api.anthropic.com'
 })
 
-const toStringMap = (raw: unknown): Record<string, string> => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-
-  return Object.fromEntries(
-    Object.entries(raw as Record<string, unknown>)
-      .filter(([, value]) => typeof value === 'string')
-      .map(([key, value]) => [key, value as string])
-  )
-}
-
-const mapRowsWithNotes = (
-  rawMapping: Record<string, string> | undefined,
-  rawNotes: unknown
-): ModelMapping[] => {
-  const notes = toStringMap(rawNotes)
-  return Object.entries(rawMapping || {}).map(([from, to]) => ({
-    from,
-    to,
-    note: notes[from] || ''
-  }))
-}
-
-const applyMappingWithNotes = (
-  target: Record<string, unknown>,
-  mappingKey: 'model_mapping' | 'compact_model_mapping',
-  notesKey: 'model_mapping_notes' | 'compact_model_mapping_notes',
-  mapping: Record<string, string> | null,
-  modelRows: ModelMapping[]
-) => {
-  if (mapping) {
-    target[mappingKey] = mapping
-  } else {
-    delete target[mappingKey]
-  }
-
-  const notes = buildModelMappingNotesObject(modelRows)
-  if (notes) {
-    target[notesKey] = notes
-  } else {
-    delete target[notesKey]
-  }
-}
-
 const mixedChannelWarningMessageText = computed(() => {
   if (mixedChannelWarningDetails.value) {
     return t('admin.accounts.mixedChannelWarning', mixedChannelWarningDetails.value)
@@ -3152,12 +2969,8 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null,
-  tags: [] as string[]
+  expires_at: null as number | null
 })
-
-// 标签自动补全候选；watch(props.show) 中拉一次。失败兜底空数组，不阻塞编辑。
-const tagSuggestions = ref<string[]>([])
 
 const statusOptions = computed(() => {
   const options = [
@@ -3205,6 +3018,28 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 const buildModelRestrictionMapping = () =>
   buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
 
+const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
+  const shouldApplyModelMapping = !openaiPassthroughEnabled.value
+
+  if (shouldApplyModelMapping) {
+    const modelMapping = buildModelRestrictionMapping()
+    if (modelMapping) {
+      credentials.model_mapping = modelMapping
+    } else {
+      delete credentials.model_mapping
+    }
+  } else if (!credentials.model_mapping) {
+    delete credentials.model_mapping
+  }
+
+  const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
+  if (compactModelMapping) {
+    credentials.compact_model_mapping = compactModelMapping
+  } else {
+    delete credentials.compact_model_mapping
+  }
+}
+
 const syncFormFromAccount = (newAccount: Account | null) => {
   if (!newAccount) {
     return
@@ -3214,21 +3049,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedChannelWarningDetails.value = null
   mixedChannelWarningRawMessage.value = ''
   mixedChannelWarningAction.value = null
-  // 第三方面板用量查询：从 extra.usage_query 还原（access_token 是后端下发的占位符 ••••••••）
-  const uq = (newAccount.extra as any)?.usage_query
-  if (uq && typeof uq === 'object') {
-    usageQueryEnabled.value = !!uq.enabled
-    usageQueryProvider.value = uq.provider === 'newapi' ? 'newapi' : 'newapi'
-    usageQueryBaseUrl.value = String(uq.base_url || '')
-    usageQueryAccessToken.value = String(uq.access_token || '')
-    usageQueryUserId.value = String(uq.user_id || '')
-  } else {
-    usageQueryEnabled.value = false
-    usageQueryProvider.value = 'newapi'
-    usageQueryBaseUrl.value = ''
-    usageQueryAccessToken.value = ''
-    usageQueryUserId.value = ''
-  }
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
@@ -3241,7 +3061,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
-  form.tags = Array.isArray(newAccount.tags) ? [...newAccount.tags] : []
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -3250,22 +3069,34 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
   editVertexLocation.value = 'us-central1'
+  antigravityProjectId.value =
+    newAccount.platform === 'antigravity' &&
+    newAccount.type === 'oauth' &&
+    typeof credentials?.antigravity_project_id === 'string'
+      ? credentials.antigravity_project_id.trim()
+      : ''
 
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
   allowOverages.value = false
-  const extra = newAccount.extra as Record<string, unknown> | undefined
-  mixedScheduling.value = extra?.mixed_scheduling === true
-  allowOverages.value = extra?.allow_overages === true
+	const extra = newAccount.extra as Record<string, unknown> | undefined
+	mixedScheduling.value = extra?.mixed_scheduling === true
+	allowOverages.value = extra?.allow_overages === true
+	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
+	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
+	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
+	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
   openAICompactMode.value = 'auto'
   openAIResponsesMode.value = 'auto'
+  openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
   openAICompactModelMappings.value = []
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
+  codexCLIOnlyAppServerEnabled.value = false
   codexImageGenerationBridgeMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
@@ -3274,6 +3105,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     openAICompactMode.value = (extra?.openai_compact_mode as OpenAICompactMode) || 'auto'
     if (newAccount.type === 'apikey') {
       openAIResponsesMode.value = normalizeOpenAIResponsesMode(extra?.openai_responses_mode)
+      openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(
+        newAccount.credentials as Record<string, unknown> | undefined
+      )
+      if (!openAITextGenerationCapabilityEnabled.value) {
+        openAIResponsesMode.value = 'auto'
+      }
     }
     const codexImageGenerationBridgeValue = typeof extra?.codex_image_generation_bridge === 'boolean'
       ? extra.codex_image_generation_bridge
@@ -3297,14 +3134,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     })
     if (newAccount.type === 'oauth') {
       codexCLIOnlyEnabled.value = extra?.codex_cli_only === true
+      codexCLIOnlyAppServerEnabled.value =
+        extra?.codex_cli_only_allow_app_server === true
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
-      openAICompactModelMappings.value = mapRowsWithNotes(
-        compactMappings,
-        credentials?.compact_model_mapping_notes
-      )
+      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
@@ -3361,11 +3197,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // 从 model_mapping 读取映射配置
     const rawAgMapping = credentials?.model_mapping as Record<string, string> | undefined
     if (rawAgMapping && typeof rawAgMapping === 'object') {
+      const entries = Object.entries(rawAgMapping)
       // 无论是白名单样式(key===value)还是真正的映射，都统一转换为映射列表
-      antigravityModelMappings.value = mapRowsWithNotes(
-        rawAgMapping,
-        credentials?.model_mapping_notes
-      )
+      antigravityModelMappings.value = entries.map(([from, to]) => ({ from, to }))
     } else {
       // 兼容旧数据：从 model_whitelist 读取，转换为映射格式
       const rawWhitelist = credentials?.model_whitelist
@@ -3373,7 +3207,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         antigravityModelMappings.value = rawWhitelist
           .map((v) => String(v).trim())
           .filter((v) => v.length > 0)
-          .map((m) => ({ from: m, to: m, note: '' }))
+          .map((m) => ({ from: m, to: m }))
       } else {
         antigravityModelMappings.value = []
       }
@@ -3401,25 +3235,14 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    const parsed = splitModelMappingObject(credentials.model_mapping as Record<string, unknown> | undefined)
-    allowedModels.value = parsed.allowedModels
-    modelMappings.value =
-      parsed.modelMappings.length > 0
-        ? mapRowsWithNotes(
-            Object.fromEntries(parsed.modelMappings.map((m) => [m.from, m.to])),
-            credentials.model_mapping_notes
-          )
-        : []
-    modelRestrictionMode.value =
-      parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
-        ? 'mapping'
-        : 'whitelist'
+    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
     poolModeRetryCount.value = normalizePoolModeRetryCount(
       Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
     )
+    poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(credentials.pool_mode_retry_status_codes)
 
     // Load custom error codes
     customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
@@ -3447,6 +3270,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeEnabled.value = bedrockCreds.pool_mode === true
     const retryCount = bedrockCreds.pool_mode_retry_count
     poolModeRetryCount.value = (typeof retryCount === 'number' && retryCount >= 0) ? retryCount : DEFAULT_POOL_MODE_RETRY_COUNT
+    poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(bedrockCreds.pool_mode_retry_status_codes)
 
     // Load quota limits for bedrock
     const bedrockExtra = (newAccount.extra as Record<string, unknown>) || {}
@@ -3457,67 +3281,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-    const parsedBedrock = splitModelMappingObject(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
-    allowedModels.value = parsedBedrock.allowedModels
-    modelMappings.value =
-      parsedBedrock.modelMappings.length > 0
-        ? mapRowsWithNotes(
-            Object.fromEntries(parsedBedrock.modelMappings.map((m) => [m.from, m.to])),
-            bedrockCreds.model_mapping_notes
-          )
-        : []
-    modelRestrictionMode.value =
-      parsedBedrock.modelMappings.length > 0 && parsedBedrock.allowedModels.length === 0
-        ? 'mapping'
-        : 'whitelist'
+    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
-
-    // Grok 平台：回填模型限制（白名单/映射）
-    if (newAccount.platform === 'grok') {
-      const existingMappings = credentials.model_mapping as Record<string, string> | undefined
-      const existingNotes = credentials.model_mapping_notes as Record<string, string> | undefined
-      if (existingMappings && typeof existingMappings === 'object') {
-        const entries = Object.entries(existingMappings)
-        // 全部 from===to 视为白名单模式（与 buildModelMappingObject 写入约定一致）
-        const isWhitelist = entries.length > 0 && entries.every(([k, v]) => k === v)
-        if (isWhitelist) {
-          modelRestrictionMode.value = 'whitelist'
-          allowedModels.value = entries.map(([k]) => k)
-          modelMappings.value = []
-        } else {
-          modelRestrictionMode.value = 'mapping'
-          modelMappings.value = entries.map(([from, to]) => ({
-            from,
-            to,
-            note: existingNotes?.[from] || ''
-          }))
-          allowedModels.value = []
-        }
-      } else {
-        modelRestrictionMode.value = 'whitelist'
-        allowedModels.value = []
-        modelMappings.value = []
-      }
-
-      // 自动尝试拉一次上游模型列表（不阻塞 UI,失败静默）
-      upstreamModels.value = []
-      upstreamModelsProbeError.value = ''
-      void probeCurrentUpstreamModels()
-
-      poolModeEnabled.value = credentials.pool_mode === true
-      poolModeRetryCount.value = normalizePoolModeRetryCount(
-        Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
-      )
-      customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
-      const existingErrorCodes = credentials.custom_error_codes as number[] | undefined
-      if (existingErrorCodes && Array.isArray(existingErrorCodes)) {
-        selectedErrorCodes.value = [...existingErrorCodes]
-      } else {
-        selectedErrorCodes.value = []
-      }
-    }
   } else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editVertexProjectId.value = (credentials.project_id as string) || ''
@@ -3538,19 +3305,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI OAuth accounts
     if (newAccount.platform === 'openai' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      const parsedOAuth = splitModelMappingObject(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
-      allowedModels.value = parsedOAuth.allowedModels
-      modelMappings.value =
-        parsedOAuth.modelMappings.length > 0
-          ? mapRowsWithNotes(
-              Object.fromEntries(parsedOAuth.modelMappings.map((m) => [m.from, m.to])),
-              oauthCredentials.model_mapping_notes
-            )
-          : []
-      modelRestrictionMode.value =
-        parsedOAuth.modelMappings.length > 0 && parsedOAuth.allowedModels.length === 0
-          ? 'mapping'
-          : 'whitelist'
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -3558,6 +3313,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
+    poolModeRetryStatusCodesInput.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
   }
@@ -3582,10 +3338,6 @@ watch(
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
-      // 拉账号标签字典作为 AccountTagsInput 的 autocomplete 候选；失败兜底为空。
-      adminAPI.accounts.listTags()
-        .then(tags => { tagSuggestions.value = tags })
-        .catch(() => { tagSuggestions.value = [] })
     }
   },
   { immediate: true }
@@ -3933,7 +3685,7 @@ function toPositiveNumber(value: unknown) {
   return Math.trunc(num)
 }
 
-const needsMixedChannelCheck = () => props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic' || props.account?.platform === 'openai'
+const needsMixedChannelCheck = () => props.account?.platform === 'antigravity' || props.account?.platform === 'anthropic'
 
 const buildMixedChannelDetails = (resp?: CheckMixedChannelResponse) => {
   const details = resp?.details
@@ -4100,41 +3852,38 @@ const handleSubmit = async () => {
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
         const modelMapping = buildModelRestrictionMapping()
-        applyMappingWithNotes(
-          newCredentials,
-          'model_mapping',
-          'model_mapping_notes',
-          modelMapping,
-          modelMappings.value
-        )
+        if (modelMapping) {
+          newCredentials.model_mapping = modelMapping
+        } else {
+          delete newCredentials.model_mapping
+        }
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
-        if (currentCredentials.model_mapping_notes) {
-          newCredentials.model_mapping_notes = currentCredentials.model_mapping_notes
-        } else {
-          delete newCredentials.model_mapping_notes
-        }
-      } else {
-        delete newCredentials.model_mapping_notes
       }
       if (props.account.platform === 'openai') {
+        applyOpenAIEndpointCapabilities(newCredentials)
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-        applyMappingWithNotes(
-          newCredentials,
-          'compact_model_mapping',
-          'compact_model_mapping_notes',
-          compactModelMapping,
-          openAICompactModelMappings.value
-        )
+        if (compactModelMapping) {
+          newCredentials.compact_model_mapping = compactModelMapping
+        } else {
+          delete newCredentials.compact_model_mapping
+        }
       }
 
       // Add pool mode if enabled
       if (poolModeEnabled.value) {
         newCredentials.pool_mode = true
         newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+        const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
+        if (parsedRetryStatusCodes.length > 0) {
+          newCredentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
+        } else {
+          delete newCredentials.pool_mode_retry_status_codes
+        }
       } else {
         delete newCredentials.pool_mode
         delete newCredentials.pool_mode_retry_count
+        delete newCredentials.pool_mode_retry_status_codes
       }
 
       // Add custom error codes if enabled
@@ -4161,43 +3910,6 @@ const handleSubmit = async () => {
 
       if (editApiKey.value.trim()) {
         newCredentials.api_key = editApiKey.value.trim()
-      }
-
-      // Grok 平台支持模型限制（白名单/映射）。其它 upstream 平台暂不支持。
-      if (props.account.platform === 'grok') {
-        const modelMapping = buildModelMappingObject(
-          modelRestrictionMode.value,
-          allowedModels.value,
-          modelMappings.value
-        )
-        if (modelMapping) {
-          newCredentials.model_mapping = modelMapping
-          const notes = buildModelMappingNotesObject(modelMappings.value)
-          if (notes) {
-            newCredentials.model_mapping_notes = notes
-          } else {
-            delete newCredentials.model_mapping_notes
-          }
-        } else {
-          delete newCredentials.model_mapping
-          delete newCredentials.model_mapping_notes
-        }
-
-        if (poolModeEnabled.value) {
-          newCredentials.pool_mode = true
-          newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
-        } else {
-          delete newCredentials.pool_mode
-          delete newCredentials.pool_mode_retry_count
-        }
-
-        if (customErrorCodesEnabled.value) {
-          newCredentials.custom_error_codes_enabled = true
-          newCredentials.custom_error_codes = [...selectedErrorCodes.value]
-        } else {
-          delete newCredentials.custom_error_codes_enabled
-          delete newCredentials.custom_error_codes
-        }
       }
 
       // Add intercept warmup requests setting
@@ -4287,20 +3999,25 @@ const handleSubmit = async () => {
       if (poolModeEnabled.value) {
         newCredentials.pool_mode = true
         newCredentials.pool_mode_retry_count = normalizePoolModeRetryCount(poolModeRetryCount.value)
+        const parsedRetryStatusCodes = parsePoolModeRetryStatusCodes(poolModeRetryStatusCodesInput.value)
+        if (parsedRetryStatusCodes.length > 0) {
+          newCredentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
+        } else {
+          delete newCredentials.pool_mode_retry_status_codes
+        }
       } else {
         delete newCredentials.pool_mode
         delete newCredentials.pool_mode_retry_count
+        delete newCredentials.pool_mode_retry_status_codes
       }
 
       // Model mapping
       const modelMapping = buildModelRestrictionMapping()
-      applyMappingWithNotes(
-        newCredentials,
-        'model_mapping',
-        'model_mapping_notes',
-        modelMapping,
-        modelMappings.value
-      )
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      } else {
+        delete newCredentials.model_mapping
+      }
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
@@ -4323,39 +4040,12 @@ const handleSubmit = async () => {
 
     // OpenAI OAuth: persist model mapping to credentials
     if (props.account.platform === 'openai' && props.account.type === 'oauth') {
-      const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
-        ((props.account.credentials as Record<string, unknown>) || {})
+      const currentCredentials = isSparkShadow.value
+        ? {}
+        : (updatePayload.credentials as Record<string, unknown>) ||
+          ((props.account.credentials as Record<string, unknown>) || {})
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
-      const shouldApplyModelMapping = !openaiPassthroughEnabled.value
-
-      if (shouldApplyModelMapping) {
-        const modelMapping = buildModelRestrictionMapping()
-        applyMappingWithNotes(
-          newCredentials,
-          'model_mapping',
-          'model_mapping_notes',
-          modelMapping,
-          modelMappings.value
-        )
-      } else if (currentCredentials.model_mapping) {
-        // 透传模式保留现有映射
-        newCredentials.model_mapping = currentCredentials.model_mapping
-        if (currentCredentials.model_mapping_notes) {
-          newCredentials.model_mapping_notes = currentCredentials.model_mapping_notes
-        } else {
-          delete newCredentials.model_mapping_notes
-        }
-      } else {
-        delete newCredentials.model_mapping_notes
-      }
-      const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-      applyMappingWithNotes(
-        newCredentials,
-        'compact_model_mapping',
-        'compact_model_mapping_notes',
-        compactModelMapping,
-        openAICompactModelMappings.value
-      )
+      applyOpenAIModelMappingCredentials(newCredentials)
 
       updatePayload.credentials = newCredentials
     }
@@ -4366,11 +4056,13 @@ const handleSubmit = async () => {
       const currentCredentials = (updatePayload.credentials as Record<string, unknown>) ||
         ((props.account.credentials as Record<string, unknown>) || {})
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
+      if (props.account.type === 'oauth') {
+        applyAntigravityProjectID(newCredentials, antigravityProjectId.value, 'edit')
+      }
 
       // 移除旧字段
       delete newCredentials.model_whitelist
       delete newCredentials.model_mapping
-      delete newCredentials.model_mapping_notes
 
       // 只使用映射模式
       const antigravityModelMapping = buildModelMappingObject(
@@ -4378,13 +4070,9 @@ const handleSubmit = async () => {
         [],
         antigravityModelMappings.value
       )
-      applyMappingWithNotes(
-        newCredentials,
-        'model_mapping',
-        'model_mapping_notes',
-        antigravityModelMapping,
-        antigravityModelMappings.value
-      )
+      if (antigravityModelMapping) {
+        newCredentials.model_mapping = antigravityModelMapping
+      }
 
       updatePayload.credentials = newCredentials
     }
@@ -4535,9 +4223,9 @@ const handleSubmit = async () => {
     }
 
     // For OpenAI OAuth/API Key accounts, handle passthrough mode in extra
-    if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
-      const currentExtra = (props.account.extra as Record<string, unknown>) || {}
-      const newExtra: Record<string, unknown> = { ...currentExtra }
+	if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'apikey')) {
+		const currentExtra = (props.account.extra as Record<string, unknown>) || {}
+		const newExtra: Record<string, unknown> = { ...currentExtra }
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
@@ -4559,15 +4247,35 @@ const handleSubmit = async () => {
       } else {
         newExtra.openai_compact_mode = openAICompactMode.value
       }
-      if (props.account.type === 'apikey') {
-        if (openAIResponsesMode.value === 'auto') {
+		if (props.account.type === 'apikey') {
+        if (!openAITextGenerationCapabilityEnabled.value || openAIResponsesMode.value === 'auto') {
           delete newExtra.openai_responses_mode
         } else {
           newExtra.openai_responses_mode = openAIResponsesMode.value
         }
-      }
+		}
+		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
+			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
+		} else {
+			delete newExtra.auto_pause_5h_threshold
+		}
+		if (autoPause7dThreshold.value != null && autoPause7dThreshold.value > 0) {
+			newExtra.auto_pause_7d_threshold = autoPause7dThreshold.value / 100
+		} else {
+			delete newExtra.auto_pause_7d_threshold
+		}
+		if (autoPause5hDisabled.value) {
+			newExtra.auto_pause_5h_disabled = true
+		} else {
+			delete newExtra.auto_pause_5h_disabled
+		}
+		if (autoPause7dDisabled.value) {
+			newExtra.auto_pause_7d_disabled = true
+		} else {
+			delete newExtra.auto_pause_7d_disabled
+		}
 
-      delete newExtra.codex_image_generation_bridge_enabled
+		delete newExtra.codex_image_generation_bridge_enabled
       if (codexImageGenerationBridgeMode.value === 'inherit') {
         delete newExtra.codex_image_generation_bridge
       } else {
@@ -4582,6 +4290,13 @@ const handleSubmit = async () => {
           newExtra.codex_cli_only = false
         } else {
           delete newExtra.codex_cli_only
+        }
+        // Claude Code 插件放行已迁移到全局 codex_cli_only_whitelist，编辑时清理废弃账号级快捷字段。
+        delete newExtra.codex_cli_only_allowed_clients
+        if (codexCLIOnlyEnabled.value && codexCLIOnlyAppServerEnabled.value) {
+          newExtra.codex_cli_only_allow_app_server = true
+        } else {
+          delete newExtra.codex_cli_only_allow_app_server
         }
       }
 
@@ -4639,35 +4354,6 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
-      // 第三方面板用量查询（仅 apikey）
-      if (props.account?.type === 'apikey') {
-        if (usageQueryEnabled.value) {
-          const baseUrl = usageQueryBaseUrl.value.trim()
-          const userId = usageQueryUserId.value.trim()
-          const token = usageQueryAccessToken.value.trim()
-          if (!baseUrl || !userId || !token) {
-            // 任一必填项空时阻止提交。编辑场景下 token 默认是后端占位符 ••••••••，
-            // 用户保留原值不动也算"已填"——所以这里只校验空字符串。
-            appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
-            return
-          }
-          newExtra.usage_query = {
-            enabled: true,
-            provider: usageQueryProvider.value,
-            base_url: baseUrl,
-            access_token: token,
-            user_id: userId
-          }
-        } else {
-          // 关闭开关：保留其它字段但 enabled=false，便于回退恢复
-          const prev = (props.account.extra as any)?.usage_query
-          if (prev) {
-            newExtra.usage_query = { ...prev, enabled: false }
-          } else {
-            delete newExtra.usage_query
-          }
-        }
-      }
       updatePayload.extra = newExtra
     }
 

@@ -127,40 +127,43 @@ type SystemSettings struct {
 	GoogleOAuthRedirectURL            string
 	GoogleOAuthFrontendRedirectURL    string
 
-	SiteName                               string
-	SiteLogo                               string
-	SiteSubtitle                           string
-	APIBaseURL                             string
-	OpenAIFreeImageBridgeURL               string
-	OpenAIFreeImageBridgeAuthKey           string
-	OpenAIFreeImageBridgeAuthKeyConfigured bool
-	ContactInfo                            string
-	DocURL                                 string
-	HomeContent                            string
-	HideCcsImportButton                    bool
-	PurchaseSubscriptionEnabled            bool
-	PurchaseSubscriptionURL                string
-	TableDefaultPageSize                   int
-	TablePageSizeOptions                   []int
-	CustomMenuItems                        string // JSON array of custom menu items
-	CustomEndpoints                        string // JSON array of custom endpoints
+	SiteName                    string
+	SiteLogo                    string
+	SiteSubtitle                string
+	APIBaseURL                  string
+	ContactInfo                 string
+	DocURL                      string
+	HomeContent                 string
+	HideCcsImportButton         bool
+	PurchaseSubscriptionEnabled bool
+	PurchaseSubscriptionURL     string
+	TableDefaultPageSize        int
+	TablePageSizeOptions        []int
+	CustomMenuItems             string // JSON array of custom menu items
+	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency              int
-	DefaultBalance                  float64
-	RiskControlEnabled              bool
-	CyberSessionBlockEnabled        bool
-	CyberSessionBlockTTLSeconds     int
-	AffiliateEnabled                bool
-	AffiliateRechargeEnabled        bool
-	AffiliateSubscriptionEnabled    bool
-	AffiliateRebateRate             float64
-	AffiliateRechargeRebateRate     float64
-	AffiliateSubscriptionRebateRate float64
-	AffiliateRebateFreezeHours      int
-	AffiliateRebateDurationDays     int
-	AffiliateRebatePerInviteeCap    float64
-	DefaultUserRPMLimit             int
-	DefaultSubscriptions            []DefaultSubscriptionSetting
+	DefaultConcurrency                        int
+	DefaultBalance                            float64
+	RiskControlEnabled                        bool
+	CyberSessionBlockEnabled                  bool
+	CyberSessionBlockTTLSeconds               int
+	AffiliateEnabled                          bool
+	AffiliateRebateRate                       float64
+	AffiliateRechargeEnabled                  bool
+	AffiliateSubscriptionEnabled              bool
+	AffiliateRechargeRebateRate               float64
+	AffiliateSubscriptionRebateRate           float64
+	AffiliateRebateFreezeHours                int
+	AffiliateRebateDurationDays               int
+	AffiliateRebatePerInviteeCap              float64
+	DefaultUserRPMLimit                       int
+	DefaultSubscriptions                      []DefaultSubscriptionSetting
+	OpenAIFreeImageBridgeURL                  string
+	OpenAIFreeImageBridgeAuthKey              string
+	OpenAIFreeImageBridgeAuthKeyConfigured    bool
+	StandaloneAccountImportEnabled            bool
+	StandaloneAccountImportPasswordHash       string
+	StandaloneAccountImportPasswordConfigured bool
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -199,15 +202,21 @@ type SystemSettings struct {
 	// Gateway forwarding behavior
 	EnableFingerprintUnification           bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough              bool   // 是否透传客户端原始 metadata（默认 false）
-	EnableCCHSigning                       bool   // 是否对 billing header cch 进行实验性签名（默认 false）
+	EnableCCHSigning                       bool   // ??? billing header cch ?????????? false?
 	EnableClaudeOAuthSystemPromptInjection bool   // 是否对 Claude OAuth mimic 路径注入 Claude Code system blocks（默认 true）
 	ClaudeOAuthSystemPrompt                string // Claude OAuth mimic 路径注入的通用扩展 system prompt；空值使用内置默认
 	ClaudeOAuthSystemPromptBlocks          string // Claude OAuth mimic 路径注入的 system blocks JSON 配置；空值使用内置默认
 	EnableAnthropicCacheTTL1hInjection     bool   // 是否对 Anthropic OAuth/SetupToken 请求体注入 1h cache_control ttl（默认 false）
+	EnableClientDatelineNormalization      bool   // 是否对 Anthropic OAuth/SetupToken 请求体做客户端 dateline 归一化（默认 true）
 	RewriteMessageCacheControl             bool   // 是否改写 messages[*].content[*].cache_control（默认 false）
 	AntigravityUserAgentVersion            string // Antigravity 上游 User-Agent 版本号；空值使用配置/默认值
 	OpenAICodexUserAgent                   string // OpenAI Codex 上游完整 User-Agent；空值使用内置默认
-	OpenAIAllowClaudeCodeCodexPlugin       bool   // 全局开关：是否额外放行 Claude Code 的 Codex 插件（默认 false）
+	MinCodexVersion                        string // codex_cli_only 最低 Codex 引擎版本；空=不检查
+	MaxCodexVersion                        string // codex_cli_only 最高 Codex 引擎版本；空=不检查
+	CodexCLIOnlyBlacklist                  string // codex_cli_only 全局黑名单 JSON（[]AllowedClientEntry，OR deny）
+	CodexCLIOnlyWhitelist                  string // codex_cli_only 全局白名单 JSON（[]AllowedClientEntry，AND allow）
+	CodexCLIOnlyAllowAppServerClients      bool   // codex_cli_only App Server 开关：对未列名客户端开闸（默认 false）
+	CodexCLIOnlyEngineFingerprintSignals   string // codex_cli_only 引擎指纹门信号列表 JSON（[]EngineFingerprintSignal）
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
@@ -236,49 +245,41 @@ type SystemSettings struct {
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
 	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
 
-	// Standalone account import
-	StandaloneAccountImportEnabled            bool
-	StandaloneAccountImportPasswordHash       string
-	StandaloneAccountImportPasswordConfigured bool
-
 	// 允许终端用户在用量页查看自己的失败请求
 	AllowUserViewErrorRequests bool
 }
 
 type DefaultSubscriptionSetting struct {
 	GroupID      int64   `json:"group_id"`
-	ValidityDays int     `json:"validity_days,omitempty"`
+	ValidityDays int     `json:"validity_days"`
 	StartsAt     *string `json:"starts_at,omitempty"`
 	ExpiresAt    *string `json:"expires_at,omitempty"`
 }
 
 type PublicSettings struct {
-	RegistrationEnabled                    bool
-	EmailVerifyEnabled                     bool
-	ForceEmailOnThirdPartySignup           bool
-	RegistrationEmailSuffixWhitelist       []string
-	PromoCodeEnabled                       bool
-	PasswordResetEnabled                   bool
-	InvitationCodeEnabled                  bool
-	TotpEnabled                            bool // TOTP 双因素认证
-	LoginAgreementEnabled                  bool
-	LoginAgreementMode                     string
-	LoginAgreementUpdatedAt                string
-	LoginAgreementRevision                 string
-	LoginAgreementDocuments                []LoginAgreementDocument
-	TurnstileEnabled                       bool
-	TurnstileSiteKey                       string
-	SiteName                               string
-	SiteLogo                               string
-	SiteSubtitle                           string
-	APIBaseURL                             string
-	OpenAIFreeImageBridgeURL               string
-	OpenAIFreeImageBridgeAuthKey           string
-	OpenAIFreeImageBridgeAuthKeyConfigured bool
-	ContactInfo                            string
-	DocURL                                 string
-	HomeContent                            string
-	HideCcsImportButton                    bool
+	RegistrationEnabled              bool
+	EmailVerifyEnabled               bool
+	ForceEmailOnThirdPartySignup     bool
+	RegistrationEmailSuffixWhitelist []string
+	PromoCodeEnabled                 bool
+	PasswordResetEnabled             bool
+	InvitationCodeEnabled            bool
+	TotpEnabled                      bool // TOTP 双因素认证
+	LoginAgreementEnabled            bool
+	LoginAgreementMode               string
+	LoginAgreementUpdatedAt          string
+	LoginAgreementRevision           string
+	LoginAgreementDocuments          []LoginAgreementDocument
+	TurnstileEnabled                 bool
+	TurnstileSiteKey                 string
+	SiteName                         string
+	SiteLogo                         string
+	SiteSubtitle                     string
+	APIBaseURL                       string
+	ContactInfo                      string
+	DocURL                           string
+	HomeContent                      string
+	HideCcsImportButton              bool
 
 	PurchaseSubscriptionEnabled bool
 	PurchaseSubscriptionURL     string
@@ -322,6 +323,9 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// 允许终端用户在用量页查看自己的失败请求
+	OpenAIFreeImageBridgeURL               string `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKeyConfigured bool   `json:"openai_free_image_bridge_auth_key_configured"`
+
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 
@@ -502,6 +506,23 @@ func DefaultRateLimit429CooldownSettings() *RateLimit429CooldownSettings {
 }
 
 // DefaultBetaPolicySettings 返回默认的 Beta 策略配置
+//
+// context-1m-2025-08-07 的默认策略：
+//   - 仅 claude-sonnet-5 及后续版本（如 claude-sonnet-5-*）在上游默认支持 1M 上下文。
+//   - Sonnet 4.x 及以下、Opus、Haiku 上游都不支持该 beta，透传上去会被上游 400 或降级。
+//   - 因此默认对 sonnet-5* 放行、其余全部过滤，与上游能力保持一致。
+//
+// 白名单需要覆盖每个上游路径的模型 ID 变形：
+//   - 直连 Anthropic API（OAuth mimic / API Key / SetupToken）：模型保持客户端原样
+//     （如 "claude-sonnet-5"、"claude-sonnet-5-YYYYMMDD"、"claude-sonnet-5-thinking"）。
+//   - Vertex AI：normalizeVertexAnthropicModelID 会把 "-YYYYMMDD" 后缀转成 "@YYYYMMDD"
+//     （如 "claude-sonnet-5@YYYYMMDD"）。
+//   - AWS Bedrock：ResolveBedrockModelID 会输出带跨区域前缀的模型 ID
+//     （us./eu./apac./jp./au./us-gov./global. 或无前缀的 "anthropic." 形式）。
+//
+// 白名单只用后缀通配符（matchModelPattern 语义），因此每个路径都需要显式列出前缀。
+// 精确匹配 "claude-sonnet-5" + 后缀 "-*" 与 "@*"，可覆盖直连/Vertex 场景，同时避免误伤
+// 未来可能出现的 "claude-sonnet-50" 或 "claude-sonnet-5.x" 之类的意外命名。
 func DefaultBetaPolicySettings() *BetaPolicySettings {
 	return &BetaPolicySettings{
 		Rules: []BetaPolicyRule{
@@ -512,8 +533,26 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 			},
 			{
 				BetaToken: "context-1m-2025-08-07",
-				Action:    BetaPolicyActionFilter,
+				Action:    BetaPolicyActionPass,
 				Scope:     BetaPolicyScopeAll,
+				ModelWhitelist: []string{
+					// 直连 Anthropic API（客户端请求 model 原样）
+					"claude-sonnet-5",
+					"claude-sonnet-5-*",
+					// Vertex AI 走 normalizeVertexAnthropicModelID 后 "@YYYYMMDD" 格式
+					"claude-sonnet-5@*",
+					// AWS Bedrock cross-region inference profile
+					"us.anthropic.claude-sonnet-5*",
+					"eu.anthropic.claude-sonnet-5*",
+					"apac.anthropic.claude-sonnet-5*",
+					"jp.anthropic.claude-sonnet-5*",
+					"au.anthropic.claude-sonnet-5*",
+					"us-gov.anthropic.claude-sonnet-5*",
+					"global.anthropic.claude-sonnet-5*",
+					// AWS Bedrock 无 cross-region 前缀
+					"anthropic.claude-sonnet-5*",
+				},
+				FallbackAction: BetaPolicyActionFilter,
 			},
 		},
 	}

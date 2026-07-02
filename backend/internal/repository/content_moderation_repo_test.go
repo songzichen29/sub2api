@@ -37,7 +37,7 @@ SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
-    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.created_at,
+    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
     COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
@@ -49,7 +49,7 @@ LIMIT ? OFFSET ?`)).
 			"id", "request_id", "user_id", "user_email", "api_key_id", "api_key_name", "group_id", "group_name",
 			"endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score",
 			"category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error",
-			"violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "created_at",
+			"violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "matched_keyword", "created_at",
 			"request_body_size", "request_body_message_count",
 		}))
 
@@ -103,18 +103,18 @@ INSERT INTO content_moderation_logs (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
     endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
     category_scores, threshold_snapshot, input_excerpt, request_body, request_body_message_count, upstream_latency_ms, error,
-    violation_count, auto_banned, email_sent, queue_delay_ms
+    violation_count, auto_banned, email_sent, queue_delay_ms, matched_keyword
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?,
-    ?, ?, ?, ?
+    ?, ?, ?, ?, ?
 )`)).
 		WithArgs(
 			"req-1", nil, "u@example.com", nil, "key-a", nil, "default",
 			"/v1/chat/completions", "openai", "gpt-4.1", "observe", "allow", false, "", float64(0),
 			"{}", "{}", "hello", nil, 0, nil, "",
-			0, false, false, nil,
+			0, false, false, nil, "",
 		).
 		WillReturnResult(sqlmock.NewResult(12, 1))
 

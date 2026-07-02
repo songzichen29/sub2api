@@ -121,11 +121,12 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	if cmd.BalanceCost > 0 {
-		newBalance, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
+		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
 		if err != nil {
 			return err
 		}
 		result.NewBalance = &newBalance
+		result.BalanceOverdrafted = !sufficient
 	}
 
 	if cmd.APIKeyQuotaCost > 0 {
@@ -370,27 +371,47 @@ func subscriptionBillingLimitExceeded(ctx context.Context, tx *sql.Tx, subscript
 	return true, nil
 }
 
-func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, error) {
+func deductUsageBillingBalance(ctx context.Context, tx *sql.Tx, userID int64, amount float64) (float64, bool, error) {
 	res, err := tx.ExecContext(ctx, `
+		UPDATE users
+		SET balance = balance - ?, updated_at = NOW()
+		WHERE id = ? AND deleted_at IS NULL AND balance >= ?
+	`, amount, userID, amount)
+	if err != nil {
+		return 0, false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, false, err
+	}
+	if affected > 0 {
+		var newBalance float64
+		if err := tx.QueryRowContext(ctx, `SELECT balance FROM users WHERE id = ?`, userID).Scan(&newBalance); err != nil {
+			return 0, false, err
+		}
+		return newBalance, true, nil
+	}
+
+	res, err = tx.ExecContext(ctx, `
 		UPDATE users
 		SET balance = balance - ?, updated_at = NOW()
 		WHERE id = ? AND deleted_at IS NULL
 	`, amount, userID)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	affected, err := res.RowsAffected()
+	affected, err = res.RowsAffected()
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	if affected == 0 {
-		return 0, service.ErrUserNotFound
+		return 0, false, service.ErrUserNotFound
 	}
 	var newBalance float64
 	if err := tx.QueryRowContext(ctx, `SELECT balance FROM users WHERE id = ?`, userID).Scan(&newBalance); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return newBalance, nil
+	return newBalance, false, nil
 }
 
 func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID int64, amount float64) (bool, error) {

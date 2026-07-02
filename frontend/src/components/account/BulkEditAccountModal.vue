@@ -742,6 +742,50 @@
         </div>
       </div>
 
+      <!-- OpenAI OAuth: Codex app-server -->
+      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-openai-codex-app-server-label"
+            class="input-label mb-0"
+            for="bulk-edit-openai-codex-app-server-enabled"
+          >
+            {{ t('admin.accounts.openai.codexCLIOnlyAppServer') }}
+          </label>
+          <input
+            v-model="enableCodexCLIOnlyAppServer"
+            id="bulk-edit-openai-codex-app-server-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-codex-app-server"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-codex-app-server"
+          :class="!enableCodexCLIOnlyAppServer && 'pointer-events-none opacity-50'"
+        >
+          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openai.codexCLIOnlyAppServerDesc') }}
+          </p>
+          <button
+            id="bulk-edit-openai-codex-app-server-toggle"
+            type="button"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              codexCLIOnlyAppServerEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            @click="codexCLIOnlyAppServerEnabled = !codexCLIOnlyAppServerEnabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                codexCLIOnlyAppServerEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- OpenAI API Key WS mode -->
       <div v-if="allOpenAIAPIKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1035,36 +1079,6 @@
           />
         </div>
       </div>
-
-      <!-- Tags：勾选 enableTags 后才把 tags 加进 payload，对应后端 *[]string 语义。
-           不勾 = 不改；勾选传空数组 = 清空；勾选传非空数组 = 全量替换。 -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="mb-3 flex items-center justify-between">
-          <label
-            id="bulk-edit-tags-label"
-            class="input-label mb-0"
-            for="bulk-edit-tags-enabled"
-          >
-            {{ t('admin.accounts.tags.label') }}
-          </label>
-          <input
-            v-model="enableTags"
-            id="bulk-edit-tags-enabled"
-            type="checkbox"
-            aria-controls="bulk-edit-tags"
-            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-          />
-        </div>
-        <div id="bulk-edit-tags" :class="!enableTags && 'pointer-events-none opacity-50'">
-          <AccountTagsInput
-            v-model="tags"
-            :suggestions="tagSuggestions"
-            :disabled="!enableTags"
-            :placeholder="t('admin.accounts.tags.placeholder')"
-          />
-          <p class="input-hint">{{ t('admin.accounts.tags.bulkReplaceHint') }}</p>
-        </div>
-      </div>
     </form>
 
     <template #footer>
@@ -1129,7 +1143,6 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
-import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
@@ -1246,11 +1259,11 @@ const enablePriority = ref(false)
 const enableRateMultiplier = ref(false)
 const enableStatus = ref(false)
 const enableGroups = ref(false)
-const enableTags = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIWSMode = ref(false)
 const enableOpenAIAPIKeyWSMode = ref(false)
 const enableCodexCLIOnly = ref(false)
+const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
@@ -1274,12 +1287,11 @@ const priority = ref(1)
 const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
-const tags = ref<string[]>([])
-const tagSuggestions = ref<string[]>([])
 const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const codexCLIOnlyAppServerEnabled = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
@@ -1411,7 +1423,7 @@ const removeErrorCode = (code: number) => {
 
 const buildModelMappingObject = (): Record<string, string> | null => {
   return buildModelMappingPayload(
-    'combined',
+    modelRestrictionMode.value,
     allowedModels.value,
     modelMappings.value
   )
@@ -1463,15 +1475,6 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.group_ids = groupIds.value
   }
 
-  if (enableTags.value) {
-    // 后端 BulkUpdateAccountsInput.Tags 是 *[]string：
-    //   - 不传字段（enableTags=false）→ 不改
-    //   - 传 [] → 清空
-    //   - 传 ["x"] → 全量替换为 ["x"]
-    // 前端把 tags.value（已规范化）原样发；后端会再做一次 NormalizeAccountTags 兜底。
-    updates.tags = tags.value
-  }
-
   if (enableBaseUrl.value) {
     const baseUrlValue = baseUrl.value.trim()
     if (baseUrlValue) {
@@ -1489,11 +1492,22 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
-    // 统一使用 combined 模式合并白名单和映射——用户可能在模板里同时填了两者，
-    // 之前按 mode 二选一会导致只有一侧生效
-    const modelMapping = buildModelMappingObject()
-    credentials.model_mapping = modelMapping ?? {}
-    credentialsChanged = true
+    // 统一使用 model_mapping 字段
+    if (modelRestrictionMode.value === 'whitelist') {
+      // 白名单模式：将模型转换为 model_mapping 格式（key=value）
+      // 空白名单表示“支持所有模型”，需显式发送空对象以覆盖已有限制。
+      const mapping: Record<string, string> = {}
+      for (const m of allowedModels.value) {
+        mapping[m] = m
+      }
+      credentials.model_mapping = mapping
+      credentialsChanged = true
+    } else {
+      // 映射模式下空配置同样表示“支持所有模型”。
+      const modelMapping = buildModelMappingObject()
+      credentials.model_mapping = modelMapping ?? {}
+      credentialsChanged = true
+    }
   }
 
   if (enableCustomErrorCodes.value) {
@@ -1526,6 +1540,17 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableCodexCLIOnly.value) {
     const extra = ensureExtra()
     extra.codex_cli_only = codexCLIOnlyEnabled.value
+  }
+
+  // 子开关从属于 codex_cli_only：仅当同一次批量编辑也把父开关设为开启时才写入，
+  // 与 Create/Edit 语义对齐，避免在父开关关闭的账号上写入无意义的孤立字段。
+  if (
+    enableCodexCLIOnlyAppServer.value &&
+    enableCodexCLIOnly.value &&
+    codexCLIOnlyEnabled.value
+  ) {
+    const extra = ensureExtra()
+    extra.codex_cli_only_allow_app_server = codexCLIOnlyAppServerEnabled.value
   }
 
   if (enableOpenAICompactMode.value) {
@@ -1631,10 +1656,10 @@ const handleSubmit = async () => {
     enableRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value ||
-    enableTags.value ||
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
+    enableCodexCLIOnlyAppServer.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -1720,13 +1745,6 @@ const handleMixedChannelCancel = () => {
 watch(
   () => props.show,
   (newShow) => {
-    if (newShow) {
-      // 拉一次账号标签字典作为 AccountTagsInput 的 autocomplete 候选；
-      // 失败兜底空数组，组件仍允许手输标签。
-      adminAPI.accounts.listTags()
-        .then(t => { tagSuggestions.value = t })
-        .catch(() => { tagSuggestions.value = [] })
-    }
     if (!newShow) {
       // Reset all enable flags
       enableBaseUrl.value = false
@@ -1740,11 +1758,11 @@ watch(
       enableRateMultiplier.value = false
       enableStatus.value = false
       enableGroups.value = false
-      enableTags.value = false
       enableOpenAIPassthrough.value = false
       enableOpenAIWSMode.value = false
       enableOpenAIAPIKeyWSMode.value = false
       enableCodexCLIOnly.value = false
+      enableCodexCLIOnlyAppServer.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
@@ -1765,10 +1783,10 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
-      tags.value = []
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
+      codexCLIOnlyAppServerEnabled.value = false
       openAICompactMode.value = 'auto'
       openAICompactModelMappings.value = []
       rpmLimitEnabled.value = false
