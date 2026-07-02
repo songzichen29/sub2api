@@ -170,8 +170,16 @@
         </template>
 
         <template #cell-first_token="{ row }">
-          <span v-if="row.first_token_ms != null" class="text-sm text-gray-600 dark:text-gray-400">{{ formatDuration(row.first_token_ms) }}</span>
-          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          <div class="space-y-0.5 text-sm">
+            <div v-if="row.first_token_ms != null" class="font-medium text-gray-700 dark:text-gray-300">{{ formatDuration(row.first_token_ms) }}</div>
+            <div v-else class="text-gray-400 dark:text-gray-500">-</div>
+            <div v-if="row.upstream_first_event_ms != null" class="text-[11px] leading-tight text-cyan-600 dark:text-cyan-400">
+              {{ t('usage.upstreamFirstEvent') }} {{ formatDuration(row.upstream_first_event_ms) }}
+            </div>
+            <div v-if="firstTokenGapMs(row) != null" class="text-[11px] leading-tight text-amber-600 dark:text-amber-400">
+              {{ t('usage.upstreamToFirstToken') }} {{ formatDuration(firstTokenGapMs(row)) }}
+            </div>
+          </div>
         </template>
 
         <template #cell-duration="{ row }">
@@ -509,6 +517,11 @@ const formatDuration = (ms: number | null | undefined): string => {
   if (ms == null) return '-'
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(2)}s`
+}
+
+const firstTokenGapMs = (row: Pick<AdminUsageLog, 'first_token_ms' | 'upstream_first_event_ms'>): number | null => {
+  if (row.first_token_ms == null || row.upstream_first_event_ms == null) return null
+  return Math.max(0, row.first_token_ms - row.upstream_first_event_ms)
 }
 
 // Cost tooltip functions
