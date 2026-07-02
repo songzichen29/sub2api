@@ -244,7 +244,7 @@ func TestAccountHandlerGetAvailableModels_OpenAISparkShadowReturnsMappingModels(
 	}
 	require.ElementsMatch(t, []string{
 		"gpt-5.3-codex-spark",
-	}, ids, "??????? model_mapping ???????")
+	}, ids, "Spark 影子账号应只返回 model_mapping 中的模型")
 }
 
 func TestAccountHandlerGetAvailableModels_AntigravityPrefersLiveUpstreamModels(t *testing.T) {

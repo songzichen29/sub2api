@@ -1347,7 +1347,7 @@ func normalizeCodexTools(reqBody map[string]any) bool {
 	return modified
 }
 
-// ensureCodexReasoningInclude ???? reasoning ????? encrypted reasoning include?
+// ensureCodexReasoningInclude 在请求包含 reasoning 时补齐 encrypted reasoning include。
 func ensureCodexReasoningInclude(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
@@ -1374,7 +1374,7 @@ func ensureCodexReasoningInclude(reqBody map[string]any) bool {
 	return true
 }
 
-// applyCodexClientMetadata ?????? client_metadata["x-codex-installation-id"]?
+// applyCodexClientMetadata 在缺失时写入 client_metadata["x-codex-installation-id"]。
 func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 	if account == nil {
 		return false

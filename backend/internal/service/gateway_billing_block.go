@@ -51,7 +51,7 @@ func computeClaudeCodeFingerprint(body []byte, version string) string {
 // UTF-8 replacement character, matching Node/V8/Bun string-to-UTF8 behavior.
 func jsUTF8BytesForCodeUnit(cu uint16) []byte {
 	if cu >= 0xD800 && cu <= 0xDFFF {
-		return []byte("�")
+		return []byte{0xEF, 0xBF, 0xBD}
 	}
 	return []byte(string(rune(cu)))
 }

@@ -109,7 +109,7 @@ const (
 	SubscriptionStatusExpired        = domain.SubscriptionStatusExpired
 	SubscriptionStatusSuspended      = domain.SubscriptionStatusSuspended
 	SubscriptionStatusQuotaExhausted = domain.SubscriptionStatusQuotaExhausted
-	// SubscriptionStatusRevoked ? soft-deleted ??? API ??????? status ???
+	// SubscriptionStatusRevoked 是由 soft-deleted 记录映射出的 API 展示状态。
 	SubscriptionStatusRevoked = "revoked"
 )
 

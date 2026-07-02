@@ -157,8 +157,8 @@ const formatResetTime = computed(() => {
   const date = new Date(props.resetsAt)
   const diffMs = date.getTime() - now.value.getTime()
 
-  // resetsAt ????utilization>0 ?????????????active poll ?????
-  // ?????????????????????
+  // 当 resetsAt 已经过期但 utilization > 0 时，说明上游窗口可能还未主动刷新，
+  // 显示“等待重置”而不是误导用户立即可用。
   if (diffMs <= 0) {
     return props.utilization > 0 ? t('usage.resetPending') : t('usage.resetNow')
   }

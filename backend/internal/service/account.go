@@ -1744,7 +1744,7 @@ func (a *Account) IsCodexCLIOnlyEnabled() bool {
 	return ok && enabled
 }
 
-// IsCodexCLIOnlyAppServerAllowed ?? codex_cli_only ???????? Codex app-server?
+// IsCodexCLIOnlyAppServerAllowed 返回 codex_cli_only 是否额外允许 Codex app-server 客户端。
 func (a *Account) IsCodexCLIOnlyAppServerAllowed() bool {
 	if !a.IsCodexCLIOnlyEnabled() {
 		return false

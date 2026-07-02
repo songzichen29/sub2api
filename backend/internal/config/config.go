@@ -645,13 +645,13 @@ type BillingConfig struct {
 	// Requests in balance mode are rejected when the cached balance is below this
 	// amount, even if it is still positive. Set to 0 to keep the legacy balance > 0 gate.
 	MinimumBalanceReserve float64 `mapstructure:"minimum_balance_reserve"`
-	// UserPlatformQuotaCacheTTLSeconds ?? ? ?? quota ?? TTL?????? 86400=1?????? daily ???
-	// ????
-	//   - billing_cache_service.cacheWriteWorker ????
-	//   - billing_cache_service.checkUserPlatformQuotaEligibility ??????
-	// ?????????? TTL?????????????? quota ?????
+	// UserPlatformQuotaCacheTTLSeconds 是用户平台 quota 缓存 TTL，默认 86400=1 天。
+	// 用途：
+	//   - billing_cache_service.cacheWriteWorker 写入缓存
+	//   - billing_cache_service.checkUserPlatformQuotaEligibility 读取缓存
+	// 生产环境可适当拉长 TTL，以降低日级 quota 统计压力。
 	UserPlatformQuotaCacheTTLSeconds int `mapstructure:"user_platform_quota_cache_ttl_seconds"`
-	// UserPlatformQuotaSentinelTTLSeconds sentinel?? limit ???entry ? TTL??? 3600=1 ???
+	// UserPlatformQuotaSentinelTTLSeconds 是 sentinel/limit-missing 缓存 entry 的 TTL，默认 3600=1 小时。
 	UserPlatformQuotaSentinelTTLSeconds int `mapstructure:"user_platform_quota_sentinel_ttl_seconds"`
 }
 

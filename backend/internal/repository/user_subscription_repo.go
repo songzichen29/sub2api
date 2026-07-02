@@ -314,9 +314,9 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 		return nil, nil, err
 	}
 
-	// last_used_at ???"?? + ?? + ???? + ???"????? last_used_at
-	// ???????? usage_logs ???????????? 1k ???????
-	// ?????????????????????? SQL ??????
+	// last_used_at 需要按“最新使用时间”排序，不能直接依赖订阅表字段。
+	// 这里先取全量订阅，再批量查询 usage_logs 中每个订阅的最新使用时间。
+	// 这样可以复用分页逻辑，同时避免在主查询中拼复杂 SQL。
 	if sortBy == "last_used_at" {
 		all, err := q.All(queryCtx)
 		if err != nil {
@@ -374,8 +374,8 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 	return results, paginationResultFromTotal(int64(total), params), nil
 }
 
-// fillLastUsedAt ????????? LastUsedAt ???????????????? nil?
-// ?????????last_used_at ??????????????????
+// fillLastUsedAt 批量填充订阅的 LastUsedAt；查询失败时保持 nil。
+// 该字段仅用于列表展示和 last_used_at 排序，不影响订阅主数据。
 func (r *userSubscriptionRepository) fillLastUsedAt(ctx context.Context, subs []service.UserSubscription) error {
 	if len(subs) == 0 {
 		return nil
@@ -386,7 +386,7 @@ func (r *userSubscriptionRepository) fillLastUsedAt(ctx context.Context, subs []
 	}
 	lastUsed, err := r.GetLatestUsedAtBySubscriptionIDs(ctx, ids)
 	if err != nil {
-		// ??????????????? last_used_at ????
+		// 统计失败不阻断订阅列表，last_used_at 保持为空。
 		return nil
 	}
 	for i := range subs {
@@ -397,13 +397,13 @@ func (r *userSubscriptionRepository) fillLastUsedAt(ctx context.Context, subs []
 	return nil
 }
 
-// sortSubsByLastUsedAt ? LastUsedAt ?????
-// nil????????????????? sortOrder ??????
+// sortSubsByLastUsedAt 按 LastUsedAt 稳定排序。
+// nil 始终排在最后，非 nil 项按 sortOrder 指定方向排序。
 func sortSubsByLastUsedAt(subs []service.UserSubscription, sortOrder string) {
 	asc := sortOrder == "asc"
 	sort.SliceStable(subs, func(i, j int) bool {
 		li, lj := subs[i].LastUsedAt, subs[j].LastUsedAt
-		// nil ?????????????
+		// nil 统一排在最后。
 		if li == nil && lj == nil {
 			return false
 		}

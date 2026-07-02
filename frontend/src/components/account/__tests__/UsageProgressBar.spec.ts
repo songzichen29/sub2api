@@ -68,12 +68,12 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('usage.resetNow')
   })
 
-  it('resetsAt ????????? 0 ????????', () => {
+  it('resetsAt 已过期且利用率大于 0 时显示等待重置', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '5h',
         utilization: 53,
-        // ?? fake system time 2026-03-17T00:00:00Z
+        // 早于 fake system time 2026-03-17T00:00:00Z
         resetsAt: '2026-03-16T22:00:00Z',
         color: 'indigo'
       }
@@ -83,7 +83,7 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('usage.resetNow')
   })
 
-  it('resetsAt ???????? 0 ????????', () => {
+  it('resetsAt 已过期且利用率为 0 时显示现在', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '5h',

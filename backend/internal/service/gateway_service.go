@@ -6979,7 +6979,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		return nil, err
 	}
 
-	// ???? outgoing anthropic-beta?Vertex AI ? Anthropic ???????? beta token?
+	// 复制客户端传入的 anthropic-beta；Vertex AI 的 Anthropic API 只保留允许透传的 beta token。
 	clientBeta := ""
 	if c != nil && c.Request != nil {
 		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")

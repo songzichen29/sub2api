@@ -406,7 +406,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 
 	cfg := s.service.schedulingConfig()
-	// WaitPlan.MaxConcurrency ?? Concurrency?? EffectiveLoadFactor???? WaitPlan ???? Redis ?????????
+	// WaitPlan.MaxConcurrency 使用账号并发上限；EffectiveLoadFactor 仅影响等待计划的 Redis 排队权重。
 	if s.service.concurrencyService != nil {
 		if escapeCfg.enabled && acquireErr == nil && result != nil && !result.Acquired {
 			errorRate, ttft, _ := s.stats.snapshot(accountID)
