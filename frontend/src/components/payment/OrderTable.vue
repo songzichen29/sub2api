@@ -26,6 +26,9 @@
     <template #cell-payment_type="{ value }">
       <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + value, value) }}</span>
     </template>
+    <template #cell-order_type="{ value }">
+      <span class="text-sm text-gray-700 dark:text-gray-300">{{ orderTypeLabel(value) }}</span>
+    </template>
     <template #cell-status="{ value }">
       <OrderStatusBadge :status="value" />
     </template>
@@ -53,6 +56,7 @@ const props = defineProps<{
   orders: PaymentOrder[]
   loading: boolean
   showUser?: boolean
+  showOrderType?: boolean
 }>()
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
@@ -61,6 +65,19 @@ const creditedAmountSymbol = currencySymbol('USD')
 
 function paymentAmountSymbol(order: PaymentOrder): string {
   return currencySymbol(order.currency)
+}
+
+function orderTypeLabel(value: string): string {
+  switch (value) {
+    case 'balance':
+      return t('payment.admin.balanceOrder')
+    case 'subscription':
+      return t('payment.admin.subscriptionOrder')
+    case 'daily_limit_reset':
+      return t('payment.admin.dailyLimitResetOrder')
+    default:
+      return value || '-'
+  }
 }
 
 const columns = computed((): Column[] => {
@@ -74,6 +91,11 @@ const columns = computed((): Column[] => {
   cols.push(
     { key: 'pay_amount', label: t('payment.orders.payAmount') },
     { key: 'payment_type', label: t('payment.orders.paymentMethod') },
+  )
+  if (props.showOrderType) {
+    cols.push({ key: 'order_type', label: t('payment.orders.orderType') })
+  }
+  cols.push(
     { key: 'status', label: t('payment.orders.status') },
     { key: 'created_at', label: t('payment.orders.createdAt') },
     { key: 'actions', label: t('common.actions') },

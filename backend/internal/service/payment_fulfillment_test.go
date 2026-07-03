@@ -663,6 +663,9 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	require.NotNil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, order.ID, *affiliateRepo.accrueCalls[0].sourceOrderID)
 	require.Equal(t, 1, subRepo.createCalls)
+	sub, err := subRepo.GetByUserIDAndGroupID(ctx, user.ID, 7)
+	require.NoError(t, err)
+	require.WithinDuration(t, time.Now().AddDate(0, 0, 30), sub.ExpiresAt, 2*time.Second)
 
 	applied, err := client.PaymentAuditLog.Query().
 		Where(paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("AFFILIATE_REBATE_APPLIED")).

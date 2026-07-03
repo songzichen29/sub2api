@@ -408,9 +408,34 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 		return fmt.Errorf("group %d no longer exists or inactive", gid)
 	}
 	assigned := s.hasAuditLog(ctx, o.ID, "SUBSCRIPTION_ASSIGNED") || s.hasAuditLog(ctx, o.ID, "SUBSCRIPTION_SUCCESS")
-	if !assigned {
+	if assigned {
+		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
+	} else {
 		orderNote := fmt.Sprintf("payment order %d", o.ID)
-		_, _, err = s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: o.UserID, GroupID: gid, ValidityDays: days, AssignedBy: 0, Notes: orderNote})
+		var startsAt, expiresAt *time.Time
+		if o.SubscriptionPlanExpiresAt != nil {
+			now := time.Now()
+			startsAt = &now
+			expiresAt = o.SubscriptionPlanExpiresAt
+		}
+		var quotaLimitUSD *float64
+		if o.SubscriptionQuotaUsd != nil && *o.SubscriptionQuotaUsd > 0 {
+			quotaLimitUSD = o.SubscriptionQuotaUsd
+		}
+		sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+			UserID:              o.UserID,
+			GroupID:             gid,
+			ValidityDays:        days,
+			ValidityUnit:        validityUnit,
+			StartsAt:            startsAt,
+			ExpiresAt:           expiresAt,
+			AssignedBy:          0,
+			Notes:               orderNote,
+			RestartPeriod:       days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,
+			Source:              domain.SubscriptionSourcePayment,
+			QuotaLimitSpecified: true,
+			QuotaLimitUSD:       quotaLimitUSD,
+		})
 		if err != nil {
 			return fmt.Errorf("assign subscription: %w", err)
 		}
@@ -418,40 +443,10 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder) error
 			"groupID":      gid,
 			"validityDays": days,
 		})
-	} else {
-		slog.Info("subscription already assigned for order, skipping", "orderID", o.ID, "groupID", gid)
-	}
-	orderNote := fmt.Sprintf("payment order %d", o.ID)
-	var startsAt, expiresAt *time.Time
-	if o.SubscriptionPlanExpiresAt != nil {
-		now := time.Now()
-		startsAt = &now
-		expiresAt = o.SubscriptionPlanExpiresAt
-	}
-	var quotaLimitUSD *float64
-	if o.SubscriptionQuotaUsd != nil && *o.SubscriptionQuotaUsd > 0 {
-		quotaLimitUSD = o.SubscriptionQuotaUsd
-	}
-	sub, _, err := s.subscriptionSvc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
-		UserID:              o.UserID,
-		GroupID:             gid,
-		ValidityDays:        days,
-		ValidityUnit:        validityUnit,
-		StartsAt:            startsAt,
-		ExpiresAt:           expiresAt,
-		AssignedBy:          0,
-		Notes:               orderNote,
-		RestartPeriod:       days > 1 && paymentOrderSubscriptionRenewalMode(o) == SubscriptionRenewalModeRestart,
-		Source:              domain.SubscriptionSourcePayment,
-		QuotaLimitSpecified: true,
-		QuotaLimitUSD:       quotaLimitUSD,
-	})
-	if err != nil {
-		return fmt.Errorf("assign subscription: %w", err)
-	}
-	if sub != nil && sub.ID > 0 {
-		if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionID(sub.ID).Save(ctx); err != nil {
-			return fmt.Errorf("persist subscription id: %w", err)
+		if sub != nil && sub.ID > 0 {
+			if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionID(sub.ID).Save(ctx); err != nil {
+				return fmt.Errorf("persist subscription id: %w", err)
+			}
 		}
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
