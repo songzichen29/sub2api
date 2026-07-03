@@ -26,6 +26,16 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
+        <AccountTagsInput
+          v-model="form.tags"
+          :suggestions="tagSuggestions"
+          :placeholder="t('admin.accounts.tags.placeholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div>
@@ -137,9 +147,29 @@
               </button>
             </div>
 
-            <!-- Whitelist Mode -->
+            <div class="mb-2 flex items-center justify-between">
+            <button
+              v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
+              type="button"
+              class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+              @click="applyUpstreamModelsToWhitelist"
+            >
+              应用拉取结果到白名单（{{ upstreamModels.length }}）
+            </button>
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+              :disabled="upstreamModelsProbing"
+              @click="probeCurrentUpstreamModels"
+            >
+              <span v-if="upstreamModelsProbing">拉取中…</span>
+              <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+            </button>
+          </div>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
+          <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+              <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :dynamic-models="upstreamModels" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -174,7 +204,7 @@
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="flex flex-wrap items-center gap-2"
               >
                 <input
                   v-model="mapping.from"
@@ -215,6 +245,13 @@
                     />
                   </svg>
                 </button>
+                <input
+                  v-model="mapping.note"
+                  type="text"
+                  class="input w-full"
+                  :data-testid="`model-mapping-note-${index}`"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -419,6 +456,55 @@
 
       </div>
 
+      <!-- 第三方面板用量查询 (仅 apikey 类型) -->
+      <div
+        v-if="account.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-3"
+      >
+        <div class="mb-2">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.usageQuery.hint') }}
+          </p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
+          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
+        </label>
+        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
+            <select v-model="usageQueryProvider" class="input">
+              <option value="newapi">newapi</option>
+            </select>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+            <input
+              v-model="usageQueryBaseUrl"
+              type="text"
+              class="input"
+              placeholder="https://newapi.example.com"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+            <input
+              v-model="usageQueryAccessToken"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.usageQuery.editTokenHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+            <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
         v-if="account.platform === 'openai' && account.type === 'oauth'"
@@ -464,9 +550,29 @@
             </button>
           </div>
 
+          <div class="mb-2 flex items-center justify-between">
+            <button
+              v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
+              type="button"
+              class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+              @click="applyUpstreamModelsToWhitelist"
+            >
+              应用拉取结果到白名单（{{ upstreamModels.length }}）
+            </button>
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+              :disabled="upstreamModelsProbing"
+              @click="probeCurrentUpstreamModels"
+            >
+              <span v-if="upstreamModelsProbing">拉取中…</span>
+              <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+            </button>
+          </div>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :dynamic-models="upstreamModels" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -487,7 +593,7 @@
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="'oauth-' + getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="flex flex-wrap items-center gap-2"
               >
                 <input
                   v-model="mapping.from"
@@ -528,6 +634,13 @@
                     />
                   </svg>
                 </button>
+                <input
+                  v-model="mapping.note"
+                  type="text"
+                  class="input w-full"
+                  :data-testid="`model-mapping-note-${index}`"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -676,9 +789,29 @@
             </button>
           </div>
 
+          <div class="mb-2 flex items-center justify-between">
+            <button
+              v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
+              type="button"
+              class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+              @click="applyUpstreamModelsToWhitelist"
+            >
+              应用拉取结果到白名单（{{ upstreamModels.length }}）
+            </button>
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+              :disabled="upstreamModelsProbing"
+              @click="probeCurrentUpstreamModels"
+            >
+              <span v-if="upstreamModelsProbing">拉取中…</span>
+              <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+            </button>
+          </div>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" :account-id="account?.id" :dynamic-models="upstreamModels" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -713,7 +846,7 @@
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                class="flex flex-wrap items-center gap-2"
               >
                 <input
                   v-model="mapping.from"
@@ -754,6 +887,13 @@
                     />
                   </svg>
                 </button>
+                <input
+                  v-model="mapping.note"
+                  type="text"
+                  class="input w-full"
+                  :data-testid="`model-mapping-note-${index}`"
+                  :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+                />
               </div>
             </div>
 
@@ -898,9 +1038,29 @@
             </button>
           </div>
 
+          <div class="mb-2 flex items-center justify-between">
+            <button
+              v-if="modelRestrictionMode === 'whitelist' && upstreamModels.length > 0"
+              type="button"
+              class="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+              @click="applyUpstreamModelsToWhitelist"
+            >
+              应用拉取结果到白名单（{{ upstreamModels.length }}）
+            </button>
+            <button
+              type="button"
+              class="text-xs text-primary-600 hover:text-primary-700 disabled:opacity-50 dark:text-primary-400"
+              :disabled="upstreamModelsProbing"
+              @click="probeCurrentUpstreamModels"
+            >
+              <span v-if="upstreamModelsProbing">拉取中…</span>
+              <span v-else>{{ upstreamModels.length > 0 ? `已拉取 ${upstreamModels.length} 个模型 · 重新拉取` : '从上游拉取模型列表' }}</span>
+            </button>
+          </div>
+          <p v-if="upstreamModelsProbeError" class="mb-2 text-xs text-red-600 dark:text-red-400">{{ upstreamModelsProbeError }}</p>
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" />
+            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" :dynamic-models="upstreamModels" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -909,13 +1069,20 @@
 
           <!-- Mapping Mode -->
           <div v-else class="space-y-3">
-            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex items-center gap-2">
+            <div v-for="(mapping, index) in modelMappings" :key="getModelMappingKey(mapping)" class="flex flex-wrap items-center gap-2">
               <input v-model="mapping.from" type="text" class="input flex-1" :placeholder="t('admin.accounts.fromModel')" />
               <span class="text-gray-400">→</span>
               <input v-model="mapping.to" type="text" class="input flex-1" :placeholder="t('admin.accounts.toModel')" />
               <button type="button" @click="modelMappings.splice(index, 1)" class="text-red-500 hover:text-red-700">
                 <Icon name="trash" size="sm" />
               </button>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input w-full"
+                :data-testid="`model-mapping-note-${index}`"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
             </div>
             <button type="button" @click="modelMappings.push({ from: '', to: '' })" class="btn btn-secondary text-sm">
               + {{ t('admin.accounts.addMapping') }}
@@ -1081,6 +1248,13 @@
                   </svg>
                 </button>
               </div>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input w-full"
+                :data-testid="`antigravity-model-mapping-note-${index}`"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
               <!-- 校验错误提示 -->
               <p v-if="!isValidWildcardPattern(mapping.from)" class="text-xs text-red-500">
                 {{ t('admin.accounts.wildcardOnlyAtEnd') }}
@@ -1748,7 +1922,7 @@
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
               :key="getOpenAICompactModelMappingKey(mapping)"
-              class="flex items-center gap-2"
+              class="flex flex-wrap items-center gap-2"
             >
               <input
                 v-model="mapping.from"
@@ -1766,6 +1940,13 @@
               <button type="button" @click="removeOpenAICompactModelMapping(index)" class="text-red-500 hover:text-red-700">
                 <Icon name="trash" size="sm" />
               </button>
+              <input
+                v-model="mapping.note"
+                type="text"
+                class="input w-full"
+                :data-testid="`openai-compact-model-mapping-note-${index}`"
+                :placeholder="t('admin.accounts.modelMappingNotePlaceholder')"
+              />
             </div>
           </div>
           <button type="button" @click="addOpenAICompactModelMapping" class="btn btn-secondary text-sm">
@@ -2492,6 +2673,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import {
@@ -2514,6 +2696,7 @@ import {
   getPresetMappingsByPlatform,
   commonErrorCodes,
   buildModelMappingObject,
+  buildModelMappingNotesObject,
   splitModelMappingObject,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
@@ -2554,6 +2737,7 @@ const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 interface ModelMapping {
   from: string
   to: string
+  note?: string
 }
 
 interface TempUnschedRuleForm {
@@ -2585,6 +2769,52 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+
+// 上游模型探测：优先用表单 base_url + api_key，api_key 留空时由后端用已保存凭据探测。
+const upstreamModels = ref<string[]>([])
+const upstreamModelsProbing = ref(false)
+const upstreamModelsProbeError = ref('')
+const probeCurrentUpstreamModels = async () => {
+  upstreamModelsProbeError.value = ''
+  const baseURL = (editBaseUrl.value || '').trim()
+  const apiKey = (editApiKey.value || '').trim()
+  upstreamModelsProbing.value = true
+  try {
+    const account = props.account
+    if (baseURL && apiKey && account) {
+      upstreamModels.value = await adminAPI.accounts.probeUpstreamModels({
+        platform: account.platform,
+        type: account.type,
+        base_url: baseURL,
+        api_key: apiKey
+      })
+    } else if (account?.id) {
+      upstreamModels.value = await adminAPI.accounts.probeAccountUpstreamModels(account.id)
+    } else {
+      upstreamModelsProbeError.value = '请填写 Base URL 和 API Key'
+    }
+    if (upstreamModels.value.length === 0 && !upstreamModelsProbeError.value) {
+      upstreamModelsProbeError.value = '上游返回空模型列表'
+    }
+    // 拉取成功后，若白名单模式且当前为空，自动填充。
+    if (
+      upstreamModels.value.length > 0 &&
+      modelRestrictionMode.value === 'whitelist' &&
+      allowedModels.value.length === 0
+    ) {
+      allowedModels.value = [...upstreamModels.value]
+    }
+  } catch (e: any) {
+    upstreamModels.value = []
+    upstreamModelsProbeError.value = e?.response?.data?.error?.message || e?.message || '拉取失败'
+  } finally {
+    upstreamModelsProbing.value = false
+  }
+}
+const applyUpstreamModelsToWhitelist = () => {
+  if (upstreamModels.value.length === 0) return
+  allowedModels.value = [...upstreamModels.value]
+}
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -2969,8 +3199,22 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  tags: [] as string[]
 })
+
+// 账号标签字典：作为编辑弹窗内 AccountTagsInput 的 autocomplete 候选；失败兜底为空数组。
+const tagSuggestions = ref<string[]>([])
+adminAPI.accounts.listTags()
+  .then(tags => { tagSuggestions.value = tags })
+  .catch(() => { tagSuggestions.value = [] })
+
+// 第三方面板用量查询（仅 apikey 类型；当前仅支持 newapi）
+const usageQueryEnabled = ref(false)
+const usageQueryProvider = ref<'newapi'>('newapi')
+const usageQueryBaseUrl = ref('')
+const usageQueryAccessToken = ref('')
+const usageQueryUserId = ref('')
 
 const statusOptions = computed(() => {
   const options = [
@@ -3005,10 +3249,16 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 }
 
-const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) => {
+const loadModelRestrictionFromMapping = (
+  rawMapping?: Record<string, unknown> | null,
+  rawNotes?: Record<string, unknown> | null
+) => {
   const parsed = splitModelMappingObject(rawMapping)
   allowedModels.value = parsed.allowedModels
-  modelMappings.value = parsed.modelMappings
+  // splitModelMappingObject 不返回 note，需从 model_mapping_notes 单独回填到每条映射。
+  const notesMap =
+    rawNotes && typeof rawNotes === 'object' ? (rawNotes as Record<string, string>) : {}
+  modelMappings.value = parsed.modelMappings.map((m) => ({ ...m, note: notesMap[m.from] || '' }))
   modelRestrictionMode.value =
     parsed.modelMappings.length > 0 && parsed.allowedModels.length === 0
       ? 'mapping'
@@ -3018,26 +3268,50 @@ const loadModelRestrictionFromMapping = (rawMapping?: Record<string, unknown>) =
 const buildModelRestrictionMapping = () =>
   buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
 
+// 把 mapping 与每条备注一起写入目标对象；mapping 为空时同步清掉 notes，避免残留旧备注。
+const applyModelMappingWithNotes = (
+  target: Record<string, unknown>,
+  mappingKey: 'model_mapping' | 'compact_model_mapping',
+  notesKey: 'model_mapping_notes' | 'compact_model_mapping_notes',
+  mapping: Record<string, string> | null,
+  rows: ModelMapping[]
+) => {
+  if (mapping) {
+    target[mappingKey] = mapping
+  } else {
+    delete target[mappingKey]
+  }
+  const notes = buildModelMappingNotesObject(rows)
+  if (notes) {
+    target[notesKey] = notes
+  } else {
+    delete target[notesKey]
+  }
+}
+
 const applyOpenAIModelMappingCredentials = (credentials: Record<string, unknown>) => {
   const shouldApplyModelMapping = !openaiPassthroughEnabled.value
 
   if (shouldApplyModelMapping) {
-    const modelMapping = buildModelRestrictionMapping()
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    } else {
-      delete credentials.model_mapping
-    }
+    applyModelMappingWithNotes(
+      credentials,
+      'model_mapping',
+      'model_mapping_notes',
+      buildModelRestrictionMapping(),
+      modelMappings.value
+    )
   } else if (!credentials.model_mapping) {
     delete credentials.model_mapping
+    delete credentials.model_mapping_notes
   }
 
-  const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-  if (compactModelMapping) {
-    credentials.compact_model_mapping = compactModelMapping
-  } else {
-    delete credentials.compact_model_mapping
-  }
+  applyModelMappingWithNotes(
+    credentials,
+    'compact_model_mapping',
+    'compact_model_mapping_notes',
+    buildModelMappingObject('mapping', [], openAICompactModelMappings.value),
+    openAICompactModelMappings.value
+  )
 }
 
 const syncFormFromAccount = (newAccount: Account | null) => {
@@ -3061,6 +3335,31 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
+  form.tags = Array.isArray(newAccount.tags) ? [...newAccount.tags] : []
+
+  // 第三方面板用量查询：从 extra.usage_query 还原（access_token 是后端下发的占位符 ••••••••）
+  const uq = (newAccount.extra as Record<string, unknown> | undefined)?.usage_query as
+    | {
+        enabled?: boolean
+        provider?: string
+        base_url?: string
+        access_token?: string
+        user_id?: string
+      }
+    | undefined
+  if (uq && typeof uq === 'object') {
+    usageQueryEnabled.value = !!uq.enabled
+    usageQueryProvider.value = 'newapi'
+    usageQueryBaseUrl.value = String(uq.base_url || '')
+    usageQueryAccessToken.value = String(uq.access_token || '')
+    usageQueryUserId.value = String(uq.user_id || '')
+  } else {
+    usageQueryEnabled.value = false
+    usageQueryProvider.value = 'newapi'
+    usageQueryBaseUrl.value = ''
+    usageQueryAccessToken.value = ''
+    usageQueryUserId.value = ''
+  }
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -3139,8 +3438,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
+    const compactNotes = credentials?.compact_model_mapping_notes as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
-      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
+      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({
+        from,
+        to,
+        note: compactNotes?.[from] || ''
+      }))
+    } else {
+      openAICompactModelMappings.value = []
     }
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
@@ -3235,7 +3541,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editBaseUrl.value = (credentials.base_url as string) || platformDefaultUrl
 
     // Load model mappings and detect mode
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined, credentials.model_mapping_notes as Record<string, unknown> | undefined)
 
     // Load pool mode
     poolModeEnabled.value = credentials.pool_mode === true
@@ -3281,7 +3587,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     loadQuotaNotifyFromExtra(bedrockExtra)
 
     // Load model mappings for bedrock
-    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(bedrockCreds.model_mapping as Record<string, unknown> | undefined, bedrockCreds.model_mapping_notes as Record<string, unknown> | undefined)
   } else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
@@ -3292,7 +3598,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
 
     // Load model mappings for service_account
-    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
+    loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined, credentials.model_mapping_notes as Record<string, unknown> | undefined)
   } else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -3305,7 +3611,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Load model mappings for OpenAI OAuth accounts
     if (newAccount.platform === 'openai' && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
-      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
+      loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined, oauthCredentials.model_mapping_notes as Record<string, unknown> | undefined)
     } else {
       modelRestrictionMode.value = 'whitelist'
       modelMappings.value = []
@@ -3851,23 +4157,30 @@ const handleSubmit = async () => {
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
       if (shouldApplyModelMapping) {
-        const modelMapping = buildModelRestrictionMapping()
-        if (modelMapping) {
-          newCredentials.model_mapping = modelMapping
-        } else {
-          delete newCredentials.model_mapping
-        }
+        applyModelMappingWithNotes(
+          newCredentials,
+          'model_mapping',
+          'model_mapping_notes',
+          buildModelRestrictionMapping(),
+          modelMappings.value
+        )
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
+        if (currentCredentials.model_mapping_notes) {
+          newCredentials.model_mapping_notes = currentCredentials.model_mapping_notes
+        } else {
+          delete newCredentials.model_mapping_notes
+        }
       }
       if (props.account.platform === 'openai') {
         applyOpenAIEndpointCapabilities(newCredentials)
-        const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)
-        if (compactModelMapping) {
-          newCredentials.compact_model_mapping = compactModelMapping
-        } else {
-          delete newCredentials.compact_model_mapping
-        }
+        applyModelMappingWithNotes(
+          newCredentials,
+          'compact_model_mapping',
+          'compact_model_mapping_notes',
+          buildModelMappingObject('mapping', [], openAICompactModelMappings.value),
+          openAICompactModelMappings.value
+        )
       }
 
       // Add pool mode if enabled
@@ -3955,12 +4268,13 @@ const handleSubmit = async () => {
       newCredentials.tier_id = 'vertex'
 
       // Add model mapping if configured
-      const modelMapping = buildModelRestrictionMapping()
-      if (modelMapping) {
-        newCredentials.model_mapping = modelMapping
-      } else {
-        delete newCredentials.model_mapping
-      }
+      applyModelMappingWithNotes(
+        newCredentials,
+        'model_mapping',
+        'model_mapping_notes',
+        buildModelRestrictionMapping(),
+        modelMappings.value
+      )
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
@@ -4012,12 +4326,13 @@ const handleSubmit = async () => {
       }
 
       // Model mapping
-      const modelMapping = buildModelRestrictionMapping()
-      if (modelMapping) {
-        newCredentials.model_mapping = modelMapping
-      } else {
-        delete newCredentials.model_mapping
-      }
+      applyModelMappingWithNotes(
+        newCredentials,
+        'model_mapping',
+        'model_mapping_notes',
+        buildModelRestrictionMapping(),
+        modelMappings.value
+      )
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
@@ -4065,14 +4380,13 @@ const handleSubmit = async () => {
       delete newCredentials.model_mapping
 
       // 只使用映射模式
-      const antigravityModelMapping = buildModelMappingObject(
-        'mapping',
-        [],
+      applyModelMappingWithNotes(
+        newCredentials,
+        'model_mapping',
+        'model_mapping_notes',
+        buildModelMappingObject('mapping', [], antigravityModelMappings.value),
         antigravityModelMappings.value
       )
-      if (antigravityModelMapping) {
-        newCredentials.model_mapping = antigravityModelMapping
-      }
 
       updatePayload.credentials = newCredentials
     }
@@ -4354,6 +4668,34 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      // 第三方面板用量查询（仅 apikey）：编辑时显式写入，避免无法修改已配置项。
+      if (props.account.type === 'apikey') {
+        if (usageQueryEnabled.value) {
+          const uqBaseUrl = usageQueryBaseUrl.value.trim()
+          const uqUserId = usageQueryUserId.value.trim()
+          const uqToken = usageQueryAccessToken.value.trim()
+          // 任一必填项空时阻止提交。编辑场景下 token 默认是后端占位符，保留原值也算"已填"。
+          if (!uqBaseUrl || !uqUserId || !uqToken) {
+            appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+            return
+          }
+          newExtra.usage_query = {
+            enabled: true,
+            provider: usageQueryProvider.value,
+            base_url: uqBaseUrl,
+            access_token: uqToken,
+            user_id: uqUserId
+          }
+        } else {
+          // 关闭开关：保留其它字段但 enabled=false，便于回退恢复
+          const prevUsageQuery = (props.account.extra as Record<string, unknown> | undefined)?.usage_query
+          if (prevUsageQuery && typeof prevUsageQuery === 'object') {
+            newExtra.usage_query = { ...(prevUsageQuery as object), enabled: false }
+          } else {
+            delete newExtra.usage_query
+          }
+        }
+      }
       updatePayload.extra = newExtra
     }
 

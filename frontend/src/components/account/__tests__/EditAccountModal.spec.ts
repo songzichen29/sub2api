@@ -391,6 +391,25 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('loads account tags from props and submits them on save', async () => {
+    // 回归测试：merge 6fd20460 曾丢失编辑弹窗的标签功能（form.tags / AccountTagsInput /
+    // listTags 全部被删），导致编辑账号无法设置/修改标签。此处验证账号 tags 能正确
+    // 回填到表单并在保存时随 updatePayload 提交。
+    const account = buildAccount()
+    account.tags = ['prod', 'vip']
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.tags).toEqual(['prod', 'vip'])
+  })
+
   it('only submits model mapping credentials when saving an OpenAI spark shadow account', async () => {
     authIsSimpleMode.value = false
     const account = buildOpenAISparkShadowAccount()

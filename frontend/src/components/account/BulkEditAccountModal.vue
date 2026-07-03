@@ -1079,6 +1079,36 @@
           />
         </div>
       </div>
+
+      <!-- Tags：勾选 enableTags 后才把 tags 加进 payload，对应后端 *[]string 语义。
+           不勾 = 不改；勾选传空数组 = 清空；勾选传非空数组 = 全量替换。 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label
+            id="bulk-edit-tags-label"
+            class="input-label mb-0"
+            for="bulk-edit-tags-enabled"
+          >
+            {{ t('admin.accounts.tags.label') }}
+          </label>
+          <input
+            v-model="enableTags"
+            id="bulk-edit-tags-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-tags"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div id="bulk-edit-tags" :class="!enableTags && 'pointer-events-none opacity-50'">
+          <AccountTagsInput
+            v-model="tags"
+            :suggestions="tagSuggestions"
+            :disabled="!enableTags"
+            :placeholder="t('admin.accounts.tags.placeholder')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.tags.bulkReplaceHint') }}</p>
+        </div>
+      </div>
     </form>
 
     <template #footer>
@@ -1143,6 +1173,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
@@ -1267,6 +1298,15 @@ const enableCodexCLIOnlyAppServer = ref(false)
 const enableOpenAICompactMode = ref(false)
 const enableOpenAICompactModelMapping = ref(false)
 const enableRpmLimit = ref(false)
+const enableTags = ref(false)
+
+// 账号标签：enableTags 不勾=不改；勾选传空数组=清空；勾选传非空=全量替换（后端 *[]string 语义）。
+const tags = ref<string[]>([])
+// 账号标签字典：批量编辑 AccountTagsInput 的 autocomplete 候选；失败兜底为空数组。
+const tagSuggestions = ref<string[]>([])
+adminAPI.accounts.listTags()
+  .then(list => { tagSuggestions.value = list })
+  .catch(() => { tagSuggestions.value = [] })
 
 // State - field values
 const submitting = ref(false)
@@ -1475,6 +1515,11 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     updates.group_ids = groupIds.value
   }
 
+  if (enableTags.value) {
+    // 后端 BulkUpdateAccountsInput.Tags 是 *[]string：不传=不改；空数组=清空；非空=全量替换。
+    updates.tags = tags.value
+  }
+
   if (enableBaseUrl.value) {
     const baseUrlValue = baseUrl.value.trim()
     if (baseUrlValue) {
@@ -1656,6 +1701,7 @@ const handleSubmit = async () => {
     enableRateMultiplier.value ||
     enableStatus.value ||
     enableGroups.value ||
+    enableTags.value ||
     enableOpenAIWSMode.value ||
     enableOpenAIAPIKeyWSMode.value ||
     enableCodexCLIOnly.value ||
@@ -1766,6 +1812,7 @@ watch(
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false
+      enableTags.value = false
 
       // Reset all values
       baseUrl.value = ''
@@ -1783,6 +1830,7 @@ watch(
       rateMultiplier.value = 1
       status.value = 'active'
       groupIds.value = []
+      tags.value = []
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false

@@ -15,6 +15,7 @@ import type {
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
+  AdminDataImportApply,
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
@@ -524,6 +525,15 @@ export async function probeUpstreamModels(params: SyncUpstreamPreviewParams): Pr
 }
 
 /**
+ * 使用已保存账号的凭据探测上游模型列表（编辑场景，api_key 脱敏留空时由后端用已存凭据探测）。
+ * 对应后端 POST /admin/accounts/:id/probe-models。
+ */
+export async function probeAccountUpstreamModels(id: number): Promise<string[]> {
+  const { data } = await apiClient.post<string[]>(`/admin/accounts/${id}/probe-models`)
+  return data
+}
+
+/**
  * List all account tags for autocomplete/filtering.
  */
 export async function listTags(): Promise<string[]> {
@@ -626,11 +636,21 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
+  // 导入应用块（feature 2026-05-06-account-import-apply）：admin 在弹窗里勾选并
+  // 填值的字段。后端按指针非 nil 判定是否应用，所以前端必须严格跳过未勾选的字段
+  // （从 payload 整体省略，不要发 null 或默认值）。
+  apply?: AdminDataImportApply
 }): Promise<AdminDataImportResult> {
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
+  const body: Record<string, unknown> = {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
-  })
+  }
+  // 仅在 apply 非 undefined 时把它放进 body；这样不勾选任何字段时
+  // POST body 里完全不出现 apply 键，等价旧版本行为。
+  if (payload.apply !== undefined) {
+    body.apply = payload.apply
+  }
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', body)
   return data
 }
 
@@ -847,6 +867,7 @@ export const accountsAPI = {
   syncUpstreamModels,
   syncUpstreamModelsPreview,
   probeUpstreamModels,
+  probeAccountUpstreamModels,
   listTags,
   generateAuthUrl,
   exchangeCode,
