@@ -371,7 +371,9 @@
         withSuffix: '{time} to lift'
       }
     },
-    login: 'Login'
+    login: 'Login',
+    peakRateTooltip: 'Peak-rate window: {window}',
+    peakRateImageNote: ', image/special billing follows the final bill'
   },
 
   adminCompliance: {
@@ -758,6 +760,7 @@
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
     apiKey: 'API Key',
     group: 'Group',
+    currentConcurrency: 'Current Concurrency',
     noGroup: 'No group',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',
@@ -1025,6 +1028,7 @@
       allKeys: 'All Keys',
       category: 'Category',
       allCategories: 'All Categories',
+      allStatuses: 'All Statuses',
       endpoint: 'Endpoint',
       status: 'Status',
       message: 'Message',
@@ -1050,6 +1054,21 @@
         upstreamStatus: 'Upstream Status',
         responseBody: 'Response Body'
       }
+    },
+    ipGeo: {
+      fetch: 'Fetch region',
+      fetching: 'Fetching...',
+      failed: 'Failed',
+      private: 'Private address',
+      refreshTitle: 'Refresh region',
+      batchFetch: 'Batch fetch regions',
+      batchFetching: 'Batch fetching...',
+      pending: '{count} IPs pending',
+      batchFailed: 'Failed to fetch some IP regions',
+      detailOrg: 'ISP',
+      detailTimezone: 'Timezone',
+      detailAccuracy: 'Accuracy',
+      detailCoordinates: 'Coordinates'
     }
   },
 
@@ -3602,6 +3621,7 @@
         wsModeOff: 'Off (off)',
         wsModeCtxPool: 'Context Pool (ctx_pool)',
         wsModePassthrough: 'Passthrough (passthrough)',
+        wsModeHttpBridge: 'HTTP Bridge (http_bridge)',
         wsModeShared: 'Shared (shared)',
         wsModeDedicated: 'Dedicated (dedicated)',
         wsModeConcurrencyHint:
@@ -6308,12 +6328,24 @@
         typeDisabled: 'type disabled',
         enableTypesFirst: 'Enable at least one payment type above first',
         easypayRedirect: 'Redirect',
+        easypayCustomMethods: 'Custom EasyPay methods',
+        easypayCustomMethodsHint: 'Add non-built-in methods for this EasyPay provider, such as credit card, bank card, or custom channels.',
+        addCustomMethod: 'Add custom method',
+        customMethodType: 'Frontend type',
+        customMethodUpstreamType: 'Upstream type',
+        customMethodDisplayName: 'Display name',
         paymentMode: 'Payment Mode',
         modeRedirect: 'Redirect',
         modeQRCode: 'QR Code',
         modePopup: 'Popup',
         validationNameRequired: 'Provider name is required',
         validationTypesRequired: 'Please select at least one supported payment type',
+        validationEasyPayCustomMethodRequired: 'Custom method requires both frontend type and upstream type',
+        validationEasyPayCustomMethodDuplicate: 'Custom method types cannot be duplicated',
+        validationEasyPayCustomMethodReserved: 'Custom methods cannot use built-in types',
+        validationEasyPayCustomMethodPrefixReserved: 'Custom methods cannot start with alipay or wxpay',
+        validationEasyPayCustomMethodTypeInvalid: 'Frontend type can only contain lowercase letters, numbers, underscores, and hyphens',
+        validationEasyPayCustomMethodUpstreamTypeInvalid: 'Upstream type can only contain lowercase letters, numbers, underscores, and hyphens',
         validationFieldRequired: '{field} is required',
         field_apiBase: 'API Base URL',
         field_notifyUrl: 'Notify URL',

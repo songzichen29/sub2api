@@ -371,7 +371,9 @@ export default {
         withSuffix: '{time} 后解除'
       }
     },
-    login: '登录'
+    login: '登录',
+    peakRateTooltip: '高峰时段倍率：{window}',
+    peakRateImageNote: '，图片/特殊计费以实际账单为准'
   },
 
   adminCompliance: {
@@ -757,6 +759,7 @@ export default {
     deleteConfirmMessage: "确定要删除 '{name}' 吗？此操作无法撤销。",
     apiKey: 'API 密钥',
     group: '分组',
+    currentConcurrency: '当前并发数',
     noGroup: '无分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
@@ -1029,6 +1032,7 @@ export default {
       allKeys: '全部密钥',
       category: '分类',
       allCategories: '全部分类',
+      allStatuses: '全部状态',
       endpoint: '端点',
       status: '状态码',
       message: '消息',
@@ -1054,6 +1058,21 @@ export default {
         upstreamStatus: '上游状态码',
         responseBody: '响应体'
       }
+    },
+    ipGeo: {
+      fetch: '获取地区',
+      fetching: '获取中...',
+      failed: '获取失败',
+      private: '内网地址',
+      refreshTitle: '刷新地区',
+      batchFetch: '批量获取地区',
+      batchFetching: '批量获取中...',
+      pending: '{count} 个 IP 待获取地区',
+      batchFailed: '部分 IP 地区获取失败',
+      detailOrg: '运营商',
+      detailTimezone: '时区',
+      detailAccuracy: '精度',
+      detailCoordinates: '坐标'
     }
   },
 
@@ -3794,6 +3813,7 @@ export default {
         wsModeOff: '关闭（off）',
         wsModeCtxPool: '上下文池（ctx_pool）',
         wsModePassthrough: '透传（passthrough）',
+        wsModeHttpBridge: 'HTTP 桥接（http_bridge）',
         wsModeShared: '共享（shared）',
         wsModeDedicated: '独享（dedicated）',
         wsModeConcurrencyHint: '启用 WS mode 后，该账号并发数将作为该账号 WS 连接池上限。',
@@ -6460,12 +6480,24 @@ export default {
         typeDisabled: '类型已禁用',
         enableTypesFirst: '请先在上方启用至少一种服务商',
         easypayRedirect: '跳转',
+        easypayCustomMethods: 'EasyPay 自定义支付方式',
+        easypayCustomMethodsHint: '为当前 EasyPay 服务商添加非内置 method，例如信用卡、银行卡或自定义渠道。',
+        addCustomMethod: '添加自定义方式',
+        customMethodType: '前台类型',
+        customMethodUpstreamType: '上游类型',
+        customMethodDisplayName: '显示名称',
         paymentMode: '支付模式',
         modeRedirect: '跳转',
         modeQRCode: '二维码',
         modePopup: '弹窗',
         validationNameRequired: '服务商名称不能为空',
         validationTypesRequired: '请至少选择一种支持的支付方式',
+        validationEasyPayCustomMethodRequired: '自定义支付方式需同时填写前台类型和上游类型',
+        validationEasyPayCustomMethodDuplicate: '自定义支付方式类型不能重复',
+        validationEasyPayCustomMethodReserved: '自定义支付方式不能使用内置类型',
+        validationEasyPayCustomMethodPrefixReserved: '自定义支付方式不能以 alipay 或 wxpay 开头',
+        validationEasyPayCustomMethodTypeInvalid: '前台类型只能包含小写字母、数字、下划线和短横线',
+        validationEasyPayCustomMethodUpstreamTypeInvalid: '上游类型只能包含小写字母、数字、下划线和短横线',
         validationFieldRequired: '{field} 不能为空',
         field_apiBase: 'API 基础地址',
         field_notifyUrl: '异步通知地址',
