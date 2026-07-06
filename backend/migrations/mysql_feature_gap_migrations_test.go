@@ -142,6 +142,23 @@ func TestMySQLAccountSparkShadowMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLGroupPeakRateMultiplierMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("043_add_group_peak_rate_multiplier.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'groups'")
+	require.Contains(t, sql, "column_name = 'peak_rate_enabled'")
+	require.Contains(t, sql, "ADD COLUMN `peak_rate_enabled` BOOLEAN NOT NULL DEFAULT FALSE")
+	require.Contains(t, sql, "column_name = 'peak_start'")
+	require.Contains(t, sql, "ADD COLUMN `peak_start` VARCHAR(5) NOT NULL DEFAULT ''''")
+	require.Contains(t, sql, "column_name = 'peak_end'")
+	require.Contains(t, sql, "ADD COLUMN `peak_end` VARCHAR(5) NOT NULL DEFAULT ''''")
+	require.Contains(t, sql, "column_name = 'peak_rate_multiplier'")
+	require.Contains(t, sql, "ADD COLUMN `peak_rate_multiplier` DECIMAL(10,4) NOT NULL DEFAULT 1.0")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 
