@@ -227,6 +227,7 @@ async function mountSubscriptionConfirm(options: Parameters<typeof checkoutInfoW
         },
         Teleport: true,
         Transition: false,
+        PriceBreakdown: false,
       },
     },
   })
