@@ -34,6 +34,7 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  subscription_usd_to_cny_rate: number
   discount_rules?: DiscountRule[]
   enabled_payment_types: PaymentType[]
   help_image_url: string
@@ -67,6 +68,8 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  /** When > 0, CNY subscription checkout displays/pays price × this rate. */
+  subscription_usd_to_cny_rate: number
   quick_amounts?: number[]
   recharge_fee_rate: number
   help_text: string

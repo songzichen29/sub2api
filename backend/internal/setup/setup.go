@@ -91,12 +91,20 @@ func GetInstallLockPath() string {
 
 // SetupConfig holds the setup configuration
 type SetupConfig struct {
-	Database DatabaseConfig `json:"database" yaml:"database"`
-	Redis    RedisConfig    `json:"redis" yaml:"redis"`
-	Admin    AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
-	Server   ServerConfig   `json:"server" yaml:"server"`
-	JWT      JWTConfig      `json:"jwt" yaml:"jwt"`
-	Timezone string         `json:"timezone" yaml:"timezone"` // e.g. "America/Los_Angeles", "UTC"
+	Database                DatabaseConfig `json:"database" yaml:"database"`
+	Redis                   RedisConfig    `json:"redis" yaml:"redis"`
+	Admin                   AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
+	Server                  ServerConfig   `json:"server" yaml:"server"`
+	JWT                     JWTConfig      `json:"jwt" yaml:"jwt"`
+	Timezone                string         `json:"timezone" yaml:"timezone"` // e.g. "America/Los_Angeles", "UTC"
+	MigrationTimeoutSeconds int            `json:"migration_timeout_seconds" yaml:"migration_timeout_seconds"`
+}
+
+func (c *SetupConfig) migrationTimeout() time.Duration {
+	if c != nil && c.MigrationTimeoutSeconds > 0 {
+		return time.Duration(c.MigrationTimeoutSeconds) * time.Second
+	}
+	return 60 * time.Second
 }
 
 type DatabaseConfig struct {
@@ -391,7 +399,7 @@ func initializeDatabase(cfg *SetupConfig) error {
 		}
 	}()
 
-	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	migrationCtx, cancel := context.WithTimeout(context.Background(), cfg.migrationTimeout())
 	defer cancel()
 	return repository.ApplyMigrations(migrationCtx, db)
 }

@@ -2702,7 +2702,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if apiKey != nil {
 		imageGenerationAllowed = GroupAllowsImageGeneration(apiKey.Group)
 	}
-	codexImageGenerationBridgeEnabled := isCodexCLI && imageGenerationAllowed && s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
+	isCompactRequest := isOpenAIResponsesCompactPath(c)
+	codexImageGenerationExplicitToolPolicy := codexImageGenerationExplicitToolPolicyAllow
+	if isCodexCLI {
+		codexImageGenerationExplicitToolPolicy = account.CodexImageGenerationExplicitToolPolicy()
+	}
+	strippedExplicitImageToolByPolicy := false
+	if isCodexCLI && codexImageGenerationExplicitToolPolicy == codexImageGenerationExplicitToolPolicyStrip {
+		strippedExplicitImageToolByPolicy = stripOpenAIImageGenerationTools(reqBody)
+	}
+	codexImageGenerationBridgeEnabled := isCodexCLI &&
+		!isCompactRequest &&
+		imageGenerationAllowed &&
+		codexImageGenerationExplicitToolPolicy != codexImageGenerationExplicitToolPolicyStrip &&
+		s.isCodexImageGenerationBridgeEnabled(ctx, account, apiKey)
 	if IsImageGenerationIntentMap(openAIResponsesEndpoint, reqModel, reqBody) && !imageGenerationAllowed {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		c.JSON(http.StatusForbidden, gin.H{
@@ -2763,6 +2776,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	disablePatch := func() {
 		patchDisabled = true
+	}
+
+	if strippedExplicitImageToolByPolicy {
+		bodyModified = true
+		disablePatch()
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Stripped /responses image_generation tool for Codex client by account policy")
 	}
 
 	// 非透传模式下，instructions 为空时注入默认指令。
@@ -2856,7 +2875,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	// Compact-only model 映射：仅在 /responses/compact 路径生效，且优先级高于
 	// OAuth 模型规范化（避免 OAuth 规范化覆盖 compact-only 自定义模型）。
-	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	compactMapped := false
 	if isCompactRequest {
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
@@ -3391,6 +3409,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				wsAttempts,
 			)
 			wsResult.UpstreamModel = upstreamModel
+			if strings.TrimSpace(wsResult.BillingModel) == "" {
+				wsResult.BillingModel = billingModel
+			}
 			if wsResult.ImageCount > 0 {
 				wsResult.ImageSize = imageSizeTier
 				wsResult.ImageInputSize = imageInputSize
@@ -3600,6 +3621,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			ResponseID:           responseID,
 			Usage:                *usage,
 			Model:                originalModel,
+			BillingModel:         billingModel,
 			UpstreamModel:        upstreamModel,
 			ServiceTier:          serviceTier,
 			ReasoningEffort:      reasoningEffort,
@@ -7493,7 +7515,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		}
 		multiplier = resolver.Resolve(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
-	imageMultiplier := resolveImageRateMultiplier(apiKey, multiplier)
+	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
+	// 不并入 user:group 倍率缓存。
+	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, multiplier, time.Now())
 
 	var cost *CostBreakdown
 	var err error
@@ -7592,7 +7616,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.TotalCost = cost.TotalCost
 		usageLog.ActualCost = cost.ActualCost
 	}
-	if result.ImageCount > 0 {
+	if cost != nil && cost.BillingMode == string(BillingModeToken) {
+		usageLog.RateMultiplier = multiplier
+	} else if result.ImageCount > 0 {
 		usageLog.RateMultiplier = imageMultiplier
 	} else {
 		usageLog.RateMultiplier = multiplier
@@ -7696,11 +7722,30 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	serviceTier string,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
-	if result != nil && result.ImageCount > 0 {
-		return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
-	}
 	if len(billingModels) == 0 || billingModel == "" {
 		return nil, errors.New("openai usage billing model is empty")
+	}
+	if result != nil && result.ImageCount > 0 {
+		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil {
+			switch resolved.Mode {
+			case BillingModePerRequest, BillingModeImage:
+				return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+			default:
+				gid := apiKey.Group.ID
+				return s.billingService.CalculateCostUnified(CostInput{
+					Ctx:            ctx,
+					Model:          billingModel,
+					GroupID:        &gid,
+					Tokens:         tokens,
+					RequestCount:   result.ImageCount,
+					RateMultiplier: multiplier,
+					ServiceTier:    serviceTier,
+					Resolver:       s.resolver,
+					Resolved:       resolved,
+				})
+			}
+		}
+		return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
 	}
 	var lastErr error
 	for _, candidate := range billingModels {

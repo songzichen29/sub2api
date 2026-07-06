@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -50,6 +51,14 @@ func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription)
 
 func (r *subscriptionEntRepo) GetByID(ctx context.Context, id int64) (*UserSubscription, error) {
 	m, err := r.clientFromContext(ctx).UserSubscription.Query().Where(usersubscription.IDEQ(id)).Only(ctx)
+	if err != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	return entUserSubscriptionToService(m), nil
+}
+
+func (r *subscriptionEntRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*UserSubscription, error) {
+	m, err := r.clientFromContext(ctx).UserSubscription.Query().Where(usersubscription.IDEQ(id)).Only(mixins.SkipSoftDelete(ctx))
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 	}
@@ -113,6 +122,17 @@ func (r *subscriptionEntRepo) Update(ctx context.Context, sub *UserSubscription)
 }
 
 func (r *subscriptionEntRepo) Delete(context.Context, int64) error { panic("unexpected Delete") }
+func (r *subscriptionEntRepo) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*UserSubscription, error) {
+	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(subscriptionID).
+		SetStatus(restoredStatus).
+		ClearDeletedAt().
+		SetUpdatedAt(time.Now()).
+		Save(mixins.SkipSoftDelete(ctx))
+	if err != nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	return r.GetByID(ctx, subscriptionID)
+}
 func (r *subscriptionEntRepo) ListByUserID(context.Context, int64) ([]UserSubscription, error) {
 	panic("unexpected ListByUserID")
 }
@@ -127,6 +147,10 @@ func (r *subscriptionEntRepo) List(context.Context, pagination.PaginationParams,
 }
 func (r *subscriptionEntRepo) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
 	_, err := r.GetByUserIDAndGroupID(ctx, userID, groupID)
+	return err == nil, nil
+}
+func (r *subscriptionEntRepo) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	_, err := r.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 	return err == nil, nil
 }
 func (r *subscriptionEntRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {

@@ -13,9 +13,14 @@ const (
 	opsConcurrencyBatchChunkSize = 200
 )
 
-func (s *OpsService) listAllAccountsForOps(ctx context.Context, platformFilter string) ([]Account, error) {
+func (s *OpsService) listAllAccountsForOps(ctx context.Context, platformFilter string, groupIDFilter *int64) ([]Account, error) {
 	if s == nil || s.accountRepo == nil {
 		return []Account{}, nil
+	}
+
+	groupID := int64(0)
+	if groupIDFilter != nil && *groupIDFilter > 0 {
+		groupID = *groupIDFilter
 	}
 
 	out := make([]Account, 0, 128)
@@ -24,7 +29,7 @@ func (s *OpsService) listAllAccountsForOps(ctx context.Context, platformFilter s
 		accounts, pageInfo, err := s.accountRepo.ListWithFilters(ctx, pagination.PaginationParams{
 			Page:     page,
 			PageSize: opsAccountsPageSize,
-		}, platformFilter, "", "", "", 0, "", nil)
+		}, platformFilter, "", "", "", groupID, "", nil)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +117,7 @@ func (s *OpsService) GetConcurrencyStats(
 		return nil, nil, nil, nil, err
 	}
 
-	accounts, err := s.listAllAccountsForOps(ctx, platformFilter)
+	accounts, err := s.listAllAccountsForOps(ctx, platformFilter, groupIDFilter)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

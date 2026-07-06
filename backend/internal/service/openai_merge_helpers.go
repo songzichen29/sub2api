@@ -240,6 +240,24 @@ func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model stri
 	return rebuilt, true, nil
 }
 
+func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
+	if !strings.Contains(string(payload), "image_generation") {
+		return payload, false, nil
+	}
+	payloadMap := make(map[string]any)
+	if err := decodeOpenAIRequestMapUseNumber(payload, &payloadMap); err != nil {
+		return payload, false, err
+	}
+	if !stripOpenAIImageGenerationTools(payloadMap) {
+		return payload, false, nil
+	}
+	rebuilt, err := marshalOpenAIUpstreamJSON(payloadMap)
+	if err != nil {
+		return payload, false, err
+	}
+	return rebuilt, true, nil
+}
+
 func removeEmptyPreviousResponseIDFromRawPayload(payload []byte) ([]byte, bool, error) {
 	value := gjson.GetBytes(payload, "previous_response_id")
 	if !value.Exists() {

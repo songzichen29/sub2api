@@ -87,20 +87,44 @@ func (s *PaymentService) PreviewPrice(ctx context.Context, req PreviewPriceReque
 			return nil, err
 		}
 	}
-	_, payAmount, err := calculateCreateOrderPayAmount(afterDiscount, feeRate, currency)
+	displayBaseAmount := previewGatewayAmountForOrderType(baseAmount, req.OrderType, currency, cfg.SubscriptionUSDToCNYRate)
+	displayAfterThreshold := previewGatewayAmountForOrderType(threshold.AfterDiscount, req.OrderType, currency, cfg.SubscriptionUSDToCNYRate)
+	displayAfterDiscount := previewGatewayAmountForOrderType(afterDiscount, req.OrderType, currency, cfg.SubscriptionUSDToCNYRate)
+	displayThresholdDiscount := previewGatewayDelta(displayBaseAmount, displayAfterThreshold, currency)
+	displayCouponDiscount := previewGatewayDelta(displayAfterThreshold, displayAfterDiscount, currency)
+	_, payAmount, err := calculateCreateOrderPayAmount(displayAfterDiscount, feeRate, currency)
 	if err != nil {
 		return nil, err
 	}
-	fee := decimal.NewFromFloat(payAmount).Sub(decimal.NewFromFloat(afterDiscount))
+	fee := decimal.NewFromFloat(payAmount).Sub(decimal.NewFromFloat(displayAfterDiscount))
+	if couponInfo != nil {
+		couponInfo.DiscountAmount = displayCouponDiscount
+	}
 	return &PreviewPriceResponse{
-		BaseAmount:           roundMoney(baseAmount),
-		ThresholdDiscount:    threshold.DiscountAmount,
-		CouponDiscount:       couponDiscount,
-		AfterDiscount:        roundMoney(afterDiscount),
-		Fee:                  roundMoneyDecimal(fee),
+		BaseAmount:           displayBaseAmount,
+		ThresholdDiscount:    displayThresholdDiscount,
+		CouponDiscount:       displayCouponDiscount,
+		AfterDiscount:        displayAfterDiscount,
+		Fee:                  roundGatewayAmountDecimal(fee, currency),
 		PayAmount:            payAmount,
 		FeeRate:              feeRate,
 		AppliedThresholdRule: threshold.AppliedRule,
 		CouponInfo:           couponInfo,
 	}, nil
+}
+
+func previewGatewayAmountForOrderType(amount float64, orderType, currency string, usdToCnyRate float64) float64 {
+	if orderType == payment.OrderTypeSubscription {
+		amount = calculateSubscriptionGatewayBaseAmount(amount, usdToCnyRate, currency)
+	}
+	return roundGatewayAmountDecimal(decimal.NewFromFloat(amount), currency)
+}
+
+func previewGatewayDelta(before, after float64, currency string) float64 {
+	return roundGatewayAmountDecimal(decimal.NewFromFloat(before).Sub(decimal.NewFromFloat(after)), currency)
+}
+
+func roundGatewayAmountDecimal(value decimal.Decimal, currency string) float64 {
+	f, _ := value.Round(int32(payment.CurrencyMaxFractionDigits(currency))).Float64()
+	return f
 }

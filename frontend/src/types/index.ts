@@ -237,6 +237,7 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  server_utc_offset?: string
   affiliate_enabled: boolean
   affiliate_recharge_enabled: boolean
   affiliate_subscription_enabled: boolean
@@ -509,6 +510,10 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
   status: 'active' | 'inactive'
@@ -1737,6 +1742,11 @@ export interface UserErrorRequest {
   message: string
   key_name: string
   key_deleted: boolean
+  group_name?: string
+  client_ip?: string
+  user_agent?: string
+  request_type?: number
+  stream?: boolean
 }
 
 export interface UserErrorRequestDetail extends UserErrorRequest {
@@ -1754,6 +1764,8 @@ export interface UserErrorListParams {
   status_code?: number
   category?: string
   api_key_id?: number
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
 }
 
 export interface UsageQueryParams {

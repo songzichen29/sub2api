@@ -1,6 +1,9 @@
 package service
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type OpsSystemLog struct {
 	ID              int64          `json:"id"`
@@ -65,6 +68,7 @@ type OpsErrorLog struct {
 	RequestedModel   string `json:"requested_model"`
 	UpstreamModel    string `json:"upstream_model"`
 	RequestType      *int16 `json:"request_type"`
+	UserAgent        string `json:"user_agent"`
 
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
@@ -142,6 +146,10 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
+	// IncludeRecoveredUpstream includes upstream error records that later recovered
+	// and returned success status; admin-only/internal paths can opt in explicitly.
+	IncludeRecoveredUpstream bool
+
 	// ErrorPhasesAny / ErrorTypesAny add multi-value filters without touching the
 	// special-cased single `Phase` field (only Phase=="upstream" bypasses the status>=400 clause).
 	// NOTE: these multi-value filters do NOT bypass status>=400; records with error_phase='upstream'
@@ -158,6 +166,21 @@ type OpsErrorLogFilter struct {
 
 	Page     int
 	PageSize int
+
+	// Sort 兼容请求明细接口的枚举式排序（如 created_at_desc/duration_desc）。
+	Sort string
+
+	// SortBy/SortOrder 用于错误列表服务端排序。
+	SortBy    string
+	SortOrder string
+}
+
+func (f *OpsErrorLogFilter) SetSort(sortBy, sortOrder string) {
+	if f == nil {
+		return
+	}
+	f.SortBy = strings.TrimSpace(sortBy)
+	f.SortOrder = strings.TrimSpace(sortOrder)
 }
 
 type OpsErrorLogList struct {

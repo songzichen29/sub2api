@@ -2401,9 +2401,14 @@ func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, user
 
 // GetUserModelStats 获取指定用户的模型统计
 func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64, startTime, endTime time.Time) (results []ModelStat, err error) {
-	query := `
+	startPlaceholder, endPlaceholder, userPlaceholder := "?", "?", "?"
+	if !r.isMySQLDialect() {
+		startPlaceholder, endPlaceholder, userPlaceholder = "$1", "$2", "$3"
+	}
+
+	query := fmt.Sprintf(`
 		SELECT
-			model,
+			%s as model,
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens), 0) as input_tokens,
 			COALESCE(SUM(output_tokens), 0) as output_tokens,
@@ -2414,12 +2419,13 @@ func (r *usageLogRepository) GetUserModelStats(ctx context.Context, userID int64
 			COALESCE(SUM(actual_cost), 0) as actual_cost,
 			COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as account_cost
 		FROM usage_logs
-		WHERE user_id = ? AND created_at >= ? AND created_at < ?
-		GROUP BY model
+		WHERE created_at >= %s AND created_at < %s
+		  AND user_id = %s
+		GROUP BY %s
 		ORDER BY total_tokens DESC
-	`
+	`, usageLogDisplayModelExpression, startPlaceholder, endPlaceholder, userPlaceholder, usageLogDisplayModelExpression)
 
-	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, userID)
 	if err != nil {
 		return nil, err
 	}

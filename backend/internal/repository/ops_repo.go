@@ -179,6 +179,33 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 	}
 }
 
+// opsErrorLogsOrderBy builds the ORDER BY clause from a small whitelist.
+// Unknown SortBy falls back to created_at; e.id is appended as tiebreaker.
+func opsErrorLogsOrderBy(filter *service.OpsErrorLogFilter) string {
+	sortBy := ""
+	sortOrder := ""
+	if filter != nil {
+		sortBy = strings.ToLower(strings.TrimSpace(filter.SortBy))
+		sortOrder = strings.ToLower(strings.TrimSpace(filter.SortOrder))
+	}
+
+	var column string
+	switch sortBy {
+	case "model":
+		column = "COALESCE(NULLIF(TRIM(e.requested_model), ''), e.model)"
+	case "status_code":
+		column = "COALESCE(e.upstream_status_code, e.status_code, 0)"
+	default:
+		column = "e.created_at"
+	}
+
+	dir := "DESC"
+	if sortOrder == "asc" {
+		dir = "ASC"
+	}
+	return fmt.Sprintf("%s %s, e.id %s", column, dir, dir)
+}
+
 func (r *opsRepository) ListErrorLogs(ctx context.Context, filter *service.OpsErrorLogFilter) (*service.OpsErrorLogList, error) {
 	if r == nil || r.db == nil {
 		return nil, fmt.Errorf("nil ops repository")
@@ -242,6 +269,7 @@ SELECT
   COALESCE(e.upstream_endpoint, ''),
   COALESCE(e.requested_model, ''),
   COALESCE(e.upstream_model, ''),
+  COALESCE(e.user_agent, ''),
   e.request_type,
   COALESCE(ak.name, ''),
   ak.deleted_at,
@@ -253,7 +281,7 @@ LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN users u2 ON e.resolved_by_user_id = u2.id
 LEFT JOIN api_keys ak ON ak.id = e.api_key_id
 ` + where + `
-ORDER BY e.created_at DESC
+ORDER BY ` + opsErrorLogsOrderBy(filter) + `
 LIMIT ? OFFSET ?
 `
 
@@ -314,6 +342,7 @@ LIMIT ? OFFSET ?
 			&item.UpstreamEndpoint,
 			&item.RequestedModel,
 			&item.UpstreamModel,
+			&item.UserAgent,
 			&requestType,
 			&apiKeyName,
 			&apiKeyDeletedAt,
@@ -921,12 +950,13 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	// but we also persist "recovered" upstream errors (status<400) for upstream health visibility.
 	// If Resolved is not specified, do not filter by resolved state (backward-compatible).
 	resolvedFilter := filter.Resolved
-	// Keep list endpoints scoped to client errors unless explicitly filtering upstream phase.
+	// Keep list endpoints scoped to client errors unless explicitly opting into
+	// recovered upstream rows (Phase=="upstream" + IncludeRecoveredUpstream).
 	// cyber_policy is exempt from the status >= 400 guard: streaming cyber hits arrive with
 	// status 200 (the SSE stream opened successfully before upstream returned response.failed),
 	// but they are always client-visible blocked requests that belong in admin + user error
 	// lists.  Without the exemption the entire streaming-path cyber sink would be invisible.
-	if phaseFilter != "upstream" {
+	if phaseFilter != "upstream" || !filter.IncludeRecoveredUpstream {
 		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
 	}
 

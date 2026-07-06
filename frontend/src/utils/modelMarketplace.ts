@@ -323,6 +323,10 @@ export function transformAdminChannelsToAvailableChannels(
           platform: group.platform,
           subscription_type: group.subscription_type,
           rate_multiplier: group.rate_multiplier,
+          peak_rate_enabled: group.peak_rate_enabled === true,
+          peak_start: group.peak_start || '',
+          peak_end: group.peak_end || '',
+          peak_rate_multiplier: group.peak_rate_multiplier ?? group.rate_multiplier,
           is_exclusive: group.is_exclusive,
         })
         groupedByPlatform.set(group.platform, existing)
