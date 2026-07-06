@@ -634,15 +634,26 @@ const ringItems = computed<RingItem[]>(() => {
   } else {
     if (data.subscription) {
       const sub = data.subscription
-      const limits = [
-        { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
-        { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
-        { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
-      ]
-      for (const l of limits) {
-        if (l.limit != null && l.limit > 0) {
-          const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
-          items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
+        const used = getKeyUsageOverdraftUsed(sub)
+        const pct = Math.min(Math.round((used / sub.overdraft_limit_usd) * 100), 100)
+        items.push({
+          title: t('keyUsage.totalQuota'),
+          pct,
+          amount: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`,
+          iconType: 'calendar',
+        })
+      } else {
+        const limits = [
+          { label: t('keyUsage.limitDaily'), usage: sub.daily_usage_usd, limit: sub.daily_limit_usd },
+          { label: t('keyUsage.limitWeekly'), usage: sub.weekly_usage_usd, limit: sub.weekly_limit_usd },
+          { label: t('keyUsage.limitMonthly'), usage: sub.monthly_usage_usd, limit: sub.monthly_limit_usd },
+        ]
+        for (const l of limits) {
+          if (l.limit != null && l.limit > 0) {
+            const pct = Math.min(Math.round((l.usage / l.limit) * 100), 100)
+            items.push({ title: l.label, pct, amount: `${usd(l.usage)} / ${usd(l.limit)}`, iconType: 'calendar' })
+          }
         }
       }
     }
@@ -732,26 +743,35 @@ const detailRows = computed<DetailRow[]>(() => {
 
     if (data.subscription) {
       const sub = data.subscription
-      if (sub.daily_limit_usd > 0) {
-        const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
+      if (sub.allow_daily_overdraft && sub.overdraft_limit_usd && sub.overdraft_limit_usd > 0) {
+        const used = getKeyUsageOverdraftUsed(sub)
+        const pct = (used / sub.overdraft_limit_usd) * 100
         rows.push({
           iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '总' : 'T'})`, value: `${usd(used)} / ${usd(sub.overdraft_limit_usd)}`, valueClass: getUsageColor(pct),
         })
-      }
-      if (sub.weekly_limit_usd > 0) {
-        const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
-      }
-      if (sub.monthly_limit_usd > 0) {
-        const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
-        rows.push({
-          iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
-          label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
-        })
+      } else {
+        if (sub.daily_limit_usd > 0) {
+          const pct = (sub.daily_usage_usd / sub.daily_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-primary-500/10', iconColor: 'text-primary-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '日' : 'D'})`, value: `${usd(sub.daily_usage_usd)} / ${usd(sub.daily_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
+        if (sub.weekly_limit_usd > 0) {
+          const pct = (sub.weekly_usage_usd / sub.weekly_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-indigo-500/10', iconColor: 'text-indigo-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '周' : 'W'})`, value: `${usd(sub.weekly_usage_usd)} / ${usd(sub.weekly_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
+        if (sub.monthly_limit_usd > 0) {
+          const pct = (sub.monthly_usage_usd / sub.monthly_limit_usd) * 100
+          rows.push({
+            iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-500', iconSvg: ICON_DOLLAR,
+            label: `${t('keyUsage.usedQuota')} (${locale.value === 'zh' ? '月' : 'M'})`, value: `${usd(sub.monthly_usage_usd)} / ${usd(sub.monthly_limit_usd)}`, valueClass: getUsageColor(pct),
+          })
+        }
       }
       if (sub.expires_at) {
         rows.push({
@@ -843,6 +863,51 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso)
   const loc = locale.value === 'zh' ? 'zh-CN' : 'en-US'
   return d.toLocaleDateString(loc, { year: 'numeric', month: 'long', day: 'numeric' })
+}
+
+function isDayValidityUnit(unit?: string | null): boolean {
+  const normalized = (unit || 'day').trim().toLowerCase()
+  return normalized === '' || normalized === 'day' || normalized === 'days'
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getKeyUsageOverdraftUsed(sub: any): number {
+  const limit = typeof sub.overdraft_limit_usd === 'number' ? sub.overdraft_limit_usd : 0
+  if (!sub.allow_daily_overdraft || limit <= 0) return 0
+  if (!isDayValidityUnit(sub.validity_unit)) {
+    return Math.min(sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0, limit)
+  }
+
+  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
+  const dailyLimit = typeof sub.daily_limit_usd === 'number' ? sub.daily_limit_usd : 0
+  if (!Number.isFinite(startsAt) || dailyLimit <= 0) {
+    return Math.min(sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0, limit)
+  }
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
+  const validityDays = Math.max(1, Math.ceil(limit / dailyLimit))
+  const expiredQuota = Math.min(dailyLimit * Math.min(elapsedDays, validityDays), limit)
+  const currentDailyUsage = getKeyUsageCurrentDailyWindowUsage(sub)
+  const effectiveUsed = expiredQuota + currentDailyUsage
+  const actualUsed = sub.weekly_usage_usd ?? sub.overdraft_used_usd ?? 0
+  return Math.min(Math.max(actualUsed, effectiveUsed), limit)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getKeyUsageCurrentDailyWindowUsage(sub: any): number {
+  if (!sub.daily_window_start || !sub.starts_at) return 0
+
+  const startsAt = new Date(sub.starts_at).getTime()
+  const dailyWindowStart = new Date(sub.daily_window_start).getTime()
+  if (!Number.isFinite(startsAt) || !Number.isFinite(dailyWindowStart)) return 0
+
+  const dayMs = 24 * 60 * 60 * 1000
+  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
+  const currentWindowStart = startsAt + elapsedDays * dayMs
+  if (dailyWindowStart !== currentWindowStart) return 0
+
+  return Math.max(sub.daily_usage_usd || 0, 0)
 }
 
 function getBrowserTimezone(): string {

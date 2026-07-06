@@ -93,6 +93,65 @@
           </div>
         </div>
 
+        <div
+          v-else-if="availability === 'checking'"
+          class="flex h-full items-center justify-center p-10 text-center"
+        >
+          <div class="max-w-md">
+            <div
+              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
+            >
+              <div
+                class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
+              ></div>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('customPage.checkingTitle') }}
+            </h3>
+            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+              {{ t('customPage.checkingDesc') }}
+            </p>
+          </div>
+        </div>
+
+        <div
+          v-else-if="availability === 'unavailable'"
+          class="flex h-full items-center justify-center p-10 text-center"
+        >
+          <div class="max-w-md">
+            <div
+              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
+            >
+              <Icon name="exclamationTriangle" size="lg" class="text-gray-400" />
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('customPage.unavailableTitle') }}
+            </h3>
+            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
+              {{ t('customPage.unavailableDesc') }}
+            </p>
+            <p
+              v-if="unavailableStatusCode"
+              class="mt-2 text-xs text-gray-400 dark:text-dark-500"
+            >
+              {{ t('customPage.unavailableStatus', { status: unavailableStatusCode }) }}
+            </p>
+            <div class="mt-5 flex flex-wrap justify-center gap-2">
+              <button type="button" class="btn btn-secondary btn-sm" @click="retryAvailabilityCheck">
+                {{ t('common.retry') }}
+              </button>
+              <a
+                :href="embeddedUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-sm"
+              >
+                {{ t('customPage.openInNewTab') }}
+              </a>
+            </div>
+          </div>
+        </div>
+
         <!-- Iframe embed mode -->
         <div v-else class="custom-embed-shell">
           <a
@@ -125,6 +184,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildApiUrl } from '@/api/client'
+import { getCustomPageStatus } from '@/api/customPage'
 import { buildEmbeddedUrl, detectTheme } from '@/utils/embedded-url'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -144,12 +204,15 @@ const adminSettingsStore = useAdminSettingsStore()
 
 const loading = ref(false)
 const pageTheme = ref<'light' | 'dark'>('light')
+const availability = ref<'idle' | 'checking' | 'available' | 'unavailable'>('idle')
+const unavailableStatusCode = ref<number | null>(null)
 const renderedHtml = ref('')
 const markdownContainer = ref<HTMLElement | null>(null)
 const tocItems = ref<TocItem[]>([])
 const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
 const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
+let availabilityCheckSeq = 0
 
 const menuItemId = computed(() => route.params.id as string)
 
@@ -190,6 +253,41 @@ const isValidUrl = computed(() => {
   const url = embeddedUrl.value
   return url.startsWith('http://') || url.startsWith('https://')
 })
+
+watch(
+  () => [menuItem.value?.label, appStore.siteName] as const,
+  ([label, siteName]) => {
+    if (!label || typeof document === 'undefined') return
+    document.title = `${label} - ${siteName || 'Sub2API'}`
+  },
+  { immediate: true },
+)
+
+async function checkPageAvailability() {
+  const seq = ++availabilityCheckSeq
+  unavailableStatusCode.value = null
+
+  if (!menuItem.value || !isValidUrl.value || isMarkdownMode.value) {
+    availability.value = 'idle'
+    return
+  }
+
+  availability.value = 'checking'
+  try {
+    const status = await getCustomPageStatus(menuItemId.value)
+    if (seq !== availabilityCheckSeq) return
+    availability.value = status.available ? 'available' : 'unavailable'
+    unavailableStatusCode.value = status.status_code ?? null
+  } catch {
+    if (seq !== availabilityCheckSeq) return
+    // 后端状态探测失败时不阻断自定义页面，避免因为探测接口异常影响原有可用入口。
+    availability.value = 'available'
+  }
+}
+
+function retryAvailabilityCheck() {
+  void checkPageAvailability()
+}
 
 function generateHeadingId(text: string, index: number): string {
   const base = text
@@ -344,6 +442,14 @@ watch(markdownSlug, (slug) => {
   }
 }, { immediate: true })
 
+watch(
+  () => [menuItemId.value, embeddedUrl.value, isValidUrl.value, isMarkdownMode.value] as const,
+  () => {
+    void checkPageAvailability()
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
   pageTheme.value = detectTheme()
 
@@ -357,10 +463,20 @@ onMounted(async () => {
     })
   }
 
-  if (appStore.publicSettingsLoaded) return
+  if (appStore.publicSettingsLoaded && (!authStore.isAdmin || adminSettingsStore.loaded)) return
+
   loading.value = true
   try {
-    await appStore.fetchPublicSettings()
+    const tasks: Array<Promise<unknown>> = []
+    if (!appStore.publicSettingsLoaded) {
+      tasks.push(appStore.fetchPublicSettings())
+    }
+    if (authStore.isAdmin && !adminSettingsStore.loaded) {
+      tasks.push(adminSettingsStore.fetch())
+    }
+    if (tasks.length > 0) {
+      await Promise.all(tasks)
+    }
   } finally {
     loading.value = false
   }

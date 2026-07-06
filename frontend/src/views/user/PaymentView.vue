@@ -104,6 +104,67 @@
             </button>
             </template>
           </template>
+          <!-- Daily limit reset Tab -->
+          <template v-else-if="activeTab === 'daily_limit_reset'">
+            <div v-if="!selectedDailyResetSubscription" class="card py-16 text-center">
+              <p class="text-gray-500 dark:text-gray-400">{{ t('payment.dailyReset.notAvailable') }}</p>
+            </div>
+            <template v-else>
+              <div class="card p-5">
+                <div class="mb-3 flex flex-wrap items-center gap-2">
+                  <span :class="['rounded-md border px-2 py-0.5 text-xs font-medium', platformBadgeClass(selectedDailyResetSubscription.group?.platform || '')]">
+                    {{ platformLabel(selectedDailyResetSubscription.group?.platform || '') }}
+                  </span>
+                  <h3 class="text-lg font-bold text-gray-900 dark:text-white">
+                    {{ selectedDailyResetSubscription.group?.name || t('payment.groupFallback', { id: selectedDailyResetSubscription.group_id }) }}
+                  </h3>
+                </div>
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('userSubscriptions.daily') }}</span>
+                    <span class="text-gray-900 dark:text-white">
+                      ${{ (selectedDailyResetSubscription.daily_usage_usd || 0).toFixed(2) }} /
+                      ${{ selectedDailyResetSubscription.group?.daily_limit_usd?.toFixed(2) }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.dailyReset.price') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(dailyResetPrice) }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="enabledMethods.length >= 1" class="card p-6">
+                <PaymentMethodSelector
+                  :methods="dailyResetMethodOptions"
+                  :selected="selectedMethod"
+                  @select="selectedMethod = $event"
+                />
+              </div>
+              <div v-if="feeRate > 0 && dailyResetPrice > 0" class="card p-6">
+                <div class="space-y-2 text-sm">
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(dailyResetPrice) }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
+                    <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(dailyResetFeeAmount) }}</span>
+                  </div>
+                  <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">{{ formatSelectedPaymentAmount(dailyResetTotalAmount) }}</span>
+                  </div>
+                </div>
+              </div>
+              <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmitDailyReset || submitting" @click="confirmDailyLimitReset">
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.dailyReset.payAndReset') }} {{ formatSelectedPaymentAmount(dailyResetTotalAmount) }}</span>
+              </button>
+            </template>
+          </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
             <!-- Subscription confirm (inline, replaces plan list) -->
@@ -128,6 +189,10 @@
                 <p v-if="selectedPlan.description" class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                   {{ selectedPlan.description }}
                 </p>
+                <div v-if="renewalNotice" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                  <p class="font-medium">{{ renewalNoticeTitle }}</p>
+                  <p class="mt-1 leading-relaxed">{{ renewalNotice }}</p>
+                </div>
                 <p v-if="discountRuleHint" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
@@ -253,7 +318,44 @@
             </button>
             <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.selectPlan') }}</h3>
             <div class="space-y-4">
+              <div v-if="renewalModalNotice" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
+                <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
+              </div>
               <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="renewalModeTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="renewalModeTarget = null">
+          <div class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-lg dark:border-dark-700 dark:bg-dark-900">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.renewalMode.title') }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+              {{ t('payment.renewalMode.message') }}
+            </p>
+            <div class="mt-4 space-y-3">
+              <button
+                type="button"
+                class="w-full rounded-lg border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
+                @click="confirmRenewalMode('extend')"
+              >
+                <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
+              </button>
+              <button
+                type="button"
+                class="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
+                @click="confirmRenewalMode('restart')"
+              >
+                <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
+                <span class="mt-1 block text-xs text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
+              </button>
+            </div>
+            <div class="mt-4 flex justify-end">
+              <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
             </div>
           </div>
         </div>
@@ -282,6 +384,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PricePreviewResponse, DiscountRule } from '@/types/payment'
+import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import CouponInput from '@/components/payment/CouponInput.vue'
@@ -307,6 +410,7 @@ import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/paym
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import { buildRenewalNoticeText, getRenewalModeLabel } from './renewalNotice'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -329,7 +433,9 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+type PaymentTab = 'recharge' | 'subscription' | 'daily_limit_reset'
+
+const activeTab = ref<PaymentTab>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
@@ -339,6 +445,8 @@ const pricePreviewLoading = ref(false)
 const couponMessage = ref('')
 const couponMessageIsError = ref(false)
 const discountRules = ref<DiscountRule[]>([])
+const selectedDailyResetSubscriptionId = ref<number | null>(null)
+const renewalModeTarget = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -347,6 +455,8 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
+  subscriptionId?: number
+  renewalMode?: 'extend' | 'restart'
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -453,7 +563,14 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: {
+    paymentType: string
+    orderType: OrderType
+    planId?: number
+    subscriptionId?: number
+    renewalMode?: 'extend' | 'restart'
+    orderAmount: number
+  },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -474,6 +591,16 @@ function buildWechatOAuthAuthorizeUrl(
     } else {
       redirectUrl.searchParams.delete('plan_id')
     }
+    if (context.subscriptionId) {
+      redirectUrl.searchParams.set('subscription_id', String(context.subscriptionId))
+    } else {
+      redirectUrl.searchParams.delete('subscription_id')
+    }
+    if (context.renewalMode) {
+      redirectUrl.searchParams.set('renewal_mode', context.renewalMode)
+    } else {
+      redirectUrl.searchParams.delete('renewal_mode')
+    }
 
     if (context.orderAmount > 0) {
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
@@ -489,18 +616,20 @@ function buildWechatOAuthAuthorizeUrl(
 }
 
 function onPaymentDone() {
-  const wasSubscription = paymentState.value.orderType === 'subscription'
+  const shouldRefreshSubscriptions = paymentState.value.orderType === 'subscription'
+    || paymentState.value.orderType === 'daily_limit_reset'
   resetPayment()
   selectedPlan.value = null
-  if (wasSubscription) {
+  if (shouldRefreshSubscriptions) {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
 }
 
 function onPaymentSuccess() {
+  const resultState = { ...paymentState.value }
   removeRecoverySnapshot()
   authStore.refreshUser()
-  if (paymentState.value.orderType === 'subscription') {
+  if (resultState.orderType === 'subscription' || resultState.orderType === 'daily_limit_reset') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {})
   }
 }
@@ -516,9 +645,12 @@ const checkout = ref<CheckoutInfoResponse>({
 })
 
 const tabs = computed(() => {
-  const result: { key: 'recharge' | 'subscription'; label: string }[] = []
+  const result: { key: PaymentTab; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
+  if (activeTab.value === 'daily_limit_reset') {
+    result.push({ key: 'daily_limit_reset', label: t('payment.dailyReset.tab') })
+  }
   return result
 })
 
@@ -741,10 +873,158 @@ const canSubmitSubscription = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
+// Renewal modal state
+const showRenewalModal = ref(false)
+const renewGroupId = ref<number | null>(null)
+const renewalPlans = computed(() => {
+  if (renewGroupId.value == null) return []
+  return checkout.value.plans.filter(p => p.group_id === renewGroupId.value)
+})
+
+const selectedDailyResetSubscription = computed<UserSubscription | null>(() => {
+  const id = selectedDailyResetSubscriptionId.value
+  if (!id) return null
+  return activeSubscriptions.value.find(sub => sub.id === id) ?? null
+})
+
+const dailyResetPrice = computed(() => {
+  const price = selectedDailyResetSubscription.value?.group?.daily_limit_reset_price ?? 0
+  return price > 0 ? roundPaymentAmount(price, selectedCurrency.value) : 0
+})
+
+const dailyResetFeeAmount = computed(() => {
+  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return 0
+  return ceilPaymentAmount((dailyResetPrice.value * feeRate.value) / 100, selectedCurrency.value)
+})
+
+const dailyResetTotalAmount = computed(() => {
+  if (feeRate.value <= 0 || dailyResetPrice.value <= 0) return dailyResetPrice.value
+  return roundPaymentAmount(dailyResetPrice.value + dailyResetFeeAmount.value, selectedCurrency.value)
+})
+
+const dailyResetMethodOptions = computed<PaymentMethodOption[]>(() =>
+  enabledMethods.value.map((type) => {
+    const ml = visibleMethods.value[type]
+    return {
+      type,
+      fee_rate: ml?.fee_rate ?? 0,
+      available: ml?.available !== false && amountFitsMethod(dailyResetTotalAmount.value, type),
+    }
+  })
+)
+
+const canSubmitDailyReset = computed(() =>
+  selectedDailyResetSubscription.value !== null
+    && dailyResetPrice.value > 0
+    && amountFitsMethod(dailyResetTotalAmount.value, selectedMethod.value)
+    && selectedLimit.value?.available !== false
+)
+
+function findActiveSubscriptionByGroup(groupId: number | null | undefined): UserSubscription | null {
+  if (!groupId) return null
+  return activeSubscriptions.value.find((sub) =>
+    sub.group_id === groupId
+      && (sub.status === 'active' || sub.status === 'quota_exhausted')
+      && (!sub.expires_at || new Date(sub.expires_at).getTime() > Date.now())
+  ) ?? null
+}
+
+function subscriptionHasTotalQuota(sub: UserSubscription | null | undefined): boolean {
+  return sub?.quota_limit_usd != null && sub.quota_limit_usd > 0
+}
+
+function getOverdraftLimit(sub: UserSubscription | null | undefined): number | null {
+  return sub?.allow_daily_overdraft && typeof sub.overdraft_limit_usd === 'number' && sub.overdraft_limit_usd > 0
+    ? sub.overdraft_limit_usd
+    : null
+}
+
+function getOverdraftUsed(sub: UserSubscription | null | undefined): number {
+  return sub?.overdraft_used_usd ?? 0
+}
+
+function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
+  if (subscriptionHasTotalQuota(sub)) {
+    return (sub.quota_remaining_usd ?? Math.max((sub.quota_limit_usd || 0) - (sub.quota_used_usd || 0), 0)) > 0
+  }
+  const group = sub.group
+  if (!group) return false
+  const overdraftLimit = getOverdraftLimit(sub)
+  if (overdraftLimit !== null) {
+    return getOverdraftUsed(sub) < overdraftLimit
+  }
+  const dailyRemaining = group.daily_limit_usd != null && group.daily_limit_usd > 0
+    ? Math.max(group.daily_limit_usd - (sub.daily_usage_usd || 0), 0)
+    : 0
+  const weeklyRemaining = group.weekly_limit_usd != null && group.weekly_limit_usd > 0
+    ? Math.max(group.weekly_limit_usd - (sub.weekly_usage_usd || 0), 0)
+    : 0
+  const monthlyRemaining = group.monthly_limit_usd != null && group.monthly_limit_usd > 0
+    ? Math.max(group.monthly_limit_usd - (sub.monthly_usage_usd || 0), 0)
+    : 0
+  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
+    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
+    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
+    && !subscriptionHasTotalQuota(sub)
+  return hasUnlimitedQuota || dailyRemaining > 0 || weeklyRemaining > 0 || monthlyRemaining > 0
+}
+
+function computePlanValidityDays(plan: SubscriptionPlan | null | undefined): number | null {
+  if (!plan) return null
+  if (plan.expires_at) {
+    const expiresAt = new Date(plan.expires_at)
+    const diffMs = expiresAt.getTime() - Date.now()
+    if (Number.isNaN(diffMs) || diffMs <= 0) return 0
+    return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
+  }
+  const days = plan.validity_days || 0
+  switch (plan.validity_unit) {
+    case 'week':
+    case 'weeks':
+      return days * 7
+    case 'month':
+    case 'months':
+      return days * 30
+    case 'year':
+    case 'years':
+      return days * 365
+    default:
+      return days
+  }
+}
+
+function buildRenewalNoticeForSubscription(sub: UserSubscription | null): string {
+  if (!sub || !subscriptionHasRemainingQuota(sub)) return ''
+  const renewalDays = selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null
+  return buildRenewalNoticeText(sub, t, renewalDays)
+}
+
+const renewalNoticeTitle = computed(() =>
+  getRenewalModeLabel(selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null, t)
+)
+
+const selectedPlanActiveSubscription = computed(() =>
+  findActiveSubscriptionByGroup(selectedPlan.value?.group_id)
+)
+
+const renewalNotice = computed(() =>
+  buildRenewalNoticeForSubscription(selectedPlanActiveSubscription.value)
+)
+
+const renewalModalNotice = computed(() =>
+  buildRenewalNoticeForSubscription(findActiveSubscriptionByGroup(renewGroupId.value))
+)
+
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
   const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
+  if (available) selectedMethod.value = available
+})
+
+watch(() => [dailyResetTotalAmount.value, selectedMethod.value] as const, ([price, method]) => {
+  if (activeTab.value !== 'daily_limit_reset' || price <= 0 || amountFitsMethod(price, method)) return
+  const available = enabledMethods.value.find((m) => amountFitsMethod(price, m))
   if (available) selectedMethod.value = available
 })
 
@@ -753,6 +1033,11 @@ watch(
   () => [activeTab.value, validAmount.value, selectedPlan.value?.id ?? 0, selectedMethod.value, couponCode.value] as const,
   () => {
     window.clearTimeout(previewTimer)
+    if (activeTab.value === 'daily_limit_reset') {
+      pricePreview.value = null
+      couponMessage.value = ''
+      return
+    }
     const baseAmount = activeTab.value === 'subscription' ? selectedPlan.value?.price ?? 0 : validAmount.value
     if (baseAmount <= 0) {
       pricePreview.value = null
@@ -779,14 +1064,6 @@ const paymentButtonClass = computed(() => {
 // Subscription confirm: platform accent colors (clean card, no gradient)
 const planBadgeClass = computed(() => platformBadgeClass(selectedPlan.value?.group_platform || ''))
 const planTextClass = computed(() => platformTextClass(selectedPlan.value?.group_platform || ''))
-
-// Renewal modal state
-const showRenewalModal = ref(false)
-const renewGroupId = ref<number | null>(null)
-const renewalPlans = computed(() => {
-  if (renewGroupId.value == null) return []
-  return checkout.value.plans.filter(p => p.group_id === renewGroupId.value)
-})
 
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
@@ -864,7 +1141,37 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
+  if (shouldAskRenewalMode(selectedPlan.value)) {
+    renewalModeTarget.value = selectedPlan.value
+    return
+  }
+  await submitSubscriptionOrder(
+    findActiveSubscriptionByGroup(selectedPlan.value.group_id) ? 'extend' : undefined,
+  )
+}
+
+function shouldAskRenewalMode(plan: SubscriptionPlan): boolean {
+  if (!findActiveSubscriptionByGroup(plan.group_id)) return false
+  const renewalDays = computePlanValidityDays(plan)
+  return renewalDays != null && renewalDays > 1
+}
+
+async function submitSubscriptionOrder(renewalMode?: 'extend' | 'restart') {
+  if (!selectedPlan.value || submitting.value) return
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, { renewalMode })
+}
+
+async function confirmRenewalMode(mode: 'extend' | 'restart') {
+  renewalModeTarget.value = null
+  await submitSubscriptionOrder(mode)
+}
+
+async function confirmDailyLimitReset() {
+  const sub = selectedDailyResetSubscription.value
+  if (!sub || dailyResetPrice.value <= 0 || submitting.value) return
+  await createOrder(dailyResetPrice.value, 'daily_limit_reset', undefined, {
+    subscriptionId: sub.id,
+  })
 }
 
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
@@ -873,16 +1180,22 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   errorHintMessage.value = ''
   const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
   try {
+    const requestVisibleMethod = normalizeVisibleMethod(requestType) || requestType
+    const requestFromMobile = isMobileDevice()
+    const requestQrCapableDesktopOrder = requestFromMobile && requestVisibleMethod === 'alipay'
+    const requestIsMobile = requestFromMobile && !requestQrCapableDesktopOrder
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
-      couponCode: couponCode.value,
+      subscriptionId: options.subscriptionId,
+      renewalMode: options.renewalMode,
+      couponCode: orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
-      isMobile: isMobileDevice(),
-      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
-      forceQRCode: !!(checkout.value.alipay_force_qrcode && normalizeVisibleMethod(requestType) === 'alipay'),
+      isMobile: requestIsMobile,
+      isWechatBrowser: requestIsMobile && typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      forceQRCode: !!(checkout.value.alipay_force_qrcode && requestVisibleMethod === 'alipay'),
     })
     if (options.openid) {
       payload.openid = options.openid
@@ -898,7 +1211,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         window.location.href = url
       }
     }
-    const visibleMethod = normalizeVisibleMethod(requestType) || requestType
+    const visibleMethod = requestVisibleMethod
     // When user clicks the dedicated Stripe button, leave method blank so the
     // landing page renders Stripe's full Payment Element (card/link/alipay/wxpay).
     const stripeMethod = visibleMethod === 'stripe'
@@ -941,6 +1254,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         paymentType: visibleMethod,
         orderType,
         planId,
+        subscriptionId: options.subscriptionId,
+        renewalMode: options.renewalMode,
         orderAmount,
       })
       return
@@ -982,6 +1297,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
+              subscriptionId: options.subscriptionId,
+              renewalMode: options.renewalMode,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -1000,6 +1317,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
+          subscriptionId: options.subscriptionId,
+          renewalMode: options.renewalMode,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -1029,6 +1348,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
+      subscriptionId: options.subscriptionId,
+      renewalMode: options.renewalMode,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -1056,6 +1377,8 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
+  subscriptionId?: number
+  renewalMode?: 'extend' | 'restart'
   paymentType: string
   attempted: boolean
 }
@@ -1105,7 +1428,9 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
-      couponCode: couponCode.value,
+      subscriptionId: context.subscriptionId,
+      renewalMode: context.renewalMode,
+      couponCode: context.orderType === 'daily_limit_reset' ? undefined : couponCode.value,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
       isMobile: false,
       isWechatBrowser: false,
@@ -1178,6 +1503,9 @@ async function resumeWechatPaymentFromQuery() {
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
   }
+  if (resume.orderType === 'daily_limit_reset' && resume.subscriptionId) {
+    selectedDailyResetSubscriptionId.value = resume.subscriptionId
+  }
 
   await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) })
 
@@ -1185,6 +1513,8 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
+      subscriptionId: resume.subscriptionId,
+      renewalMode: resume.renewalMode,
       isResume: true,
     })
     return
@@ -1194,6 +1524,8 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
+      subscriptionId: resume.subscriptionId,
+      renewalMode: resume.renewalMode,
       isResume: true,
     })
   }
@@ -1216,6 +1548,16 @@ onMounted(async () => {
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       })
       selectedMethod.value = sorted[0]
+    }
+    const queryPaymentType = typeof route.query.payment_type === 'string'
+      ? normalizeVisibleMethod(route.query.payment_type) || route.query.payment_type
+      : ''
+    if (queryPaymentType && enabledMethods.value.includes(queryPaymentType)) {
+      selectedMethod.value = queryPaymentType
+    }
+    const queryAmount = typeof route.query.amount === 'string' ? Number(route.query.amount) : NaN
+    if (Number.isFinite(queryAmount) && queryAmount > 0) {
+      amount.value = queryAmount
     }
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
@@ -1245,9 +1587,23 @@ onMounted(async () => {
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     }
+    if (route.query.tab === 'daily_limit_reset') {
+      activeTab.value = 'daily_limit_reset'
+      await subscriptionStore.fetchActiveSubscriptions(true)
+      const subscriptionId = typeof route.query.subscription_id === 'string'
+        ? Number(route.query.subscription_id)
+        : NaN
+      selectedDailyResetSubscriptionId.value = Number.isFinite(subscriptionId) && subscriptionId > 0
+        ? subscriptionId
+        : null
+    }
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {
       activeTab.value = 'subscription'
+      if (typeof route.query.plan_id === 'string') {
+        const planId = Number(route.query.plan_id)
+        selectedPlan.value = checkout.value.plans.find(plan => plan.id === planId) ?? null
+      }
       if (route.query.group) {
         const groupId = Number(route.query.group)
         const groupPlans = checkout.value.plans.filter(p => p.group_id === groupId)

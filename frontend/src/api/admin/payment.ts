@@ -57,6 +57,12 @@ export interface RefundResult {
   subscription_days_deducted?: number
 }
 
+export interface RefundPreviewResult {
+  refund_amount: number
+  max_refundable_amount: number
+  calculated_automatically: boolean
+}
+
 export type PaymentCouponType = 'fixed' | 'percent'
 export type PaymentCouponScope = 'all' | 'balance' | 'subscription'
 export type PaymentCouponStatus = 'active' | 'disabled' | 'archived'
@@ -178,8 +184,13 @@ export const adminPaymentAPI = {
     return apiClient.post(`/admin/payment/orders/${id}/retry`)
   },
 
+  /** Preview refund amount */
+  previewRefund(id: number, data: { amount?: number; refund_mode?: 'full' | 'proportional' }) {
+    return apiClient.post<RefundPreviewResult>(`/admin/payment/orders/${id}/refund-preview`, data)
+  },
+
   /** Process a refund */
-  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean }) {
+  refundOrder(id: number, data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean; refund_mode?: 'full' | 'proportional' }) {
     return apiClient.post<RefundResult>(`/admin/payment/orders/${id}/refund`, data)
   },
 

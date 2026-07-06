@@ -70,6 +70,7 @@
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p><p class="text-sm font-medium text-gray-900 dark:text-white">{{ paymentAmountSymbol(selectedOrder) }}{{ selectedOrder.pay_amount.toFixed(2) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + selectedOrder.payment_type, selectedOrder.payment_type) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.orderType') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ orderTypeLabel(selectedOrder.order_type) }}</p></div>
+          <div v-if="orderContentLabel(selectedOrder)"><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.orderContent') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ orderContentLabel(selectedOrder) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.feeRate') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ selectedOrder.fee_rate }}%</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.createdAt') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(selectedOrder.created_at) }}</p></div>
           <div><p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.expiresAt') }}</p><p class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(selectedOrder.expires_at) }}</p></div>
@@ -256,11 +257,17 @@ function isRefundPendingWarning(warning: string | undefined): boolean {
   return /pending|处理中|待/.test(String(warning || '').toLowerCase())
 }
 
-async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean }) {
+async function handleRefund(data: { amount: number; reason: string; deduct_balance: boolean; force: boolean; refund_mode?: 'full' | 'proportional' }) {
   if (!selectedOrder.value) return
   refundSubmitting.value = true
   try {
-    const res = await adminPaymentAPI.refundOrder(selectedOrder.value.id, { amount: data.amount, reason: data.reason, deduct_balance: data.deduct_balance, force: data.force })
+    const res = await adminPaymentAPI.refundOrder(selectedOrder.value.id, {
+      amount: data.amount,
+      reason: data.reason,
+      deduct_balance: data.deduct_balance,
+      force: data.force,
+      refund_mode: data.refund_mode,
+    })
     if (res.data.success) {
       appStore.showSuccess(t('payment.admin.refundSuccess'))
       showRefundDialog.value = false
@@ -300,6 +307,29 @@ async function handleQueryRefund(order: PaymentOrder) {
 }
 
 function formatDateTime(dateStr: string): string { return formatOrderDateTime(dateStr) }
+
+function orderContentLabel(order: PaymentOrder): string {
+  if (order.order_type === 'subscription') {
+    const name = order.product_name || order.group_name
+    const fixedExpiresAt = formatFixedSubscriptionExpiresAt(order.subscription_plan_expires_at)
+    if (name && fixedExpiresAt) return `${name} · ${t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })}`
+    if (fixedExpiresAt) return t('payment.admin.fixedExpiresAtShort', { time: fixedExpiresAt })
+    if (name && order.subscription_days) return `${name} · ${order.subscription_days}${t('payment.admin.days')}`
+    if (name) return name
+    if (order.subscription_days) return `${order.subscription_days}${t('payment.admin.days')}`
+    return ''
+  }
+  if (order.order_type === 'daily_limit_reset') {
+    return order.group_name || t('payment.admin.dailyLimitResetOrder')
+  }
+  return ''
+}
+
+function formatFixedSubscriptionExpiresAt(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString()
+}
 
 onMounted(() => loadOrders())
 </script>
