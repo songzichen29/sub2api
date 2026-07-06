@@ -1,5 +1,11 @@
 # Codex 工作准则补充
 
+## 分支约定
+
+- 本仓库的生产分支是 `merge/upstream-main-into-pgsql-mysql-20260426`，不是 `main`。
+- 用户要求“合并到生产分支”“生产部署分支”“线上分支”时，默认目标分支必须使用 `merge/upstream-main-into-pgsql-mysql-20260426`。
+- 不要因为 `origin/HEAD` 指向 `main` 就把 `main` 当生产分支；合并或推送生产前应先确认当前分支和远端目标分支。
+
 ## SQL 迁移文件编码与注释
 
 - 新增或修改 `backend/migrations/**/*.sql` 时，必须使用 **UTF-8 without BOM**。
