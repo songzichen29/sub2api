@@ -1,4 +1,4 @@
-﻿-- Add request session audit bundle storage for flagged content moderation logs.
+-- Add request session audit bundle storage for flagged content moderation logs.
 
 ALTER TABLE content_moderation_logs
     ADD COLUMN IF NOT EXISTS request_body TEXT;
