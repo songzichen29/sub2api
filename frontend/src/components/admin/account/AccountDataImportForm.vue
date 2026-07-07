@@ -76,7 +76,14 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.dataImportFile') }}</label>
         <div
-          class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 dark:border-dark-600 dark:bg-dark-800"
+          class="flex items-center justify-between gap-3 rounded-lg border border-dashed px-4 py-3 transition-colors"
+          :class="dragActive
+            ? 'border-primary-400 bg-primary-50/70 dark:border-primary-500 dark:bg-primary-900/20'
+            : 'border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'"
+          @dragenter.prevent="handleDragEnter"
+          @dragover.prevent
+          @dragleave.prevent="handleDragLeave"
+          @drop.prevent="handleDrop"
         >
           <div class="min-w-0">
             <div class="truncate text-sm text-gray-700 dark:text-dark-200">
@@ -473,9 +480,11 @@ const templatesSaver = computed(() => props.templatesSaver)
 
 const importing = ref(false)
 const files = ref<File[]>([])
+const dragDepth = ref(0)
 const result = ref<AdminDataImportResult | null>(null)
 
 const fileInput = ref<HTMLInputElement | null>(null)
+const dragActive = computed(() => dragDepth.value > 0)
 const fileLabel = computed(() => {
   if (files.value.length === 0) return ''
   if (files.value.length === 1) return files.value[0].name
@@ -653,6 +662,7 @@ const removeModelMapping = (index: number) => {
 
 const resetForm = () => {
   files.value = []
+  dragDepth.value = 0
   result.value = null
   loadTemplates()
   selectedTemplateId.value = ''
@@ -679,9 +689,56 @@ const openFilePicker = () => {
   fileInput.value?.click()
 }
 
+const isImportFile = (sourceFile: File): boolean => {
+  const name = sourceFile.name.toLowerCase()
+  const mime = sourceFile.type.toLowerCase()
+  return (
+    name.endsWith('.json') ||
+    name.endsWith('.zip') ||
+    mime === 'application/json' ||
+    mime === 'application/zip' ||
+    mime === 'application/x-zip' ||
+    mime === 'application/x-zip-compressed' ||
+    mime === 'multipart/x-zip'
+  )
+}
+
+const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => {
+  if (importing.value) return
+  const incoming = Array.from(sourceFiles || [])
+  const picked = incoming.filter(isImportFile)
+  if (!picked.length) {
+    appStore.showError(t('admin.accounts.dataImportSelectFile'))
+    return
+  }
+  if (picked.length < incoming.length) {
+    appStore.showWarning(
+      t('admin.accounts.dataImportIgnoredFiles', { count: incoming.length - picked.length })
+    )
+  }
+  files.value = picked
+  result.value = null
+}
+
 const handleFileChange = (event: Event) => {
   const target = event.target as HTMLInputElement
-  files.value = Array.from(target.files || [])
+  setSelectedFiles(target.files)
+  target.value = ''
+}
+
+const handleDragEnter = () => {
+  if (importing.value) return
+  dragDepth.value += 1
+}
+
+const handleDragLeave = () => {
+  dragDepth.value = Math.max(0, dragDepth.value - 1)
+}
+
+const handleDrop = (event: DragEvent) => {
+  dragDepth.value = 0
+  if (importing.value) return
+  setSelectedFiles(event.dataTransfer?.files)
 }
 
 const handleCancel = () => {

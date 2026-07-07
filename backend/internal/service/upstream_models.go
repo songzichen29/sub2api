@@ -208,6 +208,8 @@ func (s *AccountTestService) buildAnthropicUpstreamModelsRequest(ctx context.Con
 	} else {
 		setAnthropicAPIKeyAuthHeader(req.Header, account, apiKeyAuthToken)
 	}
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
 
@@ -290,12 +292,14 @@ func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Contex
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI base URL", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildUpstreamOpenAIModelsURL(normalizedBaseURL), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, buildOpenAIModelsURL(normalizedBaseURL), nil)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI model list URL", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// 账号级请求头覆写：模型列表探测与真实转发保持一致的最终头
+	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
 }
 
@@ -395,17 +399,6 @@ func upstreamModelsProxyURL(account *Account) string {
 }
 
 func buildV1ModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
-}
-
-func buildUpstreamOpenAIModelsURL(base string) string {
 	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
 	if strings.HasSuffix(normalized, "/v1/models") {
 		return normalized

@@ -1759,10 +1759,8 @@ func buildOpenAIModelsURL(base string) string {
 		return strings.TrimSuffix(normalized, "/responses") + "/models"
 	case strings.HasSuffix(normalized, "/chat/completions"):
 		return strings.TrimSuffix(normalized, "/chat/completions") + "/models"
-	case strings.HasSuffix(normalized, "/v1"):
-		return normalized + "/models"
 	default:
-		return normalized + "/v1/models"
+		return buildOpenAIEndpointURL(normalized, "/v1/models")
 	}
 }
 
