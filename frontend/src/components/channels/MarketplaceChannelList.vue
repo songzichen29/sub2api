@@ -260,9 +260,15 @@ function formatRange(min: number, max: number | null): string {
 }
 
 function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${formatScaled(tokens, 1_000_000)}M`
-  if (tokens >= 1_000) return `${formatScaled(tokens, 1_000)}K`
-  return String(tokens)
+  if (tokens >= 1_000_000) return `${formatCompactNumber(tokens / 1_000_000)}M`
+  if (tokens >= 1_000) return `${formatCompactNumber(tokens / 1_000)}K`
+  return formatCompactNumber(tokens)
+}
+
+function formatCompactNumber(value: number): string {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })
 }
 
 function formatMillionPrice(price: number | null): string {

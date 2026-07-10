@@ -1201,6 +1201,8 @@
     moreChannels: 'Show {count} more channels',
     collapseChannels: 'Collapse channels',
     intervalCount: '{count} pricing tiers',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
     showIntervalDetails: 'Show tier prices',
     hideIntervalDetails: 'Hide tier prices',
     intervalRangeOpen: '> {min} tokens',

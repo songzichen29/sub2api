@@ -67,12 +67,37 @@
       >
         {{ billingModeLabel }}
       </span>
-      <span
+      <button
         v-if="intervalBadge"
+        type="button"
         class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+        @click="detailsExpanded = !detailsExpanded"
       >
         {{ intervalBadge }}
-      </span>
+      </button>
+      <button
+        v-if="item.channels.length > 0"
+        type="button"
+        class="ml-auto text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+        @click="detailsExpanded = !detailsExpanded"
+      >
+        {{
+          detailsExpanded
+            ? t('modelMarketplace.hideDetails')
+            : t('modelMarketplace.showDetails')
+        }}
+      </button>
+    </div>
+
+    <div
+      v-if="detailsExpanded"
+      class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"
+    >
+      <MarketplaceChannelList
+        :channels="item.channels"
+        :no-pricing-label="noPricingLabel"
+        :default-visible-count="item.channels.length"
+      />
     </div>
   </article>
 </template>
@@ -83,6 +108,7 @@ import { useI18n } from 'vue-i18n'
 import type { GroupPlatform } from '@/types'
 import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import MarketplaceChannelList from '@/components/channels/MarketplaceChannelList.vue'
 import { useAppStore } from '@/stores/app'
 import type { MarketplaceModelItem } from '@/utils/modelMarketplace'
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN } from '@/constants/channel'
@@ -98,6 +124,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const perMillionScale = 1_000_000
 const copied = ref(false)
+const detailsExpanded = ref(false)
 
 const primaryChannel = computed(() => props.item.channels.find((channel) => channel.pricing) ?? props.item.channels[0] ?? null)
 const primaryPricing = computed(() => primaryChannel.value?.pricing ?? null)
@@ -209,9 +236,15 @@ function formatRange(min: number, max: number | null): string {
 }
 
 function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${formatScaled(tokens, 1_000_000)}M`
-  if (tokens >= 1_000) return `${formatScaled(tokens, 1_000)}K`
-  return String(tokens)
+  if (tokens >= 1_000_000) return `${formatCompactNumber(tokens / 1_000_000)}M`
+  if (tokens >= 1_000) return `${formatCompactNumber(tokens / 1_000)}K`
+  return formatCompactNumber(tokens)
+}
+
+function formatCompactNumber(value: number): string {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: 1,
+  })
 }
 
 function intervalSummary(intervals: UserPricingInterval[]): string {

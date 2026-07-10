@@ -1205,6 +1205,8 @@ export default {
     moreChannels: '展开其余 {count} 个渠道',
     collapseChannels: '收起渠道',
     intervalCount: '{count} 档阶梯价',
+    showDetails: '查看详情',
+    hideDetails: '收起详情',
     showIntervalDetails: '查看区间价格',
     hideIntervalDetails: '收起区间价格',
     intervalRangeOpen: '> {min} tokens',
