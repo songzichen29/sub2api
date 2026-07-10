@@ -22,6 +22,10 @@ var (
 		"DEFAULT_SUBSCRIPTION_GROUP_DUPLICATE",
 		"default subscription group cannot be duplicated",
 	)
+	ErrDefaultSubSettingInvalid = infraerrors.BadRequest(
+		"DEFAULT_SUBSCRIPTION_SETTING_INVALID",
+		"default subscription setting must provide either validity_days or a valid starts_at/expires_at range",
+	)
 )
 
 type SettingRepository interface {

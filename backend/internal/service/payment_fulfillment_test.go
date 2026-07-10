@@ -120,8 +120,16 @@ func (r *paymentFulfillmentAffiliateRepoStub) SetUserRebateRate(context.Context,
 	panic("unexpected SetUserRebateRate call")
 }
 
+func (r *paymentFulfillmentAffiliateRepoStub) SetUserRebateRates(context.Context, int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected SetUserRebateRates call")
+}
+
 func (r *paymentFulfillmentAffiliateRepoStub) BatchSetUserRebateRate(context.Context, []int64, *float64) error {
 	panic("unexpected BatchSetUserRebateRate call")
+}
+
+func (r *paymentFulfillmentAffiliateRepoStub) BatchSetUserRebateRates(context.Context, []int64, bool, *float64, bool, *float64, bool, *float64) error {
+	panic("unexpected BatchSetUserRebateRates call")
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) ListUsersWithCustomSettings(context.Context, AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error) {

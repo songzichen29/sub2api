@@ -443,6 +443,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.AuthSourceDefaultLinuxDoSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultLinuxDoSubscriptions)
 	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
 	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
+	req.AuthSourceDefaultGitHubSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGitHubSubscriptions)
+	req.AuthSourceDefaultGoogleSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGoogleSubscriptions)
 	req.AuthSourceDefaultDingTalkSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultDingTalkSubscriptions)
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
@@ -1113,6 +1115,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		defaultSubscriptions = append(defaultSubscriptions, service.DefaultSubscriptionSetting{
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
+			StartsAt:     sub.StartsAt,
+			ExpiresAt:    sub.ExpiresAt,
 		})
 	}
 
@@ -1697,6 +1701,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		updatedDefaultSubscriptions = append(updatedDefaultSubscriptions, dto.DefaultSubscriptionSetting{
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
+			StartsAt:     sub.StartsAt,
+			ExpiresAt:    sub.ExpiresAt,
 		})
 	}
 

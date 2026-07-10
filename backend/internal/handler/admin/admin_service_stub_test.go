@@ -338,7 +338,7 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, tags []string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(_ context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string, tags []string) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
@@ -349,32 +349,71 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 	s.lastListAccounts.sortOrder = sortOrder
 	s.lastListAccounts.tags = tags
 	s.lastListAccounts.calls++
-	return s.accounts, int64(len(s.accounts)), nil
+
+	accounts := s.accounts
+	total := len(accounts)
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = total
+	}
+	start := (page - 1) * pageSize
+	if start >= total {
+		return []service.Account{}, int64(total), nil
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return accounts[start:end], int64(total), nil
 }
 
-func (s *stubAdminService) ListAccountsForSchedulerScoreFilter(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, error) {
+func (s *stubAdminService) ListAccountsForSchedulerScoreFilter(_ context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, error) {
 	s.schedulerScoreFilterCalls++
 	if s.accountSchedulerScoreFilterAccounts != nil {
 		return s.accountSchedulerScoreFilterAccounts, nil
 	}
 	return s.accounts, nil
 }
-	if s.accountSchedulerScoreFilterAccounts != nil {
-		return s.accountSchedulerScoreFilterAccounts, nil
-	}
-	return s.accounts, nil
-}
 
-func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(ctx context.Context, groupID *int64) ([]service.Account, error) {
+func (s *stubAdminService) ListOpenAISchedulableAccountsForSchedulerScore(_ context.Context, groupID *int64) ([]service.Account, error) {
 	s.openAISchedulerScorePoolCalls++
 	accounts := s.openAISchedulerScorePoolAccounts
 	if accounts == nil {
 		accounts = s.accounts
 	}
-	return accounts, nil
-}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Platform != service.PlatformOpenAI || !account.IsSchedulable() {
+			continue
+		}
+		if groupID == nil {
+			if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 {
+				out = append(out, account)
+			}
+			continue
+		}
+		matched := false
+		for _, accountGroup := range account.AccountGroups {
+			if accountGroup.GroupID == *groupID {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			for _, id := range account.GroupIDs {
+				if id == *groupID {
+					matched = true
+					break
+				}
+			}
+		}
+		if matched {
+			out = append(out, account)
+		}
 	}
-	return s.accounts, nil
+	return out, nil
 }
 
 // ListAllAccountTags 默认返回 stub 中所有账号 tags 字段去重排序的并集；

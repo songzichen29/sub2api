@@ -82,6 +82,9 @@ func (m *mockAccountRepoForGemini) List(ctx context.Context, params pagination.P
 func (m *mockAccountRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
+func (m *mockAccountRepoForGemini) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error) {
+	return nil, nil
+}
 func (m *mockAccountRepoForGemini) ListAllTags(ctx context.Context) ([]string, error) {
 	return nil, nil
 }
@@ -89,6 +92,9 @@ func (m *mockAccountRepoForGemini) ListByGroup(ctx context.Context, groupID int6
 	return nil, nil
 }
 func (m *mockAccountRepoForGemini) ListActive(ctx context.Context) ([]Account, error) {
+	return nil, nil
+}
+func (m *mockAccountRepoForGemini) ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error) {
 	return nil, nil
 }
 func (m *mockAccountRepoForGemini) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {

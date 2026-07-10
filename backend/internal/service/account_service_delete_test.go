@@ -83,6 +83,10 @@ func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination
 	panic("unexpected ListWithFilters call")
 }
 
+func (s *accountRepoStub) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error) {
+	panic("unexpected ListAllWithFilters call")
+}
+
 func (s *accountRepoStub) ListAllTags(ctx context.Context) ([]string, error) {
 	panic("unexpected ListAllTags call")
 }

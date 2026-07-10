@@ -128,6 +128,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		defaultSubscriptions = append(defaultSubscriptions, dto.DefaultSubscriptionSetting{
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
+			StartsAt:     sub.StartsAt,
+			ExpiresAt:    sub.ExpiresAt,
 		})
 	}
 

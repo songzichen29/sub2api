@@ -2,6 +2,8 @@ package admin
 
 import (
 	"log/slog"
+	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -592,13 +594,56 @@ func normalizeDefaultSubscriptions(input []dto.DefaultSubscriptionSetting) []dto
 	}
 	normalized := make([]dto.DefaultSubscriptionSetting, 0, len(input))
 	for _, item := range input {
-		if item.GroupID <= 0 || item.ValidityDays <= 0 {
+		if item.GroupID <= 0 {
 			continue
 		}
-		if item.ValidityDays > service.MaxValidityDays {
-			item.ValidityDays = service.MaxValidityDays
+		startRaw := ""
+		if item.StartsAt != nil {
+			startRaw = strings.TrimSpace(*item.StartsAt)
 		}
-		normalized = append(normalized, item)
+		endRaw := ""
+		if item.ExpiresAt != nil {
+			endRaw = strings.TrimSpace(*item.ExpiresAt)
+		}
+		if startRaw != "" || endRaw != "" {
+			if startRaw == "" || endRaw == "" {
+				continue
+			}
+			startAt, err := time.Parse(time.RFC3339, startRaw)
+			if err != nil {
+				continue
+			}
+			expiresAt, err := time.Parse(time.RFC3339, endRaw)
+			if err != nil {
+				continue
+			}
+			if !expiresAt.After(startAt) {
+				continue
+			}
+			if !expiresAt.After(time.Now()) {
+				continue
+			}
+			startValue := startAt.UTC().Format(time.RFC3339)
+			expiresValue := expiresAt.UTC().Format(time.RFC3339)
+			normalized = append(normalized, dto.DefaultSubscriptionSetting{
+				GroupID:   item.GroupID,
+				StartsAt:  &startValue,
+				ExpiresAt: &expiresValue,
+			})
+			continue
+		}
+
+		if item.ValidityDays <= 0 {
+			continue
+		}
+		validityDays := item.ValidityDays
+		if validityDays > service.MaxValidityDays {
+			validityDays = service.MaxValidityDays
+		}
+		normalized = append(normalized, dto.DefaultSubscriptionSetting{
+			GroupID:      item.GroupID,
+			ValidityDays: validityDays,
+		})
 	}
 	return normalized
 }
@@ -641,6 +686,8 @@ func defaultSubscriptionsValueOrDefault(input *[]dto.DefaultSubscriptionSetting,
 		result = append(result, service.DefaultSubscriptionSetting{
 			GroupID:      item.GroupID,
 			ValidityDays: item.ValidityDays,
+			StartsAt:     item.StartsAt,
+			ExpiresAt:    item.ExpiresAt,
 		})
 	}
 	return result
@@ -675,6 +722,28 @@ func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 	}
 	for i := range a {
 		if a[i].GroupID != b[i].GroupID || a[i].ValidityDays != b[i].ValidityDays {
+			return false
+		}
+		aStart := ""
+		if a[i].StartsAt != nil {
+			aStart = strings.TrimSpace(*a[i].StartsAt)
+		}
+		bStart := ""
+		if b[i].StartsAt != nil {
+			bStart = strings.TrimSpace(*b[i].StartsAt)
+		}
+		if aStart != bStart {
+			return false
+		}
+		aEnd := ""
+		if a[i].ExpiresAt != nil {
+			aEnd = strings.TrimSpace(*a[i].ExpiresAt)
+		}
+		bEnd := ""
+		if b[i].ExpiresAt != nil {
+			bEnd = strings.TrimSpace(*b[i].ExpiresAt)
+		}
+		if aEnd != bEnd {
 			return false
 		}
 	}

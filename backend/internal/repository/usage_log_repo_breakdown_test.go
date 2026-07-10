@@ -21,7 +21,7 @@ func TestResolveEndpointColumn(t *testing.T) {
 	}{
 		{"inbound", "ul.inbound_endpoint"},
 		{"upstream", "ul.upstream_endpoint"},
-		{"path", "CONCAT(ul.inbound_endpoint, ' -> ', ul.upstream_endpoint)"},
+		{"path", "CONCAT(COALESCE(NULLIF(TRIM(ul.inbound_endpoint), ''), 'unknown'), ' -> ', COALESCE(NULLIF(TRIM(ul.upstream_endpoint), ''), 'unknown'))"},
 		{"", "ul.inbound_endpoint"},        // default
 		{"unknown", "ul.inbound_endpoint"}, // fallback
 	}
@@ -61,7 +61,7 @@ func TestGetUserBreakdownStatsRequestTypeIncludesLegacyFallback(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	requestType := int16(service.RequestTypeStream)
 
-	legacyFilter := `(ul.request_type = $3 OR (ul.request_type = 0 AND ul.stream = TRUE AND ul.openai_ws_mode = FALSE))`
+	legacyFilter := `(ul.request_type = ? OR (ul.request_type = 0 AND ul.stream = TRUE AND ul.openai_ws_mode = FALSE))`
 	mock.ExpectQuery(regexp.QuoteMeta(legacyFilter)).
 		WithArgs(start, end, requestType).
 		WillReturnRows(sqlmock.NewRows([]string{

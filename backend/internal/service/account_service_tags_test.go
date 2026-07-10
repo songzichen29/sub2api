@@ -89,6 +89,9 @@ func (r *inMemoryAccountRepo) List(ctx context.Context, params pagination.Pagina
 func (r *inMemoryAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
+func (r *inMemoryAccountRepo) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error) {
+	panic("unexpected")
+}
 func (r *inMemoryAccountRepo) ListAllTags(ctx context.Context) ([]string, error) {
 	panic("unexpected")
 }
