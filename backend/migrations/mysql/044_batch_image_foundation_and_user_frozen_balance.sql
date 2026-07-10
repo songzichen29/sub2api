@@ -87,7 +87,9 @@ CREATE TABLE IF NOT EXISTS `batch_image_items` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `batch_image_items_job_custom_uq` (`job_id`, `custom_id`),
     KEY `batch_image_items_job_status_idx` (`job_id`, `status`),
-    KEY `batch_image_items_provider_source_object_idx` (`provider_source_object`),
+    -- provider_source_object 为 VARCHAR(1024)，utf8mb4 下全列索引达 4096 字节，超过 InnoDB 3072 字节上限（Error 1071）；
+    -- 该列仅用于读写、不作为等值过滤条件，故改用前缀索引（255×4=1020 字节），保留索引命名与覆盖。
+    KEY `batch_image_items_provider_source_object_idx` (`provider_source_object`(255)),
     CONSTRAINT `batch_image_items_job_fk` FOREIGN KEY (`job_id`) REFERENCES `batch_image_jobs` (`batch_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
