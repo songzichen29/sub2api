@@ -1,6 +1,4 @@
 export default {
-
-  // Subscription Progress (Header component)
   subscriptionProgress: {
     title: 'My Subscriptions',
     viewDetails: 'View subscription details',
@@ -14,14 +12,16 @@ export default {
     expiresTomorrow: 'Expires tomorrow',
     viewAll: 'View all subscriptions',
     noSubscriptions: 'No active subscriptions',
-    unlimited: 'Unlimited'
+    unlimited: 'Unlimited',
+    totalQuota: 'Total',
+    overdraftTotal: 'Total quota',
+    todayOverdraft: 'Today overdraft',
+    overdraftRemaining: 'Overdraft remaining'
   },
-
-  // Version Badge
   version: {
     currentVersion: 'Current Version',
     latestVersion: 'Latest Version',
-    upToDate: "You're running the latest version.",
+    upToDate: 'You\'re running the latest version.',
     updateAvailable: 'A new version is available!',
     releaseNotes: 'Release Notes',
     noReleaseNotes: 'No release notes',
@@ -42,8 +42,7 @@ export default {
     rollback: 'Version Rollback',
     rollbackSelectVersion: 'Select a version to roll back to (last 3 versions)',
     rollbackConfirm: 'Roll back to {version}',
-    rollbackWarning:
-      'Rollback downloads the selected version and replaces the current binary. A service restart is required afterwards.',
+    rollbackWarning: 'Rollback downloads the selected version and replaces the current binary. A service restart is required afterwards.',
     rollingBack: 'Rolling back...',
     rollbackComplete: 'Rollback Complete',
     rollbackFailed: 'Rollback Failed',
@@ -58,8 +57,6 @@ export default {
     dockerEditCompose: 'Edit the image tag in docker-compose.yml',
     dockerRecreate: 'Recreate the container'
   },
-
-  // Recharge / Subscription Page
   purchase: {
     title: 'Recharge / Subscription',
     description: 'Recharge balance or purchase subscription via the embedded page',
@@ -67,11 +64,8 @@ export default {
     notEnabledTitle: 'Feature not enabled',
     notEnabledDesc: 'The administrator has not enabled the recharge/subscription entry. Please contact admin.',
     notConfiguredTitle: 'Recharge / Subscription URL not configured',
-    notConfiguredDesc:
-      'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
+    notConfiguredDesc: 'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   },
-
-  // Custom Page (iframe embed)
   customPage: {
     title: 'Custom Page',
     openInNewTab: 'Open in new tab',
@@ -82,10 +76,13 @@ export default {
     tableOfContents: 'Contents',
     copyCode: 'Copy',
     copiedCode: 'Copied',
-    copyCodeFailed: 'Failed'
+    copyCodeFailed: 'Failed',
+    checkingTitle: 'Opening page',
+    checkingDesc: 'Checking the page service status. Please wait.',
+    unavailableTitle: 'Temporarily unavailable',
+    unavailableDesc: 'This page service is not reachable now. It may be under maintenance or not yet open. Please try again later.',
+    unavailableStatus: 'Service returned status code: {status}'
   },
-
-  // Announcements Page
   announcements: {
     title: 'Announcements',
     description: 'View system announcements',
@@ -108,19 +105,17 @@ export default {
     readStatus: 'You have read this announcement',
     markReadHint: 'Click "Mark as read" to mark this announcement'
   },
-
-  // User Subscriptions Page
   userSubscriptions: {
     title: 'My Subscriptions',
     description: 'View your subscription plans and usage',
     noActiveSubscriptions: 'No Active Subscriptions',
-    noActiveSubscriptionsDesc:
-      "You don't have any active subscriptions. Contact administrator to get one.",
+    noActiveSubscriptionsDesc: 'You don\'t have any active subscriptions. Contact administrator to get one.',
     failedToLoad: 'Failed to load subscriptions',
     status: {
       active: 'Active',
       expired: 'Expired',
-      revoked: 'Revoked'
+      revoked: 'Revoked',
+      quota_exhausted: 'Quota Exhausted'
     },
     usage: 'Usage',
     expires: 'Expires',
@@ -135,22 +130,35 @@ export default {
     resetIn: 'Resets in {time}',
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    exactRemaining: '{time} remaining',
+    dailyOverdraft: 'Daily overdraft',
+    dailyOverdraftHint: 'When enabled, usage can continue by consuming future daily quota within the subscription validity period. Off by default.',
+    overdraftTotal: 'Total quota',
+    totalQuota: 'Total quota',
+    totalQuotaRemaining: '${amount} remaining',
+    todayOverdraft: 'Today overdraft',
+    overdraftRemaining: 'Overdraft remaining',
+    borrowedFutureDays: 'Borrowed future days',
+    borrowedFutureQuota: 'Borrowed future quota',
+    overdraftDaysValue: '{days} days',
+    overdraftDays: 'Borrowed future days: {days}',
+    dailyOverdraftEnabled: 'Daily overdraft enabled',
+    dailyOverdraftDisabled: 'Daily overdraft disabled',
+    dailyOverdraftUpdateFailed: 'Failed to update daily overdraft setting',
+    resetDailyLimit: 'Reset daily quota'
   },
-
-  // Onboarding Tour
   onboarding: {
     restartTour: 'Restart Onboarding Tour',
-    dontShowAgain: "Don't show again",
+    dontShowAgain: 'Don\'t show again',
     dontShowAgainTitle: 'Permanently close onboarding guide',
-    confirmDontShow: "Are you sure you don't want to see the onboarding guide again?\n\nYou can restart it anytime from the user menu in the top right corner.",
+    confirmDontShow: 'Are you sure you don\'t want to see the onboarding guide again?\n\nYou can restart it anytime from the user menu in the top right corner.',
     confirmExit: 'Are you sure you want to exit the onboarding guide? You can restart it anytime from the top right menu.',
     interactiveHint: 'Press Enter or Click to continue',
     navigation: {
       flipPage: 'Flip Page',
       exit: 'Exit'
     },
-    // Admin tour steps
     admin: {
       welcome: {
         title: '👋 Welcome to Sub2API',
@@ -250,7 +258,6 @@ export default {
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">System will generate a complete API Key after clicking create.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important Reminder:</b><ul style="margin: 8px 0 0 16px;"><li>Key is only shown once, copy immediately</li><li>Need to regenerate if lost</li><li>Keep it safe, don\'t share with others</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 Next Steps:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the generated sk-xxx key</li><li>Use in any OpenAI-compatible client</li><li>Start experiencing AI services!</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       }
     },
-    // User tour steps
     user: {
       welcome: {
         title: '👋 Welcome to Sub2API',
@@ -282,8 +289,6 @@ export default {
       }
     }
   },
-
-  // Payment System
   payment: {
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
@@ -305,7 +310,7 @@ export default {
       card: 'Card',
       link: 'Link',
       alipay_direct: 'Alipay (Direct)',
-      wxpay_direct: 'WeChat Pay (Direct)',
+      wxpay_direct: 'WeChat Pay (Direct)'
     },
     status: {
       pending: 'Pending',
@@ -320,7 +325,7 @@ export default {
       refund_pending: 'Refund Pending',
       refunded: 'Refunded',
       partially_refunded: 'Partially Refunded',
-      refund_failed: 'Refund Failed',
+      refund_failed: 'Refund Failed'
     },
     qr: {
       scanToPay: 'Scan to Pay',
@@ -338,6 +343,8 @@ export default {
       cancelledDesc: 'You have cancelled this payment.',
       waitingPayment: 'Waiting for payment...',
       cancelOrder: 'Cancel Order',
+      failed: 'Order Failed',
+      failedDesc: 'This order failed. Please retry or contact support.'
     },
     orders: {
       title: 'My Orders',
@@ -357,7 +364,7 @@ export default {
       userId: 'User ID',
       orderType: 'Order Type',
       actions: 'Actions',
-      requestRefund: 'Request Refund',
+      requestRefund: 'Request Refund'
     },
     result: {
       success: 'Payment Successful',
@@ -367,6 +374,7 @@ export default {
       failed: 'Payment Failed',
       backToRecharge: 'Back to Recharge',
       viewOrders: 'View Orders',
+      dailyResetSuccess: 'Daily quota reset'
     },
     currentBalance: 'Current Balance',
     groupFallback: 'Group #{id}',
@@ -406,7 +414,6 @@ export default {
       alipayDesktopQrHint: 'Desktop Alipay should render a QR code. Refresh and retry, or make sure the payment page was not blocked.',
       alipayMobileUnavailable: 'This page could not hand off to Alipay.',
       alipayMobileOpenHint: 'Allow the current page to open the Alipay app, or retry from the system browser.',
-      // Structured error codes (reason strings from backend ApplicationError)
       PAYMENT_DISABLED: 'Payment system is disabled.',
       USER_INACTIVE: 'Your account is disabled.',
       BALANCE_PAYMENT_DISABLED: 'Balance recharge has been disabled.',
@@ -434,6 +441,23 @@ export default {
       BALANCE_NOT_ENOUGH: 'Refund amount exceeds balance.',
       REFUND_AMOUNT_EXCEEDED: 'Refund amount exceeds the recharge amount.',
       REFUND_FAILED: 'Refund failed.',
+      PLAN_PURCHASE_LIMIT_REACHED: 'You have reached the purchase limit for this plan.',
+      DAILY_LIMIT_RESET_NOT_AVAILABLE: 'Daily quota reset is not available for this subscription.',
+      SUBSCRIPTION_EXPIRED: 'The subscription has expired and cannot be refunded.',
+      INVALID_DISCOUNT_RULES: 'Invalid discount rule configuration. Please check thresholds, types, and values.',
+      COUPON_INVALID: 'Invalid or unknown coupon.',
+      COUPON_EXPIRED: 'This coupon has expired.',
+      COUPON_DISABLED: 'This coupon is disabled.',
+      COUPON_NOT_STARTED: 'This coupon is not active yet.',
+      COUPON_EXHAUSTED: 'This coupon has been fully used.',
+      COUPON_USER_LIMIT_REACHED: 'You have reached the usage limit for this coupon.',
+      COUPON_SCOPE_MISMATCH: 'This coupon is not valid for the current order type.',
+      COUPON_NOT_APPLICABLE: 'Coupons cannot be used for this order.',
+      COUPON_MIN_AMOUNT_NOT_MET: 'The order does not meet this coupon\'s minimum amount.',
+      INVALID_COUPON_TYPE: 'Invalid coupon type.',
+      INVALID_COUPON_VALUE: 'Invalid coupon value.',
+      INVALID_COUPON_SCOPE: 'Invalid coupon scope.',
+      INVALID_COUPON_LIMITS: 'Invalid coupon usage limits.'
     },
     airwallexPay: 'Airwallex Payment',
     stripePay: 'Pay Now',
@@ -442,7 +466,7 @@ export default {
       redirecting: 'Redirecting to payment page...',
       loadingQr: 'Loading WeChat Pay QR code...',
       timeout: 'Timed out waiting for payment credentials, please retry',
-      qrFailed: 'Failed to get WeChat Pay QR code',
+      qrFailed: 'Failed to get WeChat Pay QR code'
     },
     subscribeNow: 'Subscribe Now',
     renewNow: 'Renew',
@@ -457,6 +481,13 @@ export default {
       quota: 'Quota',
       unlimited: 'Unlimited',
       models: 'Models',
+      totalQuota: 'Total quota',
+      overdraftTotal: 'Overdraft pool',
+      salesCount: 'Sold {count}',
+      untilDate: 'until {date}',
+      purchaseLimit: 'Limit {total}, {remaining} left',
+      purchaseLimitReached: 'Purchase limit reached',
+      soldOut: 'Unavailable'
     },
     days: 'days',
     months: 'months',
@@ -470,7 +501,7 @@ export default {
         overview: 'Overview',
         orders: 'Orders',
         channels: 'Channels',
-        plans: 'Plans',
+        plans: 'Plans'
       },
       todayRevenue: 'Today Revenue',
       totalRevenue: 'Total Revenue',
@@ -601,9 +632,210 @@ export default {
       subsStatus: {
         active: 'Active',
         expired: 'Expired',
-        revoked: 'Revoked',
+        revoked: 'Revoked'
       },
+      coupons: {
+        title: 'Payment Coupons',
+        search: 'Search coupon codes...',
+        create: 'Create Coupon',
+        edit: 'Edit Coupon',
+        code: 'Coupon Code',
+        autoGenerate: 'auto-generate when empty',
+        codePlaceholder: 'Enter a coupon code or leave empty',
+        status: 'Status',
+        type: 'Type',
+        fixedValue: 'Fixed discount amount',
+        percentValue: 'Discount rate (0.2 = 20%)',
+        minAmount: 'Minimum Amount',
+        maxDiscount: 'Max Discount',
+        scope: 'Scope',
+        maxUses: 'Max Uses',
+        perUserLimit: 'Per-user Limit',
+        startsAt: 'Starts At',
+        expiresAt: 'Expires At',
+        notes: 'Notes',
+        notesPlaceholder: 'Optional notes',
+        zeroUnlimited: '0 = unlimited',
+        neverExpires: 'Never',
+        allStatuses: 'All Statuses',
+        statusActive: 'Active',
+        statusDisabled: 'Disabled',
+        statusArchived: 'Archived',
+        statusExpired: 'Expired',
+        statusMaxUsed: 'Used Up',
+        typeFixed: 'Fixed',
+        typePercent: 'Percent',
+        scopeAll: 'All',
+        scopeBalance: 'Balance top-up',
+        scopeSubscription: 'Subscription',
+        usageRecords: 'Coupon Usage Records',
+        usageUsed: 'Used',
+        usageRefunded: 'Refunded',
+        deleteTitle: 'Delete Coupon',
+        deleteConfirm: 'Delete this coupon? The coupon will be archived and historical usage records will be kept.',
+        created: 'Coupon created',
+        updated: 'Coupon updated',
+        deleted: 'Coupon archived',
+        failedToLoad: 'Failed to load coupons',
+        failedToSave: 'Failed to save coupon',
+        failedToDelete: 'Failed to delete coupon',
+        failedToLoadUsages: 'Failed to load coupon usage records',
+        columns: {
+          code: 'Code',
+          type: 'Discount',
+          minAmount: 'Minimum',
+          scope: 'Scope',
+          usage: 'Usage',
+          status: 'Status',
+          expiresAt: 'Expires',
+          userId: 'User',
+          orderId: 'Order',
+          discountAmount: 'Discount',
+          usedAt: 'Used At'
+        }
+      },
+      revenueTrend: 'Revenue Trend',
+      revenueWithCurrency: 'Revenue (USD)',
+      orderCountWithUnit: 'Orders',
+      maxDailyRevenue: 'Highest Revenue',
+      maxDailyOrders: 'Highest Orders',
+      avgDailyRevenue: 'Avg Daily Revenue',
+      avgDailyOrders: 'Avg Daily Orders',
+      orderUnit: 'orders',
+      inSelectedRange: 'Selected range',
+      dailyCalendar: 'Revenue Calendar',
+      totalOrders: 'Total Orders',
+      latestOrders: 'Latest Orders',
+      overviewPanel: 'Overview',
+      revenueShare: 'Revenue Share',
+      activeDays: 'revenue days',
+      calendarWeekly: 'Weekly',
+      calendarMonthly: 'Monthly',
+      previousWeek: 'Previous week',
+      nextWeek: 'Next week',
+      currentWeek: 'This week',
+      currentMonth: 'This month',
+      previousMonth: 'Previous month',
+      nextMonth: 'Next month',
+      lowRevenue: 'Low',
+      highRevenue: 'High',
+      weekdays: {
+        sun: 'Sun',
+        mon: 'Mon',
+        tue: 'Tue',
+        wed: 'Wed',
+        thu: 'Thu',
+        fri: 'Fri',
+        sat: 'Sat'
+      },
+      dailyLimitResetOrder: 'Daily Limit Reset',
+      orderContent: 'Payment Content',
+      refundMode: 'Refund Mode',
+      proportionalRefund: 'Proportional Refund',
+      proportionalRefundHint: 'Automatically calculate the refund from the reset subscription remaining days and today\'s remaining quota.',
+      fullRefund: 'Full Refund',
+      fullRefundHint: 'Refund the current maximum refundable amount.',
+      proportionalAmountHint: 'In proportional mode, the amount is calculated automatically and does not need manual input.',
+      estimatedRefundAmount: 'Estimated Refund Amount',
+      subscriptionRefundExpired: 'This subscription has expired and can no longer be refunded.',
+      fixedExpiresAt: 'Fixed end time',
+      fixedExpiresAtHint: 'Optional. When set, purchases expire at this time instead of now plus validity days.',
+      fixedExpiresAtInvalid: 'Fixed end time must be later than now',
+      fixedExpiresAtShort: 'until {time}',
+      totalQuota: 'Total quota',
+      totalQuotaHint: 'Optional. Maximum USD amount users can consume during the subscription period; empty or 0 means unlimited.',
+      totalQuotaInvalid: 'Total quota cannot be less than 0',
+      maxBuyCount: 'Purchase Limit',
+      maxBuyCountHint: 'Optional. Maximum number of times each user can purchase this plan; empty or 0 means unlimited.',
+      maxBuyCountInvalid: 'Purchase limit must be greater than 0'
     },
+    thresholdDiscount: 'Threshold discount',
+    couponDiscount: 'Coupon discount',
+    couponApplied: 'Coupon applied',
+    couponNoDiscount: 'Coupon did not change the price',
+    couponInvalid: 'Coupon is not available',
+    thresholdRateHint: 'Spend {threshold}, pay {rate}%',
+    thresholdReduceHint: 'Spend {threshold}, save {amount}',
+    thresholdDiscountBadge: '{rate}% pay',
+    thresholdReduceBadge: 'Save {amount}',
+    quickAmountPay: 'Pay {amount}',
+    quickAmountSave: 'Save {amount}',
+    dailyReset: {
+      tab: 'Reset quota',
+      price: 'Reset price',
+      payAndReset: 'Pay and reset',
+      notAvailable: 'Daily quota reset is not available for this subscription'
+    },
+    desktopAlipayTitle: 'Return to desktop to complete Alipay payment',
+    desktopAlipayDescription: 'Starting Alipay from mobile is not stable for this flow right now. Please continue from a desktop browser.',
+    desktopAlipayCurrentPage: 'Open this page on desktop',
+    desktopAlipayCopyPageLink: 'Copy page link',
+    desktopAlipayHint: 'After you copy the link, open it in your desktop browser. Any amount or selected plan in the link will be restored automatically.',
+    renewalNoticeTitle: 'Renewal',
+    renewalNotice: 'Remaining {time}.',
+    renewalNoticeUnlimited: 'Remaining {time}.',
+    renewalRemainingItem: '{label} remaining {amount}',
+    renewalRuleExtend: 'extend time',
+    renewalRuleDailyReset: '1-day renewal refreshes today\'s quota',
+    renewalRuleWeeklyNotStacked: 'weekly quota does not stack',
+    renewalRuleMonthlyNotStacked: 'monthly quota does not stack',
+    renewalRuleOverdraftPool: 'overdraft uses days × daily quota',
+    renewalRuleSeparator: '; ',
+    continueRenewal: 'Continue renewal',
+    renewalMode: {
+      title: 'Choose action',
+      message: 'Choose extend or reset.',
+      extendTitle: 'Extend time',
+      extendDesc: 'Only adds time. Keeps current usage.',
+      restartTitle: 'Reset quota',
+      restartDesc: 'Start over and clear current usage.'
+    },
+    renewalResetNoticeTitle: 'Reset Notice'
   },
-
+  accountImport: {
+    title: 'Account Import',
+    description: 'Import account data after standalone password verification.',
+    password: 'Access Password',
+    passwordPlaceholder: 'Enter import password',
+    verify: 'Verify',
+    verifying: 'Verifying...',
+    disabled: 'Standalone account import is not enabled.',
+    passwordNotConfigured: 'Standalone account import password is not configured.',
+    loadFailed: 'Failed to load import entry',
+    invalidPassword: 'Invalid password or verification expired',
+    verified: 'Verified'
+  },
+  modelMarketplace: {
+    title: 'Model Marketplace',
+    description: 'Browse accessible models, their channels, and pricing',
+    searchPlaceholder: 'Search models, channels, groups, or platforms...',
+    modelSearchPlaceholder: 'Search model names...',
+    filtersTitle: 'Filters',
+    filtersSubtitle: 'Narrow results by provider',
+    groupFiltersTitle: 'Groups',
+    allProviders: 'All providers',
+    allGroups: 'All groups',
+    groupSearchPlaceholder: 'Search group names...',
+    totalModels: '{count} models',
+    fromLabel: 'Provider',
+    moreChannels: 'Show {count} more channels',
+    collapseChannels: 'Collapse channels',
+    intervalCount: '{count} pricing tiers',
+    detailsTitle: 'Model pricing details',
+    showDetails: 'Show details',
+    hideDetails: 'Hide details',
+    showIntervalDetails: 'Show tier prices',
+    hideIntervalDetails: 'Hide tier prices',
+    intervalRangeOpen: '> {min} tokens',
+    intervalRangeBounded: '> {min} and <= {max} tokens',
+    intervalTable: {
+      context: 'Context Range'
+    },
+    channelCount: '{count} channels',
+    empty: {
+      noChannels: 'No available channels',
+      noGroups: 'No matching groups',
+      noModelResults: 'No models match the current filters'
+    }
+  }
 }

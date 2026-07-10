@@ -1,6 +1,4 @@
 export default {
-
-  // Subscription Progress (Header component)
   subscriptionProgress: {
     title: '我的订阅',
     viewDetails: '查看订阅详情',
@@ -14,10 +12,12 @@ export default {
     expiresTomorrow: '明天到期',
     viewAll: '查看全部订阅',
     noSubscriptions: '暂无有效订阅',
-    unlimited: '无限制'
+    unlimited: '无限制',
+    totalQuota: '总额',
+    overdraftTotal: '总额度',
+    todayOverdraft: '今日透支额度',
+    overdraftRemaining: '透支剩余额度'
   },
-
-  // Version Badge
   version: {
     currentVersion: '当前版本',
     latestVersion: '最新版本',
@@ -57,8 +57,6 @@ export default {
     dockerEditCompose: '修改 docker-compose.yml 中的镜像版本',
     dockerRecreate: '重新创建容器'
   },
-
-  // Recharge / Subscription Page
   purchase: {
     title: '充值/订阅',
     description: '通过内嵌页面完成充值/订阅',
@@ -68,8 +66,6 @@ export default {
     notConfiguredTitle: '充值/订阅链接未配置',
     notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
   },
-
-  // Custom Page (iframe embed)
   customPage: {
     title: '自定义页面',
     openInNewTab: '新窗口打开',
@@ -80,10 +76,13 @@ export default {
     tableOfContents: '目录',
     copyCode: '复制',
     copiedCode: '已复制',
-    copyCodeFailed: '失败'
+    copyCodeFailed: '失败',
+    checkingTitle: '正在打开页面',
+    checkingDesc: '正在检查页面服务状态，请稍候。',
+    unavailableTitle: '暂未开放使用',
+    unavailableDesc: '该页面服务暂时无法访问，可能正在维护或尚未开放。请稍后再试。',
+    unavailableStatus: '服务返回状态码：{status}'
   },
-
-  // Announcements Page
   announcements: {
     title: '公告',
     description: '查看系统公告',
@@ -106,8 +105,6 @@ export default {
     readStatus: '您已阅读此公告',
     markReadHint: '点击"已读"标记此公告'
   },
-
-  // User Subscriptions Page
   userSubscriptions: {
     title: '我的订阅',
     description: '查看您的订阅计划和用量',
@@ -117,7 +114,8 @@ export default {
     status: {
       active: '有效',
       expired: '已过期',
-      revoked: '已撤销'
+      revoked: '已撤销',
+      quota_exhausted: '额度已用完'
     },
     usage: '用量',
     expires: '到期时间',
@@ -132,10 +130,24 @@ export default {
     resetIn: '{time} 后重置',
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    exactRemaining: '剩余 {time}',
+    dailyOverdraft: '日额度透支',
+    dailyOverdraftHint: '开启后每日额度用完仍可继续使用，消耗订阅有效天数内的未来日额度；默认关闭。',
+    overdraftTotal: '总额度',
+    totalQuota: '总额度',
+    totalQuotaRemaining: '剩余额度 ${amount}',
+    todayOverdraft: '今日透支额度',
+    overdraftRemaining: '透支剩余额度',
+    borrowedFutureDays: '已借用未来天数',
+    borrowedFutureQuota: '已借用未来额度',
+    overdraftDaysValue: '{days} 天',
+    overdraftDays: '已借用未来天数：{days} 天',
+    dailyOverdraftEnabled: '已开启日额度透支',
+    dailyOverdraftDisabled: '已关闭日额度透支',
+    dailyOverdraftUpdateFailed: '更新日额度透支设置失败',
+    resetDailyLimit: '重置当日额度'
   },
-
-  // Onboarding Tour
   onboarding: {
     restartTour: '重新查看新手引导',
     dontShowAgain: '不再提示',
@@ -147,167 +159,136 @@ export default {
       flipPage: '翻页',
       exit: '退出'
     },
-    // Admin tour steps
     admin: {
       welcome: {
         title: '👋 欢迎使用 Sub2API',
-        description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">Sub2API 是一个强大的 AI 服务中转平台，让您轻松管理和分发 AI 服务。</p><p style="margin-bottom: 12px;"><b>🎯 核心功能：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>📦 <b>分组管理</b> - 创建不同的服务套餐（VIP、免费试用等）</li><li>🔗 <b>账号池</b> - 连接多个上游 AI 服务商账号</li><li>🔑 <b>密钥分发</b> - 为用户生成独立的 API Key</li><li>💰 <b>计费管理</b> - 灵活的费率和配额控制</li></ul><p style="color: #10b981; font-weight: 600;">接下来，我们将用 3 分钟带您完成首次配置 →</p></div>',
         nextBtn: '开始配置 🚀',
         prevBtn: '跳过'
       },
       groupManage: {
         title: '📦 第一步：分组管理',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 Sub2API 的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>什么是分组？</b></p><p style="margin-bottom: 12px;">分组是 Sub2API 的核心概念，它就像一个"服务套餐"：</p><ul style="margin-left: 20px; margin-bottom: 12px; font-size: 13px;"><li>🎯 每个分组可以包含多个上游账号</li><li>💰 每个分组有独立的计费倍率</li><li>👥 可以设置为公开或专属分组</li></ul><p style="margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>您可以创建"VIP专线"（高倍率）和"免费试用"（低倍率）两个分组</p><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"分组管理"开始</p></div>'
       },
       createGroup: {
         title: '➕ 创建新分组',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">现在让我们创建第一个分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📝 提示：</b>建议先创建一个测试分组，熟悉流程后再创建正式分组</p><p style="color: #10b981; font-weight: 600;">👉 点击"创建分组"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">现在让我们创建第一个分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📝 提示：</b>建议先创建一个测试分组，熟悉流程后再创建正式分组</p><p style="color: #10b981; font-weight: 600;">👉 点击"创建分组"按钮</p></div>'
       },
       groupName: {
         title: '✏️ 1. 分组名称',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为您的分组起一个易于识别的名称。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>💡 命名建议：</b><ul style="margin: 8px 0 0 16px;"><li>"测试分组" - 用于测试</li><li>"VIP专线" - 高质量服务</li><li>"免费试用" - 体验版</li></ul></div><p style="font-size: 13px; color: #6b7280;">填写完成后点击"下一步"继续</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为您的分组起一个易于识别的名称。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>💡 命名建议：</b><ul style="margin: 8px 0 0 16px;"><li>"测试分组" - 用于测试</li><li>"VIP专线" - 高质量服务</li><li>"免费试用" - 体验版</li></ul></div><p style="font-size: 13px; color: #6b7280;">填写完成后点击"下一步"继续</p></div>',
         nextBtn: '下一步'
       },
       groupPlatform: {
         title: '🤖 2. 选择平台',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该分组支持的 AI 平台。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 平台说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>Anthropic</b> - Claude 系列模型</li><li><b>OpenAI</b> - GPT 系列模型</li><li><b>Google</b> - Gemini 系列模型</li></ul></div><p style="font-size: 13px; color: #6b7280;">一个分组只能选择一个平台</p></div>',
         nextBtn: '下一步'
       },
       groupMultiplier: {
         title: '💰 3. 费率倍数',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
         nextBtn: '下一步'
       },
       groupExclusive: {
         title: '🔒 4. 专属分组（可选）',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">控制分组的可见性和访问权限。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔐 权限说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>关闭</b> - 公开分组，所有用户可见</li><li><b>开启</b> - 专属分组，仅指定用户可见</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>VIP 用户专属、内部测试、特殊客户等</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">控制分组的可见性和访问权限。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔐 权限说明：</b><ul style="margin: 8px 0 0 16px;"><li><b>关闭</b> - 公开分组，所有用户可见</li><li><b>开启</b> - 专属分组，仅指定用户可见</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>VIP 用户专属、内部测试、特殊客户等</p></div>',
         nextBtn: '下一步'
       },
       groupSubmit: {
         title: '✅ 保存分组',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创建按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击创建按钮保存分组。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 注意：</b>分组创建后，平台类型不可修改，其他信息可以随时编辑</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>创建成功后，我们将添加上游账号到这个分组</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       },
       accountManage: {
         title: '🔗 第二步：添加账号',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 两种方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>太棒了！分组已创建成功 🎉</b></p><p style="margin-bottom: 12px;">现在需要添加上游 AI 服务商的账号，让分组能够实际提供服务。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 账号的作用：</b><ul style="margin: 8px 0 0 16px;"><li>连接到上游 AI 服务（Claude、GPT 等）</li><li>一个分组可以包含多个账号（负载均衡）</li><li>支持 OAuth 和 Session Key 两种方式</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"账号管理"</p></div>'
       },
       createAccount: {
         title: '➕ 添加新账号',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮开始添加您的第一个上游账号。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>建议使用 OAuth 方式，更安全且无需手动提取密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"添加账号"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮开始添加您的第一个上游账号。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>建议使用 OAuth 方式，更安全且无需手动提取密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"添加账号"按钮</p></div>'
       },
       accountName: {
         title: '✏️ 1. 账号名称',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为账号设置一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"Claude主账号"、"GPT备用1"、"测试账号" 等</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为账号设置一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"Claude主账号"、"GPT备用1"、"测试账号" 等</p></div>',
         nextBtn: '下一步'
       },
       accountPlatform: {
         title: '🤖 2. 选择平台',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该账号对应的服务商平台。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px;"><b>⚠️ 重要：</b>平台必须与刚才创建的分组平台一致</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择该账号对应的服务商平台。</p><p style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px;"><b>⚠️ 重要：</b>平台必须与刚才创建的分组平台一致</p></div>',
         nextBtn: '下一步'
       },
       accountType: {
         title: '🔐 3. 授权方式',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择账号的授权方式。</p><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>✅ 推荐：OAuth 方式</b><ul style="margin: 8px 0 0 16px;"><li>无需手动提取密钥</li><li>更安全，支持自动刷新</li><li>适用于 Claude Code、ChatGPT OAuth</li></ul></div><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 Session Key 方式</b><ul style="margin: 8px 0 0 16px;"><li>需要手动从浏览器提取</li><li>可能需要定期更新</li><li>适用于不支持 OAuth 的平台</li></ul></div></div>',
         nextBtn: '下一步'
       },
       accountPriority: {
         title: '⚖️ 4. 优先级（可选）',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置账号的调用优先级。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📊 优先级规则：</b><ul style="margin: 8px 0 0 16px;"><li>数字越小，优先级越高</li><li>系统优先使用低数值账号</li><li>相同优先级则随机选择</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 使用场景：</b>主账号设置低数值，备用账号设置高数值</p></div>',
         nextBtn: '下一步'
       },
       accountGroups: {
         title: '🎯 5. 分配分组',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>关键步骤！</b>将账号分配到刚才创建的分组。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>必须勾选至少一个分组</li><li>未分配分组的账号无法使用</li><li>一个账号可以分配给多个分组</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>请勾选刚才创建的测试分组</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>关键步骤！</b>将账号分配到刚才创建的分组。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>必须勾选至少一个分组</li><li>未分配分组的账号无法使用</li><li>一个账号可以分配给多个分组</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>请勾选刚才创建的测试分组</p></div>',
         nextBtn: '下一步'
       },
       accountSubmit: {
         title: '✅ 保存账号',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击保存按钮。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 OAuth 授权流程：</b><ul style="margin: 8px 0 0 16px;"><li>点击保存后会跳转到服务商页面</li><li>在服务商页面完成登录授权</li><li>授权成功后自动返回</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>账号添加成功后，我们将创建 API 密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"保存"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">确认信息无误后，点击保存按钮。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 OAuth 授权流程：</b><ul style="margin: 8px 0 0 16px;"><li>点击保存后会跳转到服务商页面</li><li>在服务商页面完成登录授权</li><li>授权成功后自动返回</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>📌 下一步：</b>账号添加成功后，我们将创建 API 密钥</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"保存"按钮</p></div>'
       },
       keyManage: {
         title: '🔑 第三步：生成密钥',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>恭喜！账号配置完成 🎉</b></p><p style="margin-bottom: 12px;">最后一步，生成 API Key 来测试服务是否正常工作。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 API Key 的作用：</b><ul style="margin: 8px 0 0 16px;"><li>用于调用 AI 服务的凭证</li><li>每个 Key 绑定一个分组</li><li>可以设置配额和有效期</li><li>支持独立的使用统计</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"API 密钥"</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;"><b>恭喜！账号配置完成 🎉</b></p><p style="margin-bottom: 12px;">最后一步，生成 API Key 来测试服务是否正常工作。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🔑 API Key 的作用：</b><ul style="margin: 8px 0 0 16px;"><li>用于调用 AI 服务的凭证</li><li>每个 Key 绑定一个分组</li><li>可以设置配额和有效期</li><li>支持独立的使用统计</li></ul></div><p style="margin-top: 16px; color: #10b981; font-weight: 600;">👉 点击左侧的"API 密钥"</p></div>'
       },
       createKey: {
         title: '➕ 创建密钥',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API Key。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后请立即复制保存，密钥只显示一次</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API Key。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后请立即复制保存，密钥只显示一次</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"按钮</p></div>'
       },
       keyName: {
         title: '✏️ 1. 密钥名称',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥设置一个便于管理的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"测试密钥"、"生产环境"、"移动端" 等</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥设置一个便于管理的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 命名建议：</b>"测试密钥"、"生产环境"、"移动端" 等</p></div>',
         nextBtn: '下一步'
       },
       keyGroup: {
         title: '🎯 2. 选择分组',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择刚才配置好的分组。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 分组决定：</b><ul style="margin: 8px 0 0 16px;"><li>该密钥可以使用哪些账号</li><li>计费倍率是多少</li><li>是否为专属密钥</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>选择刚才创建的测试分组</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择刚才配置好的分组。</p><div style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>📌 分组决定：</b><ul style="margin: 8px 0 0 16px;"><li>该密钥可以使用哪些账号</li><li>计费倍率是多少</li><li>是否为专属密钥</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>选择刚才创建的测试分组</p></div>',
         nextBtn: '下一步'
       },
       keySubmit: {
         title: '🎉 生成并复制',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失后需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击创建后，系统会生成完整的 API Key。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要提醒：</b><ul style="margin: 8px 0 0 16px;"><li>密钥只显示一次，请立即复制</li><li>丢失后需要重新生成</li><li>妥善保管，不要泄露给他人</li></ul></div><div style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>🚀 下一步：</b><ul style="margin: 8px 0 0 16px;"><li>复制生成的 sk-xxx 密钥</li><li>在支持 OpenAI 接口的客户端中使用</li><li>开始体验 AI 服务！</li></ul></div><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       }
     },
-    // User tour steps
     user: {
       welcome: {
         title: '👋 欢迎使用 Sub2API',
-        description:
-          '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
+        description: '<div style="line-height: 1.8;"><p style="margin-bottom: 16px;">您好！欢迎来到 Sub2API AI 服务平台。</p><p style="margin-bottom: 12px;"><b>🎯 快速开始：</b></p><ul style="margin-left: 20px; margin-bottom: 16px;"><li>🔑 创建 API 密钥</li><li>📋 复制密钥到您的应用</li><li>🚀 开始使用 AI 服务</li></ul><p style="color: #10b981; font-weight: 600;">只需 1 分钟，让我们开始吧 →</p></div>',
         nextBtn: '开始 🚀',
         prevBtn: '跳过'
       },
       keyManage: {
         title: '🔑 API 密钥管理',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">在这里管理您的所有 API 访问密钥。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 什么是 API 密钥？</b><br/>API 密钥是您访问 AI 服务的凭证，就像一把钥匙，让您的应用能够调用 AI 能力。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入密钥页面</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">在这里管理您的所有 API 访问密钥。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 什么是 API 密钥？</b><br/>API 密钥是您访问 AI 服务的凭证，就像一把钥匙，让您的应用能够调用 AI 能力。</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击进入密钥页面</p></div>'
       },
       createKey: {
         title: '➕ 创建新密钥',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API 密钥。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后密钥只显示一次，请务必复制保存</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击按钮创建您的第一个 API 密钥。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 提示：</b>创建后密钥只显示一次，请务必复制保存</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建密钥"</p></div>'
       },
       keyName: {
         title: '✏️ 密钥名称',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">为密钥起一个便于识别的名称。</p><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>💡 示例：</b>"我的第一个密钥"、"测试用" 等</p></div>',
         nextBtn: '下一步'
       },
       keyGroup: {
         title: '🎯 选择分组',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">选择管理员为您分配的服务分组。</p><p style="padding: 8px 12px; background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 13px;"><b>📌 分组说明：</b><br/>不同分组可能有不同的服务质量和计费标准，请根据需要选择。</p></div>',
         nextBtn: '下一步'
       },
       keySubmit: {
         title: '🎉 完成创建',
-        description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击确认创建您的 API 密钥。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要：</b><ul style="margin: 8px 0 0 16px;"><li>创建后请立即复制密钥（sk-xxx）</li><li>密钥只显示一次，丢失需重新生成</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 如何使用：</b><br/>将密钥配置到支持 OpenAI 接口的任何客户端（如 ChatBox、OpenCat 等），即可开始使用！</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击确认创建您的 API 密钥。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要：</b><ul style="margin: 8px 0 0 16px;"><li>创建后请立即复制密钥（sk-xxx）</li><li>密钥只显示一次，丢失需重新生成</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 如何使用：</b><br/>将密钥配置到支持 OpenAI 接口的任何客户端（如 ChatBox、OpenCat 等），即可开始使用！</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       }
     }
   },
-
-  // Payment System
   payment: {
     title: '充值/订阅',
     amountLabel: '充值金额',
@@ -329,7 +310,7 @@ export default {
       card: '银行卡',
       link: 'Link',
       alipay_direct: '支付宝（直连）',
-      wxpay_direct: '微信支付（直连）',
+      wxpay_direct: '微信支付（直连）'
     },
     status: {
       pending: '待支付',
@@ -344,7 +325,7 @@ export default {
       refund_pending: '退款处理中',
       refunded: '已退款',
       partially_refunded: '部分退款',
-      refund_failed: '退款失败',
+      refund_failed: '退款失败'
     },
     qr: {
       scanToPay: '请扫码支付',
@@ -362,6 +343,8 @@ export default {
       cancelledDesc: '您已取消本次支付',
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
+      failed: '订单失败',
+      failedDesc: '订单处理失败，请重试或联系客服'
     },
     orders: {
       title: '我的订单',
@@ -381,7 +364,7 @@ export default {
       userId: '用户 ID',
       orderType: '订单类型',
       actions: '操作',
-      requestRefund: '申请退款',
+      requestRefund: '申请退款'
     },
     result: {
       success: '支付成功',
@@ -391,6 +374,7 @@ export default {
       failed: '支付失败',
       backToRecharge: '返回充值',
       viewOrders: '查看订单',
+      dailyResetSuccess: '当日额度已重置'
     },
     currentBalance: '当前余额',
     groupFallback: '分组 #{id}',
@@ -430,7 +414,6 @@ export default {
       alipayDesktopQrHint: '电脑端支付宝应展示扫码单，请刷新后重试，或确认浏览器未拦截当前支付页。',
       alipayMobileUnavailable: '当前页面未成功跳转到支付宝。',
       alipayMobileOpenHint: '请允许当前页面打开支付宝 App，或改用系统浏览器重新发起支付。',
-      // Structured error codes (reason strings from backend ApplicationError)
       PAYMENT_DISABLED: '支付系统已关闭',
       USER_INACTIVE: '账号已被禁用',
       BALANCE_PAYMENT_DISABLED: '余额充值功能已关闭',
@@ -458,6 +441,23 @@ export default {
       BALANCE_NOT_ENOUGH: '退款金额超过余额',
       REFUND_AMOUNT_EXCEEDED: '退款金额超过充值金额',
       REFUND_FAILED: '退款失败',
+      PLAN_PURCHASE_LIMIT_REACHED: '已达到该套餐的限购次数',
+      DAILY_LIMIT_RESET_NOT_AVAILABLE: '当前订阅暂不支持重置当日额度',
+      SUBSCRIPTION_EXPIRED: '订阅已过期，无法退款',
+      INVALID_DISCOUNT_RULES: '满减规则配置不合法，请检查门槛、类型和数值',
+      COUPON_INVALID: '优惠券无效或不存在',
+      COUPON_EXPIRED: '优惠券已过期',
+      COUPON_DISABLED: '优惠券已停用',
+      COUPON_NOT_STARTED: '优惠券尚未生效',
+      COUPON_EXHAUSTED: '优惠券已用完',
+      COUPON_USER_LIMIT_REACHED: '你已达到该优惠券的使用次数限制',
+      COUPON_SCOPE_MISMATCH: '该优惠券不适用于当前订单类型',
+      COUPON_NOT_APPLICABLE: '该订单不可使用优惠券',
+      COUPON_MIN_AMOUNT_NOT_MET: '未满足优惠券最低消费门槛',
+      INVALID_COUPON_TYPE: '优惠券类型不合法',
+      INVALID_COUPON_VALUE: '优惠券面值不合法',
+      INVALID_COUPON_SCOPE: '优惠券适用范围不合法',
+      INVALID_COUPON_LIMITS: '优惠券使用次数限制不合法'
     },
     airwallexPay: 'Airwallex 支付',
     stripePay: '立即支付',
@@ -466,7 +466,7 @@ export default {
       redirecting: '正在跳转到支付页面...',
       loadingQr: '正在获取微信支付二维码...',
       timeout: '等待支付凭证超时，请重试',
-      qrFailed: '未能获取微信支付二维码',
+      qrFailed: '未能获取微信支付二维码'
     },
     subscribeNow: '立即开通',
     renewNow: '续费',
@@ -481,6 +481,13 @@ export default {
       quota: '配额',
       unlimited: '无限制',
       models: '模型',
+      totalQuota: '总额度',
+      overdraftTotal: '透支总额',
+      salesCount: '销量 {count}',
+      untilDate: '至 {date}',
+      purchaseLimit: '限购 {total} 次，剩余 {remaining} 次',
+      purchaseLimitReached: '已达限购次数',
+      soldOut: '不可购买'
     },
     days: '天',
     months: '个月',
@@ -494,7 +501,7 @@ export default {
         overview: '概览',
         orders: '订单管理',
         channels: '支付渠道',
-        plans: '订阅套餐',
+        plans: '订阅套餐'
       },
       todayRevenue: '今日收入',
       totalRevenue: '总收入',
@@ -624,9 +631,211 @@ export default {
       subsStatus: {
         active: '生效中',
         expired: '已过期',
-        revoked: '已撤销',
+        revoked: '已撤销'
       },
+      coupons: {
+        title: '支付优惠券',
+        search: '搜索优惠券码...',
+        create: '创建优惠券',
+        edit: '编辑优惠券',
+        code: '优惠券码',
+        autoGenerate: '留空自动生成',
+        codePlaceholder: '输入优惠券码或留空',
+        status: '状态',
+        type: '类型',
+        fixedValue: '固定抵扣金额',
+        percentValue: '减免比例（0.2 = 20%）',
+        minAmount: '最低消费',
+        maxDiscount: '最大减免',
+        scope: '适用范围',
+        maxUses: '最大使用次数',
+        perUserLimit: '每用户限用',
+        startsAt: '生效时间',
+        expiresAt: '过期时间',
+        notes: '备注',
+        notesPlaceholder: '可选备注信息',
+        zeroUnlimited: '0 = 无限制',
+        neverExpires: '永不过期',
+        allStatuses: '全部状态',
+        statusActive: '启用',
+        statusDisabled: '禁用',
+        statusArchived: '已归档',
+        statusExpired: '已过期',
+        statusMaxUsed: '已用完',
+        typeFixed: '固定金额',
+        typePercent: '百分比',
+        scopeAll: '全部',
+        scopeBalance: '余额充值',
+        scopeSubscription: '订阅',
+        usageRecords: '优惠券使用记录',
+        usageUsed: '已使用',
+        usageRefunded: '已回退',
+        deleteTitle: '删除优惠券',
+        deleteConfirm: '确定要删除此优惠券吗？系统会归档该券并保留历史使用记录。',
+        created: '优惠券创建成功',
+        updated: '优惠券更新成功',
+        deleted: '优惠券已归档',
+        failedToLoad: '加载优惠券失败',
+        failedToSave: '保存优惠券失败',
+        failedToDelete: '删除优惠券失败',
+        failedToLoadUsages: '加载优惠券使用记录失败',
+        columns: {
+          code: '优惠券码',
+          type: '优惠',
+          minAmount: '最低消费',
+          scope: '范围',
+          usage: '使用量',
+          status: '状态',
+          expiresAt: '过期时间',
+          userId: '用户',
+          orderId: '订单',
+          discountAmount: '抵扣金额',
+          usedAt: '使用时间'
+        }
+      },
+      revenueTrend: '收入趋势',
+      revenueWithCurrency: '收入 (USD)',
+      orderCountWithUnit: '订单数（单）',
+      maxDailyRevenue: '最高日收入',
+      maxDailyOrders: '最高日订单',
+      avgDailyRevenue: '平均日收入',
+      avgDailyOrders: '平均日订单',
+      orderUnit: '单',
+      inSelectedRange: '选中周期',
+      dailyCalendar: '收入日历',
+      totalOrders: '总订单',
+      latestOrders: '最新订单',
+      overviewPanel: '概览',
+      revenueShare: '收入占比',
+      activeDays: '有收入天数',
+      calendarWeekly: '每周',
+      calendarMonthly: '每月',
+      previousWeek: '上一周',
+      nextWeek: '下一周',
+      currentWeek: '本周',
+      currentMonth: '本月',
+      previousMonth: '上个月',
+      nextMonth: '下个月',
+      lowRevenue: '低',
+      highRevenue: '高',
+      weekdays: {
+        sun: '日',
+        mon: '一',
+        tue: '二',
+        wed: '三',
+        thu: '四',
+        fri: '五',
+        sat: '六'
+      },
+      dailyLimitResetOrder: '当日额度重置',
+      orderContent: '支付内容',
+      refundMode: '退款方式',
+      proportionalRefund: '按比例退款',
+      proportionalRefundHint: '按当前订阅重置后的剩余天数和当天剩余额度自动计算退款金额。',
+      fullRefund: '全额退款',
+      fullRefundHint: '按当前最大可退金额全额退款。',
+      proportionalAmountHint: '按比例退款时金额由系统自动计算，无需手动填写。',
+      estimatedRefundAmount: '预计退款金额',
+      subscriptionRefundExpired: '该订阅已过期，无法退款。',
+      allowUserRefund: '允许用户退款',
+      fixedExpiresAt: '固定结束时间',
+      fixedExpiresAtHint: '可选。填写后购买该套餐的订阅将到此时间结束，而不是按有效期天数自然顺延。',
+      fixedExpiresAtInvalid: '固定结束时间必须晚于当前时间',
+      fixedExpiresAtShort: '至 {time}',
+      totalQuota: '总额度',
+      totalQuotaHint: '可选。填写后用户在订阅有效期内最多可消费的 USD 总额；留空或 0 表示不限制。',
+      totalQuotaInvalid: '总额度不能小于 0',
+      maxBuyCount: '每人限购',
+      maxBuyCountHint: '可选。每个用户最多可购买该套餐的次数；留空或 0 表示不限制。',
+      maxBuyCountInvalid: '每人限购次数必须大于 0'
     },
+    thresholdDiscount: '满减优惠',
+    couponDiscount: '优惠券优惠',
+    couponApplied: '优惠券已应用',
+    couponNoDiscount: '优惠券未产生抵扣',
+    couponInvalid: '优惠券不可用',
+    thresholdRateHint: '满 {threshold} 享 {rate} 折',
+    thresholdReduceHint: '满 {threshold} 减 {amount}',
+    thresholdDiscountBadge: '{rate}折',
+    thresholdReduceBadge: '减 {amount}',
+    quickAmountPay: '实付 {amount}',
+    quickAmountSave: '节省 {amount}',
+    dailyReset: {
+      tab: '重置额度',
+      price: '重置价格',
+      payAndReset: '支付并重置',
+      notAvailable: '当前订阅暂不支持自助重置当日额度'
+    },
+    desktopAlipayTitle: '请回到电脑端完成支付宝支付',
+    desktopAlipayDescription: '当前移动端发起支付宝支付体验不稳定，请回到电脑端继续操作。',
+    desktopAlipayCurrentPage: '回到电脑端后打开这个地址',
+    desktopAlipayCopyPageLink: '复制页面地址',
+    desktopAlipayHint: '复制后可在电脑浏览器打开；如果地址里带了金额或套餐信息，页面会自动帮你恢复。',
+    renewalNoticeTitle: '续费提示',
+    renewalResetNoticeTitle: '重置提示',
+    renewalNotice: '剩余 {time}，可继续使用。',
+    renewalNoticeUnlimited: '剩余 {time}，可继续使用。',
+    renewalRemainingItem: '{label}剩余 {amount}',
+    renewalRuleExtend: '延长时间',
+    renewalRuleDailyReset: '1天卡会刷新今日额度',
+    renewalRuleWeeklyNotStacked: '周额度不叠加',
+    renewalRuleMonthlyNotStacked: '月额度不叠加',
+    renewalRuleOverdraftPool: '透支按天数 × 日额度计算',
+    renewalRuleSeparator: '；',
+    continueRenewal: '继续续费',
+    renewalMode: {
+      title: '选择操作',
+      message: '请选择“延长”或“重置”。',
+      extendTitle: '延长时间',
+      extendDesc: '只加有效期，不清当前用量。',
+      restartTitle: '重置当前额度',
+      restartDesc: '从现在重新开始，清空当前额度。'
+    }
   },
-
+  accountImport: {
+    title: '账号导入',
+    description: '通过独立密码验证后导入账号数据。',
+    password: '访问密码',
+    passwordPlaceholder: '输入导入密码',
+    verify: '验证',
+    verifying: '验证中...',
+    disabled: '独立账号导入入口未启用。',
+    passwordNotConfigured: '独立账号导入密码尚未配置。',
+    loadFailed: '加载导入入口失败',
+    invalidPassword: '密码错误或验证已过期',
+    verified: '验证成功'
+  },
+  modelMarketplace: {
+    title: '模型广场',
+    description: '查看可访问模型、所属渠道与定价信息',
+    searchPlaceholder: '搜索模型、渠道、分组或平台...',
+    modelSearchPlaceholder: '搜索模型名称...',
+    filtersTitle: '筛选',
+    filtersSubtitle: '按供应商快速收敛结果',
+    groupFiltersTitle: '分组名称',
+    allProviders: '全部供应商',
+    allGroups: '全部分组',
+    groupSearchPlaceholder: '搜索分组名称...',
+    totalModels: '共 {count} 个模型',
+    fromLabel: '供应商',
+    moreChannels: '展开其余 {count} 个渠道',
+    collapseChannels: '收起渠道',
+    intervalCount: '{count} 档阶梯价',
+    detailsTitle: '模型定价详情',
+    showDetails: '查看详情',
+    hideDetails: '收起详情',
+    showIntervalDetails: '查看区间价格',
+    hideIntervalDetails: '收起区间价格',
+    intervalRangeOpen: '> {min} tokens',
+    intervalRangeBounded: '> {min} 且 <= {max} tokens',
+    intervalTable: {
+      context: '上下文区间'
+    },
+    channelCount: '{count} 个渠道',
+    empty: {
+      noChannels: '暂无可用渠道',
+      noGroups: '没有匹配的分组',
+      noModelResults: '当前筛选条件下没有匹配的模型'
+    }
+  }
 }

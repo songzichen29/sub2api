@@ -500,7 +500,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens ELSE 0 END), 0) as today_tokens,
 			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) as today_actual_cost
 		FROM usage_logs ul
-		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN ` + quotedGroupsTable + ` g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
 		WHERE ul.user_id = ?
 		  AND ` + usageLogSuccessFilterUL + `

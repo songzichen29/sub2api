@@ -3,7 +3,6 @@ export default {
     title: '图片批量生成',
     description: '一次提交多条提示词，任务完成后可统一下载图片结果'
   },
-  // Home Page
   home: {
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
@@ -14,7 +13,6 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
-    // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
     tags: {
@@ -22,7 +20,6 @@ export default {
       stickySession: '会话保持',
       realtimeBilling: '按量计费'
     },
-    // 用户痛点区块
     painPoints: {
       title: '你是否也遇到这些问题？',
       items: {
@@ -44,7 +41,6 @@ export default {
         }
       }
     },
-    // 解决方案区块
     solutions: {
       title: '我们帮你解决',
       subtitle: '简单三步，开始省心使用 AI'
@@ -57,7 +53,6 @@ export default {
       balanceQuota: '用多少付多少',
       balanceQuotaDesc: '按实际使用量计费，支持设置配额上限，团队用量一目了然。'
     },
-    // 优势对比
     comparison: {
       title: '为什么选择我们？',
       headers: {
@@ -103,7 +98,6 @@ export default {
       antigravity: 'Antigravity',
       more: '更多'
     },
-    // CTA 区块
     cta: {
       title: '准备好开始了吗？',
       description: '注册即可获得免费试用额度，体验一站式 AI 服务',
@@ -111,10 +105,9 @@ export default {
     },
     footer: {
       allRightsReserved: '保留所有权利。'
-    }
+    },
+    keyUsage: '用量查询'
   },
-
-  // Key Usage Query Page
   keyUsage: {
     title: 'API Key 用量查询',
     subtitle: '输入您的 API Key 以查看实时消费金额与使用状态',
@@ -134,7 +127,6 @@ export default {
     tokenStats: 'Token 统计',
     dailyDetail: '按日明细',
     modelStats: '模型用量统计',
-    // Table headers
     date: '日期',
     model: '模型',
     requests: '请求数',
@@ -145,17 +137,14 @@ export default {
     cacheWriteTokens: '缓存写入',
     totalTokens: '总 Tokens',
     cost: '费用',
-    // Status
     quotaMode: 'Key 限额模式',
     walletBalance: '钱包余额',
-    // Ring card titles
     totalQuota: '总额度',
     limit5h: '5 小时限额',
     limitDaily: '日限额',
     limit7d: '7 天限额',
     limitWeekly: '周限额',
     limitMonthly: '月限额',
-    // Detail rows
     remainingQuota: '剩余额度',
     expiresAt: '过期时间',
     todayExpires: '(今日到期)',
@@ -164,7 +153,6 @@ export default {
     resetNow: '即将重置',
     subscriptionType: '订阅类型',
     subscriptionExpires: '订阅到期',
-    // Usage stat cells
     todayRequests: '今日请求',
     todayInputTokens: '今日输入',
     todayOutputTokens: '今日输出',
@@ -181,15 +169,14 @@ export default {
     totalCacheRead: '累计缓存读取',
     totalCost: '累计费用',
     avgDuration: '平均耗时',
-    // Messages
     enterApiKey: '请输入 API Key',
     querySuccess: '查询成功',
     queryFailed: '查询失败',
     queryFailedRetry: '查询失败，请稍后重试',
     noDailyUsage: '暂无按日用量数据',
+    dateRangeHint: '仅影响下方模型用量统计，不影响总额度、已用额度和剩余额度。',
+    noModelStats: '当前范围暂无模型用量统计'
   },
-
-  // Setup Wizard
   setup: {
     title: 'Sub2API 安装向导',
     description: '配置您的 Sub2API 实例',
@@ -249,7 +236,5 @@ export default {
       restarting: '服务正在重启，请稍候...',
       timeout: '服务重启时间超出预期，请手动刷新页面。'
     }
-  },
-
-  // Common
+  }
 }

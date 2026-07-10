@@ -529,7 +529,7 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
 			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
 		FROM usage_logs ul
-		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN ` + quotedGroupsTable + ` g ON g.id = ul.group_id
 		WHERE ul.created_at >= ? AND ul.created_at < ?
 	`
 
@@ -713,7 +713,7 @@ func (r *usageLogRepository) GetAllGroupUsageSummary(ctx context.Context, todayS
 			g.id AS group_id,
 			COALESCE(SUM(ul.actual_cost), 0) AS total_cost,
 			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) AS today_cost
-		FROM groups g
+		FROM ` + quotedGroupsTable + ` g
 		LEFT JOIN usage_logs ul ON ul.group_id = g.id
 		GROUP BY g.id
 	`

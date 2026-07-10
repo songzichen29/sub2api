@@ -1,7 +1,7 @@
 export default {
   dashboard: {
     title: 'Dashboard',
-    welcomeMessage: "Welcome back! Here's an overview of your account.",
+    welcomeMessage: 'Welcome back! Here\'s an overview of your account.',
     balance: 'Balance',
     apiKeys: 'API Keys',
     todayRequests: 'Today Requests',
@@ -29,7 +29,7 @@ export default {
       monthly: 'Monthly (30-day rolling)',
       resetsAt: 'Resets {time}',
       noLimit: 'unlimited',
-      disabled: 'Disabled',
+      disabled: 'Disabled'
     },
     tokenUsageTrend: 'Token Usage Trend',
     noDataAvailable: 'No data available',
@@ -58,13 +58,9 @@ export default {
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code'
   },
-
-  // Groups (shared)
   groups: {
     subscription: 'Sub'
   },
-
-  // API Keys
   keys: {
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
@@ -75,7 +71,7 @@ export default {
       copied: 'Copied',
       copiedHint: 'Copied to clipboard',
       clickToCopy: 'Click to copy this endpoint',
-      speedTest: 'Speed Test',
+      speedTest: 'Speed Test'
     },
     allGroups: 'All Groups',
     allStatus: 'All Status',
@@ -84,7 +80,7 @@ export default {
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
     deleteKey: 'Delete API Key',
-    deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
+    deleteConfirmMessage: 'Are you sure you want to delete \'{name}\'? This action cannot be undone.',
     apiKey: 'API Key',
     group: 'Group',
     currentConcurrency: 'Current Concurrency',
@@ -128,8 +124,7 @@ export default {
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
-      description:
-        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+      description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',
       copied: 'Copied',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
@@ -139,32 +134,32 @@ export default {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
-        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
+        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.'
       },
       cliTabs: {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
-        opencode: 'OpenCode',
+        opencode: 'OpenCode'
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
-        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.'
       },
       gemini: {
         description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure Gemini CLI access.',
         modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
-        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.'
       },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
-        hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
-      },
+        hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.'
+      }
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -187,9 +182,8 @@ export default {
       claudeCode: 'Claude Code',
       claudeCodeDesc: 'Import as Claude Code configuration',
       geminiCli: 'Gemini CLI',
-      geminiCliDesc: 'Import as Gemini CLI configuration',
+      geminiCliDesc: 'Import as Gemini CLI configuration'
     },
-    // Quota and expiration
     quotaLimit: 'Quota Limit',
     quotaAmount: 'Quota Amount (USD)',
     quotaAmountPlaceholder: 'Enter quota limit in USD',
@@ -229,10 +223,9 @@ export default {
       inactive: 'Inactive',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
-    },
+      disabled: 'Disabled'
+    }
   },
-
-  // Usage
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
@@ -357,30 +350,51 @@ export default {
       detailOrg: 'ISP',
       detailTimezone: 'Timezone',
       detailAccuracy: 'Accuracy',
-      detailCoordinates: 'Coordinates',
+      detailCoordinates: 'Coordinates'
     },
-    tabs: { usage: 'Usage', errors: 'Error Requests', ranking: 'User Ranking' },
+    tabs: {
+      usage: 'Usage',
+      errors: 'Error Requests',
+      ranking: 'User Ranking'
+    },
     errors: {
-      time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
-      category: 'Category', platform: 'Platform', message: 'Message',
-      keyName: 'Key Name', keyDeleted: 'Deleted', allKeys: 'All keys',
-      modelPlaceholder: 'Search model', allCategories: 'All categories', allStatuses: 'All status codes',
-      empty: 'No error requests', failedToLoad: 'Failed to load error requests',
+      time: 'Time',
+      model: 'Model',
+      endpoint: 'Endpoint',
+      status: 'Status',
+      category: 'Category',
+      platform: 'Platform',
+      message: 'Message',
+      keyName: 'Key Name',
+      keyDeleted: 'Deleted',
+      allKeys: 'All keys',
+      modelPlaceholder: 'Search model',
+      allCategories: 'All categories',
+      allStatuses: 'All status codes',
+      empty: 'No error requests',
+      failedToLoad: 'Failed to load error requests',
       categories: {
-        auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
-        invalid_request: 'Invalid request', service_unavailable: 'Service unavailable',
-        upstream: 'Upstream error', internal: 'Platform error', other: 'Other', cyber: 'Cyber policy',
+        auth: 'Auth failed',
+        rate_limit: 'Rate limited',
+        quota: 'Balance/Subscription',
+        invalid_request: 'Invalid request',
+        service_unavailable: 'Service unavailable',
+        upstream: 'Upstream error',
+        internal: 'Platform error',
+        other: 'Other',
+        cyber: 'Cyber policy'
       },
       detail: {
         title: 'Error Request Detail',
         responseBody: 'Response Body',
         upstreamStatus: 'Upstream Status',
-        loadFailed: 'Failed to load detail, please try again',
-      },
+        loadFailed: 'Failed to load detail, please try again'
+      }
     },
+    modelQueryPlaceholder: 'Enter full model name',
+    upstreamFirstEvent: 'Upstream first event',
+    upstreamToFirstToken: 'First event→first token'
   },
-
-  // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
     status: {
       operational: 'Operational',
@@ -413,8 +427,6 @@ export default {
     relativeHoursAgo: '{n}h ago',
     relativeDaysAgo: '{n}d ago'
   },
-
-  // Channel Status (user-facing read-only view)
   channelStatus: {
     title: 'Channel Status',
     description: 'Inspect channel availability, latency and recent status',
@@ -456,8 +468,6 @@ export default {
       description: 'No monitored channels have been configured yet.'
     }
   },
-
-  // Available Channels (user-facing)
   availableChannels: {
     title: 'Available Channels',
     description: 'Channels you can access, along with their supported models and pricing',
@@ -493,7 +503,6 @@ export default {
       unitPerRequest: '/ request'
     }
   },
-
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
@@ -512,7 +521,11 @@ export default {
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
       frozenQuotaHint: 'Recently earned rebates pending release',
-      totalQuota: 'Historical Rebate Quota'
+      totalQuota: 'Historical Rebate Quota',
+      rechargeRebateRate: 'Recharge Rebate Rate',
+      rechargeRebateRateHint: 'What you earn when an invitee recharges balance',
+      subscriptionRebateRate: 'Subscription Rebate Rate',
+      subscriptionRebateRateHint: 'What you earn when an invitee purchases a subscription'
     },
     transfer: {
       title: 'Transfer Rebate Quota',
@@ -537,11 +550,12 @@ export default {
       line1: 'Share your affiliate code or invite link with new users.',
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
-      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+      line4: 'Newly earned rebates may have a waiting period before they can be transferred.',
+      line2Both: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota; when they buy subscriptions, you receive {subscriptionRate}.',
+      line2Recharge: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota.',
+      line2Subscription: 'When invitees buy subscriptions, you receive {subscriptionRate} as rebate quota.'
     }
   },
-
-  // Redeem
   redeem: {
     title: 'Redeem Code',
     description: 'Enter your redeem code to add balance or increase concurrency',
@@ -583,8 +597,6 @@ export default {
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
   },
-
-  // Profile
   profile: {
     title: 'Profile Settings',
     description: 'Manage your account information and settings',
@@ -625,7 +637,6 @@ export default {
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
     passwordChangeFailed: 'Failed to change password',
-    // TOTP 2FA
     totp: {
       title: 'Two-Factor Authentication (2FA)',
       description: 'Enhance account security with Google Authenticator or similar apps',
@@ -640,7 +651,7 @@ export default {
       setupTitle: 'Set Up Two-Factor Authentication',
       setupStep1: 'Scan the QR code below with your authenticator app',
       setupStep2: 'Enter the 6-digit code from your app',
-      manualEntry: "Can't scan? Enter the key manually:",
+      manualEntry: 'Can\'t scan? Enter the key manually:',
       enterCode: 'Enter 6-digit code',
       verify: 'Verify',
       setupFailed: 'Failed to get setup information',
@@ -655,7 +666,6 @@ export default {
       loginTitle: 'Two-Factor Authentication',
       loginHint: 'Enter the 6-digit code from your authenticator app',
       loginFailed: 'Verification failed, please try again',
-      // New translations for email verification
       verifyEmailFirst: 'Please verify your email first',
       verifyPasswordFirst: 'Please verify your identity first',
       emailCode: 'Email Verification Code',
@@ -694,7 +704,7 @@ export default {
       emailDuplicate: 'This email already exists',
       maxEmailsReached: 'Maximum number of notification emails reached',
       unverified: 'Unverified',
-      verified: 'Verified',
+      verified: 'Verified'
     },
     avatar: {
       title: 'Profile Avatar',
@@ -709,7 +719,7 @@ export default {
       compressTooLarge: 'Unable to compress this image below 20KB. Try a smaller image.',
       compressFailed: 'Failed to compress the selected image.',
       readFailed: 'Failed to read the selected image.',
-      emptyDeleteHint: 'Avatar is already empty',
+      emptyDeleteHint: 'Avatar is already empty'
     },
     authBindings: {
       title: 'Connected Sign-In Methods',
@@ -732,39 +742,34 @@ export default {
       boundCount: '{count} linked records',
       status: {
         bound: 'Bound',
-        notBound: 'Not bound',
+        notBound: 'Not bound'
       },
       providers: {
         email: 'Email',
         linuxdo: 'LinuxDo',
         dingtalk: 'DingTalk',
         oidc: '{providerName}',
-        wechat: 'WeChat',
+        wechat: 'WeChat'
       },
       notes: {
         emailManagedFromProfile: 'Primary email is managed in the profile form',
         canUnbind: 'You can unbind this sign-in method',
-        bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding',
+        bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding'
       },
       source: {
         avatar: 'Avatar is currently synced from {providerName}',
-        username: 'Nickname is currently synced from {providerName}',
-      },
-    }
+        username: 'Nickname is currently synced from {providerName}'
+      }
+    },
+    userId: 'User ID'
   },
-
-  // Empty States
   empty: {
     noData: 'No data found'
   },
-
-  // Table
   table: {
     expandActions: 'Expand More Actions',
     collapseActions: 'Collapse Actions'
   },
-
-  // Pagination
   pagination: {
     showing: 'Showing',
     to: 'to',
@@ -780,8 +785,6 @@ export default {
     jumpPlaceholder: 'Page',
     jumpAction: 'Go'
   },
-
-  // Errors
   errors: {
     somethingWentWrong: 'Something went wrong',
     pageNotFound: 'Page not found',
@@ -790,10 +793,12 @@ export default {
     serverError: 'Server error',
     networkError: 'Network error',
     timeout: 'Request timeout',
-    tryAgain: 'Please try again'
+    tryAgain: 'Please try again',
+    gateway: {
+      modelNotAllowed: 'This model is not enabled for the current group',
+      modelNotConfigured: 'No account in the current group is configured to support this model'
+    }
   },
-
-  // Dates
   dates: {
     today: 'Today',
     yesterday: 'Yesterday',
@@ -810,7 +815,5 @@ export default {
     endDate: 'End Date',
     apply: 'Apply',
     selectDateRange: 'Select date range'
-  },
-
-  // Admin
+  }
 }
