@@ -1201,6 +1201,7 @@
     moreChannels: 'Show {count} more channels',
     collapseChannels: 'Collapse channels',
     intervalCount: '{count} pricing tiers',
+    detailsTitle: 'Model pricing details',
     showDetails: 'Show details',
     hideDetails: 'Hide details',
     showIntervalDetails: 'Show tier prices',

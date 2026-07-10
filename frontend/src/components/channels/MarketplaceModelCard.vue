@@ -71,7 +71,7 @@
         v-if="intervalBadge"
         type="button"
         class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
-        @click="detailsExpanded = !detailsExpanded"
+        @click="openDetails"
       >
         {{ intervalBadge }}
       </button>
@@ -79,31 +79,90 @@
         v-if="item.channels.length > 0"
         type="button"
         class="ml-auto text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
-        @click="detailsExpanded = !detailsExpanded"
+        @click="openDetails"
       >
-        {{
-          detailsExpanded
-            ? t('modelMarketplace.hideDetails')
-            : t('modelMarketplace.showDetails')
-        }}
+        {{ t('modelMarketplace.showDetails') }}
       </button>
     </div>
-
-    <div
-      v-if="detailsExpanded"
-      class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"
-    >
-      <MarketplaceChannelList
-        :channels="item.channels"
-        :no-pricing-label="noPricingLabel"
-        :default-visible-count="item.channels.length"
-      />
-    </div>
   </article>
+
+  <Teleport to="body">
+    <Transition name="marketplace-drawer">
+      <div
+        v-if="detailsOpen"
+        class="fixed inset-0 z-[90] bg-black/45 backdrop-blur-sm"
+        @click.self="closeDetails"
+      >
+        <aside
+          ref="drawerRef"
+          class="ml-auto flex h-full w-full max-w-3xl flex-col border-l border-gray-200 bg-white shadow-2xl dark:border-dark-700 dark:bg-dark-800"
+          role="dialog"
+          aria-modal="true"
+          :aria-labelledby="drawerTitleId"
+          tabindex="-1"
+          @keydown.esc="closeDetails"
+        >
+          <header class="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4 dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex min-w-0 items-start gap-3">
+              <div
+                class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-600 dark:bg-dark-700"
+              >
+                <PlatformIcon :platform="item.provider as GroupPlatform" size="md" :class="platformIconClass(item.provider)" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
+                  {{ platformLabel(item.provider) }}
+                </p>
+                <h2 :id="drawerTitleId" class="mt-1 break-words text-base font-semibold leading-6 text-gray-900 dark:text-white">
+                  {{ item.model_name }}
+                </h2>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    class="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
+                  >
+                    {{ billingModeLabel }}
+                  </span>
+                  <span
+                    v-if="intervalBadge"
+                    class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+                  >
+                    {{ intervalBadge }}
+                  </span>
+                  <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300">
+                    {{ t('modelMarketplace.channelCount', { count: item.channel_count }) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+              :title="t('common.close')"
+              @click="closeDetails"
+            >
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </header>
+
+          <div class="flex-1 overflow-y-auto px-5 py-4">
+            <MarketplaceChannelList
+              :channels="item.channels"
+              :no-pricing-label="noPricingLabel"
+              :default-visible-count="item.channels.length"
+              :interval-details-always-open="true"
+            />
+          </div>
+        </aside>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GroupPlatform } from '@/types'
 import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
@@ -113,7 +172,7 @@ import { useAppStore } from '@/stores/app'
 import type { MarketplaceModelItem } from '@/utils/modelMarketplace'
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN } from '@/constants/channel'
 import { formatScaled } from '@/utils/pricing'
-import { platformIconClass } from '@/utils/platformColors'
+import { platformIconClass, platformLabel } from '@/utils/platformColors'
 
 const props = defineProps<{
   item: MarketplaceModelItem
@@ -124,7 +183,10 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const perMillionScale = 1_000_000
 const copied = ref(false)
-const detailsExpanded = ref(false)
+const detailsOpen = ref(false)
+const drawerRef = ref<HTMLElement | null>(null)
+const drawerTitleId = `marketplace-pricing-details-${Math.random().toString(36).slice(2)}`
+let previousBodyOverflow = ''
 
 const primaryChannel = computed(() => props.item.channels.find((channel) => channel.pricing) ?? props.item.channels[0] ?? null)
 const primaryPricing = computed(() => primaryChannel.value?.pricing ?? null)
@@ -170,6 +232,32 @@ const intervalBadge = computed(() => {
 const copyButtonTitle = computed(() =>
   copied.value ? t('common.copied') : t('common.copy'),
 )
+
+watch(detailsOpen, (open) => {
+  if (typeof document === 'undefined') return
+  if (open) {
+    previousBodyOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    void nextTick(() => drawerRef.value?.focus())
+    return
+  }
+  document.body.style.overflow = previousBodyOverflow
+})
+
+onBeforeUnmount(() => {
+  if (typeof document === 'undefined') return
+  if (detailsOpen.value) {
+    document.body.style.overflow = previousBodyOverflow
+  }
+})
+
+function openDetails() {
+  detailsOpen.value = true
+}
+
+function closeDetails() {
+  detailsOpen.value = false
+}
 
 async function copyModelName() {
   try {
@@ -256,3 +344,25 @@ function intervalSummary(intervals: UserPricingInterval[]): string {
 
 const pricingLines = computed(() => buildPricingLines(primaryPricing.value))
 </script>
+
+<style scoped>
+.marketplace-drawer-enter-active,
+.marketplace-drawer-leave-active {
+  transition: opacity 180ms ease;
+}
+
+.marketplace-drawer-enter-active aside,
+.marketplace-drawer-leave-active aside {
+  transition: transform 180ms ease;
+}
+
+.marketplace-drawer-enter-from,
+.marketplace-drawer-leave-to {
+  opacity: 0;
+}
+
+.marketplace-drawer-enter-from aside,
+.marketplace-drawer-leave-to aside {
+  transform: translateX(100%);
+}
+</style>

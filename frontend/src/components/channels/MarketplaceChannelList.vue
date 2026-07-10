@@ -73,6 +73,7 @@
           class="mt-3"
         >
           <button
+            v-if="!intervalDetailsAlwaysOpen"
             type="button"
             class="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
             @click="toggleIntervalDetails(channelKey(channel))"
@@ -85,8 +86,11 @@
           </button>
 
           <div
-            v-if="isIntervalDetailsExpanded(channelKey(channel))"
-            class="mt-2 overflow-x-auto rounded-md border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+            v-if="isIntervalDetailsVisible(channelKey(channel))"
+            :class="[
+              'overflow-x-auto rounded-md border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800',
+              intervalDetailsAlwaysOpen ? 'mt-0' : 'mt-2',
+            ]"
           >
             <table class="min-w-full divide-y divide-gray-200 text-left text-xs dark:divide-dark-700">
               <thead class="bg-gray-50 text-[11px] uppercase text-gray-500 dark:bg-dark-900 dark:text-gray-400">
@@ -187,9 +191,11 @@ const props = withDefaults(
     channels: ModelMarketplaceChannelEntry[]
     noPricingLabel: string
     defaultVisibleCount?: number
+    intervalDetailsAlwaysOpen?: boolean
   }>(),
   {
     defaultVisibleCount: 2,
+    intervalDetailsAlwaysOpen: false,
   },
 )
 
@@ -201,6 +207,8 @@ const perMillionScale = 1_000_000
 const visibleChannels = computed(() =>
   expanded.value ? props.channels : props.channels.slice(0, props.defaultVisibleCount),
 )
+
+const intervalDetailsAlwaysOpen = computed(() => props.intervalDetailsAlwaysOpen)
 
 function billingModeLabel(pricing: UserSupportedModelPricing | null): string {
   if (!pricing) return t('availableChannels.noPricing')
@@ -310,6 +318,10 @@ function channelKey(channel: ModelMarketplaceChannelEntry): string {
 
 function isIntervalDetailsExpanded(key: string): boolean {
   return expandedIntervalDetails.value.has(key)
+}
+
+function isIntervalDetailsVisible(key: string): boolean {
+  return intervalDetailsAlwaysOpen.value || isIntervalDetailsExpanded(key)
 }
 
 function toggleIntervalDetails(key: string) {
