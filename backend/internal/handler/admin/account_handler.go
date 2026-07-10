@@ -499,6 +499,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 		search = search[:100]
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
+	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
+	includeSchedulerScore := parseBoolQueryWithDefault(c.Query("include_scheduler_score"), false)
 
 	var groupID int64
 	if groupIDStr := c.Query("group"); groupIDStr != "" {
@@ -543,7 +545,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 	var windowCosts map[int64]float64
 	var activeSessions map[int64]int
 	var rpmCounts map[int64]int
-	// 仅当前页存在 OpenAI 账号时才计算调度分数，避免为空结果付出池查询开销。
+	// 双重门控：用户要看该列，且当前页确实有 OpenAI 账号，才进入昂贵的候选池打分路径。
 	var schedulerScores map[int64]*AccountSchedulerScore
 	var schedulerGroupScores map[int64][]AccountSchedulerGroupScore
 	pageHasOpenAIAccounts := false
@@ -553,7 +555,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 			break
 		}
 	}
-	if pageHasOpenAIAccounts {
+	if includeSchedulerScore && pageHasOpenAIAccounts {
 		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode, tagsFilter)
 		schedulerScores, schedulerGroupScores = h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
 	}
@@ -2969,7 +2971,7 @@ func (h *AccountHandler) ProbeAccountUpstreamModels(c *gin.Context) {
 // ProbeGrokUpstreamModels 直连 grok2api 网关的 GET /v1/models 返回模型 ID 列表。
 // POST /api/v1/admin/accounts/grok/probe-models
 // 请求体：{ "base_url": "http://localhost:8000", "api_key": "..." }
-// 返回：["grok-4-fast", "grok-imagine-image-lite", ...]
+// 返回：["grok-4-fast", "grok-2-vision", ...]
 //
 // 与 GET /accounts/:id/models 的 grok 分支行为一致，区别是不需要账号已入库。
 func (h *AccountHandler) ProbeGrokUpstreamModels(c *gin.Context) {

@@ -18,34 +18,35 @@ import (
 )
 
 const (
-	SettingPaymentEnabled       = "payment_enabled"
-	SettingMinRechargeAmount    = "MIN_RECHARGE_AMOUNT"
-	SettingMaxRechargeAmount    = "MAX_RECHARGE_AMOUNT"
-	SettingDailyRechargeLimit   = "DAILY_RECHARGE_LIMIT"
-	SettingOrderTimeoutMinutes  = "ORDER_TIMEOUT_MINUTES"
-	SettingMaxPendingOrders     = "MAX_PENDING_ORDERS"
-	SettingEnabledPaymentTypes  = "ENABLED_PAYMENT_TYPES"
-	SettingLoadBalanceStrategy  = "LOAD_BALANCE_STRATEGY"
-	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
-	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingPaymentEnabled      = "payment_enabled"
+	SettingMinRechargeAmount   = "MIN_RECHARGE_AMOUNT"
+	SettingMaxRechargeAmount   = "MAX_RECHARGE_AMOUNT"
+	SettingDailyRechargeLimit  = "DAILY_RECHARGE_LIMIT"
+	SettingOrderTimeoutMinutes = "ORDER_TIMEOUT_MINUTES"
+	SettingMaxPendingOrders    = "MAX_PENDING_ORDERS"
+	SettingEnabledPaymentTypes = "ENABLED_PAYMENT_TYPES"
+	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
+	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
+	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
 	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
 	SettingSubscriptionUSDToCNYRate = "SUBSCRIPTION_USD_TO_CNY_RATE"
-	SettingDiscountRules        = "PAYMENT_DISCOUNT_RULES"
-	SettingQuickAmounts         = "PAYMENT_QUICK_AMOUNTS"
-	SettingPaidUserRateEnabled  = "PAID_USER_RATE_ENABLED"
-	SettingPaidUserRateRules    = "PAID_USER_RATE_RULES"
-	SettingPaidUserRateBackfill = "PAID_USER_RATE_BACKFILL"
-	SettingRechargeFeeRate      = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix    = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix    = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL         = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText             = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn    = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax   = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize     = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit     = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode     = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingDiscountRules            = "PAYMENT_DISCOUNT_RULES"
+	SettingQuickAmounts             = "PAYMENT_QUICK_AMOUNTS"
+	SettingPaidUserRateEnabled      = "PAID_USER_RATE_ENABLED"
+	SettingPaidUserRateRules        = "PAID_USER_RATE_RULES"
+	SettingPaidUserRateBackfill     = "PAID_USER_RATE_BACKFILL"
+	SettingRechargeFeeRate          = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix        = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix        = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL             = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText                 = "PAYMENT_HELP_TEXT"
+	SettingAlipayForceQRCode        = "PAYMENT_ALIPAY_FORCE_QRCODE"
+	SettingCancelRateLimitOn        = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax       = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize         = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit         = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode         = "CANCEL_RATE_LIMIT_WINDOW_MODE"
 )
 
 // Default values for payment configuration settings.
@@ -97,29 +98,30 @@ func (r *DiscountRule) UnmarshalJSON(data []byte) error {
 
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool                              `json:"enabled"`
-	MinAmount                 float64                           `json:"min_amount"`
-	MaxAmount                 float64                           `json:"max_amount"`
-	DailyLimit                float64                           `json:"daily_limit"`
-	OrderTimeoutMin           int                               `json:"order_timeout_minutes"`
-	MaxPendingOrders          int                               `json:"max_pending_orders"`
-	EnabledTypes              []string                          `json:"enabled_payment_types"`
-	BalanceDisabled           bool                              `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                           `json:"balance_recharge_multiplier"`
+	Enabled                   bool     `json:"enabled"`
+	MinAmount                 float64  `json:"min_amount"`
+	MaxAmount                 float64  `json:"max_amount"`
+	DailyLimit                float64  `json:"daily_limit"`
+	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
+	MaxPendingOrders          int      `json:"max_pending_orders"`
+	EnabledTypes              []string `json:"enabled_payment_types"`
+	BalanceDisabled           bool     `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
 	// SubscriptionUSDToCNYRate 为 0 时订阅换算关闭（兼容存量行为）。
 	SubscriptionUSDToCNYRate float64                           `json:"subscription_usd_to_cny_rate"`
-	DiscountRules             []DiscountRule                    `json:"discount_rules"`
-	QuickAmounts              []float64                         `json:"quick_amounts"`
-	PaidUserRateEnabled       bool                              `json:"paid_user_rate_enabled"`
-	PaidUserRateRules         []PaymentPaidUserRateRule         `json:"paid_user_rate_rules"`
-	PaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"paid_user_rate_backfill"`
-	RechargeFeeRate           float64                           `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string                            `json:"load_balance_strategy"`
-	ProductNamePrefix         string                            `json:"product_name_prefix"`
-	ProductNameSuffix         string                            `json:"product_name_suffix"`
-	HelpImageURL              string                            `json:"help_image_url"`
-	HelpText                  string                            `json:"help_text"`
-	StripePublishableKey      string                            `json:"stripe_publishable_key,omitempty"`
+	DiscountRules            []DiscountRule                    `json:"discount_rules"`
+	QuickAmounts             []float64                         `json:"quick_amounts"`
+	PaidUserRateEnabled      bool                              `json:"paid_user_rate_enabled"`
+	PaidUserRateRules        []PaymentPaidUserRateRule         `json:"paid_user_rate_rules"`
+	PaidUserRateBackfill     PaymentPaidUserRateBackfillStatus `json:"paid_user_rate_backfill"`
+	RechargeFeeRate          float64                           `json:"recharge_fee_rate"`
+	LoadBalanceStrategy      string                            `json:"load_balance_strategy"`
+	ProductNamePrefix        string                            `json:"product_name_prefix"`
+	ProductNameSuffix        string                            `json:"product_name_suffix"`
+	HelpImageURL             string                            `json:"help_image_url"`
+	HelpText                 string                            `json:"help_text"`
+	AlipayForceQRCode        bool                              `json:"alipay_force_qrcode"`
+	StripePublishableKey     string                            `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -151,6 +153,7 @@ type UpdatePaymentConfigRequest struct {
 	ProductNameSuffix         *string                   `json:"product_name_suffix"`
 	HelpImageURL              *string                   `json:"help_image_url"`
 	HelpText                  *string                   `json:"help_text"`
+	AlipayForceQRCode         *bool                     `json:"alipay_force_qrcode"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -297,7 +300,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingDiscountRules, SettingQuickAmounts, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingPaidUserRateEnabled, SettingPaidUserRateRules, SettingPaidUserRateBackfill,
 		SettingProductNamePrefix, SettingProductNameSuffix,
-		SettingHelpImageURL, SettingHelpText,
+		SettingHelpImageURL, SettingHelpText, SettingAlipayForceQRCode,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
@@ -355,6 +358,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
+		AlipayForceQRCode:         vals[SettingAlipayForceQRCode] == "true",
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -459,6 +463,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingProductNameSuffix:                 derefStr(req.ProductNameSuffix),
 		SettingHelpImageURL:                      derefStr(req.HelpImageURL),
 		SettingHelpText:                          derefStr(req.HelpText),
+		SettingAlipayForceQRCode:                 formatBoolOrEmpty(req.AlipayForceQRCode),
 		SettingCancelRateLimitOn:                 formatBoolOrEmpty(req.CancelRateLimitEnabled),
 		SettingCancelRateLimitMax:                formatPositiveInt(req.CancelRateLimitMax),
 		SettingCancelWindowSize:                  formatPositiveInt(req.CancelRateLimitWindow),

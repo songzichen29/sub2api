@@ -159,6 +159,23 @@ func TestMySQLGroupPeakRateMultiplierMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLBatchImageAndFrozenBalanceMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("044_batch_image_foundation_and_user_frozen_balance.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE TABLE IF NOT EXISTS `batch_image_jobs`")
+	require.Contains(t, sql, "`id` BIGINT NOT NULL AUTO_INCREMENT")
+	require.Contains(t, sql, "`payload` JSON NULL")
+	require.Contains(t, sql, "`parent_batch_id` VARCHAR(64) NULL")
+	require.Contains(t, sql, "`base_unit_price` DECIMAL(20,10) NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "`batch_image_discount_multiplier` DECIMAL(10,4) NOT NULL DEFAULT 0.5")
+	require.Contains(t, sql, "ADD COLUMN `frozen_balance` DECIMAL(20,8) NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "ADD COLUMN `allow_batch_image_generation` BOOLEAN NOT NULL DEFAULT FALSE")
+	require.Contains(t, sql, "DATE_FORMAT(DATE_ADD(`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d %H:%i:%s')")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

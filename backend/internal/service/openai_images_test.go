@@ -332,6 +332,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 	require.ErrorContains(t, err, `images endpoint requires an image model, got "gpt-5.4"`)
 }
 
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSONEditURLs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{

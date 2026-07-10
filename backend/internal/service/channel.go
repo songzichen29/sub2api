@@ -27,6 +27,15 @@ func (m BillingMode) IsValid() bool {
 	return false
 }
 
+// IsValidUsageFilter 检查 BillingMode 是否可用于使用记录筛选。
+func (m BillingMode) IsValidUsageFilter() bool {
+	switch m {
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+		return true
+	}
+	return false
+}
+
 const (
 	BillingModelSourceRequested     = "requested"
 	BillingModelSourceUpstream      = "upstream"

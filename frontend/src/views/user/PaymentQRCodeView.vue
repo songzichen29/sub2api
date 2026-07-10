@@ -164,19 +164,31 @@ async function renderQR() {
   }
 }
 
+let pollInFlight = false
 async function pollStatus() {
   if (!orderId.value) return
-  const order = await paymentStore.pollOrderStatus(orderId.value)
-  if (!order) return
-  const status = String(order.status || '').trim().toUpperCase()
-  if (status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING') {
-    cleanup()
-    router.push({ path: '/payment/result', query: { order_id: String(orderId.value), status: 'success' } })
-    return
+  // 防重入：接口响应慢于 3 秒轮询间隔时避免并发重叠请求与重复跳转。
+  if (pollInFlight) return
+  pollInFlight = true
+  try {
+    const order = await paymentStore.pollOrderStatus(orderId.value)
+    if (!order) return
+    // 定时器已被 cleanup 清除时不再执行终态跳转（响应可能在 cleanup 后才回来）。
+    if (!pollTimer) return
+    const status = String(order.status || '').trim().toUpperCase()
+    if (status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING') {
+      cleanup()
+      router.push({ path: '/payment/result', query: { order_id: String(orderId.value), status: 'success' } })
+    } else if (status === 'EXPIRED') {
+      enterTerminalState('expired')
+    } else if (status === 'CANCELLED') {
+      enterTerminalState('cancelled')
+    } else if (status === 'FAILED') {
+      enterTerminalState('failed')
+    }
+  } finally {
+    pollInFlight = false
   }
-  if (status === 'EXPIRED') enterTerminalState('expired')
-  else if (status === 'CANCELLED') enterTerminalState('cancelled')
-  else if (status === 'FAILED') enterTerminalState('failed')
 }
 
 function enterTerminalState(reason: 'expired' | 'cancelled' | 'failed') {

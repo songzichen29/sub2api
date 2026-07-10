@@ -244,18 +244,18 @@ function buildAntigravityAccount(projectId = 'configured-project') {
   } as any
 }
 
-function buildGrokOAuthAccount() {
+function buildGrokGatewayAccount() {
   return {
     id: 5,
-    name: 'Grok OAuth',
+    name: 'Grok Gateway',
     notes: '',
     platform: 'grok',
-    type: 'oauth',
+    type: 'upstream',
     credentials: {
-      refresh_token: 'grok-rt',
-      base_url: 'https://api.x.ai/v1',
+      base_url: 'http://grok2api:8000',
+      api_key: 'grok2api-key',
       model_mapping: {
-        'grok-latest': 'grok-4.3'
+        'grok-4-fast': 'grok-4-fast'
       }
     },
     extra: {},
@@ -473,16 +473,15 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('loads and submits Grok OAuth model mapping edits', async () => {
-    const account = buildGrokOAuthAccount()
+  it('loads and submits Grok gateway model mapping edits', async () => {
+    const account = buildGrokGatewayAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
-    expect(wrapper.text()).toContain('Imagine Image')
-    expect(wrapper.text()).toContain('Imagine Video')
+    expect(wrapper.text()).toContain('Grok 4 Fast')
 
     const inputWithValue = (value: string) => {
       const input = wrapper
@@ -492,13 +491,13 @@ describe('EditAccountModal', () => {
       return input!
     }
 
-    await inputWithValue('grok-latest').setValue('grok')
-    await inputWithValue('grok-4.3').setValue('grok-build-0.1')
+    await inputWithValue('grok-4-fast').setValue('grok-4')
+    await inputWithValue('grok-4-fast').setValue('grok-4-heavy')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      grok: 'grok-build-0.1'
+      'grok-4': 'grok-4-heavy'
     })
   })
 

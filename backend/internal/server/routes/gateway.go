@@ -63,7 +63,16 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.CountTokens(c)
 		})
-		gateway.GET("/models", h.Gateway.Models)
+		// Codex CLI / Codex app refresh their model picker from the provider's
+		// /models endpoint with a client_version query and expect the ChatGPT
+		// Codex manifest format; other clients keep the OpenAI-style list.
+		gateway.GET("/models", func(c *gin.Context) {
+			if isOpenAIGatewayPlatform(c) && c.Query("client_version") != "" {
+				h.OpenAIGateway.CodexModels(c)
+				return
+			}
+			h.Gateway.Models(c)
+		})
 		gateway.GET("/usage", h.Gateway.Usage)
 		gateway.GET("/usage/model-stats", h.Gateway.UsageModelStats)
 		// OpenAI Responses API: auto-route based on group platform
@@ -146,6 +155,16 @@ func RegisterGatewayRoutes(
 	{
 		anthropicAux.GET("/features/:key", h.Gateway.FeaturesProxy)
 		anthropicAux.GET("/claude_cli/bootstrap", h.Gateway.BootstrapProxy)
+		gateway.POST("/images/batches", h.BatchImage.Submit)
+		gateway.GET("/images/batches", h.BatchImage.List)
+		gateway.GET("/images/batches/models", h.BatchImage.Models)
+		gateway.GET("/images/batches/:id", h.BatchImage.Get)
+		gateway.GET("/images/batches/:id/items", h.BatchImage.Items)
+		gateway.GET("/images/batches/:id/items/:custom_id/content", h.BatchImage.ItemContent)
+		gateway.GET("/images/batches/:id/download", h.BatchImage.Download)
+		gateway.POST("/images/batches/:id/cancel", h.BatchImage.Cancel)
+		gateway.DELETE("/images/batches/:id", h.BatchImage.DeleteRecord)
+		gateway.DELETE("/images/batches/:id/outputs", h.BatchImage.DeleteOutputs)
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）
@@ -180,6 +199,7 @@ func RegisterGatewayRoutes(
 		codexDirect.POST("/responses", responsesHandler)
 		codexDirect.POST("/responses/*subpath", responsesHandler)
 		codexDirect.GET("/responses", h.OpenAIGateway.ResponsesWebSocket)
+		codexDirect.GET("/models", h.OpenAIGateway.CodexModels)
 	}
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	r.POST("/chat/completions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
@@ -290,4 +310,8 @@ func getGroupPlatform(c *gin.Context) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+func isOpenAIGatewayPlatform(c *gin.Context) bool {
+	return getGroupPlatform(c) == service.PlatformOpenAI
 }

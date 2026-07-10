@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -45,7 +44,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	)
 
 	// Read request body
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		writeGatewayChatCompletionsRequestBodyReadError(h, c, "handler.gateway.chat_completions", err)
 		return
@@ -60,6 +59,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// Validate JSON
 	if !gjson.ValidBytes(body) {
+		logRequestBodyParseFailure(reqLog, body, nil)
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}

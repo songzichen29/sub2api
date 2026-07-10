@@ -862,6 +862,7 @@ func isOpenAIWSClientDisconnectError(err error) bool {
 		strings.Contains(message, "unexpected eof") ||
 		strings.Contains(message, "use of closed network connection") ||
 		strings.Contains(message, "connection reset by peer") ||
+		strings.Contains(message, "forcibly closed by the remote host") ||
 		strings.Contains(message, "broken pipe") ||
 		strings.Contains(message, "an established connection was aborted")
 }
@@ -4292,12 +4293,12 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
 		return nil, nil
 	}
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, requireCompact)
+	requiredCapability := firstRequiredOpenAIEndpointCapability(nil)
+	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, PlatformOpenAI, requestedModel, requireCompact, requiredCapability)
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil
 	}
-	requiredCapability := firstRequiredOpenAIEndpointCapability(nil)
 	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
 	// account over its 5h/7d threshold keeps serving the same response chain even though
 	// normal scheduling skips it. Pause is transient, so fall through to normal scheduling

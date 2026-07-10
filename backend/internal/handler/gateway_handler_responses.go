@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -45,7 +44,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	)
 
 	// Read request body
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		writeGatewayResponsesRequestBodyReadError(h, c, "handler.gateway.responses", err)
 		return
@@ -60,6 +59,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// Validate JSON
 	if !gjson.ValidBytes(body) {
+		logRequestBodyParseFailure(reqLog, body, nil)
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}

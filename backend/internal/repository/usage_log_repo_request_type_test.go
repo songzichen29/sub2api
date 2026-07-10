@@ -466,7 +466,7 @@ func TestUsageLogRepositoryGetUserModelStatsUsesRequestedModel(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	mock.ExpectQuery("(?s)SELECT\\s+COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) as model,.*WHERE created_at >= \\$1 AND created_at < \\$2\\s+AND user_id = \\$3.*GROUP BY COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) ORDER BY total_tokens DESC").
+	mock.ExpectQuery("(?s)SELECT\\s+COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) as model,.*WHERE created_at >= \\? AND created_at < \\?\\s+AND user_id = \\?.*GROUP BY COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) ORDER BY total_tokens DESC").
 		WithArgs(start, end, int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "input_tokens", "output_tokens",
@@ -601,7 +601,7 @@ func TestUsageLogRepositoryGetModelStatsWithUsageFiltersAppliesRequestedModelFil
 	end := start.Add(24 * time.Hour)
 	filters := usagestats.UsageLogFilters{Model: "gpt-5"}
 
-	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\$3").
+	mock.ExpectQuery("AND COALESCE\\(NULLIF\\(TRIM\\(requested_model\\), ''\\), model\\) = \\?").
 		WithArgs(start, end, "gpt-5").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"model", "requests", "input_tokens", "output_tokens",
@@ -735,7 +735,7 @@ func TestUsageLogRepositoryGetBatchAPIKeyUsageStats_BindsQueryArgsInCorrectOrder
 	today := timezone.Today()
 
 	mock.ExpectQuery("SELECT\\s+api_key_id,.*FROM usage_logs").
-		WithArgs(start, end, today, int64(101), int64(202), start, today).
+		WithArgs(start, end, today, int64(101), int64(202), start, today, end).
 		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "total_cost", "today_cost"}).
 			AddRow(int64(101), 1.23, 0.45).
 			AddRow(int64(202), 6.78, 0.9))

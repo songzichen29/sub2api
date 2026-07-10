@@ -42,6 +42,31 @@ describe('useModelWhitelist', () => {
     expect(getModelsByPlatform('antigravity')).toContain('claude-opus-4-8')
   })
 
+  it('grok 模型列表保留 grok2api 网关兜底模型', () => {
+    const models = getModelsByPlatform('grok')
+
+    expect(models).toContain('grok-4')
+    expect(models).toContain('grok-4-fast')
+    expect(models).toContain('grok-4-heavy')
+  })
+
+  it('combined 模式支持 grok2api 透传映射', () => {
+    const mapping = buildModelMappingObject(
+      'combined',
+      ['grok-4'],
+      [
+        { from: 'claude-*', to: 'grok-4-fast' },
+        { from: 'claude-opus-*', to: 'grok-4-heavy' }
+      ]
+    )
+
+    expect(mapping).toEqual({
+      'grok-4': 'grok-4',
+      'claude-*': 'grok-4-fast',
+      'claude-opus-*': 'grok-4-heavy'
+    })
+  })
+
   it('gemini 模型列表包含原生生图模型', () => {
     const models = getModelsByPlatform('gemini')
 

@@ -389,7 +389,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			if existingSub.AllowsDailyOverdraft(group) {
 				dailyWindowStart = existingSub.CurrentDailyWindowStart(now)
 			}
-			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, dailyWindowStart); err != nil {
+			if err := s.userSubRepo.ResetDailyUsage(txCtx, existingSub.ID, existingSub.DailyWindowStart, dailyWindowStart); err != nil {
 				rollbackTx()
 				return nil, false, fmt.Errorf("reset daily usage on subscription renewal: %w", err)
 			}
@@ -551,6 +551,47 @@ func (s *SubscriptionService) beginSubscriptionUpdateTx(ctx context.Context) (co
 	return dbent.NewTxContext(ctx, tx), func() {
 		_ = tx.Rollback()
 	}, tx.Commit, nil
+}
+
+func (s *SubscriptionService) maybeInvalidateAssignmentCaches(userID, groupID int64, deferred bool) {
+	// Payment fulfillment owns an outer transaction and invalidates synchronously
+	// after commit. Invalidating inside that transaction can reload pre-commit
+	// subscription state into cache.
+	if deferred {
+		return
+	}
+	s.InvalidateSubCache(userID, groupID)
+	if s.billingCacheService != nil {
+		go func() {
+			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+		}()
+	}
+}
+
+func (s *SubscriptionService) withSubscriptionUpdateTx(ctx context.Context, fn func(context.Context) error) error {
+	if dbent.TxFromContext(ctx) != nil {
+		return fn(ctx)
+	}
+	txCtx, rollbackTx, commitTx, err := s.beginSubscriptionUpdateTx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			rollbackTx()
+		}
+	}()
+	if err := fn(txCtx); err != nil {
+		return err
+	}
+	if err := commitTx(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func cloneQuotaLimitPtr(v *float64) *float64 {
@@ -1491,7 +1532,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	now := time.Now()
 	if resetDaily {
 		windowStart := sub.CurrentDailyWindowStart(now)
-		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, sub.DailyWindowStart, windowStart); err != nil {
 			return nil, err
 		}
 	}
@@ -1500,7 +1541,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 			return nil, ErrInvalidResetTarget
 		}
 		windowStart := sub.CurrentWeeklyWindowStart(now)
-		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, sub.WeeklyWindowStart, windowStart); err != nil {
 			return nil, err
 		}
 	}
@@ -1509,7 +1550,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 			return nil, ErrInvalidResetTarget
 		}
 		windowStart := sub.CurrentMonthlyWindowStart(now)
-		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, sub.MonthlyWindowStart, windowStart); err != nil {
 			return nil, err
 		}
 	}
@@ -1558,7 +1599,7 @@ func (s *SubscriptionService) PaidResetDailyQuota(ctx context.Context, userID, s
 	sub := target.Subscription
 	now := time.Now()
 	windowStart := sub.CurrentDailyWindowStart(now)
-	if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+	if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, sub.DailyWindowStart, windowStart); err != nil {
 		return nil, err
 	}
 	s.InvalidateSubCache(sub.UserID, sub.GroupID)
@@ -1591,7 +1632,7 @@ func (s *SubscriptionService) FulfillPaidDailyQuotaReset(ctx context.Context, us
 	}
 	now := time.Now()
 	windowStart := sub.CurrentDailyWindowStart(now)
-	if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+	if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, sub.DailyWindowStart, windowStart); err != nil {
 		return nil, err
 	}
 	s.InvalidateSubCache(sub.UserID, sub.GroupID)
@@ -1688,7 +1729,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	// 日窗口重置（订阅锚点滚动 24 小时）
 	if sub.NeedsDailyReset() {
 		windowStart := sub.CurrentDailyWindowStart(now)
-		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, sub.DailyWindowStart, windowStart); err != nil {
 			return err
 		}
 		sub.DailyWindowStart = &windowStart
@@ -1700,7 +1741,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	// 承载订阅周期累计用量，必须一直保留到订阅过期/续期，不能每周重置。
 	if sub.NeedsWeeklyReset() && (sub.Group == nil || !sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentWeeklyWindowStart(now)
-		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, sub.WeeklyWindowStart, windowStart); err != nil {
 			return err
 		}
 		sub.WeeklyWindowStart = &windowStart
@@ -1712,7 +1753,7 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 	// 表示订阅周期累计用量，不能按月窗口清零。
 	if sub.NeedsMonthlyReset() && (sub.Group == nil || !sub.AllowsDailyOverdraft(sub.Group)) {
 		windowStart := sub.CurrentMonthlyWindowStart(now)
-		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, windowStart); err != nil {
+		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, sub.MonthlyWindowStart, windowStart); err != nil {
 			return err
 		}
 		sub.MonthlyWindowStart = &windowStart

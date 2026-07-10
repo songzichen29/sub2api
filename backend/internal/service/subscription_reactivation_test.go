@@ -172,17 +172,20 @@ func (r *subscriptionEntRepo) UpdateDailyOverdraft(ctx context.Context, subscrip
 func (r *subscriptionEntRepo) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows")
 }
-func (r *subscriptionEntRepo) ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error {
+func (r *subscriptionEntRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+	panic("unexpected ResetUsageWindows")
+}
+func (r *subscriptionEntRepo) ResetDailyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {
 	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(id).
 		SetDailyUsageUsd(0).
 		SetDailyWindowStart(newWindowStart).
 		Save(ctx)
 	return err
 }
-func (r *subscriptionEntRepo) ResetWeeklyUsage(context.Context, int64, time.Time) error {
+func (r *subscriptionEntRepo) ResetWeeklyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetWeeklyUsage")
 }
-func (r *subscriptionEntRepo) ResetMonthlyUsage(context.Context, int64, time.Time) error {
+func (r *subscriptionEntRepo) ResetMonthlyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetMonthlyUsage")
 }
 func (r *subscriptionEntRepo) IncrementUsage(context.Context, int64, float64) error {

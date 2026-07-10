@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 13 // v13: include group peak rate fields
+const apiKeyAuthSnapshotVersion = 14 // v14: include group batch image pricing fields
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -260,6 +260,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MonthlyLimitUSD:                 apiKey.Group.MonthlyLimitUSD,
 			AllowDailyOverdraft:             apiKey.Group.AllowDailyOverdraft,
 			AllowImageGeneration:            apiKey.Group.AllowImageGeneration,
+			AllowBatchImageGeneration:       apiKey.Group.AllowBatchImageGeneration,
 			ImageRateIndependent:            apiKey.Group.ImageRateIndependent,
 			ImageRateMultiplier:             apiKey.Group.ImageRateMultiplier,
 			ImagePrice1K:                    apiKey.Group.ImagePrice1K,
@@ -338,6 +339,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MonthlyLimitUSD:                 snapshot.Group.MonthlyLimitUSD,
 			AllowDailyOverdraft:             snapshot.Group.AllowDailyOverdraft,
 			AllowImageGeneration:            snapshot.Group.AllowImageGeneration,
+			AllowBatchImageGeneration:       snapshot.Group.AllowBatchImageGeneration,
 			ImageRateIndependent:            snapshot.Group.ImageRateIndependent,
 			ImageRateMultiplier:             snapshot.Group.ImageRateMultiplier,
 			ImagePrice1K:                    snapshot.Group.ImagePrice1K,

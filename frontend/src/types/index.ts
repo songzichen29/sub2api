@@ -86,6 +86,7 @@ export interface User {
   wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
+  frozen_balance?: number // Balance currently held by async batch jobs
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
   status: 'active' | 'disabled' // Account status
@@ -526,8 +527,11 @@ export interface Group {
   monthly_limit_usd: number | null
   // 图片生成计费配置
   allow_image_generation: boolean
+  allow_batch_image_generation: boolean
   image_rate_independent: boolean
   image_rate_multiplier: number
+  batch_image_discount_multiplier: number
+  batch_image_hold_multiplier: number
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
@@ -564,9 +568,15 @@ export interface AdminGroup extends Group {
   // OpenAI Messages 调度配置（仅 openai 平台使用）
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  models_list_config?: ModelsListConfig
 
   // 分组排序
   sort_order: number
+}
+
+export interface ModelsListConfig {
+  enabled: boolean
+  models: string[]
 }
 
 export interface ApiKey {
@@ -579,6 +589,7 @@ export interface ApiKey {
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
+  last_used_ip: string | null
   quota: number // Quota limit in USD (0 = unlimited)
   quota_used: number // Used quota amount in USD
   expires_at: string | null // Expiration time (null = never expires)
@@ -641,16 +652,24 @@ export interface CreateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  models_list_config?: ModelsListConfig
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   // 从指定分组复制账号
@@ -672,16 +691,24 @@ export interface UpdateGroupRequest {
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
   allow_image_generation?: boolean
+  allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
   image_rate_multiplier?: number
+  batch_image_discount_multiplier?: number
+  batch_image_hold_multiplier?: number
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  peak_rate_enabled?: boolean
+  peak_start?: string
+  peak_end?: string
+  peak_rate_multiplier?: number
   claude_code_only?: boolean
   fallback_group_id?: number | null
   fallback_group_id_on_invalid_request?: number | null
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
+  models_list_config?: ModelsListConfig
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
@@ -1574,6 +1601,9 @@ export interface UserBreakdownItem {
   user_id: number
   email: string
   requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
   total_tokens: number
   cost: number
   actual_cost: number

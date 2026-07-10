@@ -36,8 +36,12 @@ const (
 )
 
 type cachedOpenAIAdvancedSchedulerSetting struct {
-	enabled   bool
-	expiresAt int64
+	enabled                     bool
+	stickyWeightedEnabled       bool
+	subscriptionPriorityEnabled bool
+	lbTopKOverride              int
+	weightOverrides             map[string]float64
+	expiresAt                   int64
 }
 
 var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSchedulerSetting
@@ -374,7 +378,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, false, nil
 	}
-	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.RequireCompact, req.RequiredEndpointCapability)
+	account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.Platform, req.RequestedModel, req.RequireCompact, req.RequiredEndpointCapability)
 	if account == nil || !openAIStickyAccountMatchesGroup(account, req.GroupID) ||
 		!s.isAccountTransportCompatible(account, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, account, req) {
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
@@ -910,7 +914,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
 ) (*AccountSelectionResult, int, int, float64, error) {
-	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID)
+	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID, req.Platform)
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
@@ -987,11 +991,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	compactBlocked := false
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false, req.RequiredEndpointCapability)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredEndpointCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			continue
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false, req.RequiredEndpointCapability)
+		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.Platform, req.RequestedModel, false, req.RequiredEndpointCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			continue
 		}
@@ -1018,11 +1022,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, false, req.RequiredEndpointCapability)
+		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.Platform, req.RequestedModel, false, req.RequiredEndpointCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			continue
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, false, req.RequiredEndpointCapability)
+		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.Platform, req.RequestedModel, false, req.RequiredEndpointCapability)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
 			continue
 		}
@@ -1291,7 +1295,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 			for {
-				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredEndpointCapability)
+				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredEndpointCapability)
 				if err != nil {
 					return nil, decision, err
 				}
@@ -1316,7 +1320,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 		for {
-			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredEndpointCapability)
+			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredEndpointCapability)
 			if err != nil {
 				return nil, decision, err
 			}
@@ -1354,7 +1358,7 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	}
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
-		Platform:                   PlatformOpenAI,
+		Platform:                   platform,
 		GroupID:                    groupID,
 		SessionHash:                sessionHash,
 		StickyAccountID:            stickyAccountID,
@@ -1587,6 +1591,8 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 			TTFT:          s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT,
 			Reset:         s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset,
 			QuotaHeadroom: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.QuotaHeadroom,
+			Previous:      s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.PreviousResponse,
+			SessionSticky: s.cfg.Gateway.OpenAIWS.SchedulerScoreWeights.SessionSticky,
 		}
 	}
 	return GatewayOpenAIWSSchedulerScoreWeightsView{
@@ -1597,6 +1603,8 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeights() GatewayOpenAIWSSchedul
 		TTFT:          0.5,
 		Reset:         0.0,
 		QuotaHeadroom: 0.0,
+		Previous:      5.0,
+		SessionSticky: 3.0,
 	}
 }
 
@@ -1609,6 +1617,8 @@ type GatewayOpenAIWSSchedulerScoreWeightsView struct {
 	// Reset 倾向「会话窗口最早重置」的账号；0 表示关闭（默认）。
 	Reset         float64
 	QuotaHeadroom float64
+	Previous      float64
+	SessionSticky float64
 }
 
 func openAIQuotaHeadroomFactor(account *Account, now time.Time) float64 {

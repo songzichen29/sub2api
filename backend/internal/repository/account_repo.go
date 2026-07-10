@@ -497,6 +497,22 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 	return r.ListWithFilters(ctx, params, "", "", "", "", 0, "", nil)
 }
 
+func (r *accountRepository) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, error) {
+	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "id", SortOrder: pagination.SortOrderDesc}
+	var all []service.Account
+	for {
+		accounts, page, err := r.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode, tags)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, accounts...)
+		if page == nil || int64(len(all)) >= page.Total || len(accounts) == 0 {
+			return all, nil
+		}
+		params.Page++
+	}
+}
+
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 

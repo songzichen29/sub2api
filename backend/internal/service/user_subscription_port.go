@@ -30,9 +30,10 @@ type UserSubscriptionRepository interface {
 	UpdateDailyOverdraft(ctx context.Context, subscriptionID int64, enabled bool) error
 
 	ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error
-	ResetDailyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
-	ResetWeeklyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
-	ResetMonthlyUsage(ctx context.Context, id int64, newWindowStart time.Time) error
+	ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, newWindowStart time.Time) error
+	ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
+	ResetWeeklyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
+	ResetMonthlyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error
 	IncrementUsage(ctx context.Context, id int64, costUSD float64) error
 
 	// GetLatestUsedAtBySubscriptionIDs 批量返回每个订阅在 usage_logs 上聚合得到的

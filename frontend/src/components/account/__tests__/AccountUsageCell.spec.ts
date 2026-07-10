@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+﻿import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
@@ -566,6 +566,30 @@ describe('AccountUsageCell', () => {
 		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
   })
 
+  it('Key 账号在 today stats loading 时显示骨架屏', async () => {
+		const wrapper = mount(AccountUsageCell, {
+		  props: {
+		    account: makeAccount({
+		      id: 3002,
+		      platform: 'anthropic',
+		      type: 'apikey'
+		    }),
+		    todayStats: null,
+		    todayStatsLoading: true
+		  },
+		  global: {
+		    stubs: {
+		      UsageProgressBar: true,
+		      AccountQuotaInfo: true
+		    }
+		  }
+		})
+
+		await flushPromises()
+
+		expect(wrapper.findAll('.animate-pulse').length).toBeGreaterThan(0)
+  })
+
   it('Key 账号在无 today stats 且未启用用量查询时显示占位提示而非短横线', async () => {
 		const wrapper = mount(AccountUsageCell, {
 		  props: {
@@ -673,7 +697,7 @@ describe('AccountUsageCell', () => {
             template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
           },
           AccountQuotaInfo: true,
-          GrokQuotaProbeCell: true
+
         }
       }
     })
@@ -717,7 +741,7 @@ describe('AccountUsageCell', () => {
             template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
           },
           AccountQuotaInfo: true,
-          GrokQuotaProbeCell: true
+
         }
       }
     })

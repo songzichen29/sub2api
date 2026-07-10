@@ -59,6 +59,7 @@ type Handlers struct {
 	AvailableChannel *AvailableChannelHandler
 	ModelMarketplace *ModelMarketplaceHandler
 	AccountImport    *AccountImportHandler
+	BatchImage       *BatchImageHandler
 }
 
 // BuildInfo contains build-time information

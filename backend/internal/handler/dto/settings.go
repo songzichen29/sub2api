@@ -220,8 +220,29 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
-	OpenAIAdvancedSchedulerEnabled                     bool `json:"openai_advanced_scheduler_enabled"`
-	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled bool `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerEnabled                         bool   `json:"openai_advanced_scheduler_enabled"`
+	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool   `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool   `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerLBTopK                          string `json:"openai_advanced_scheduler_lb_top_k"`
+	OpenAIAdvancedSchedulerWeightPriority                  string `json:"openai_advanced_scheduler_weight_priority"`
+	OpenAIAdvancedSchedulerWeightLoad                      string `json:"openai_advanced_scheduler_weight_load"`
+	OpenAIAdvancedSchedulerWeightQueue                     string `json:"openai_advanced_scheduler_weight_queue"`
+	OpenAIAdvancedSchedulerWeightErrorRate                 string `json:"openai_advanced_scheduler_weight_error_rate"`
+	OpenAIAdvancedSchedulerWeightTTFT                      string `json:"openai_advanced_scheduler_weight_ttft"`
+	OpenAIAdvancedSchedulerWeightReset                     string `json:"openai_advanced_scheduler_weight_reset"`
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string `json:"openai_advanced_scheduler_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerWeightPreviousResponse          string `json:"openai_advanced_scheduler_weight_previous_response"`
+	OpenAIAdvancedSchedulerWeightSessionSticky             string `json:"openai_advanced_scheduler_weight_session_sticky"`
+	OpenAIAdvancedSchedulerEffectiveLBTopK                 string `json:"openai_advanced_scheduler_effective_lb_top_k"`
+	OpenAIAdvancedSchedulerEffectiveWeightPriority         string `json:"openai_advanced_scheduler_effective_weight_priority"`
+	OpenAIAdvancedSchedulerEffectiveWeightLoad             string `json:"openai_advanced_scheduler_effective_weight_load"`
+	OpenAIAdvancedSchedulerEffectiveWeightQueue            string `json:"openai_advanced_scheduler_effective_weight_queue"`
+	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string `json:"openai_advanced_scheduler_effective_weight_error_rate"`
+	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string `json:"openai_advanced_scheduler_effective_weight_ttft"`
+	OpenAIAdvancedSchedulerEffectiveWeightReset            string `json:"openai_advanced_scheduler_effective_weight_reset"`
+	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string `json:"openai_advanced_scheduler_effective_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string `json:"openai_advanced_scheduler_effective_weight_previous_response"`
+	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
 
 	// Standalone account import
 	StandaloneAccountImportEnabled            bool `json:"standalone_account_import_enabled"`
@@ -240,6 +261,7 @@ type SystemSettings struct {
 	PaymentEnabledTypes              []string                          `json:"payment_enabled_types"`
 	PaymentBalanceDisabled           bool                              `json:"payment_balance_disabled"`
 	PaymentBalanceRechargeMultiplier float64                           `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate  float64                           `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
 	PaymentQuickAmounts              []float64                         `json:"payment_quick_amounts"`
 	PaymentPaidUserRateEnabled       bool                              `json:"payment_paid_user_rate_enabled"`
@@ -251,6 +273,7 @@ type SystemSettings struct {
 	PaymentProductNameSuffix         string                            `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              string                            `json:"payment_help_image_url"`
 	PaymentHelpText                  string                            `json:"payment_help_text"`
+	PaymentAlipayForceQRCode         bool                              `json:"payment_alipay_force_qrcode"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -303,11 +326,7 @@ type PaymentPaidUserRateBackfillStatus struct {
 	UpdatedAt      string `json:"updated_at,omitempty"`
 }
 
-type DefaultPlatformQuotaSetting struct {
-	DailyLimitUSD   *float64 `json:"daily"`
-	WeeklyLimitUSD  *float64 `json:"weekly"`
-	MonthlyLimitUSD *float64 `json:"monthly"`
-}
+type DefaultPlatformQuotaSetting = service.DefaultPlatformQuotaSetting
 
 type DefaultSubscriptionSetting struct {
 	GroupID      int64   `json:"group_id"`

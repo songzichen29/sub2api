@@ -65,6 +65,7 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetAllowDailyOverdraft(groupIn.AllowDailyOverdraft).
 		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
@@ -74,6 +75,8 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
+		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -149,6 +152,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetAllowDailyOverdraft(groupIn.AllowDailyOverdraft).
 		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
+		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
@@ -158,6 +162,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice1k(groupIn.ImagePrice1K).
 		SetNillableImagePrice2k(groupIn.ImagePrice2K).
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
+		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
+		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -205,7 +211,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearImagePrice4k()
 	}
-
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
 		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)

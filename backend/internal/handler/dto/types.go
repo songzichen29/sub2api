@@ -14,6 +14,7 @@ type User struct {
 	Username      string     `json:"username"`
 	Role          string     `json:"role"`
 	Balance       float64    `json:"balance"`
+	FrozenBalance float64    `json:"frozen_balance"`
 	Concurrency   int        `json:"concurrency"`
 	Status        string     `json:"status"`
 	AllowedGroups []int64    `json:"allowed_groups"`
@@ -58,6 +59,7 @@ type APIKey struct {
 	IPWhitelist []string   `json:"ip_whitelist"`
 	IPBlacklist []string   `json:"ip_blacklist"`
 	LastUsedAt  *time.Time `json:"last_used_at"`
+	LastUsedIP  *string    `json:"last_used_ip"`
 	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
 	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
 	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
@@ -101,13 +103,21 @@ type Group struct {
 	AllowDailyOverdraft  bool     `json:"allow_daily_overdraft"`
 	AllowWeekendSkip     bool     `json:"allow_weekend_skip"`
 
-	// 图片生成计费配置（仅 antigravity 平台使用）
-	AllowImageGeneration bool     `json:"allow_image_generation"`
-	ImageRateIndependent bool     `json:"image_rate_independent"`
-	ImageRateMultiplier  float64  `json:"image_rate_multiplier"`
-	ImagePrice1K         *float64 `json:"image_price_1k"`
-	ImagePrice2K         *float64 `json:"image_price_2k"`
-	ImagePrice4K         *float64 `json:"image_price_4k"`
+	// 图片生成计费配置（antigravity 和 gemini 平台使用）
+	AllowImageGeneration         bool    `json:"allow_image_generation"`
+	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageRateIndependent         bool    `json:"image_rate_independent"`
+	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier     float64 `json:"batch_image_hold_multiplier"`
+	// 高峰时段倍率配置
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	ImagePrice1K       *float64 `json:"image_price_1k"`
+	ImagePrice2K       *float64 `json:"image_price_2k"`
+	ImagePrice4K       *float64 `json:"image_price_4k"`
 
 	// Claude Code 客户端限制
 	ClaudeCodeOnly  bool   `json:"claude_code_only"`

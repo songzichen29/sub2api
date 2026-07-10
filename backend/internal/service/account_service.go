@@ -39,6 +39,7 @@ type AccountRepository interface {
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error)
+	ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
 	ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error)

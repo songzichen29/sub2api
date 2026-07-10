@@ -40,6 +40,9 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	if openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools")) {
 		return true
 	}
+	if openAIJSONInputContainsImageGenerationTools(gjson.GetBytes(body, "input")) {
+		return true
+	}
 	return openAIJSONToolChoiceSelectsImageGeneration(gjson.GetBytes(body, "tool_choice"))
 }
 
@@ -92,6 +95,29 @@ func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 	found := false
 	tools.ForEach(func(_, item gjson.Result) bool {
 		if strings.TrimSpace(item.Get("type").String()) == "image_generation" {
+			found = true
+			return false
+		}
+		if strings.TrimSpace(item.Get("type").String()) == "namespace" &&
+			strings.TrimSpace(item.Get("name").String()) == "image_gen" {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+func openAIJSONInputContainsImageGenerationTools(input gjson.Result) bool {
+	if !input.IsArray() {
+		return false
+	}
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if strings.TrimSpace(item.Get("type").String()) != "additional_tools" {
+			return true
+		}
+		if openAIJSONToolsContainImageGeneration(item.Get("tools")) {
 			found = true
 			return false
 		}
@@ -164,7 +190,9 @@ func cloneRequestMapForImageIntent(body []byte) map[string]any {
 		return nil
 	}
 	var out map[string]any
-	if err := json.Unmarshal(body, &out); err != nil {
+	dec := json.NewDecoder(strings.NewReader(string(body)))
+	dec.UseNumber()
+	if err := dec.Decode(&out); err != nil {
 		return nil
 	}
 	return out
