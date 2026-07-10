@@ -499,8 +499,8 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		result[id] = &BatchUserUsageStats{UserID: id}
 	}
 
-	// GROUP BY (user_id, effective_platform) ?????????????????
-	// ?????? user_id ????????????? platform ???? ByPlatform?
+	// GROUP BY (user_id, effective_platform) 后同一用户会返回多行；
+	// 同时累加 user_id 总额并按 platform 填充 ByPlatform。
 	inClause, inArgs := buildInt64InClause(normalizedUserIDs)
 	if inClause == "" {
 		return result, nil

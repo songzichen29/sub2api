@@ -784,7 +784,7 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 		FROM accounts
 		WHERE deleted_at IS NULL
 			AND status = 'active'
-			AND type = 'oauth'
+			AND type IN ('oauth', 'setup-token')
 			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
 			AND TRIM(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.refresh_token')), '')) <> ''
 			AND NOT (

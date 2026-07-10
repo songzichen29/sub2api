@@ -642,8 +642,9 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		args = append(args, dim.AccountID)
 	}
 	if dim.RequestType != nil {
-		query += " AND ul.request_type = ?"
-		args = append(args, *dim.RequestType)
+		condition, conditionArgs := buildRequestTypeFilterConditionWithAlias(len(args)+1, *dim.RequestType, "ul")
+		query += " AND " + condition
+		args = append(args, conditionArgs...)
 	}
 	if dim.Stream != nil {
 		query += " AND ul.stream = ?"

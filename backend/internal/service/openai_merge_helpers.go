@@ -13,25 +13,6 @@ func openAIRequestBodyHasImageGenerationTool(body []byte) bool {
 	return openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools"))
 }
 
-func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
-	tools := gjson.GetBytes(body, "tools")
-	if !tools.IsArray() {
-		return false
-	}
-	needs := false
-	tools.ForEach(func(_, item gjson.Result) bool {
-		if strings.TrimSpace(item.Get("type").String()) != "image_generation" {
-			return true
-		}
-		if item.Get("format").Exists() {
-			needs = true
-			return false
-		}
-		return true
-	})
-	return needs
-}
-
 func decodeOpenAIRequestMapUseNumber(body []byte, dst *map[string]any) error {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
@@ -44,39 +25,10 @@ func openAIMergeHelperString(v any) string {
 }
 
 func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model string) ([]byte, bool, error) {
-	if !isCodexSparkModel(model) || !strings.Contains(string(payload), "image_generation") {
+	if !isCodexSparkModel(model) {
 		return payload, false, nil
 	}
-	payloadMap := make(map[string]any)
-	if err := decodeOpenAIRequestMapUseNumber(payload, &payloadMap); err != nil {
-		return payload, false, err
-	}
-	if !stripCodexSparkImageGenerationTools(payloadMap) {
-		return payload, false, nil
-	}
-	rebuilt, err := marshalOpenAIUpstreamJSON(payloadMap)
-	if err != nil {
-		return payload, false, err
-	}
-	return rebuilt, true, nil
-}
-
-func stripOpenAIImageGenerationToolFromRawPayload(payload []byte) ([]byte, bool, error) {
-	if !strings.Contains(string(payload), "image_generation") {
-		return payload, false, nil
-	}
-	payloadMap := make(map[string]any)
-	if err := decodeOpenAIRequestMapUseNumber(payload, &payloadMap); err != nil {
-		return payload, false, err
-	}
-	if !stripOpenAIImageGenerationTools(payloadMap) {
-		return payload, false, nil
-	}
-	rebuilt, err := marshalOpenAIUpstreamJSON(payloadMap)
-	if err != nil {
-		return payload, false, err
-	}
-	return rebuilt, true, nil
+	return stripOpenAIImageGenerationToolsFromRawPayload(payload)
 }
 
 func removeEmptyPreviousResponseIDFromRawPayload(payload []byte) ([]byte, bool, error) {

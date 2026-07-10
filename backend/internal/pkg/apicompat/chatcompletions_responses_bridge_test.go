@@ -117,7 +117,7 @@ func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testin
 		}},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "grok-client")
+	out := ChatCompletionsResponseToResponses(resp, "grok-client", nil, false, nil)
 
 	require.NotNil(t, out)
 	assert.True(t, strings.HasPrefix(out.ID, "resp_"), "responses id must be resp_*, got %q", out.ID)

@@ -133,6 +133,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		if abortIfAPIKeyGroupNotAllowed(c, apiKey) {
 			return
 		}
+		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
+		c.Request = c.Request.WithContext(ctx)
 
 		// 从这里开始，Key、用户和分组已经完成基础鉴权。
 		// 先写入上下文，再执行订阅/余额/配额检查，确保这些检查在中间件内拦截时，

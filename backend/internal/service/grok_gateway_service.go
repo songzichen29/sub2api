@@ -431,7 +431,7 @@ func (s *GrokGatewayService) ForwardAsCC(ctx context.Context, c *gin.Context, ac
 			}
 			ccResp = &parsed
 		}
-		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel)
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, nil, false, nil)
 		anthropicResp := apicompat.ResponsesToAnthropic(responsesResp, originalModel)
 		anthropicBytes, err := json.Marshal(anthropicResp)
 		if err != nil {
@@ -1698,7 +1698,7 @@ func (s *GrokGatewayService) ForwardAsResponses(
 			s.extractCCUsage(respBody, &usage)
 		}
 
-		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel)
+		responsesResp := apicompat.ChatCompletionsResponseToResponses(ccResp, originalModel, nil, false, nil)
 		conversation := cloneGrokChatMessages(chatReq.Messages)
 		if assistantMessage, ok := grokAssistantMessageFromChatResponse(ccResp); ok {
 			conversation = append(conversation, assistantMessage)

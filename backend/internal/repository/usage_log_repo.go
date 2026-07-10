@@ -230,16 +230,24 @@ func appendRequestTypeOrStreamQueryFilter(query string, args []any, requestType 
 
 // buildRequestTypeFilterCondition 在 request_type 过滤时兼容 legacy 字段，避免历史数据漏查。
 func buildRequestTypeFilterCondition(_ int, requestType int16) (string, []any) {
+	return buildRequestTypeFilterConditionWithAlias(0, requestType, "")
+}
+
+func buildRequestTypeFilterConditionWithAlias(_ int, requestType int16, alias string) (string, []any) {
 	normalized := service.RequestTypeFromInt16(requestType)
 	requestTypeArg := int16(normalized)
+	prefix := ""
+	if alias != "" {
+		prefix = alias + "."
+	}
 	switch normalized {
 	case service.RequestTypeSync:
-		return fmt.Sprintf("(request_type = ? OR (request_type = %d AND stream = FALSE AND openai_ws_mode = FALSE))", int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeStream:
-		return fmt.Sprintf("(request_type = ? OR (request_type = %d AND stream = TRUE AND openai_ws_mode = FALSE))", int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeWSV2:
-		return fmt.Sprintf("(request_type = ? OR (request_type = %d AND openai_ws_mode = TRUE))", int16(service.RequestTypeUnknown)), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix), []any{requestTypeArg}
 	default:
-		return "request_type = ?", []any{requestTypeArg}
+		return fmt.Sprintf("%srequest_type = ?", prefix), []any{requestTypeArg}
 	}
 }
