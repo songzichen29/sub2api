@@ -189,7 +189,6 @@
             <div class="flex flex-col overflow-hidden">
               <span class="truncate font-medium text-gray-900 dark:text-white" :title="value">{{ value }}</span>
               <span
-              <span
                 v-if="accountDisplayEmail(row)"
                 class="truncate max-w-[200px] text-xs text-gray-500 dark:text-gray-400"
                 :title="accountDisplayEmail(row) + (row.parent_chatgpt_account_id ? ' ? ' + row.parent_chatgpt_account_id : '')"
