@@ -1205,6 +1205,13 @@ export default {
     moreChannels: '展开其余 {count} 个渠道',
     collapseChannels: '收起渠道',
     intervalCount: '{count} 档阶梯价',
+    showIntervalDetails: '查看区间价格',
+    hideIntervalDetails: '收起区间价格',
+    intervalRangeOpen: '> {min} tokens',
+    intervalRangeBounded: '> {min} 且 <= {max} tokens',
+    intervalTable: {
+      context: '上下文区间'
+    },
     channelCount: '{count} 个渠道',
     empty: {
       noChannels: '暂无可用渠道',

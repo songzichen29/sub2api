@@ -69,7 +69,86 @@
         </div>
 
         <div
-          v-else
+          v-if="intervalRows(channel.pricing).length > 0"
+          class="mt-3"
+        >
+          <button
+            type="button"
+            class="inline-flex items-center text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+            @click="toggleIntervalDetails(channelKey(channel))"
+          >
+            {{
+              isIntervalDetailsExpanded(channelKey(channel))
+                ? t('modelMarketplace.hideIntervalDetails')
+                : t('modelMarketplace.showIntervalDetails')
+            }}
+          </button>
+
+          <div
+            v-if="isIntervalDetailsExpanded(channelKey(channel))"
+            class="mt-2 overflow-x-auto rounded-md border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800"
+          >
+            <table class="min-w-full divide-y divide-gray-200 text-left text-xs dark:divide-dark-700">
+              <thead class="bg-gray-50 text-[11px] uppercase text-gray-500 dark:bg-dark-900 dark:text-gray-400">
+                <tr>
+                  <th class="whitespace-nowrap px-3 py-2 font-medium">
+                    {{ t('modelMarketplace.intervalTable.context') }}
+                  </th>
+                  <th class="whitespace-nowrap px-3 py-2 font-medium">
+                    {{ t('availableChannels.pricing.inputPrice') }}
+                  </th>
+                  <th class="whitespace-nowrap px-3 py-2 font-medium">
+                    {{ t('availableChannels.pricing.outputPrice') }}
+                  </th>
+                  <th class="whitespace-nowrap px-3 py-2 font-medium">
+                    {{ t('availableChannels.pricing.cacheWritePrice') }}
+                  </th>
+                  <th class="whitespace-nowrap px-3 py-2 font-medium">
+                    {{ t('availableChannels.pricing.cacheReadPrice') }}
+                  </th>
+                  <th
+                    v-if="hasIntervalPerRequestPrice(channel.pricing)"
+                    class="whitespace-nowrap px-3 py-2 font-medium"
+                  >
+                    {{ t('availableChannels.pricing.perRequestPrice') }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                <tr
+                  v-for="row in intervalRows(channel.pricing)"
+                  :key="row.key"
+                  class="text-gray-700 dark:text-gray-300"
+                >
+                  <td class="whitespace-nowrap px-3 py-2 font-medium text-gray-900 dark:text-white">
+                    {{ row.context }}
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2 font-mono">
+                    {{ row.inputPrice }}
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2 font-mono">
+                    {{ row.outputPrice }}
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2 font-mono">
+                    {{ row.cacheWritePrice }}
+                  </td>
+                  <td class="whitespace-nowrap px-3 py-2 font-mono">
+                    {{ row.cacheReadPrice }}
+                  </td>
+                  <td
+                    v-if="hasIntervalPerRequestPrice(channel.pricing)"
+                    class="whitespace-nowrap px-3 py-2 font-mono"
+                  >
+                    {{ row.perRequestPrice }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div
+          v-if="pricingStats(channel.pricing).length === 0"
           class="rounded-md border border-dashed border-gray-200 px-3 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
         >
           {{ noPricingLabel }}
@@ -95,7 +174,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserSupportedModelPricing } from '@/api/channels'
+import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import type { ModelMarketplaceChannelEntry } from '@/utils/modelMarketplace'
@@ -116,6 +195,7 @@ const props = withDefaults(
 
 const { t } = useI18n()
 const expanded = ref(false)
+const expandedIntervalDetails = ref<Set<string>>(new Set())
 const perMillionScale = 1_000_000
 
 const visibleChannels = computed(() =>
@@ -146,7 +226,7 @@ function pricingStats(pricing: UserSupportedModelPricing | null): Array<{ label:
       pricing.cache_write_price != null ? { label: t('availableChannels.pricing.cacheWritePrice'), value: `${formatScaled(pricing.cache_write_price, perMillionScale)} / 1M` } : null,
       pricing.cache_read_price != null ? { label: t('availableChannels.pricing.cacheReadPrice'), value: `${formatScaled(pricing.cache_read_price, perMillionScale)} / 1M` } : null,
       pricing.per_request_price != null ? { label: t('availableChannels.pricing.perRequestPrice'), value: formatScaled(pricing.per_request_price, 1) } : null,
-      pricing.intervals.length > 0 ? { label: t('availableChannels.pricing.intervals'), value: t('modelMarketplace.intervalCount', { count: pricing.intervals.length }) } : null,
+      pricing.intervals.length > 0 ? { label: t('availableChannels.pricing.intervals'), value: intervalSummary(pricing.intervals) } : null,
     ].filter((stat): stat is { label: string; value: string } => !!stat)
   }
 
@@ -175,7 +255,64 @@ function pricingStats(pricing: UserSupportedModelPricing | null): Array<{ label:
 }
 
 function formatRange(min: number, max: number | null): string {
-  const maxLabel = max == null ? '∞' : String(max)
-  return `(${min}, ${maxLabel}]`
+  if (max == null) return t('modelMarketplace.intervalRangeOpen', { min: formatTokens(min) })
+  return t('modelMarketplace.intervalRangeBounded', { min: formatTokens(min), max: formatTokens(max) })
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${formatScaled(tokens, 1_000_000)}M`
+  if (tokens >= 1_000) return `${formatScaled(tokens, 1_000)}K`
+  return String(tokens)
+}
+
+function formatMillionPrice(price: number | null): string {
+  return price == null ? '-' : `${formatScaled(price, perMillionScale)} / 1M`
+}
+
+function formatUnitPrice(price: number | null): string {
+  return price == null ? '-' : formatScaled(price, 1)
+}
+
+function intervalSummary(intervals: UserPricingInterval[]): string {
+  const first = intervals[0]
+  if (!first) return ''
+  const count = t('modelMarketplace.intervalCount', { count: intervals.length })
+  return `${formatRange(first.min_tokens, first.max_tokens)} · ${count}`
+}
+
+function intervalRows(pricing: UserSupportedModelPricing | null) {
+  if (!pricing || pricing.intervals.length === 0) return []
+
+  return pricing.intervals.map((interval, index) => ({
+    key: `${interval.min_tokens}-${interval.max_tokens ?? 'open'}-${index}`,
+    context: interval.tier_label?.trim() || formatRange(interval.min_tokens, interval.max_tokens),
+    inputPrice: formatMillionPrice(interval.input_price),
+    outputPrice: formatMillionPrice(interval.output_price),
+    cacheWritePrice: formatMillionPrice(interval.cache_write_price),
+    cacheReadPrice: formatMillionPrice(interval.cache_read_price),
+    perRequestPrice: formatUnitPrice(interval.per_request_price),
+  }))
+}
+
+function hasIntervalPerRequestPrice(pricing: UserSupportedModelPricing | null): boolean {
+  return !!pricing?.intervals.some((interval) => interval.per_request_price != null)
+}
+
+function channelKey(channel: ModelMarketplaceChannelEntry): string {
+  return `${channel.channel_name}:${channel.channel_description || ''}`
+}
+
+function isIntervalDetailsExpanded(key: string): boolean {
+  return expandedIntervalDetails.value.has(key)
+}
+
+function toggleIntervalDetails(key: string) {
+  const next = new Set(expandedIntervalDetails.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  expandedIntervalDetails.value = next
 }
 </script>

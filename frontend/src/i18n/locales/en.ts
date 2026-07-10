@@ -1201,6 +1201,13 @@
     moreChannels: 'Show {count} more channels',
     collapseChannels: 'Collapse channels',
     intervalCount: '{count} pricing tiers',
+    showIntervalDetails: 'Show tier prices',
+    hideIntervalDetails: 'Hide tier prices',
+    intervalRangeOpen: '> {min} tokens',
+    intervalRangeBounded: '> {min} and <= {max} tokens',
+    intervalTable: {
+      context: 'Context Range'
+    },
     channelCount: '{count} channels',
     empty: {
       noChannels: 'No available channels',

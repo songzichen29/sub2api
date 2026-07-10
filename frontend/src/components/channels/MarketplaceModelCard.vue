@@ -61,11 +61,17 @@
       </div>
     </div>
 
-    <div class="mt-3 flex items-center pl-[3.25rem]">
+    <div class="mt-3 flex flex-wrap items-center gap-2 pl-[3.25rem]">
       <span
         class="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/20 dark:text-violet-300"
       >
         {{ billingModeLabel }}
+      </span>
+      <span
+        v-if="intervalBadge"
+        class="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+      >
+        {{ intervalBadge }}
       </span>
     </div>
   </article>
@@ -75,7 +81,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GroupPlatform } from '@/types'
-import type { UserSupportedModelPricing } from '@/api/channels'
+import type { UserPricingInterval, UserSupportedModelPricing } from '@/api/channels'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { useAppStore } from '@/stores/app'
 import type { MarketplaceModelItem } from '@/utils/modelMarketplace'
@@ -126,6 +132,12 @@ const billingModeLabel = computed(() => {
     default:
       return '-'
   }
+})
+
+const intervalBadge = computed(() => {
+  const intervals = primaryPricing.value?.intervals ?? []
+  if (intervals.length === 0) return ''
+  return intervalSummary(intervals)
 })
 
 const copyButtonTitle = computed(() =>
@@ -192,8 +204,21 @@ function buildPricingLines(pricing: UserSupportedModelPricing | null): Array<{ l
 }
 
 function formatRange(min: number, max: number | null): string {
-  const maxLabel = max == null ? '∞' : String(max)
-  return `(${min}, ${maxLabel}]`
+  if (max == null) return t('modelMarketplace.intervalRangeOpen', { min: formatTokens(min) })
+  return t('modelMarketplace.intervalRangeBounded', { min: formatTokens(min), max: formatTokens(max) })
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${formatScaled(tokens, 1_000_000)}M`
+  if (tokens >= 1_000) return `${formatScaled(tokens, 1_000)}K`
+  return String(tokens)
+}
+
+function intervalSummary(intervals: UserPricingInterval[]): string {
+  const first = intervals[0]
+  if (!first) return ''
+  const count = t('modelMarketplace.intervalCount', { count: intervals.length })
+  return `${formatRange(first.min_tokens, first.max_tokens)} · ${count}`
 }
 
 const pricingLines = computed(() => buildPricingLines(primaryPricing.value))
