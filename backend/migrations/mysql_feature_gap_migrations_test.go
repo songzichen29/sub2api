@@ -198,6 +198,16 @@ func TestMySQLContentModerationAccountMigrationExists(t *testing.T) {
 	require.Contains(t, sql, "content_moderation_logs_accounts_account")
 }
 
+func TestMySQLLatestAPIKeyIPIndexMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("047_add_usage_logs_api_key_latest_ip_index.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "index_name = 'idx_usage_logs_api_key_latest_ip'")
+	require.Contains(t, sql, "CREATE INDEX `idx_usage_logs_api_key_latest_ip` ON `usage_logs` (`api_key_id`, `created_at` DESC, `id` DESC, `ip_address`)")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

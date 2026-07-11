@@ -116,6 +116,40 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_t_b ON t(b);
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestApplyMigrationsFS_NonTransactionalMigration_LatestAPIKeyIPIndexDropsInvalidIndexBeforeRetry(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	prepareMigrationsBootstrapExpectations(mock)
+	mock.ExpectQuery("SELECT checksum FROM schema_migrations WHERE filename = \\?").
+		WithArgs(latestAPIKeyIPIndexMigration).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec("CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_api_key_latest_ip").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT INTO schema_migrations \\(filename, checksum\\) VALUES \\(\\?, \\?\\)").
+		WithArgs(latestAPIKeyIPIndexMigration, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("SELECT RELEASE_LOCK\\(\\?\\)").
+		WithArgs(migrationsNamedLockName).
+		WillReturnRows(sqlmock.NewRows([]string{"RELEASE_LOCK(?)"}).AddRow(1))
+
+	fsys := fstest.MapFS{
+		latestAPIKeyIPIndexMigration: &fstest.MapFile{
+			Data: []byte(`
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_api_key_latest_ip
+    ON usage_logs (api_key_id, created_at DESC, id DESC)
+    INCLUDE (ip_address)
+    WHERE ip_address IS NOT NULL AND ip_address <> '';
+`),
+		},
+	}
+
+	err = applyMigrationsFS(context.Background(), db, fsys)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyMigrationsFS_PaymentOrdersOutTradeNoUniqueMigration_FailsFastOnDuplicatePrecheck(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
