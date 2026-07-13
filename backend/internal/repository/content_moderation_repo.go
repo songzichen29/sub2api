@@ -106,24 +106,7 @@ SELECT
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
-    COALESCE(l.request_body_message_count, 0),
-    COALESCE((
-        SELECT ul.account_id
-        FROM usage_logs ul
-        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
-          AND ul.api_key_id = l.api_key_id
-        ORDER BY ul.id DESC
-        LIMIT 1
-    ), 0),
-    COALESCE((
-        SELECT a.name
-        FROM usage_logs ul
-        JOIN accounts a ON a.id = ul.account_id
-        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
-          AND ul.api_key_id = l.api_key_id
-        ORDER BY ul.id DESC
-        LIMIT 1
-    ), '')
+    COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
@@ -138,7 +121,7 @@ LIMIT ? OFFSET ?`,
 	items := make([]service.ContentModerationLog, 0)
 	for rows.Next() {
 		var item service.ContentModerationLog
-		var userID, apiKeyID, accountID, groupID, latency, queueDelay sql.NullInt64
+		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
 		var requestBodySize, sessionMessageCount sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
@@ -172,8 +155,6 @@ LIMIT ? OFFSET ?`,
 			&item.CreatedAt,
 			&requestBodySize,
 			&sessionMessageCount,
-			&accountID,
-			&item.AccountName,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan content moderation log: %w", err)
 		}
@@ -184,10 +165,6 @@ LIMIT ? OFFSET ?`,
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
 			item.APIKeyID = &v
-		}
-		if accountID.Valid && accountID.Int64 > 0 {
-			v := accountID.Int64
-			item.AccountID = &v
 		}
 		if groupID.Valid {
 			v := groupID.Int64
@@ -217,7 +194,92 @@ LIMIT ? OFFSET ?`,
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("iterate content moderation logs: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, nil, fmt.Errorf("close content moderation logs: %w", err)
+	}
+	if err := r.hydrateContentModerationLogAccounts(ctx, items); err != nil {
+		return nil, nil, err
+	}
 	return items, paginationResultFromTotal(total, params), nil
+}
+
+type contentModerationAccountLookupKey struct {
+	requestID string
+	apiKeyID  int64
+}
+
+type contentModerationAccountLookupRef struct {
+	itemIndex int
+	priority  int
+}
+
+func (r *contentModerationRepository) hydrateContentModerationLogAccounts(ctx context.Context, items []service.ContentModerationLog) error {
+	lookupRefs := make(map[contentModerationAccountLookupKey][]contentModerationAccountLookupRef)
+	requestIDs := make([]string, 0, len(items)*2)
+	seenRequestIDs := make(map[string]struct{}, len(items)*2)
+
+	addCandidate := func(requestID string, apiKeyID int64, itemIndex, priority int) {
+		key := contentModerationAccountLookupKey{requestID: requestID, apiKeyID: apiKeyID}
+		lookupRefs[key] = append(lookupRefs[key], contentModerationAccountLookupRef{itemIndex: itemIndex, priority: priority})
+		if _, exists := seenRequestIDs[requestID]; !exists {
+			seenRequestIDs[requestID] = struct{}{}
+			requestIDs = append(requestIDs, requestID)
+		}
+	}
+
+	for i := range items {
+		requestID := strings.TrimSpace(items[i].RequestID)
+		if requestID == "" || items[i].APIKeyID == nil {
+			continue
+		}
+		addCandidate(requestID, *items[i].APIKeyID, i, 2)
+		if !strings.HasPrefix(requestID, "client:") && !strings.HasPrefix(requestID, "local:") {
+			addCandidate("local:"+requestID, *items[i].APIKeyID, i, 1)
+		}
+	}
+	if len(requestIDs) == 0 {
+		return nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(requestIDs)), ",")
+	queryArgs := make([]any, 0, len(requestIDs))
+	for _, requestID := range requestIDs {
+		queryArgs = append(queryArgs, requestID)
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT ul.id, ul.request_id, ul.api_key_id, ul.account_id, COALESCE(a.name, '')
+FROM usage_logs ul
+LEFT JOIN accounts a ON a.id = ul.account_id
+WHERE ul.request_id IN (`+placeholders+`)
+ORDER BY ul.id DESC`, queryArgs...)
+	if err != nil {
+		return fmt.Errorf("list content moderation log accounts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	priorities := make([]int, len(items))
+	usageLogIDs := make([]int64, len(items))
+	for rows.Next() {
+		var usageLogID, apiKeyID, accountID int64
+		var requestID, accountName string
+		if err := rows.Scan(&usageLogID, &requestID, &apiKeyID, &accountID, &accountName); err != nil {
+			return fmt.Errorf("scan content moderation log account: %w", err)
+		}
+		for _, ref := range lookupRefs[contentModerationAccountLookupKey{requestID: requestID, apiKeyID: apiKeyID}] {
+			if ref.priority < priorities[ref.itemIndex] || (ref.priority == priorities[ref.itemIndex] && usageLogID <= usageLogIDs[ref.itemIndex]) {
+				continue
+			}
+			value := accountID
+			items[ref.itemIndex].AccountID = &value
+			items[ref.itemIndex].AccountName = accountName
+			priorities[ref.itemIndex] = ref.priority
+			usageLogIDs[ref.itemIndex] = usageLogID
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate content moderation log accounts: %w", err)
+	}
+	return nil
 }
 
 func (r *contentModerationRepository) GetLogRequestBody(ctx context.Context, id int64) (*service.ContentModerationLogRequestBody, error) {

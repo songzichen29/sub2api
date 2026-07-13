@@ -39,24 +39,7 @@ SELECT
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
-    COALESCE(l.request_body_message_count, 0),
-    COALESCE((
-        SELECT ul.account_id
-        FROM usage_logs ul
-        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
-          AND ul.api_key_id = l.api_key_id
-        ORDER BY ul.id DESC
-        LIMIT 1
-    ), 0),
-    COALESCE((
-        SELECT a.name
-        FROM usage_logs ul
-        JOIN accounts a ON a.id = ul.account_id
-        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
-          AND ul.api_key_id = l.api_key_id
-        ORDER BY ul.id DESC
-        LIMIT 1
-    ), '')
+    COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id WHERE l.id IS NOT NULL AND (l.request_id LIKE ? OR l.user_email LIKE ? OR l.api_key_name LIKE ? OR l.model LIKE ? OR l.input_excerpt LIKE ?)
 ORDER BY l.created_at DESC, l.id DESC
@@ -67,13 +50,24 @@ LIMIT ? OFFSET ?`)).
 			"endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score",
 			"category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error",
 			"violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "matched_keyword", "created_at",
-			"request_body_size", "request_body_message_count", "account_id", "account_name",
+			"request_body_size", "request_body_message_count",
 		}).AddRow(
 			int64(1), "req-abc", int64(2), "user@example.com", int64(3), "key-abc", int64(4), "default",
 			"/v1/responses", "openai", "gpt-5", "observe", "allow", false, "", float64(0),
 			[]byte(`{}`), []byte(`{}`), "abc", nil, "", 0, false, false, "active", nil, "", time.Now(),
-			0, 0, int64(42), "upstream-account",
+			0, 0,
 		))
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+SELECT ul.id, ul.request_id, ul.api_key_id, ul.account_id, COALESCE(a.name, '')
+FROM usage_logs ul
+LEFT JOIN accounts a ON a.id = ul.account_id
+WHERE ul.request_id IN (?,?)
+ORDER BY ul.id DESC`)).
+		WithArgs("req-abc", "local:req-abc").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "request_id", "api_key_id", "account_id", "account_name"}).
+			AddRow(int64(10), "local:req-abc", int64(3), int64(42), "legacy-account").
+			AddRow(int64(9), "req-abc", int64(3), int64(43), "upstream-account"))
 
 	items, pageResult, err := repo.ListLogs(context.Background(), filter)
 	if err != nil {
@@ -82,7 +76,7 @@ LIMIT ? OFFSET ?`)).
 	if len(items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(items))
 	}
-	if items[0].AccountID == nil || *items[0].AccountID != 42 || items[0].AccountName != "upstream-account" {
+	if items[0].AccountID == nil || *items[0].AccountID != 43 || items[0].AccountName != "upstream-account" {
 		t.Fatalf("unexpected account fields: %+v", items[0])
 	}
 	if pageResult == nil || pageResult.Total != 1 || pageResult.Page != 1 || pageResult.PageSize != 20 {
