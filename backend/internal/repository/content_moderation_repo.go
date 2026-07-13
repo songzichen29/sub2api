@@ -106,7 +106,22 @@ SELECT
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
-    COALESCE(l.request_body_message_count, 0)
+    COALESCE(l.request_body_message_count, 0),
+    COALESCE((
+        SELECT ul.account_id
+        FROM usage_logs ul
+        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        ORDER BY ul.id DESC
+        LIMIT 1
+    ), 0),
+    COALESCE((
+        SELECT a.name
+        FROM usage_logs ul
+        JOIN accounts a ON a.id = ul.account_id
+        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        ORDER BY ul.id DESC
+        LIMIT 1
+    ), '')
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
@@ -121,7 +136,7 @@ LIMIT ? OFFSET ?`,
 	items := make([]service.ContentModerationLog, 0)
 	for rows.Next() {
 		var item service.ContentModerationLog
-		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
+		var userID, apiKeyID, accountID, groupID, latency, queueDelay sql.NullInt64
 		var requestBodySize, sessionMessageCount sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
@@ -155,6 +170,8 @@ LIMIT ? OFFSET ?`,
 			&item.CreatedAt,
 			&requestBodySize,
 			&sessionMessageCount,
+			&accountID,
+			&item.AccountName,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan content moderation log: %w", err)
 		}
@@ -165,6 +182,10 @@ LIMIT ? OFFSET ?`,
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
 			item.APIKeyID = &v
+		}
+		if accountID.Valid && accountID.Int64 > 0 {
+			v := accountID.Int64
+			item.AccountID = &v
 		}
 		if groupID.Valid {
 			v := groupID.Int64

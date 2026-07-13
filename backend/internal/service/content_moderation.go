@@ -416,6 +416,8 @@ type ContentModerationLog struct {
 	UserEmail           string             `json:"user_email"`
 	APIKeyID            *int64             `json:"api_key_id,omitempty"`
 	APIKeyName          string             `json:"api_key_name"`
+	AccountID           *int64             `json:"account_id,omitempty"`
+	AccountName         string             `json:"account_name"`
 	GroupID             *int64             `json:"group_id,omitempty"`
 	GroupName           string             `json:"group_name"`
 	Endpoint            string             `json:"endpoint"`

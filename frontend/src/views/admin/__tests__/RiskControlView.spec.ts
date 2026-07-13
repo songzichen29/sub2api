@@ -210,6 +210,70 @@ describe('admin RiskControlView', () => {
     }))
   })
 
+  it('shows the upstream account name and ID in audit records', async () => {
+    listLogs.mockResolvedValue({
+      items: [{
+        id: 1,
+        request_id: 'req-1',
+        user_id: 2,
+        user_email: 'user@example.com',
+        api_key_id: 3,
+        api_key_name: 'default-key',
+        account_id: 42,
+        account_name: 'upstream-account',
+        group_id: 4,
+        group_name: 'default',
+        endpoint: '/v1/responses',
+        provider: 'openai',
+        model: 'gpt-5',
+        mode: 'observe',
+        action: 'allow',
+        flagged: false,
+        highest_category: '',
+        highest_score: 0,
+        matched_keyword: '',
+        category_scores: {},
+        threshold_snapshot: {},
+        input_excerpt: 'hello',
+        has_request_body: false,
+        request_body_size: 0,
+        upstream_latency_ms: 120,
+        error: '',
+        violation_count: 0,
+        auto_banned: false,
+        email_sent: false,
+        user_status: 'active',
+        queue_delay_ms: 5,
+        created_at: '2026-07-13T10:00:00Z',
+      }],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
+
+    const wrapper = mount(RiskControlView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          BaseDialog: BaseDialogStub,
+          Icon: true,
+          Select: true,
+          Toggle: true,
+          Pagination: true,
+          ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.riskControl.table.account')
+    expect(wrapper.get('[data-test="risk-control-account"]').text()).toContain('upstream-account')
+    expect(wrapper.get('[data-test="risk-control-account"]').text()).toContain('ID 42')
+    wrapper.unmount()
+  })
+
   it('saves the selected model filter mode and models', async () => {
     const wrapper = mount(RiskControlView, {
       global: {

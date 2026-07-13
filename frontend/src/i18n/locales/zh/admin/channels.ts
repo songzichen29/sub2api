@@ -445,6 +445,7 @@ export default {
       group: '分组',
       user: '用户',
       apiKey: 'API Key',
+      account: '账号',
       endpoint: '端点',
       result: '结果',
       highest: '最高分',

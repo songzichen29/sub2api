@@ -30,7 +30,7 @@ func TestContentModerationRepositoryListLogs_UsesMySQLPlaceholders(t *testing.T)
 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM content_moderation_logs l WHERE l.id IS NOT NULL AND (l.request_id LIKE ? OR l.user_email LIKE ? OR l.api_key_name LIKE ? OR l.model LIKE ? OR l.input_excerpt LIKE ?)")).
 		WithArgs("%abc%", "%abc%", "%abc%", "%abc%", "%abc%").
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(0)))
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
 SELECT
@@ -39,7 +39,22 @@ SELECT
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
-    COALESCE(l.request_body_message_count, 0)
+    COALESCE(l.request_body_message_count, 0),
+    COALESCE((
+        SELECT ul.account_id
+        FROM usage_logs ul
+        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        ORDER BY ul.id DESC
+        LIMIT 1
+    ), 0),
+    COALESCE((
+        SELECT a.name
+        FROM usage_logs ul
+        JOIN accounts a ON a.id = ul.account_id
+        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        ORDER BY ul.id DESC
+        LIMIT 1
+    ), '')
 FROM content_moderation_logs l
 LEFT JOIN users u ON u.id = l.user_id WHERE l.id IS NOT NULL AND (l.request_id LIKE ? OR l.user_email LIKE ? OR l.api_key_name LIKE ? OR l.model LIKE ? OR l.input_excerpt LIKE ?)
 ORDER BY l.created_at DESC, l.id DESC
@@ -50,17 +65,25 @@ LIMIT ? OFFSET ?`)).
 			"endpoint", "provider", "model", "mode", "action", "flagged", "highest_category", "highest_score",
 			"category_scores", "threshold_snapshot", "input_excerpt", "upstream_latency_ms", "error",
 			"violation_count", "auto_banned", "email_sent", "status", "queue_delay_ms", "matched_keyword", "created_at",
-			"request_body_size", "request_body_message_count",
-		}))
+			"request_body_size", "request_body_message_count", "account_id", "account_name",
+		}).AddRow(
+			int64(1), "req-abc", int64(2), "user@example.com", int64(3), "key-abc", int64(4), "default",
+			"/v1/responses", "openai", "gpt-5", "observe", "allow", false, "", float64(0),
+			[]byte(`{}`), []byte(`{}`), "abc", nil, "", 0, false, false, "active", nil, "", time.Now(),
+			0, 0, int64(42), "upstream-account",
+		))
 
 	items, pageResult, err := repo.ListLogs(context.Background(), filter)
 	if err != nil {
 		t.Fatalf("ListLogs error: %v", err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("expected 0 items, got %d", len(items))
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
 	}
-	if pageResult == nil || pageResult.Total != 0 || pageResult.Page != 1 || pageResult.PageSize != 20 {
+	if items[0].AccountID == nil || *items[0].AccountID != 42 || items[0].AccountName != "upstream-account" {
+		t.Fatalf("unexpected account fields: %+v", items[0])
+	}
+	if pageResult == nil || pageResult.Total != 1 || pageResult.Page != 1 || pageResult.PageSize != 20 {
 		t.Fatalf("unexpected page result: %+v", pageResult)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
