@@ -7,7 +7,7 @@ SET @col_exists := (
 );
 
 SET @ddl := IF(@col_exists = 0,
-    'ALTER TABLE `groups` ADD COLUMN `web_search_price_per_call` DECIMAL(20,8) NULL COMMENT ''Codex web search price per call in USD; NULL uses default 0.01'' AFTER `batch_image_hold_multiplier`',
+    'ALTER TABLE `groups` ADD COLUMN `web_search_price_per_call` DECIMAL(20,8) NULL COMMENT ''Codex web search price per call in USD, NULL uses default 0.01'' AFTER `batch_image_hold_multiplier`',
     'SELECT 1'
 );
 PREPARE stmt FROM @ddl;
