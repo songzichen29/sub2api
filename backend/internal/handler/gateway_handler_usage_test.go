@@ -36,7 +36,6 @@ func TestUsageUnrestrictedIncludesWeeklyWindowStart(t *testing.T) {
 		middleware.AuthSubject{},
 		nil,
 		nil,
-		nil,
 	)
 
 	require.Equal(t, http.StatusOK, recorder.Code)
