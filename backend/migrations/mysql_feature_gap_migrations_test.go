@@ -176,6 +176,17 @@ func TestMySQLBatchImageAndFrozenBalanceMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLGroupWebSearchPricePerCallMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("045_group_web_search_price_per_call.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'groups'")
+	require.Contains(t, sql, "column_name = 'web_search_price_per_call'")
+	require.Contains(t, sql, "ADD COLUMN `web_search_price_per_call` DECIMAL(20,8) NULL")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

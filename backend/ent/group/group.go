@@ -76,6 +76,8 @@ const (
 	FieldBatchImageDiscountMultiplier = "batch_image_discount_multiplier"
 	// FieldBatchImageHoldMultiplier holds the string denoting the batch_image_hold_multiplier field in the database.
 	FieldBatchImageHoldMultiplier = "batch_image_hold_multiplier"
+	// FieldWebSearchPricePerCall holds the string denoting the web_search_price_per_call field in the database.
+	FieldWebSearchPricePerCall = "web_search_price_per_call"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -211,6 +213,7 @@ var Columns = []string{
 	FieldImagePrice4k,
 	FieldBatchImageDiscountMultiplier,
 	FieldBatchImageHoldMultiplier,
+	FieldWebSearchPricePerCall,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -493,6 +496,11 @@ func ByBatchImageDiscountMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByBatchImageHoldMultiplier orders the results by the batch_image_hold_multiplier field.
 func ByBatchImageHoldMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldBatchImageHoldMultiplier, opts...).ToFunc()
+}
+
+// ByWebSearchPricePerCall orders the results by the web_search_price_per_call field.
+func ByWebSearchPricePerCall(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWebSearchPricePerCall, opts...).ToFunc()
 }
 
 // ByClaudeCodeOnly orders the results by the claude_code_only field.

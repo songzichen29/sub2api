@@ -134,6 +134,11 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}).
 			Default(0.6).
 			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
+		field.Float("web_search_price_per_call").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)", dialect.Postgres: "decimal(20,8)"}).
+			Comment("Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）"),
 
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").

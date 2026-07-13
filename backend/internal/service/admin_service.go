@@ -226,6 +226,8 @@ type CreateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	// Codex alpha/search 网页搜索单次价格；nil 使用默认价 0.01，负数清除配置。
+	WebSearchPricePerCall *float64
 	ClaudeCodeOnly     bool   // 仅允许 Claude Code 客户端
 	FallbackGroupID    *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）
@@ -281,6 +283,8 @@ type UpdateGroupInput struct {
 	ImagePrice1K       *float64
 	ImagePrice2K       *float64
 	ImagePrice4K       *float64
+	// Codex alpha/search 网页搜索单次价格；nil 不修改，负数清除配置。
+	WebSearchPricePerCall *float64
 	ClaudeCodeOnly     *bool  // 仅允许 Claude Code 客户端
 	FallbackGroupID    *int64 // 降级分组 ID
 	// 无效请求兜底分组 ID（仅 anthropic 平台使用）

@@ -14,3 +14,10 @@ func imagePriceConfigFromAPIKey(apiKey *APIKey) *ImagePriceConfig {
 func apiKeyHasConfiguredImagePrice(apiKey *APIKey, imageSize string) bool {
 	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetImagePrice(imageSize) != nil
 }
+
+func webSearchPricePerCallFromAPIKey(apiKey *APIKey) *float64 {
+	if apiKey == nil || apiKey.Group == nil {
+		return nil
+	}
+	return apiKey.Group.WebSearchPricePerCall
+}

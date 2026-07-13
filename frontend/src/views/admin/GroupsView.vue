@@ -911,6 +911,23 @@
           </p>
         </div>
 
+        <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
+        <div v-if="createForm.platform === 'openai'" class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.webSearchPricing.pricePerCall") }}</label>
+          <input
+            v-model.number="createForm.web_search_price_per_call"
+            type="number"
+            step="0.001"
+            min="0"
+            placeholder="0.01"
+            class="input"
+          />
+          <p class="input-hint">{{ t("admin.groups.webSearchPricing.pricePerCallHint") }}</p>
+          <p class="mt-2 text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t("admin.groups.webSearchPricing.finalPricePreview", { price: createWebSearchFinalPricePreview }) }}
+          </p>
+        </div>
+
         <!-- 支持的模型系列（所有平台都可编辑；仅 antigravity 走调度时实际生效，其它平台仅作为元数据透出给支付页等只读消费方） -->
         <div class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -2297,6 +2314,23 @@
             class="mt-4 border-t border-dashed border-gray-200 pt-4 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400"
           >
             {{ t("admin.groups.imagePricing.batchGeminiOnlyHint") }}
+          </p>
+        </div>
+
+        <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
+        <div v-if="editForm.platform === 'openai'" class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.webSearchPricing.pricePerCall") }}</label>
+          <input
+            v-model.number="editForm.web_search_price_per_call"
+            type="number"
+            step="0.001"
+            min="0"
+            placeholder="0.01"
+            class="input"
+          />
+          <p class="input-hint">{{ t("admin.groups.webSearchPricing.pricePerCallHint") }}</p>
+          <p class="mt-2 text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t("admin.groups.webSearchPricing.finalPricePreview", { price: editWebSearchFinalPricePreview }) }}
           </p>
         </div>
 
@@ -3712,6 +3746,7 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4055,6 +4090,7 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  web_search_price_per_call: null as number | null,
   // 高峰时段倍率配置
   peak_rate_enabled: false,
   peak_start: "",
@@ -4156,6 +4192,26 @@ const createImageFinalPricePreview = computed(() =>
 );
 const editImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(editForm),
+);
+
+const DEFAULT_WEB_SEARCH_PRICE_PER_CALL = 0.01;
+
+const buildWebSearchFinalPricePreview = (form: {
+  web_search_price_per_call: number | string | null;
+  rate_multiplier: number | string | null;
+}) => {
+  const basePrice =
+    parsePreviewPrice(form.web_search_price_per_call) ??
+    DEFAULT_WEB_SEARCH_PRICE_PER_CALL;
+  const multiplier = normalizePreviewNumber(form.rate_multiplier, 1);
+  return formatImagePricePreview(basePrice * multiplier);
+};
+
+const createWebSearchFinalPricePreview = computed(() =>
+  buildWebSearchFinalPricePreview(createForm),
+);
+const editWebSearchFinalPricePreview = computed(() =>
+  buildWebSearchFinalPricePreview(editForm),
 );
 
 const resetDisabledBatchImagePricing = (
@@ -4414,6 +4470,7 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.web_search_price_per_call = null;
   createForm.peak_rate_enabled = false;
   createForm.peak_start = "";
   createForm.peak_end = "";
@@ -4523,6 +4580,9 @@ const handleCreateGroup = async () => {
     requestData.image_price_1k = emptyToNull(requestData.image_price_1k);
     requestData.image_price_2k = emptyToNull(requestData.image_price_2k);
     requestData.image_price_4k = emptyToNull(requestData.image_price_4k);
+    requestData.web_search_price_per_call = emptyToNull(
+      requestData.web_search_price_per_call,
+    );
     requestData.peak_rate_enabled = createForm.peak_rate_enabled;
     requestData.peak_start = createForm.peak_start;
     requestData.peak_end = createForm.peak_end;
@@ -4579,6 +4639,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
@@ -4644,6 +4705,7 @@ const closeEditModal = () => {
   editForm.peak_start = "";
   editForm.peak_end = "";
   editForm.peak_rate_multiplier = 1.0;
+  editForm.web_search_price_per_call = null;
   resetModelsListState(editModelsListState);
 };
 
@@ -4719,6 +4781,9 @@ const handleUpdateGroup = async () => {
     payload.image_price_1k = emptyPriceToClear(payload.image_price_1k);
     payload.image_price_2k = emptyPriceToClear(payload.image_price_2k);
     payload.image_price_4k = emptyPriceToClear(payload.image_price_4k);
+    payload.web_search_price_per_call = emptyPriceToClear(
+      payload.web_search_price_per_call,
+    );
     payload.peak_rate_enabled = editForm.peak_rate_enabled;
     payload.peak_start = editForm.peak_start;
     payload.peak_end = editForm.peak_end;
