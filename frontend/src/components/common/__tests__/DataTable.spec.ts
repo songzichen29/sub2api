@@ -82,6 +82,42 @@ describe('DataTable', () => {
     expect(wrapper.findAll('tbody tr[aria-hidden="true"]')).toHaveLength(0)
   })
 
+  it('emits rowClick for clickable rows while preserving row classes', async () => {
+    const row = { id: 7, name: 'Clickable' }
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [row],
+        clickableRows: true,
+        rowClass: 'is-highlighted'
+      }
+    })
+
+    const renderedRow = wrapper.get('tbody tr[data-index="0"]')
+    expect(renderedRow.classes()).toContain('cursor-pointer')
+    expect(renderedRow.classes()).toContain('is-highlighted')
+
+    await renderedRow.trigger('click')
+    expect(wrapper.emitted('rowClick')).toEqual([[row]])
+  })
+
+  it('does not constrain row height when virtualization is disabled', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Natural height' }],
+        fixedRowHeight: true,
+        estimateRowHeight: 140
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const renderedRow = wrapper.get('tbody tr[data-index="0"]')
+    expect(renderedRow.attributes('style')).toBeUndefined()
+    expect(renderedRow.get('td').classes()).not.toContain('overflow-hidden')
+  })
+
   it('switches to windowed rendering once row count exceeds virtualizeThreshold', async () => {
     const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
     const wrapper = mount(DataTable, {

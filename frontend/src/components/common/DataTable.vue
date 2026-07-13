@@ -37,8 +37,10 @@
         :key="resolveRowKey(row, index)"
         :class="[
           'rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900',
-          resolveRowClass(row, index)
+          resolveRowClass(row, index),
+          { 'cursor-pointer': clickableRows }
         ]"
+        @click="clickableRows && emit('rowClick', row)"
       >
         <div class="space-y-3">
           <div
@@ -170,9 +172,11 @@
             :ref="item.measure ? measureElement : undefined"
             :class="[
               'hover:bg-gray-50 dark:hover:bg-dark-800',
-              resolveRowClass(item.row, item.index)
+              resolveRowClass(item.row, item.index),
+              { 'cursor-pointer': clickableRows }
             ]"
-            :style="fixedRowHeight ? { height: (estimateRowHeight ?? 56) + 'px' } : undefined"
+            :style="useFixedVirtualRowHeight ? { height: (estimateRowHeight ?? 56) + 'px' } : undefined"
+            @click="clickableRows && emit('rowClick', item.row)"
           >
             <td
               v-for="(column, colIndex) in columns"
@@ -182,9 +186,9 @@
                 getAdaptivePaddingClass(),
                 getStickyColumnClass(column, colIndex),
                 column.class,
-                fixedRowHeight ? 'overflow-hidden' : ''
+                useFixedVirtualRowHeight ? 'overflow-hidden' : ''
               ]"
-              :style="fixedRowHeight ? { height: (estimateRowHeight ?? 56) + 'px', maxHeight: (estimateRowHeight ?? 56) + 'px' } : undefined"
+              :style="useFixedVirtualRowHeight ? { height: (estimateRowHeight ?? 56) + 'px', maxHeight: (estimateRowHeight ?? 56) + 'px' } : undefined"
             >
               <!--
                 fixedRowHeight 模式下：再用一个固定高度 + overflow:hidden 的 wrapper 锁住内容尺寸，
@@ -193,7 +197,7 @@
                 内部用 flex 居中，让短内容（如"最近使用"单行文本）和高内容在视觉上保持上下对齐。
               -->
               <div
-                v-if="fixedRowHeight"
+                v-if="useFixedVirtualRowHeight"
                 class="flex h-full flex-col justify-center overflow-hidden"
                 :style="{ maxHeight: ((estimateRowHeight ?? 56) - 32) + 'px' }"
               >
@@ -243,6 +247,7 @@ const isDesktopViewport = ref(
 
 const emit = defineEmits<{
   sort: [key: string, order: 'asc' | 'desc']
+  rowClick: [row: any]
 }>()
 
 // 表格容器引用
@@ -415,6 +420,8 @@ interface Props {
    * will emit 'sort' events instead of performing client-side sorting.
    */
   serverSideSort?: boolean
+  /** Emit rowClick when a desktop row or mobile card is clicked. */
+  clickableRows?: boolean
   /** Estimated row height in px for the virtualizer (default 56) */
   estimateRowHeight?: number
   /** Number of rows to render beyond the visible area (default 5) */
@@ -440,6 +447,7 @@ const props = withDefaults(defineProps<Props>(), {
   expandableActions: true,
   defaultSortOrder: 'asc',
   serverSideSort: false,
+  clickableRows: false,
   rowClass: '',
   fixedRowHeight: false
 })
@@ -675,6 +683,7 @@ const sortedData = computed(() => {
 const shouldVirtualize = computed(() =>
   isDesktopViewport.value && (sortedData.value?.length ?? 0) > (props.virtualizeThreshold ?? 100)
 )
+const useFixedVirtualRowHeight = computed(() => shouldVirtualize.value && props.fixedRowHeight)
 
 const rowVirtualizer = useVirtualizer(computed(() => ({
   count: shouldVirtualize.value ? (sortedData.value?.length ?? 0) : 0,
@@ -709,7 +718,7 @@ const virtualPaddingBottom = computed(() => {
 })
 
 const measureElement = (el: any) => {
-  if (el && !props.fixedRowHeight) {
+  if (el && !useFixedVirtualRowHeight.value) {
     rowVirtualizer.value.measureElement(el as Element)
   }
 }
