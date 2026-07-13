@@ -132,7 +132,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 	}
 
 	account := selection.Account
-	setOpsSelectedAccount(c, account.ID, account.Platform)
+	setOpsSelectedAccount(c, account.ID, account.Platform, account.Name)
 	if selection.Acquired && selection.ReleaseFunc != nil {
 		defer selection.ReleaseFunc()
 	}

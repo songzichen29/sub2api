@@ -91,6 +91,20 @@ func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentM
 	return nil
 }
 
+func (r *contentModerationTestRepo) UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.logs {
+		if r.logs[i].RequestID != requestID || r.logs[i].APIKeyID == nil || *r.logs[i].APIKeyID != apiKeyID {
+			continue
+		}
+		value := accountID
+		r.logs[i].AccountID = &value
+		r.logs[i].AccountName = accountName
+	}
+	return nil
+}
+
 func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
@@ -157,6 +171,40 @@ func requireContentModerationLogCount(t *testing.T, repo *contentModerationTestR
 		return len(logs) == want
 	}, time.Second, 10*time.Millisecond)
 	return logs
+}
+
+func TestContentModerationAccountBindingHandlesBothPersistenceOrders(t *testing.T) {
+	t.Run("account selected before log persistence", func(t *testing.T) {
+		repo := &contentModerationTestRepo{}
+		svc := &ContentModerationService{repo: repo}
+		binding := svc.NewAccountBinding("client:req-before", 3)
+		svc.BindSelectedAccount(context.Background(), binding, 42, "account-before")
+		apiKeyID := int64(3)
+		log := &ContentModerationLog{RequestID: "client:req-before", APIKeyID: &apiKeyID, accountBinding: binding}
+
+		require.NoError(t, svc.createContentModerationLog(context.Background(), log))
+		logs := repo.snapshotLogs()
+		require.Len(t, logs, 1)
+		require.NotNil(t, logs[0].AccountID)
+		require.Equal(t, int64(42), *logs[0].AccountID)
+		require.Equal(t, "account-before", logs[0].AccountName)
+	})
+
+	t.Run("log persisted before account selection", func(t *testing.T) {
+		repo := &contentModerationTestRepo{}
+		svc := &ContentModerationService{repo: repo}
+		binding := svc.NewAccountBinding("client:req-after", 4)
+		apiKeyID := int64(4)
+		log := &ContentModerationLog{RequestID: "client:req-after", APIKeyID: &apiKeyID, accountBinding: binding}
+
+		require.NoError(t, svc.createContentModerationLog(context.Background(), log))
+		svc.BindSelectedAccount(context.Background(), binding, 43, "account-after")
+		logs := repo.snapshotLogs()
+		require.Len(t, logs, 1)
+		require.NotNil(t, logs[0].AccountID)
+		require.Equal(t, int64(43), *logs[0].AccountID)
+		require.Equal(t, "account-after", logs[0].AccountName)
+	})
 }
 
 func requireRecordedHashCount(t *testing.T, cache *contentModerationTestHashCache, want int) []string {

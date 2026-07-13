@@ -817,6 +817,20 @@ func (r *contentModerationHandlerTestRepo) CreateLog(ctx context.Context, log *s
 	return nil
 }
 
+func (r *contentModerationHandlerTestRepo) UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.logs {
+		if r.logs[i].RequestID != requestID || r.logs[i].APIKeyID == nil || *r.logs[i].APIKeyID != apiKeyID {
+			continue
+		}
+		value := accountID
+		r.logs[i].AccountID = &value
+		r.logs[i].AccountName = accountName
+	}
+	return nil
+}
+
 func (r *contentModerationHandlerTestRepo) snapshotLogs() []service.ContentModerationLog {
 	r.mu.Lock()
 	defer r.mu.Unlock()

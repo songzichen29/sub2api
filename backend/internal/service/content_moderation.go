@@ -331,18 +331,28 @@ type ContentModerationModelFilter struct {
 }
 
 type ContentModerationCheckInput struct {
-	RequestID  string
-	UserID     int64
-	UserEmail  string
-	APIKeyID   int64
-	APIKeyName string
-	GroupID    *int64
-	GroupName  string
-	Endpoint   string
-	Provider   string
-	Model      string
-	Protocol   string
-	Body       []byte
+	RequestID      string
+	UserID         int64
+	UserEmail      string
+	APIKeyID       int64
+	APIKeyName     string
+	GroupID        *int64
+	GroupName      string
+	Endpoint       string
+	Provider       string
+	Model          string
+	Protocol       string
+	Body           []byte
+	AccountBinding *ContentModerationAccountBinding
+}
+
+type ContentModerationAccountBinding struct {
+	mu          sync.Mutex
+	requestID   string
+	apiKeyID    int64
+	accountID   int64
+	accountName string
+	persisted   bool
 }
 
 type ContentModerationInput struct {
@@ -444,6 +454,7 @@ type ContentModerationLog struct {
 	UserStatus          string             `json:"user_status"`
 	QueueDelayMS        *int               `json:"queue_delay_ms,omitempty"`
 	CreatedAt           time.Time          `json:"created_at"`
+	accountBinding      *ContentModerationAccountBinding
 }
 
 type ContentModerationLogFilter struct {
@@ -555,6 +566,7 @@ type ContentModerationClearHashesResult struct {
 
 type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
+	UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
 	GetLogRequestBody(ctx context.Context, id int64) (*ContentModerationLogRequestBody, error)
 	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
@@ -563,6 +575,33 @@ type ContentModerationRepository interface {
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 	// UpdateLogEmailSent 回写邮件发送结果（F7：CreateLog 先行后补 EmailSent）。
 	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
+}
+
+func (s *ContentModerationService) NewAccountBinding(requestID string, apiKeyID int64) *ContentModerationAccountBinding {
+	return &ContentModerationAccountBinding{
+		requestID: strings.TrimSpace(requestID),
+		apiKeyID:  apiKeyID,
+	}
+}
+
+func (s *ContentModerationService) BindSelectedAccount(ctx context.Context, binding *ContentModerationAccountBinding, accountID int64, accountName string) {
+	if s == nil || s.repo == nil || binding == nil || accountID <= 0 {
+		return
+	}
+	binding.mu.Lock()
+	defer binding.mu.Unlock()
+	binding.accountID = accountID
+	binding.accountName = strings.TrimSpace(accountName)
+	if !binding.persisted || binding.requestID == "" || binding.apiKeyID <= 0 {
+		return
+	}
+	if err := s.repo.UpdateLogAccount(ctx, binding.requestID, binding.apiKeyID, accountID, binding.accountName); err != nil {
+		slog.Warn("content_moderation.update_log_account_failed",
+			"request_id", binding.requestID,
+			"api_key_id", binding.apiKeyID,
+			"account_id", accountID,
+			"error", err)
+	}
 }
 
 type ContentModerationHashCache interface {
@@ -1127,7 +1166,7 @@ func (s *ContentModerationService) checkSync(ctx context.Context, input ContentM
 		}
 		if cfg.RecordNonHits {
 			log := s.buildLog(input, cfg, ContentModerationActionError, false, "", 0, nil, nil, content.ExcerptText(), &latency, queueDelay, err.Error())
-			_ = s.repo.CreateLog(ctx, log)
+			_ = s.createContentModerationLog(ctx, log)
 		}
 		return allow
 	}
@@ -1906,6 +1945,7 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 		UpstreamLatencyMS:   latency,
 		QueueDelayMS:        queueDelay,
 		Error:               errText,
+		accountBinding:      input.AccountBinding,
 	}
 }
 
@@ -2120,11 +2160,33 @@ func (s *ContentModerationService) persistContentModerationLog(ctx context.Conte
 		s.sendFlaggedNotificationSideEffects(ctx, cfg, log, autoBanJustApplied)
 	}
 	if s.repo != nil {
-		if err := s.repo.CreateLog(ctx, log); err != nil {
+		if err := s.createContentModerationLog(ctx, log); err != nil {
 			slog.Warn("content_moderation.create_log_failed", "user_id", contentModerationEmailUserID(log), "endpoint", log.Endpoint, "action", log.Action, "error", err)
 			return
 		}
 	}
+}
+
+func (s *ContentModerationService) createContentModerationLog(ctx context.Context, log *ContentModerationLog) error {
+	if s == nil || s.repo == nil || log == nil {
+		return nil
+	}
+	binding := log.accountBinding
+	if binding == nil {
+		return s.repo.CreateLog(ctx, log)
+	}
+	binding.mu.Lock()
+	defer binding.mu.Unlock()
+	if binding.accountID > 0 {
+		accountID := binding.accountID
+		log.AccountID = &accountID
+		log.AccountName = binding.accountName
+	}
+	if err := s.repo.CreateLog(ctx, log); err != nil {
+		return err
+	}
+	binding.persisted = true
+	return nil
 }
 
 func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) bool {
@@ -3333,7 +3395,7 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	}
 	log.EmailSent = false
 	logPersisted := true
-	if err := s.repo.CreateLog(ctx, log); err != nil {
+	if err := s.createContentModerationLog(ctx, log); err != nil {
 		logPersisted = false
 		slog.Warn("content_moderation.cyber_create_log_failed", "user_id", in.UserID, "error", err)
 	}

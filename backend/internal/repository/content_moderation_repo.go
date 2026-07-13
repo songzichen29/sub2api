@@ -41,6 +41,10 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 	if log.APIKeyID != nil {
 		apiKeyID = *log.APIKeyID
 	}
+	var accountID any
+	if log.AccountID != nil {
+		accountID = *log.AccountID
+	}
 	var groupID any
 	if log.GroupID != nil {
 		groupID = *log.GroupID
@@ -51,17 +55,17 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 	}
 	result, err := r.db.ExecContext(ctx, `
 INSERT INTO content_moderation_logs (
-    request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
+    request_id, user_id, user_email, api_key_id, api_key_name, account_id, account_name, group_id, group_name,
     endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
     category_scores, threshold_snapshot, input_excerpt, request_body, request_body_message_count, upstream_latency_ms, error,
     violation_count, auto_banned, email_sent, queue_delay_ms, matched_keyword
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?
 )`,
-		log.RequestID, userID, log.UserEmail, apiKeyID, log.APIKeyName, groupID, log.GroupName,
+		log.RequestID, userID, log.UserEmail, apiKeyID, log.APIKeyName, accountID, log.AccountName, groupID, log.GroupName,
 		log.Endpoint, log.Provider, log.Model, log.Mode, log.Action, log.Flagged, log.HighestCategory, log.HighestScore,
 		string(categoryScores), string(thresholdSnapshot), log.InputExcerpt, nullableString(log.RequestBody), log.SessionMessageCount, latency, log.Error,
 		log.ViolationCount, log.AutoBanned, log.EmailSent, nullableIntPtr(log.QueueDelayMS), log.MatchedKeyword,
@@ -74,6 +78,21 @@ INSERT INTO content_moderation_logs (
 	}
 	if log.CreatedAt.IsZero() {
 		log.CreatedAt = time.Now()
+	}
+	return nil
+}
+
+func (r *contentModerationRepository) UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" || apiKeyID <= 0 || accountID <= 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+UPDATE content_moderation_logs
+SET account_id = ?, account_name = ?
+WHERE request_id = ? AND api_key_id = ?`, accountID, strings.TrimSpace(accountName), requestID, apiKeyID)
+	if err != nil {
+		return fmt.Errorf("update content moderation log account: %w", err)
 	}
 	return nil
 }
@@ -101,14 +120,16 @@ func (r *contentModerationRepository) ListLogs(ctx context.Context, filter servi
 	queryArgs = append(queryArgs, params.Limit(), params.Offset())
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
-    l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
+    l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name,
+    l.account_id, COALESCE(NULLIF(l.account_name, ''), a.name, ''), l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
     l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at,
     CASE WHEN l.request_body IS NULL OR l.request_body = '' THEN 0 ELSE OCTET_LENGTH(l.request_body) END,
     COALESCE(l.request_body_message_count, 0)
 FROM content_moderation_logs l
-LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
+LEFT JOIN users u ON u.id = l.user_id
+LEFT JOIN accounts a ON a.id = l.account_id `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
 LIMIT ? OFFSET ?`,
 		queryArgs...,
@@ -121,7 +142,7 @@ LIMIT ? OFFSET ?`,
 	items := make([]service.ContentModerationLog, 0)
 	for rows.Next() {
 		var item service.ContentModerationLog
-		var userID, apiKeyID, groupID, latency, queueDelay sql.NullInt64
+		var userID, apiKeyID, accountID, groupID, latency, queueDelay sql.NullInt64
 		var requestBodySize, sessionMessageCount sql.NullInt64
 		var scoresRaw, thresholdsRaw []byte
 		if err := rows.Scan(
@@ -131,6 +152,8 @@ LIMIT ? OFFSET ?`,
 			&item.UserEmail,
 			&apiKeyID,
 			&item.APIKeyName,
+			&accountID,
+			&item.AccountName,
 			&groupID,
 			&item.GroupName,
 			&item.Endpoint,
@@ -165,6 +188,10 @@ LIMIT ? OFFSET ?`,
 		if apiKeyID.Valid {
 			v := apiKeyID.Int64
 			item.APIKeyID = &v
+		}
+		if accountID.Valid && accountID.Int64 > 0 {
+			v := accountID.Int64
+			item.AccountID = &v
 		}
 		if groupID.Valid {
 			v := groupID.Int64
@@ -229,7 +256,7 @@ func (r *contentModerationRepository) hydrateContentModerationLogAccounts(ctx co
 
 	for i := range items {
 		requestID := strings.TrimSpace(items[i].RequestID)
-		if requestID == "" || items[i].APIKeyID == nil {
+		if items[i].AccountID != nil || requestID == "" || items[i].APIKeyID == nil {
 			continue
 		}
 		addCandidate(requestID, *items[i].APIKeyID, i, 2)

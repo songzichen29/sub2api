@@ -23,6 +23,10 @@ func (r *contentModerationHandlerRepo) CreateLog(ctx context.Context, log *servi
 	return nil
 }
 
+func (r *contentModerationHandlerRepo) UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error {
+	return nil
+}
+
 func (r *contentModerationHandlerRepo) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }

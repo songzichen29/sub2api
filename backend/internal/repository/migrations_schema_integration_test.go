@@ -106,6 +106,12 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "ops_system_logs", "api_key_id", "bigint", 0, true)
 	requireIndex(t, tx, "ops_system_logs", "idx_ops_system_logs_api_key_id_created_at")
 
+	// content_moderation_logs: persist the selected upstream account directly.
+	requireColumn(t, tx, "content_moderation_logs", "account_id", "bigint", 0, true)
+	requireColumn(t, tx, "content_moderation_logs", "account_name", "character varying", 255, false)
+	requireIndex(t, tx, "content_moderation_logs", "idx_content_moderation_logs_request_api_key")
+	requireIndex(t, tx, "content_moderation_logs", "idx_content_moderation_logs_account_created_at")
+
 	// user_allowed_groups table should exist
 	var uagRegclass sql.NullString
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.user_allowed_groups')").Scan(&uagRegclass))

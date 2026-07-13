@@ -30,6 +30,10 @@ func (r *cyberOrderingTestRepo) CreateLog(ctx context.Context, log *ContentModer
 	return nil
 }
 
+func (r *cyberOrderingTestRepo) UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error {
+	return nil
+}
+
 func (r *cyberOrderingTestRepo) UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

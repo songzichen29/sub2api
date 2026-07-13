@@ -187,6 +187,17 @@ func TestMySQLGroupWebSearchPricePerCallMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLContentModerationAccountMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("046_content_moderation_account.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "ADD COLUMN `account_id` BIGINT NULL")
+	require.Contains(t, sql, "ADD COLUMN `account_name` VARCHAR(255) NOT NULL DEFAULT")
+	require.Contains(t, sql, "idx_content_moderation_logs_request_api_key")
+	require.Contains(t, sql, "content_moderation_logs_accounts_account")
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

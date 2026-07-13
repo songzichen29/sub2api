@@ -12,6 +12,10 @@ import (
 	"go.uber.org/zap"
 )
 
+const contentModerationAccountBinderKey = "content_moderation_account_binder"
+
+type contentModerationAccountBinder func(context.Context, int64, string)
+
 func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
 	if h == nil || h.contentModerationService == nil {
 		return nil
@@ -42,6 +46,18 @@ func runContentModeration(c *gin.Context, reqLog *zap.Logger, svc *service.Conte
 		return nil
 	}
 	input := buildContentModerationInput(c, apiKey, subject, protocol, model, body)
+	binding := svc.NewAccountBinding(input.RequestID, input.APIKeyID)
+	input.AccountBinding = binding
+	c.Set(contentModerationAccountBinderKey, contentModerationAccountBinder(func(ctx context.Context, accountID int64, accountName string) {
+		svc.BindSelectedAccount(ctx, binding, accountID, accountName)
+	}))
+	if accountIDValue, exists := c.Get(opsAccountIDKey); exists {
+		if accountID, ok := accountIDValue.(int64); ok && accountID > 0 {
+			accountNameValue, _ := c.Get(opsAccountNameKey)
+			accountName, _ := accountNameValue.(string)
+			svc.BindSelectedAccount(c.Request.Context(), binding, accountID, accountName)
+		}
+	}
 	if reqLog != nil {
 		reqLog.Info("content_moderation.gateway_check_start",
 			zap.String("request_id", input.RequestID),
