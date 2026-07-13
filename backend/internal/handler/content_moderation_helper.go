@@ -123,8 +123,13 @@ func contentModerationRequestID(ctx context.Context) string {
 	if ctx == nil {
 		return ""
 	}
+	if requestID, ok := ctx.Value(ctxkey.ClientRequestID).(string); ok && strings.TrimSpace(requestID) != "" {
+		return "client:" + strings.TrimSpace(requestID)
+	}
 	if requestID, ok := ctx.Value(ctxkey.RequestID).(string); ok {
-		return strings.TrimSpace(requestID)
+		if requestID = strings.TrimSpace(requestID); requestID != "" {
+			return "local:" + requestID
+		}
 	}
 	return ""
 }

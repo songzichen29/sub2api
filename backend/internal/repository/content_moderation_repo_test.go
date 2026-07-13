@@ -43,7 +43,8 @@ SELECT
     COALESCE((
         SELECT ul.account_id
         FROM usage_logs ul
-        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
+          AND ul.api_key_id = l.api_key_id
         ORDER BY ul.id DESC
         LIMIT 1
     ), 0),
@@ -51,7 +52,8 @@ SELECT
         SELECT a.name
         FROM usage_logs ul
         JOIN accounts a ON a.id = ul.account_id
-        WHERE ul.request_id = l.request_id AND ul.api_key_id = l.api_key_id
+        WHERE (ul.request_id = l.request_id OR ul.request_id = CONCAT('local:', l.request_id))
+          AND ul.api_key_id = l.api_key_id
         ORDER BY ul.id DESC
         LIMIT 1
     ), '')
