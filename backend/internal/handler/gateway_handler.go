@@ -1304,6 +1304,7 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 				"starts_at":                   subscription.StartsAt,
 				"validity_unit":               subscription.ValidityUnit,
 				"daily_window_start":          subscription.DailyWindowStart,
+				"weekly_window_start":         subscription.WeeklyWindowStart,
 				"allow_daily_overdraft":       subscription.AllowDailyOverdraft,
 				"group_allow_daily_overdraft": apiKey.Group.AllowDailyOverdraft,
 			}
