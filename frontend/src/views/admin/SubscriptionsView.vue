@@ -437,6 +437,14 @@
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
               </button>
               <button
+                @click="handleOrderUsage(row)"
+                :disabled="orderUsageLoading && orderUsageSubscription?.id === row.id"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
+              >
+                <Icon name="document" size="sm" />
+                <span class="text-xs">订单用量</span>
+              </button>
+              <button
                 v-if="row.status === 'active'"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
@@ -881,6 +889,119 @@
         </div>
       </template>
     </BaseDialog>
+
+    <BaseDialog
+      :show="showOrderUsageModal"
+      title="订单用量明细"
+      width="wide"
+      @close="closeOrderUsageModal"
+    >
+      <div class="space-y-4">
+        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm dark:border-dark-600 dark:bg-dark-700">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="font-medium text-gray-900 dark:text-white">
+                {{ orderUsageSubscription?.user?.email || `用户 #${orderUsageSubscription?.user_id || '-'}` }}
+              </div>
+              <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+                订阅 #{{ orderUsageSubscription?.id || '-' }} · {{ orderUsageSubscription?.group?.name || `分组 #${orderUsageSubscription?.group_id || '-'}` }}
+              </div>
+            </div>
+            <div v-if="orderUsageData" class="grid grid-cols-3 gap-3 text-right text-xs">
+              <div>
+                <div class="text-gray-500 dark:text-dark-400">订单数</div>
+                <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ orderUsageData.orders.length }}</div>
+              </div>
+              <div>
+                <div class="text-gray-500 dark:text-dark-400">已用</div>
+                <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ orderUsageData.total_used_actual_cost.toFixed(2) }}</div>
+              </div>
+              <div>
+                <div class="text-gray-500 dark:text-dark-400">剩余</div>
+                <div class="mt-1 font-semibold" :class="(orderUsageData.total_remaining_usd ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'">
+                  {{ formatOptionalMoney(orderUsageData.total_remaining_usd) }}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+            当前明细按订单支付时间和订阅窗口推算；现有使用日志没有直接保存 order_id。
+          </div>
+        </div>
+
+        <div v-if="orderUsageLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          {{ t('common.loading') }}
+        </div>
+        <div v-else-if="!orderUsageData || orderUsageData.orders.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
+          暂无可归因的已支付订阅订单
+        </div>
+        <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600">
+          <table class="min-w-[1180px] w-full text-left text-xs">
+            <thead class="bg-gray-50 text-gray-500 dark:bg-dark-700 dark:text-dark-300">
+              <tr>
+                <th class="px-3 py-2 font-medium">订单</th>
+                <th class="px-3 py-2 font-medium">类型</th>
+                <th class="px-3 py-2 font-medium">支付时间</th>
+                <th class="px-3 py-2 font-medium">窗口</th>
+                <th class="px-3 py-2 text-right font-medium">额度</th>
+                <th class="px-3 py-2 text-right font-medium">已用</th>
+                <th class="px-3 py-2 text-right font-medium">剩余</th>
+                <th class="px-3 py-2 text-right font-medium">请求</th>
+                <th class="px-3 py-2 text-right font-medium">Tokens</th>
+                <th class="px-3 py-2 font-medium">首末使用</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+              <tr v-for="order in orderUsageData.orders" :key="order.order_id" class="bg-white dark:bg-dark-800">
+                <td class="px-3 py-2 align-top">
+                  <div class="font-medium text-gray-900 dark:text-white">#{{ order.order_id }}</div>
+                  <div class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">{{ order.order_status }}</div>
+                </td>
+                <td class="px-3 py-2 align-top">
+                  <span class="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-dark-700 dark:text-dark-200">
+                    {{ formatOrderWindowKind(order) }}
+                  </span>
+                  <div class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">
+                    {{ order.subscription_days }} 天 · {{ order.validity_unit || 'day' }}
+                  </div>
+                </td>
+                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
+                  {{ formatDateTime(order.paid_at) }}
+                </td>
+                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
+                  <div>{{ formatDateTime(order.window_start) }}</div>
+                  <div class="mt-1 text-gray-500 dark:text-dark-400">{{ formatDateTime(order.window_end) }}</div>
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
+                  {{ formatOptionalMoney(order.quota_usd) }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums" :class="isOrderOverQuota(order) ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'">
+                  ${{ order.used_actual_cost_usd.toFixed(2) }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums" :class="(order.remaining_usd ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'">
+                  {{ formatOptionalMoney(order.remaining_usd) }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
+                  {{ order.request_count }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
+                  {{ formatCompactNumber(order.input_tokens + order.output_tokens) }}
+                </td>
+                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
+                  <div>{{ order.first_usage_at ? formatDateTime(order.first_usage_at) : '-' }}</div>
+                  <div class="mt-1 text-gray-500 dark:text-dark-400">{{ order.last_usage_at ? formatDateTime(order.last_usage_at) : '-' }}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end">
+          <button type="button" class="btn btn-secondary" @click="closeOrderUsageModal">{{ t('common.close') }}</button>
+        </div>
+      </template>
+    </BaseDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -968,7 +1089,11 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type { WeekendSkipPreview } from '@/api/admin/subscriptions'
+import type {
+  SubscriptionOrderUsageItem,
+  SubscriptionOrderUsageResponse,
+  WeekendSkipPreview
+} from '@/api/admin/subscriptions'
 import type {
   UserSubscription,
   Group,
@@ -1181,6 +1306,10 @@ const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
+const showOrderUsageModal = ref(false)
+const orderUsageLoading = ref(false)
+const orderUsageSubscription = ref<UserSubscription | null>(null)
+const orderUsageData = ref<SubscriptionOrderUsageResponse | null>(null)
 const showWeekendSkipConfirm = ref(false)
 const weekendSkipSubmitting = ref(false)
 const weekendSkipTarget = ref<{
@@ -1633,6 +1762,28 @@ const handleRevoke = (subscription: UserSubscription) => {
   showRevokeDialog.value = true
 }
 
+const handleOrderUsage = async (subscription: UserSubscription) => {
+  orderUsageSubscription.value = subscription
+  orderUsageData.value = null
+  showOrderUsageModal.value = true
+  orderUsageLoading.value = true
+  try {
+    orderUsageData.value = await adminAPI.subscriptions.getOrderUsage(subscription.id)
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || '加载订单用量失败')
+    console.error('Error loading subscription order usage:', error)
+  } finally {
+    orderUsageLoading.value = false
+  }
+}
+
+const closeOrderUsageModal = () => {
+  showOrderUsageModal.value = false
+  orderUsageSubscription.value = null
+  orderUsageData.value = null
+  orderUsageLoading.value = false
+}
+
 const confirmRevoke = async () => {
   if (!revokingSubscription.value) return
 
@@ -1837,6 +1988,26 @@ const getDaysRemaining = (expiresAt: string): number | null => {
 }
 
 const getRemainingText = (expiresAt: string): string | null => formatRemainingDuration(expiresAt)
+
+const formatOptionalMoney = (value?: number | null): string => {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
+  return `$${value.toFixed(2)}`
+}
+
+const formatCompactNumber = (value: number): string => {
+  if (!Number.isFinite(value)) return '0'
+  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
+const formatOrderWindowKind = (order: SubscriptionOrderUsageItem): string => {
+  if (order.renewal_mode === 'restart' || order.window_kind === 'restart') return '重开'
+  if (order.window_kind === 'renewal') return '续费'
+  return '购买'
+}
+
+const isOrderOverQuota = (order: SubscriptionOrderUsageItem): boolean => {
+  return typeof order.quota_usd === 'number' && order.used_actual_cost_usd > order.quota_usd + 0.000001
+}
 
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"math/rand/v2"
 	"strconv"
 	"strings"
@@ -326,10 +327,12 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			return nil, false, fmt.Errorf("begin transaction: %w", err)
 		}
 
+		previousExpiresAt := existingSub.ExpiresAt
 		wasExpired := !existingSub.ExpiresAt.After(now)
 		wasQuotaExhausted := existingSub.Status == SubscriptionStatusQuotaExhausted
 		existingSub.ExpiresAt = newExpiresAt
 		existingSub.ValidityUnit = resolveSubscriptionValidityUnit(input.ValidityUnit, existingSub.ValidityUnit)
+		s.advanceWeekendSkipOriginalExpiresAt(existingSub, previousExpiresAt, now, validityDays, wasExpired || wasQuotaExhausted || input.RestartPeriod)
 
 		// Reactivating an expired / quota-exhausted subscription or explicitly
 		// restarting a card must move the billing-window anchor to this purchase
@@ -345,6 +348,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			existingSub.StartsAt = now
 			existingSub.ExpiresAt = newExpiresAt
 			existingSub.Status = SubscriptionStatusActive
+			s.advanceWeekendSkipOriginalExpiresAt(existingSub, previousExpiresAt, now, validityDays, true)
 			existingSub.DailyWindowStart = nil
 			existingSub.WeeklyWindowStart = nil
 			existingSub.MonthlyWindowStart = nil
@@ -481,6 +485,7 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 		existingSub.ExpiresAt = expiresAt
 		existingSub.Status = SubscriptionStatusActive
 		existingSub.ValidityUnit = nextValidityUnit
+		s.setWeekendSkipOriginalExpiresAtForRange(existingSub, expiresAt)
 		existingSub.DailyWindowStart = nil
 		existingSub.WeeklyWindowStart = nil
 		existingSub.MonthlyWindowStart = nil
@@ -491,6 +496,7 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 	} else if expiresAt.After(existingSub.ExpiresAt) {
 		existingSub.ExpiresAt = expiresAt
 		existingSub.ValidityUnit = nextValidityUnit
+		s.setWeekendSkipOriginalExpiresAtForRange(existingSub, expiresAt)
 	}
 	if !(wasExpired || wasQuotaExhausted || input.RestartPeriod) {
 		applyExtensionQuota(existingSub, input)
@@ -592,6 +598,58 @@ func (s *SubscriptionService) withSubscriptionUpdateTx(ctx context.Context, fn f
 	}
 	committed = true
 	return nil
+}
+
+func (s *SubscriptionService) advanceWeekendSkipOriginalExpiresAt(sub *UserSubscription, previousExpiresAt, restartAnchor time.Time, validityDays int, restart bool) {
+	if sub == nil || !sub.SkipWeekends || validityDays <= 0 {
+		return
+	}
+	var base time.Time
+	if restart {
+		base = restartAnchor
+	} else {
+		base = inferWeekendSkipNaturalExpiresAt(sub, previousExpiresAt)
+	}
+	original := base.AddDate(0, 0, validityDays)
+	if original.After(MaxExpiresAt) {
+		original = MaxExpiresAt
+	}
+	sub.WeekendSkipOriginalExpiresAt = &original
+}
+
+func (s *SubscriptionService) setWeekendSkipOriginalExpiresAtForRange(sub *UserSubscription, expiresAt time.Time) {
+	if sub == nil || !sub.SkipWeekends {
+		return
+	}
+	original := expiresAt
+	sub.WeekendSkipOriginalExpiresAt = &original
+}
+
+func inferWeekendSkipNaturalExpiresAt(sub *UserSubscription, skippedExpiresAt time.Time) time.Time {
+	if sub == nil {
+		return skippedExpiresAt
+	}
+	base := time.Time{}
+	if sub.WeekendSkipOriginalExpiresAt != nil && sub.WeekendSkipOriginalExpiresAt.After(sub.StartsAt) {
+		base = *sub.WeekendSkipOriginalExpiresAt
+	}
+	if skippedExpiresAt.After(sub.StartsAt) {
+		usable := weekendSkippedDurationBetween(sub.StartsAt, skippedExpiresAt)
+		if usable > 0 {
+			days := int(math.Ceil(usable.Hours() / 24))
+			if days < 1 {
+				days = 1
+			}
+			inferred := sub.StartsAt.AddDate(0, 0, days)
+			if inferred.After(base) {
+				base = inferred
+			}
+		}
+	}
+	if base.IsZero() {
+		base = skippedExpiresAt
+	}
+	return base
 }
 
 func cloneQuotaLimitPtr(v *float64) *float64 {

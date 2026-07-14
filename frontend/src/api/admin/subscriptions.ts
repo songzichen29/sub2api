@@ -169,6 +169,51 @@ export async function previewWeekendSkip(
   return data
 }
 
+export interface SubscriptionOrderUsageItem {
+  order_id: number
+  order_status: string
+  order_type: string
+  renewal_mode: string
+  user_email: string
+  plan_id?: number | null
+  paid_at: string
+  completed_at?: string | null
+  window_start: string
+  window_end: string
+  subscription_days: number
+  validity_unit?: string
+  quota_usd?: number | null
+  used_actual_cost_usd: number
+  used_base_cost_usd: number
+  remaining_usd?: number | null
+  request_count: number
+  input_tokens: number
+  output_tokens: number
+  first_usage_at?: string | null
+  last_usage_at?: string | null
+  window_kind: string
+  attribution: string
+}
+
+export interface SubscriptionOrderUsageResponse {
+  subscription_id: number
+  user_id: number
+  group_id: number
+  attribution: string
+  orders: SubscriptionOrderUsageItem[]
+  total_quota_usd?: number | null
+  total_used_actual_cost: number
+  total_remaining_usd?: number | null
+  generated_at: string
+}
+
+export async function getOrderUsage(id: number): Promise<SubscriptionOrderUsageResponse> {
+  const { data } = await apiClient.get<SubscriptionOrderUsageResponse>(
+    `/admin/subscriptions/${id}/order-usage`
+  )
+  return data
+}
+
 export async function resetWeekendSkipUserChange(id: number): Promise<UserSubscription> {
   const { data } = await apiClient.post<UserSubscription>(
     `/admin/subscriptions/${id}/weekend-skip/reset-user-change`
@@ -227,6 +272,7 @@ export const subscriptionsAPI = {
   extend,
   revoke,
   resetQuota,
+  getOrderUsage,
   previewWeekendSkip,
   setWeekendSkip,
   resetWeekendSkipUserChange,

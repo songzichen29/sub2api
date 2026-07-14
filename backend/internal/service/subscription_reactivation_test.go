@@ -39,8 +39,10 @@ func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription)
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
+		SetSkipWeekends(sub.SkipWeekends).
 		SetNotes(sub.Notes).
 		SetSource(sub.Source).
+		SetNillableWeekendSkipOriginalExpiresAt(sub.WeekendSkipOriginalExpiresAt).
 		Save(ctx)
 	if err != nil {
 		return err
@@ -100,8 +102,14 @@ func (r *subscriptionEntRepo) Update(ctx context.Context, sub *UserSubscription)
 		SetWeeklyUsageUsd(sub.WeeklyUsageUSD).
 		SetMonthlyUsageUsd(sub.MonthlyUsageUSD).
 		SetAllowDailyOverdraft(sub.AllowDailyOverdraft).
+		SetSkipWeekends(sub.SkipWeekends).
 		SetNotes(sub.Notes).
 		SetSource(sub.Source)
+	if sub.WeekendSkipOriginalExpiresAt != nil {
+		builder.SetWeekendSkipOriginalExpiresAt(*sub.WeekendSkipOriginalExpiresAt)
+	} else {
+		builder.ClearWeekendSkipOriginalExpiresAt()
+	}
 	if sub.DailyWindowStart != nil {
 		builder.SetDailyWindowStart(*sub.DailyWindowStart)
 	} else {
@@ -207,24 +215,26 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 		notes = *m.Notes
 	}
 	return &UserSubscription{
-		ID:                  m.ID,
-		UserID:              m.UserID,
-		GroupID:             m.GroupID,
-		StartsAt:            m.StartsAt,
-		ExpiresAt:           m.ExpiresAt,
-		Status:              m.Status,
-		ValidityUnit:        normalizeSubscriptionValidityUnit(m.ValidityUnit),
-		DailyWindowStart:    m.DailyWindowStart,
-		WeeklyWindowStart:   m.WeeklyWindowStart,
-		MonthlyWindowStart:  m.MonthlyWindowStart,
-		DailyUsageUSD:       m.DailyUsageUsd,
-		WeeklyUsageUSD:      m.WeeklyUsageUsd,
-		MonthlyUsageUSD:     m.MonthlyUsageUsd,
-		AllowDailyOverdraft: m.AllowDailyOverdraft,
-		Notes:               notes,
-		Source:              m.Source,
-		CreatedAt:           m.CreatedAt,
-		UpdatedAt:           m.UpdatedAt,
+		ID:                           m.ID,
+		UserID:                       m.UserID,
+		GroupID:                      m.GroupID,
+		StartsAt:                     m.StartsAt,
+		ExpiresAt:                    m.ExpiresAt,
+		Status:                       m.Status,
+		ValidityUnit:                 normalizeSubscriptionValidityUnit(m.ValidityUnit),
+		DailyWindowStart:             m.DailyWindowStart,
+		WeeklyWindowStart:            m.WeeklyWindowStart,
+		MonthlyWindowStart:           m.MonthlyWindowStart,
+		DailyUsageUSD:                m.DailyUsageUsd,
+		WeeklyUsageUSD:               m.WeeklyUsageUsd,
+		MonthlyUsageUSD:              m.MonthlyUsageUsd,
+		AllowDailyOverdraft:          m.AllowDailyOverdraft,
+		SkipWeekends:                 m.SkipWeekends,
+		WeekendSkipOriginalExpiresAt: m.WeekendSkipOriginalExpiresAt,
+		Notes:                        notes,
+		Source:                       m.Source,
+		CreatedAt:                    m.CreatedAt,
+		UpdatedAt:                    m.UpdatedAt,
 	}
 }
 
@@ -376,6 +386,128 @@ func TestAssignOrExtendSubscription_FixedExpiryDoesNotShortenActiveSubscription(
 	require.WithinDuration(t, originalStart, sub.StartsAt, time.Second)
 	require.WithinDuration(t, laterExpires, sub.ExpiresAt, time.Second)
 	require.Contains(t, sub.Notes, "later-fixed-order")
+}
+
+func TestAssignOrExtendSubscription_WeekendSkipRenewalAdvancesOriginalExpiresAt(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-weekend-skip-renew@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-weekend-skip-renew-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 40.0
+	group, err := client.Group.Create().
+		SetName("sub-weekend-skip-renew-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetAllowDailyOverdraft(true).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-24 * time.Hour)
+	originalExpires := startsAt.AddDate(0, 0, 5)
+	expiresAt := addWeekendSkippedDuration(startsAt, 5*24*time.Hour)
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:                       user.ID,
+		GroupID:                      group.ID,
+		StartsAt:                     startsAt,
+		ExpiresAt:                    expiresAt,
+		Status:                       SubscriptionStatusActive,
+		ValidityUnit:                 "day",
+		AllowDailyOverdraft:          true,
+		SkipWeekends:                 true,
+		WeekendSkipOriginalExpiresAt: &originalExpires,
+		Source:                       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:                  group.ID,
+			SubscriptionType:    SubscriptionTypeSubscription,
+			DailyLimitUSD:       &dailyLimit,
+			AllowDailyOverdraft: true,
+		},
+	}, repo, nil, client, nil)
+
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 5,
+		ValidityUnit: "day",
+		Source:       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub.WeekendSkipOriginalExpiresAt)
+	require.WithinDuration(t, originalExpires.AddDate(0, 0, 5), *sub.WeekendSkipOriginalExpiresAt, time.Second)
+	require.Equal(t, 10, sub.OverdraftValidityDays())
+	limit, ok := sub.DailyOverdraftLimitUSD(&Group{SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, AllowDailyOverdraft: true})
+	require.True(t, ok)
+	require.InDelta(t, 400.0, limit, 0.0001)
+}
+
+func TestAssignOrExtendSubscription_WeekendSkipRestartResetsOriginalExpiresAt(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-weekend-skip-restart@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-weekend-skip-restart-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	group, err := client.Group.Create().
+		SetName("sub-weekend-skip-restart-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-10 * 24 * time.Hour)
+	staleOriginalExpires := startsAt.AddDate(0, 0, 5)
+	expiresAt := time.Now().Add(10 * 24 * time.Hour)
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:                       user.ID,
+		GroupID:                      group.ID,
+		StartsAt:                     startsAt,
+		ExpiresAt:                    expiresAt,
+		Status:                       SubscriptionStatusQuotaExhausted,
+		ValidityUnit:                 "day",
+		SkipWeekends:                 true,
+		WeekendSkipOriginalExpiresAt: &staleOriginalExpires,
+		Source:                       domain.SubscriptionSourcePayment,
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription},
+	}, repo, nil, client, nil)
+
+	before := time.Now()
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:        user.ID,
+		GroupID:       group.ID,
+		ValidityDays:  5,
+		ValidityUnit:  "day",
+		Source:        domain.SubscriptionSourcePayment,
+		RestartPeriod: true,
+	})
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub.WeekendSkipOriginalExpiresAt)
+	require.WithinDuration(t, before.AddDate(0, 0, 5), *sub.WeekendSkipOriginalExpiresAt, 3*time.Second)
+	require.Equal(t, 5, sub.OverdraftValidityDays())
 }
 
 func TestAssignOrExtendSubscription_PaidOneDayRenewalResetsDailyUsageAndRestartsOneDayPeriod(t *testing.T) {

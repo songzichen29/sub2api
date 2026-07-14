@@ -138,6 +138,24 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 	response.Success(c, progress)
 }
 
+// GetOrderUsage handles getting estimated order-level usage for a subscription.
+// GET /api/v1/admin/subscriptions/:id/order-usage
+func (h *SubscriptionHandler) GetOrderUsage(c *gin.Context) {
+	subscriptionID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+
+	usage, err := h.subscriptionService.GetSubscriptionOrderUsage(c.Request.Context(), subscriptionID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, usage)
+}
+
 // Assign handles assigning a subscription to a user
 // POST /api/v1/admin/subscriptions/assign
 func (h *SubscriptionHandler) Assign(c *gin.Context) {
