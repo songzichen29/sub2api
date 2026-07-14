@@ -745,8 +745,10 @@ func UserSubscriptionFromServiceAdmin(sub *service.UserSubscription) *AdminUserS
 	if sub == nil {
 		return nil
 	}
+	userSub := userSubscriptionFromServiceBase(sub)
+	applyAdminSubscriptionTotalPool(&userSub, sub)
 	return &AdminUserSubscription{
-		UserSubscription: userSubscriptionFromServiceBase(sub),
+		UserSubscription: userSub,
 		AssignedBy:       sub.AssignedBy,
 		AssignedAt:       sub.AssignedAt,
 		Notes:            sub.Notes,
@@ -801,6 +803,24 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		out.OverdraftDays = sub.DailyOverdraftBorrowedDays(sub.Group, time.Now())
 	}
 	return out
+}
+
+func applyAdminSubscriptionTotalPool(out *UserSubscription, sub *service.UserSubscription) {
+	if out == nil || sub == nil || sub.Group == nil {
+		return
+	}
+	limit, ok := sub.DailyOverdraftLimitUSD(sub.Group)
+	if !ok {
+		return
+	}
+	now := time.Now()
+	out.OverdraftLimitUSD = limit
+	out.OverdraftUsedUSD = sub.DailyOverdraftUsedUSDAt(sub.Group, now)
+	if sub.AllowsDailyOverdraft(sub.Group) {
+		out.OverdraftDays = sub.DailyOverdraftBorrowedDays(sub.Group, now)
+		return
+	}
+	out.OverdraftDays = 0
 }
 
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {

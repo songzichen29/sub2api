@@ -183,7 +183,7 @@
               <Icon name="clock" size="xs" />
               <span>{{ formatResetTime(sub.weekly_window_start, 'weekly') }}</span>
             </div>
-            <div v-if="getOverdraftLimit(sub)" class="reset-info">
+            <div v-if="sub.allow_daily_overdraft && getOverdraftLimit(sub)" class="reset-info">
               <Icon name="calendar" size="xs" />
               <span>
                 {{
@@ -391,15 +391,18 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
 }
 
 const getOverdraftLimit = (sub: UserSubscription): number | null => {
-  return sub.allow_daily_overdraft
-    && typeof sub.overdraft_limit_usd === 'number'
+  return typeof sub.overdraft_limit_usd === 'number'
     && sub.overdraft_limit_usd > 0
     ? sub.overdraft_limit_usd
     : null
 }
 
 const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
-  if (getOverdraftLimit(sub) === null) return null
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return null
+  if (typeof sub.overdraft_used_usd === 'number') {
+    return Math.min(Math.max(sub.overdraft_used_usd, 0), limit)
+  }
   return isDayValidityUnit(sub.validity_unit)
     ? getDayValidityOverdraftUsed(sub)
     : (sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0)

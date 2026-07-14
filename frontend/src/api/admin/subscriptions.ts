@@ -185,12 +185,19 @@ export interface SubscriptionOrderUsageItem {
   quota_usd?: number | null
   used_actual_cost_usd: number
   used_base_cost_usd: number
+  allocated_used_usd: number
+  window_subscription_used_usd: number
+  window_balance_used_usd: number
+  window_total_used_usd: number
+  over_quota_usd?: number
   remaining_usd?: number | null
   request_count: number
+  balance_request_count?: number
   input_tokens: number
   output_tokens: number
   first_usage_at?: string | null
   last_usage_at?: string | null
+  exhausted_at?: string | null
   window_kind: string
   attribution: string
 }
@@ -203,6 +210,10 @@ export interface SubscriptionOrderUsageResponse {
   orders: SubscriptionOrderUsageItem[]
   total_quota_usd?: number | null
   total_used_actual_cost: number
+  total_allocated_used_usd: number
+  total_window_subscription_used_usd: number
+  total_window_balance_used_usd: number
+  total_over_quota_usd?: number
   total_remaining_usd?: number | null
   generated_at: string
 }

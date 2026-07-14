@@ -206,6 +206,32 @@ func TestUserSubscription_OverdraftValidityDays_IgnoresStaleOriginalExpiresWhenW
 	require.InDelta(t, 200.0, limit, 0.0001)
 }
 
+func TestUserSubscription_OverdraftValidityDays_IgnoresStaleWeekendSkipOriginal(t *testing.T) {
+	require.NoError(t, timezone.Init("UTC"))
+
+	daily := 40.0
+	startsAt := time.Date(2026, 7, 7, 19, 40, 57, 0, time.UTC)
+	staleOriginalExpires := startsAt.AddDate(0, 0, 5)
+	group := &Group{
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &daily,
+		AllowDailyOverdraft: true,
+	}
+	sub := &UserSubscription{
+		StartsAt:                     startsAt,
+		ExpiresAt:                    time.Date(2026, 7, 21, 19, 40, 57, 0, time.UTC),
+		SkipWeekends:                 true,
+		WeekendSkipOriginalExpiresAt: &staleOriginalExpires,
+		AllowDailyOverdraft:          true,
+	}
+
+	require.Equal(t, 14, sub.EffectiveValidityDays())
+	require.Equal(t, 10, sub.OverdraftValidityDays())
+	limit, ok := sub.DailyOverdraftLimitUSD(group)
+	require.True(t, ok)
+	require.InDelta(t, 400.0, limit, 0.0001)
+}
+
 func TestUserSubscription_OverdraftValidityDays_WithoutOriginalUsesWorkingDays(t *testing.T) {
 	require.NoError(t, timezone.Init("UTC"))
 

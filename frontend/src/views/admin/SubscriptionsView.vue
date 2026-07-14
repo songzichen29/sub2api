@@ -308,22 +308,22 @@
               </div>
 
               <!-- Overdraft / total pool usage -->
-              <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="usage-row">
+              <div v-if="getOverdraftLimit(row)" class="usage-row">
                 <div class="flex items-center gap-2">
                   <span class="usage-label">{{ t('admin.subscriptions.overdraftTotal') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(getOverdraftDisplayUsed(row) ?? 0, row.overdraft_limit_usd)"
+                      :class="getProgressClass(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))"
                       :style="{
-                        width: getProgressWidth(getOverdraftDisplayUsed(row) ?? 0, row.overdraft_limit_usd)
+                        width: getProgressWidth(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
                     ${{ ((getOverdraftDisplayUsed(row) ?? 0) || 0).toFixed(2) }}
                     <span class="text-gray-400">/</span>
-                    ${{ row.overdraft_limit_usd?.toFixed(2) }}
+                    ${{ getOverdraftLimit(row)?.toFixed(2) }}
                   </span>
                 </div>
                 <div v-if="row.allow_daily_overdraft" class="reset-info">
@@ -348,7 +348,7 @@
                     }}
                   </span>
                 </div>
-                <div v-if="row.allow_daily_overdraft && row.overdraft_limit_usd" class="reset-info">
+                <div v-if="getOverdraftLimit(row)" class="reset-info">
                   <svg
                     class="h-3 w-3"
                     fill="none"
@@ -907,13 +907,13 @@
                 订阅 #{{ orderUsageSubscription?.id || '-' }} · {{ orderUsageSubscription?.group?.name || `分组 #${orderUsageSubscription?.group_id || '-'}` }}
               </div>
             </div>
-            <div v-if="orderUsageData" class="grid grid-cols-3 gap-3 text-right text-xs">
+            <div v-if="orderUsageData" class="grid grid-cols-5 gap-3 text-right text-xs">
               <div>
                 <div class="text-gray-500 dark:text-dark-400">订单数</div>
                 <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ orderUsageData.orders.length }}</div>
               </div>
               <div>
-                <div class="text-gray-500 dark:text-dark-400">已用</div>
+                <div class="text-gray-500 dark:text-dark-400">订单已用</div>
                 <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ orderUsageData.total_used_actual_cost.toFixed(2) }}</div>
               </div>
               <div>
@@ -922,10 +922,20 @@
                   {{ formatOptionalMoney(orderUsageData.total_remaining_usd) }}
                 </div>
               </div>
+              <div>
+                <div class="text-gray-500 dark:text-dark-400">窗口订阅</div>
+                <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ orderUsageData.total_window_subscription_used_usd.toFixed(2) }}</div>
+              </div>
+              <div>
+                <div class="text-gray-500 dark:text-dark-400">窗口余额</div>
+                <div class="mt-1 font-semibold" :class="orderUsageData.total_window_balance_used_usd > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-900 dark:text-white'">
+                  ${{ orderUsageData.total_window_balance_used_usd.toFixed(2) }}
+                </div>
+              </div>
             </div>
           </div>
           <div class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-            当前明细按订单支付时间和订阅窗口推算；现有使用日志没有直接保存 order_id。
+            订单已用/剩余按已支付订单额度顺序分摊；窗口订阅/余额表示该窗口内实际发生的消费。现有使用日志没有直接保存 order_id。
           </div>
         </div>
 
@@ -936,7 +946,7 @@
           暂无可归因的已支付订阅订单
         </div>
         <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600">
-          <table class="min-w-[1180px] w-full text-left text-xs">
+          <table class="min-w-[1420px] w-full text-left text-xs">
             <thead class="bg-gray-50 text-gray-500 dark:bg-dark-700 dark:text-dark-300">
               <tr>
                 <th class="px-3 py-2 font-medium">订单</th>
@@ -944,9 +954,11 @@
                 <th class="px-3 py-2 font-medium">支付时间</th>
                 <th class="px-3 py-2 font-medium">窗口</th>
                 <th class="px-3 py-2 text-right font-medium">额度</th>
-                <th class="px-3 py-2 text-right font-medium">已用</th>
+                <th class="px-3 py-2 text-right font-medium">订单已用</th>
                 <th class="px-3 py-2 text-right font-medium">剩余</th>
-                <th class="px-3 py-2 text-right font-medium">请求</th>
+                <th class="px-3 py-2 text-right font-medium">窗口订阅</th>
+                <th class="px-3 py-2 text-right font-medium">窗口余额</th>
+                <th class="px-3 py-2 text-right font-medium">订阅请求</th>
                 <th class="px-3 py-2 text-right font-medium">Tokens</th>
                 <th class="px-3 py-2 font-medium">首末使用</th>
               </tr>
@@ -977,9 +989,21 @@
                 </td>
                 <td class="px-3 py-2 text-right align-top tabular-nums" :class="isOrderOverQuota(order) ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'">
                   ${{ order.used_actual_cost_usd.toFixed(2) }}
+                  <div v-if="order.over_quota_usd" class="mt-1 text-[11px] text-red-600 dark:text-red-400">
+                    超 ${{ order.over_quota_usd.toFixed(2) }}
+                  </div>
                 </td>
                 <td class="px-3 py-2 text-right align-top tabular-nums" :class="(order.remaining_usd ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'">
                   {{ formatOptionalMoney(order.remaining_usd) }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
+                  ${{ order.window_subscription_used_usd.toFixed(2) }}
+                </td>
+                <td class="px-3 py-2 text-right align-top tabular-nums" :class="order.window_balance_used_usd > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'">
+                  ${{ order.window_balance_used_usd.toFixed(2) }}
+                  <div v-if="order.balance_request_count" class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">
+                    {{ order.balance_request_count }} 次
+                  </div>
                 </td>
                 <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
                   {{ order.request_count }}
@@ -990,6 +1014,9 @@
                 <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
                   <div>{{ order.first_usage_at ? formatDateTime(order.first_usage_at) : '-' }}</div>
                   <div class="mt-1 text-gray-500 dark:text-dark-400">{{ order.last_usage_at ? formatDateTime(order.last_usage_at) : '-' }}</div>
+                  <div v-if="order.exhausted_at" class="mt-1 text-[11px] text-red-600 dark:text-red-400">
+                    用完 {{ formatDateTime(order.exhausted_at) }}
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -2057,15 +2084,18 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
 }
 
 const getOverdraftLimit = (sub: UserSubscription): number | null => {
-  return sub.allow_daily_overdraft
-    && typeof sub.overdraft_limit_usd === 'number'
+  return typeof sub.overdraft_limit_usd === 'number'
     && sub.overdraft_limit_usd > 0
     ? sub.overdraft_limit_usd
     : null
 }
 
 const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
-  if (getOverdraftLimit(sub) === null) return null
+  const limit = getOverdraftLimit(sub)
+  if (limit === null) return null
+  if (typeof sub.overdraft_used_usd === 'number') {
+    return Math.min(Math.max(sub.overdraft_used_usd, 0), limit)
+  }
   return isDayValidityUnit(sub.validity_unit)
     ? getDayValidityOverdraftUsed(sub)
     : (sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0)

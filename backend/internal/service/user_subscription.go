@@ -97,30 +97,32 @@ func (s *UserSubscription) EffectiveValidityDays() int {
 //
 // 规则：
 //  1. 默认与日历有效期一致；
-//  2. 若开启跳过周末并记录了原到期时间，则按原自然日计划封顶，避免
-//     expires_at 顺延后把周末两天也折算进透支池；
-//  3. 若开启跳过周末但没有原到期备份（历史数据），则按 starts~expires 之间的
-//     工作日可用时长折算天数，避免用墙钟跨度虚增。
+//  2. 若开启跳过周末，则按 starts~expires 之间的工作日可用时长折算天数，
+//     避免把周末不可用天数算进透支池；
+//  3. 若记录了原自然到期时间，则同时用它校准计划天数。历史续费数据可能
+//     遗留过旧 original，因此取 original 与工作日反推值中更大的有效值。
 func (s *UserSubscription) OverdraftValidityDays() int {
 	if s == nil || !s.ExpiresAt.After(s.StartsAt) {
 		return 0
 	}
 	days := validityDaysBetween(s.StartsAt, s.ExpiresAt)
-	if s.SkipWeekends && s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
-		originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
-		if originalDays > 0 && (days <= 0 || originalDays < days) {
-			days = originalDays
-		}
-	} else if s.SkipWeekends {
+	if s.SkipWeekends {
+		plannedDays := 0
 		usable := weekendSkippedDurationBetween(s.StartsAt, s.ExpiresAt)
 		if usable > 0 {
-			workingDays := int(math.Ceil(usable.Hours() / 24))
-			if workingDays < 1 {
-				workingDays = 1
+			plannedDays = int(math.Ceil(usable.Hours() / 24))
+			if plannedDays < 1 {
+				plannedDays = 1
 			}
-			if days <= 0 || workingDays < days {
-				days = workingDays
+		}
+		if s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
+			originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
+			if originalDays > plannedDays {
+				plannedDays = originalDays
 			}
+		}
+		if plannedDays > 0 {
+			days = plannedDays
 		}
 	}
 	if days < 1 {
