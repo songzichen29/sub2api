@@ -101,6 +101,7 @@ func (s *SubscriptionService) GetSubscriptionOrderUsage(ctx context.Context, sub
 	if err != nil {
 		return nil, err
 	}
+	orders = filterSubscriptionCurrentPeriodOrders(sub, orders)
 
 	resp := &SubscriptionOrderUsageResponse{
 		SubscriptionID: subscriptionID,
@@ -395,6 +396,24 @@ func nextRestartOrderPaidAt(sub *UserSubscription, orders []*dbent.PaymentOrder,
 		}
 	}
 	return time.Time{}, false
+}
+
+func filterSubscriptionCurrentPeriodOrders(sub *UserSubscription, orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {
+	if sub == nil || sub.StartsAt.IsZero() || !sub.ExpiresAt.After(sub.StartsAt) {
+		return orders
+	}
+	start := sub.StartsAt.Add(-2 * time.Minute)
+	out := make([]*dbent.PaymentOrder, 0, len(orders))
+	for _, order := range orders {
+		if order == nil || order.PaidAt == nil {
+			continue
+		}
+		if order.PaidAt.Before(start) || !order.PaidAt.Before(sub.ExpiresAt) {
+			continue
+		}
+		out = append(out, order)
+	}
+	return out
 }
 
 func subscriptionOrderWindowStart(sub *UserSubscription, order *dbent.PaymentOrder, previousWindowEnd time.Time) (time.Time, string) {
