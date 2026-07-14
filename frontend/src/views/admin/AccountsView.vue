@@ -169,7 +169,6 @@
           :estimate-row-height="140"
           :overscan="5"
           :fixed-row-height="true"
-          :estimate-row-height="156"
           :virtualize-threshold="50"
         >
           <template #header-select>

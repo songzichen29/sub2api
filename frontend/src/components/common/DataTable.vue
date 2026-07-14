@@ -176,8 +176,6 @@
               { 'cursor-pointer': clickableRows }
             ]"
             :style="useFixedVirtualRowHeight ? { height: (estimateRowHeight ?? 56) + 'px' } : undefined"
-            class="hover:bg-gray-50 dark:hover:bg-dark-800"
-            :class="{ 'cursor-pointer': clickableRows }"
             @click="clickableRows && emit('rowClick', item.row)"
           >
             <td
@@ -213,7 +211,6 @@
                 </slot>
               </div>
               <slot v-else :name="`cell-${column.key}`"
-              <slot :name="`cell-${column.key}`"
                     :row="item.row"
                     :value="item.row[column.key]"
                     :expanded="actionsExpanded">

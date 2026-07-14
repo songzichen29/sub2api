@@ -4276,26 +4276,6 @@ const editImageFinalPricePreview = computed(() =>
   buildImageFinalPricePreview(editForm),
 );
 
-const DEFAULT_WEB_SEARCH_PRICE_PER_CALL = 0.01;
-
-const buildWebSearchFinalPricePreview = (form: {
-  web_search_price_per_call: number | string | null;
-  rate_multiplier: number | string | null;
-}) => {
-  const basePrice =
-    parsePreviewPrice(form.web_search_price_per_call) ??
-    DEFAULT_WEB_SEARCH_PRICE_PER_CALL;
-  const multiplier = normalizePreviewNumber(form.rate_multiplier, 1);
-  return formatImagePricePreview(basePrice * multiplier);
-};
-
-const createWebSearchFinalPricePreview = computed(() =>
-  buildWebSearchFinalPricePreview(createForm),
-);
-const editWebSearchFinalPricePreview = computed(() =>
-  buildWebSearchFinalPricePreview(editForm),
-);
-
 // Codex 网页搜索单次默认价（与后端 defaultWebSearchPricePerCall 一致，官方 $10/1000 次）
 const DEFAULT_WEB_SEARCH_PRICE_PER_CALL = 0.01;
 
@@ -4750,11 +4730,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
-  editForm.video_rate_independent = group.video_rate_independent ?? false;
-  editForm.video_rate_multiplier = group.video_rate_multiplier ?? 1;
-  editForm.video_price_480p = group.video_price_480p;
-  editForm.video_price_720p = group.video_price_720p;
-  editForm.video_price_1080p = group.video_price_1080p;
   editForm.web_search_price_per_call = group.web_search_price_per_call ?? null;
   editForm.peak_rate_enabled = group.peak_rate_enabled ?? false;
   editForm.peak_start = group.peak_start ?? "";

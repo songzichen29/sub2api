@@ -141,7 +141,6 @@ export default {
         geminiCli: 'Gemini CLI',
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
-        opencode: 'OpenCode'
         opencode: 'OpenCode',
       },
       antigravity: {

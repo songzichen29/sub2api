@@ -738,7 +738,6 @@ export default {
       proportionalAmountHint: '按比例退款时金额由系统自动计算，无需手动填写。',
       estimatedRefundAmount: '预计退款金额',
       subscriptionRefundExpired: '该订阅已过期，无法退款。',
-      allowUserRefund: '允许用户退款',
       fixedExpiresAt: '固定结束时间',
       fixedExpiresAtHint: '可选。填写后购买该套餐的订阅将到此时间结束，而不是按有效期天数自然顺延。',
       fixedExpiresAtInvalid: '固定结束时间必须晚于当前时间',
