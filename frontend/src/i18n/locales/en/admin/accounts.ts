@@ -391,6 +391,8 @@ export default {
     openai: {
       baseUrlHint: 'Leave default for official OpenAI API',
       apiKeyHint: 'Your OpenAI API Key',
+      longContextBilling: 'Long-context billing',
+      longContextBillingDesc: 'When enabled, long-context requests use the upstream long-context pricing/accounting path instead of normal text pricing.',
       oauthPassthrough: 'Auto passthrough (auth only)',
       oauthPassthroughDesc: 'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
       responsesWebsocketsV2: 'Responses WebSocket v2',
@@ -671,6 +673,9 @@ export default {
     creating: 'Creating...',
     updating: 'Updating...',
     accountCreated: 'Account created successfully',
+    messages: {
+      accountCreated: 'Account created successfully',
+    },
     accountUpdated: 'Account updated successfully',
     failedToCreate: 'Failed to create account',
     failedToUpdate: 'Failed to update account',

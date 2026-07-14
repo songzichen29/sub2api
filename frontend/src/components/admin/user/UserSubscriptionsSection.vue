@@ -401,7 +401,7 @@ const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
   const limit = getOverdraftLimit(sub)
   if (limit === null) return null
   if (typeof sub.overdraft_used_usd === 'number') {
-    return Math.min(Math.max(sub.overdraft_used_usd, 0), limit)
+    return Math.max(sub.overdraft_used_usd, 0)
   }
   return isDayValidityUnit(sub.validity_unit)
     ? getDayValidityOverdraftUsed(sub)

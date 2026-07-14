@@ -482,6 +482,8 @@ export default {
     openai: {
       baseUrlHint: '留空使用官方 OpenAI API',
       apiKeyHint: '您的 OpenAI API Key',
+      longContextBilling: '长上下文计费',
+      longContextBillingDesc: '开启后，长上下文请求会按上游长上下文计费/统计路径处理，而不是普通文本计费。',
       oauthPassthrough: '自动透传（仅替换认证）',
       oauthPassthroughDesc: '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',
       responsesWebsocketsV2: 'Responses WebSocket v2',
@@ -762,6 +764,9 @@ export default {
     creating: '创建中...',
     updating: '更新中...',
     accountCreated: '账号创建成功',
+    messages: {
+      accountCreated: '账号创建成功',
+    },
     accountUpdated: '账号更新成功',
     failedToCreate: '创建账号失败',
     failedToUpdate: '更新账号失败',

@@ -122,6 +122,9 @@ func (s *SubscriptionService) GetSubscriptionOrderUsage(ctx context.Context, sub
 		if windowEnd.After(MaxExpiresAt) {
 			windowEnd = MaxExpiresAt
 		}
+		if nextRestartAt, ok := nextRestartOrderPaidAt(sub, orders, order); ok && nextRestartAt.After(windowStart) && nextRestartAt.Before(windowEnd) {
+			windowEnd = nextRestartAt
+		}
 		previousWindowEnd = windowEnd
 
 		usage, err := s.aggregateSubscriptionOrderWindowUsage(ctx, sub.UserID, sub.GroupID, subscriptionID, windowStart, windowEnd)
@@ -377,6 +380,21 @@ func latestPaidQuotaOrder(items []SubscriptionOrderUsageItem, at time.Time) int 
 		idx = i
 	}
 	return idx
+}
+
+func nextRestartOrderPaidAt(sub *UserSubscription, orders []*dbent.PaymentOrder, current *dbent.PaymentOrder) (time.Time, bool) {
+	if current == nil || current.PaidAt == nil {
+		return time.Time{}, false
+	}
+	for _, order := range orders {
+		if order == nil || order.PaidAt == nil || !order.PaidAt.After(*current.PaidAt) {
+			continue
+		}
+		if paymentOrderRenewalModeFromSnapshot(order.ProviderSnapshot) == "restart" || (sub != nil && timeClose(*order.PaidAt, sub.StartsAt, 2*time.Minute)) {
+			return *order.PaidAt, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func subscriptionOrderWindowStart(sub *UserSubscription, order *dbent.PaymentOrder, previousWindowEnd time.Time) (time.Time, string) {

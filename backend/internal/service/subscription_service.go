@@ -12,6 +12,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -1508,13 +1509,19 @@ func (s *SubscriptionService) HydrateSubscriptionPeriodUsage(ctx context.Context
 	if s == nil || s.entClient == nil || len(subs) == 0 {
 		return nil
 	}
-	ids := make([]int64, 0, len(subs))
+	periodPredicates := make([]predicate.UsageLog, 0, len(subs))
+	byID := make(map[int64]float64, len(subs))
 	for i := range subs {
 		if subs[i].ID > 0 {
-			ids = append(ids, subs[i].ID)
+			byID[subs[i].ID] = 0
+			periodPredicates = append(periodPredicates, usagelog.And(
+				usagelog.SubscriptionIDEQ(subs[i].ID),
+				usagelog.CreatedAtGTE(subs[i].StartsAt),
+				usagelog.CreatedAtLT(subs[i].ExpiresAt),
+			))
 		}
 	}
-	if len(ids) == 0 {
+	if len(periodPredicates) == 0 {
 		return nil
 	}
 
@@ -1525,20 +1532,20 @@ func (s *SubscriptionService) HydrateSubscriptionPeriodUsage(ctx context.Context
 	var rows []row
 	if err := s.entClient.UsageLog.Query().
 		Where(
-			usagelog.SubscriptionIDIn(ids...),
 			usagelog.BillingTypeEQ(BillingTypeSubscription),
+			usagelog.Or(periodPredicates...),
 		).
 		GroupBy(usagelog.FieldSubscriptionID).
 		Aggregate(dbent.As(dbent.Sum(usagelog.FieldActualCost), "used_usd")).
 		Scan(ctx, &rows); err != nil {
 		return err
 	}
-	byID := make(map[int64]float64, len(rows))
 	for _, row := range rows {
 		byID[row.SubscriptionID] = row.UsedUSD
 	}
 	for i := range subs {
-		if used, ok := byID[subs[i].ID]; ok {
+		if _, ok := byID[subs[i].ID]; ok {
+			used := byID[subs[i].ID]
 			subs[i].AdminTotalPoolUsedUSD = &used
 		}
 	}
