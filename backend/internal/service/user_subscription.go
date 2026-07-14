@@ -79,15 +79,61 @@ func (s *UserSubscription) DaysRemaining() int {
 	return int(time.Until(s.ExpiresAt).Hours() / 24)
 }
 
-// EffectiveValidityDays returns the subscription's billable validity length in
+// EffectiveValidityDays returns the subscription's calendar validity length in
 // days, rounded up so partial-day subscriptions still own at least one daily
 // quota card. The value is derived from the persisted start/end anchors because
 // historical subscriptions do not store the original plan unit.
+//
+// 注意：日透支额度池不要直接用本方法。跳过周末会拉长 ExpiresAt，若按日历跨度
+// 计算会把周末不可用天数也算进透支总额。透支请用 OverdraftValidityDays。
 func (s *UserSubscription) EffectiveValidityDays() int {
 	if s == nil || !s.ExpiresAt.After(s.StartsAt) {
 		return 0
 	}
-	days := int(math.Ceil(s.ExpiresAt.Sub(s.StartsAt).Hours() / 24))
+	return validityDaysBetween(s.StartsAt, s.ExpiresAt)
+}
+
+// OverdraftValidityDays 返回日透支总额度对应的“计划天数”。
+//
+// 规则：
+//  1. 默认与日历有效期一致；
+//  2. 若开启跳过周末并记录了原到期时间，则按原自然日计划封顶，避免
+//     expires_at 顺延后把周末两天也折算进透支池；
+//  3. 若开启跳过周末但没有原到期备份（历史数据），则按 starts~expires 之间的
+//     工作日可用时长折算天数，避免用墙钟跨度虚增。
+func (s *UserSubscription) OverdraftValidityDays() int {
+	if s == nil || !s.ExpiresAt.After(s.StartsAt) {
+		return 0
+	}
+	days := validityDaysBetween(s.StartsAt, s.ExpiresAt)
+	if s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
+		originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
+		if originalDays > 0 && (days <= 0 || originalDays < days) {
+			days = originalDays
+		}
+	} else if s.SkipWeekends {
+		usable := weekendSkippedDurationBetween(s.StartsAt, s.ExpiresAt)
+		if usable > 0 {
+			workingDays := int(math.Ceil(usable.Hours() / 24))
+			if workingDays < 1 {
+				workingDays = 1
+			}
+			if days <= 0 || workingDays < days {
+				days = workingDays
+			}
+		}
+	}
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
+func validityDaysBetween(startsAt, expiresAt time.Time) int {
+	if !expiresAt.After(startsAt) {
+		return 0
+	}
+	days := int(math.Ceil(expiresAt.Sub(startsAt).Hours() / 24))
 	if days < 1 {
 		return 1
 	}
@@ -118,7 +164,7 @@ func (s *UserSubscription) DailyOverdraftLimitUSD(group *Group) (float64, bool) 
 	if s == nil || group == nil || !group.HasDailyLimit() {
 		return 0, false
 	}
-	days := s.EffectiveValidityDays()
+	days := s.OverdraftValidityDays()
 	if days <= 0 {
 		return 0, false
 	}
@@ -154,7 +200,7 @@ func (s *UserSubscription) DailyOverdraftUsedUSDAt(group *Group, now time.Time) 
 		return actualUsed
 	}
 	elapsedFullDays := s.dailyOverdraftElapsedFullDays(now)
-	if maxDays := s.EffectiveValidityDays(); elapsedFullDays > maxDays {
+	if maxDays := s.OverdraftValidityDays(); elapsedFullDays > maxDays {
 		elapsedFullDays = maxDays
 	}
 	if elapsedFullDays < 0 {
@@ -178,7 +224,7 @@ func (s *UserSubscription) DailyOverdraftDebtUSD(group *Group, now time.Time) fl
 		return 0
 	}
 	elapsedFullDays := s.dailyOverdraftElapsedFullDays(now)
-	if maxDays := s.EffectiveValidityDays(); elapsedFullDays > maxDays {
+	if maxDays := s.OverdraftValidityDays(); elapsedFullDays > maxDays {
 		elapsedFullDays = maxDays
 	}
 	if elapsedFullDays < 0 {
@@ -199,6 +245,14 @@ func (s *UserSubscription) DailyOverdraftDebtUSD(group *Group, now time.Time) fl
 func (s *UserSubscription) dailyOverdraftElapsedFullDays(now time.Time) int {
 	if s == nil || s.StartsAt.IsZero() || !s.ExpiresAt.After(s.StartsAt) || !now.After(s.StartsAt) {
 		return 0
+	}
+	// 跳过周末时，不可用的周末不应消耗“已过日额度卡”。
+	if s.SkipWeekends {
+		usable := weekendSkippedDurationBetween(s.StartsAt, now)
+		if usable <= 0 {
+			return 0
+		}
+		return int(usable / dailyWindowDuration)
 	}
 	return int(now.Sub(s.StartsAt) / dailyWindowDuration)
 }
@@ -221,8 +275,17 @@ func (s *UserSubscription) dailyOverdraftNormalDays(now time.Time) int {
 	if s == nil || s.StartsAt.IsZero() || !s.ExpiresAt.After(s.StartsAt) || now.Before(s.StartsAt) {
 		return 0
 	}
-	days := int(now.Sub(s.StartsAt)/dailyWindowDuration) + 1
-	maxDays := s.EffectiveValidityDays()
+	var days int
+	if s.SkipWeekends {
+		usable := weekendSkippedDurationBetween(s.StartsAt, now)
+		if usable < 0 {
+			usable = 0
+		}
+		days = int(usable/dailyWindowDuration) + 1
+	} else {
+		days = int(now.Sub(s.StartsAt)/dailyWindowDuration) + 1
+	}
+	maxDays := s.OverdraftValidityDays()
 	if maxDays <= 0 {
 		return 0
 	}
@@ -251,7 +314,7 @@ func (s *UserSubscription) DailyOverdraftBorrowedDays(group *Group, now time.Tim
 		totalDays = 0
 	}
 	borrowedDays := totalDays - s.dailyOverdraftNormalDays(now)
-	if maxBorrowed := s.EffectiveValidityDays() - s.dailyOverdraftNormalDays(now); borrowedDays > maxBorrowed {
+	if maxBorrowed := s.OverdraftValidityDays() - s.dailyOverdraftNormalDays(now); borrowedDays > maxBorrowed {
 		borrowedDays = maxBorrowed
 	}
 	if borrowedDays < 0 {
