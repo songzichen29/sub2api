@@ -106,7 +106,7 @@ func (s *UserSubscription) OverdraftValidityDays() int {
 		return 0
 	}
 	days := validityDaysBetween(s.StartsAt, s.ExpiresAt)
-	if s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
+	if s.SkipWeekends && s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
 		originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
 		if originalDays > 0 && (days <= 0 || originalDays < days) {
 			days = originalDays
