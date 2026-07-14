@@ -9,6 +9,7 @@ import (
 
 func TestLatestAPIKeyIPIndexMigration(t *testing.T) {
 	content, err := FS.ReadFile("176_add_usage_logs_api_key_latest_ip_index_notx.sql")
+	content, err := FS.ReadFile("174_add_usage_logs_api_key_latest_ip_index_notx.sql")
 	require.NoError(t, err)
 
 	sql := strings.Join(strings.Fields(string(content)), " ")

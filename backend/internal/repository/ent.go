@@ -15,7 +15,7 @@ import (
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
-	_ "github.com/go-sql-driver/mysql" // MySQL 驱动，通过副作用导入注册驱动
+	"github.com/go-sql-driver/mysql"
 )
 
 // InitEnt 初始化 Ent ORM 客户端并返回客户端实例和底层的 *sql.DB。
@@ -48,9 +48,20 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 
 	// 使用 Ent 的 SQL 驱动打开 MySQL 连接。
 	// dialect.MySQL 指定使用 MySQL 方言进行 SQL 生成。
-	drv, err := entsql.Open(dialect.MySQL, dsn)
-	if err != nil {
-		return nil, nil, err
+	// 可选：在驱动层包装 Server-Timing 采集器，避免改动业务 SQL。
+	var drv *entsql.Driver
+	if cfg.Server.EnableServerTiming {
+		connector, err := mysql.MySQLDriver{}.OpenConnector(dsn)
+		if err != nil {
+			return nil, nil, err
+		}
+		drv = entsql.OpenDB(dialect.MySQL, sql.OpenDB(newServerTimingConnector(connector)))
+	} else {
+		var err error
+		drv, err = entsql.Open(dialect.MySQL, dsn)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	applyDBPoolSettings(drv.DB(), cfg)
 

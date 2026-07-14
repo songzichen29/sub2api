@@ -394,6 +394,11 @@ func registerAntigravityOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers)
 	}
 }
 
+func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	{
+	}
+}
+
 func registerProxyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	proxies := admin.Group("/proxies")
 	{

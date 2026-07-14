@@ -189,6 +189,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if err != nil {
 		return nil, err
 	}
+	// WS HTTP bridge：从 client_metadata 还原 responses-lite 头（官方 Grok 路径已排除）。
+	if isOpenAIResponsesLiteWebSocketPayload(payload) {
+		upstreamReq.Header.Set(responsesLiteHeader, "true")
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

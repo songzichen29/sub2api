@@ -295,5 +295,5 @@ func createReqClient(proxyURL string) (*req.Client, error) {
 		SetCookieJar(nil)
 	client.GetClient().Transport = transport
 
-	return client, nil
+	return instrumentReqClient(client), nil
 }

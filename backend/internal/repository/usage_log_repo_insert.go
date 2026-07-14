@@ -68,6 +68,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // inbound_endpoint
 	"text",        // upstream_endpoint
 	"boolean",     // cache_ttl_overridden
+	"boolean",     // long_context_billing_applied
 	"bigint",      // channel_id
 	"text",        // model_mapping_chain
 	"text",        // billing_tier
@@ -636,6 +637,7 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
+			long_context_billing_applied,
 			channel_id,
 			model_mapping_chain,
 			billing_tier,
@@ -648,7 +650,7 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			?, ?, ?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON DUPLICATE KEY UPDATE id = id
 	`, prepared.args...)
@@ -750,6 +752,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			inboundEndpoint,
 			upstreamEndpoint,
 			log.CacheTTLOverridden,
+			log.LongContextBillingApplied,
 			channelID,
 			modelMappingChain,
 			billingTier,

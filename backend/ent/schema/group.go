@@ -100,6 +100,7 @@ func (Group) Fields() []ent.Field {
 		field.Int("default_validity_days").
 			Default(30),
 
+
 		// 图片生成计费配置（antigravity 和 gemini 平台使用）
 		field.Bool("allow_image_generation").
 			Default(false).
@@ -134,6 +135,26 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}).
 			Default(0.6).
 			Comment("批量图片生成冻结价格比例，按普通生图原价乘以该比例冻结，结算后释放差额"),
+		// 视频生成计费配置
+		field.Bool("video_rate_independent").
+			Default(false).
+			Comment("视频生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Float("video_rate_multiplier").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("视频生成独立倍率，仅 video_rate_independent=true 时生效"),
+		field.Float("video_price_480p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)", dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_720p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)", dialect.Postgres: "decimal(20,8)"}),
+		field.Float("video_price_1080p").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)", dialect.Postgres: "decimal(20,8)"}),
 		field.Float("web_search_price_per_call").
 			Optional().
 			Nillable().

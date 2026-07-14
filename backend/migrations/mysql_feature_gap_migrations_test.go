@@ -208,6 +208,41 @@ func TestMySQLLatestAPIKeyIPIndexMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLUsageLogLongContextBillingMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("048_add_usage_log_long_context_billing.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "table_name = 'usage_logs'")
+	require.Contains(t, sql, "column_name = 'long_context_billing_applied'")
+	require.Contains(t, sql, "ADD COLUMN `long_context_billing_applied` BOOLEAN NOT NULL DEFAULT FALSE")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
+func TestMySQLOpsSystemLogsHostMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("049_add_ops_system_logs_host.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "table_name = 'ops_system_logs'")
+	require.Contains(t, sql, "column_name = 'host'")
+	require.Contains(t, sql, "ADD COLUMN `host` VARCHAR(255) NULL")
+	require.Contains(t, sql, "idx_ops_system_logs_host_created_at")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
+func TestMySQLDefaultOpenAILongContextBillingMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("050_default_openai_long_context_billing.sql")
+	require.NoError(t, err)
+	sql := string(content)
+
+	require.Contains(t, sql, "openai_long_context_billing_enabled")
+	require.Contains(t, sql, "parent_account_id IS NULL")
+	require.Contains(t, sql, "quota_dimension = 'spark'")
+	require.Contains(t, sql, "JSON_SET")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

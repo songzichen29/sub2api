@@ -77,6 +77,11 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
+		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
+		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
+		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
@@ -217,6 +222,22 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearWebSearchPricePerCall()
 	}
+	if groupIn.VideoPrice720P != nil {
+		builder = builder.SetVideoPrice720p(*groupIn.VideoPrice720P)
+	} else {
+		builder = builder.ClearVideoPrice720p()
+	}
+	if groupIn.VideoPrice1080P != nil {
+		builder = builder.SetVideoPrice1080p(*groupIn.VideoPrice1080P)
+	} else {
+		builder = builder.ClearVideoPrice1080p()
+	}
+	if groupIn.WebSearchPricePerCall != nil {
+		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
+	} else {
+		builder = builder.ClearWebSearchPricePerCall()
+	}
+
 	// 处理 FallbackGroupID：nil 时清除，否则设置
 	if groupIn.FallbackGroupID != nil {
 		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)

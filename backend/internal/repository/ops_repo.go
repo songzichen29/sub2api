@@ -708,6 +708,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO ops_system_logs (
 			created_at,
+			host,
 			level,
 			component,
 			message,
@@ -719,7 +720,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 			platform,
 			model,
 			extra
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
 	`)
 	if err != nil {
 		return 0, err
@@ -751,6 +752,7 @@ func (r *opsRepository) BatchInsertSystemLogs(ctx context.Context, inputs []*ser
 		if _, err := stmt.ExecContext(
 			ctx,
 			createdAt.UTC(),
+			opsNullString(input.Host),
 			level,
 			component,
 			message,
@@ -806,6 +808,7 @@ func (r *opsRepository) ListSystemLogs(ctx context.Context, filter *service.OpsS
 SELECT
   l.id,
   l.created_at,
+  COALESCE(l.host, ''),
   l.level,
   COALESCE(l.component, ''),
   COALESCE(l.message, ''),
@@ -839,6 +842,7 @@ LIMIT ? OFFSET ?
 		if err := rows.Scan(
 			&item.ID,
 			&item.CreatedAt,
+			&item.Host,
 			&item.Level,
 			&item.Component,
 			&item.Message,
@@ -1115,6 +1119,11 @@ func buildOpsSystemLogsWhere(filter *service.OpsSystemLogFilter) (string, []any,
 		hasConstraint = true
 	}
 	if filter != nil {
+		if v := strings.TrimSpace(filter.Host); v != "" {
+			args = append(args, v)
+			clauses = append(clauses, "l.host = ?")
+			hasConstraint = true
+		}
 		if v := strings.ToLower(strings.TrimSpace(filter.Level)); v != "" {
 			args = append(args, v)
 			clauses = append(clauses, "LOWER(COALESCE(l.level,'')) = ?")
@@ -1178,6 +1187,7 @@ func buildOpsSystemLogsCleanupWhere(filter *service.OpsSystemLogCleanupFilter) (
 	listFilter := &service.OpsSystemLogFilter{
 		StartTime:       filter.StartTime,
 		EndTime:         filter.EndTime,
+		Host:            filter.Host,
 		Level:           filter.Level,
 		Component:       filter.Component,
 		RequestID:       filter.RequestID,

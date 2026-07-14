@@ -18,6 +18,7 @@ func TestBuildOpsSystemLogsWhere_WithClientRequestIDAndUserID(t *testing.T) {
 	filter := &service.OpsSystemLogFilter{
 		StartTime:       &start,
 		EndTime:         &end,
+		Host:            "api-node-1",
 		Level:           "warn",
 		Component:       "http.access",
 		RequestID:       "req-1",
@@ -37,8 +38,13 @@ func TestBuildOpsSystemLogsWhere_WithClientRequestIDAndUserID(t *testing.T) {
 	if where == "" {
 		t.Fatalf("where should not be empty")
 	}
-	if len(args) != 15 {
-		t.Fatalf("args len = %d, want 15", len(args))
+	// MySQL 使用 ? 占位：时间/字段各 1 个 + Query 四路 LIKE 各 1 个（共 12+4=16）。
+	// 上游 PG 复用同一 $n，故官方测试为 13；fork 不可照搬。
+	if len(args) != 16 {
+		t.Fatalf("args len = %d, want 16", len(args))
+	}
+	if !contains(where, "l.host = ?") {
+		t.Fatalf("where should include host condition: %s", where)
 	}
 	if !contains(where, "COALESCE(l.client_request_id,'') = ?") {
 		t.Fatalf("where should include client_request_id condition: %s", where)
@@ -68,6 +74,7 @@ func TestBuildOpsSystemLogsCleanupWhere_WithClientRequestIDAndUserID(t *testing.
 	userID := int64(9)
 	apiKeyID := int64(10)
 	filter := &service.OpsSystemLogCleanupFilter{
+		Host:            "api-node-2",
 		ClientRequestID: "creq-9",
 		UserID:          &userID,
 		APIKeyID:        &apiKeyID,
@@ -77,8 +84,11 @@ func TestBuildOpsSystemLogsCleanupWhere_WithClientRequestIDAndUserID(t *testing.
 	if !hasConstraint {
 		t.Fatalf("expected hasConstraint=true")
 	}
-	if len(args) != 3 {
-		t.Fatalf("args len = %d, want 3", len(args))
+	if len(args) != 4 {
+		t.Fatalf("args len = %d, want 4", len(args))
+	}
+	if !contains(where, "l.host = ?") {
+		t.Fatalf("where should include host condition: %s", where)
 	}
 	if !contains(where, "COALESCE(l.client_request_id,'') = ?") {
 		t.Fatalf("where should include client_request_id condition: %s", where)

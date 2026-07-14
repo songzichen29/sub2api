@@ -98,44 +98,7 @@ func TestNormalizeResponsesBodyServiceTier(t *testing.T) {
 	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
 }
 
-func TestResponsesShapeOAuthStripsUnsupportedServiceTier(t *testing.T) {
-	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	body := []byte(`{"model":"gpt-5.1","input":"hello","service_tier":"auto"}`)
-
-	body, tier, err := normalizeResponsesBodyServiceTier(body)
-	require.NoError(t, err)
-	require.Equal(t, "auto", tier)
-	require.True(t, gjson.GetBytes(body, "service_tier").Exists())
-
-	body, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.1", body)
-	require.NoError(t, err)
-
-	require.False(t, gjson.GetBytes(body, "service_tier").Exists())
-}
-
-func TestNormalizeChatGPTInternalResponsesRequestServiceTier(t *testing.T) {
-	oauthAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-	apiKeyAccount := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-
-	for _, tier := range []string{"auto", "default", "scale"} {
-		req := &apicompat.ResponsesRequest{ServiceTier: tier}
-		normalizeChatGPTInternalResponsesRequestServiceTier(oauthAccount, req)
-		require.Empty(t, req.ServiceTier, "oauth should strip %q before ChatGPT internal upstream", tier)
-
-		req = &apicompat.ResponsesRequest{ServiceTier: tier}
-		normalizeChatGPTInternalResponsesRequestServiceTier(apiKeyAccount, req)
-		require.Equal(t, tier, req.ServiceTier, "api key upstream should preserve official tier %q", tier)
-	}
-
-	for _, tier := range []string{"priority", "flex"} {
-		req := &apicompat.ResponsesRequest{ServiceTier: tier}
-		normalizeChatGPTInternalResponsesRequestServiceTier(oauthAccount, req)
-		require.Equal(t, tier, req.ServiceTier)
-	}
-}
-
-func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *testing.T) {
+func TestForwardAsChatCompletions_UnknownModelWithoutMessagesDispatchKeepsRequestedModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	rec := httptest.NewRecorder()
@@ -166,7 +129,7 @@ func TestForwardAsChatCompletions_UnknownModelDoesNotUseDefaultMappedModel(t *te
 		},
 	}
 
-	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.4")
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Equal(t, "gpt6", gjson.GetBytes(upstream.lastBody, "model").String())

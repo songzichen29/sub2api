@@ -102,7 +102,12 @@ func buildMessagesDispatchModelCandidates(g *Group, requestedModel string) []str
 
 	cfg := normalizeOpenAIMessagesDispatchModelConfig(g.MessagesDispatchModelConfig)
 	family := claudeMessagesDispatchFamily(requestedModel)
+	// 精确映射优先于 family 判定：非 opus/sonnet/haiku 的 Claude 模型（如 claude-fable-*）
+	// 仍可走 ExactModelMappings（与上游 0.1.155 行为一致）。
 	if family == "" {
+		if mapped := strings.TrimSpace(cfg.ExactModelMappings[requestedModel]); mapped != "" {
+			return []string{mapped}
+		}
 		return nil
 	}
 
