@@ -243,6 +243,25 @@ func TestMySQLDefaultOpenAILongContextBillingMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLGroupVideoRateMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("051_add_group_video_rate.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "table_name = 'groups'")
+	require.Contains(t, sql, "column_name = 'video_rate_independent'")
+	require.Contains(t, sql, "ADD COLUMN `video_rate_independent` BOOLEAN NOT NULL DEFAULT FALSE")
+	require.Contains(t, sql, "column_name = 'video_rate_multiplier'")
+	require.Contains(t, sql, "ADD COLUMN `video_rate_multiplier` DECIMAL(10,4) NOT NULL DEFAULT 1.0000")
+	require.Contains(t, sql, "column_name = 'video_price_480p'")
+	require.Contains(t, sql, "ADD COLUMN `video_price_480p` DECIMAL(20,8) NULL")
+	require.Contains(t, sql, "column_name = 'video_price_720p'")
+	require.Contains(t, sql, "ADD COLUMN `video_price_720p` DECIMAL(20,8) NULL")
+	require.Contains(t, sql, "column_name = 'video_price_1080p'")
+	require.Contains(t, sql, "ADD COLUMN `video_price_1080p` DECIMAL(20,8) NULL")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 
