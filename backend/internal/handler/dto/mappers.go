@@ -816,6 +816,9 @@ func applyAdminSubscriptionTotalPool(out *UserSubscription, sub *service.UserSub
 	now := time.Now()
 	out.OverdraftLimitUSD = limit
 	out.OverdraftUsedUSD = sub.DailyOverdraftUsedUSDAt(sub.Group, now)
+	if sub.AdminTotalPoolUsedUSD != nil {
+		out.OverdraftUsedUSD = *sub.AdminTotalPoolUsedUSD
+	}
 	if sub.AllowsDailyOverdraft(sub.Group) {
 		out.OverdraftDays = sub.DailyOverdraftBorrowedDays(sub.Group, now)
 		return

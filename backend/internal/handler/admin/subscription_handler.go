@@ -94,6 +94,10 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := h.subscriptionService.HydrateSubscriptionPeriodUsage(c.Request.Context(), subscriptions); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	out := make([]dto.AdminUserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
@@ -115,6 +119,14 @@ func (h *SubscriptionHandler) GetByID(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if subscription != nil {
+		subs := []service.UserSubscription{*subscription}
+		if err := h.subscriptionService.HydrateSubscriptionPeriodUsage(c.Request.Context(), subs); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		subscription = &subs[0]
 	}
 
 	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
@@ -438,6 +450,10 @@ func (h *SubscriptionHandler) ListByGroup(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := h.subscriptionService.HydrateSubscriptionPeriodUsage(c.Request.Context(), subscriptions); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	out := make([]dto.AdminUserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
@@ -457,6 +473,10 @@ func (h *SubscriptionHandler) ListByUser(c *gin.Context) {
 
 	subscriptions, err := h.subscriptionService.ListUserSubscriptions(c.Request.Context(), userID)
 	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.subscriptionService.HydrateSubscriptionPeriodUsage(c.Request.Context(), subscriptions); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

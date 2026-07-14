@@ -12,6 +12,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -1497,6 +1498,51 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
 	return subs, pag, nil
+}
+
+// HydrateSubscriptionPeriodUsage fills non-persistent aggregate usage used by
+// admin subscription displays. It intentionally reads usage_logs instead of
+// daily/weekly/monthly window counters, because those counters reset by window
+// and do not represent the whole purchased subscription pool.
+func (s *SubscriptionService) HydrateSubscriptionPeriodUsage(ctx context.Context, subs []UserSubscription) error {
+	if s == nil || s.entClient == nil || len(subs) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(subs))
+	for i := range subs {
+		if subs[i].ID > 0 {
+			ids = append(ids, subs[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	type row struct {
+		SubscriptionID int64   `json:"subscription_id"`
+		UsedUSD        float64 `json:"used_usd"`
+	}
+	var rows []row
+	if err := s.entClient.UsageLog.Query().
+		Where(
+			usagelog.SubscriptionIDIn(ids...),
+			usagelog.BillingTypeEQ(BillingTypeSubscription),
+		).
+		GroupBy(usagelog.FieldSubscriptionID).
+		Aggregate(dbent.As(dbent.Sum(usagelog.FieldActualCost), "used_usd")).
+		Scan(ctx, &rows); err != nil {
+		return err
+	}
+	byID := make(map[int64]float64, len(rows))
+	for _, row := range rows {
+		byID[row.SubscriptionID] = row.UsedUSD
+	}
+	for i := range subs {
+		if used, ok := byID[subs[i].ID]; ok {
+			subs[i].AdminTotalPoolUsedUSD = &used
+		}
+	}
+	return nil
 }
 
 // normalizeExpiredWindows 将已过期窗口的数据清零（仅影响返回数据，不影响数据库）

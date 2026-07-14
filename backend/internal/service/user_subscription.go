@@ -58,6 +58,11 @@ type UserSubscription struct {
 	// 写路径不应使用该字段。
 	LastUsedAt *time.Time
 
+	// AdminTotalPoolUsedUSD 是非持久化展示字段，管理端用于展示订阅总额度池
+	// 的累计订阅消费。它来自 usage_logs 聚合，避免把当前日/周/月窗口用量
+	// 误当成整笔订阅的总池用量。
+	AdminTotalPoolUsedUSD *float64
+
 	User           *User
 	Group          *Group
 	AssignedByUser *User
