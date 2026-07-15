@@ -62,7 +62,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
 	originalModel := reqModel
 
-
 	if account.Type == AccountTypeAPIKey && !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
 	}
@@ -804,6 +803,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Handle normal response
 		var usage *OpenAIUsage
 		var firstTokenMs *int
+		var upstreamFirstEventMs *int
 		responseID := ""
 		imageCount := 0
 		var imageOutputSizes []string
@@ -814,6 +814,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
+			upstreamFirstEventMs = streamResult.upstreamFirstEventMs
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
@@ -842,18 +843,19 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 
 		forwardResult := &OpenAIForwardResult{
-			RequestID:       resp.Header.Get("x-request-id"),
-			ResponseID:      responseID,
-			Usage:           *usage,
-			Model:           originalModel,
-			BillingModel:    billingModel,
-			UpstreamModel:   upstreamModel,
-			ServiceTier:     serviceTier,
-			ReasoningEffort: reasoningEffort,
-			Stream:          reqStream,
-			OpenAIWSMode:    false,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:            resp.Header.Get("x-request-id"),
+			ResponseID:           responseID,
+			Usage:                *usage,
+			Model:                originalModel,
+			BillingModel:         billingModel,
+			UpstreamModel:        upstreamModel,
+			ServiceTier:          serviceTier,
+			ReasoningEffort:      reasoningEffort,
+			Stream:               reqStream,
+			OpenAIWSMode:         false,
+			Duration:             time.Since(startTime),
+			FirstTokenMs:         firstTokenMs,
+			UpstreamFirstEventMs: upstreamFirstEventMs,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

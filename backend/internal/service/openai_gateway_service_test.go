@@ -1219,6 +1219,50 @@ func TestOpenAIStreamingContextCanceledReturnsIncompleteErrorWithoutInjectingErr
 	}
 }
 
+func TestOpenAIStreamingRecordsUpstreamFirstEventSeparately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   0,
+			MaxLineSize:               defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.output_text.delta",
+			`data: {"type":"response.output_text.delta","delta":"ok"}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-first-event"}},
+	}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "model", "model")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.upstreamFirstEventMs)
+	require.NotNil(t, result.firstTokenMs)
+	require.LessOrEqual(t, *result.upstreamFirstEventMs, *result.firstTokenMs)
+	gotUpstreamFirstEvent, ok := c.Get(OpsOpenAIUpstreamFirstEventMsKey)
+	require.True(t, ok)
+	require.Equal(t, int64(*result.upstreamFirstEventMs), gotUpstreamFirstEvent)
+}
+
 func TestOpenAIStreamingReadErrorBeforeOutputReturnsFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{

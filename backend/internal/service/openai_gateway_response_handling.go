@@ -23,11 +23,12 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	upstreamFirstEventMs *int
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
 }
 
 type openaiNonStreamingResult struct {
@@ -88,6 +89,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	var upstreamFirstEventMs *int
 	responseID := ""
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -142,6 +144,14 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	clientOutputStarted := false
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
+	recordUpstreamFirstEvent := func() {
+		if upstreamFirstEventMs != nil {
+			return
+		}
+		ms := int(time.Since(startTime).Milliseconds())
+		upstreamFirstEventMs = &ms
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+	}
 	sendErrorEvent := func(reason string) {
 		if errorEventSent || clientDisconnected {
 			return
@@ -170,11 +180,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	streamSeenImages := make(map[string]struct{})
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			upstreamFirstEventMs: upstreamFirstEventMs,
+			responseID:           responseID,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -248,6 +259,9 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
+			if strings.TrimSpace(data) != "" {
+				recordUpstreamFirstEvent()
+			}
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
 			}
