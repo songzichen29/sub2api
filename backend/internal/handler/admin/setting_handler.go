@@ -340,6 +340,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentBalanceDisabled:                                 paymentCfg.BalanceDisabled,
 		PaymentBalanceRechargeMultiplier:                       paymentCfg.BalanceRechargeMultiplier,
 		PaymentSubscriptionUSDToCNYRate:                        paymentCfg.SubscriptionUSDToCNYRate,
+		PaymentDiscountRules:                                   paymentCfg.DiscountRules,
+		PaymentQuickAmounts:                                    paymentCfg.QuickAmounts,
+		PaymentPaidUserRateEnabled:                             paymentCfg.PaidUserRateEnabled,
+		PaymentPaidUserRateRules:                               paymentPaidUserRateRulesToDTO(paymentCfg.PaidUserRateRules),
+		PaymentPaidUserRateBackfill:                            paymentPaidUserRateBackfillToDTO(paymentCfg.PaidUserRateBackfill),
 		PaymentRechargeFeeRate:                                 paymentCfg.RechargeFeeRate,
 		PaymentLoadBalanceStrat:                                paymentCfg.LoadBalanceStrategy,
 		PaymentProductNamePrefix:                               paymentCfg.ProductNamePrefix,
@@ -441,6 +446,29 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 		})
 	}
 	return result
+}
+
+func paymentPaidUserRateRulesToDTO(rules []service.PaymentPaidUserRateRule) []dto.PaymentPaidUserRateRule {
+	result := make([]dto.PaymentPaidUserRateRule, 0, len(rules))
+	for _, rule := range rules {
+		result = append(result, dto.PaymentPaidUserRateRule{
+			GroupID:        rule.GroupID,
+			RateMultiplier: rule.RateMultiplier,
+			AssignedUsers:  rule.AssignedUsers,
+		})
+	}
+	return result
+}
+
+func paymentPaidUserRateBackfillToDTO(status service.PaymentPaidUserRateBackfillStatus) dto.PaymentPaidUserRateBackfillStatus {
+	return dto.PaymentPaidUserRateBackfillStatus{
+		TotalPaidUsers: status.TotalPaidUsers,
+		AssignedUsers:  status.AssignedUsers,
+		RuleCount:      status.RuleCount,
+		Status:         status.Status,
+		Error:          status.Error,
+		UpdatedAt:      status.UpdatedAt,
+	}
 }
 
 func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults *service.AuthSourceDefaultSettings) map[string]any {
