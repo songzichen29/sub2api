@@ -712,6 +712,8 @@ export default {
       title: 'Platform Quotas',
       subtitle: 'Configure daily / weekly / monthly USD usage limits for each upstream platform for user {email}',
       columns: {
+        name: 'Name',
+        id: 'ID',
         platform: 'Platform',
         daily: 'Daily (USD)',
         weekly: 'Weekly (USD)',

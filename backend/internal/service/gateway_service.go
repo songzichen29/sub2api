@@ -558,17 +558,64 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 }
 
+type GatewayFailureStage string
+
+const (
+	GatewayFailureStageInference   GatewayFailureStage = "inference"
+	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
+)
+
+type GatewayFailureScope string
+
+const (
+	GatewayFailureScopeAccount  GatewayFailureScope = "account"
+	GatewayFailureScopeProvider GatewayFailureScope = "provider"
+	GatewayFailureScopeRequest  GatewayFailureScope = "request"
+)
+
+type NextAccountAction uint8
+
+const (
+	NextAccountLegacyRetry NextAccountAction = iota
+	NextAccountRetry
+	NextAccountStop
+)
+
+type GatewayFailureReason string
+
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
 type UpstreamFailoverError struct {
-	StatusCode             int
-	ResponseBody           []byte      // 上游响应体，用于错误透传规则匹配
-	ResponseHeaders        http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
-	ForceCacheBilling      bool        // Antigravity 粘性会话切换时设为 true
-	RetryableOnSameAccount bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	StatusCode               int
+	ResponseBody             []byte      // 上游响应体，用于错误透传规则匹配
+	ResponseHeaders          http.Header // 上游响应头，用于透传 cf-ray/cf-mitigated/content-type 等诊断信息
+	ForceCacheBilling        bool        // Antigravity 粘性会话切换时设为 true
+	RetryableOnSameAccount   bool        // 临时性错误（如 Google 间歇性 400、空响应），应在同一账号上重试 N 次再切换
+	SafeToFailoverAfterWrite bool        // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
+	Stage                    GatewayFailureStage
+	Scope                    GatewayFailureScope
+	Reason                   GatewayFailureReason
+	NextAccountAction        NextAccountAction
+	ClientStatusCode         int
+	ClientMessage            string
 }
 
 func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
+}
+
+func (e *UpstreamFailoverError) ShouldRetryNextAccount() bool {
+	return e != nil && e.NextAccountAction != NextAccountStop
+}
+
+func (e *UpstreamFailoverError) IsCredentialFailure() bool {
+	return e != nil && e.Stage == GatewayFailureStageAccountAuth
+}
+
+func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
+	if e == nil {
+		return false
+	}
+	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
 }
 
 // sseStreamErrorEventError 表示上游 SSE 流体内出现 event:error 帧。

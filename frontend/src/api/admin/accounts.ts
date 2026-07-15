@@ -140,6 +140,50 @@ export async function create(accountData: CreateAccountRequest): Promise<Account
 }
 
 /**
+ * Duplicate an account while keeping credentials on the server.
+ * @param id - Source account ID
+ * @returns Newly created account
+ */
+const duplicateOperationKeys = new Map<number, string>()
+
+function duplicateOperationStorageKey(id: number): string {
+  return `sub2api:admin:account-duplicate:${id}`
+}
+
+function getStoredDuplicateOperationKey(id: number): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(duplicateOperationStorageKey(id)) ?? null
+  } catch {
+    return null
+  }
+}
+
+function storeDuplicateOperationKey(id: number, key: string | null): void {
+  try {
+    if (key) globalThis.sessionStorage?.setItem(duplicateOperationStorageKey(id), key)
+    else globalThis.sessionStorage?.removeItem(duplicateOperationStorageKey(id))
+  } catch {
+    // In-memory retry protection still works when browser storage is unavailable.
+  }
+}
+
+export async function duplicate(id: number): Promise<Account> {
+  let idempotencyKey = duplicateOperationKeys.get(id) ?? getStoredDuplicateOperationKey(id)
+  if (!idempotencyKey) {
+    const requestID = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    idempotencyKey = `account-duplicate-${id}-${requestID}`
+  }
+  duplicateOperationKeys.set(id, idempotencyKey)
+  storeDuplicateOperationKey(id, idempotencyKey)
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`, undefined, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+  duplicateOperationKeys.delete(id)
+  storeDuplicateOperationKey(id, null)
+  return data
+}
+
+/**
  * Update account
  * @param id - Account ID
  * @param updates - Fields to update
@@ -178,16 +222,6 @@ export async function deleteAccount(id: number): Promise<{ message: string }> {
  */
 export async function toggleStatus(id: number, status: 'active' | 'inactive'): Promise<Account> {
   return update(id, { status })
-}
-
-/**
- * Duplicate an existing account.
- * The backend copies credentials and base configuration into a new account while
- * resetting runtime state.
- */
-export async function duplicate(id: number): Promise<Account> {
-  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/duplicate`)
-  return data
 }
 
 /**
@@ -855,11 +889,11 @@ export const accountsAPI = {
   listWithEtag,
   getById,
   create,
+  duplicate,
   update,
   checkMixedChannelRisk,
   delete: deleteAccount,
   toggleStatus,
-  duplicate,
   testAccount,
   refreshCredentials,
   applyOAuthCredentials,

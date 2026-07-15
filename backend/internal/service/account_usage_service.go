@@ -298,6 +298,8 @@ type AccountUsageService struct {
 	thirdPartyFactory func(usage_provider.ProviderType) (usage_provider.Provider, error)
 	// 凭据加密器，用于解密 account.extra.usage_query.access_token
 	secretEncryptor SecretEncryptor
+	agentIdentityTaskMu     sync.Mutex
+	agentIdentityWS         agentIdentityWSConnectionInvalidator
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -691,8 +693,11 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if account == nil || !account.IsOAuth() {
 		return nil, nil
 	}
-	accessToken := account.GetOpenAIAccessToken()
-	if accessToken == "" {
+	accessToken := ""
+	if !account.IsOpenAIAgentIdentity() {
+		accessToken = account.GetOpenAIAccessToken()
+	}
+	if accessToken == "" && !account.IsOpenAIAgentIdentity() {
 		return nil, fmt.Errorf("no access token available")
 	}
 	modelID := openaipkg.DefaultTestModel
@@ -710,7 +715,19 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	}
 	req.Host = "chatgpt.com"
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+accessToken)
+	if account.IsOpenAIAgentIdentity() {
+		authHeaders, authErr := buildAgentIdentityAuthenticationHeaders(ctx, s.accountRepo, s.agentIdentityWS, &s.agentIdentityTaskMu, account)
+		if authErr != nil {
+			return nil, fmt.Errorf("build Agent Identity authentication: %w", authErr)
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	} else {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("Originator", "codex_cli_rs")

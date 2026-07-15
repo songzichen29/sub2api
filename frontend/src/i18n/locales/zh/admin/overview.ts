@@ -712,6 +712,8 @@ export default {
       title: '平台限额',
       subtitle: '为用户 {email} 配置各上游平台的日 / 周 / 月用量上限',
       columns: {
+        name: '名称',
+        id: 'ID',
         platform: '平台',
         daily: '日 (USD)',
         weekly: '周 (USD)',

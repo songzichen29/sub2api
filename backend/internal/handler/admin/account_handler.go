@@ -940,9 +940,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	response.Success(c, result.Data)
 }
 
-// Duplicate handles duplicating an existing account: copy credentials and base
-// configuration into a brand-new account, reset runtime state, do not copy
-// group bindings. Name is auto-suffixed with " - 副本".
+// Duplicate handles creating an independent account from an existing account's configuration.
 // POST /api/v1/admin/accounts/:id/duplicate
 func (h *AccountHandler) Duplicate(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -950,14 +948,43 @@ func (h *AccountHandler) Duplicate(c *gin.Context) {
 		response.BadRequest(c, "Invalid account ID")
 		return
 	}
+	actorScope := adminActorScope(c)
 
-	account, err := h.adminService.DuplicateAccount(c.Request.Context(), accountID)
+	result, err := executeAdminIdempotent(
+		c,
+		"admin.accounts.duplicate",
+		struct {
+			AccountID int64 `json:"account_id"`
+		}{AccountID: accountID},
+		service.DefaultWriteIdempotencyTTL(),
+		func(ctx context.Context) (any, error) {
+			account, execErr := h.adminService.DuplicateAccount(ctx, accountID, actorScope, c.GetHeader("Idempotency-Key"))
+			if execErr != nil {
+				return nil, execErr
+			}
+			return h.buildAccountResponseWithRuntime(ctx, account), nil
+		},
+	)
 	if err != nil {
+		reason := infraerrors.Reason(err)
+		if reason == infraerrors.Reason(service.ErrIdempotencyInProgress) || reason == infraerrors.Reason(service.ErrIdempotencyStoreUnavail) {
+			recovered, recoverErr := h.adminService.RecoverDuplicateAccount(c.Request.Context(), accountID, actorScope, c.GetHeader("Idempotency-Key"))
+			if recoverErr != nil {
+				slog.Warn("account_duplicate_recovery_failed", "account_id", accountID, "actor_scope", actorScope, "reason", reason, "error", recoverErr)
+			} else if recovered != nil {
+				c.Header("X-Idempotency-Recovered", "true")
+				response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), recovered))
+				return
+			}
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+	if result != nil && result.Replayed {
+		c.Header("X-Idempotency-Replayed", "true")
+	}
+	response.Success(c, result.Data)
 }
 
 // Update handles updating an account
