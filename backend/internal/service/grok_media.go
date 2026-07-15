@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -267,6 +268,25 @@ func (s *OpenAIGatewayService) BindGrokMediaVideoRequestAccount(ctx context.Cont
 	return s.BindStickySession(ctx, groupID, GrokMediaVideoRequestSessionHash(requestID), accountID)
 }
 
+func (e GrokMediaEndpoint) upstreamURL(baseURL, requestID string) (string, error) {
+	switch e {
+	case GrokMediaEndpointImagesGenerations:
+		return xai.BuildImagesGenerationsURL(baseURL)
+	case GrokMediaEndpointImagesEdits:
+		return xai.BuildImagesEditsURL(baseURL)
+	case GrokMediaEndpointVideosGenerations:
+		return xai.BuildVideosGenerationsURL(baseURL)
+	case GrokMediaEndpointVideosEdits:
+		return xai.BuildVideosEditsURL(baseURL)
+	case GrokMediaEndpointVideosExtensions:
+		return xai.BuildVideosExtensionsURL(baseURL)
+	case GrokMediaEndpointVideoStatus:
+		return xai.BuildVideoURL(baseURL, requestID)
+	default:
+		return "", fmt.Errorf("unsupported grok media endpoint: %s", e)
+	}
+}
+
 func (s *OpenAIGatewayService) ForwardGrokMedia(
 	ctx context.Context,
 	c *gin.Context,
@@ -284,11 +304,11 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)
 	}
 
-	token, _, err := s.getRequestCredential(ctx, c, account)
+	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
 	}
-	targetURL, err := buildGrokMediaURL(account, s.cfg, endpoint, requestID)
+	targetURL, err := endpoint.upstreamURL(account.GetGrokMediaBaseURL(), requestID)
 	if err != nil {
 		return nil, err
 	}
@@ -319,9 +339,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	upstreamReq.Header.Set("Authorization", "Bearer "+token)
 	upstreamReq.Header.Set("Accept", "application/json")
-	if account.IsGrokOAuth() {
-		applyGrokCLIHeaders(upstreamReq.Header)
-	}
+	applyGrokCLIHeaders(upstreamReq.Header)
 	if endpoint.RequiresRequestBody() {
 		contentType = strings.TrimSpace(contentType)
 		if contentType == "" {
@@ -348,7 +366,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return s.handleGrokMediaErrorResponse(ctx, resp, c, account, requestIDHeader, requestModel)
 	}
 
-	s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+	s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -617,7 +635,6 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
 			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
 		}
 	}

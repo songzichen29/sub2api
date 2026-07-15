@@ -255,7 +255,7 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 			expected: xai.DefaultCLIBaseURL,
 		},
 		{
-			name: "oauth non-default API port remains pinned to CLI proxy",
+			name: "oauth non-default API port remains an explicit override",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -263,7 +263,7 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 					"base_url": "https://api.x.ai:8443/v1",
 				},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: "https://api.x.ai:8443/v1",
 		},
 		{
 			name: "oauth explicit custom base_url stays pinned to CLI proxy by default",
@@ -294,7 +294,7 @@ func TestGetGrokBaseURLUsesSubscriptionProxyForOAuth(t *testing.T) {
 	}
 }
 
-func TestGetGrokBaseURLPinsOAuthWhenUnsafeOverridesEnabled(t *testing.T) {
+func TestGetGrokBaseURLAllowsExplicitOAuthOverrideWhenUnsafeOverridesEnabled(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	account := Account{
 		Type:     AccountTypeOAuth,
@@ -304,26 +304,26 @@ func TestGetGrokBaseURLPinsOAuthWhenUnsafeOverridesEnabled(t *testing.T) {
 		},
 	}
 
-	require.Equal(t, xai.DefaultCLIBaseURL, account.GetGrokBaseURL())
+	require.Equal(t, "https://custom.example.com/v1", account.GetGrokBaseURL())
 }
 
-func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
+func TestGetGrokMediaBaseURLSeparatesOAuthMediaFromCLIProxy(t *testing.T) {
 	tests := []struct {
 		name     string
 		account  Account
 		expected string
 	}{
 		{
-			name: "oauth without base_url uses CLI subscription proxy",
+			name: "oauth without base_url uses official media API",
 			account: Account{
 				Type:        AccountTypeOAuth,
 				Platform:    PlatformGrok,
 				Credentials: map[string]any{},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 		},
 		{
-			name: "oauth stored CLI proxy stays on CLI subscription proxy",
+			name: "oauth stored CLI proxy uses official media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -331,10 +331,10 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 					"base_url": xai.DefaultCLIBaseURL,
 				},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 		},
 		{
-			name: "oauth stored CLI proxy variant is canonicalized to CLI proxy",
+			name: "oauth stored CLI proxy variant uses official media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -342,10 +342,10 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 					"base_url": "HTTPS://CLI-CHAT-PROXY.GROK.COM:443/%76%31/",
 				},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 		},
 		{
-			name: "oauth legacy official API is pinned to CLI proxy",
+			name: "oauth legacy official API remains on official media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -353,10 +353,10 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 					"base_url": xai.DefaultBaseURL,
 				},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 		},
 		{
-			name: "oauth untrusted custom base_url is pinned to CLI proxy",
+			name: "oauth untrusted custom base_url is pinned to official media API",
 			account: Account{
 				Type:     AccountTypeOAuth,
 				Platform: PlatformGrok,
@@ -364,7 +364,7 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 					"base_url": "https://custom.example.com/v1",
 				},
 			},
-			expected: xai.DefaultCLIBaseURL,
+			expected: xai.DefaultBaseURL,
 		},
 		{
 			name: "API key retains its configured media API",
@@ -395,7 +395,7 @@ func TestGetGrokMediaBaseURLPinsOAuthMediaToCLIProxy(t *testing.T) {
 	}
 }
 
-func TestGetGrokMediaBaseURLPinsOAuthWhenUnsafeOverridesEnabled(t *testing.T) {
+func TestGetGrokMediaBaseURLAllowsExplicitOAuthOverrideWhenUnsafeOverridesEnabled(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	account := Account{
 		Type:     AccountTypeOAuth,
@@ -405,5 +405,5 @@ func TestGetGrokMediaBaseURLPinsOAuthWhenUnsafeOverridesEnabled(t *testing.T) {
 		},
 	}
 
-	require.Equal(t, xai.DefaultCLIBaseURL, account.GetGrokMediaBaseURL())
+	require.Equal(t, "https://custom.example.com/v1", account.GetGrokMediaBaseURL())
 }

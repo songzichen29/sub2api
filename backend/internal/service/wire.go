@@ -245,7 +245,7 @@ func ProvideGrokTokenProvider(
 	p := NewGrokTokenProvider(accountRepo, tokenCache)
 	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
-	p.SetRefreshPolicy(GrokProviderRefreshPolicy())
+	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
 	return p
 }
@@ -687,7 +687,6 @@ var ProviderSet = wire.NewSet(
 	NewCRSSyncService,
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
-	wire.Bind(new(GrokOAuthReconciler), new(*TokenRefreshService)),
 	ProvideAccountExpiryService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,

@@ -558,40 +558,7 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 }
 
-// GatewayFailureStage identifies which request stage failed. The zero value is
-// intentionally treated as inference so existing UpstreamFailoverError callers
-// retain their current behavior.
-type GatewayFailureStage string
-
-const (
-	GatewayFailureStageInference   GatewayFailureStage = "inference"
-	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
-)
-
-// GatewayFailureScope identifies whether selecting another account can help.
-type GatewayFailureScope string
-
-const (
-	GatewayFailureScopeAccount  GatewayFailureScope = "account"
-	GatewayFailureScopeProvider GatewayFailureScope = "provider"
-	GatewayFailureScopeRequest  GatewayFailureScope = "request"
-)
-
-// NextAccountAction is tri-state for backwards compatibility. The zero value
-// means legacy retry behavior; only NextAccountStop explicitly short-circuits.
-type NextAccountAction uint8
-
-const (
-	NextAccountLegacyRetry NextAccountAction = iota
-	NextAccountRetry
-	NextAccountStop
-)
-
-type GatewayFailureReason string
-
-// UpstreamFailoverError indicates an upstream or credential error that may
-// trigger account failover. Additive metadata keeps existing composite literals
-// source-compatible and preserves their legacy retry-next-account behavior.
+// UpstreamFailoverError indicates an upstream error that should trigger account failover.
 type UpstreamFailoverError struct {
 	StatusCode               int
 	ResponseBody             []byte      // 上游响应体，用于错误透传规则匹配
@@ -608,28 +575,7 @@ type UpstreamFailoverError struct {
 }
 
 func (e *UpstreamFailoverError) Error() string {
-	if e != nil && e.Stage == GatewayFailureStageAccountAuth {
-		return fmt.Sprintf("credential failure: %s (failover)", e.Reason)
-	}
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
-}
-
-func (e *UpstreamFailoverError) ShouldRetryNextAccount() bool {
-	return e != nil && e.NextAccountAction != NextAccountStop
-}
-
-func (e *UpstreamFailoverError) IsCredentialFailure() bool {
-	return e != nil && e.Stage == GatewayFailureStageAccountAuth
-}
-
-// ShouldReportAccountScheduleFailure prevents provider- and request-scoped
-// credential failures from being misattributed to the selected account. Legacy
-// and inference failures retain their existing scheduler-health behavior.
-func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil {
-		return false
-	}
-	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
 }
 
 // sseStreamErrorEventError 表示上游 SSE 流体内出现 event:error 帧。

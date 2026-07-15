@@ -131,50 +131,6 @@ func TestSleepWithContext(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleFailoverError_BasicSwitch(t *testing.T) {
-	t.Run("显式停止不切换账号且旧错误默认仍切换", func(t *testing.T) {
-		mock := &mockTempUnscheduler{}
-		fs := NewFailoverState(3, false)
-		stopErr := &service.UpstreamFailoverError{
-			Stage:             service.GatewayFailureStageAccountAuth,
-			Scope:             service.GatewayFailureScopeProvider,
-			NextAccountAction: service.NextAccountStop,
-		}
-
-		action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformGrok, maxSameAccountRetries, stopErr)
-
-		require.Equal(t, FailoverExhausted, action)
-		require.Zero(t, fs.SwitchCount)
-		require.Empty(t, fs.FailedAccountIDs)
-		require.Equal(t, stopErr, fs.LastFailoverErr)
-
-		legacyErr := newTestFailoverErr(http.StatusTooManyRequests, false, false)
-		action = fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformGrok, maxSameAccountRetries, legacyErr)
-
-		require.Equal(t, FailoverContinue, action)
-		require.Equal(t, 1, fs.SwitchCount)
-		require.Contains(t, fs.FailedAccountIDs, int64(100))
-	})
-
-	t.Run("已取消的认证失败不改变切换状态", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		mock := &mockTempUnscheduler{}
-		fs := NewFailoverState(3, false)
-		err := &service.UpstreamFailoverError{
-			Stage:             service.GatewayFailureStageAccountAuth,
-			Scope:             service.GatewayFailureScopeAccount,
-			NextAccountAction: service.NextAccountRetry,
-		}
-
-		action := fs.HandleFailoverError(ctx, mock, 101, service.PlatformGrok, maxSameAccountRetries, err)
-
-		require.Equal(t, FailoverCanceled, action)
-		require.Zero(t, fs.SwitchCount)
-		require.Empty(t, fs.FailedAccountIDs)
-		require.Nil(t, fs.LastFailoverErr)
-		require.Empty(t, mock.calls)
-	})
-
 	t.Run("非重试错误_非Antigravity_直接切换", func(t *testing.T) {
 		mock := &mockTempUnscheduler{}
 		fs := NewFailoverState(3, false)

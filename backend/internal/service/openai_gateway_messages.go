@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -245,24 +246,19 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	responsesBody = updatedBody
 	grokCacheIdentity := ""
 	if account.Platform == PlatformGrok {
-		grokIntentBody := responsesBody
-		grokCacheIdentity = resolveGrokCacheIdentity(c, grokIntentBody, promptCacheKey, upstreamModel)
-		patchedBody, patchErr := patchGrokResponsesBody(grokIntentBody, upstreamModel)
+		grokCacheIdentity = resolveGrokCacheIdentity(c, responsesBody, promptCacheKey, upstreamModel)
+		patchedBody, patchErr := patchGrokResponsesBody(responsesBody, upstreamModel)
 		if patchErr != nil {
 			return nil, patchErr
 		}
-		responsesBody, patchErr = applyGrokResponsesCacheIdentity(patchedBody, grokIntentBody, grokCacheIdentity, account.IsGrokOAuth())
+		responsesBody, patchErr = applyGrokResponsesCacheIdentity(patchedBody, responsesBody, grokCacheIdentity, account.IsGrokOAuth())
 		if patchErr != nil {
 			return nil, fmt.Errorf("apply grok prompt cache identity: %w", patchErr)
-		}
-		responsesBody, patchErr = applyGrokFreeMessagesFunctionToolCacheRoute(responsesBody, grokIntentBody, account, grokCacheIdentity)
-		if patchErr != nil {
-			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", patchErr)
 		}
 	}
 
 	// 5. Get access token
-	token, _, err := s.getRequestCredential(ctx, c, account)
+	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
@@ -277,7 +273,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	var upstreamReq *http.Request
 	if account.Platform == PlatformGrok {
-		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity, s.cfg)
+		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, responsesBody, token, grokCacheIdentity)
 	} else {
 		upstreamReq, err = s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, isStream, promptCacheKey, false)
 	}
@@ -355,7 +351,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return s.handleAnthropicErrorResponse(resp, c, account, billingModel)
 	}
 	if account.Platform == PlatformGrok && account.Type == AccountTypeOAuth && !account.IsShadow() {
-		s.updateGrokUsageFromResponse(ctx, account, resp.Header, resp.StatusCode)
+		s.updateGrokUsageSnapshot(ctx, account, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
 	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
@@ -793,9 +789,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 
-		eventType := strings.TrimSpace(event.Type)
-		isBareErrorEvent := eventType == "error"
-		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(eventType) || isBareErrorEvent
+		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
 		if isTerminalEvent {
 			if event.Response != nil {
 				if id := strings.TrimSpace(event.Response.ID); id != "" {
@@ -810,7 +804,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 			// cyber_policy 致命不可重试：标记供 handler 事后记录；以 Anthropic SSE error 事件
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
-			if eventType == "response.failed" || isBareErrorEvent {
+			if strings.TrimSpace(event.Type) == "response.failed" {
 				payloadBytes := []byte(payload)
 				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
@@ -835,10 +829,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 					return true
 				}
 				message := extractOpenAISSEErrorMessage(payloadBytes)
-				// Once Anthropic output has started, switching accounts would splice
-				// two model streams together. Surface a proper Anthropic error event
-				// instead of returning a failover error that the handler cannot retry.
-				if !clientOutputStarted && openAIStreamFailedEventShouldFailover(payloadBytes, message) {
+				if openAIStreamFailedEventShouldFailover(payloadBytes, message) {
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, requestID, payloadBytes, message)
 					return true
 				}

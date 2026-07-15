@@ -9,7 +9,6 @@ export function mapErrorCategory(phase?: string | null, errType?: string | null)
       return 'auth'
     case 'routing':
       return 'service_unavailable'
-    case 'account_auth':
     case 'upstream':
     case 'network':
       return 'upstream'
