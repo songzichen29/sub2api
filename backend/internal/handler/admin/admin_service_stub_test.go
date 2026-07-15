@@ -503,10 +503,6 @@ func (s *stubAdminService) DeleteAccount(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *stubAdminService) DuplicateAccount(ctx context.Context, id int64) (*service.Account, error) {
-	return nil, nil
-}
-
 func (s *stubAdminService) RefreshAccountCredentials(ctx context.Context, id int64) (*service.Account, error) {
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
