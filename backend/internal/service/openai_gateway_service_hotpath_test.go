@@ -186,6 +186,59 @@ func TestOpenAIGatewayService_Forward_APIKeyNormalizesStringInput(t *testing.T) 
 	require.Equal(t, "hello from string input", gjson.GetBytes(upstream.lastBody, "input.0.content").String())
 }
 
+func TestOpenAIGatewayService_Forward_InjectsPriorityTierFromPolicy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"usage":{"input_tokens":1,"output_tokens":2}}`)),
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	settings := &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{{
+			ServiceTier:    OpenAIFastTierAny,
+			Action:         OpenAIFastPolicyActionForcePriority,
+			Scope:          BetaPolicyScopeAll,
+			ModelWhitelist: []string{"gpt-5.6-sol"},
+			FallbackAction: BetaPolicyActionPass,
+		}},
+	}
+	policySvc := newOpenAIGatewayServiceWithSettings(t, settings)
+	svc := &OpenAIGatewayService{
+		cfg:            cfg,
+		httpUpstream:   upstream,
+		settingService: policySvc.settingService,
+	}
+	account := &Account{
+		ID:          3,
+		Name:        "openai-apikey",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://example.com",
+		},
+		Extra: map[string]any{"use_responses_api": true},
+	}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+
+	body := []byte(`{"model":"gpt-5.6-sol","stream":false,"input":"hello"}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(upstream.lastBody, "service_tier").String())
+	require.NotNil(t, result.ServiceTier)
+	require.Equal(t, OpenAIFastTierPriority, *result.ServiceTier)
+}
+
 func TestOpenAIGatewayService_Forward_DecodedMutationKeepsLaterFieldDeletes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{
