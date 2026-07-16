@@ -872,6 +872,13 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 	}
 	rawTier := gjson.GetBytes(body, "service_tier").String()
 	if rawTier == "" {
+		if s.shouldInjectOpenAIFastPriority(ctx, account, model) {
+			updated, err := sjson.SetBytes(body, "service_tier", OpenAIFastTierPriority)
+			if err != nil {
+				return body, fmt.Errorf("inject service_tier priority on body: %w", err)
+			}
+			return updated, nil
+		}
 		return body, nil
 	}
 	normTier := normalizedOpenAIServiceTierValue(rawTier)
@@ -916,6 +923,22 @@ func (s *OpenAIGatewayService) applyOpenAIFastPolicyToBody(ctx context.Context, 
 		}
 		return updated, nil
 	}
+}
+
+func (s *OpenAIGatewayService) shouldInjectOpenAIFastPriority(ctx context.Context, account *Account, model string) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	settings := openAIFastPolicySettingsFromContext(ctx)
+	if settings == nil {
+		fetched, err := s.settingService.GetOpenAIFastPolicySettings(ctx)
+		if err != nil || fetched == nil {
+			return false
+		}
+		settings = fetched
+	}
+	action, _ := evaluateOpenAIFastPolicyWithSettings(settings, openAIFastPolicyUserID(ctx), account, model, OpenAIFastTierAny)
+	return action == OpenAIFastPolicyActionForcePriority
 }
 
 // writeOpenAIFastPolicyBlockedResponse writes a 403 JSON response for a
