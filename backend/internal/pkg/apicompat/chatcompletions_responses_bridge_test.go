@@ -109,6 +109,7 @@ func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testin
 	resp := &ChatCompletionsResponse{
 		ID:     "chatcmpl_test",
 		Object: "chat.completion",
+		Created: 1710000001,
 		Model:  "grok-upstream",
 		Choices: []ChatChoice{{
 			Index:        0,
@@ -122,6 +123,7 @@ func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testin
 	require.NotNil(t, out)
 	assert.True(t, strings.HasPrefix(out.ID, "resp_"), "responses id must be resp_*, got %q", out.ID)
 	assert.NotEqual(t, "chatcmpl_test", out.ID)
+	assert.Equal(t, int64(1710000001), out.CreatedAt)
 }
 
 func TestChatCompletionsChunkToResponsesEvents_KeepsGeneratedResponseIDForChatCompletionChunks(t *testing.T) {
@@ -147,6 +149,7 @@ func TestChatCompletionsChunkToResponsesEvents_KeepsGeneratedResponseIDForChatCo
 		if event.Response != nil {
 			assert.Equal(t, state.ResponseID, event.Response.ID)
 			assert.NotEqual(t, "chatcmpl_stream", event.Response.ID)
+			assert.NotZero(t, event.Response.CreatedAt)
 		}
 	}
 }
