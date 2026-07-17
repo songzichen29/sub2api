@@ -1900,7 +1900,67 @@ func TestOpenAIStreamingPassthroughRecordsUpstreamFirstEventSeparately(t *testin
 	require.Equal(t, int64(*result.upstreamFirstEventMs), gotUpstreamFirstEvent)
 }
 
-func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *testing.T) {
+func TestOpenAIStreamingPassthroughFlushesPreambleBeforeFirstToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{"X-Request-Id": []string{"rid-preamble-flush"}},
+	}
+
+	resultCh := make(chan *openaiStreamingResultPassthrough, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "", "")
+		resultCh <- result
+		errCh <- err
+	}()
+
+	_, err := pw.Write([]byte(strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		return strings.Contains(rec.Body.String(), "response.created")
+	}, time.Second, 10*time.Millisecond)
+
+	_, err = pw.Write([]byte(strings.Join([]string{
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","delta":"ok"}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")))
+	require.NoError(t, err)
+	require.NoError(t, pw.Close())
+
+	result := <-resultCh
+	err = <-errCh
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.upstreamFirstEventMs)
+	require.NotNil(t, result.firstTokenMs)
+	require.LessOrEqual(t, *result.upstreamFirstEventMs, *result.firstTokenMs)
+}
+
+func TestOpenAIStreamingPassthroughPreambleOnlyTerminalDoesNotSetFirstToken(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
@@ -1919,6 +1979,39 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 			"event: response.created",
 			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
 			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":0}}}`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-preamble-terminal"}},
+	}
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "", "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.upstreamFirstEventMs)
+	require.Nil(t, result.firstTokenMs)
+	require.Contains(t, rec.Body.String(), "response.created")
+}
+
+func TestOpenAIStreamingPassthroughResponseFailedAsFirstEventReturnsFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize,
+		},
+	}
+	svc := &OpenAIGatewayService{cfg: cfg}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
 			"event: response.failed",
 			`data: {"type":"response.failed","error":{"message":"upstream processing failed"}}`,
 			"",
@@ -1960,9 +2053,6 @@ func TestOpenAIStreamingPassthroughContextWindowResponseFailedBeforeOutputApplie
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
-			"event: response.created",
-			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
-			"",
 			"event: response.failed",
 			`data: {"type":"response.failed","response":{"id":"resp_1","error":{"type":"invalid_request_error","code":"context_length_exceeded","message":"` + upstreamMessage + `"}}}`,
 			"",

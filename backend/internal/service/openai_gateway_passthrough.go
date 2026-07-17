@@ -766,6 +766,14 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsPreamble(eventType)
 }
 
+func openAIStreamDataShouldFlushPreamble(data, eventType string) bool {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" {
+		return false
+	}
+	return openAIStreamEventIsPreamble(eventType)
+}
+
 func openAIStreamDataStartsFirstToken(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	eventType = strings.TrimSpace(eventType)
@@ -1079,6 +1087,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	for documentScanner.Scan() {
 		line := documentScanner.Text()
 		lineStartsClientOutput := false
+		lineShouldFlushDownstream := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
@@ -1174,7 +1183,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
+			lineShouldFlushDownstream = lineStartsClientOutput || openAIStreamDataShouldFlushPreamble(trimmedData, eventType)
+			if firstTokenMs == nil && openAIStreamDataStartsFirstToken(trimmedData, eventType) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 			}
@@ -1182,7 +1192,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 
 		if !clientDisconnected {
-			if !clientOutputStarted && !lineStartsClientOutput {
+			if !clientOutputStarted && !lineShouldFlushDownstream {
 				pendingLines = append(pendingLines, line)
 				continue
 			}
