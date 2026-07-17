@@ -1022,14 +1022,16 @@ func (s *GrokGatewayService) extractCCUsage(data []byte, usage *ClaudeUsage) boo
 }
 
 func applyGrokCCUsageNode(node gjson.Result, usage *ClaudeUsage) {
+	if v := firstPositiveGrokUsageInt(node, "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens"); v > 0 {
+		usage.CacheReadInputTokens = v
+	}
 	if v := firstPositiveGrokUsageInt(node, "prompt_tokens", "input_tokens"); v > 0 {
-		usage.InputTokens = v
+		// OpenAI-compatible usage reports cached_tokens as a subset of the total
+		// prompt/input tokens. Internal billing expects the categories to be disjoint.
+		usage.InputTokens = max(v-usage.CacheReadInputTokens, 0)
 	}
 	if v := firstPositiveGrokUsageInt(node, "completion_tokens", "output_tokens"); v > 0 {
 		usage.OutputTokens = v
-	}
-	if v := firstPositiveGrokUsageInt(node, "prompt_tokens_details.cached_tokens", "input_tokens_details.cached_tokens"); v > 0 {
-		usage.CacheReadInputTokens = v
 	}
 }
 
@@ -1255,9 +1257,10 @@ func (s *GrokGatewayService) collectGrokChatCompletionsSSE(
 }
 
 func grokClaudeUsageToChatUsage(usage ClaudeUsage) *apicompat.ChatUsage {
-	total := usage.InputTokens + usage.OutputTokens
+	promptTokens := usage.InputTokens + usage.CacheReadInputTokens
+	total := promptTokens + usage.OutputTokens
 	out := &apicompat.ChatUsage{
-		PromptTokens:     usage.InputTokens,
+		PromptTokens:     promptTokens,
 		CompletionTokens: usage.OutputTokens,
 		TotalTokens:      total,
 	}

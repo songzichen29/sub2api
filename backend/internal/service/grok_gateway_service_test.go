@@ -387,7 +387,7 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamExtractsResponsesS
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.False(t, result.Stream)
-	require.Equal(t, 11, result.Usage.InputTokens)
+	require.Equal(t, 8, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	require.Equal(t, 3, result.Usage.CacheReadInputTokens)
 
@@ -397,6 +397,34 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamExtractsResponsesS
 	require.Equal(t, false, sent["stream"])
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Contains(t, recorder.Body.String(), `"content":"hi"`)
+}
+
+func TestGrokGatewayService_CachedUsageDoesNotDoubleBillInput(t *testing.T) {
+	var usage ClaudeUsage
+	s := &GrokGatewayService{}
+	require.True(t, s.extractCCUsage([]byte(`{
+		"usage": {
+			"prompt_tokens": 69743,
+			"completion_tokens": 1157,
+			"prompt_tokens_details": {"cached_tokens": 69248}
+		}
+	}`), &usage))
+	require.Equal(t, 495, usage.InputTokens)
+	require.Equal(t, 69248, usage.CacheReadInputTokens)
+
+	cost := (&BillingService{}).computeTokenBreakdown(&ModelPricing{
+		InputPricePerToken:     2e-6,
+		OutputPricePerToken:    6e-6,
+		CacheReadPricePerToken: 0.5e-6,
+	}, UsageTokens{
+		InputTokens:     usage.InputTokens,
+		OutputTokens:    usage.OutputTokens,
+		CacheReadTokens: usage.CacheReadInputTokens,
+	}, 0.2, "", false)
+
+	require.InDelta(t, 0.00099, cost.InputCost, 1e-12)
+	require.InDelta(t, 0.042556, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.0085112, cost.ActualCost, 1e-12)
 }
 
 func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamWithoutStreamFieldForcesFalse(t *testing.T) {
@@ -456,7 +484,7 @@ func TestGrokGatewayService_ForwardAsChatCompletions_StreamInjectsIncludeUsageAn
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, result.Stream)
-	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, 5, result.Usage.CacheReadInputTokens)
 
@@ -481,7 +509,7 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamCollectsSSEBody(t 
 			"",
 			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[{"index":0,"delta":{"content":"K"},"finish_reason":"stop"}]}`,
 			"",
-			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9}}`,
+			`data: {"id":"chatcmpl_sse","object":"chat.completion.chunk","created":123,"model":"grok-3","choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2,"total_tokens":9,"prompt_tokens_details":{"cached_tokens":4}}}`,
 			"",
 			`data: [DONE]`,
 			"",
@@ -505,8 +533,9 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamCollectsSSEBody(t 
 	result, err := s.ForwardAsChatCompletions(context.Background(), c, account, body)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
+	require.Equal(t, 4, result.Usage.CacheReadInputTokens)
 	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
 
 	var out apicompat.ChatCompletionsResponse
@@ -517,6 +546,9 @@ func TestGrokGatewayService_ForwardAsChatCompletions_NonStreamCollectsSSEBody(t 
 	require.NotNil(t, out.Usage)
 	require.Equal(t, 7, out.Usage.PromptTokens)
 	require.Equal(t, 2, out.Usage.CompletionTokens)
+	require.Equal(t, 9, out.Usage.TotalTokens)
+	require.NotNil(t, out.Usage.PromptTokensDetails)
+	require.Equal(t, 4, out.Usage.PromptTokensDetails.CachedTokens)
 }
 
 func TestGrokGatewayService_ForwardAsChatCompletions_SSEErrorReturnsFailover(t *testing.T) {
