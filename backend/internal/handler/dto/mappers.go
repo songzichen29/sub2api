@@ -815,15 +815,29 @@ func applyAdminSubscriptionTotalPool(out *UserSubscription, sub *service.UserSub
 	}
 	now := time.Now()
 	out.OverdraftLimitUSD = limit
-	out.OverdraftUsedUSD = sub.DailyOverdraftUsedUSDAt(sub.Group, now)
+	out.OverdraftUsedUSD = adminSubscriptionTotalPoolUsedUSD(sub, now)
 	if sub.AdminTotalPoolUsedUSD != nil {
-		out.OverdraftUsedUSD = *sub.AdminTotalPoolUsedUSD
+		if *sub.AdminTotalPoolUsedUSD > out.OverdraftUsedUSD {
+			out.OverdraftUsedUSD = *sub.AdminTotalPoolUsedUSD
+		}
 	}
 	if sub.AllowsDailyOverdraft(sub.Group) {
 		out.OverdraftDays = sub.DailyOverdraftBorrowedDays(sub.Group, now)
 		return
 	}
 	out.OverdraftDays = 0
+}
+
+func adminSubscriptionTotalPoolUsedUSD(sub *service.UserSubscription, now time.Time) float64 {
+	if sub == nil || sub.Group == nil {
+		return 0
+	}
+	if sub.Group.AllowsDailyOverdraft() && sub.IsDayValidityUnit() {
+		effectiveSub := *sub
+		effectiveSub.AllowDailyOverdraft = true
+		return effectiveSub.DailyOverdraftUsedUSDAt(sub.Group, now)
+	}
+	return sub.DailyOverdraftUsedUSDAt(sub.Group, now)
 }
 
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {
