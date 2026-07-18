@@ -121,7 +121,7 @@
                   </span>
                 </div>
 
-                <div v-if="subscription.group?.daily_limit_usd" class="flex items-center gap-2">
+                <div v-if="subscription.group?.daily_limit_usd && !getOverdraftLimit(subscription)" class="flex items-center gap-2">
                   <span class="w-8 flex-shrink-0 text-[10px] text-gray-500">{{
                     t('subscriptionProgress.daily')
                   }}</span>
