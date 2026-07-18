@@ -230,6 +230,9 @@ func (s *UserSubscription) DailyOverdraftDebtUSD(group *Group, now time.Time) fl
 	if s == nil || group == nil || !group.AllowsDailyOverdraft() || !group.HasDailyLimit() || !s.IsDayValidityUnit() {
 		return 0
 	}
+	if s.HasOneTimeDailyQuota() && !s.AllowsDailyOverdraft(group) {
+		return 0
+	}
 	elapsedFullDays := s.dailyOverdraftElapsedFullDays(now)
 	if maxDays := s.OverdraftValidityDays(); elapsedFullDays > maxDays {
 		elapsedFullDays = maxDays

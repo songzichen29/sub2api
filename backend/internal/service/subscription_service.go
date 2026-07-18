@@ -355,7 +355,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 			existingSub.WeeklyWindowStart = nil
 			existingSub.MonthlyWindowStart = nil
 			if validityDays == 1 {
-				windowStart := startOfDay(now)
+				windowStart := now
 				existingSub.DailyWindowStart = &windowStart
 			}
 			existingSub.DailyUsageUSD = 0

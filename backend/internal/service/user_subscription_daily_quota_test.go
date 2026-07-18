@@ -67,11 +67,42 @@ func TestAssignOrExtendSubscription_ExpiredDailyCardStartsNewOneTimeQuota(t *tes
 	require.True(t, renewed.StartsAt.After(oldStart), "重新购买过期订阅时应重置当前周期 StartsAt")
 	require.False(t, renewed.ExpiresAt.After(renewed.StartsAt.AddDate(0, 0, 1)))
 	require.NotNil(t, renewed.DailyWindowStart)
-	require.Equal(t, startOfDay(renewed.StartsAt), *renewed.DailyWindowStart)
+	require.Equal(t, renewed.StartsAt, *renewed.DailyWindowStart)
 	require.Equal(t, 0.0, renewed.DailyUsageUSD)
 	require.Equal(t, 0.0, renewed.WeeklyUsageUSD)
 	require.Equal(t, 0.0, renewed.MonthlyUsageUSD)
 	require.Equal(t, "old\nnew", renewed.Notes)
+}
+
+func TestValidateAndCheckLimits_ReopenedDailyCardDoesNotDoubleCountDebt(t *testing.T) {
+	start := time.Now().Add(-9 * time.Hour)
+	wrongWindowStart := startOfDay(start)
+	dailyLimit := 120.0
+	dailyUsage := 60.3386712
+	sub := &UserSubscription{
+		Status:             SubscriptionStatusActive,
+		StartsAt:           start,
+		ExpiresAt:          start.Add(24 * time.Hour),
+		DailyWindowStart:   &wrongWindowStart,
+		DailyUsageUSD:      dailyUsage,
+		WeeklyWindowStart:  &start,
+		WeeklyUsageUSD:     dailyUsage,
+		MonthlyWindowStart: &start,
+		MonthlyUsageUSD:    dailyUsage,
+		ValidityUnit:       "day",
+	}
+	group := &Group{
+		ID:                  22,
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &dailyLimit,
+		AllowDailyOverdraft: true,
+	}
+	svc := NewSubscriptionService(groupRepoNoop{}, userSubRepoNoop{}, nil, nil, nil)
+
+	needsMaintenance, err := svc.ValidateAndCheckLimits(context.Background(), sub, group)
+
+	require.NoError(t, err)
+	require.False(t, needsMaintenance)
 }
 
 func TestUserSubscriptionNeedsDailyReset_DailyCardKeepsOneTimeQuota(t *testing.T) {
