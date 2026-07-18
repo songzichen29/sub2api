@@ -239,6 +239,20 @@ func (s *UserSubscriptionRepoSuite) TestGetActiveByUserIDAndGroupID_ExpiredIgnor
 	s.Require().Error(err, "expected error for expired subscription")
 }
 
+func (s *UserSubscriptionRepoSuite) TestGetActiveByUserIDAndGroupID_FutureStartIgnored() {
+	user := s.mustCreateUser("future-start@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-future-start")
+
+	s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(2 * time.Hour))
+		c.SetExpiresAt(now.Add(26 * time.Hour))
+	})
+
+	_, err := s.repo.GetActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().Error(err, "expected error for not-yet-started subscription")
+}
+
 // --- ListByUserID / ListActiveByUserID ---
 
 func (s *UserSubscriptionRepoSuite) TestListByUserID() {
@@ -277,6 +291,28 @@ func (s *UserSubscriptionRepoSuite) TestListActiveByUserID() {
 	s.Require().NoError(err, "ListActiveByUserID")
 	s.Require().Len(subs, 1)
 	s.Require().Equal(service.SubscriptionStatusActive, subs[0].Status)
+}
+
+func (s *UserSubscriptionRepoSuite) TestListActiveByUserID_FutureStartIgnored() {
+	user := s.mustCreateUser("listfuture@test.com", service.RoleUser)
+	g1 := s.mustCreateGroup("g-list-future-1")
+	g2 := s.mustCreateGroup("g-list-future-2")
+
+	s.mustCreateSubscription(user.ID, g1.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(-time.Hour))
+		c.SetExpiresAt(now.Add(24 * time.Hour))
+	})
+	s.mustCreateSubscription(user.ID, g2.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(2 * time.Hour))
+		c.SetExpiresAt(now.Add(26 * time.Hour))
+	})
+
+	subs, err := s.repo.ListActiveByUserID(s.ctx, user.ID)
+	s.Require().NoError(err, "ListActiveByUserID")
+	s.Require().Len(subs, 1)
+	s.Require().Equal(g1.ID, subs[0].GroupID)
 }
 
 // --- ListByGroupID ---
@@ -359,6 +395,29 @@ func (s *UserSubscriptionRepoSuite) TestList_FilterByStatus() {
 	s.Require().NoError(err)
 	s.Require().Len(subs, 1)
 	s.Require().Equal(service.SubscriptionStatusExpired, subs[0].Status)
+}
+
+func (s *UserSubscriptionRepoSuite) TestList_FilterByActiveStatus_IgnoresFutureStart() {
+	user1 := s.mustCreateUser("statactive1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("statactive2@test.com", service.RoleUser)
+	group1 := s.mustCreateGroup("g-stat-active-1")
+	group2 := s.mustCreateGroup("g-stat-active-2")
+
+	s.mustCreateSubscription(user1.ID, group1.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(-time.Hour))
+		c.SetExpiresAt(now.Add(24 * time.Hour))
+	})
+	s.mustCreateSubscription(user2.ID, group2.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(2 * time.Hour))
+		c.SetExpiresAt(now.Add(26 * time.Hour))
+	})
+
+	subs, _, err := s.repo.List(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, nil, nil, service.SubscriptionStatusActive, "", "", "")
+	s.Require().NoError(err)
+	s.Require().Len(subs, 1)
+	s.Require().Equal(group1.ID, subs[0].GroupID)
 }
 
 func (s *UserSubscriptionRepoSuite) TestList_IncludesRevokedWhenStatusEmpty() {
@@ -730,6 +789,21 @@ func (s *UserSubscriptionRepoSuite) TestExistsActiveByUserIDAndGroupID_IgnoresSo
 	s.Require().False(exists)
 }
 
+func (s *UserSubscriptionRepoSuite) TestExistsActiveByUserIDAndGroupID_FutureStartIgnored() {
+	user := s.mustCreateUser("exists-active-future@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-exists-active-future")
+
+	s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(2 * time.Hour))
+		c.SetExpiresAt(now.Add(26 * time.Hour))
+	})
+
+	exists, err := s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID future start")
+	s.Require().False(exists)
+}
+
 // --- CountByGroupID / CountActiveByGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestCountByGroupID() {
@@ -762,7 +836,28 @@ func (s *UserSubscriptionRepoSuite) TestCountActiveByGroupID() {
 
 	count, err := s.repo.CountActiveByGroupID(s.ctx, group.ID)
 	s.Require().NoError(err, "CountActiveByGroupID")
-	s.Require().Equal(int64(1), count, "only future expiry counts as active")
+	s.Require().Equal(int64(1), count, "only currently effective subscriptions count as active")
+}
+
+func (s *UserSubscriptionRepoSuite) TestCountActiveByGroupID_FutureStartIgnored() {
+	user1 := s.mustCreateUser("cntact-future-1@test.com", service.RoleUser)
+	user2 := s.mustCreateUser("cntact-future-2@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-cntact-future")
+
+	s.mustCreateSubscription(user1.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(-time.Hour))
+		c.SetExpiresAt(now.Add(24 * time.Hour))
+	})
+	s.mustCreateSubscription(user2.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		now := time.Now()
+		c.SetStartsAt(now.Add(2 * time.Hour))
+		c.SetExpiresAt(now.Add(26 * time.Hour))
+	})
+
+	count, err := s.repo.CountActiveByGroupID(s.ctx, group.ID)
+	s.Require().NoError(err, "CountActiveByGroupID")
+	s.Require().Equal(int64(1), count, "future-start subscription must not be counted as active")
 }
 
 // --- DeleteByGroupID ---

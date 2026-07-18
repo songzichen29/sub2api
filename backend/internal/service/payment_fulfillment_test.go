@@ -53,6 +53,7 @@ type paymentFulfillmentAffiliateRepoStub struct {
 	inviteeSummary *AffiliateSummary
 	inviterSummary *AffiliateSummary
 	accrueCalls    []paymentFulfillmentAffiliateAccrueCall
+	accrueErr      error
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) EnsureUserAffiliate(_ context.Context, userID int64) (*AffiliateSummary, error) {
@@ -77,6 +78,9 @@ func (r *paymentFulfillmentAffiliateRepoStub) BindInviter(context.Context, int64
 }
 
 func (r *paymentFulfillmentAffiliateRepoStub) AccrueQuota(_ context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
+	if r.accrueErr != nil {
+		return false, r.accrueErr
+	}
 	var sourceCopy *int64
 	if sourceOrderID != nil {
 		v := *sourceOrderID
@@ -746,6 +750,64 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 }
 
+func TestExecuteBalanceFulfillmentCompletesWhenAuxiliaryRebateFailsAfterRedeem(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	staleAt := time.Now().Add(-paymentFulfillmentLeaseDuration - time.Minute)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRecharging, staleAt)
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		SetUpdatedAt(staleAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
+		order.RechargeCode: {
+			ID:     101,
+			Code:   order.RechargeCode,
+			Type:   RedeemTypeBalance,
+			Value:  order.Amount,
+			Status: StatusUsed,
+		},
+	}}
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID:    order.UserID,
+			AffCode:   "INVITEE",
+			InviterID: &inviterID,
+			CreatedAt: time.Now().Add(-24 * time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID:    inviterID,
+			AffCode:   "INVITER",
+			CreatedAt: time.Now().Add(-48 * time.Hour),
+		},
+		accrueErr: errors.New("rebate backend unavailable"),
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:            "true",
+		SettingKeyAffiliateRechargeEnabled:    "true",
+		SettingKeyAffiliateRechargeRebateRate: "20",
+		SettingKeyAffiliateRebateFreezeHours:  "0",
+	}}, nil)
+	svc := &PaymentService{
+		entClient:        client,
+		redeemService:    &RedeemService{redeemRepo: redeemRepo},
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
+	}
+
+	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
+	require.Empty(t, redeemRepo.useCalls, "an already-used order code must not be redeemed again")
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+}
+
 func TestExecuteSubscriptionFulfillmentRecoversCommittedAssignmentWithoutExtendingAgain(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
@@ -948,6 +1010,79 @@ func TestExecuteSubscriptionFulfillmentAppliesAffiliateRebate(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, applied.Detail, `"baseAmount":9.99`)
 	require.Contains(t, applied.Detail, `"rebateAmount":1.4985`)
+}
+
+func TestExecuteSubscriptionFulfillmentCompletesWhenAuxiliaryRebateFailsAfterAssignment(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+
+	user, err := client.User.Create().
+		SetEmail("subscription-affiliate-fail@example.com").
+		SetPasswordHash("hash").
+		SetUsername("subscription-affiliate-fail-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(9.99).
+		SetPayAmount(71.36).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-SUB-AFFILIATE-FAIL").
+		SetOutTradeNo("sub2_subscription_affiliate_fail").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-sub-affiliate-fail").
+		SetOrderType(payment.OrderTypeSubscription).
+		SetPlanID(99).
+		SetSubscriptionGroupID(7).
+		SetSubscriptionDays(30).
+		SetStatus(OrderStatusPaid).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID:    user.ID,
+			AffCode:   "INVITEE",
+			InviterID: &inviterID,
+			CreatedAt: time.Now().Add(-24 * time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID:    inviterID,
+			AffCode:   "INVITER",
+			CreatedAt: time.Now().Add(-48 * time.Hour),
+		},
+		accrueErr: errors.New("rebate backend unavailable"),
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:                "true",
+		SettingKeyAffiliateSubscriptionEnabled:    "true",
+		SettingKeyAffiliateSubscriptionRebateRate: "20",
+		SettingKeyAffiliateRebateFreezeHours:      "0",
+	}}, nil)
+	subRepo := newSubscriptionUserSubRepoStub()
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	svc := &PaymentService{
+		entClient:        client,
+		groupRepo:        groupRepo,
+		subscriptionSvc:  NewSubscriptionService(groupRepo, subRepo, nil, nil, nil),
+		affiliateService: NewAffiliateService(affiliateRepo, settingSvc, nil, nil),
+	}
+
+	require.NoError(t, svc.ExecuteSubscriptionFulfillment(ctx, order.ID))
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.Equal(t, 1, subRepo.createCalls)
 }
 
 func TestExecuteSubscriptionFulfillmentDoesNotDuplicateWorkAfterLegacySuccessAudit(t *testing.T) {

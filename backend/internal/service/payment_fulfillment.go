@@ -339,10 +339,10 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 	switch action {
 	case redeemActionSkipCompleted:
 		if err := s.applyPaidUserRateForBalanceOrder(ctx, o); err != nil {
-			return err
+			s.logFulfillmentAuxiliaryError(ctx, o, "apply_paid_user_rate", err)
 		}
 		if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
-			return err
+			s.logFulfillmentAuxiliaryError(ctx, o, "apply_affiliate_rebate", err)
 		}
 		// Code already created and redeemed — just mark completed
 		return s.markCompleted(ctx, o, lease, "RECHARGE_SUCCESS")
@@ -358,12 +358,34 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyPaidUserRateForBalanceOrder(ctx, o); err != nil {
-		return err
+		s.logFulfillmentAuxiliaryError(ctx, o, "apply_paid_user_rate", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
-		return err
+		s.logFulfillmentAuxiliaryError(ctx, o, "apply_affiliate_rebate", err)
 	}
 	return s.markCompleted(ctx, o, lease, "RECHARGE_SUCCESS")
+}
+
+func (s *PaymentService) logFulfillmentAuxiliaryError(ctx context.Context, o *dbent.PaymentOrder, step string, err error) {
+	if err == nil {
+		return
+	}
+	orderID := int64(0)
+	if o != nil {
+		orderID = o.ID
+	}
+	slog.Error("payment fulfillment auxiliary step failed after entitlement",
+		"orderID", orderID,
+		"step", step,
+		"error", err,
+	)
+	if s == nil || o == nil {
+		return
+	}
+	s.writeAuditLog(ctx, o.ID, "FULFILLMENT_AUXILIARY_FAILED", "system", map[string]any{
+		"step":  step,
+		"error": err.Error(),
+	})
 }
 
 func (s *PaymentService) applyPaidUserRateForBalanceOrder(ctx context.Context, o *dbent.PaymentOrder) error {
@@ -537,18 +559,21 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 		})
 		if sub != nil && sub.ID > 0 {
 			if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionID(sub.ID).Save(ctx); err != nil {
-				return fmt.Errorf("persist subscription id: %w", err)
+				s.logFulfillmentAuxiliaryError(ctx, o, "persist_subscription_id", fmt.Errorf("persist subscription id: %w", err))
+			} else {
+				refreshed, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
+				if err != nil {
+					s.logFulfillmentAuxiliaryError(ctx, o, "reload_order_after_persisting_subscription_id", fmt.Errorf("reload order after persisting subscription id: %w", err))
+					lease = nil
+				} else {
+					lease.version = refreshed.UpdatedAt
+					o = refreshed
+				}
 			}
-			refreshed, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
-			if err != nil {
-				return fmt.Errorf("reload order after persisting subscription id: %w", err)
-			}
-			lease.version = refreshed.UpdatedAt
-			o = refreshed
 		}
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
-		return err
+		s.logFulfillmentAuxiliaryError(ctx, o, "apply_affiliate_rebate", err)
 	}
 	return s.markCompleted(ctx, o, lease, "SUBSCRIPTION_SUCCESS")
 }

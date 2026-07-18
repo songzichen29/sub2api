@@ -124,12 +124,14 @@ func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, 
 
 func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
+	now := time.Now()
 	m, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.GroupIDEQ(groupID),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
-			usersubscription.ExpiresAtGT(time.Now()),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
 		).
 		WithGroup().
 		Only(ctx)
@@ -249,11 +251,13 @@ func (r *userSubscriptionRepository) ListByUserID(ctx context.Context, userID in
 
 func (r *userSubscriptionRepository) ListActiveByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
+	now := time.Now()
 	subs, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
-			usersubscription.ExpiresAtGT(time.Now()),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
 		).
 		WithGroup().
 		Order(dbent.Desc(usersubscription.FieldCreatedAt)).
@@ -309,9 +313,10 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 	now := time.Now()
 	switch status {
 	case service.SubscriptionStatusActive:
-		// Active: status is active AND not yet expired
+		// Active: status is active, already started, and not yet expired
 		q = q.Where(
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StartsAtLTE(now),
 			usersubscription.ExpiresAtGT(now),
 		)
 	case service.SubscriptionStatusExpired:
@@ -461,7 +466,17 @@ func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Contex
 }
 
 func (r *userSubscriptionRepository) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
-	return r.ExistsByUserIDAndGroupID(ctx, userID, groupID)
+	client := clientFromContext(ctx, r.client)
+	now := time.Now()
+	return client.UserSubscription.Query().
+		Where(
+			usersubscription.UserIDEQ(userID),
+			usersubscription.GroupIDEQ(groupID),
+			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
+		).
+		Exist(ctx)
 }
 
 func (r *userSubscriptionRepository) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
@@ -921,11 +936,13 @@ func (r *userSubscriptionRepository) CountByGroupID(ctx context.Context, groupID
 
 func (r *userSubscriptionRepository) CountActiveByGroupID(ctx context.Context, groupID int64) (int64, error) {
 	client := clientFromContext(ctx, r.client)
+	now := time.Now()
 	count, err := client.UserSubscription.Query().
 		Where(
 			usersubscription.GroupIDEQ(groupID),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
-			usersubscription.ExpiresAtGT(time.Now()),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
 		).
 		Count(ctx)
 	return int64(count), err
