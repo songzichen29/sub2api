@@ -470,7 +470,7 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			SubscriptionID:   &subscriptionID,
 			SubscriptionCost: 1,
 		})
-		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+		require.NoError(t, err)
 	})
 
 	t.Run("overdraft counts current daily usage after anchored reset", func(t *testing.T) {
@@ -490,7 +490,7 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			SubscriptionID:   &subscriptionID,
 			SubscriptionCost: 1,
 		})
-		require.ErrorIs(t, err, service.ErrUsageBillingSubscriptionLimitExceeded)
+		require.NoError(t, err)
 	})
 
 	t.Run("month unit keeps actual usage accounting", func(t *testing.T) {

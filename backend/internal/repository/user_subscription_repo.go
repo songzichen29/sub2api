@@ -583,9 +583,11 @@ func (r *userSubscriptionRepository) translateConditionalWindowReset(ctx context
 // Production uses usageBillingRepository.Apply; this method keeps the same limit
 // guard semantics so degraded/test paths cannot silently overrun configured pools.
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
-	const updateSQL = `
+	now := time.Now()
+	const baseUpdateSQL = `
 		UPDATE user_subscriptions us
 		JOIN ` + quotedGroupsTable + ` g ON us.group_id = g.id AND g.deleted_at IS NULL
+		CROSS JOIN (SELECT ? AS now_ts) clock
 		SET
 			us.daily_usage_usd = us.daily_usage_usd + ?,
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
@@ -747,10 +749,11 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 			)
 	`
 
+	updateSQL := replaceSQLNowWithClock(baseUpdateSQL)
 	client := clientFromContext(ctx, r.client)
 	allowOverLimit := false
 	result, err := client.ExecContext(ctx, updateSQL,
-		costUSD, costUSD, costUSD, costUSD,
+		now, costUSD, costUSD, costUSD, costUSD,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,

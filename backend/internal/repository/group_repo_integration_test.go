@@ -449,7 +449,7 @@ func (s *GroupRepoSuite) TestUpdateSortOrders_MissingGroupIgnored() {
 	}
 	s.Require().NoError(s.repo.Create(s.ctx, g1))
 
-	err = s.repo.UpdateSortOrders(s.ctx, []service.GroupSortOrderUpdate{
+	err := s.repo.UpdateSortOrders(s.ctx, []service.GroupSortOrderUpdate{
 		{ID: g1.ID, SortOrder: 99},
 		{ID: 99999999, SortOrder: 1},
 	})

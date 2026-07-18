@@ -225,9 +225,11 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64, allowOverLimit bool) error {
-	const updateSQL = `
+	now := time.Now()
+	const baseUpdateSQL = `
 		UPDATE user_subscriptions us
 		JOIN ` + quotedGroupsTable + ` g ON us.group_id = g.id AND g.deleted_at IS NULL
+		CROSS JOIN (SELECT ? AS now_ts) clock
 		SET
 			us.daily_usage_usd = us.daily_usage_usd + ?,
 			us.weekly_usage_usd = us.weekly_usage_usd + ?,
@@ -388,8 +390,9 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 				OR (? AND us.monthly_usage_usd < g.monthly_limit_usd)
 			)
 	`
+	updateSQL := replaceSQLNowWithClock(baseUpdateSQL)
 	res, err := tx.ExecContext(ctx, updateSQL,
-		costUSD, costUSD, costUSD, costUSD,
+		now, costUSD, costUSD, costUSD, costUSD,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, costUSD, costUSD, costUSD, service.SubscriptionStatusQuotaExhausted,
 		costUSD, service.SubscriptionStatusQuotaExhausted,
