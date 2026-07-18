@@ -256,6 +256,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
+		cmd.AllowSubscriptionOverLimit = true
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -314,8 +315,20 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil && deps.billingCacheService != nil {
+			groupID := *p.APIKey.GroupID
+			if result != nil && result.SubscriptionQuotaExhausted {
+				if err := deps.billingCacheService.InvalidateSubscription(ctx, p.User.ID, groupID); err != nil {
+					slog.Warn("invalidate subscription cache after quota exhausted failed",
+						"user_id", p.User.ID,
+						"group_id", groupID,
+						"error", err,
+					)
+				}
+				_ = deps.billingCacheService.PublishSubscriptionCacheInvalidation(ctx, subCacheKey(p.User.ID, groupID))
+			} else {
+				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, groupID, p.Cost.ActualCost)
+			}
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		syncBalanceCacheAfterDeduction(ctx, p, deps, result)

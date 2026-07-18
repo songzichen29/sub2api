@@ -620,8 +620,12 @@ func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int6
 						END
 					) >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 					THEN ?
-				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
-				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
+				WHEN COALESCE(g.weekly_limit_usd, 0) > 0
+					AND NOT (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
+					AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
+				WHEN COALESCE(g.monthly_limit_usd, 0) > 0
+					AND NOT (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
+					AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
 				ELSE us.status
 			END,
 			us.updated_at = NOW()

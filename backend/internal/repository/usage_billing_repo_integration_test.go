@@ -430,17 +430,45 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 
 	t.Run("overdraft daily uses validity day pool", func(t *testing.T) {
 		apiKeyID, subscriptionID := newFixture(t, true, 80, 120)
-		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		result, err := repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:        uuid.NewString(),
 			APIKeyID:         apiKeyID,
 			SubscriptionID:   &subscriptionID,
 			SubscriptionCost: 5,
 		})
 		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, result.SubscriptionQuotaExhausted)
 		var dailyUsage, weeklyUsage float64
-		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd, weekly_usage_usd FROM user_subscriptions WHERE id = ?", subscriptionID).Scan(&dailyUsage, &weeklyUsage))
+		var status string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT daily_usage_usd, weekly_usage_usd, status FROM user_subscriptions WHERE id = ?", subscriptionID).Scan(&dailyUsage, &weeklyUsage, &status))
 		require.InDelta(t, 85, dailyUsage, 0.000001)
 		require.InDelta(t, 125, weeklyUsage, 0.000001)
+		require.Equal(t, service.SubscriptionStatusActive, status)
+	})
+
+	t.Run("overdraft ignores weekly and monthly status exhaustion", func(t *testing.T) {
+		apiKeyID, subscriptionID := newFixture(t, true, 70, 120)
+		_, err := integrationDB.ExecContext(ctx, `
+			UPDATE user_subscriptions
+			SET weekly_usage_usd = 120, monthly_usage_usd = 559
+			WHERE id = ?
+		`, subscriptionID)
+		require.NoError(t, err)
+
+		result, err := repo.Apply(ctx, &service.UsageBillingCommand{
+			RequestID:        uuid.NewString(),
+			APIKeyID:         apiKeyID,
+			SubscriptionID:   &subscriptionID,
+			SubscriptionCost: 1,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.False(t, result.SubscriptionQuotaExhausted)
+
+		var status string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT status FROM user_subscriptions WHERE id = ?", subscriptionID).Scan(&status))
+		require.Equal(t, service.SubscriptionStatusActive, status)
 	})
 
 	t.Run("overdraft rejects once validity day pool already full", func(t *testing.T) {
@@ -541,7 +569,7 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 
 	t.Run("allow over limit permits final crossing but rejects next", func(t *testing.T) {
 		apiKeyID, subscriptionID := newFixture(t, true, 80, 399)
-		_, err := repo.Apply(ctx, &service.UsageBillingCommand{
+		result, err := repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:                  uuid.NewString(),
 			APIKeyID:                   apiKeyID,
 			SubscriptionID:             &subscriptionID,
@@ -549,6 +577,12 @@ func TestUsageBillingRepositoryApply_SubscriptionDailyOverdraftLimits(t *testing
 			AllowSubscriptionOverLimit: true,
 		})
 		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.True(t, result.SubscriptionQuotaExhausted)
+
+		var status string
+		require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT status FROM user_subscriptions WHERE id = ?", subscriptionID).Scan(&status))
+		require.Equal(t, service.SubscriptionStatusQuotaExhausted, status)
 
 		_, err = repo.Apply(ctx, &service.UsageBillingCommand{
 			RequestID:                  uuid.NewString(),

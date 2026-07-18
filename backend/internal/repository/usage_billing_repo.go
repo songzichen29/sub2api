@@ -185,9 +185,11 @@ func (r *usageBillingRepository) applyBatchImageBalanceHold(
 
 func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand, result *service.UsageBillingApplyResult) error {
 	if cmd.SubscriptionCost > 0 && cmd.SubscriptionID != nil {
-		if err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost, cmd.AllowSubscriptionOverLimit); err != nil {
+		exhausted, err := incrementUsageBillingSubscription(ctx, tx, *cmd.SubscriptionID, cmd.SubscriptionCost, cmd.AllowSubscriptionOverLimit)
+		if err != nil {
 			return err
 		}
+		result.SubscriptionQuotaExhausted = exhausted
 	}
 
 	if cmd.BalanceCost > 0 {
@@ -224,7 +226,7 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	return nil
 }
 
-func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64, allowOverLimit bool) error {
+func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64, allowOverLimit bool) (bool, error) {
 	now := time.Now()
 	const baseUpdateSQL = `
 		UPDATE user_subscriptions us
@@ -262,8 +264,12 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 						END
 					) >= g.daily_limit_usd * GREATEST(1, CEIL(TIMESTAMPDIFF(SECOND, us.starts_at, us.expires_at) / 86400))
 					THEN ?
-				WHEN COALESCE(g.weekly_limit_usd, 0) > 0 AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
-				WHEN COALESCE(g.monthly_limit_usd, 0) > 0 AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
+				WHEN COALESCE(g.weekly_limit_usd, 0) > 0
+					AND NOT (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
+					AND us.weekly_usage_usd + ? >= g.weekly_limit_usd THEN ?
+				WHEN COALESCE(g.monthly_limit_usd, 0) > 0
+					AND NOT (g.allow_daily_overdraft = TRUE AND us.allow_daily_overdraft = TRUE)
+					AND us.monthly_usage_usd + ? >= g.monthly_limit_usd THEN ?
 				ELSE us.status
 			END,
 			us.updated_at = NOW()
@@ -406,24 +412,32 @@ func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscrip
 		costUSD, allowOverLimit,
 	)
 	if err != nil {
-		return err
+		return false, err
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if affected > 0 {
-		return nil
+		var status string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT status
+			FROM user_subscriptions
+			WHERE id = ? AND deleted_at IS NULL
+		`, subscriptionID).Scan(&status); err != nil {
+			return false, err
+		}
+		return status == service.SubscriptionStatusQuotaExhausted, nil
 	}
 
 	exists, limitErr := subscriptionBillingLimitExceeded(ctx, tx, subscriptionID)
 	if limitErr != nil {
-		return limitErr
+		return false, limitErr
 	}
 	if exists {
-		return service.ErrUsageBillingSubscriptionLimitExceeded
+		return false, service.ErrUsageBillingSubscriptionLimitExceeded
 	}
-	return service.ErrSubscriptionNotFound
+	return false, service.ErrSubscriptionNotFound
 }
 
 func subscriptionBillingLimitExceeded(ctx context.Context, tx *sql.Tx, subscriptionID int64) (bool, error) {

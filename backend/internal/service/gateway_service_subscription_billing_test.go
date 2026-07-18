@@ -24,6 +24,7 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 		wantSub         float64
 		wantBalance     float64
 		wantAPIKeyQuota float64
+		wantAllowOver   bool
 	}{
 		{
 			name:            "subscription with 2x multiplier consumes 2x quota",
@@ -33,6 +34,7 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			wantSub:         2.0,
 			wantBalance:     0,
 			wantAPIKeyQuota: 0,
+			wantAllowOver:   true,
 		},
 		{
 			name:            "subscription with 0.5x multiplier consumes 0.5x quota",
@@ -42,6 +44,7 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			wantSub:         0.5,
 			wantBalance:     0,
 			wantAPIKeyQuota: 0,
+			wantAllowOver:   true,
 		},
 		{
 			name:            "free subscription (multiplier 0) consumes no quota",
@@ -88,6 +91,9 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			}
 			if cmd.APIKeyQuotaCost != tt.wantAPIKeyQuota {
 				t.Errorf("APIKeyQuotaCost = %v, want %v", cmd.APIKeyQuotaCost, tt.wantAPIKeyQuota)
+			}
+			if cmd.AllowSubscriptionOverLimit != tt.wantAllowOver {
+				t.Errorf("AllowSubscriptionOverLimit = %v, want %v", cmd.AllowSubscriptionOverLimit, tt.wantAllowOver)
 			}
 		})
 	}
