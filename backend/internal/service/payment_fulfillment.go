@@ -539,6 +539,12 @@ func (s *PaymentService) doSub(ctx context.Context, o *dbent.PaymentOrder, lease
 			if _, err := s.entClient.PaymentOrder.UpdateOneID(o.ID).SetSubscriptionID(sub.ID).Save(ctx); err != nil {
 				return fmt.Errorf("persist subscription id: %w", err)
 			}
+			refreshed, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
+			if err != nil {
+				return fmt.Errorf("reload order after persisting subscription id: %w", err)
+			}
+			lease.version = refreshed.UpdatedAt
+			o = refreshed
 		}
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {

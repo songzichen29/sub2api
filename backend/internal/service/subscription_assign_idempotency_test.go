@@ -29,6 +29,19 @@ func TestWithSubscriptionUpdateTx_ReusesExistingTransaction(t *testing.T) {
 	require.True(t, called)
 }
 
+func TestBeginSubscriptionUpdateTx_ReusesExistingTransaction(t *testing.T) {
+	existingTx := &dbent.Tx{}
+	ctx := dbent.NewTxContext(context.Background(), existingTx)
+	svc := &SubscriptionService{entClient: &dbent.Client{}}
+
+	txCtx, rollbackTx, commitTx, err := svc.beginSubscriptionUpdateTx(ctx)
+
+	require.NoError(t, err)
+	require.Same(t, existingTx, dbent.TxFromContext(txCtx))
+	require.NotPanics(t, rollbackTx)
+	require.NoError(t, commitTx())
+}
+
 func TestMaybeInvalidateAssignmentCaches_DefersForOuterTransactionOwner(t *testing.T) {
 	cache, err := ristretto.NewCache(&ristretto.Config{NumCounters: 1_000, MaxCost: 100, BufferItems: 64})
 	require.NoError(t, err)

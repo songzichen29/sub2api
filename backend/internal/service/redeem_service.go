@@ -556,11 +556,17 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 		if s.authCacheInvalidator != nil {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 		}
-		if s.billingCacheService == nil {
-			return
-		}
 		if redeemCode.GroupID != nil {
 			groupID := *redeemCode.GroupID
+			if s.subscriptionService != nil {
+				if err := s.subscriptionService.invalidateSubscriptionCaches(userID, groupID); err != nil {
+					logger.LegacyPrintf("service.redeem", "Warning: invalidate subscription cache after redeem failed user=%d group=%d: %v", userID, groupID, err)
+				}
+				return
+			}
+			if s.billingCacheService == nil {
+				return
+			}
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -705,7 +711,7 @@ func (s *RedeemService) reduceOrCancelSubscription(ctx context.Context, userID, 
 	}
 
 	// 失效缓存
-	s.subscriptionService.InvalidateSubCache(userID, groupID)
+	s.subscriptionService.maybeInvalidateAssignmentCaches(userID, groupID, dbent.TxFromContext(ctx) != nil)
 
 	return nil
 }

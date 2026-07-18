@@ -644,6 +644,40 @@ func TestAlreadyProcessedRecoversStaleRechargingLease(t *testing.T) {
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 }
 
+func TestExecuteSubscriptionFulfillmentCompletesAfterPersistingSubscriptionID(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	staleAt := time.Now().Add(-paymentFulfillmentLeaseDuration - time.Minute)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRecharging, staleAt)
+
+	subRepo := newSubscriptionUserSubRepoStub()
+	groupRepo := &subscriptionGroupRepoStub{
+		group: &Group{ID: 7, Status: payment.EntityStatusActive, SubscriptionType: SubscriptionTypeSubscription},
+	}
+	svc := &PaymentService{
+		entClient:       client,
+		groupRepo:       groupRepo,
+		subscriptionSvc: NewSubscriptionService(groupRepo, subRepo, nil, nil, nil),
+	}
+
+	require.NoError(t, svc.ExecuteSubscriptionFulfillment(ctx, order.ID))
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusCompleted, reloaded.Status)
+	require.NotNil(t, reloaded.SubscriptionID)
+	require.Equal(t, 1, subRepo.createCalls)
+
+	assignmentAuditCount, err := client.PaymentAuditLog.Query().
+		Where(
+			paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+			paymentauditlog.ActionEQ("SUBSCRIPTION_ASSIGNED"),
+		).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, assignmentAuditCount)
+}
+
 func TestFulfillmentLeaseVersionRejectsStaleWorker(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

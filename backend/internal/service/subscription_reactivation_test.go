@@ -579,6 +579,71 @@ func TestAssignOrExtendSubscription_PaidOneDayRenewalResetsDailyUsageAndRestarts
 	require.WithinDuration(t, sub.ExpiresAt, *sub.DailyResetTime(), 3*time.Second)
 }
 
+func TestAssignOrExtendSubscription_PaidOneDayRenewalClearsHistoricalDebtWhenOverdraftDisabled(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("sub-paid-renew-clear-debt@example.com").
+		SetPasswordHash("hash").
+		SetUsername("sub-paid-renew-clear-debt-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	dailyLimit := 80.0
+	group, err := client.Group.Create().
+		SetName("sub-paid-renew-clear-debt-group").
+		SetPlatform(PlatformOpenAI).
+		SetSubscriptionType(SubscriptionTypeSubscription).
+		SetDailyLimitUsd(dailyLimit).
+		SetRateMultiplier(1.0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	repo := &subscriptionEntRepo{client: client}
+	startsAt := time.Now().Add(-2 * time.Hour)
+	expiresAt := time.Now().Add(22 * time.Hour)
+	dailyStart := startsAt
+	err = repo.Create(ctx, &UserSubscription{
+		UserID:           user.ID,
+		GroupID:          group.ID,
+		StartsAt:         startsAt,
+		ExpiresAt:        expiresAt,
+		Status:           SubscriptionStatusActive,
+		DailyWindowStart: &dailyStart,
+		DailyUsageUSD:    dailyLimit,
+		WeeklyUsageUSD:   dailyLimit,
+		MonthlyUsageUSD:  dailyLimit,
+		Source:           "payment",
+	})
+	require.NoError(t, err)
+
+	svc := NewSubscriptionService(&subscriptionGroupRepoStub{
+		group: &Group{
+			ID:               group.ID,
+			SubscriptionType: SubscriptionTypeSubscription,
+			DailyLimitUSD:    &dailyLimit,
+		},
+	}, repo, nil, client, nil)
+
+	sub, reused, err := svc.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+		UserID:       user.ID,
+		GroupID:      group.ID,
+		ValidityDays: 1,
+		Notes:        "renew-note",
+		Source:       "payment",
+	})
+	require.NoError(t, err)
+	require.True(t, reused)
+	require.NotNil(t, sub)
+	require.Equal(t, 0.0, sub.DailyUsageUSD)
+	require.Equal(t, 0.0, sub.WeeklyUsageUSD)
+	require.Equal(t, 0.0, sub.MonthlyUsageUSD)
+	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit}
+	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
+	require.NoError(t, err)
+}
+
 func TestAssignOrExtendSubscription_PaidOneDayRenewalDoesNotShrinkOverdraftPool(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
