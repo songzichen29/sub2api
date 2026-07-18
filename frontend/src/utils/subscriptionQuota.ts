@@ -21,6 +21,52 @@ export function isOneTimeDailyQuota(
   return expiresAt <= startsAt + ONE_DAY_MS
 }
 
+export function getSubscriptionOverdraftLimit(
+  subscription: Pick<UserSubscription, 'allow_daily_overdraft' | 'overdraft_limit_usd'>
+): number | null {
+  return subscription.allow_daily_overdraft
+    && typeof subscription.overdraft_limit_usd === 'number'
+    && subscription.overdraft_limit_usd > 0
+    ? subscription.overdraft_limit_usd
+    : null
+}
+
+export function getSubscriptionOverdraftUsed(
+  subscription: Pick<UserSubscription, 'overdraft_used_usd' | 'weekly_usage_usd'>
+): number {
+  return subscription.overdraft_used_usd ?? subscription.weekly_usage_usd ?? 0
+}
+
+export function getSubscriptionUsagePriority(sub: UserSubscription): number {
+  const overdraftLimit = getSubscriptionOverdraftLimit(sub)
+  if (overdraftLimit !== null) {
+    const percentages = [
+      overdraftLimit > 0
+        ? (getSubscriptionOverdraftUsed(sub) / overdraftLimit) * 100
+        : 0,
+    ]
+    if (sub.quota_limit_usd != null && sub.quota_limit_usd > 0) {
+      percentages.push(((sub.quota_used_usd ?? 0) / sub.quota_limit_usd) * 100)
+    }
+    return Math.max(...percentages)
+  }
+
+  const percentages: number[] = []
+  if (sub.quota_limit_usd != null && sub.quota_limit_usd > 0) {
+    percentages.push(((sub.quota_used_usd ?? 0) / sub.quota_limit_usd) * 100)
+  }
+  if (sub.group?.daily_limit_usd != null && sub.group.daily_limit_usd > 0) {
+    percentages.push(((sub.daily_usage_usd || 0) / sub.group.daily_limit_usd) * 100)
+  }
+  if (sub.group?.weekly_limit_usd != null && sub.group.weekly_limit_usd > 0) {
+    percentages.push(((sub.weekly_usage_usd || 0) / sub.group.weekly_limit_usd) * 100)
+  }
+  if (sub.group?.monthly_limit_usd != null && sub.group.monthly_limit_usd > 0) {
+    percentages.push(((sub.monthly_usage_usd || 0) / sub.group.monthly_limit_usd) * 100)
+  }
+  return percentages.length > 0 ? Math.max(...percentages) : 0
+}
+
 export function getRemainingDurationParts(
   targetAt: Date | string,
   now: Date = new Date()

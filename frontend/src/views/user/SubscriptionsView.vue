@@ -174,47 +174,6 @@
               </p>
             </div>
 
-            <!-- Daily Usage -->
-            <div v-if="subscription.group?.daily_limit_usd" class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('userSubscriptions.daily') }}
-                </span>
-                <span class="text-sm text-gray-500 dark:text-dark-400">
-                  ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.daily_limit_usd.toFixed(2)
-                  }}
-                </span>
-              </div>
-              <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-                <div
-                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
-                  :class="
-                    getProgressBarClass(
-                      subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
-                    )
-                  "
-                  :style="{
-                    width: getProgressWidth(
-                      subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
-                    )
-                  }"
-                ></div>
-              </div>
-              <p
-                v-if="subscription.daily_window_start"
-                class="text-xs text-gray-500 dark:text-dark-400"
-              >
-                {{
-                  t('userSubscriptions.resetIn', {
-                    time: formatResetTime(subscription.daily_window_start, 24)
-                  })
-                }}
-              </p>
-            </div>
-
             <!-- Weekly Usage -->
             <div v-if="getOverdraftLimit(subscription) || subscription.group?.weekly_limit_usd" class="space-y-2">
               <div class="flex items-center justify-between">
@@ -264,6 +223,47 @@
                   <span class="font-medium text-gray-800 dark:text-gray-100">${{ getOverdraftRemaining(subscription).toFixed(2) }}</span>
                 </div>
               </div>
+            </div>
+
+            <!-- Daily Usage -->
+            <div v-if="subscription.group?.daily_limit_usd" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('userSubscriptions.daily') }}
+                </span>
+                <span class="text-sm text-gray-500 dark:text-dark-400">
+                  ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
+                    subscription.group.daily_limit_usd.toFixed(2)
+                  }}
+                </span>
+              </div>
+              <div class="relative h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                <div
+                  class="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
+                  :class="
+                    getProgressBarClass(
+                      subscription.daily_usage_usd,
+                      subscription.group.daily_limit_usd
+                    )
+                  "
+                  :style="{
+                    width: getProgressWidth(
+                      subscription.daily_usage_usd,
+                      subscription.group.daily_limit_usd
+                    )
+                  }"
+                ></div>
+              </div>
+              <p
+                v-if="subscription.daily_window_start"
+                class="text-xs text-gray-500 dark:text-dark-400"
+              >
+                {{
+                  t('userSubscriptions.resetIn', {
+                    time: formatResetTime(subscription.daily_window_start, 24)
+                  })
+                }}
+              </p>
             </div>
 
             <!-- Monthly Usage -->
