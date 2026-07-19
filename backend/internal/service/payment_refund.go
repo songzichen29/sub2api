@@ -172,7 +172,21 @@ func (s *PaymentService) RequestRefund(ctx context.Context, oid, uid int64, reas
 	nr := strings.TrimSpace(reason)
 	now := time.Now()
 	by := fmt.Sprintf("%d", uid)
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(oid), paymentorder.UserIDEQ(uid), paymentorder.StatusEQ(OrderStatusCompleted), paymentorder.OrderTypeEQ(payment.OrderTypeBalance)).SetStatus(OrderStatusRefundRequested).SetRefundRequestedAt(now).SetRefundRequestReason(nr).SetRefundRequestedBy(by).SetRefundAmount(refundAmount).Save(ctx)
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(
+			paymentorder.IDEQ(oid),
+			paymentorder.UserIDEQ(uid),
+			paymentorder.StatusEQ(OrderStatusCompleted),
+			paymentorder.OrderTypeEQ(payment.OrderTypeBalance),
+			paymentorder.InvoiceStatusEQ(InvoiceOrderStatusUnapplied),
+			paymentorder.InvoiceApplicationIDIsNil(),
+		).
+		SetStatus(OrderStatusRefundRequested).
+		SetRefundRequestedAt(now).
+		SetRefundRequestReason(nr).
+		SetRefundRequestedBy(by).
+		SetRefundAmount(refundAmount).
+		Save(ctx)
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
@@ -197,6 +211,9 @@ func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int
 	if o.Status != OrderStatusCompleted {
 		return nil, infraerrors.BadRequest("INVALID_STATUS", "only completed orders can request refund")
 	}
+	if o.InvoiceStatus != InvoiceOrderStatusUnapplied || o.InvoiceApplicationID != nil {
+		return nil, infraerrors.Conflict("INVOICE_APPLICATION_EXISTS", "orders with an invoice application cannot be refunded")
+	}
 	// Check provider instance allows user refund
 	inst, err := s.getRefundOrderProviderInstance(ctx, o)
 	if err != nil || inst == nil {
@@ -215,6 +232,9 @@ func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float
 	}
 	if o.OrderType == payment.OrderTypeDailyLimitReset {
 		return nil, nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "daily limit reset orders cannot be refunded")
+	}
+	if o.InvoiceStatus != InvoiceOrderStatusUnapplied || o.InvoiceApplicationID != nil {
+		return nil, nil, infraerrors.Conflict("INVOICE_APPLICATION_EXISTS", "orders with an invoice application cannot be refunded")
 	}
 	ok := []string{OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed}
 	if !psSliceContains(ok, o.Status) {
@@ -301,7 +321,15 @@ func (s *PaymentService) prepDeduct(ctx context.Context, o *dbent.PaymentOrder, 
 }
 
 func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
-	c, err := s.entClient.PaymentOrder.Update().Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusIn(OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed)).SetStatus(OrderStatusRefunding).Save(ctx)
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(
+			paymentorder.IDEQ(p.OrderID),
+			paymentorder.StatusIn(OrderStatusCompleted, OrderStatusRefundRequested, OrderStatusRefundPending, OrderStatusRefundFailed),
+			paymentorder.InvoiceStatusEQ(InvoiceOrderStatusUnapplied),
+			paymentorder.InvoiceApplicationIDIsNil(),
+		).
+		SetStatus(OrderStatusRefunding).
+		Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("lock: %w", err)
 	}

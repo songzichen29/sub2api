@@ -35,6 +35,7 @@ type AdminHandlers struct {
 	ChannelMonitorTemplate *admin.ChannelMonitorRequestTemplateHandler
 	ContentModeration      *admin.ContentModerationHandler
 	Payment                *admin.PaymentHandler
+	Invoice                *admin.InvoiceHandler
 	Affiliate              *admin.AffiliateHandler
 	Compliance             *admin.ComplianceHandler
 }
@@ -55,6 +56,7 @@ type Handlers struct {
 	Setting          *SettingHandler
 	Totp             *TotpHandler
 	Payment          *PaymentHandler
+	Invoice          *InvoiceHandler
 	PaymentWebhook   *PaymentWebhookHandler
 	AvailableChannel *AvailableChannelHandler
 	ModelMarketplace *ModelMarketplaceHandler

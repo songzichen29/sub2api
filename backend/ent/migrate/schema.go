@@ -1132,6 +1132,145 @@ var (
 			},
 		},
 	}
+	// InvoiceApplicationsColumns holds the columns for the "invoice_applications" table.
+	InvoiceApplicationsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "PENDING"},
+		{Name: "invoice_type", Type: field.TypeString, Size: 20, Default: "ordinary"},
+		{Name: "header_type", Type: field.TypeString, Size: 20},
+		{Name: "header_title", Type: field.TypeString, Size: 255},
+		{Name: "header_tax_number", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "header_email", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "header_phone", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "header_address", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
+		{Name: "total_amount", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "handled_by", Type: field.TypeInt64, Nullable: true},
+		{Name: "rejection_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
+		{Name: "admin_note", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
+		{Name: "invoice_number", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "processed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "invoiced_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// InvoiceApplicationsTable holds the schema information for the "invoice_applications" table.
+	InvoiceApplicationsTable = &schema.Table{
+		Name:       "invoice_applications",
+		Columns:    InvoiceApplicationsColumns,
+		PrimaryKey: []*schema.Column{InvoiceApplicationsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "invoice_applications_users_invoice_applications",
+				Columns:    []*schema.Column{InvoiceApplicationsColumns[18]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invoiceapplication_user_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{InvoiceApplicationsColumns[18], InvoiceApplicationsColumns[1]},
+			},
+			{
+				Name:    "invoiceapplication_created_at",
+				Unique:  false,
+				Columns: []*schema.Column{InvoiceApplicationsColumns[16]},
+			},
+		},
+	}
+	// InvoiceApplicationOrdersColumns holds the columns for the "invoice_application_orders" table.
+	InvoiceApplicationOrdersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "order_no", Type: field.TypeString, Size: 128, Default: ""},
+		{Name: "order_type", Type: field.TypeString, Size: 20, Default: ""},
+		{Name: "amount", Type: field.TypeFloat64, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "paid_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "application_id", Type: field.TypeInt64},
+		{Name: "order_id", Type: field.TypeInt64},
+	}
+	// InvoiceApplicationOrdersTable holds the schema information for the "invoice_application_orders" table.
+	InvoiceApplicationOrdersTable = &schema.Table{
+		Name:       "invoice_application_orders",
+		Columns:    InvoiceApplicationOrdersColumns,
+		PrimaryKey: []*schema.Column{InvoiceApplicationOrdersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "invoice_application_orders_invoice_applications_orders",
+				Columns:    []*schema.Column{InvoiceApplicationOrdersColumns[6]},
+				RefColumns: []*schema.Column{InvoiceApplicationsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "invoice_application_orders_payment_orders_invoice_application_orders",
+				Columns:    []*schema.Column{InvoiceApplicationOrdersColumns[7]},
+				RefColumns: []*schema.Column{PaymentOrdersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invoiceapplicationorder_application_id_order_id",
+				Unique:  true,
+				Columns: []*schema.Column{InvoiceApplicationOrdersColumns[6], InvoiceApplicationOrdersColumns[7]},
+			},
+			{
+				Name:    "invoiceapplicationorder_order_id",
+				Unique:  false,
+				Columns: []*schema.Column{InvoiceApplicationOrdersColumns[7]},
+			},
+		},
+	}
+	// InvoiceHeadersColumns holds the columns for the "invoice_headers" table.
+	InvoiceHeadersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "title_type", Type: field.TypeString, Size: 20, Default: "personal"},
+		{Name: "title", Type: field.TypeString, Size: 255},
+		{Name: "tax_number", Type: field.TypeString, Size: 64, Default: ""},
+		{Name: "email", Type: field.TypeString, Size: 255, Default: ""},
+		{Name: "phone", Type: field.TypeString, Size: 32, Default: ""},
+		{Name: "address", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
+		{Name: "is_default", Type: field.TypeBool, Default: false},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// InvoiceHeadersTable holds the schema information for the "invoice_headers" table.
+	InvoiceHeadersTable = &schema.Table{
+		Name:       "invoice_headers",
+		Columns:    InvoiceHeadersColumns,
+		PrimaryKey: []*schema.Column{InvoiceHeadersColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "invoice_headers_users_invoice_headers",
+				Columns:    []*schema.Column{InvoiceHeadersColumns[10]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "invoiceheader_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{InvoiceHeadersColumns[10]},
+			},
+		},
+	}
+	// InvoiceSettingsColumns holds the columns for the "invoice_settings" table.
+	InvoiceSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "min_amount", Type: field.TypeFloat64, Default: 300, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"mysql": "datetime(6)"}},
+	}
+	// InvoiceSettingsTable holds the schema information for the "invoice_settings" table.
+	InvoiceSettingsTable = &schema.Table{
+		Name:       "invoice_settings",
+		Columns:    InvoiceSettingsColumns,
+		PrimaryKey: []*schema.Column{InvoiceSettingsColumns[0]},
+	}
 	// PaymentAuditLogsColumns holds the columns for the "payment_audit_logs" table.
 	PaymentAuditLogsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1185,6 +1324,8 @@ var (
 		{Name: "provider_key", Type: field.TypeString, Nullable: true, Size: 30},
 		{Name: "provider_snapshot", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"mysql": "json"}},
 		{Name: "status", Type: field.TypeString, Size: 30, Default: "PENDING"},
+		{Name: "invoice_status", Type: field.TypeString, Size: 20, Default: "UNAPPLIED"},
+		{Name: "invoice_application_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "refund_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"mysql": "decimal(20,2)"}},
 		{Name: "refund_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"mysql": "longtext"}},
 		{Name: "refund_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"mysql": "datetime(6)"}},
@@ -1212,7 +1353,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "payment_orders_users_payment_orders",
-				Columns:    []*schema.Column{PaymentOrdersColumns[46]},
+				Columns:    []*schema.Column{PaymentOrdersColumns[48]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -1229,7 +1370,7 @@ var (
 			{
 				Name:    "paymentorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[46]},
+				Columns: []*schema.Column{PaymentOrdersColumns[48]},
 			},
 			{
 				Name:    "paymentorder_status",
@@ -1239,22 +1380,22 @@ var (
 			{
 				Name:    "paymentorder_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[36]},
+				Columns: []*schema.Column{PaymentOrdersColumns[38]},
 			},
 			{
 				Name:    "paymentorder_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[44]},
+				Columns: []*schema.Column{PaymentOrdersColumns[46]},
 			},
 			{
 				Name:    "paymentorder_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[37]},
+				Columns: []*schema.Column{PaymentOrdersColumns[39]},
 			},
 			{
 				Name:    "paymentorder_payment_type_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[12], PaymentOrdersColumns[37]},
+				Columns: []*schema.Column{PaymentOrdersColumns[12], PaymentOrdersColumns[39]},
 			},
 			{
 				Name:    "paymentorder_order_type",
@@ -1270,6 +1411,16 @@ var (
 				Name:    "paymentorder_coupon_code",
 				Unique:  false,
 				Columns: []*schema.Column{PaymentOrdersColumns[8]},
+			},
+			{
+				Name:    "paymentorder_invoice_status",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[29]},
+			},
+			{
+				Name:    "paymentorder_invoice_application_id",
+				Unique:  false,
+				Columns: []*schema.Column{PaymentOrdersColumns[30]},
 			},
 		},
 	}
@@ -2162,6 +2313,10 @@ var (
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
+		InvoiceApplicationsTable,
+		InvoiceApplicationOrdersTable,
+		InvoiceHeadersTable,
+		InvoiceSettingsTable,
 		PaymentAuditLogsTable,
 		PaymentOrdersTable,
 		PaymentProviderInstancesTable,
@@ -2263,6 +2418,22 @@ func init() {
 	IdentityAdoptionDecisionsTable.ForeignKeys[1].RefTable = PendingAuthSessionsTable
 	IdentityAdoptionDecisionsTable.Annotation = &entsql.Annotation{
 		Table: "identity_adoption_decisions",
+	}
+	InvoiceApplicationsTable.ForeignKeys[0].RefTable = UsersTable
+	InvoiceApplicationsTable.Annotation = &entsql.Annotation{
+		Table: "invoice_applications",
+	}
+	InvoiceApplicationOrdersTable.ForeignKeys[0].RefTable = InvoiceApplicationsTable
+	InvoiceApplicationOrdersTable.ForeignKeys[1].RefTable = PaymentOrdersTable
+	InvoiceApplicationOrdersTable.Annotation = &entsql.Annotation{
+		Table: "invoice_application_orders",
+	}
+	InvoiceHeadersTable.ForeignKeys[0].RefTable = UsersTable
+	InvoiceHeadersTable.Annotation = &entsql.Annotation{
+		Table: "invoice_headers",
+	}
+	InvoiceSettingsTable.Annotation = &entsql.Annotation{
+		Table: "invoice_settings",
 	}
 	PaymentAuditLogsTable.Annotation = &entsql.Annotation{
 		Table: "payment_audit_logs",

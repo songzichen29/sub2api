@@ -26,6 +26,10 @@
               <Icon name="dollar" size="sm" />
               <span>{{ t('payment.orders.requestRefund') }}</span>
             </button>
+            <button v-if="canRequestInvoice(row)" @click="router.push({ path: '/invoices', query: { order_id: row.id } })" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20">
+              <Icon name="document" size="sm" />
+              <span>{{ t('invoice.tabs.apply') }}</span>
+            </button>
           </div>
         </template>
       </OrderTable>
@@ -185,7 +189,13 @@ async function confirmRefund() {
 function canRequestRefund(order: PaymentOrder): boolean {
   if (order.status !== 'COMPLETED') return false
   if (!order.provider_instance_id) return false
+  if (order.invoice_status && order.invoice_status !== 'UNAPPLIED') return false
+  if (order.invoice_application_id) return false
   return refundEligibleProviders.value.has(order.provider_instance_id)
+}
+
+function canRequestInvoice(order: PaymentOrder): boolean {
+  return order.status === 'COMPLETED' && order.refund_amount === 0 && order.invoice_status === 'UNAPPLIED' && !order.invoice_application_id && order.currency === 'CNY'
 }
 
 async function loadRefundEligibility() {

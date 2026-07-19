@@ -72,6 +72,10 @@ const (
 	FieldProviderSnapshot = "provider_snapshot"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldInvoiceStatus holds the string denoting the invoice_status field in the database.
+	FieldInvoiceStatus = "invoice_status"
+	// FieldInvoiceApplicationID holds the string denoting the invoice_application_id field in the database.
+	FieldInvoiceApplicationID = "invoice_application_id"
 	// FieldRefundAmount holds the string denoting the refund_amount field in the database.
 	FieldRefundAmount = "refund_amount"
 	// FieldRefundReason holds the string denoting the refund_reason field in the database.
@@ -110,6 +114,8 @@ const (
 	EdgeUser = "user"
 	// EdgeCouponUsages holds the string denoting the coupon_usages edge name in mutations.
 	EdgeCouponUsages = "coupon_usages"
+	// EdgeInvoiceApplicationOrders holds the string denoting the invoice_application_orders edge name in mutations.
+	EdgeInvoiceApplicationOrders = "invoice_application_orders"
 	// Table holds the table name of the paymentorder in the database.
 	Table = "payment_orders"
 	// UserTable is the table that holds the user relation/edge.
@@ -126,6 +132,13 @@ const (
 	CouponUsagesInverseTable = "coupon_usages"
 	// CouponUsagesColumn is the table column denoting the coupon_usages relation/edge.
 	CouponUsagesColumn = "order_id"
+	// InvoiceApplicationOrdersTable is the table that holds the invoice_application_orders relation/edge.
+	InvoiceApplicationOrdersTable = "invoice_application_orders"
+	// InvoiceApplicationOrdersInverseTable is the table name for the InvoiceApplicationOrder entity.
+	// It exists in this package in order to avoid circular dependency with the "invoiceapplicationorder" package.
+	InvoiceApplicationOrdersInverseTable = "invoice_application_orders"
+	// InvoiceApplicationOrdersColumn is the table column denoting the invoice_application_orders relation/edge.
+	InvoiceApplicationOrdersColumn = "order_id"
 )
 
 // Columns holds all SQL columns for paymentorder fields.
@@ -160,6 +173,8 @@ var Columns = []string{
 	FieldProviderKey,
 	FieldProviderSnapshot,
 	FieldStatus,
+	FieldInvoiceStatus,
+	FieldInvoiceApplicationID,
 	FieldRefundAmount,
 	FieldRefundReason,
 	FieldRefundAt,
@@ -228,6 +243,10 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultInvoiceStatus holds the default value on creation for the "invoice_status" field.
+	DefaultInvoiceStatus string
+	// InvoiceStatusValidator is a validator for the "invoice_status" field. It is called by the builders before save.
+	InvoiceStatusValidator func(string) error
 	// DefaultRefundAmount holds the default value on creation for the "refund_amount" field.
 	DefaultRefundAmount float64
 	// DefaultForceRefund holds the default value on creation for the "force_refund" field.
@@ -394,6 +413,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
+// ByInvoiceStatus orders the results by the invoice_status field.
+func ByInvoiceStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInvoiceStatus, opts...).ToFunc()
+}
+
+// ByInvoiceApplicationID orders the results by the invoice_application_id field.
+func ByInvoiceApplicationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldInvoiceApplicationID, opts...).ToFunc()
+}
+
 // ByRefundAmount orders the results by the refund_amount field.
 func ByRefundAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRefundAmount, opts...).ToFunc()
@@ -499,6 +528,20 @@ func ByCouponUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newCouponUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByInvoiceApplicationOrdersCount orders the results by invoice_application_orders count.
+func ByInvoiceApplicationOrdersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newInvoiceApplicationOrdersStep(), opts...)
+	}
+}
+
+// ByInvoiceApplicationOrders orders the results by invoice_application_orders terms.
+func ByInvoiceApplicationOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newInvoiceApplicationOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -511,5 +554,12 @@ func newCouponUsagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(CouponUsagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, CouponUsagesTable, CouponUsagesColumn),
+	)
+}
+func newInvoiceApplicationOrdersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(InvoiceApplicationOrdersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationOrdersTable, InvoiceApplicationOrdersColumn),
 	)
 }

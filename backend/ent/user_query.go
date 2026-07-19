@@ -18,6 +18,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/couponusage"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceapplication"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceheader"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
@@ -49,6 +51,8 @@ type UserQuery struct {
 	withPromoCodeUsages       *PromoCodeUsageQuery
 	withCouponUsages          *CouponUsageQuery
 	withPaymentOrders         *PaymentOrderQuery
+	withInvoiceHeaders        *InvoiceHeaderQuery
+	withInvoiceApplications   *InvoiceApplicationQuery
 	withAuthIdentities        *AuthIdentityQuery
 	withPendingAuthSessions   *PendingAuthSessionQuery
 	withPlatformQuotas        *UserPlatformQuotaQuery
@@ -325,6 +329,50 @@ func (_q *UserQuery) QueryPaymentOrders() *PaymentOrderQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(paymentorder.Table, paymentorder.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.PaymentOrdersTable, user.PaymentOrdersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryInvoiceHeaders chains the current query on the "invoice_headers" edge.
+func (_q *UserQuery) QueryInvoiceHeaders() *InvoiceHeaderQuery {
+	query := (&InvoiceHeaderClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(invoiceheader.Table, invoiceheader.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.InvoiceHeadersTable, user.InvoiceHeadersColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryInvoiceApplications chains the current query on the "invoice_applications" edge.
+func (_q *UserQuery) QueryInvoiceApplications() *InvoiceApplicationQuery {
+	query := (&InvoiceApplicationClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(invoiceapplication.Table, invoiceapplication.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.InvoiceApplicationsTable, user.InvoiceApplicationsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -623,6 +671,8 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
 		withCouponUsages:          _q.withCouponUsages.Clone(),
 		withPaymentOrders:         _q.withPaymentOrders.Clone(),
+		withInvoiceHeaders:        _q.withInvoiceHeaders.Clone(),
+		withInvoiceApplications:   _q.withInvoiceApplications.Clone(),
 		withAuthIdentities:        _q.withAuthIdentities.Clone(),
 		withPendingAuthSessions:   _q.withPendingAuthSessions.Clone(),
 		withPlatformQuotas:        _q.withPlatformQuotas.Clone(),
@@ -754,6 +804,28 @@ func (_q *UserQuery) WithPaymentOrders(opts ...func(*PaymentOrderQuery)) *UserQu
 	return _q
 }
 
+// WithInvoiceHeaders tells the query-builder to eager-load the nodes that are connected to
+// the "invoice_headers" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithInvoiceHeaders(opts ...func(*InvoiceHeaderQuery)) *UserQuery {
+	query := (&InvoiceHeaderClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withInvoiceHeaders = query
+	return _q
+}
+
+// WithInvoiceApplications tells the query-builder to eager-load the nodes that are connected to
+// the "invoice_applications" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithInvoiceApplications(opts ...func(*InvoiceApplicationQuery)) *UserQuery {
+	query := (&InvoiceApplicationClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withInvoiceApplications = query
+	return _q
+}
+
 // WithAuthIdentities tells the query-builder to eager-load the nodes that are connected to
 // the "auth_identities" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithAuthIdentities(opts ...func(*AuthIdentityQuery)) *UserQuery {
@@ -876,7 +948,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [15]bool{
+		loadedTypes = [17]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -888,6 +960,8 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withPromoCodeUsages != nil,
 			_q.withCouponUsages != nil,
 			_q.withPaymentOrders != nil,
+			_q.withInvoiceHeaders != nil,
+			_q.withInvoiceApplications != nil,
 			_q.withAuthIdentities != nil,
 			_q.withPendingAuthSessions != nil,
 			_q.withPlatformQuotas != nil,
@@ -991,6 +1065,22 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadPaymentOrders(ctx, query, nodes,
 			func(n *User) { n.Edges.PaymentOrders = []*PaymentOrder{} },
 			func(n *User, e *PaymentOrder) { n.Edges.PaymentOrders = append(n.Edges.PaymentOrders, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withInvoiceHeaders; query != nil {
+		if err := _q.loadInvoiceHeaders(ctx, query, nodes,
+			func(n *User) { n.Edges.InvoiceHeaders = []*InvoiceHeader{} },
+			func(n *User, e *InvoiceHeader) { n.Edges.InvoiceHeaders = append(n.Edges.InvoiceHeaders, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withInvoiceApplications; query != nil {
+		if err := _q.loadInvoiceApplications(ctx, query, nodes,
+			func(n *User) { n.Edges.InvoiceApplications = []*InvoiceApplication{} },
+			func(n *User, e *InvoiceApplication) {
+				n.Edges.InvoiceApplications = append(n.Edges.InvoiceApplications, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -1379,6 +1469,66 @@ func (_q *UserQuery) loadPaymentOrders(ctx context.Context, query *PaymentOrderQ
 	}
 	query.Where(predicate.PaymentOrder(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.PaymentOrdersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadInvoiceHeaders(ctx context.Context, query *InvoiceHeaderQuery, nodes []*User, init func(*User), assign func(*User, *InvoiceHeader)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(invoiceheader.FieldUserID)
+	}
+	query.Where(predicate.InvoiceHeader(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.InvoiceHeadersColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadInvoiceApplications(ctx context.Context, query *InvoiceApplicationQuery, nodes []*User, init func(*User), assign func(*User, *InvoiceApplication)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(invoiceapplication.FieldUserID)
+	}
+	query.Where(predicate.InvoiceApplication(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.InvoiceApplicationsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

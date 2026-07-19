@@ -133,6 +133,12 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(30).
 			Default("PENDING"),
+		field.String("invoice_status").
+			MaxLen(20).
+			Default("UNAPPLIED"),
+		field.Int64("invoice_application_id").
+			Optional().
+			Nillable(),
 
 		// 退款信息
 		field.Float("refund_amount").
@@ -211,6 +217,7 @@ func (PaymentOrder) Edges() []ent.Edge {
 			Unique().
 			Required(),
 		edge.To("coupon_usages", CouponUsage.Type),
+		edge.To("invoice_application_orders", InvoiceApplicationOrder.Type),
 	}
 }
 
@@ -228,5 +235,7 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("order_type"),
 		index.Fields("subscription_id"),
 		index.Fields("coupon_code"),
+		index.Fields("invoice_status"),
+		index.Fields("invoice_application_id"),
 	}
 }

@@ -38,6 +38,7 @@ func ProvideAdminHandlers(
 	channelMonitorTemplateHandler *admin.ChannelMonitorRequestTemplateHandler,
 	contentModerationHandler *admin.ContentModerationHandler,
 	paymentHandler *admin.PaymentHandler,
+	invoiceHandler *admin.InvoiceHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 ) *AdminHandlers {
@@ -71,6 +72,7 @@ func ProvideAdminHandlers(
 		ChannelMonitorTemplate: channelMonitorTemplateHandler,
 		ContentModeration:      contentModerationHandler,
 		Payment:                paymentHandler,
+		Invoice:                invoiceHandler,
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 	}
@@ -162,6 +164,7 @@ func ProvideHandlers(
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
+	invoiceHandler *InvoiceHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	modelMarketplaceHandler *ModelMarketplaceHandler,
@@ -185,6 +188,7 @@ func ProvideHandlers(
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		Payment:          paymentHandler,
+		Invoice:          invoiceHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		ModelMarketplace: modelMarketplaceHandler,
@@ -209,6 +213,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
+	NewInvoiceHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelMarketplaceHandler,
@@ -245,6 +250,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
 	ProvideAdminPaymentHandler,
+	admin.NewInvoiceHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 

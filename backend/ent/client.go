@@ -35,6 +35,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceapplication"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceheader"
+	"github.com/Wei-Shaw/sub2api/ent/invoicesetting"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -104,6 +108,14 @@ type Client struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// InvoiceApplication is the client for interacting with the InvoiceApplication builders.
+	InvoiceApplication *InvoiceApplicationClient
+	// InvoiceApplicationOrder is the client for interacting with the InvoiceApplicationOrder builders.
+	InvoiceApplicationOrder *InvoiceApplicationOrderClient
+	// InvoiceHeader is the client for interacting with the InvoiceHeader builders.
+	InvoiceHeader *InvoiceHeaderClient
+	// InvoiceSetting is the client for interacting with the InvoiceSetting builders.
+	InvoiceSetting *InvoiceSettingClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -175,6 +187,10 @@ func (c *Client) init() {
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
 	c.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(c.config)
+	c.InvoiceApplication = NewInvoiceApplicationClient(c.config)
+	c.InvoiceApplicationOrder = NewInvoiceApplicationOrderClient(c.config)
+	c.InvoiceHeader = NewInvoiceHeaderClient(c.config)
+	c.InvoiceSetting = NewInvoiceSettingClient(c.config)
 	c.PaymentAuditLog = NewPaymentAuditLogClient(c.config)
 	c.PaymentOrder = NewPaymentOrderClient(c.config)
 	c.PaymentProviderInstance = NewPaymentProviderInstanceClient(c.config)
@@ -307,6 +323,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		InvoiceApplication:            NewInvoiceApplicationClient(cfg),
+		InvoiceApplicationOrder:       NewInvoiceApplicationOrderClient(cfg),
+		InvoiceHeader:                 NewInvoiceHeaderClient(cfg),
+		InvoiceSetting:                NewInvoiceSettingClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
@@ -366,6 +386,10 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		Group:                         NewGroupClient(cfg),
 		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
 		IdentityAdoptionDecision:      NewIdentityAdoptionDecisionClient(cfg),
+		InvoiceApplication:            NewInvoiceApplicationClient(cfg),
+		InvoiceApplicationOrder:       NewInvoiceApplicationOrderClient(cfg),
+		InvoiceHeader:                 NewInvoiceHeaderClient(cfg),
+		InvoiceSetting:                NewInvoiceSettingClient(cfg),
 		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
 		PaymentOrder:                  NewPaymentOrderClient(cfg),
 		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
@@ -420,7 +444,8 @@ func (c *Client) Use(hooks ...Hook) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate, c.Coupon,
 		c.CouponUsage, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
+		c.IdentityAdoptionDecision, c.InvoiceApplication, c.InvoiceApplicationOrder,
+		c.InvoiceHeader, c.InvoiceSetting, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
@@ -440,7 +465,8 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.BatchImageJob, c.ChannelMonitor, c.ChannelMonitorDailyRollup,
 		c.ChannelMonitorHistory, c.ChannelMonitorRequestTemplate, c.Coupon,
 		c.CouponUsage, c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord,
-		c.IdentityAdoptionDecision, c.PaymentAuditLog, c.PaymentOrder,
+		c.IdentityAdoptionDecision, c.InvoiceApplication, c.InvoiceApplicationOrder,
+		c.InvoiceHeader, c.InvoiceSetting, c.PaymentAuditLog, c.PaymentOrder,
 		c.PaymentProviderInstance, c.PendingAuthSession, c.PromoCode, c.PromoCodeUsage,
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
@@ -494,6 +520,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.IdempotencyRecord.mutate(ctx, m)
 	case *IdentityAdoptionDecisionMutation:
 		return c.IdentityAdoptionDecision.mutate(ctx, m)
+	case *InvoiceApplicationMutation:
+		return c.InvoiceApplication.mutate(ctx, m)
+	case *InvoiceApplicationOrderMutation:
+		return c.InvoiceApplicationOrder.mutate(ctx, m)
+	case *InvoiceHeaderMutation:
+		return c.InvoiceHeader.mutate(ctx, m)
+	case *InvoiceSettingMutation:
+		return c.InvoiceSetting.mutate(ctx, m)
 	case *PaymentAuditLogMutation:
 		return c.PaymentAuditLog.mutate(ctx, m)
 	case *PaymentOrderMutation:
@@ -3764,6 +3798,618 @@ func (c *IdentityAdoptionDecisionClient) mutate(ctx context.Context, m *Identity
 	}
 }
 
+// InvoiceApplicationClient is a client for the InvoiceApplication schema.
+type InvoiceApplicationClient struct {
+	config
+}
+
+// NewInvoiceApplicationClient returns a client for the InvoiceApplication from the given config.
+func NewInvoiceApplicationClient(c config) *InvoiceApplicationClient {
+	return &InvoiceApplicationClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `invoiceapplication.Hooks(f(g(h())))`.
+func (c *InvoiceApplicationClient) Use(hooks ...Hook) {
+	c.hooks.InvoiceApplication = append(c.hooks.InvoiceApplication, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `invoiceapplication.Intercept(f(g(h())))`.
+func (c *InvoiceApplicationClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InvoiceApplication = append(c.inters.InvoiceApplication, interceptors...)
+}
+
+// Create returns a builder for creating a InvoiceApplication entity.
+func (c *InvoiceApplicationClient) Create() *InvoiceApplicationCreate {
+	mutation := newInvoiceApplicationMutation(c.config, OpCreate)
+	return &InvoiceApplicationCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InvoiceApplication entities.
+func (c *InvoiceApplicationClient) CreateBulk(builders ...*InvoiceApplicationCreate) *InvoiceApplicationCreateBulk {
+	return &InvoiceApplicationCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvoiceApplicationClient) MapCreateBulk(slice any, setFunc func(*InvoiceApplicationCreate, int)) *InvoiceApplicationCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvoiceApplicationCreateBulk{err: fmt.Errorf("calling to InvoiceApplicationClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvoiceApplicationCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvoiceApplicationCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InvoiceApplication.
+func (c *InvoiceApplicationClient) Update() *InvoiceApplicationUpdate {
+	mutation := newInvoiceApplicationMutation(c.config, OpUpdate)
+	return &InvoiceApplicationUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvoiceApplicationClient) UpdateOne(_m *InvoiceApplication) *InvoiceApplicationUpdateOne {
+	mutation := newInvoiceApplicationMutation(c.config, OpUpdateOne, withInvoiceApplication(_m))
+	return &InvoiceApplicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvoiceApplicationClient) UpdateOneID(id int64) *InvoiceApplicationUpdateOne {
+	mutation := newInvoiceApplicationMutation(c.config, OpUpdateOne, withInvoiceApplicationID(id))
+	return &InvoiceApplicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InvoiceApplication.
+func (c *InvoiceApplicationClient) Delete() *InvoiceApplicationDelete {
+	mutation := newInvoiceApplicationMutation(c.config, OpDelete)
+	return &InvoiceApplicationDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvoiceApplicationClient) DeleteOne(_m *InvoiceApplication) *InvoiceApplicationDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvoiceApplicationClient) DeleteOneID(id int64) *InvoiceApplicationDeleteOne {
+	builder := c.Delete().Where(invoiceapplication.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvoiceApplicationDeleteOne{builder}
+}
+
+// Query returns a query builder for InvoiceApplication.
+func (c *InvoiceApplicationClient) Query() *InvoiceApplicationQuery {
+	return &InvoiceApplicationQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvoiceApplication},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InvoiceApplication entity by its id.
+func (c *InvoiceApplicationClient) Get(ctx context.Context, id int64) (*InvoiceApplication, error) {
+	return c.Query().Where(invoiceapplication.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvoiceApplicationClient) GetX(ctx context.Context, id int64) *InvoiceApplication {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a InvoiceApplication.
+func (c *InvoiceApplicationClient) QueryUser(_m *InvoiceApplication) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(invoiceapplication.Table, invoiceapplication.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, invoiceapplication.UserTable, invoiceapplication.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryOrders queries the orders edge of a InvoiceApplication.
+func (c *InvoiceApplicationClient) QueryOrders(_m *InvoiceApplication) *InvoiceApplicationOrderQuery {
+	query := (&InvoiceApplicationOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(invoiceapplication.Table, invoiceapplication.FieldID, id),
+			sqlgraph.To(invoiceapplicationorder.Table, invoiceapplicationorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, invoiceapplication.OrdersTable, invoiceapplication.OrdersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *InvoiceApplicationClient) Hooks() []Hook {
+	return c.hooks.InvoiceApplication
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvoiceApplicationClient) Interceptors() []Interceptor {
+	return c.inters.InvoiceApplication
+}
+
+func (c *InvoiceApplicationClient) mutate(ctx context.Context, m *InvoiceApplicationMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvoiceApplicationCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvoiceApplicationUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvoiceApplicationUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvoiceApplicationDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InvoiceApplication mutation op: %q", m.Op())
+	}
+}
+
+// InvoiceApplicationOrderClient is a client for the InvoiceApplicationOrder schema.
+type InvoiceApplicationOrderClient struct {
+	config
+}
+
+// NewInvoiceApplicationOrderClient returns a client for the InvoiceApplicationOrder from the given config.
+func NewInvoiceApplicationOrderClient(c config) *InvoiceApplicationOrderClient {
+	return &InvoiceApplicationOrderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `invoiceapplicationorder.Hooks(f(g(h())))`.
+func (c *InvoiceApplicationOrderClient) Use(hooks ...Hook) {
+	c.hooks.InvoiceApplicationOrder = append(c.hooks.InvoiceApplicationOrder, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `invoiceapplicationorder.Intercept(f(g(h())))`.
+func (c *InvoiceApplicationOrderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InvoiceApplicationOrder = append(c.inters.InvoiceApplicationOrder, interceptors...)
+}
+
+// Create returns a builder for creating a InvoiceApplicationOrder entity.
+func (c *InvoiceApplicationOrderClient) Create() *InvoiceApplicationOrderCreate {
+	mutation := newInvoiceApplicationOrderMutation(c.config, OpCreate)
+	return &InvoiceApplicationOrderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InvoiceApplicationOrder entities.
+func (c *InvoiceApplicationOrderClient) CreateBulk(builders ...*InvoiceApplicationOrderCreate) *InvoiceApplicationOrderCreateBulk {
+	return &InvoiceApplicationOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvoiceApplicationOrderClient) MapCreateBulk(slice any, setFunc func(*InvoiceApplicationOrderCreate, int)) *InvoiceApplicationOrderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvoiceApplicationOrderCreateBulk{err: fmt.Errorf("calling to InvoiceApplicationOrderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvoiceApplicationOrderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvoiceApplicationOrderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InvoiceApplicationOrder.
+func (c *InvoiceApplicationOrderClient) Update() *InvoiceApplicationOrderUpdate {
+	mutation := newInvoiceApplicationOrderMutation(c.config, OpUpdate)
+	return &InvoiceApplicationOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvoiceApplicationOrderClient) UpdateOne(_m *InvoiceApplicationOrder) *InvoiceApplicationOrderUpdateOne {
+	mutation := newInvoiceApplicationOrderMutation(c.config, OpUpdateOne, withInvoiceApplicationOrder(_m))
+	return &InvoiceApplicationOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvoiceApplicationOrderClient) UpdateOneID(id int64) *InvoiceApplicationOrderUpdateOne {
+	mutation := newInvoiceApplicationOrderMutation(c.config, OpUpdateOne, withInvoiceApplicationOrderID(id))
+	return &InvoiceApplicationOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InvoiceApplicationOrder.
+func (c *InvoiceApplicationOrderClient) Delete() *InvoiceApplicationOrderDelete {
+	mutation := newInvoiceApplicationOrderMutation(c.config, OpDelete)
+	return &InvoiceApplicationOrderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvoiceApplicationOrderClient) DeleteOne(_m *InvoiceApplicationOrder) *InvoiceApplicationOrderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvoiceApplicationOrderClient) DeleteOneID(id int64) *InvoiceApplicationOrderDeleteOne {
+	builder := c.Delete().Where(invoiceapplicationorder.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvoiceApplicationOrderDeleteOne{builder}
+}
+
+// Query returns a query builder for InvoiceApplicationOrder.
+func (c *InvoiceApplicationOrderClient) Query() *InvoiceApplicationOrderQuery {
+	return &InvoiceApplicationOrderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvoiceApplicationOrder},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InvoiceApplicationOrder entity by its id.
+func (c *InvoiceApplicationOrderClient) Get(ctx context.Context, id int64) (*InvoiceApplicationOrder, error) {
+	return c.Query().Where(invoiceapplicationorder.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvoiceApplicationOrderClient) GetX(ctx context.Context, id int64) *InvoiceApplicationOrder {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryApplication queries the application edge of a InvoiceApplicationOrder.
+func (c *InvoiceApplicationOrderClient) QueryApplication(_m *InvoiceApplicationOrder) *InvoiceApplicationQuery {
+	query := (&InvoiceApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(invoiceapplicationorder.Table, invoiceapplicationorder.FieldID, id),
+			sqlgraph.To(invoiceapplication.Table, invoiceapplication.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, invoiceapplicationorder.ApplicationTable, invoiceapplicationorder.ApplicationColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryPaymentOrder queries the payment_order edge of a InvoiceApplicationOrder.
+func (c *InvoiceApplicationOrderClient) QueryPaymentOrder(_m *InvoiceApplicationOrder) *PaymentOrderQuery {
+	query := (&PaymentOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(invoiceapplicationorder.Table, invoiceapplicationorder.FieldID, id),
+			sqlgraph.To(paymentorder.Table, paymentorder.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, invoiceapplicationorder.PaymentOrderTable, invoiceapplicationorder.PaymentOrderColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *InvoiceApplicationOrderClient) Hooks() []Hook {
+	return c.hooks.InvoiceApplicationOrder
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvoiceApplicationOrderClient) Interceptors() []Interceptor {
+	return c.inters.InvoiceApplicationOrder
+}
+
+func (c *InvoiceApplicationOrderClient) mutate(ctx context.Context, m *InvoiceApplicationOrderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvoiceApplicationOrderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvoiceApplicationOrderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvoiceApplicationOrderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvoiceApplicationOrderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InvoiceApplicationOrder mutation op: %q", m.Op())
+	}
+}
+
+// InvoiceHeaderClient is a client for the InvoiceHeader schema.
+type InvoiceHeaderClient struct {
+	config
+}
+
+// NewInvoiceHeaderClient returns a client for the InvoiceHeader from the given config.
+func NewInvoiceHeaderClient(c config) *InvoiceHeaderClient {
+	return &InvoiceHeaderClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `invoiceheader.Hooks(f(g(h())))`.
+func (c *InvoiceHeaderClient) Use(hooks ...Hook) {
+	c.hooks.InvoiceHeader = append(c.hooks.InvoiceHeader, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `invoiceheader.Intercept(f(g(h())))`.
+func (c *InvoiceHeaderClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InvoiceHeader = append(c.inters.InvoiceHeader, interceptors...)
+}
+
+// Create returns a builder for creating a InvoiceHeader entity.
+func (c *InvoiceHeaderClient) Create() *InvoiceHeaderCreate {
+	mutation := newInvoiceHeaderMutation(c.config, OpCreate)
+	return &InvoiceHeaderCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InvoiceHeader entities.
+func (c *InvoiceHeaderClient) CreateBulk(builders ...*InvoiceHeaderCreate) *InvoiceHeaderCreateBulk {
+	return &InvoiceHeaderCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvoiceHeaderClient) MapCreateBulk(slice any, setFunc func(*InvoiceHeaderCreate, int)) *InvoiceHeaderCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvoiceHeaderCreateBulk{err: fmt.Errorf("calling to InvoiceHeaderClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvoiceHeaderCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvoiceHeaderCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InvoiceHeader.
+func (c *InvoiceHeaderClient) Update() *InvoiceHeaderUpdate {
+	mutation := newInvoiceHeaderMutation(c.config, OpUpdate)
+	return &InvoiceHeaderUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvoiceHeaderClient) UpdateOne(_m *InvoiceHeader) *InvoiceHeaderUpdateOne {
+	mutation := newInvoiceHeaderMutation(c.config, OpUpdateOne, withInvoiceHeader(_m))
+	return &InvoiceHeaderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvoiceHeaderClient) UpdateOneID(id int64) *InvoiceHeaderUpdateOne {
+	mutation := newInvoiceHeaderMutation(c.config, OpUpdateOne, withInvoiceHeaderID(id))
+	return &InvoiceHeaderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InvoiceHeader.
+func (c *InvoiceHeaderClient) Delete() *InvoiceHeaderDelete {
+	mutation := newInvoiceHeaderMutation(c.config, OpDelete)
+	return &InvoiceHeaderDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvoiceHeaderClient) DeleteOne(_m *InvoiceHeader) *InvoiceHeaderDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvoiceHeaderClient) DeleteOneID(id int64) *InvoiceHeaderDeleteOne {
+	builder := c.Delete().Where(invoiceheader.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvoiceHeaderDeleteOne{builder}
+}
+
+// Query returns a query builder for InvoiceHeader.
+func (c *InvoiceHeaderClient) Query() *InvoiceHeaderQuery {
+	return &InvoiceHeaderQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvoiceHeader},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InvoiceHeader entity by its id.
+func (c *InvoiceHeaderClient) Get(ctx context.Context, id int64) (*InvoiceHeader, error) {
+	return c.Query().Where(invoiceheader.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvoiceHeaderClient) GetX(ctx context.Context, id int64) *InvoiceHeader {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryUser queries the user edge of a InvoiceHeader.
+func (c *InvoiceHeaderClient) QueryUser(_m *InvoiceHeader) *UserQuery {
+	query := (&UserClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(invoiceheader.Table, invoiceheader.FieldID, id),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, invoiceheader.UserTable, invoiceheader.UserColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *InvoiceHeaderClient) Hooks() []Hook {
+	return c.hooks.InvoiceHeader
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvoiceHeaderClient) Interceptors() []Interceptor {
+	return c.inters.InvoiceHeader
+}
+
+func (c *InvoiceHeaderClient) mutate(ctx context.Context, m *InvoiceHeaderMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvoiceHeaderCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvoiceHeaderUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvoiceHeaderUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvoiceHeaderDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InvoiceHeader mutation op: %q", m.Op())
+	}
+}
+
+// InvoiceSettingClient is a client for the InvoiceSetting schema.
+type InvoiceSettingClient struct {
+	config
+}
+
+// NewInvoiceSettingClient returns a client for the InvoiceSetting from the given config.
+func NewInvoiceSettingClient(c config) *InvoiceSettingClient {
+	return &InvoiceSettingClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `invoicesetting.Hooks(f(g(h())))`.
+func (c *InvoiceSettingClient) Use(hooks ...Hook) {
+	c.hooks.InvoiceSetting = append(c.hooks.InvoiceSetting, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `invoicesetting.Intercept(f(g(h())))`.
+func (c *InvoiceSettingClient) Intercept(interceptors ...Interceptor) {
+	c.inters.InvoiceSetting = append(c.inters.InvoiceSetting, interceptors...)
+}
+
+// Create returns a builder for creating a InvoiceSetting entity.
+func (c *InvoiceSettingClient) Create() *InvoiceSettingCreate {
+	mutation := newInvoiceSettingMutation(c.config, OpCreate)
+	return &InvoiceSettingCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of InvoiceSetting entities.
+func (c *InvoiceSettingClient) CreateBulk(builders ...*InvoiceSettingCreate) *InvoiceSettingCreateBulk {
+	return &InvoiceSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *InvoiceSettingClient) MapCreateBulk(slice any, setFunc func(*InvoiceSettingCreate, int)) *InvoiceSettingCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &InvoiceSettingCreateBulk{err: fmt.Errorf("calling to InvoiceSettingClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*InvoiceSettingCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &InvoiceSettingCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for InvoiceSetting.
+func (c *InvoiceSettingClient) Update() *InvoiceSettingUpdate {
+	mutation := newInvoiceSettingMutation(c.config, OpUpdate)
+	return &InvoiceSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *InvoiceSettingClient) UpdateOne(_m *InvoiceSetting) *InvoiceSettingUpdateOne {
+	mutation := newInvoiceSettingMutation(c.config, OpUpdateOne, withInvoiceSetting(_m))
+	return &InvoiceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *InvoiceSettingClient) UpdateOneID(id int64) *InvoiceSettingUpdateOne {
+	mutation := newInvoiceSettingMutation(c.config, OpUpdateOne, withInvoiceSettingID(id))
+	return &InvoiceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for InvoiceSetting.
+func (c *InvoiceSettingClient) Delete() *InvoiceSettingDelete {
+	mutation := newInvoiceSettingMutation(c.config, OpDelete)
+	return &InvoiceSettingDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *InvoiceSettingClient) DeleteOne(_m *InvoiceSetting) *InvoiceSettingDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *InvoiceSettingClient) DeleteOneID(id int64) *InvoiceSettingDeleteOne {
+	builder := c.Delete().Where(invoicesetting.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &InvoiceSettingDeleteOne{builder}
+}
+
+// Query returns a query builder for InvoiceSetting.
+func (c *InvoiceSettingClient) Query() *InvoiceSettingQuery {
+	return &InvoiceSettingQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeInvoiceSetting},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a InvoiceSetting entity by its id.
+func (c *InvoiceSettingClient) Get(ctx context.Context, id int64) (*InvoiceSetting, error) {
+	return c.Query().Where(invoicesetting.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *InvoiceSettingClient) GetX(ctx context.Context, id int64) *InvoiceSetting {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *InvoiceSettingClient) Hooks() []Hook {
+	return c.hooks.InvoiceSetting
+}
+
+// Interceptors returns the client interceptors.
+func (c *InvoiceSettingClient) Interceptors() []Interceptor {
+	return c.inters.InvoiceSetting
+}
+
+func (c *InvoiceSettingClient) mutate(ctx context.Context, m *InvoiceSettingMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&InvoiceSettingCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&InvoiceSettingUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&InvoiceSettingUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&InvoiceSettingDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown InvoiceSetting mutation op: %q", m.Op())
+	}
+}
+
 // PaymentAuditLogClient is a client for the PaymentAuditLog schema.
 type PaymentAuditLogClient struct {
 	config
@@ -4030,6 +4676,22 @@ func (c *PaymentOrderClient) QueryCouponUsages(_m *PaymentOrder) *CouponUsageQue
 			sqlgraph.From(paymentorder.Table, paymentorder.FieldID, id),
 			sqlgraph.To(couponusage.Table, couponusage.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, paymentorder.CouponUsagesTable, paymentorder.CouponUsagesColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryInvoiceApplicationOrders queries the invoice_application_orders edge of a PaymentOrder.
+func (c *PaymentOrderClient) QueryInvoiceApplicationOrders(_m *PaymentOrder) *InvoiceApplicationOrderQuery {
+	query := (&InvoiceApplicationOrderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(paymentorder.Table, paymentorder.FieldID, id),
+			sqlgraph.To(invoiceapplicationorder.Table, invoiceapplicationorder.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, paymentorder.InvoiceApplicationOrdersTable, paymentorder.InvoiceApplicationOrdersColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -6168,6 +6830,38 @@ func (c *UserClient) QueryPaymentOrders(_m *User) *PaymentOrderQuery {
 	return query
 }
 
+// QueryInvoiceHeaders queries the invoice_headers edge of a User.
+func (c *UserClient) QueryInvoiceHeaders(_m *User) *InvoiceHeaderQuery {
+	query := (&InvoiceHeaderClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(invoiceheader.Table, invoiceheader.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.InvoiceHeadersTable, user.InvoiceHeadersColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryInvoiceApplications queries the invoice_applications edge of a User.
+func (c *UserClient) QueryInvoiceApplications(_m *User) *InvoiceApplicationQuery {
+	query := (&InvoiceApplicationClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, id),
+			sqlgraph.To(invoiceapplication.Table, invoiceapplication.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.InvoiceApplicationsTable, user.InvoiceApplicationsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryAuthIdentities queries the auth_identities edge of a User.
 func (c *UserClient) QueryAuthIdentities(_m *User) *AuthIdentityQuery {
 	query := (&AuthIdentityClient{config: c.config}).Query()
@@ -7048,7 +7742,8 @@ type (
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, Coupon, CouponUsage, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, InvoiceApplication,
+		InvoiceApplicationOrder, InvoiceHeader, InvoiceSetting, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
@@ -7060,7 +7755,8 @@ type (
 		AuthIdentityChannel, BatchImageEvent, BatchImageItem, BatchImageJob,
 		ChannelMonitor, ChannelMonitorDailyRollup, ChannelMonitorHistory,
 		ChannelMonitorRequestTemplate, Coupon, CouponUsage, ErrorPassthroughRule,
-		Group, IdempotencyRecord, IdentityAdoptionDecision, PaymentAuditLog,
+		Group, IdempotencyRecord, IdentityAdoptionDecision, InvoiceApplication,
+		InvoiceApplicationOrder, InvoiceHeader, InvoiceSetting, PaymentAuditLog,
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,

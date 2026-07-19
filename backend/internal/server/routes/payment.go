@@ -14,8 +14,10 @@ import (
 func RegisterPaymentRoutes(
 	v1 *gin.RouterGroup,
 	paymentHandler *handler.PaymentHandler,
+	invoiceHandler *handler.InvoiceHandler,
 	webhookHandler *handler.PaymentWebhookHandler,
 	adminPaymentHandler *admin.PaymentHandler,
+	adminInvoiceHandler *admin.InvoiceHandler,
 	jwtAuth middleware.JWTAuthMiddleware,
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
@@ -31,6 +33,21 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/limits", paymentHandler.GetLimits)
 		authenticated.GET("/discount-rules", paymentHandler.GetDiscountRules)
 		authenticated.POST("/preview-price", paymentHandler.PreviewPrice)
+
+		invoiceHeaders := authenticated.Group("/invoice-headers")
+		{
+			invoiceHeaders.GET("", invoiceHandler.ListInvoiceHeaders)
+			invoiceHeaders.POST("", invoiceHandler.CreateInvoiceHeader)
+			invoiceHeaders.PUT("/:id", invoiceHandler.UpdateInvoiceHeader)
+			invoiceHeaders.DELETE("/:id", invoiceHandler.DeleteInvoiceHeader)
+		}
+		invoices := authenticated.Group("/invoices")
+		{
+			invoices.GET("/eligible-orders", invoiceHandler.GetInvoiceApplicationData)
+			invoices.POST("", invoiceHandler.CreateInvoiceApplication)
+			invoices.GET("", invoiceHandler.ListInvoiceApplications)
+			invoices.GET("/:id", invoiceHandler.GetInvoiceApplication)
+		}
 
 		orders := authenticated.Group("/orders")
 		{
@@ -78,6 +95,16 @@ func RegisterPaymentRoutes(
 		// Config
 		adminGroup.GET("/config", adminPaymentHandler.GetConfig)
 		adminGroup.PUT("/config", adminPaymentHandler.UpdateConfig)
+
+		invoices := adminGroup.Group("/invoices")
+		{
+			invoices.GET("/config", adminInvoiceHandler.GetSettings)
+			invoices.PUT("/config", adminInvoiceHandler.UpdateSettings)
+			invoices.GET("/export", adminInvoiceHandler.ExportApplications)
+			invoices.GET("", adminInvoiceHandler.ListApplications)
+			invoices.GET("/:id", adminInvoiceHandler.GetApplication)
+			invoices.PUT("/:id", adminInvoiceHandler.UpdateApplication)
+		}
 
 		// Orders
 		adminOrders := adminGroup.Group("/orders")

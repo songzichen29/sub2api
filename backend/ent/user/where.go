@@ -1638,6 +1638,52 @@ func HasPaymentOrdersWith(preds ...predicate.PaymentOrder) predicate.User {
 	})
 }
 
+// HasInvoiceHeaders applies the HasEdge predicate on the "invoice_headers" edge.
+func HasInvoiceHeaders() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, InvoiceHeadersTable, InvoiceHeadersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasInvoiceHeadersWith applies the HasEdge predicate on the "invoice_headers" edge with a given conditions (other predicates).
+func HasInvoiceHeadersWith(preds ...predicate.InvoiceHeader) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newInvoiceHeadersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasInvoiceApplications applies the HasEdge predicate on the "invoice_applications" edge.
+func HasInvoiceApplications() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationsTable, InvoiceApplicationsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasInvoiceApplicationsWith applies the HasEdge predicate on the "invoice_applications" edge with a given conditions (other predicates).
+func HasInvoiceApplicationsWith(preds ...predicate.InvoiceApplication) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newInvoiceApplicationsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasAuthIdentities applies the HasEdge predicate on the "auth_identities" edge.
 func HasAuthIdentities() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

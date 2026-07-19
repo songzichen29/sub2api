@@ -28,6 +28,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceapplication"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
+	"github.com/Wei-Shaw/sub2api/ent/invoiceheader"
+	"github.com/Wei-Shaw/sub2api/ent/invoicesetting"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -647,6 +651,114 @@ func (f TraverseIdentityAdoptionDecision) Traverse(ctx context.Context, q ent.Qu
 	return fmt.Errorf("unexpected query type %T. expect *ent.IdentityAdoptionDecisionQuery", q)
 }
 
+// The InvoiceApplicationFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InvoiceApplicationFunc func(context.Context, *ent.InvoiceApplicationQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InvoiceApplicationFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InvoiceApplicationQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InvoiceApplicationQuery", q)
+}
+
+// The TraverseInvoiceApplication type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInvoiceApplication func(context.Context, *ent.InvoiceApplicationQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInvoiceApplication) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInvoiceApplication) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InvoiceApplicationQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InvoiceApplicationQuery", q)
+}
+
+// The InvoiceApplicationOrderFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InvoiceApplicationOrderFunc func(context.Context, *ent.InvoiceApplicationOrderQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InvoiceApplicationOrderFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InvoiceApplicationOrderQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InvoiceApplicationOrderQuery", q)
+}
+
+// The TraverseInvoiceApplicationOrder type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInvoiceApplicationOrder func(context.Context, *ent.InvoiceApplicationOrderQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInvoiceApplicationOrder) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInvoiceApplicationOrder) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InvoiceApplicationOrderQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InvoiceApplicationOrderQuery", q)
+}
+
+// The InvoiceHeaderFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InvoiceHeaderFunc func(context.Context, *ent.InvoiceHeaderQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InvoiceHeaderFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InvoiceHeaderQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InvoiceHeaderQuery", q)
+}
+
+// The TraverseInvoiceHeader type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInvoiceHeader func(context.Context, *ent.InvoiceHeaderQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInvoiceHeader) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInvoiceHeader) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InvoiceHeaderQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InvoiceHeaderQuery", q)
+}
+
+// The InvoiceSettingFunc type is an adapter to allow the use of ordinary function as a Querier.
+type InvoiceSettingFunc func(context.Context, *ent.InvoiceSettingQuery) (ent.Value, error)
+
+// Query calls f(ctx, q).
+func (f InvoiceSettingFunc) Query(ctx context.Context, q ent.Query) (ent.Value, error) {
+	if q, ok := q.(*ent.InvoiceSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return nil, fmt.Errorf("unexpected query type %T. expect *ent.InvoiceSettingQuery", q)
+}
+
+// The TraverseInvoiceSetting type is an adapter to allow the use of ordinary function as Traverser.
+type TraverseInvoiceSetting func(context.Context, *ent.InvoiceSettingQuery) error
+
+// Intercept is a dummy implementation of Intercept that returns the next Querier in the pipeline.
+func (f TraverseInvoiceSetting) Intercept(next ent.Querier) ent.Querier {
+	return next
+}
+
+// Traverse calls f(ctx, q).
+func (f TraverseInvoiceSetting) Traverse(ctx context.Context, q ent.Query) error {
+	if q, ok := q.(*ent.InvoiceSettingQuery); ok {
+		return f(ctx, q)
+	}
+	return fmt.Errorf("unexpected query type %T. expect *ent.InvoiceSettingQuery", q)
+}
+
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary function as a Querier.
 type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogQuery) (ent.Value, error)
 
@@ -1230,6 +1342,14 @@ func NewQuery(q ent.Query) (Query, error) {
 		return &query[*ent.IdempotencyRecordQuery, predicate.IdempotencyRecord, idempotencyrecord.OrderOption]{typ: ent.TypeIdempotencyRecord, tq: q}, nil
 	case *ent.IdentityAdoptionDecisionQuery:
 		return &query[*ent.IdentityAdoptionDecisionQuery, predicate.IdentityAdoptionDecision, identityadoptiondecision.OrderOption]{typ: ent.TypeIdentityAdoptionDecision, tq: q}, nil
+	case *ent.InvoiceApplicationQuery:
+		return &query[*ent.InvoiceApplicationQuery, predicate.InvoiceApplication, invoiceapplication.OrderOption]{typ: ent.TypeInvoiceApplication, tq: q}, nil
+	case *ent.InvoiceApplicationOrderQuery:
+		return &query[*ent.InvoiceApplicationOrderQuery, predicate.InvoiceApplicationOrder, invoiceapplicationorder.OrderOption]{typ: ent.TypeInvoiceApplicationOrder, tq: q}, nil
+	case *ent.InvoiceHeaderQuery:
+		return &query[*ent.InvoiceHeaderQuery, predicate.InvoiceHeader, invoiceheader.OrderOption]{typ: ent.TypeInvoiceHeader, tq: q}, nil
+	case *ent.InvoiceSettingQuery:
+		return &query[*ent.InvoiceSettingQuery, predicate.InvoiceSetting, invoicesetting.OrderOption]{typ: ent.TypeInvoiceSetting, tq: q}, nil
 	case *ent.PaymentAuditLogQuery:
 		return &query[*ent.PaymentAuditLogQuery, predicate.PaymentAuditLog, paymentauditlog.OrderOption]{typ: ent.TypePaymentAuditLog, tq: q}, nil
 	case *ent.PaymentOrderQuery:

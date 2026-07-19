@@ -114,6 +114,8 @@ export interface PaymentOrder {
   subscription_expires_at?: string
   subscription_remaining_days?: number
   provider_instance_id?: string
+	invoice_status?: 'UNAPPLIED' | 'PROCESSING' | 'INVOICED'
+	invoice_application_id?: number
   product_name?: string
   group_name?: string
 }

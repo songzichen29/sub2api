@@ -85,6 +85,10 @@ const (
 	EdgeCouponUsages = "coupon_usages"
 	// EdgePaymentOrders holds the string denoting the payment_orders edge name in mutations.
 	EdgePaymentOrders = "payment_orders"
+	// EdgeInvoiceHeaders holds the string denoting the invoice_headers edge name in mutations.
+	EdgeInvoiceHeaders = "invoice_headers"
+	// EdgeInvoiceApplications holds the string denoting the invoice_applications edge name in mutations.
+	EdgeInvoiceApplications = "invoice_applications"
 	// EdgeAuthIdentities holds the string denoting the auth_identities edge name in mutations.
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
@@ -170,6 +174,20 @@ const (
 	PaymentOrdersInverseTable = "payment_orders"
 	// PaymentOrdersColumn is the table column denoting the payment_orders relation/edge.
 	PaymentOrdersColumn = "user_id"
+	// InvoiceHeadersTable is the table that holds the invoice_headers relation/edge.
+	InvoiceHeadersTable = "invoice_headers"
+	// InvoiceHeadersInverseTable is the table name for the InvoiceHeader entity.
+	// It exists in this package in order to avoid circular dependency with the "invoiceheader" package.
+	InvoiceHeadersInverseTable = "invoice_headers"
+	// InvoiceHeadersColumn is the table column denoting the invoice_headers relation/edge.
+	InvoiceHeadersColumn = "user_id"
+	// InvoiceApplicationsTable is the table that holds the invoice_applications relation/edge.
+	InvoiceApplicationsTable = "invoice_applications"
+	// InvoiceApplicationsInverseTable is the table name for the InvoiceApplication entity.
+	// It exists in this package in order to avoid circular dependency with the "invoiceapplication" package.
+	InvoiceApplicationsInverseTable = "invoice_applications"
+	// InvoiceApplicationsColumn is the table column denoting the invoice_applications relation/edge.
+	InvoiceApplicationsColumn = "user_id"
 	// AuthIdentitiesTable is the table that holds the auth_identities relation/edge.
 	AuthIdentitiesTable = "auth_identities"
 	// AuthIdentitiesInverseTable is the table name for the AuthIdentity entity.
@@ -583,6 +601,34 @@ func ByPaymentOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByInvoiceHeadersCount orders the results by invoice_headers count.
+func ByInvoiceHeadersCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newInvoiceHeadersStep(), opts...)
+	}
+}
+
+// ByInvoiceHeaders orders the results by invoice_headers terms.
+func ByInvoiceHeaders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newInvoiceHeadersStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByInvoiceApplicationsCount orders the results by invoice_applications count.
+func ByInvoiceApplicationsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newInvoiceApplicationsStep(), opts...)
+	}
+}
+
+// ByInvoiceApplications orders the results by invoice_applications terms.
+func ByInvoiceApplications(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newInvoiceApplicationsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByAuthIdentitiesCount orders the results by auth_identities count.
 func ByAuthIdentitiesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -713,6 +759,20 @@ func newPaymentOrdersStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PaymentOrdersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PaymentOrdersTable, PaymentOrdersColumn),
+	)
+}
+func newInvoiceHeadersStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(InvoiceHeadersInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceHeadersTable, InvoiceHeadersColumn),
+	)
+}
+func newInvoiceApplicationsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(InvoiceApplicationsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationsTable, InvoiceApplicationsColumn),
 	)
 }
 func newAuthIdentitiesStep() *sqlgraph.Step {
