@@ -37,19 +37,20 @@ var (
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
 type subscriptionCacheData struct {
-	Status              string
-	StartsAt            time.Time
-	ExpiresAt           time.Time
-	ValidityUnit        string
-	DailyWindowStart    *time.Time
-	DailyUsage          float64
-	WeeklyUsage         float64
-	MonthlyUsage        float64
-	QuotaLimitUSD       *float64
-	QuotaUsedUSD        float64
-	AllowDailyOverdraft bool
-	SkipWeekends        bool
-	Version             int64
+	Status                   string
+	StartsAt                 time.Time
+	ExpiresAt                time.Time
+	ValidityUnit             string
+	DailyWindowStart         *time.Time
+	DailyUsage               float64
+	WeeklyUsage              float64
+	MonthlyUsage             float64
+	QuotaLimitUSD            *float64
+	QuotaUsedUSD             float64
+	AllowDailyOverdraft      bool
+	SkipWeekends             bool
+	WeekendSkipUserChangedAt *time.Time
+	Version                  int64
 }
 
 // 缓存写入任务类型
@@ -450,37 +451,39 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 
 func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
 	return &subscriptionCacheData{
-		Status:              data.Status,
-		StartsAt:            data.StartsAt,
-		ExpiresAt:           data.ExpiresAt,
-		ValidityUnit:        normalizeSubscriptionValidityUnit(data.ValidityUnit),
-		DailyWindowStart:    data.DailyWindowStart,
-		DailyUsage:          data.DailyUsage,
-		WeeklyUsage:         data.WeeklyUsage,
-		MonthlyUsage:        data.MonthlyUsage,
-		QuotaLimitUSD:       data.QuotaLimitUSD,
-		QuotaUsedUSD:        data.QuotaUsedUSD,
-		AllowDailyOverdraft: data.AllowDailyOverdraft,
-		SkipWeekends:        data.SkipWeekends,
-		Version:             data.Version,
+		Status:                   data.Status,
+		StartsAt:                 data.StartsAt,
+		ExpiresAt:                data.ExpiresAt,
+		ValidityUnit:             normalizeSubscriptionValidityUnit(data.ValidityUnit),
+		DailyWindowStart:         data.DailyWindowStart,
+		DailyUsage:               data.DailyUsage,
+		WeeklyUsage:              data.WeeklyUsage,
+		MonthlyUsage:             data.MonthlyUsage,
+		QuotaLimitUSD:            data.QuotaLimitUSD,
+		QuotaUsedUSD:             data.QuotaUsedUSD,
+		AllowDailyOverdraft:      data.AllowDailyOverdraft,
+		SkipWeekends:             data.SkipWeekends,
+		WeekendSkipUserChangedAt: data.WeekendSkipUserChangedAt,
+		Version:                  data.Version,
 	}
 }
 
 func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
 	return &SubscriptionCacheData{
-		Status:              data.Status,
-		StartsAt:            data.StartsAt,
-		ExpiresAt:           data.ExpiresAt,
-		ValidityUnit:        normalizeSubscriptionValidityUnit(data.ValidityUnit),
-		DailyWindowStart:    data.DailyWindowStart,
-		DailyUsage:          data.DailyUsage,
-		WeeklyUsage:         data.WeeklyUsage,
-		MonthlyUsage:        data.MonthlyUsage,
-		QuotaLimitUSD:       data.QuotaLimitUSD,
-		QuotaUsedUSD:        data.QuotaUsedUSD,
-		AllowDailyOverdraft: data.AllowDailyOverdraft,
-		SkipWeekends:        data.SkipWeekends,
-		Version:             data.Version,
+		Status:                   data.Status,
+		StartsAt:                 data.StartsAt,
+		ExpiresAt:                data.ExpiresAt,
+		ValidityUnit:             normalizeSubscriptionValidityUnit(data.ValidityUnit),
+		DailyWindowStart:         data.DailyWindowStart,
+		DailyUsage:               data.DailyUsage,
+		WeeklyUsage:              data.WeeklyUsage,
+		MonthlyUsage:             data.MonthlyUsage,
+		QuotaLimitUSD:            data.QuotaLimitUSD,
+		QuotaUsedUSD:             data.QuotaUsedUSD,
+		AllowDailyOverdraft:      data.AllowDailyOverdraft,
+		SkipWeekends:             data.SkipWeekends,
+		WeekendSkipUserChangedAt: data.WeekendSkipUserChangedAt,
+		Version:                  data.Version,
 	}
 }
 
@@ -492,19 +495,20 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 	}
 
 	return &subscriptionCacheData{
-		Status:              sub.Status,
-		StartsAt:            sub.StartsAt,
-		ExpiresAt:           sub.ExpiresAt,
-		ValidityUnit:        normalizeSubscriptionValidityUnit(sub.ValidityUnit),
-		DailyWindowStart:    sub.DailyWindowStart,
-		DailyUsage:          sub.DailyUsageUSD,
-		WeeklyUsage:         sub.WeeklyUsageUSD,
-		MonthlyUsage:        sub.MonthlyUsageUSD,
-		QuotaLimitUSD:       sub.QuotaLimitUSD,
-		QuotaUsedUSD:        sub.QuotaUsedUSD,
-		AllowDailyOverdraft: sub.AllowDailyOverdraft,
-		SkipWeekends:        sub.SkipWeekends,
-		Version:             sub.UpdatedAt.Unix(),
+		Status:                   sub.Status,
+		StartsAt:                 sub.StartsAt,
+		ExpiresAt:                sub.ExpiresAt,
+		ValidityUnit:             normalizeSubscriptionValidityUnit(sub.ValidityUnit),
+		DailyWindowStart:         sub.DailyWindowStart,
+		DailyUsage:               sub.DailyUsageUSD,
+		WeeklyUsage:              sub.WeeklyUsageUSD,
+		MonthlyUsage:             sub.MonthlyUsageUSD,
+		QuotaLimitUSD:            sub.QuotaLimitUSD,
+		QuotaUsedUSD:             sub.QuotaUsedUSD,
+		AllowDailyOverdraft:      sub.AllowDailyOverdraft,
+		SkipWeekends:             sub.SkipWeekends,
+		WeekendSkipUserChangedAt: sub.WeekendSkipUserChangedAt,
+		Version:                  sub.UpdatedAt.Unix(),
 	}, nil
 }
 
@@ -950,17 +954,18 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 
 	// 检查限额（使用传入的Group限额配置）
 	cacheSub := &UserSubscription{
-		StartsAt:            subData.StartsAt,
-		ExpiresAt:           subData.ExpiresAt,
-		ValidityUnit:        normalizeSubscriptionValidityUnit(subData.ValidityUnit),
-		DailyWindowStart:    subData.DailyWindowStart,
-		DailyUsageUSD:       subData.DailyUsage,
-		WeeklyUsageUSD:      subData.WeeklyUsage,
-		MonthlyUsageUSD:     subData.MonthlyUsage,
-		QuotaLimitUSD:       subData.QuotaLimitUSD,
-		QuotaUsedUSD:        subData.QuotaUsedUSD,
-		AllowDailyOverdraft: subData.AllowDailyOverdraft,
-		SkipWeekends:        subData.SkipWeekends,
+		StartsAt:                 subData.StartsAt,
+		ExpiresAt:                subData.ExpiresAt,
+		ValidityUnit:             normalizeSubscriptionValidityUnit(subData.ValidityUnit),
+		DailyWindowStart:         subData.DailyWindowStart,
+		DailyUsageUSD:            subData.DailyUsage,
+		WeeklyUsageUSD:           subData.WeeklyUsage,
+		MonthlyUsageUSD:          subData.MonthlyUsage,
+		QuotaLimitUSD:            subData.QuotaLimitUSD,
+		QuotaUsedUSD:             subData.QuotaUsedUSD,
+		AllowDailyOverdraft:      subData.AllowDailyOverdraft,
+		SkipWeekends:             subData.SkipWeekends,
+		WeekendSkipUserChangedAt: subData.WeekendSkipUserChangedAt,
 	}
 	if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 		return ErrSubscriptionWeekendDisabled
@@ -978,8 +983,10 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 	if group != nil && group.AllowsDailyOverdraft() && subscription != nil {
 		cacheSub.AllowDailyOverdraft = subscription.AllowDailyOverdraft
 		cacheSub.SkipWeekends = subscription.SkipWeekends
+		cacheSub.WeekendSkipUserChangedAt = subscription.WeekendSkipUserChangedAt
 		subData.AllowDailyOverdraft = subscription.AllowDailyOverdraft
 		subData.SkipWeekends = subscription.SkipWeekends
+		subData.WeekendSkipUserChangedAt = subscription.WeekendSkipUserChangedAt
 		if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 			return ErrSubscriptionWeekendDisabled
 		}
@@ -1015,6 +1022,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			cacheSub.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			cacheSub.SkipWeekends = freshSub.SkipWeekends
+			cacheSub.WeekendSkipUserChangedAt = freshSub.WeekendSkipUserChangedAt
 			subData.StartsAt = freshSub.StartsAt
 			subData.ExpiresAt = freshSub.ExpiresAt
 			subData.ValidityUnit = cacheSub.ValidityUnit
@@ -1026,23 +1034,25 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			subData.QuotaUsedUSD = freshSub.QuotaUsedUSD
 			subData.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			subData.SkipWeekends = freshSub.SkipWeekends
+			subData.WeekendSkipUserChangedAt = freshSub.WeekendSkipUserChangedAt
 			if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 				return ErrSubscriptionWeekendDisabled
 			}
 			s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
-				Status:              freshSub.Status,
-				StartsAt:            freshSub.StartsAt,
-				ExpiresAt:           freshSub.ExpiresAt,
-				ValidityUnit:        cacheSub.ValidityUnit,
-				DailyWindowStart:    freshSub.DailyWindowStart,
-				DailyUsage:          freshSub.DailyUsageUSD,
-				WeeklyUsage:         freshSub.WeeklyUsageUSD,
-				MonthlyUsage:        freshSub.MonthlyUsageUSD,
-				QuotaLimitUSD:       freshSub.QuotaLimitUSD,
-				QuotaUsedUSD:        freshSub.QuotaUsedUSD,
-				AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
-				SkipWeekends:        freshSub.SkipWeekends,
-				Version:             freshSub.UpdatedAt.Unix(),
+				Status:                   freshSub.Status,
+				StartsAt:                 freshSub.StartsAt,
+				ExpiresAt:                freshSub.ExpiresAt,
+				ValidityUnit:             cacheSub.ValidityUnit,
+				DailyWindowStart:         freshSub.DailyWindowStart,
+				DailyUsage:               freshSub.DailyUsageUSD,
+				WeeklyUsage:              freshSub.WeeklyUsageUSD,
+				MonthlyUsage:             freshSub.MonthlyUsageUSD,
+				QuotaLimitUSD:            freshSub.QuotaLimitUSD,
+				QuotaUsedUSD:             freshSub.QuotaUsedUSD,
+				AllowDailyOverdraft:      freshSub.AllowDailyOverdraft,
+				SkipWeekends:             freshSub.SkipWeekends,
+				WeekendSkipUserChangedAt: freshSub.WeekendSkipUserChangedAt,
+				Version:                  freshSub.UpdatedAt.Unix(),
 			})
 			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
 		}
@@ -1111,19 +1121,20 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 	if s.cache != nil {
 		_ = s.cache.InvalidateSubscriptionCache(ctx, userID, group.ID)
 		s.setSubscriptionCache(ctx, userID, group.ID, &subscriptionCacheData{
-			Status:              freshSub.Status,
-			StartsAt:            freshSub.StartsAt,
-			ExpiresAt:           freshSub.ExpiresAt,
-			ValidityUnit:        normalizeSubscriptionValidityUnit(freshSub.ValidityUnit),
-			DailyWindowStart:    freshSub.DailyWindowStart,
-			DailyUsage:          freshSub.DailyUsageUSD,
-			WeeklyUsage:         freshSub.WeeklyUsageUSD,
-			MonthlyUsage:        freshSub.MonthlyUsageUSD,
-			QuotaLimitUSD:       freshSub.QuotaLimitUSD,
-			QuotaUsedUSD:        freshSub.QuotaUsedUSD,
-			AllowDailyOverdraft: freshSub.AllowDailyOverdraft,
-			SkipWeekends:        freshSub.SkipWeekends,
-			Version:             freshSub.UpdatedAt.Unix(),
+			Status:                   freshSub.Status,
+			StartsAt:                 freshSub.StartsAt,
+			ExpiresAt:                freshSub.ExpiresAt,
+			ValidityUnit:             normalizeSubscriptionValidityUnit(freshSub.ValidityUnit),
+			DailyWindowStart:         freshSub.DailyWindowStart,
+			DailyUsage:               freshSub.DailyUsageUSD,
+			WeeklyUsage:              freshSub.WeeklyUsageUSD,
+			MonthlyUsage:             freshSub.MonthlyUsageUSD,
+			QuotaLimitUSD:            freshSub.QuotaLimitUSD,
+			QuotaUsedUSD:             freshSub.QuotaUsedUSD,
+			AllowDailyOverdraft:      freshSub.AllowDailyOverdraft,
+			SkipWeekends:             freshSub.SkipWeekends,
+			WeekendSkipUserChangedAt: freshSub.WeekendSkipUserChangedAt,
+			Version:                  freshSub.UpdatedAt.Unix(),
 		})
 	}
 	return true

@@ -256,15 +256,34 @@ func (s *UserSubscription) dailyOverdraftElapsedFullDays(now time.Time) int {
 	if s == nil || s.StartsAt.IsZero() || !s.ExpiresAt.After(s.StartsAt) || !now.After(s.StartsAt) {
 		return 0
 	}
-	// 跳过周末时，不可用的周末不应消耗“已过日额度卡”。
-	if s.SkipWeekends {
-		usable := weekendSkippedDurationBetween(s.StartsAt, now)
-		if usable <= 0 {
-			return 0
-		}
-		return int(usable / dailyWindowDuration)
+	elapsed := s.dailyOverdraftElapsedDuration(now)
+	if elapsed <= 0 {
+		return 0
 	}
-	return int(now.Sub(s.StartsAt) / dailyWindowDuration)
+	return int(elapsed / dailyWindowDuration)
+}
+
+// dailyOverdraftElapsedDuration returns elapsed daily-card time. A user can
+// enable weekend skipping after a subscription has already started, so only
+// weekends from that change onward are unavailable. Historical rows without
+// the change timestamp retain their original whole-period skip behavior.
+func (s *UserSubscription) dailyOverdraftElapsedDuration(now time.Time) time.Duration {
+	if s == nil || s.StartsAt.IsZero() || !now.After(s.StartsAt) {
+		return 0
+	}
+	if !s.SkipWeekends {
+		return now.Sub(s.StartsAt)
+	}
+
+	skipFrom := s.StartsAt
+	if s.WeekendSkipUserChangedAt != nil && s.WeekendSkipUserChangedAt.After(skipFrom) {
+		skipFrom = *s.WeekendSkipUserChangedAt
+	}
+	if !now.After(skipFrom) {
+		return now.Sub(s.StartsAt)
+	}
+
+	return skipFrom.Sub(s.StartsAt) + weekendSkippedDurationBetween(skipFrom, now)
 }
 
 func (s *UserSubscription) currentDailyWindowUsage(now time.Time) float64 {
@@ -285,16 +304,11 @@ func (s *UserSubscription) dailyOverdraftNormalDays(now time.Time) int {
 	if s == nil || s.StartsAt.IsZero() || !s.ExpiresAt.After(s.StartsAt) || now.Before(s.StartsAt) {
 		return 0
 	}
-	var days int
-	if s.SkipWeekends {
-		usable := weekendSkippedDurationBetween(s.StartsAt, now)
-		if usable < 0 {
-			usable = 0
-		}
-		days = int(usable/dailyWindowDuration) + 1
-	} else {
-		days = int(now.Sub(s.StartsAt)/dailyWindowDuration) + 1
+	elapsed := s.dailyOverdraftElapsedDuration(now)
+	if elapsed < 0 {
+		elapsed = 0
 	}
+	days := int(elapsed/dailyWindowDuration) + 1
 	maxDays := s.OverdraftValidityDays()
 	if maxDays <= 0 {
 		return 0

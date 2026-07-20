@@ -293,6 +293,26 @@ func TestUserSubscription_DailyOverdraftElapsedFullDays_IgnoresWeekendWhenSkippi
 	require.Equal(t, 3, wallElapsed)
 }
 
+func TestUserSubscription_DailyOverdraftElapsedFullDays_DoesNotRetroactivelySkipWeekends(t *testing.T) {
+	require.NoError(t, timezone.Init("UTC"))
+
+	startsAt := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)      // Friday
+	skipEnabledAt := time.Date(2026, 7, 13, 10, 0, 0, 0, time.UTC) // Monday, after the first weekend
+	now := time.Date(2026, 7, 20, 10, 0, 0, 0, time.UTC)           // Next Monday
+	sub := &UserSubscription{
+		StartsAt:                 startsAt,
+		ExpiresAt:                time.Date(2026, 7, 31, 10, 0, 0, 0, time.UTC),
+		SkipWeekends:             true,
+		WeekendSkipUserChangedAt: &skipEnabledAt,
+		AllowDailyOverdraft:      true,
+	}
+
+	// The first weekend happened before the user enabled skipping, so it still
+	// consumes two daily cards. Only the later weekend is skipped: 3 + 5 = 8.
+	require.Equal(t, 8, sub.dailyOverdraftElapsedFullDays(now))
+	require.Equal(t, 9, sub.dailyOverdraftNormalDays(now))
+}
+
 func ptrOverdraftTime(t time.Time) *time.Time {
 	return &t
 }

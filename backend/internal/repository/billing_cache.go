@@ -50,19 +50,20 @@ func billingSubKey(userID, groupID int64) string {
 }
 
 const (
-	subFieldStatus              = "status"
-	subFieldStartsAt            = "starts_at"
-	subFieldExpiresAt           = "expires_at"
-	subFieldValidityUnit        = "validity_unit"
-	subFieldDailyWindowStart    = "daily_window_start"
-	subFieldDailyUsage          = "daily_usage"
-	subFieldWeeklyUsage         = "weekly_usage"
-	subFieldMonthlyUsage        = "monthly_usage"
-	subFieldQuotaLimitUSD       = "quota_limit_usd"
-	subFieldQuotaUsedUSD        = "quota_used_usd"
-	subFieldAllowDailyOverdraft = "allow_daily_overdraft"
-	subFieldSkipWeekends        = "skip_weekends"
-	subFieldVersion             = "version"
+	subFieldStatus                   = "status"
+	subFieldStartsAt                 = "starts_at"
+	subFieldExpiresAt                = "expires_at"
+	subFieldValidityUnit             = "validity_unit"
+	subFieldDailyWindowStart         = "daily_window_start"
+	subFieldDailyUsage               = "daily_usage"
+	subFieldWeeklyUsage              = "weekly_usage"
+	subFieldMonthlyUsage             = "monthly_usage"
+	subFieldQuotaLimitUSD            = "quota_limit_usd"
+	subFieldQuotaUsedUSD             = "quota_used_usd"
+	subFieldAllowDailyOverdraft      = "allow_daily_overdraft"
+	subFieldSkipWeekends             = "skip_weekends"
+	subFieldWeekendSkipUserChangedAt = "weekend_skip_user_changed_at"
+	subFieldVersion                  = "version"
 )
 
 // billingRateLimitKey generates the Redis key for API key rate limit cache.
@@ -256,6 +257,13 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 	if skipWeekendsStr, ok := data[subFieldSkipWeekends]; ok {
 		result.SkipWeekends = skipWeekendsStr == "1" || strings.EqualFold(skipWeekendsStr, "true")
 	}
+	if changedAtStr, ok := data[subFieldWeekendSkipUserChangedAt]; ok {
+		changedAtUnix, err := strconv.ParseInt(changedAtStr, 10, 64)
+		if err == nil && changedAtUnix > 0 {
+			changedAt := time.Unix(changedAtUnix, 0)
+			result.WeekendSkipUserChangedAt = &changedAt
+		}
+	}
 
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
@@ -283,6 +291,11 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
 		subFieldSkipWeekends:        data.SkipWeekends,
 		subFieldVersion:             data.Version,
+	}
+	if data.WeekendSkipUserChangedAt != nil && !data.WeekendSkipUserChangedAt.IsZero() {
+		fields[subFieldWeekendSkipUserChangedAt] = data.WeekendSkipUserChangedAt.Unix()
+	} else {
+		fields[subFieldWeekendSkipUserChangedAt] = ""
 	}
 	if data.QuotaLimitUSD != nil {
 		fields[subFieldQuotaLimitUSD] = *data.QuotaLimitUSD

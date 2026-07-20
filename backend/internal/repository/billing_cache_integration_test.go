@@ -165,14 +165,16 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 				userID := int64(12)
 				groupID := int64(22)
 				subKey := fmt.Sprintf("%s%d:%d", billingSubKeyPrefix, userID, groupID)
+				weekendSkipChangedAt := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
 
 				data := &service.SubscriptionCacheData{
-					Status:       "active",
-					ExpiresAt:    time.Now().Add(1 * time.Hour),
-					DailyUsage:   1.0,
-					WeeklyUsage:  2.0,
-					MonthlyUsage: 3.0,
-					Version:      7,
+					Status:                   "active",
+					ExpiresAt:                time.Now().Add(1 * time.Hour),
+					DailyUsage:               1.0,
+					WeeklyUsage:              2.0,
+					MonthlyUsage:             3.0,
+					WeekendSkipUserChangedAt: &weekendSkipChangedAt,
+					Version:                  7,
 				}
 				require.NoError(s.T(), cache.SetSubscriptionCache(ctx, userID, groupID, data), "SetSubscriptionCache")
 
@@ -181,6 +183,8 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 				require.Equal(s.T(), "active", gotSub.Status)
 				require.Equal(s.T(), int64(7), gotSub.Version)
 				require.Equal(s.T(), 1.0, gotSub.DailyUsage)
+				require.NotNil(s.T(), gotSub.WeekendSkipUserChangedAt)
+				require.WithinDuration(s.T(), weekendSkipChangedAt, *gotSub.WeekendSkipUserChangedAt, time.Second)
 
 				ttl, err := rdb.TTL(ctx, subKey).Result()
 				require.NoError(s.T(), err, "TTL subKey")

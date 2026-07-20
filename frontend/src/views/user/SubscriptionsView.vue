@@ -435,9 +435,12 @@ function getOverdraftLimit(subscription: UserSubscription): number | null {
 
 function getOverdraftDisplayUsed(subscription: UserSubscription): number | null {
   if (getOverdraftLimit(subscription) === null) return null
+  if (typeof subscription.overdraft_used_usd === 'number') {
+    return Math.max(subscription.overdraft_used_usd, 0)
+  }
   return isDayValidityUnit(subscription.validity_unit)
     ? getDayValidityOverdraftUsed(subscription)
-    : (subscription.overdraft_used_usd ?? subscription.weekly_usage_usd ?? 0)
+    : (subscription.weekly_usage_usd ?? 0)
 }
 
 function isDayValidityUnit(unit?: string | null): boolean {
