@@ -1802,8 +1802,8 @@ func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *Use
 }
 
 // MarkQuotaExhausted immediately marks an active, not-yet-expired subscription as quota_exhausted.
-// It is only used for period-level pools (weekly/monthly), never for daily-only limits,
-// because daily quota can reset without renewing the subscription.
+// It is used for period-level pools (total/weekly/monthly), daily-overdraft pools, and one-time
+// daily cards. Multi-day daily limits remain active because their quota can reset without renewal.
 func (s *SubscriptionService) MarkQuotaExhausted(ctx context.Context, sub *UserSubscription) {
 	if s == nil || sub == nil || sub.ID <= 0 || sub.Status == SubscriptionStatusQuotaExhausted {
 		return
@@ -1830,6 +1830,9 @@ func (s *SubscriptionService) afterSubscriptionQuotaExhausted(ctx context.Contex
 // 用于中间件的快速预检查，additionalCost 通常为 0
 func (s *SubscriptionService) CheckUsageLimits(ctx context.Context, sub *UserSubscription, group *Group, additionalCost float64) error {
 	if !sub.CheckDailyLimit(group, additionalCost) {
+		if sub.HasOneTimeDailyQuota() || sub.AllowsDailyOverdraft(group) {
+			s.MarkQuotaExhausted(ctx, sub)
+		}
 		return ErrDailyLimitExceeded
 	}
 	if !sub.CheckWeeklyLimit(group, additionalCost) {
@@ -1903,7 +1906,7 @@ func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *U
 		if allowDBRecheck {
 			return s.recheckSubscriptionLimitFromDB(ctx, sub, group, needsMaintenance, ErrDailyLimitExceeded)
 		}
-		if sub.AllowsDailyOverdraft(group) {
+		if sub.HasOneTimeDailyQuota() || sub.AllowsDailyOverdraft(group) {
 			s.MarkQuotaExhausted(ctx, sub)
 		}
 		return needsMaintenance, ErrDailyLimitExceeded

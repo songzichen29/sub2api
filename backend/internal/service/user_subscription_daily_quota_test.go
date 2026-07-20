@@ -217,6 +217,67 @@ func TestValidateAndCheckLimits_DailyCardDoesNotAllowSecondQuotaAfterMidnight(t 
 	require.Equal(t, dailyLimit+0.01, sub.DailyUsageUSD, "热路径不应清零日卡已用额度")
 }
 
+func TestCheckUsageLimits_ExhaustedOneTimeDailyCardMarksQuotaExhausted(t *testing.T) {
+	start := time.Now().Add(-time.Hour)
+	dailyLimit := 10.0
+	repo := newSubscriptionUserSubRepoStub()
+	sub := &UserSubscription{
+		ID:            88,
+		UserID:        99,
+		GroupID:       77,
+		Status:        SubscriptionStatusActive,
+		StartsAt:      start,
+		ExpiresAt:     start.Add(24 * time.Hour),
+		DailyUsageUSD: dailyLimit,
+	}
+	repo.seed(sub)
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	group := &Group{
+		ID:                  sub.GroupID,
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &dailyLimit,
+		AllowDailyOverdraft: true,
+	}
+
+	err := svc.CheckUsageLimits(context.Background(), sub, group, 0)
+
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+	require.Equal(t, SubscriptionStatusQuotaExhausted, sub.Status)
+	persisted, getErr := repo.GetByID(context.Background(), sub.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, SubscriptionStatusQuotaExhausted, persisted.Status)
+}
+
+func TestCheckUsageLimits_ExhaustedMultiDayDailyLimitRemainsActive(t *testing.T) {
+	start := time.Now().Add(-time.Hour)
+	dailyLimit := 10.0
+	repo := newSubscriptionUserSubRepoStub()
+	sub := &UserSubscription{
+		ID:            188,
+		UserID:        199,
+		GroupID:       177,
+		Status:        SubscriptionStatusActive,
+		StartsAt:      start,
+		ExpiresAt:     start.AddDate(0, 0, 2),
+		DailyUsageUSD: dailyLimit,
+	}
+	repo.seed(sub)
+	svc := NewSubscriptionService(groupRepoNoop{}, repo, nil, nil, nil)
+	group := &Group{
+		ID:               sub.GroupID,
+		SubscriptionType: SubscriptionTypeSubscription,
+		DailyLimitUSD:    &dailyLimit,
+	}
+
+	err := svc.CheckUsageLimits(context.Background(), sub, group, 0)
+
+	require.ErrorIs(t, err, ErrDailyLimitExceeded)
+	require.Equal(t, SubscriptionStatusActive, sub.Status)
+	persisted, getErr := repo.GetByID(context.Background(), sub.ID)
+	require.NoError(t, getErr)
+	require.Equal(t, SubscriptionStatusActive, persisted.Status)
+}
+
 func TestValidateAndCheckLimits_RechecksStaleDailyLimitSnapshot(t *testing.T) {
 	now := time.Now()
 	dailyLimit := 80.0
