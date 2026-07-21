@@ -3,9 +3,11 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type openAIImageOutputCounter struct {
@@ -198,6 +200,42 @@ func resolveOpenAIImageOutputSize(item gjson.Result, result string) string {
 		return detectOpenAIImageResultSize(result)
 	}
 	return ""
+}
+
+// enrichOpenAIImagesAPIResponseSizes adds detected dimensions to standard
+// Images API results when the upstream omits data[].size. This keeps the
+// response additive while exposing the same actual size used for billing.
+func enrichOpenAIImagesAPIResponseSizes(body []byte) []byte {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+
+	data := gjson.GetBytes(body, "data")
+	if !data.IsArray() {
+		return body
+	}
+
+	updated := body
+	for index, item := range data.Array() {
+		if !item.IsObject() || strings.TrimSpace(item.Get("size").String()) != "" {
+			continue
+		}
+		b64JSON := strings.TrimSpace(item.Get("b64_json").String())
+		url := strings.TrimSpace(item.Get("url").String())
+		if b64JSON == "" && url == "" {
+			continue
+		}
+		size := resolveOpenAIImageOutputSize(item, firstNonEmptyString(b64JSON, url))
+		if size == "" {
+			continue
+		}
+		next, err := sjson.SetBytes(updated, "data."+strconv.Itoa(index)+".size", size)
+		if err != nil {
+			return body
+		}
+		updated = next
+	}
+	return updated
 }
 
 func hashOpenAIImageOutputResult(result string) string {

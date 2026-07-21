@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestIsImageGenerationIntent(t *testing.T) {
@@ -414,6 +415,14 @@ func TestCollectOpenAIResponseImageOutputSizesDetectsInlineImageDimensions(t *te
 
 	require.Equal(t, 1, countOpenAIResponseImageOutputsFromJSONBytes(body))
 	require.Equal(t, []string{"1086x1448"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+}
+
+func TestEnrichOpenAIImagesAPIResponseSizesAddsDetectedDimension(t *testing.T) {
+	encoded := encodeOpenAIImageTestPNG(t, 1086, 1448)
+	body := []byte(`{"data":[{"b64_json":"` + encoded + `"}]}`)
+
+	enriched := enrichOpenAIImagesAPIResponseSizes(body)
+	require.Equal(t, "1086x1448", gjson.GetBytes(enriched, "data.0.size").String())
 }
 
 func TestCollectOpenAIResponseImageOutputSizesDetectsResponsesResultDimensions(t *testing.T) {
