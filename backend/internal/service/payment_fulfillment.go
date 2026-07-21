@@ -769,7 +769,10 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	}
 	var rebateBase float64
 	switch o.OrderType {
-	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+	case payment.OrderTypeBalance:
+		// Balance orders rebate against the balance credited to the invitee.
+		rebateBase = o.Amount
+	case payment.OrderTypeSubscription:
 		rebateBase = o.PayAmount
 	default:
 		return nil
