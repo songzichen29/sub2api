@@ -105,13 +105,14 @@ func (c *openAIImageOutputCounter) addDataArray(data gjson.Result) {
 		if !item.IsObject() {
 			continue
 		}
-		hasImageOutput := strings.TrimSpace(item.Get("url").String()) != "" ||
-			strings.TrimSpace(item.Get("b64_json").String()) != ""
+		b64JSON := strings.TrimSpace(item.Get("b64_json").String())
+		url := strings.TrimSpace(item.Get("url").String())
+		hasImageOutput := url != "" || b64JSON != ""
 		if !hasImageOutput {
 			continue
 		}
 		imageCount++
-		if size := strings.TrimSpace(item.Get("size").String()); size != "" {
+		if size := resolveOpenAIImageOutputSize(item, firstNonEmptyString(b64JSON, url)); size != "" {
 			sizes = append(sizes, size)
 		}
 	}
@@ -164,7 +165,7 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 	if key == "" {
 		return
 	}
-	size := strings.TrimSpace(item.Get("size").String())
+	size := resolveOpenAIImageOutputSize(item, result)
 	if _, exists := c.seen[key]; exists {
 		if size != "" && strings.TrimSpace(c.seenSizes[key]) == "" {
 			c.seenSizes[key] = size
@@ -177,6 +178,26 @@ func (c *openAIImageOutputCounter) addImageOutputItem(item gjson.Result) {
 		c.seenSizes[key] = size
 	}
 	c.count++
+}
+
+// resolveOpenAIImageOutputSize prefers upstream metadata and otherwise probes
+// inline image bytes. Remote URLs are intentionally not fetched here.
+func resolveOpenAIImageOutputSize(item gjson.Result, result string) string {
+	if size := strings.TrimSpace(item.Get("size").String()); size != "" {
+		return size
+	}
+
+	b64JSON := strings.TrimSpace(item.Get("b64_json").String())
+	if b64JSON != "" {
+		return detectOpenAIImageResultSize(b64JSON)
+	}
+	result = strings.TrimSpace(result)
+	if result != "" {
+		// A Responses image result is a bare Base64 value, while Images API
+		// may use a data URL. External URLs simply fail local probing.
+		return detectOpenAIImageResultSize(result)
+	}
+	return ""
 }
 
 func hashOpenAIImageOutputResult(result string) string {

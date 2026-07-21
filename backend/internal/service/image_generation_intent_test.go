@@ -408,6 +408,22 @@ func TestCollectOpenAIResponseImageOutputSizesFromImagesAPIData(t *testing.T) {
 	require.Equal(t, []string{"2048x1152", "2048x1152"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
 }
 
+func TestCollectOpenAIResponseImageOutputSizesDetectsInlineImageDimensions(t *testing.T) {
+	encoded := encodeOpenAIImageTestPNG(t, 1086, 1448)
+	body := []byte(`{"data":[{"b64_json":"` + encoded + `"}]}`)
+
+	require.Equal(t, 1, countOpenAIResponseImageOutputsFromJSONBytes(body))
+	require.Equal(t, []string{"1086x1448"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+}
+
+func TestCollectOpenAIResponseImageOutputSizesDetectsResponsesResultDimensions(t *testing.T) {
+	encoded := encodeOpenAIImageTestWebPVP8X(1086, 1448)
+	body := []byte(`{"output":[{"id":"ig_actual","type":"image_generation_call","result":"` + encoded + `"}]}`)
+
+	require.Equal(t, 1, countOpenAIResponseImageOutputsFromJSONBytes(body))
+	require.Equal(t, []string{"1086x1448"}, collectOpenAIResponseImageOutputSizesFromJSONBytes(body))
+}
+
 func TestCollectOpenAIImageOutputSizesFromSSEBody(t *testing.T) {
 	body := "data: {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\",\"size\":\"3840x2160\"}}\n\n" +
 		"data: {\"type\":\"response.completed\",\"response\":{\"output\":[{\"id\":\"ig_1\",\"type\":\"image_generation_call\",\"result\":\"final-a\"},{\"id\":\"ig_2\",\"type\":\"image_generation_call\",\"result\":\"final-b\",\"size\":\"1024x1024\"}]}}\n\n" +
