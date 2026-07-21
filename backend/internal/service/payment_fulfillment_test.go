@@ -750,6 +750,70 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 }
 
+func TestExecuteBalanceFulfillmentSkipsRedeemLevelAffiliateRebate(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
+	staleAt := time.Now().Add(-paymentFulfillmentLeaseDuration - time.Minute)
+	order := createPaymentFulfillmentSubscriptionOrder(t, ctx, client, OrderStatusRecharging, staleAt)
+	order, err := client.PaymentOrder.UpdateOneID(order.ID).
+		SetOrderType(payment.OrderTypeBalance).
+		ClearPlanID().
+		ClearSubscriptionGroupID().
+		ClearSubscriptionDays().
+		SetUpdatedAt(staleAt).
+		Save(ctx)
+	require.NoError(t, err)
+
+	inviterID := int64(9001)
+	affiliateRepo := &paymentFulfillmentAffiliateRepoStub{
+		inviteeSummary: &AffiliateSummary{
+			UserID:    order.UserID,
+			AffCode:   "INVITEE",
+			InviterID: &inviterID,
+			CreatedAt: time.Now().Add(-24 * time.Hour),
+		},
+		inviterSummary: &AffiliateSummary{
+			UserID:    inviterID,
+			AffCode:   "INVITER",
+			CreatedAt: time.Now().Add(-48 * time.Hour),
+		},
+	}
+	settingSvc := NewSettingService(&paymentFulfillmentSettingRepoStub{values: map[string]string{
+		SettingKeyAffiliateEnabled:            "true",
+		SettingKeyAffiliateRechargeEnabled:    "true",
+		SettingKeyAffiliateRechargeRebateRate: "20",
+		SettingKeyAffiliateRebateFreezeHours:  "0",
+	}}, nil)
+	affiliateSvc := NewAffiliateService(affiliateRepo, settingSvc, nil, nil)
+	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
+		order.RechargeCode: {
+			ID:     101,
+			Code:   order.RechargeCode,
+			Type:   RedeemTypeBalance,
+			Value:  order.Amount,
+			Status: StatusUnused,
+		},
+	}}
+	svc := &PaymentService{
+		entClient: client,
+		redeemService: &RedeemService{
+			redeemRepo:       redeemRepo,
+			userRepo:         &mockUserRepo{getByIDUser: &User{ID: order.UserID}},
+			entClient:        client,
+			affiliateService: affiliateSvc,
+		},
+		affiliateService: affiliateSvc,
+	}
+
+	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
+	require.Len(t, affiliateRepo.accrueCalls, 1)
+	require.Equal(t, inviterID, affiliateRepo.accrueCalls[0].inviterID)
+	require.Equal(t, order.UserID, affiliateRepo.accrueCalls[0].inviteeUserID)
+	require.NotNil(t, affiliateRepo.accrueCalls[0].sourceOrderID)
+	require.Equal(t, order.ID, *affiliateRepo.accrueCalls[0].sourceOrderID)
+}
+
 func TestExecuteBalanceFulfillmentCompletesWhenAuxiliaryRebateFailsAfterRedeem(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)

@@ -30,8 +30,14 @@ func (s *redeemCodeRepoStub) CreateBatch(context.Context, []RedeemCode) error {
 	panic("unexpected CreateBatch call")
 }
 
-func (s *redeemCodeRepoStub) GetByID(context.Context, int64) (*RedeemCode, error) {
-	panic("unexpected GetByID call")
+func (s *redeemCodeRepoStub) GetByID(_ context.Context, id int64) (*RedeemCode, error) {
+	for _, redeemCode := range s.codesByCode {
+		if redeemCode.ID == id {
+			cloned := *redeemCode
+			return &cloned, nil
+		}
+	}
+	return nil, ErrRedeemCodeNotFound
 }
 
 func (s *redeemCodeRepoStub) GetByCode(_ context.Context, code string) (*RedeemCode, error) {
