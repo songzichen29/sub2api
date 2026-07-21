@@ -23,16 +23,16 @@ func TestPSStartOfDayUTC_UsesConfiguredTimezoneBoundary(t *testing.T) {
 	require.Equal(t, time.Date(2026, 5, 10, 0, 0, 0, 0, loc), got)
 }
 
-func TestBuildAffiliateRebateAppliedAuditDetail_UsesPayAmountBase(t *testing.T) {
+func TestBuildAffiliateRebateAppliedAuditDetail_UsesRebateBaseAmount(t *testing.T) {
 	detail := buildAffiliateRebateAppliedAuditDetail("balance", 103, 10.3)
-	require.Equal(t, 103.0, detail["rebateBasePayAmount"])
+	require.Equal(t, 103.0, detail["rebateBaseAmount"])
 	require.Equal(t, "balance", detail["orderType"])
 	require.Equal(t, 10.3, detail["rebateAmount"])
 }
 
-func TestBuildAffiliateRebateSkippedAuditDetail_UsesPayAmountBase(t *testing.T) {
+func TestBuildAffiliateRebateSkippedAuditDetail_UsesRebateBaseAmount(t *testing.T) {
 	detail := buildAffiliateRebateSkippedAuditDetail("subscription", 88.8, "affiliate_disabled")
-	require.Equal(t, 88.8, detail["rebateBasePayAmount"])
+	require.Equal(t, 88.8, detail["rebateBaseAmount"])
 	require.Equal(t, "subscription", detail["orderType"])
 	require.Equal(t, "affiliate_disabled", detail["reason"])
 }

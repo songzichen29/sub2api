@@ -854,19 +854,19 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *db
 	return nil
 }
 
-func buildAffiliateRebateSkippedAuditDetail(orderType string, rebateBasePayAmount float64, reason string) map[string]any {
+func buildAffiliateRebateSkippedAuditDetail(orderType string, rebateBaseAmount float64, reason string) map[string]any {
 	return map[string]any{
-		"rebateBasePayAmount": rebateBasePayAmount,
-		"orderType":           orderType,
-		"reason":              reason,
+		"rebateBaseAmount": rebateBaseAmount,
+		"orderType":        orderType,
+		"reason":           reason,
 	}
 }
 
-func buildAffiliateRebateAppliedAuditDetail(orderType string, rebateBasePayAmount, rebateAmount float64) map[string]any {
+func buildAffiliateRebateAppliedAuditDetail(orderType string, rebateBaseAmount, rebateAmount float64) map[string]any {
 	return map[string]any{
-		"rebateBasePayAmount": rebateBasePayAmount,
-		"orderType":           orderType,
-		"rebateAmount":        rebateAmount,
+		"rebateBaseAmount": rebateBaseAmount,
+		"orderType":        orderType,
+		"rebateAmount":     rebateAmount,
 	}
 }
 
