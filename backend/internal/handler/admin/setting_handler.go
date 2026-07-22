@@ -251,6 +251,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SiteLogo:                                               settings.SiteLogo,
 		SiteSubtitle:                                           settings.SiteSubtitle,
 		APIBaseURL:                                             settings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:                               settings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured:                 settings.OpenAIFreeImageBridgeAuthKeyConfigured,
 		ContactInfo:                                            settings.ContactInfo,
 		DocURL:                                                 settings.DocURL,
 		HomeContent:                                            settings.HomeContent,
