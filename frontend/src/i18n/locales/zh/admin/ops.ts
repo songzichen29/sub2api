@@ -71,7 +71,8 @@ export default {
       runtimeConfigResetFailed: '重置日志配置失败',
       cleanupConfirm: '确定要清理匹配当前筛选条件的系统日志吗？此操作不可撤销。',
       cleanupSuccess: '清理完成，已删除 {count} 条日志。',
-      cleanupFailed: '清理系统日志失败'
+      cleanupFailed: '清理系统日志失败',
+      cleanupFilterRequired: '清理日志前请至少选择一个筛选条件。'
     },
     requestsTotal: '请求（总计）',
     slaScope: 'SLA 范围：',

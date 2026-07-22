@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -664,7 +665,7 @@ func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs [
 	}
 
 	query := fmt.Sprintf(`
-		SELECT user_id, MAX(created_at) AS last_used_at
+		SELECT user_id, UNIX_TIMESTAMP(MAX(created_at)) AS last_used_at_unix
 		FROM usage_logs
 		WHERE user_id IN (%s)
 		GROUP BY user_id
@@ -678,19 +679,49 @@ func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs [
 
 	for rows.Next() {
 		var (
-			userID     int64
-			lastUsedAt time.Time
+			userID         int64
+			lastUsedAtUnix sql.NullString
 		)
-		if scanErr := rows.Scan(&userID, &lastUsedAt); scanErr != nil {
+		if scanErr := rows.Scan(&userID, &lastUsedAtUnix); scanErr != nil {
 			return nil, scanErr
 		}
-		ts := lastUsedAt.UTC()
+		if !lastUsedAtUnix.Valid {
+			continue
+		}
+		ts, parseErr := mysqlUnixTimestampToUTC(lastUsedAtUnix.String)
+		if parseErr != nil {
+			return nil, parseErr
+		}
 		result[userID] = &ts
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+// mysqlUnixTimestampToUTC preserves the fractional seconds returned by
+// UNIX_TIMESTAMP(datetime(6)) while normalizing the result to UTC.
+func mysqlUnixTimestampToUTC(raw string) (time.Time, error) {
+	parts := strings.SplitN(strings.TrimSpace(raw), ".", 2)
+	seconds, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse MySQL unix timestamp %q: %w", raw, err)
+	}
+
+	nanoseconds := int64(0)
+	if len(parts) == 2 {
+		fraction := parts[1]
+		if len(fraction) > 9 {
+			fraction = fraction[:9]
+		}
+		fraction += strings.Repeat("0", 9-len(fraction))
+		nanoseconds, err = strconv.ParseInt(fraction, 10, 64)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("parse MySQL unix timestamp fraction %q: %w", raw, err)
+		}
+	}
+	return time.Unix(seconds, nanoseconds).UTC(), nil
 }
 
 func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {

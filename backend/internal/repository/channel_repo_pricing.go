@@ -15,7 +15,7 @@ import (
 
 func (r *channelRepository) ListModelPricing(ctx context.Context, channelID int64) ([]service.ChannelModelPricing, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at
+		`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at
 		 FROM channel_model_pricing WHERE channel_id = ? ORDER BY id`, channelID,
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 	}
 	result, err := r.db.ExecContext(ctx,
 		`UPDATE channel_model_pricing
-		 SET models = ?, billing_mode = ?, input_price = ?, output_price = ?, cache_write_price = ?, cache_read_price = ?, image_output_price = ?, per_request_price = ?, platform = ?, updated_at = NOW()
+		 SET models = ?, billing_mode = ?, input_price = ?, output_price = ?, cache_write_price = ?, cache_read_price = ?, image_input_price = ?, image_output_price = ?, per_request_price = ?, platform = ?, updated_at = NOW()
 		 WHERE id = ?`,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
 		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
@@ -91,7 +91,7 @@ func (r *channelRepository) ReplaceModelPricing(ctx context.Context, channelID i
 func (r *channelRepository) batchLoadModelPricing(ctx context.Context, channelIDs []int64) (map[int64][]service.ChannelModelPricing, error) {
 	inClause, inArgs := buildChannelInt64InClause(channelIDs)
 	rows, err := r.db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, created_at, updated_at FROM channel_model_pricing WHERE channel_id IN (%s) ORDER BY channel_id, id`, inClause),
+		fmt.Sprintf(`SELECT id, channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price, created_at, updated_at FROM channel_model_pricing WHERE channel_id IN (%s) ORDER BY channel_id, id`, inClause),
 		inArgs...,
 	)
 	if err != nil {
@@ -230,11 +230,11 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 		platform = "anthropic"
 	}
 	res, err := exec.ExecContext(ctx,
-		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_read_price, image_input_price, image_output_price, per_request_price)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		pricing.ChannelID, platform, modelsJSON, billingMode,
 		pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice,
 	)
 	if err != nil {
 		return fmt.Errorf("insert model pricing: %w", err)

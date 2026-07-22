@@ -326,6 +326,31 @@ func (h *GroupHandler) GetAvailableModels(c *gin.Context) {
 	response.Success(c, models)
 }
 
+// GetModelsListCandidates returns the model IDs that may be exposed by the
+// custom /v1/models list for a group. ID 0 is supported for the group-create
+// form and falls back to the selected platform's defaults.
+// GET /api/v1/admin/groups/:id/models-list-candidates
+func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || groupID < 0 {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+	models, err := h.adminService.GetGroupModelsListCandidates(
+		c.Request.Context(),
+		groupID,
+		strings.TrimSpace(c.Query("platform")),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if models == nil {
+		models = []string{}
+	}
+	response.Success(c, gin.H{"models": models})
+}
+
 // Create handles creating a new group
 // POST /api/v1/admin/groups
 func (h *GroupHandler) Create(c *gin.Context) {

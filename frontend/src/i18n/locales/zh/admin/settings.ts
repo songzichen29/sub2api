@@ -137,6 +137,15 @@ export default {
       totpHint: '允许用户使用 Google Authenticator 等应用进行二次验证',
       totpKeyNotConfigured: '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
     },
+    security: {
+      stepUp: '敏感操作二次验证',
+      stepUpHint: '执行敏感管理员操作前，要求近期完成 TOTP 二次验证。',
+      stepUpEnableRequiresTotp: '请先启用 TOTP，再启用敏感操作二次验证。',
+      sessionBinding: '将验证绑定到当前会话',
+      sessionBindingHint: '将二次验证绑定到当前浏览器会话和客户端环境。',
+      auditRetention: '审计日志保留天数',
+      auditRetentionHint: '自动删除超过指定天数的审计记录。填写 0 表示永久保留。'
+    },
     turnstile: {
       title: 'Cloudflare Turnstile',
       description: '登录和注册的机器人防护',
@@ -153,7 +162,24 @@ export default {
       title: 'API Key IP 访问控制',
       description: '控制 API Key 白名单和黑名单使用哪个客户端 IP 判断',
       trustForwardedIp: '信任反代传递的客户端 IP',
-      trustForwardedIpHint: '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。'
+      trustForwardedIpHint: '默认关闭。仅在源站只允许 Cloudflare 或 Nginx 反代访问时开启；开启后 API Key IP 白/黑名单会使用 CF-Connecting-IP、X-Real-IP 或 X-Forwarded-For，与使用记录中的请求 IP 保持一致。',
+      forwardedClientIpHeaders: '反代客户端 IP 请求头',
+      forwardedClientIpHeadersHint: '按顺序检查这些请求头，使用第一个有效的客户端 IP 进行 API Key 访问控制。',
+      forwardedClientIpHeadersPlaceholder: 'CF-Connecting-IP、X-Real-IP、X-Forwarded-For',
+      forwardedClientIpHeadersRiskHint: '只信任由你控制的反向代理写入的请求头。服务直接暴露公网时，客户端可以伪造这些请求头。',
+      forwardedClientIpHeaderInvalid: '请求头名称只能包含字母、数字、短横线和下划线。',
+      forwardedClientIpHeadersLimit: '最多配置 {max} 个反代客户端 IP 请求头。',
+      removeForwardedClientIpHeader: '移除 {header}'
+    },
+    upstreamBillingProbe: {
+      title: '上游计费倍率探测',
+      description: '定期探测符合条件的 OpenAI API Key 账号声明的上游计费倍率。',
+      enabled: '启用自动探测',
+      enabledHint: '启用后，符合条件的账号会按配置的周期自动探测。',
+      intervalMinutes: '探测周期（分钟）',
+      intervalHint: '允许范围：5 至 1440 分钟。',
+      saved: '上游计费倍率探测设置已保存',
+      saveFailed: '保存上游计费倍率探测设置失败'
     },
     linuxdo: {
       title: 'LinuxDo Connect 登录',
@@ -629,6 +655,7 @@ export default {
       customMethodType: '支付方式',
       customMethodUpstreamType: '上游 type',
       customMethodDisplayName: '显示名称',
+      customMethodDisplayNamePlaceholder: '例如：信用卡',
       stripeWebhookHint: '请在 Stripe Dashboard 中将以下地址配置为 Webhook 端点：',
       stripeWebhookApiVersionHint: 'Webhook 端点的 API 版本请与当前集成的 Stripe SDK 对齐，建议选择 {version}；版本不一致可能导致回调事件解析失败。',
       airwallexWebhookHint: '请在 Airwallex 后台将以下地址配置为 Webhook 端点；事件至少选择 Payment Intent -> Succeeded（payment_intent.succeeded），建议同时选择 Payment Intent -> Cancelled（payment_intent.cancelled）；API version 选择账户默认或最新稳定版本。',

@@ -516,6 +516,7 @@ export default {
       topUsers: '消费排行',
       noData: '暂无数据',
       days: '天',
+      validityDays: '有效天数',
       weeks: '周',
       months: '月',
       searchOrders: '搜索订单...',

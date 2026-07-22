@@ -43,6 +43,7 @@ export async function list(
     group?: string
     search?: string
     privacy_mode?: string
+    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -58,6 +59,7 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
+    paramsSerializer: { indexes: null },
     signal: options?.signal
   })
   return data
@@ -79,6 +81,7 @@ export async function listWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -100,6 +103,7 @@ export async function listWithEtag(
       page_size: pageSize,
       ...filters
     },
+    paramsSerializer: { indexes: null },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304

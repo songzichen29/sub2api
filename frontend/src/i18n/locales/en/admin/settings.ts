@@ -137,6 +137,15 @@ export default {
       totpHint: 'Allow users to use authenticator apps like Google Authenticator',
       totpKeyNotConfigured: 'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
     },
+    security: {
+      stepUp: 'Step-up verification for sensitive actions',
+      stepUpHint: 'Require a recent TOTP verification before sensitive administrator actions.',
+      stepUpEnableRequiresTotp: 'Enable TOTP before enabling step-up verification.',
+      sessionBinding: 'Bind verification to the current session',
+      sessionBindingHint: 'Keep step-up verification bound to the current browser session and client context.',
+      auditRetention: 'Audit log retention (days)',
+      auditRetentionHint: 'Automatically remove audit records older than this many days. Use 0 to retain them indefinitely.'
+    },
     turnstile: {
       title: 'Cloudflare Turnstile',
       description: 'Bot protection for login and registration',
@@ -153,7 +162,24 @@ export default {
       title: 'API Key IP Access Control',
       description: 'Choose which client IP is used by API Key allowlists and denylists',
       trustForwardedIp: 'Trust forwarded client IP',
-      trustForwardedIpHint: 'Disabled by default. Enable only when the origin is reachable only through Cloudflare or Nginx reverse proxy. When enabled, API Key IP allowlists and denylists use CF-Connecting-IP, X-Real-IP, or X-Forwarded-For, matching the request IP shown in usage records.'
+      trustForwardedIpHint: 'Disabled by default. Enable only when the origin is reachable only through Cloudflare or Nginx reverse proxy. When enabled, API Key IP allowlists and denylists use CF-Connecting-IP, X-Real-IP, or X-Forwarded-For, matching the request IP shown in usage records.',
+      forwardedClientIpHeaders: 'Forwarded client IP headers',
+      forwardedClientIpHeadersHint: 'Headers are checked in order. The first valid client IP is used for API Key access control.',
+      forwardedClientIpHeadersPlaceholder: 'CF-Connecting-IP, X-Real-IP, X-Forwarded-For',
+      forwardedClientIpHeadersRiskHint: 'Only trust headers added by a proxy you control. Direct clients can spoof these headers when the service is publicly reachable.',
+      forwardedClientIpHeaderInvalid: 'Header names may contain letters, digits, hyphens, and underscores only.',
+      forwardedClientIpHeadersLimit: 'You can configure at most {max} forwarded IP headers.',
+      removeForwardedClientIpHeader: 'Remove {header}'
+    },
+    upstreamBillingProbe: {
+      title: 'Upstream billing rate probe',
+      description: 'Periodically query eligible OpenAI API Key accounts for their declared upstream billing rate.',
+      enabled: 'Enable automatic probing',
+      enabledHint: 'When enabled, eligible accounts are probed on the configured interval.',
+      intervalMinutes: 'Probe interval (minutes)',
+      intervalHint: 'Allowed range: 5 to 1440 minutes.',
+      saved: 'Upstream billing probe settings saved',
+      saveFailed: 'Failed to save upstream billing probe settings'
     },
     linuxdo: {
       title: 'LinuxDo Connect Login',
@@ -629,6 +655,7 @@ export default {
       customMethodType: 'Payment type',
       customMethodUpstreamType: 'Upstream type',
       customMethodDisplayName: 'Display name',
+      customMethodDisplayNamePlaceholder: 'e.g. Credit Card',
       stripeWebhookHint: 'Configure the following URL as a Webhook endpoint in Stripe Dashboard:',
       stripeWebhookApiVersionHint: 'Set this Webhook endpoint API version to match the integrated Stripe SDK. Recommended: {version}. A mismatch can cause webhook parsing errors.',
       airwallexWebhookHint: 'Configure the following URL as a Webhook endpoint in Airwallex. Select at least Payment Intent -> Succeeded (payment_intent.succeeded), preferably also Payment Intent -> Cancelled (payment_intent.cancelled). Use the account default or latest stable API version.',

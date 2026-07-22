@@ -71,7 +71,8 @@ export default {
       runtimeConfigResetFailed: 'Failed to reset log configuration',
       cleanupConfirm: 'Clean up system logs matching the current filters? This cannot be undone.',
       cleanupSuccess: 'Cleanup complete. Deleted {count} log entries.',
-      cleanupFailed: 'Failed to clean up system logs'
+      cleanupFailed: 'Failed to clean up system logs',
+      cleanupFilterRequired: 'Select at least one filter before cleaning up logs.'
     },
     requestsTotal: 'Requests (total)',
     slaScope: 'SLA scope:',

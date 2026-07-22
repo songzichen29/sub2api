@@ -516,6 +516,7 @@ export default {
       topUsers: 'Top Users',
       noData: 'No data',
       days: 'days',
+      validityDays: 'Validity Days',
       weeks: 'weeks',
       months: 'months',
       searchOrders: 'Search orders...',

@@ -29,6 +29,15 @@ export default {
       clientIp: 'Client IP',
       detail: 'Detail'
     },
+    actions: {
+      accounts: {
+        today_stats: {
+          batch: {
+            create: 'Refresh account daily stats in batch'
+          }
+        }
+      }
+    },
     detail: {
       title: 'Audit Log Detail',
       actorRole: 'Role',

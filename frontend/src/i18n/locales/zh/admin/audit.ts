@@ -29,6 +29,15 @@ export default {
       clientIp: '客户端 IP',
       detail: '详情'
     },
+    actions: {
+      accounts: {
+        today_stats: {
+          batch: {
+            create: '批量刷新账号今日统计'
+          }
+        }
+      }
+    },
     detail: {
       title: '操作日志详情',
       actorRole: '角色',

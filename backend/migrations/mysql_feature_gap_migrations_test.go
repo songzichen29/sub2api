@@ -277,6 +277,7 @@ func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 		{"060_ops_ingress_reject_aggregates.sql", []string{"CREATE TABLE IF NOT EXISTS `ops_ingress_reject_aggregates`", "`client_ip` VARCHAR(45)", "ops_ingress_reject_aggregates_dimensions_unique"}},
 		{"061_auth_cache_invalidation_outbox.sql", []string{"CREATE TABLE IF NOT EXISTS `auth_cache_invalidation_outbox`", "SHA2(OLD.`key`, 256)", "trg_user_allowed_groups_auth_cache_delete"}},
 		{"062_group_reasoning_effort_policy.sql", []string{"`max_reasoning_effort` VARCHAR(20)", "`reasoning_effort_mappings` JSON"}},
+		{"063_add_usage_log_billing_mode.sql", []string{"table_name = 'usage_logs'", "column_name = 'billing_mode'", "ADD COLUMN `billing_mode` varchar(20) NULL"}},
 	}
 
 	for _, tt := range tests {

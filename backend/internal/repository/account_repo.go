@@ -31,6 +31,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 )
@@ -983,7 +984,7 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	accountsQuery := q.
 		Offset(params.Offset()).
 		Limit(params.Limit())
-	for _, order := range accountListOrder(params) {
+	for _, order := range accountListOrder(params, r.client.Driver().Dialect()) {
 		accountsQuery = accountsQuery.Order(order)
 	}
 
@@ -1033,7 +1034,7 @@ func (r *accountRepository) ListAllTags(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
+func accountListOrder(params pagination.PaginationParams, dbDialect string) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
 	if sortBy == "upstream_billing_rate" {
@@ -1045,8 +1046,15 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		}
 		return []func(*entsql.Selector){func(s *entsql.Selector) {
 			extra := s.C(dbaccount.FieldExtra)
-			expression := upstreamBillingRateSortExpression(extra)
-			s.OrderExpr(entsql.Expr(expression + " " + direction + " NULLS LAST"))
+			expression := upstreamBillingRateSortExpression(extra, dbDialect)
+			if dbDialect == dialect.MySQL {
+				// MySQL does not support PostgreSQL's NULLS LAST syntax. Keep
+				// missing/unsupported probe values at the end for both directions.
+				s.OrderExpr(entsql.Expr(expression + " IS NULL ASC"))
+				s.OrderExpr(entsql.Expr(expression + " " + direction))
+			} else {
+				s.OrderExpr(entsql.Expr(expression + " " + direction + " NULLS LAST"))
+			}
 			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
 		}}
 	}
@@ -1091,7 +1099,14 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 	return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbaccount.FieldID)}
 }
 
-func upstreamBillingRateSortExpression(extra string) string {
+func upstreamBillingRateSortExpression(extra, dbDialect string) string {
+	if dbDialect == dialect.MySQL {
+		return upstreamBillingRateSortExpressionMySQL(extra)
+	}
+	return upstreamBillingRateSortExpressionPostgres(extra)
+}
+
+func upstreamBillingRateSortExpressionPostgres(extra string) string {
 	status := extra + " #>> '{upstream_billing_probe,status}'"
 	effectiveJSON := extra + " #> '{upstream_billing_probe,data,effective_rate_multiplier}'"
 	effective := extra + " #>> '{upstream_billing_probe,data,effective_rate_multiplier}'"
@@ -1123,6 +1138,43 @@ func upstreamBillingRateSortExpression(extra string) string {
 	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +
 		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' THEN " + dynamicRate + " ELSE NULL END WHEN " + legacySnapshot +
 		" AND jsonb_typeof(" + effectiveJSON + ") = 'number' THEN (" + effective + ")::numeric END END"
+}
+
+func upstreamBillingRateSortExpressionMySQL(extra string) string {
+	statusJSON := "JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.status')"
+	status := "JSON_UNQUOTE(" + statusJSON + ")"
+	effectiveJSON := "JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.effective_rate_multiplier')"
+	effective := "JSON_UNQUOTE(" + effectiveJSON + ")"
+	resolvedJSON := "JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.resolved_rate_multiplier')"
+	resolved := "JSON_UNQUOTE(" + resolvedJSON + ")"
+	peakEnabledJSON := "JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.peak_rate_enabled')"
+	peakEnabled := "JSON_UNQUOTE(" + peakEnabledJSON + ")"
+	peakStart := "JSON_UNQUOTE(JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.peak_start'))"
+	peakEnd := "JSON_UNQUOTE(JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.peak_end'))"
+	peakMultiplierJSON := "JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.peak_rate_multiplier')"
+	peakMultiplier := "JSON_UNQUOTE(" + peakMultiplierJSON + ")"
+	billingScope := "JSON_UNQUOTE(JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.billing_scope'))"
+	timezone := "JSON_UNQUOTE(JSON_EXTRACT(" + extra + ", '$.upstream_billing_probe.data.timezone'))"
+	numericTypes := "('INTEGER', 'DOUBLE', 'DECIMAL', 'UNSIGNED INTEGER', 'SIGNED INTEGER')"
+	numericResolved := "JSON_TYPE(" + resolvedJSON + ") IN " + numericTypes
+	numericEffective := "JSON_TYPE(" + effectiveJSON + ") IN " + numericTypes
+	numericPeakMultiplier := "JSON_TYPE(" + peakMultiplierJSON + ") IN " + numericTypes
+	startMinute := "(CAST(SUBSTRING(" + peakStart + ", 1, 2) AS UNSIGNED) * 60 + CAST(SUBSTRING(" + peakStart + ", 4, 2) AS UNSIGNED))"
+	endMinute := "(CAST(SUBSTRING(" + peakEnd + ", 1, 2) AS UNSIGNED) * 60 + CAST(SUBSTRING(" + peakEnd + ", 4, 2) AS UNSIGNED))"
+	localTime := "CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', " + timezone + ")"
+	localMinute := "(HOUR(" + localTime + ") * 60 + MINUTE(" + localTime + "))"
+	validClock := "(" + peakStart + " REGEXP '^([01][0-9]|2[0-3]):[0-5][0-9]$' AND " + peakEnd + " REGEXP '^([01][0-9]|2[0-3]):[0-5][0-9]$')"
+	validPeakConfig := validClock + " AND " + startMinute + " < " + endMinute +
+		" AND " + numericPeakMultiplier + " AND CAST(" + peakMultiplier + " AS DECIMAL(30, 12)) >= 0" +
+		" AND " + localTime + " IS NOT NULL"
+	dynamicRate := "CASE WHEN " + peakEnabled + " = 'false' THEN CAST(" + resolved + " AS DECIMAL(30, 12))" +
+		" WHEN " + peakEnabled + " = 'true' AND " + validPeakConfig + " THEN CAST(" + resolved + " AS DECIMAL(30, 12)) * CASE WHEN " +
+		localMinute + " >= " + startMinute + " AND " + localMinute + " < " + endMinute + " THEN CAST(" + peakMultiplier + " AS DECIMAL(30, 12)) ELSE 1 END ELSE NULL END"
+	legacySnapshot := "JSON_TYPE(" + resolvedJSON + ") IS NULL AND JSON_TYPE(" + peakEnabledJSON + ") IS NULL"
+
+	return "CASE WHEN " + status + " IN ('ok', 'failed') AND (" + numericResolved + " OR " + numericEffective + ") THEN CASE WHEN " +
+		numericResolved + " AND JSON_TYPE(" + peakEnabledJSON + ") = 'BOOLEAN' THEN CASE WHEN " + billingScope + " = 'token' THEN " + dynamicRate +
+		" ELSE NULL END WHEN " + legacySnapshot + " AND " + numericEffective + " THEN CAST(" + effective + " AS DECIMAL(30, 12)) END END"
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
