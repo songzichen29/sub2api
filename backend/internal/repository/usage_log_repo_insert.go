@@ -654,7 +654,7 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			?, ?, ?, ?,
 			?, ?, ?, ?,
 			?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 		)
 		ON DUPLICATE KEY UPDATE id = id
 	`, prepared.args...)
@@ -790,6 +790,8 @@ func buildUsageLogMultiInsertQuery(preparedList []usageLogInsertPrepared) string
 			cache_creation_1h_tokens,
 			image_output_tokens,
 			image_output_cost,
+			image_input_tokens,
+			image_input_cost,
 			input_cost,
 			output_cost,
 			cache_creation_cost,
@@ -818,6 +820,7 @@ func buildUsageLogMultiInsertQuery(preparedList []usageLogInsertPrepared) string
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
+			long_context_billing_applied,
 			channel_id,
 			model_mapping_chain,
 			billing_tier,
