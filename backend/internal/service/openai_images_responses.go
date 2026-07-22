@@ -429,10 +429,11 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	return req, nil
 }
 
-// buildOpenAIAgentIdentityImageResponsesRequest builds the reduced payload
-// accepted by the Agent Identity Codex image endpoint. That endpoint selects
-// the image tool from the tools list implicitly and rejects an explicit
-// tool_choice for image_generation.
+// buildOpenAIAgentIdentityImageResponsesRequest builds the payload accepted by
+// the Agent Identity Codex image endpoint. ChatGPT OAuth accounts use a
+// Responses-capable text model at the top level; gpt-image-2 is selected by
+// the image_generation tool itself. The upstream accepts automatic tool
+// selection, but rejects the explicit image_generation tool_choice form.
 func buildOpenAIAgentIdentityImageResponsesRequest(parsed *OpenAIImagesRequest) ([]byte, error) {
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
@@ -441,17 +442,13 @@ func buildOpenAIAgentIdentityImageResponsesRequest(parsed *OpenAIImagesRequest) 
 	if err != nil {
 		return nil, err
 	}
-	body, err = sjson.SetBytes(body, "model", openAICodexImageGenerationModel)
+	body, err = sjson.SetBytes(body, "model", openAIImagesResponsesMainModel)
 	if err != nil {
-		return nil, fmt.Errorf("set Agent Identity image model: %w", err)
+		return nil, fmt.Errorf("set Agent Identity image text model: %w", err)
 	}
-	body, err = sjson.DeleteBytes(body, "tool_choice")
+	body, err = sjson.SetBytes(body, "tool_choice", "auto")
 	if err != nil {
-		return nil, fmt.Errorf("remove Agent Identity image tool_choice: %w", err)
-	}
-	body, err = sjson.SetRawBytes(body, "tools", []byte(`[{"type":"image_generation"}]`))
-	if err != nil {
-		return nil, fmt.Errorf("set Agent Identity image tools: %w", err)
+		return nil, fmt.Errorf("set Agent Identity image tool_choice: %w", err)
 	}
 	return body, nil
 }

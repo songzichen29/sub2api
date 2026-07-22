@@ -27,10 +27,13 @@ func TestBuildOpenAIAgentIdentityImageResponsesRequestUsesImplicitImageTool(t *t
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(body, &payload))
-	require.Equal(t, "codex-gpt-image-2", payload["model"])
-	_, hasToolChoice := payload["tool_choice"]
-	require.False(t, hasToolChoice)
-	require.Equal(t, []any{map[string]any{"type": "image_generation"}}, payload["tools"])
+	require.Equal(t, "gpt-5.4-mini", payload["model"])
+	require.Equal(t, "auto", payload["tool_choice"])
+	require.Equal(t, []any{map[string]any{
+		"type":   "image_generation",
+		"action": "generate",
+		"model":  "gpt-image-2",
+	}}, payload["tools"])
 }
 
 func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *testing.T) {
