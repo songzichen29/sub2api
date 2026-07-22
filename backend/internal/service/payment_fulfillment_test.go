@@ -750,7 +750,7 @@ func TestExecuteBalanceFulfillmentRecoversAfterRedeemWithoutCreditingAgain(t *te
 	require.Equal(t, OrderStatusCompleted, reloaded.Status)
 }
 
-func TestExecuteBalanceFulfillmentSkipsRedeemLevelAffiliateRebate(t *testing.T) {
+func TestExecuteBalanceFulfillmentAppliesOrderAffiliateRebate(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 	ensurePaymentAuditOrderActionUniqueIndex(t, ctx, client)
@@ -800,10 +800,9 @@ func TestExecuteBalanceFulfillmentSkipsRedeemLevelAffiliateRebate(t *testing.T) 
 	svc := &PaymentService{
 		entClient: client,
 		redeemService: &RedeemService{
-			redeemRepo:       redeemRepo,
-			userRepo:         &mockUserRepo{getByIDUser: &User{ID: order.UserID}},
-			entClient:        client,
-			affiliateService: affiliateSvc,
+			redeemRepo: redeemRepo,
+			userRepo:   &mockUserRepo{getByIDUser: &User{ID: order.UserID}},
+			entClient:  client,
 		},
 		affiliateService: affiliateSvc,
 	}
