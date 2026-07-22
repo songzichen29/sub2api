@@ -11,10 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGetErrorLogByID_DeletedKeyOwner 验证:
-//  1. 带 deleted_key_owner_user_id 的记录能正确 JOIN users 返回 DeletedKeyOwnerEmail
-//  2. 新列全为 NULL 的普通记录 Scan 不报错,这些字段为空/nil
-func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
+func TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus(t *testing.T) {
 	ctx := context.Background()
 	_, _ = integrationDB.ExecContext(ctx, "DELETE FROM ops_error_logs")
 
@@ -63,11 +60,10 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 	require.NoError(t, err)
 	plainID, err = res.LastInsertId()
 	require.NoError(t, err)
-	require.Positive(t, plainID)
 
 	plain, err := repo.GetErrorLogByID(ctx, plainID)
 	require.NoError(t, err)
-	require.NotNil(t, plain)
+	require.Empty(t, plain.APIKeyPrefix)
 
 	require.Empty(t, plain.AttemptedKeyPrefix, "no prefix for plain error")
 	require.Nil(t, plain.DeletedKeyOwnerUserID, "no owner for plain error")
@@ -86,12 +82,9 @@ func TestGetErrorLogByID_DeletedKeyOwner(t *testing.T) {
 		APIKeyPrefix: "sk-valid",
 	})
 	require.NoError(t, err)
-	require.Positive(t, validID)
 
 	valid, err := repo.GetErrorLogByID(ctx, validID)
 	require.NoError(t, err)
-	require.NotNil(t, valid)
-
 	require.Equal(t, "sk-valid", valid.APIKeyPrefix)
 	require.Empty(t, valid.AttemptedKeyPrefix, "attempted prefix and api key prefix are mutually exclusive")
 	require.Nil(t, valid.DeletedKeyOwnerUserID, "valid key error has no deleted owner")

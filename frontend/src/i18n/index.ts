@@ -1,4 +1,5 @@
 import { createI18n } from 'vue-i18n'
+import { configureCommonGatewayErrorResolver } from '@/utils/commonGatewayErrors'
 
 type LocaleCode = 'en' | 'zh'
 
@@ -38,6 +39,19 @@ export const i18n = createI18n({
   // 禁用 HTML 消息警告 - 引导步骤使用富文本内容（driver.js 支持 HTML）
   // 这些内容是内部定义的，不存在 XSS 风险
   warnHtmlMessage: false
+})
+
+configureCommonGatewayErrorResolver((key, fallback) => {
+  const global = i18n.global
+  const messages = global.getLocaleMessage(global.locale.value) as Record<string, unknown>
+  const raw = key.split('.').reduce<unknown>((node, segment) => {
+    if (!node || typeof node !== 'object') return undefined
+    return (node as Record<string, unknown>)[segment]
+  }, messages)
+  if (typeof raw === 'string') return raw
+  if (typeof global.te === 'function' && !global.te(key)) return fallback
+  const translated = global.t(key)
+  return translated === key ? fallback : translated
 })
 
 const loadedLocales = new Set<LocaleCode>()

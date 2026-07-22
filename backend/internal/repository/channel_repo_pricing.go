@@ -59,7 +59,7 @@ func (r *channelRepository) UpdateModelPricing(ctx context.Context, pricing *ser
 		 SET models = ?, billing_mode = ?, input_price = ?, output_price = ?, cache_write_price = ?, cache_read_price = ?, image_output_price = ?, per_request_price = ?, platform = ?, updated_at = NOW()
 		 WHERE id = ?`,
 		modelsJSON, billingMode, pricing.InputPrice, pricing.OutputPrice, pricing.CacheWritePrice, pricing.CacheReadPrice,
-		pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
+		pricing.ImageInputPrice, pricing.ImageOutputPrice, pricing.PerRequestPrice, pricing.Platform, pricing.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update model pricing: %w", err)
@@ -168,7 +168,7 @@ func scanModelPricingRows(rows *sql.Rows) ([]service.ChannelModelPricing, []int6
 		if err := rows.Scan(
 			&p.ID, &p.ChannelID, &p.Platform, &modelsJSON, &p.BillingMode,
 			&p.InputPrice, &p.OutputPrice, &p.CacheWritePrice, &p.CacheReadPrice,
-			&p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
+			&p.ImageInputPrice, &p.ImageOutputPrice, &p.PerRequestPrice, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan model pricing: %w", err)
 		}

@@ -23,6 +23,8 @@ type proxyRepository struct {
 	sql    sqlExecutor
 }
 
+const proxyProbeOutboxAccountChunkSize = 500
+
 func NewProxyRepository(client *dbent.Client, sqlDB *sql.DB) service.ProxyRepository {
 	return newProxyRepositoryWithSQL(client, sqlDB)
 }
@@ -91,7 +93,62 @@ func (r *proxyRepository) ListByIDs(ctx context.Context, ids []int64) ([]service
 }
 
 func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) error {
-	builder := r.client.Proxy.UpdateOneID(proxyIn.ID).
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx := dbent.TxFromContext(ctx); contextTx != nil {
+		client = contextTx.Client()
+	} else {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil && err != dbent.ErrTxStarted {
+			return err
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+
+	updated, err := updateProxyAndInvalidateProbeSnapshots(ctx, client, proxyIn)
+	if err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	applyProxyEntityToService(proxyIn, updated)
+	return nil
+}
+
+type proxyProbeIdentity struct {
+	protocol string
+	host     string
+	port     int
+	username string
+	password string
+	status   string
+}
+
+func proxyProbeIdentityFromService(proxyIn *service.Proxy) proxyProbeIdentity {
+	return proxyProbeIdentity{
+		protocol: proxyIn.Protocol,
+		host:     proxyIn.Host,
+		port:     proxyIn.Port,
+		username: proxyIn.Username,
+		password: proxyIn.Password,
+		status:   proxyIn.Status,
+	}
+}
+
+func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.Client, proxyIn *service.Proxy) (*dbent.Proxy, error) {
+	currentIdentity, err := lockProxyProbeIdentity(ctx, client, proxyIn.ID)
+	if err != nil {
+		return nil, err
+	}
+	builder := client.Proxy.UpdateOneID(proxyIn.ID).
 		SetName(proxyIn.Name).
 		SetProtocol(proxyIn.Protocol).
 		SetHost(proxyIn.Host).
@@ -121,14 +178,104 @@ func (r *proxyRepository) Update(ctx context.Context, proxyIn *service.Proxy) er
 	}
 
 	updated, err := builder.Save(ctx)
-	if err == nil {
-		applyProxyEntityToService(proxyIn, updated)
-		return nil
-	}
 	if dbent.IsNotFound(err) {
-		return service.ErrProxyNotFound
+		return nil, service.ErrProxyNotFound
 	}
-	return err
+	if err != nil {
+		return nil, err
+	}
+	if currentIdentity == proxyProbeIdentityFromService(proxyIn) {
+		return updated, nil
+	}
+	accountIDs, err := invalidateProxyProbeSnapshots(ctx, client, proxyIn.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := enqueueProxyProbeAccountChanges(ctx, client, accountIDs); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID int64) (proxyProbeIdentity, error) {
+	rows, err := client.QueryContext(ctx, `
+		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+		FROM proxies
+		WHERE id = ? AND deleted_at IS NULL
+		FOR UPDATE
+	`, proxyID)
+	if err != nil {
+		return proxyProbeIdentity{}, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return proxyProbeIdentity{}, err
+		}
+		return proxyProbeIdentity{}, service.ErrProxyNotFound
+	}
+	var identity proxyProbeIdentity
+	if err := rows.Scan(&identity.protocol, &identity.host, &identity.port, &identity.username, &identity.password, &identity.status); err != nil {
+		return proxyProbeIdentity{}, err
+	}
+	return identity, rows.Err()
+}
+
+func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+	rows, err := exec.QueryContext(ctx, `
+		SELECT id FROM accounts
+		WHERE proxy_id = ?
+			AND platform = 'openai'
+			AND type = 'apikey'
+			AND JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
+			AND JSON_TYPE(JSON_EXTRACT(extra, '$.upstream_billing_probe')) <> 'NULL'
+			AND deleted_at IS NULL
+		FOR UPDATE
+	`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if len(accountIDs) == 0 {
+		return accountIDs, nil
+	}
+	placeholders, args := buildGroupInt64InClause(accountIDs)
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe'), updated_at = NOW(6)
+		WHERE id IN (`+placeholders+`)`, args...); err != nil {
+		return nil, err
+	}
+	return accountIDs, nil
+}
+
+func enqueueProxyProbeAccountChanges(ctx context.Context, exec sqlExecutor, accountIDs []int64) error {
+	accountIDs = sortedUniqueAccountIDs(accountIDs)
+	for start := 0; start < len(accountIDs); start += proxyProbeOutboxAccountChunkSize {
+		end := start + proxyProbeOutboxAccountChunkSize
+		if end > len(accountIDs) {
+			end = len(accountIDs)
+		}
+		payload := map[string]any{"account_ids": accountIDs[start:end]}
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *proxyRepository) Delete(ctx context.Context, id int64) error {
@@ -604,14 +751,21 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		return nil, err
 	}
 	if !change {
+		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, proxyID)
+		if err != nil {
+			return nil, err
+		}
+		if err := enqueueProxyProbeAccountChanges(ctx, exec, accountIDs); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 
 	// MySQL 无 UPDATE ... RETURNING：先 SELECT 命中账号 ID，再 UPDATE，最后返回真实命中列表。
 	var (
-		selectSQL string
+		selectSQL  string
 		selectArgs []any
-		updateSQL string
+		updateSQL  string
 		updateArgs []any
 	)
 	if target == nil {

@@ -383,6 +383,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
+import { planValiditySuffix as validitySuffixOf } from '@/components/payment/validity'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PricePreviewResponse, DiscountRule } from '@/types/payment'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -1078,10 +1079,7 @@ const planTextClass = computed(() => platformTextClass(selectedPlan.value?.group
 
 const planValiditySuffix = computed(() => {
   if (!selectedPlan.value) return ''
-  const u = selectedPlan.value.validity_unit || 'day'
-  if (u === 'month') return t('payment.perMonth')
-  if (u === 'year') return t('payment.perYear')
-  return `${selectedPlan.value.validity_days}${t('payment.days')}`
+  return validitySuffixOf(selectedPlan.value, t)
 })
 
 function selectPlan(plan: SubscriptionPlan) {

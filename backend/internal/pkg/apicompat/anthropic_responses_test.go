@@ -208,7 +208,7 @@ func TestResponsesToAnthropic_TextOnly(t *testing.T) {
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	assert.Equal(t, "resp_123", anth.ID)
 	assert.Equal(t, "claude-opus-4-6", anth.Model)
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "Hello there!", anth.Content[0].Text)
@@ -287,7 +287,7 @@ func TestResponsesToAnthropic_ToolUse(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "text", anth.Content[0].Type)
 	assert.Equal(t, "tool_use", anth.Content[1].Type)
@@ -318,7 +318,7 @@ func TestResponsesToAnthropic_ToolUseStopReasonDoesNotDependOnLastBlock(t *testi
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "tool_use", anth.StopReason)
+	assert.Equal(t, "tool_use", AnthropicStopReasonString(anth.StopReason))
 	require.Len(t, anth.Content, 2)
 	assert.Equal(t, "tool_use", anth.Content[0].Type)
 	assert.Equal(t, "text", anth.Content[1].Type)
@@ -411,7 +411,7 @@ func TestResponsesToAnthropic_Incomplete(t *testing.T) {
 	}
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
-	assert.Equal(t, "max_tokens", anth.StopReason)
+	assert.Equal(t, "max_tokens", AnthropicStopReasonString(anth.StopReason))
 }
 
 func TestResponsesToAnthropic_EmptyOutput(t *testing.T) {
@@ -995,7 +995,7 @@ func TestResponsesToAnthropic_Failed(t *testing.T) {
 
 	anth := ResponsesToAnthropic(resp, "claude-opus-4-6")
 	// Failed status defaults to "end_turn" stop reason
-	assert.Equal(t, "end_turn", anth.StopReason)
+	assert.Equal(t, "end_turn", AnthropicStopReasonString(anth.StopReason))
 	// Should have at least an empty text block
 	require.Len(t, anth.Content, 1)
 	assert.Equal(t, "text", anth.Content[0].Type)

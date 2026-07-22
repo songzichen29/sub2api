@@ -48,7 +48,7 @@
         <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model.number="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
-        <div><label class="input-label">{{ t('payment.admin.validityDays') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
+        <div><label class="input-label">{{ t('payment.admin.validity') }} <span class="text-red-500">*</span></label><input v-model.number="planForm.validity_days" type="number" min="1" class="input" required /></div>
         <div><label class="input-label">{{ t('payment.admin.validityUnit') }} <span class="text-red-500">*</span></label><Select v-model="planForm.validity_unit" :options="validityUnitOptions" /></div>
       </div>
       <div class="grid grid-cols-2 gap-4">
@@ -70,6 +70,11 @@
           <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.maxBuyCountHint') }}</p>
         </div>
         <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
+        <div>
+          <label class="input-label">{{ t('payment.admin.currency') }}</label>
+          <input v-model="planForm.currency" type="text" maxlength="3" class="input uppercase" :placeholder="t('payment.admin.currencyPlaceholder')" />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.currencyHint') }}</p>
+        </div>
       </div>
       <div>
         <label class="input-label">{{ t('payment.admin.features') }}</label>
@@ -134,7 +139,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null as number | string | null, expires_at_local: '', max_buy_count: null as number | string | null, sort_order: 0, for_sale: true })
+const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', quota_limit_usd: null as number | string | null, expires_at_local: '', max_buy_count: null as number | string | null, sort_order: 0, for_sale: true })
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -224,10 +229,10 @@ const subscriptionCnyPreview = computed(() => {
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', quota_limit_usd: props.plan.quota_limit_usd && props.plan.quota_limit_usd > 0 ? props.plan.quota_limit_usd : null, expires_at_local: toDateTimeLocal(props.plan.expires_at), max_buy_count: props.plan.max_buy_count && props.plan.max_buy_count > 0 ? props.plan.max_buy_count : null, sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', quota_limit_usd: props.plan.quota_limit_usd && props.plan.quota_limit_usd > 0 ? props.plan.quota_limit_usd : null, expires_at_local: toDateTimeLocal(props.plan.expires_at), max_buy_count: props.plan.max_buy_count && props.plan.max_buy_count > 0 ? props.plan.max_buy_count : null, sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', quota_limit_usd: null, expires_at_local: '', max_buy_count: null, sort_order: 0, for_sale: true })
+    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', quota_limit_usd: null, expires_at_local: '', max_buy_count: null, sort_order: 0, for_sale: true })
     planFeaturesText.value = ''
   }
 })
@@ -242,6 +247,7 @@ function buildPlanPayload() {
     description: planForm.description,
     price: planForm.price,
     original_price: planForm.original_price || 0,
+    currency: planForm.currency.trim().toUpperCase(),
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
     quota_limit_usd: normalizeQuotaLimitUSD(planForm.quota_limit_usd),
@@ -263,7 +269,7 @@ async function handleSavePlan() {
     return
   }
   if (!planForm.validity_days || planForm.validity_days < 1) {
-    appStore.showError(t('payment.admin.validityDaysRequired'))
+    appStore.showError(t('payment.admin.validityRequired'))
     return
   }
   if (planForm.quota_limit_usd !== null && planForm.quota_limit_usd !== '' && Number(planForm.quota_limit_usd) < 0) {

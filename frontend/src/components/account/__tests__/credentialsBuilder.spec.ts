@@ -9,10 +9,11 @@ import {
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
-  getHeaderOverrideTemplate,
-  isHeaderOverridePlatform,
+  isHeaderOverrideCapable,
+  parseHeaderOverridesJson,
   planTypeDisplayLabel,
   readPlanType,
+  serializeHeaderOverrideRows,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows
 } from '../credentialsBuilder'
@@ -94,14 +95,74 @@ describe('applyAntigravityProjectID', () => {
   })
 })
 
-describe('isHeaderOverridePlatform', () => {
-  it('only anthropic and openai are supported', () => {
-    expect(isHeaderOverridePlatform('anthropic')).toBe(true)
-    expect(isHeaderOverridePlatform('openai')).toBe(true)
-    expect(isHeaderOverridePlatform('gemini')).toBe(false)
-    expect(isHeaderOverridePlatform('grok')).toBe(false)
-    expect(isHeaderOverridePlatform('antigravity')).toBe(false)
-    expect(isHeaderOverridePlatform('')).toBe(false)
+describe('isHeaderOverrideCapable', () => {
+  it('anthropic/openai only support apikey accounts', () => {
+    expect(isHeaderOverrideCapable('anthropic', 'apikey')).toBe(true)
+    expect(isHeaderOverrideCapable('openai', 'apikey')).toBe(true)
+    expect(isHeaderOverrideCapable('anthropic', 'oauth')).toBe(false)
+    expect(isHeaderOverrideCapable('openai', 'oauth')).toBe(false)
+  })
+
+  it('grok accounts are not supported', () => {
+    expect(isHeaderOverrideCapable('grok', 'apikey')).toBe(false)
+    expect(isHeaderOverrideCapable('grok', 'oauth')).toBe(false)
+    expect(isHeaderOverrideCapable('grok', 'bedrock')).toBe(false)
+  })
+
+  it('other platforms are not supported', () => {
+    expect(isHeaderOverrideCapable('gemini', 'apikey')).toBe(false)
+    expect(isHeaderOverrideCapable('antigravity', 'apikey')).toBe(false)
+    expect(isHeaderOverrideCapable('', 'apikey')).toBe(false)
+  })
+})
+
+describe('parseHeaderOverridesJson', () => {
+  it('parses a flat object and normalizes values to trimmed strings', () => {
+    expect(
+      parseHeaderOverridesJson('{"User-Agent": " my-client/1.0 ", "x-num": 3, "x-flag": true}')
+    ).toEqual([
+      { name: 'User-Agent', value: 'my-client/1.0' },
+      { name: 'x-flag', value: 'true' },
+      { name: 'x-num', value: '3' }
+    ])
+  })
+
+  it('drops entries with blank names', () => {
+    expect(parseHeaderOverridesJson('{"  ": "v", "x-app": "cli"}')).toEqual([
+      { name: 'x-app', value: 'cli' }
+    ])
+  })
+
+  it('rejects invalid JSON, arrays, primitives and nested values', () => {
+    expect(parseHeaderOverridesJson('not json')).toBeNull()
+    expect(parseHeaderOverridesJson('[1,2]')).toBeNull()
+    expect(parseHeaderOverridesJson('"str"')).toBeNull()
+    expect(parseHeaderOverridesJson('null')).toBeNull()
+    expect(parseHeaderOverridesJson('{"a": {"b": 1}}')).toBeNull()
+    expect(parseHeaderOverridesJson('{"a": null}')).toBeNull()
+  })
+
+  it('parses an empty object to an empty row list', () => {
+    expect(parseHeaderOverridesJson('{}')).toEqual([])
+  })
+})
+
+describe('serializeHeaderOverrideRows', () => {
+  it('serializes named rows and skips empty placeholder rows', () => {
+    const text = serializeHeaderOverrideRows([
+      { name: ' user-agent ', value: ' my-client/1.0 ' },
+      { name: '', value: 'ignored' },
+      { name: 'x-app', value: '' }
+    ])
+    expect(JSON.parse(text)).toEqual({ 'user-agent': 'my-client/1.0', 'x-app': '' })
+  })
+
+  it('round-trips with parseHeaderOverridesJson', () => {
+    const rows = [
+      { name: 'a-header', value: '1' },
+      { name: 'b-header', value: '2' }
+    ]
+    expect(parseHeaderOverridesJson(serializeHeaderOverrideRows(rows))).toEqual(rows)
   })
 })
 
@@ -175,29 +236,6 @@ describe('buildHeaderOverridesObject / splitHeaderOverridesObject', () => {
       { name: 'x-app', value: 'cli' }
     ]
     expect(splitHeaderOverridesObject(buildHeaderOverridesObject(rows))).toEqual(rows)
-  })
-})
-
-describe('getHeaderOverrideTemplate', () => {
-  it('returns Claude Code CLI headers with empty values for anthropic', () => {
-    const rows = getHeaderOverrideTemplate('anthropic')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('x-app')
-    expect(names).toContain('anthropic-beta')
-    expect(names).toContain('x-stainless-lang')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
-  })
-
-  it('returns Codex CLI headers with empty values for openai', () => {
-    const rows = getHeaderOverrideTemplate('openai')
-    expect(rows.every((r) => r.value === '')).toBe(true)
-    const names = rows.map((r) => r.name)
-    expect(names).toContain('user-agent')
-    expect(names).toContain('originator')
-    expect(names).toContain('openai-beta')
-    expect(validateHeaderOverrideRows(rows)).toBeNull()
   })
 })
 

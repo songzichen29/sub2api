@@ -276,6 +276,7 @@ function toUserSupportedModelPricing(pricing: ChannelModelPricing): UserSupporte
     output_price: pricing.output_price,
     cache_write_price: pricing.cache_write_price,
     cache_read_price: pricing.cache_read_price,
+    image_input_price: pricing.image_input_price,
     image_output_price: pricing.image_output_price,
     per_request_price: pricing.per_request_price,
     intervals: pricing.intervals.map((interval) => ({

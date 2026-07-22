@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
@@ -110,12 +112,38 @@ func (r *channelMonitorRequestTemplateRepository) List(ctx context.Context, para
 
 // ApplyToMonitors 把模板当前配置覆盖到 monitorIDs 列表里的关联监控。
 // WHERE 双重过滤：template_id = id AND id IN (monitorIDs)，防止用户传了未关联本模板的 id
-// 就被覆盖。走 ent UpdateMany 保留 hooks。
+// 就被覆盖。模板字段通过 ent UpdateMany 更新以保留 hooks；extra_headers 在同一事务中
+// 单独合并，以保留仅用于幂等恢复、绝不会发往上游的内部 operation ID。
 func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Context, id int64, monitorIDs []int64) (int64, error) {
 	if len(monitorIDs) == 0 {
 		return 0, nil
 	}
-	client := clientFromContext(ctx, r.client)
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return r.applyToMonitorsWithClient(ctx, tx.Client(), id, monitorIDs)
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin apply template transaction: %w", err)
+	}
+	txCtx := dbent.NewTxContext(ctx, tx)
+	affected, err := r.applyToMonitorsWithClient(txCtx, tx.Client(), id, monitorIDs)
+	if err != nil {
+		_ = tx.Rollback()
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit apply template transaction: %w", err)
+	}
+	return affected, nil
+}
+
+func (r *channelMonitorRequestTemplateRepository) applyToMonitorsWithClient(
+	ctx context.Context,
+	client *dbent.Client,
+	id int64,
+	monitorIDs []int64,
+) (int64, error) {
 	tpl, err := client.ChannelMonitorRequestTemplate.Query().
 		Where(channelmonitorrequesttemplate.IDEQ(id)).
 		Only(ctx)
@@ -131,7 +159,6 @@ func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Co
 			channelmonitor.APIModeEQ(defaultAPIModeRepo(tpl.APIMode)),
 		).
 		SetAPIMode(defaultAPIModeRepo(tpl.APIMode)).
-		SetExtraHeaders(emptyHeadersIfNilRepo(tpl.ExtraHeaders)).
 		SetBodyOverrideMode(defaultBodyModeRepo(tpl.BodyOverrideMode))
 	if tpl.BodyOverride != nil {
 		updater = updater.SetBodyOverride(tpl.BodyOverride)
@@ -143,7 +170,51 @@ func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Co
 	if err != nil {
 		return 0, fmt.Errorf("apply template to monitors: %w", err)
 	}
-	return int64(affected), nil
+	if affected == 0 {
+		return 0, nil
+	}
+
+	templateHeaders := channelMonitorHeadersForPersistence(&service.ChannelMonitor{
+		ExtraHeaders: tpl.ExtraHeaders,
+	})
+	templateHeadersJSON, err := json.Marshal(templateHeaders)
+	if err != nil {
+		return 0, fmt.Errorf("marshal template headers: %w", err)
+	}
+	metadataKey := service.ChannelMonitorDuplicateOperationIDMetadataKey
+	metadataPath := `$."` + strings.ReplaceAll(metadataKey, `"`, `\"`) + `"`
+	idPlaceholders := strings.TrimSuffix(strings.Repeat("?,", len(monitorIDs)), ",")
+	args := make([]any, 0, len(monitorIDs)+8)
+	args = append(args, string(templateHeadersJSON), metadataPath, metadataKey, metadataPath, id)
+	for _, monitorID := range monitorIDs {
+		args = append(args, monitorID)
+	}
+	args = append(args, string(tpl.Provider), defaultAPIModeRepo(tpl.APIMode))
+	result, err := client.ExecContext(ctx, `
+		UPDATE channel_monitors
+		SET extra_headers = JSON_MERGE_PATCH(
+			CAST(? AS JSON),
+			CASE WHEN JSON_CONTAINS_PATH(COALESCE(extra_headers, JSON_OBJECT()), 'one', ?)
+				THEN JSON_OBJECT(?, JSON_EXTRACT(extra_headers, ?))
+				ELSE JSON_OBJECT()
+			END
+		)
+		WHERE template_id = ?
+		  AND id IN (`+idPlaceholders+`)
+		  AND provider = ?
+		  AND api_mode = ?
+	`, args...)
+	if err != nil {
+		return 0, fmt.Errorf("apply template headers to monitors: %w", err)
+	}
+	headersAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count applied template headers: %w", err)
+	}
+	if headersAffected != int64(affected) {
+		return 0, fmt.Errorf("apply template headers: affected %d rows, expected %d", headersAffected, affected)
+	}
+	return headersAffected, nil
 }
 
 // CountAssociatedMonitors 统计关联监控数（UI 展示「N 个配置」用）。

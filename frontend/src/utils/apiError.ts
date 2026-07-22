@@ -5,7 +5,7 @@
  * This utility extracts the user-facing message from any error shape.
  */
 
-import { i18n } from '@/i18n'
+import { resolveCommonGatewayError } from '@/utils/commonGatewayErrors'
 
 interface ApiErrorLike {
   status?: number
@@ -24,20 +24,9 @@ interface ApiErrorLike {
 }
 
 const getCommonGatewayErrorMap = (): Record<string, string> => {
-  const global = i18n.global
-  const t = global.t.bind(global)
-  const te = typeof global.te === 'function' ? global.te.bind(global) : undefined
-  const safeT = (key: string, fallback: string) => {
-    // In unit tests the global i18n instance can be intentionally empty while
-    // components mock useI18n(). Calling t() on a missing global key emits
-    // noisy warnings, so check existence first and fall back quietly.
-    if (te && !te(key)) return fallback
-    const translated = t(key)
-    return translated === key ? fallback : translated
-  }
   return {
-    model_not_allowed: safeT('errors.gateway.modelNotAllowed', 'This model is not enabled for the current group'),
-    model_not_configured: safeT('errors.gateway.modelNotConfigured', 'No account in the current group is configured to support this model'),
+    model_not_allowed: resolveCommonGatewayError('errors.gateway.modelNotAllowed', 'This model is not enabled for the current group'),
+    model_not_configured: resolveCommonGatewayError('errors.gateway.modelNotConfigured', 'No account in the current group is configured to support this model'),
   }
 }
 

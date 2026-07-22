@@ -221,9 +221,13 @@ type OpenAIWSIngressHooks struct {
 	// InitialRequestModel 是首帧渠道映射前的请求模型，只用于 usage metadata
 	// 的 reasoning effort 后缀推导，禁止用于上游请求或计费模型。
 	InitialRequestModel string
-	BeforeTurn          func(turn int) error
-	BeforeRequest       func(turn int, payload []byte, originalModel string) error
-	AfterTurn           func(turn int, result *OpenAIForwardResult, turnErr error)
+	// MaxReasoningEffort limits explicit reasoning effort values for this WS session.
+	MaxReasoningEffort string
+	// ReasoningEffortMappings rewrites explicit effort values for this WS session.
+	ReasoningEffortMappings []ReasoningEffortMapping
+	BeforeTurn              func(turn int) error
+	BeforeRequest           func(turn int, payload []byte, originalModel string) error
+	AfterTurn               func(turn int, result *OpenAIForwardResult, turnErr error)
 }
 
 func normalizeOpenAIWSLogValue(value string) string {
@@ -368,7 +372,12 @@ func openAIWSEventMayContainToolCalls(eventType string) bool {
 }
 
 func openAIWSEventShouldParseUsage(eventType string) bool {
-	return eventType == "response.completed" || strings.TrimSpace(eventType) == "response.completed"
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseOpenAIWSEventEnvelope(message []byte) (eventType string, responseID string, response gjson.Result) {
@@ -1395,6 +1404,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	flushedBufferedEventCount := 0
 	firstEventType := ""
 	lastEventType := ""
+	upstreamTerminalEvent := ""
 
 	var flusher http.Flusher
 	if reqStream {
@@ -1495,6 +1505,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 					)
 					message = documents[0]
 					pendingJSONDocuments = append(pendingJSONDocuments, documents[1:]...)
+				} else if !json.Valid(message) {
+					lease.MarkBroken()
+					invalidEventErr := errors.New("invalid websocket event JSON")
+					if !wroteDownstream {
+						return nil, wrapOpenAIWSFallback("invalid_event_json", invalidEventErr)
+					}
+					return nil, fmt.Errorf("openai ws invalid event JSON after downstream output: %w", invalidEventErr)
 				}
 			}
 		}
@@ -1527,6 +1544,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			return nil, fmt.Errorf("openai ws read event: %w", readErr)
 		}
 
+		if normalized, changed := normalizeCompletedImageGenerationStatus(message); changed {
+			message = normalized
+		}
 		eventType, eventResponseID, responseField := parseOpenAIWSEventEnvelope(message)
 		if eventType == "" {
 			continue
@@ -1548,6 +1568,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		isTerminalEvent := isOpenAIWSTerminalEvent(eventType)
 		if isTerminalEvent {
 			terminalEventCount++
+			upstreamTerminalEvent = s.handleOpenAIWSTerminalTransientFailure(
+				ctx,
+				account,
+				canonicalOpenAIAccountSchedulingModel(account, originalModel),
+				lease.HandshakeHeaders(),
+				message,
+			)
 		}
 		if firstTokenMs == nil && isTokenEvent {
 			ms := int(time.Since(startTime).Milliseconds())
@@ -1766,19 +1793,20 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	)
 
 	return &OpenAIForwardResult{
-		RequestID:        responseID,
-		Usage:            *usage,
-		Model:            originalModel,
-		UpstreamModel:    mappedModel,
-		ImageCount:       imageCounter.Count(),
-		ImageOutputSizes: imageCounter.Sizes(),
-		ServiceTier:      extractOpenAIServiceTier(reqBody),
-		ReasoningEffort:  extractOpenAIReasoningEffort(reqBody, originalModel),
-		Stream:           reqStream,
-		OpenAIWSMode:     true,
-		ResponseHeaders:  lease.HandshakeHeaders(),
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
+		RequestID:             responseID,
+		Usage:                 *usage,
+		Model:                 originalModel,
+		UpstreamModel:         mappedModel,
+		ImageCount:            imageCounter.Count(),
+		ImageOutputSizes:      imageCounter.Sizes(),
+		ServiceTier:           extractOpenAIServiceTier(reqBody),
+		ReasoningEffort:       extractOpenAIReasoningEffort(reqBody, originalModel),
+		Stream:                reqStream,
+		OpenAIWSMode:          true,
+		UpstreamTerminalEvent: upstreamTerminalEvent,
+		ResponseHeaders:       lease.HandshakeHeaders(),
+		Duration:              time.Since(startTime),
+		FirstTokenMs:          firstTokenMs,
 	}, nil
 }
 
@@ -2101,7 +2129,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		return nil, nil
 	}
 	requiredCapability := firstRequiredOpenAIEndpointCapability(nil)
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, PlatformOpenAI, requestedModel, requireCompact, requiredCapability)
+	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, PlatformOpenAI, requestedModel, requireCompact, requiredCapability)
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil

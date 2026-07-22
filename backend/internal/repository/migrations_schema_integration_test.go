@@ -5,10 +5,31 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMigrationsRunner_ConcurrentInstancesSerializeOnSessionLock(t *testing.T) {
+	const instances = 2
+	errorsByInstance := make([]error, instances)
+	var wg sync.WaitGroup
+	for i := 0; i < instances; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			errorsByInstance[index] = ApplyMigrations(ctx, integrationDB)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errorsByInstance {
+		require.NoErrorf(t, err, "migration instance %d", i)
+	}
+}
 
 func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	tx := testTx(t)

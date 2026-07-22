@@ -53,7 +53,54 @@
           </div>
         </div>
 
-        <div class="card">
+        <div
+          v-if="showPreBlockRuntimeCard"
+          data-test="pre-block-runtime-cards"
+          class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,520px)_minmax(0,1fr)]"
+        >
+          <div data-test="pre-block-sync-card" class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.preBlockSyncStatus') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.preBlockSyncHint') }}</p>
+            </div>
+            <div data-test="pre-block-metric-grid" class="grid grid-cols-2 gap-3 p-6 md:grid-cols-3">
+              <div v-for="item in preBlockMetricItems" :key="item.key" class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700/50">
+                <p class="text-xs text-gray-500 dark:text-gray-400">{{ item.label }}</p>
+                <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{{ item.value }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div data-test="pre-block-api-key-load-card" class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.preBlockAPIKeyLoad') }}</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.preBlockAPIKeyLoadHint') }}</p>
+              <p class="mt-2 text-xs font-medium text-gray-600 dark:text-gray-300">{{ preBlockAPIKeyLoadSummaryText }}</p>
+            </div>
+            <div class="p-6">
+              <div
+                v-if="preBlockAPIKeyLoads.length > 0"
+                data-test="pre-block-api-key-load-list"
+                class="max-h-[280px] space-y-3 overflow-y-auto pr-1"
+              >
+                <div v-for="item in preBlockAPIKeyLoads" :key="item.key_hash || item.index" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-700/50">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="truncate font-mono text-sm text-gray-700 dark:text-gray-200">#{{ item.index + 1 }} {{ item.masked || '-' }}</span>
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">{{ formatNumber(item.total) }}</span>
+                  </div>
+                  <div class="mt-2 grid grid-cols-3 gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{{ t('admin.riskControl.preBlockKeyActiveShort') }} {{ formatNumber(item.active) }}</span>
+                    <span>{{ t('admin.riskControl.preBlockKeyAvgShort') }} {{ formatNumber(item.avg_latency_ms) }} ms</span>
+                    <span>{{ t('admin.riskControl.preBlockKeyLastShort') }} {{ formatNumber(item.last_latency_ms) }} ms</span>
+                  </div>
+                </div>
+              </div>
+              <p v-else class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.preBlockAPIKeyLoadEmpty') }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showWorkerRuntimeCard" class="card">
           <div class="flex flex-col gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.workerStatus') }}</h2>
@@ -665,6 +712,66 @@
                 <p v-if="filteredGroups.length === 0" class="text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.noGroups') }}</p>
               </div>
             </div>
+
+            <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.modelFilter') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.modelFilterHint') }}</p>
+              </div>
+              <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
+                <button
+                  v-for="option in modelFilterOptions"
+                  :key="option.value"
+                  type="button"
+                  class="rounded-lg border p-3 text-left transition-colors"
+                  :class="configForm.model_filter_type === option.value
+                    ? 'border-primary-300 bg-primary-50 text-primary-900 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-100'
+                    : 'border-gray-100 hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-700/60'"
+                  @click="setModelFilterType(option.value)"
+                >
+                  <span class="block text-sm font-semibold">{{ option.label }}</span>
+                  <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ option.description }}</span>
+                </button>
+              </div>
+              <ModelWhitelistSelector
+                v-if="configForm.model_filter_type !== 'all'"
+                v-model="configForm.model_filter_models"
+              />
+            </div>
+          </div>
+
+          <div v-else-if="activeSettingsTab === 'riskThresholds'" class="space-y-5">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.riskThresholds') }}</h3>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.riskThresholdsHint') }}</p>
+              </div>
+              <button type="button" class="btn btn-secondary inline-flex items-center gap-2" @click="resetRiskThresholds">
+                <Icon name="refresh" size="sm" />
+                {{ t('admin.riskControl.riskThresholdReset') }}
+              </button>
+            </div>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div v-for="row in riskThresholdRows" :key="row.category" class="rounded-lg border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/30">
+                <div class="flex items-center justify-between gap-3">
+                  <label class="truncate text-sm font-semibold text-gray-900 dark:text-white" :for="`risk-threshold-${row.category}`">{{ row.category }}</label>
+                  <span class="font-mono text-xs text-gray-500 dark:text-gray-400">{{ formatThresholdPercent(row.value) }}</span>
+                </div>
+                <div class="relative mt-3">
+                  <input
+                    :id="`risk-threshold-${row.category}`"
+                    v-model.number="configForm.thresholds[row.category]"
+                    :data-test="`risk-threshold-${row.category}`"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    class="input pr-8 font-mono"
+                  />
+                  <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div v-else-if="activeSettingsTab === 'runtime'" class="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -950,12 +1057,16 @@ import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import { adminAPI } from '@/api/admin'
 import type {
   ContentModerationAPIKeyStatus,
+  ContentModerationAPIKeyLoad,
   ContentModerationConfig,
   ContentModerationLog,
   ContentModerationRuntimeStatus,
+  ContentModerationModelFilter,
+  ContentModerationModelFilterType,
   ContentModerationTestAuditResult,
   KeywordBlockingMode,
   ModerationMode,
@@ -967,7 +1078,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
-type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention' | 'keywords'
+type SettingsTab = 'basic' | 'scope' | 'riskThresholds' | 'runtime' | 'response' | 'retention' | 'keywords'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
 type APIKeysWriteMode = 'append' | 'replace'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
@@ -987,11 +1098,33 @@ type ModerationScoreRow = {
   threshold: number
   hit: boolean
 }
+type RiskThresholdRow = {
+  category: string
+  value: number
+  defaultValue: number
+}
 
 const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
 
 const blockedKeywordMax = 10000
+
+const riskThresholdDefaults: Record<string, number> = {
+  harassment: 98,
+  'harassment/threatening': 90,
+  hate: 65,
+  'hate/threatening': 65,
+  illicit: 95,
+  'illicit/violent': 95,
+  'self-harm': 65,
+  'self-harm/intent': 85,
+  'self-harm/instructions': 65,
+  sexual: 65,
+  'sexual/minors': 65,
+  violence: 95,
+  'violence/graphic': 95,
+}
+const riskThresholdCategories = Object.keys(riskThresholdDefaults)
 
 const maxVisibleApiKeyRows: number = 3
 
@@ -1042,6 +1175,9 @@ const configForm = reactive({
   all_groups: true,
   group_ids: [] as number[],
   record_non_hits: false,
+  thresholds: { ...riskThresholdDefaults },
+  model_filter_type: 'all' as ContentModerationModelFilterType,
+  model_filter_models: [] as string[],
   worker_count: 4,
   queue_size: 32768,
   block_status: 403,
@@ -1083,6 +1219,7 @@ const filters = reactive({
 const settingsTabs = computed<Array<{ id: SettingsTab; label: string }>>(() => [
   { id: 'basic', label: t('admin.riskControl.tabs.basic') },
   { id: 'scope', label: t('admin.riskControl.tabs.scope') },
+  { id: 'riskThresholds', label: t('admin.riskControl.tabs.riskThresholds') },
   { id: 'runtime', label: t('admin.riskControl.tabs.runtime') },
   { id: 'response', label: t('admin.riskControl.tabs.response') },
   { id: 'keywords', label: t('admin.riskControl.tabs.keywords') },
@@ -1093,6 +1230,28 @@ const modeOptions = computed<SelectOption[]>(() => [
   { value: 'pre_block', label: t('admin.riskControl.modePreBlock') },
   { value: 'observe', label: t('admin.riskControl.modeObserve') },
   { value: 'off', label: t('admin.riskControl.modeOff') },
+])
+
+const modelFilterOptions = computed<Array<{
+  value: ContentModerationModelFilterType
+  label: string
+  description: string
+}>>(() => [
+  {
+    value: 'all',
+    label: t('admin.riskControl.modelFilterAll'),
+    description: t('admin.riskControl.modelFilterAllDesc'),
+  },
+  {
+    value: 'include',
+    label: t('admin.riskControl.modelFilterInclude'),
+    description: t('admin.riskControl.modelFilterIncludeDesc'),
+  },
+  {
+    value: 'exclude',
+    label: t('admin.riskControl.modelFilterExclude'),
+    description: t('admin.riskControl.modelFilterExcludeDesc'),
+  },
 ])
 
 const moderationProtocolOptions = computed<SelectOption[]>(() => [
@@ -1366,10 +1525,67 @@ const inputDetailText = computed(() => {
   return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
 })
 
+const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
+  riskThresholdCategories.map((category) => ({
+    category,
+    value: configForm.thresholds[category] ?? riskThresholdDefaults[category],
+    defaultValue: riskThresholdDefaults[category],
+  }))
+))
+
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)
 
 const queueUsageStyle = computed(() => ({
   width: queueUsagePercent.value,
+}))
+
+const runtimeMode = computed<ModerationMode>(() => status.value?.mode ?? configForm.mode)
+const showPreBlockRuntimeCard = computed(() => runtimeMode.value === 'pre_block')
+const showWorkerRuntimeCard = computed(() => runtimeMode.value === 'observe')
+
+const preBlockMetricItems = computed(() => [
+  {
+    key: 'active',
+    label: t('admin.riskControl.preBlockActive'),
+    value: formatNumber(status.value?.pre_block_active ?? 0),
+  },
+  {
+    key: 'checked',
+    label: t('admin.riskControl.preBlockChecked'),
+    value: formatNumber(status.value?.pre_block_checked ?? 0),
+  },
+  {
+    key: 'allowed',
+    label: t('admin.riskControl.preBlockAllowed'),
+    value: formatNumber(status.value?.pre_block_allowed ?? 0),
+  },
+  {
+    key: 'blocked',
+    label: t('admin.riskControl.preBlockBlocked'),
+    value: formatNumber(status.value?.pre_block_blocked ?? 0),
+  },
+  {
+    key: 'errors',
+    label: t('admin.riskControl.preBlockErrors'),
+    value: formatNumber(status.value?.pre_block_errors ?? 0),
+  },
+  {
+    key: 'latency',
+    label: t('admin.riskControl.preBlockAvgLatency'),
+    value: `${formatNumber(status.value?.pre_block_avg_latency_ms ?? 0)} ms`,
+  },
+])
+
+const preBlockAPIKeyLoads = computed<ContentModerationAPIKeyLoad[]>(() => (
+  [...(status.value?.pre_block_api_key_loads ?? [])].sort((a, b) => a.index - b.index)
+))
+
+const preBlockAPIKeyLoadSummaryText = computed(() => t('admin.riskControl.preBlockAPIKeyLoadSummary', {
+  active: formatNumber(status.value?.pre_block_api_key_active ?? 0),
+  available: formatNumber(status.value?.pre_block_api_key_available_count ?? 0),
+  total: formatNumber(status.value?.pre_block_api_key_total_calls ?? 0),
+  workerActive: formatNumber(status.value?.active_workers ?? 0),
+  workerTotal: formatNumber(status.value?.worker_count ?? configForm.worker_count),
 }))
 
 const workerSlots = computed(() => {
@@ -1422,6 +1638,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.all_groups = config.all_groups
   configForm.group_ids = Array.isArray(config.group_ids) ? [...config.group_ids] : []
   configForm.record_non_hits = config.record_non_hits
+  configForm.thresholds = riskThresholdsFromConfig(config.thresholds)
   configForm.worker_count = config.worker_count || 4
   configForm.queue_size = config.queue_size || 32768
   configForm.block_status = config.block_status || 403
@@ -1436,6 +1653,9 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.pre_hash_check_enabled = config.pre_hash_check_enabled ?? false
   configForm.blocked_keywords_text = Array.isArray(config.blocked_keywords) ? config.blocked_keywords.join('\n') : ''
   configForm.keyword_blocking_mode = normalizeKeywordBlockingMode(config.keyword_blocking_mode)
+  const modelFilter = normalizeModelFilter(config.model_filter)
+  configForm.model_filter_type = modelFilter.type
+  configForm.model_filter_models = modelFilter.models
   configForm.moderation_protocol = normalizeModerationProtocol(config.moderation_protocol)
   configForm.system_prompt = config.system_prompt || ''
   configForm.system_prompt_max_length = config.system_prompt_max_length || 4000
@@ -1485,6 +1705,11 @@ async function loadStatus(silent = true) {
 async function saveConfig() {
   saving.value = true
   try {
+    const modelFilterPayload = buildModelFilterPayload()
+    if (modelFilterPayload.type !== 'all' && modelFilterPayload.models.length === 0) {
+      appStore.showError(t('admin.riskControl.modelFilterModelsRequired'))
+      return
+    }
     const payload: UpdateContentModerationConfig = {
       enabled: configForm.enabled,
       mode: configForm.mode,
@@ -1496,6 +1721,8 @@ async function saveConfig() {
       all_groups: configForm.all_groups,
       group_ids: configForm.all_groups ? [] : [...configForm.group_ids],
       record_non_hits: configForm.record_non_hits,
+      thresholds: buildRiskThresholdPayload(),
+      model_filter: modelFilterPayload,
       clear_api_key: configForm.clear_api_key,
       worker_count: Number(configForm.worker_count) || 4,
       queue_size: Number(configForm.queue_size) || 32768,
@@ -1980,6 +2207,82 @@ function normalizeModerationProtocol(value: unknown): ModerationProtocol {
     return value
   }
   return 'openai_moderation'
+}
+
+function setModelFilterType(type: ContentModerationModelFilterType) {
+  configForm.model_filter_type = type
+  if (type === 'all') {
+    configForm.model_filter_models = []
+  }
+}
+
+function normalizeModelFilter(value: unknown): ContentModerationModelFilter {
+  if (!value || typeof value !== 'object') {
+    return { type: 'all', models: [] }
+  }
+  const raw = value as Partial<ContentModerationModelFilter>
+  const type = normalizeModelFilterType(raw.type)
+  return {
+    type,
+    models: type === 'all' ? [] : normalizeModelNames(raw.models),
+  }
+}
+
+function normalizeModelFilterType(value: unknown): ContentModerationModelFilterType {
+  return value === 'include' || value === 'exclude' ? value : 'all'
+}
+
+function normalizeModelNames(models: unknown): string[] {
+  if (!Array.isArray(models)) return []
+  const seen = new Set<string>()
+  return models
+    .map((item) => String(item ?? '').trim())
+    .filter((model) => {
+      if (!model) return false
+      const key = model.toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+}
+
+function buildModelFilterPayload(): ContentModerationModelFilter {
+  const type = normalizeModelFilterType(configForm.model_filter_type)
+  return {
+    type,
+    models: type === 'all' ? [] : normalizeModelNames(configForm.model_filter_models),
+  }
+}
+
+function riskThresholdsFromConfig(thresholds: Record<string, number> | null | undefined): Record<string, number> {
+  const result = { ...riskThresholdDefaults }
+  for (const category of riskThresholdCategories) {
+    const value = thresholds?.[category]
+    if (Number.isFinite(value)) {
+      result[category] = clampPercent(Number(value) * 100)
+    }
+  }
+  return result
+}
+
+function buildRiskThresholdPayload(): Record<string, number> {
+  return Object.fromEntries(riskThresholdCategories.map((category) => [
+    category,
+    Number((clampPercent(configForm.thresholds[category]) / 100).toFixed(4)),
+  ]))
+}
+
+function resetRiskThresholds() {
+  configForm.thresholds = { ...riskThresholdDefaults }
+}
+
+function clampPercent(value: unknown): number {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 0
+}
+
+function formatThresholdPercent(value: number): string {
+  return `${clampPercent(value).toFixed(1)}%`
 }
 
 function parseBlockedKeywords(value: string): string[] {

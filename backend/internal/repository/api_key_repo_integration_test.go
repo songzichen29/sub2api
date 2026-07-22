@@ -587,7 +587,7 @@ func TestIncrementQuotaUsed_Concurrent(t *testing.T) {
 		"并发递增后总和应为 %v，实际为 %v", float64(goroutines)*increment, got.QuotaUsed)
 }
 
-func (s *APIKeyRepoSuite) TestDeleteWithAudit_WritesAuditAndSoftDeletes() {
+func (s *APIKeyRepoSuite) TestDeleteWithAudit_TombstonesWithoutRetainingCredential() {
 	user := s.mustCreateUser("delwithaudit@test.com")
 	key := &service.APIKey{
 		UserID: user.ID,

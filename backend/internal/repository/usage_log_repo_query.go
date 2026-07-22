@@ -421,59 +421,61 @@ func (r *usageLogRepository) loadSubscriptions(ctx context.Context, ids []int64)
 
 func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, error) {
 	var (
-		id                    int64
-		userID                int64
-		apiKeyID              int64
-		accountID             int64
-		requestID             sql.NullString
-		model                 string
-		requestedModel        sql.NullString
-		upstreamModel         sql.NullString
-		groupID               sql.NullInt64
-		subscriptionID        sql.NullInt64
-		inputTokens           int
-		outputTokens          int
-		cacheCreationTokens   int
-		cacheReadTokens       int
-		cacheCreation5m       int
-		cacheCreation1h       int
-		imageOutputTokens     int
-		imageOutputCost       float64
-		inputCost             float64
-		outputCost            float64
-		cacheCreationCost     float64
-		cacheReadCost         float64
-		totalCost             float64
-		actualCost            float64
-		rateMultiplier        float64
-		accountRateMultiplier sql.NullFloat64
-		billingType           int16
-		requestTypeRaw        int16
-		stream                bool
-		openaiWSMode          bool
-		durationMs            sql.NullInt64
-		firstTokenMs          sql.NullInt64
-		upstreamFirstEventMs  sql.NullInt64
-		userAgent             sql.NullString
-		ipAddress             sql.NullString
-		imageCount            int
-		imageSize             sql.NullString
-		imageInputSize        sql.NullString
-		imageOutputSize       sql.NullString
-		imageSizeSource       sql.NullString
-		imageSizeBreakdown    sql.NullString
-		serviceTier           sql.NullString
-		reasoningEffort       sql.NullString
-		inboundEndpoint             sql.NullString
-		upstreamEndpoint            sql.NullString
-		cacheTTLOverridden          bool
-		longContextBillingApplied   bool
-		channelID                   sql.NullInt64
-		modelMappingChain           sql.NullString
-		billingTier                 sql.NullString
-		billingMode                 sql.NullString
-		accountStatsCost            sql.NullFloat64
-		createdAt                   time.Time
+		id                        int64
+		userID                    int64
+		apiKeyID                  int64
+		accountID                 int64
+		requestID                 sql.NullString
+		model                     string
+		requestedModel            sql.NullString
+		upstreamModel             sql.NullString
+		groupID                   sql.NullInt64
+		subscriptionID            sql.NullInt64
+		inputTokens               int
+		outputTokens              int
+		cacheCreationTokens       int
+		cacheReadTokens           int
+		cacheCreation5m           int
+		cacheCreation1h           int
+		imageOutputTokens         int
+		imageOutputCost           float64
+		imageInputTokens          int
+		imageInputCost            float64
+		inputCost                 float64
+		outputCost                float64
+		cacheCreationCost         float64
+		cacheReadCost             float64
+		totalCost                 float64
+		actualCost                float64
+		rateMultiplier            float64
+		accountRateMultiplier     sql.NullFloat64
+		billingType               int16
+		requestTypeRaw            int16
+		stream                    bool
+		openaiWSMode              bool
+		durationMs                sql.NullInt64
+		firstTokenMs              sql.NullInt64
+		upstreamFirstEventMs      sql.NullInt64
+		userAgent                 sql.NullString
+		ipAddress                 sql.NullString
+		imageCount                int
+		imageSize                 sql.NullString
+		imageInputSize            sql.NullString
+		imageOutputSize           sql.NullString
+		imageSizeSource           sql.NullString
+		imageSizeBreakdown        sql.NullString
+		serviceTier               sql.NullString
+		reasoningEffort           sql.NullString
+		inboundEndpoint           sql.NullString
+		upstreamEndpoint          sql.NullString
+		cacheTTLOverridden        bool
+		longContextBillingApplied bool
+		channelID                 sql.NullInt64
+		modelMappingChain         sql.NullString
+		billingTier               sql.NullString
+		billingMode               sql.NullString
+		accountStatsCost          sql.NullFloat64
+		createdAt                 time.Time
 	)
 
 	if err := scanner.Scan(
@@ -495,6 +497,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&cacheCreation1h,
 		&imageOutputTokens,
 		&imageOutputCost,
+		&imageInputTokens,
+		&imageInputCost,
 		&inputCost,
 		&outputCost,
 		&cacheCreationCost,
@@ -549,6 +553,8 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		CacheCreation1hTokens:     cacheCreation1h,
 		ImageOutputTokens:         imageOutputTokens,
 		ImageOutputCost:           imageOutputCost,
+		ImageInputTokens:          imageInputTokens,
+		ImageInputCost:            imageInputCost,
 		InputCost:                 inputCost,
 		OutputCost:                outputCost,
 		CacheCreationCost:         cacheCreationCost,

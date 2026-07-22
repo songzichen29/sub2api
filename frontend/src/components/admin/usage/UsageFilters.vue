@@ -26,14 +26,14 @@
           </button>
           <div
             v-if="showUserDropdown && (userResults.length > 0 || userKeyword)"
-            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-gray-800"
+            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-dark-800"
           >
             <button
               v-for="u in userResults"
               :key="u.id"
               type="button"
               @click="selectUser(u)"
-              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
             >
               <span>{{ u.email }}<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') }}）</span></span>
               <span class="ml-2 text-xs text-gray-400">#{{ u.id }}</span>
@@ -63,14 +63,14 @@
           </button>
           <div
             v-if="showApiKeyDropdown && apiKeyResults.length > 0"
-            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-gray-800"
+            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-dark-800"
           >
             <button
               v-for="k in apiKeyResults"
               :key="k.id"
               type="button"
               @click="selectApiKey(k)"
-              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
             >
               <span class="truncate">{{ k.name || `#${k.id}` }}</span>
               <span class="ml-2 text-xs text-gray-400">#{{ k.id }}</span>
@@ -106,14 +106,14 @@
           </button>
           <div
             v-if="showAccountDropdown && (accountResults.length > 0 || accountKeyword)"
-            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-gray-800"
+            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-dark-800"
           >
             <button
               v-for="a in accountResults"
               :key="a.id"
               type="button"
               @click="selectAccount(a)"
-              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
             >
               <span class="truncate">{{ a.name }}</span>
               <span class="ml-2 text-xs text-gray-400">#{{ a.id }}</span>
@@ -238,6 +238,7 @@ const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+let userSearchSequence = 0
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -253,48 +254,11 @@ const accountResults = ref<SimpleAccount[]>([])
 const showAccountDropdown = ref(false)
 let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-const modelOptions = ref<SelectOption[]>([
+const modelOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allModels') },
   ...(props.modelOptions ?? []).map((m) => ({ value: m, label: m })),
 ])
 const groupOptions = ref<SelectOption[]>([{ value: null, label: t('admin.usage.allGroups') }])
-
-// 模型下拉框选项随当前查询时间范围动态刷新——历史 bug：原实现仅在 onMounted 时取一次，
-// 用户修改日期后下拉框不会重载，看到的还是首次挂载日期（默认今天）的选项；今天没数据
-// 时下拉框就只有"全部模型"。
-//
-// 用 seq 计数器避免快速连续切换日期时旧请求覆盖新结果（项目内已有同模式：admin/UsageView
-// 的 modelStatsReqSeq）。
-let modelOptionsReqSeq = 0
-
-async function reloadModelOptions(): Promise<void> {
-  if (!props.startDate || !props.endDate) {
-    return
-  }
-  const seq = ++modelOptionsReqSeq
-  try {
-    const ms = await adminAPI.dashboard.getModelStats({
-      start_date: props.startDate,
-      end_date: props.endDate,
-    })
-    if (seq !== modelOptionsReqSeq) return
-
-    const uniqueModels = new Set<string>()
-    ms.models?.forEach((s: any) => {
-      if (s.model) {
-        uniqueModels.add(s.model)
-      }
-    })
-    modelOptions.value = [
-      { value: null, label: t('admin.usage.allModels') },
-      ...Array.from(uniqueModels)
-        .sort()
-        .map((m) => ({ value: m, label: m })),
-    ]
-  } catch {
-    // 加载失败保留已有选项，页面其它筛选仍可用
-  }
-}
 
 const requestTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allTypes') },
@@ -343,18 +307,34 @@ const billingModeOptions = ref<SelectOption[]>([
 
 const emitChange = () => emit('change')
 
+const clearPendingUserSearch = () => {
+  if (userSearchTimeout) {
+    clearTimeout(userSearchTimeout)
+    userSearchTimeout = null
+  }
+  userSearchSequence += 1
+}
+
 const debounceUserSearch = () => {
-  if (userSearchTimeout) clearTimeout(userSearchTimeout)
+  clearPendingUserSearch()
+  const query = userKeyword.value.trim()
+  if (!query) {
+    userResults.value = []
+    return
+  }
+
+  const sequence = userSearchSequence
   userSearchTimeout = setTimeout(async () => {
-    if (!userKeyword.value) {
-      userResults.value = []
-      return
-    }
+    userSearchTimeout = null
     try {
-      const results = await adminAPI.usage.searchUsers(userKeyword.value)
-      userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      const results = await adminAPI.usage.searchUsers(query)
+      if (sequence === userSearchSequence) {
+        userResults.value = results.sort((a, b) => Number(a.deleted) - Number(b.deleted))
+      }
     } catch {
-      userResults.value = []
+      if (sequence === userSearchSequence) {
+        userResults.value = []
+      }
     }
   }, 300)
 }
@@ -374,6 +354,7 @@ const debounceApiKeySearch = () => {
 }
 
 const selectUser = async (u: SimpleUser) => {
+  clearPendingUserSearch()
   userKeyword.value = u.email
   showUserDropdown.value = false
   filters.value.user_id = u.id
@@ -390,6 +371,7 @@ const selectUser = async (u: SimpleUser) => {
 }
 
 const clearUser = () => {
+  clearPendingUserSearch()
   userKeyword.value = ''
   userResults.value = []
   showUserDropdown.value = false
@@ -470,17 +452,6 @@ const onDocumentClick = (e: MouseEvent) => {
 }
 
 watch(
-  () => props.modelOptions,
-  (values) => {
-    modelOptions.value = [
-      { value: null, label: t('admin.usage.allModels') },
-      ...(values ?? []).map((m) => ({ value: m, label: m })),
-    ]
-  },
-  { immediate: true }
-)
-
-watch(
   () => props.startDate,
   (value) => {
     filters.value.start_date = value
@@ -514,6 +485,7 @@ watch(
   () => filters.value.user_id,
   (userId) => {
     if (!userId) {
+      clearPendingUserSearch()
       userKeyword.value = ''
       userResults.value = []
       return
@@ -551,29 +523,18 @@ onMounted(async () => {
     const gs = await adminAPI.groups.list(1, 1000)
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
   } catch {
-    // 分组加载失败：保留默认"全部分组"选项，不阻塞模型选项加载
+    // 分组加载失败时保留默认选项，页面其余筛选仍可用。
   }
-
-  // 模型选项独立加载（不依赖分组结果），并且后续日期变更时也由 watch 触发刷新
-  await reloadModelOptions()
 })
 
-// 时间范围变化时重新拉取模型选项，保持下拉框与当前查询区间一致。
-// 注意：watch 注册放在 onMounted 之后，挂载时的首次加载由 onMounted 显式触发，
-// 避免 immediate 与 onMounted 形成重复请求。
-watch(
-  [() => props.startDate, () => props.endDate],
-  () => {
-    void reloadModelOptions()
-  },
-)
-
 onUnmounted(() => {
+  clearPendingUserSearch()
   document.removeEventListener('click', onDocumentClick)
 })
 
 // 供外部(如用户排行下钻)在程序化设置 user_id 后回显选中的用户邮箱
 const setUserKeyword = (email: string) => {
+  clearPendingUserSearch()
   userKeyword.value = email
   userResults.value = []
   showUserDropdown.value = false

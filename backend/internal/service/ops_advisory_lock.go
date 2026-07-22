@@ -15,8 +15,13 @@ func hashAdvisoryLockID(key string) int64 {
 }
 
 func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (func(), bool) {
+	release, acquired, _ := tryAcquireDBAdvisoryLockWithError(ctx, db, lockID)
+	return release, acquired
+}
+
+func tryAcquireDBAdvisoryLockWithError(ctx context.Context, db *sql.DB, lockID int64) (func(), bool, error) {
 	if db == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -24,7 +29,7 @@ func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (fu
 
 	conn, err := db.Conn(ctx)
 	if err != nil {
-		return nil, false
+		return nil, false, fmt.Errorf("open advisory-lock connection: %w", err)
 	}
 
 	lockName := fmt.Sprintf("sub2api:advisory:%d", lockID)
@@ -33,12 +38,12 @@ func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (fu
 	var lockResult sql.NullInt64
 	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 0)", lockName).Scan(&lockResult); err != nil {
 		_ = conn.Close()
-		return nil, false
+		return nil, false, fmt.Errorf("query advisory lock: %w", err)
 	}
 	acquired = lockResult.Valid && lockResult.Int64 == 1
 	if !acquired {
 		_ = conn.Close()
-		return nil, false
+		return nil, false, nil
 	}
 
 	release := func() {
@@ -48,5 +53,5 @@ func tryAcquireDBAdvisoryLock(ctx context.Context, db *sql.DB, lockID int64) (fu
 		_ = conn.QueryRowContext(unlockCtx, "SELECT RELEASE_LOCK(?)", lockName).Scan(&released)
 		_ = conn.Close()
 	}
-	return release, true
+	return release, true, nil
 }

@@ -124,7 +124,11 @@ describe('PaymentStatusPanel', () => {
 
     await flushPromises()
     expect(wrapper.text()).toContain('payment.qr.openPayWindow')
-    expect(wrapper.get('img').attributes('src')).toBe('data:image/png;base64,qr')
+    expect(toCanvas).toHaveBeenCalledWith(
+      expect.any(HTMLCanvasElement),
+      'https://pay.example.com/qr/42',
+      expect.objectContaining({ width: 220 })
+    )
 
     await wrapper.get('button.btn.btn-secondary.text-sm').trigger('click')
     expect(openSpy).toHaveBeenCalledWith(

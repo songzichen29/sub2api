@@ -195,7 +195,7 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 执行请求
-	resp, err := servertiming.Do(entry.client, req)
+	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -226,6 +226,11 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	if profile == nil {
 		return s.Do(req, proxyURL, accountID, accountConcurrency)
 	}
+	// Plain HTTP has no TLS handshake to fingerprint. Reuse the normal transport
+	// so a configured HTTP or SOCKS proxy is not bypassed.
+	if req != nil && req.URL != nil && strings.EqualFold(req.URL.Scheme, "http") {
+		return s.Do(req, proxyURL, accountID, accountConcurrency)
+	}
 	applyGrokCLIProxyHeaders(req)
 	upstreamProfile := service.HTTPUpstreamProfileDefault
 	if req != nil {
@@ -252,7 +257,7 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	resp, err := servertiming.Do(entry.client, req)
+	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -268,6 +273,17 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 	})
 
 	return resp, nil
+}
+
+func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.Client {
+	if client == nil || req == nil || !service.HTTPUpstreamRedirectsDisabled(req.Context()) {
+		return client
+	}
+	clone := *client
+	clone.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return &clone
 }
 
 // applyGrokCLIProxyHeaders applies the official Grok Build client identity at
@@ -1192,10 +1208,18 @@ func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *u
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
 			dialTLS = tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL).DialTLSContext
 			transport.DialTLSContext = dialTLS
-		case "http", "https":
+		case "http":
 			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
 			dialTLS = tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL).DialTLSContext
 			transport.DialTLSContext = dialTLS
+		case "https":
+			// The custom CONNECT dialer does not establish TLS to the proxy itself.
+			// Keep the proxy boundary intact and fall back to the standard transport.
+			slog.Debug("tls_fingerprint_transport_https_proxy_fallback", "proxy", proxyURL.Host)
+			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
+				return nil, err
+			}
+			return transport, nil
 		default:
 			// 未知代理类型，回退到普通代理配置（无 TLS 指纹/h2）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)

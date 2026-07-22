@@ -180,12 +180,12 @@
         </div>
 
         <!-- Codex JSON / AT 批量输入 -->
-        <div v-if="inputMethod === 'codex_session'" class="space-y-4">
+        <div v-if="inputMethod === 'codex_session' || inputMethod === 'agent_identity'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t('admin.accounts.oauth.openai.codexSessionDesc') }}
+              {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityDesc' : 'admin.accounts.oauth.openai.codexSessionDesc') }}
             </p>
 
             <div class="mb-4">
@@ -193,7 +193,7 @@
                 class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300"
               >
                 <Icon name="key" size="sm" class="text-blue-500" />
-                {{ t('admin.accounts.oauth.openai.codexSessionInputLabel') }}
+                {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityInputLabel' : 'admin.accounts.oauth.openai.codexSessionInputLabel') }}
                 <span
                   v-if="parsedCodexSessionCount > 1"
                   class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white"
@@ -205,11 +205,11 @@
                 v-model="codexSessionInput"
                 rows="8"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t('admin.accounts.oauth.openai.codexSessionPlaceholder')"
+                :placeholder="t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityPlaceholder' : 'admin.accounts.oauth.openai.codexSessionPlaceholder')"
                 spellcheck="false"
               ></textarea>
               <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                {{ t('admin.accounts.oauth.openai.codexSessionHint') }}
+                {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityHint' : 'admin.accounts.oauth.openai.codexSessionHint') }}
               </p>
             </div>
 
@@ -719,6 +719,7 @@ const oauthImportantNotice = computed(() => {
 
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')
+const isAgentIdentityInput = computed(() => inputMethod.value === 'agent_identity')
 const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')

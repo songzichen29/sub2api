@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/invoiceapplication"
 	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
@@ -310,21 +311,25 @@ func (s *InvoiceService) CreateApplication(ctx context.Context, userID int64, in
 	}
 	defer rollbackInvoiceTx(tx)
 
-	header, err := tx.InvoiceHeader.Query().
-		Where(invoiceheader.IDEQ(input.HeaderID), invoiceheader.UserIDEQ(userID)).
-		ForUpdate().
-		Only(ctx)
+	headerQuery := tx.InvoiceHeader.Query().
+		Where(invoiceheader.IDEQ(input.HeaderID), invoiceheader.UserIDEQ(userID))
+	if invoiceRowLocksSupported(tx) {
+		headerQuery.ForUpdate()
+	}
+	header, err := headerQuery.Only(ctx)
 	if dbent.IsNotFound(err) {
 		return InvoiceApplicationView{}, infraerrors.NotFound("INVOICE_HEADER_NOT_FOUND", "invoice header not found")
 	}
 	if err != nil {
 		return InvoiceApplicationView{}, fmt.Errorf("get invoice header: %w", err)
 	}
-	orders, err := tx.PaymentOrder.Query().
+	ordersQuery := tx.PaymentOrder.Query().
 		Where(paymentorder.IDIn(orderIDs...), paymentorder.UserIDEQ(userID)).
-		Order(dbent.Asc(paymentorder.FieldID)).
-		ForUpdate().
-		All(ctx)
+		Order(dbent.Asc(paymentorder.FieldID))
+	if invoiceRowLocksSupported(tx) {
+		ordersQuery.ForUpdate()
+	}
+	orders, err := ordersQuery.All(ctx)
 	if err != nil {
 		return InvoiceApplicationView{}, fmt.Errorf("get invoice orders: %w", err)
 	}
@@ -442,7 +447,11 @@ func (s *InvoiceService) UpdateApplication(ctx context.Context, applicationID, a
 	}
 	defer rollbackInvoiceTx(tx)
 
-	application, err := tx.InvoiceApplication.Query().Where(invoiceapplication.IDEQ(applicationID)).ForUpdate().Only(ctx)
+	applicationQuery := tx.InvoiceApplication.Query().Where(invoiceapplication.IDEQ(applicationID))
+	if invoiceRowLocksSupported(tx) {
+		applicationQuery.ForUpdate()
+	}
+	application, err := applicationQuery.Only(ctx)
 	if dbent.IsNotFound(err) {
 		return InvoiceApplicationView{}, infraerrors.NotFound("INVOICE_APPLICATION_NOT_FOUND", "invoice application not found")
 	}
@@ -518,6 +527,10 @@ func (s *InvoiceService) UpdateApplication(ctx context.Context, applicationID, a
 		return InvoiceApplicationView{}, fmt.Errorf("commit invoice application transaction: %w", err)
 	}
 	return s.GetAdminApplication(ctx, applicationID)
+}
+
+func invoiceRowLocksSupported(tx *dbent.Tx) bool {
+	return tx != nil && tx.Client().Driver().Dialect() != dialect.SQLite
 }
 
 func (s *InvoiceService) listApplications(ctx context.Context, params InvoiceApplicationListParams, includeUser bool) ([]InvoiceApplicationView, int, error) {

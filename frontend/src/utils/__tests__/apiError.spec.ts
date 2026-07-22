@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import { i18n, initI18n } from '@/i18n'
+import { i18n, loadLocaleMessages } from '@/i18n'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 describe('apiError', () => {
   beforeAll(async () => {
-    await initI18n()
+    await Promise.all([loadLocaleMessages('en'), loadLocaleMessages('zh')])
   })
 
   it('maps model_not_allowed to localized zh message', async () => {

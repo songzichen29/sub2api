@@ -262,6 +262,36 @@ func TestMySQLGroupVideoRateMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
+	tests := []struct {
+		name     string
+		required []string
+	}{
+		{"053_add_subscription_plan_currency.sql", []string{"subscription_plans", "`currency` VARCHAR(3)"}},
+		{"054_channel_image_input_price.sql", []string{"channel_model_pricing", "`image_input_price` DECIMAL(20,12)"}},
+		{"055_usage_log_image_input_tokens.sql", []string{"`image_input_tokens` INT", "`image_input_cost` DECIMAL(20,10)"}},
+		{"056_audit_logs.sql", []string{"CREATE TABLE IF NOT EXISTS `audit_logs`", "`extra` JSON", "idx_audit_logs_created_at_id"}},
+		{"057_group_duplicate_operation_id.sql", []string{"`duplicate_operation_id` VARCHAR(64)", "GENERATED ALWAYS AS", "idx_groups_duplicate_operation_id_active"}},
+		{"058_prompt_audit.sql", []string{"CREATE TABLE IF NOT EXISTS `prompt_audit_jobs`", "CREATE TABLE IF NOT EXISTS `prompt_audit_events`", "JSON_TYPE(`categories`) = 'ARRAY'"}},
+		{"059_prompt_audit_full_prompt.sql", []string{"prompt_audit_events", "`full_prompt` LONGTEXT NOT NULL"}},
+		{"060_ops_ingress_reject_aggregates.sql", []string{"CREATE TABLE IF NOT EXISTS `ops_ingress_reject_aggregates`", "`client_ip` VARCHAR(45)", "ops_ingress_reject_aggregates_dimensions_unique"}},
+		{"061_auth_cache_invalidation_outbox.sql", []string{"CREATE TABLE IF NOT EXISTS `auth_cache_invalidation_outbox`", "SHA2(OLD.`key`, 256)", "trg_user_allowed_groups_auth_cache_delete"}},
+		{"062_group_reasoning_effort_policy.sql", []string{"`max_reasoning_effort` VARCHAR(20)", "`reasoning_effort_mappings` JSON"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content, err := MySQLFS.ReadFile(tt.name)
+			require.NoError(t, err)
+			sql := string(content)
+			for _, fragment := range tt.required {
+				require.Contains(t, sql, fragment)
+			}
+			requireNotPostgresOnlySQL(t, sql)
+		})
+	}
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

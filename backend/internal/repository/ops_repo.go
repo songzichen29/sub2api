@@ -55,9 +55,6 @@ INSERT INTO ops_error_logs (
   response_latency_ms,
   time_to_first_token_ms,
   created_at,
-  attempted_key_prefix,
-  deleted_key_owner_user_id,
-  deleted_key_name,
   api_key_prefix
 ) VALUES (
   ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
@@ -172,9 +169,6 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullInt64(input.ResponseLatencyMs),
 		opsNullInt64(input.TimeToFirstTokenMs),
 		input.CreatedAt,
-		opsNullString(input.AttemptedKeyPrefix),
-		opsNullInt64(input.DeletedKeyOwnerUserID),
-		opsNullString(input.DeletedKeyName),
 		opsNullString(input.APIKeyPrefix),
 	}
 }
@@ -463,10 +457,6 @@ SELECT
   e.upstream_latency_ms,
   e.response_latency_ms,
   e.time_to_first_token_ms,
-  COALESCE(e.attempted_key_prefix, ''),
-  e.deleted_key_owner_user_id,
-  COALESCE(du.email, ''),
-  COALESCE(e.deleted_key_name, ''),
   COALESCE(e.api_key_prefix, ''),
   COALESCE(ak.name, ''),
   ak.deleted_at
@@ -495,7 +485,6 @@ LIMIT 1`
 	var responseLatency sql.NullInt64
 	var ttft sql.NullInt64
 	var requestType sql.NullInt64
-	var deletedKeyOwnerUserID sql.NullInt64
 	var detailAPIKeyName string
 	var detailAPIKeyDeletedAt sql.NullTime
 
@@ -543,10 +532,6 @@ LIMIT 1`
 		&upstreamLatency,
 		&responseLatency,
 		&ttft,
-		&out.AttemptedKeyPrefix,
-		&deletedKeyOwnerUserID,
-		&out.DeletedKeyOwnerEmail,
-		&out.DeletedKeyName,
 		&out.APIKeyPrefix,
 		&detailAPIKeyName,
 		&detailAPIKeyDeletedAt,
@@ -612,18 +597,8 @@ LIMIT 1`
 		v := int16(requestType.Int64)
 		out.RequestType = &v
 	}
-	if deletedKeyOwnerUserID.Valid {
-		v := deletedKeyOwnerUserID.Int64
-		out.DeletedKeyOwnerUserID = &v
-	}
-	// Key 名称：优先关联到的 ak.name；关联不到时回退快照的 deleted_key_name。
-	if detailAPIKeyName != "" {
-		out.APIKeyName = detailAPIKeyName
-	} else {
-		out.APIKeyName = out.DeletedKeyName
-	}
-	// 已删除：ak.deleted_at 非空（软删），或仅命中 deleted_key_name 兜底。
-	out.APIKeyDeleted = detailAPIKeyDeletedAt.Valid || (detailAPIKeyName == "" && out.DeletedKeyName != "")
+	out.APIKeyName = detailAPIKeyName
+	out.APIKeyDeleted = detailAPIKeyDeletedAt.Valid
 
 	// Normalize upstream_errors to empty string when stored as JSON null.
 	out.UpstreamErrors = strings.TrimSpace(out.UpstreamErrors)

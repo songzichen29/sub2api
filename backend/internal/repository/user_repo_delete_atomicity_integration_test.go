@@ -14,7 +14,7 @@ import (
 )
 
 // TestUserRepository_DeleteUser_AtomicWithAPIKeys 复现 AdminService.DeleteUser 的事务编排场景：
-// 把"删 API Key"(apiKeyRepo.DeleteWithAudit) 与"删 User"(userRepo.Delete) 放进同一个外部事务时，
+// 把"tombstone 并删 API Key"(apiKeyRepo.DeleteWithAudit) 与"删 User"(userRepo.Delete) 放进同一个外部事务时，
 // userRepo.Delete 必须复用 context 中的事务，而不是用 base client 自起一个独立事务并提前提交。
 //
 // 用例用"回滚外层事务"来模拟 commit 失败 / 中止：

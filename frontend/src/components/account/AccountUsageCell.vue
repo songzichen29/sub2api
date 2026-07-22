@@ -68,6 +68,15 @@
           color="purple"
         />
 
+        <!-- 7d Fable Window (7d_oi) -->
+        <UsageProgressBar
+          v-if="usageInfo.seven_day_fable"
+          label="7d F"
+          :utilization="usageInfo.seven_day_fable.utilization"
+          :resets-at="usageInfo.seven_day_fable.resets_at"
+          color="amber"
+        />
+
         <!-- Passive sampling label + active query button -->
         <div class="flex items-center gap-1.5 mt-0.5">
           <span
@@ -531,9 +540,9 @@
           </span>
         </div>
       </div>
-      <!-- Loading skeleton：placeholder 模式下不画骨架屏，避免数据加载完是 0 时先闪一下再消失。-->
+      <!-- Loading skeleton for today stats -->
       <div
-        v-else-if="todayStatsLoading && !showUsageQueryPlaceholder"
+        v-else-if="todayStatsLoading"
         class="mb-0.5 flex items-center gap-1"
       >
         <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -1188,7 +1197,9 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   error.value = null
 
   try {
-    const fetchFn = () => adminAPI.accounts.getUsage(props.account.id, options?.source)
+    const fetchFn = () => options?.source
+      ? adminAPI.accounts.getUsage(props.account.id, options.source)
+      : adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
     if (!unmounted.value) {
       usageInfo.value = result
@@ -1384,6 +1395,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
+  _usageCache.delete(props.account.id)
   requestAutoLoad()
 })
 

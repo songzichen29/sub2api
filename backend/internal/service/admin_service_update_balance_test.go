@@ -52,6 +52,30 @@ type authCacheInvalidatorStub struct {
 	keys     []string
 }
 
+type adminRechargeAffiliateAccruerStub struct {
+	calls  []adminRechargeAffiliateAccrual
+	rebate float64
+	err    error
+}
+
+type adminRechargeAffiliateAccrual struct {
+	userID int64
+	amount float64
+}
+
+func (s *adminRechargeAffiliateAccruerStub) AccrueInviteRebate(_ context.Context, userID int64, amount float64) (float64, error) {
+	s.calls = append(s.calls, adminRechargeAffiliateAccrual{userID: userID, amount: amount})
+	return s.rebate, s.err
+}
+
+func adminRechargeSettingService(enabled bool) *SettingService {
+	values := map[string]string{}
+	if enabled {
+		values[SettingKeyAffiliateAdminRechargeEnabled] = "true"
+	}
+	return NewSettingService(&settingRepoStub{values: values}, nil)
+}
+
 func (s *authCacheInvalidatorStub) InvalidateAuthCacheByKey(ctx context.Context, key string) {
 	s.keys = append(s.keys, key)
 }
