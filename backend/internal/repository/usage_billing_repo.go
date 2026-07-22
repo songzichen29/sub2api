@@ -54,6 +54,24 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	if !applied {
 		return &service.UsageBillingApplyResult{Applied: false}, nil
 	}
+	if cmd.BalanceHoldAmount > 0 {
+		if strings.TrimSpace(cmd.BalanceHoldSettlementID) == "" || strings.TrimSpace(cmd.BalanceHoldSettlementFingerprint) == "" {
+			return nil, errors.New("usage billing balance hold settlement identity is required")
+		}
+		settlementApplied, settlementErr := r.claimUsageBillingRequest(
+			ctx,
+			tx,
+			cmd.BalanceHoldSettlementID,
+			cmd.APIKeyID,
+			cmd.BalanceHoldSettlementFingerprint,
+		)
+		if settlementErr != nil {
+			return nil, settlementErr
+		}
+		if !settlementApplied {
+			return nil, service.ErrUsageBillingBalanceHoldAlreadySettled
+		}
+	}
 
 	result := &service.UsageBillingApplyResult{Applied: true}
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
@@ -192,7 +210,13 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.SubscriptionQuotaExhausted = exhausted
 	}
 
-	if cmd.BalanceCost > 0 {
+	if cmd.BalanceHoldAmount > 0 {
+		newBalance, err := captureUsageBillingHeldBalance(ctx, tx, cmd)
+		if err != nil {
+			return err
+		}
+		result.NewBalance = &newBalance
+	} else if cmd.BalanceCost > 0 {
 		newBalance, sufficient, err := deductUsageBillingBalance(ctx, tx, cmd.UserID, cmd.BalanceCost)
 		if err != nil {
 			return err
@@ -224,6 +248,42 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 	}
 
 	return nil
+}
+
+// captureUsageBillingHeldBalance settles a pre-dispatch image hold in the same
+// transaction as usage, quota and rate-limit updates. Checking the hold claim
+// prevents one request from consuming another request's frozen balance.
+func captureUsageBillingHeldBalance(ctx context.Context, tx *sql.Tx, cmd *service.UsageBillingCommand) (float64, error) {
+	if strings.TrimSpace(cmd.BalanceHoldID) == "" {
+		return 0, errors.New("usage billing balance hold id is required")
+	}
+	if cmd.BalanceCost-cmd.BalanceHoldAmount > 0.00000001 {
+		return 0, service.ErrBatchImageSettlementCostExceedsHold
+	}
+
+	holdRequestID := service.BatchImageHoldRequestID(cmd.BalanceHoldID)
+	held, err := batchImageHoldClaimExists(ctx, tx, holdRequestID, cmd.APIKeyID)
+	if err != nil {
+		return 0, err
+	}
+	if !held {
+		return 0, errors.New("usage billing balance hold was not reserved")
+	}
+
+	result, err := captureUsageBillingBatchImageBalance(ctx, tx, &service.BatchImageBalanceHoldCommand{
+		APIKeyID:     cmd.APIKeyID,
+		UserID:       cmd.UserID,
+		BatchID:      cmd.BalanceHoldID,
+		HoldAmount:   cmd.BalanceHoldAmount,
+		ActualAmount: cmd.BalanceCost,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if result == nil || result.NewBalance == nil {
+		return 0, errors.New("usage billing balance hold settlement returned no balance")
+	}
+	return *result.NewBalance, nil
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64, allowOverLimit bool) (bool, error) {

@@ -12,6 +12,7 @@ import (
 var ErrUsageBillingRequestIDRequired = errors.New("usage billing request_id is required")
 var ErrUsageBillingRequestConflict = errors.New("usage billing request fingerprint conflict")
 var ErrUsageBillingSubscriptionLimitExceeded = errors.New("subscription usage limit exceeded")
+var ErrUsageBillingBalanceHoldAlreadySettled = errors.New("usage billing balance hold already settled")
 
 // UsageBillingCommand describes one billable request that must be applied at most once.
 type UsageBillingCommand struct {
@@ -35,8 +36,15 @@ type UsageBillingCommand struct {
 	ImageCount          int
 	MediaType           string
 
-	BalanceCost      float64
-	SubscriptionCost float64
+	BalanceCost float64
+	// BalanceHoldID identifies balance frozen before an image request was sent.
+	// When present, BalanceCost is captured from the hold rather than deducted
+	// from the current balance a second time.
+	BalanceHoldID                    string
+	BalanceHoldAmount                float64
+	BalanceHoldSettlementID          string
+	BalanceHoldSettlementFingerprint string
+	SubscriptionCost                 float64
 	// AllowSubscriptionOverLimit permits recording the final in-flight request
 	// even when its post-fact actual cost crosses a subscription limit.
 	// Follow-up requests are rejected by eligibility checks using the updated usage.
@@ -61,7 +69,7 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		return ""
 	}
 	raw := fmt.Sprintf(
-		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
+		"%d|%d|%d|%s|%s|%s|%s|%d|%d|%d|%d|%d|%d|%s|%d|%0.10f|%s|%0.10f|%s|%s|%0.10f|%0.10f|%0.10f|%0.10f|%0.10f",
 		c.UserID,
 		c.AccountID,
 		c.APIKeyID,
@@ -78,6 +86,10 @@ func buildUsageBillingFingerprint(c *UsageBillingCommand) string {
 		strings.TrimSpace(c.MediaType),
 		valueOrZero(c.SubscriptionID),
 		c.BalanceCost,
+		strings.TrimSpace(c.BalanceHoldID),
+		c.BalanceHoldAmount,
+		strings.TrimSpace(c.BalanceHoldSettlementID),
+		strings.TrimSpace(c.BalanceHoldSettlementFingerprint),
 		c.SubscriptionCost,
 		c.APIKeyQuotaCost,
 		c.APIKeyRateLimitCost,

@@ -1736,7 +1736,7 @@ func TestOpenAIGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndP
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
-func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPersistence(t *testing.T) {
+func TestOpenAIGatewayServiceRecordUsage_ExplicitImageSizeWinsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice1K := 0.11
 	imagePrice4K := 0.44
 	groupID := int64(1202)
@@ -1769,16 +1769,16 @@ func TestOpenAIGatewayServiceRecordUsage_OutputImageSizeWinsBeforeBillingAndPers
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.ImageSize)
-	require.Equal(t, ImageBillingSize4K, *usageRepo.lastLog.ImageSize)
+	require.Equal(t, ImageBillingSize1K, *usageRepo.lastLog.ImageSize)
 	require.NotNil(t, usageRepo.lastLog.ImageInputSize)
 	require.Equal(t, "1024x1024", *usageRepo.lastLog.ImageInputSize)
 	require.NotNil(t, usageRepo.lastLog.ImageOutputSize)
 	require.Equal(t, "3840x2160", *usageRepo.lastLog.ImageOutputSize)
 	require.NotNil(t, usageRepo.lastLog.ImageSizeSource)
-	require.Equal(t, ImageSizeSourceOutput, *usageRepo.lastLog.ImageSizeSource)
+	require.Equal(t, ImageSizeSourceInput, *usageRepo.lastLog.ImageSizeSource)
 	require.Equal(t, map[string]int{ImageBillingSize4K: 1}, usageRepo.lastLog.ImageSizeBreakdown)
-	require.InDelta(t, 0.44, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.44, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.11, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.11, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {

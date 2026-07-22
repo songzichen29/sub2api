@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -80,6 +81,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	ImageBalanceHold      *OpenAIImageBalanceHold
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -265,6 +267,12 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
+	if !p.IsSubscriptionBill && p.ImageBalanceHold != nil {
+		cmd.BalanceHoldID = p.ImageBalanceHold.ID
+		cmd.BalanceHoldAmount = p.ImageBalanceHold.Amount
+		cmd.BalanceHoldSettlementID = p.ImageBalanceHold.settlementRequestID()
+		cmd.BalanceHoldSettlementFingerprint = p.ImageBalanceHold.settlementFingerprint("capture")
+	}
 
 	if p.shouldDeductAPIKeyQuota() {
 		cmd.APIKeyQuotaCost = p.Cost.ActualCost
@@ -300,6 +308,19 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	}
 
 	if result == nil || !result.Applied {
+		if p.ImageBalanceHold != nil {
+			if releaseErr := releaseOpenAIImageBalanceHold(billingCtx, repo, p, p.ImageBalanceHold); releaseErr != nil {
+				return false, releaseErr
+			}
+			if p.User != nil && deps.billingCacheService != nil {
+				if invalidateErr := deps.billingCacheService.InvalidateUserBalance(billingCtx, p.User.ID); invalidateErr != nil {
+					slog.Warn("invalidate balance cache after duplicate image hold release failed",
+						"user_id", p.User.ID,
+						"error", invalidateErr,
+					)
+				}
+			}
+		}
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 		return false, nil
 	}
@@ -312,6 +333,24 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
+}
+
+func releaseOpenAIImageBalanceHold(ctx context.Context, repo UsageBillingRepository, p *postUsageBillingParams, hold *OpenAIImageBalanceHold) error {
+	if repo == nil || p == nil || p.APIKey == nil || p.User == nil || hold == nil || hold.Amount <= 0 {
+		return nil
+	}
+	_, err := repo.ReleaseBatchImageBalance(ctx, &BatchImageBalanceHoldCommand{
+		RequestID:          hold.settlementRequestID(),
+		RequestFingerprint: hold.settlementFingerprint("release"),
+		APIKeyID:           p.APIKey.ID,
+		UserID:             p.User.ID,
+		BatchID:            hold.ID,
+		HoldAmount:         hold.Amount,
+	})
+	if err != nil && !errors.Is(err, ErrUsageBillingRequestConflict) {
+		return err
+	}
+	return nil
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -334,6 +373,15 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 			} else {
 				deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, groupID, p.Cost.ActualCost)
 			}
+		}
+	} else if p.ImageBalanceHold != nil && p.User != nil && deps.billingCacheService != nil {
+		// Cached balance may already reflect the pre-dispatch freeze. Invalidate
+		// instead of decrementing it again after settlement.
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+			slog.Warn("invalidate balance cache after image hold settlement failed",
+				"user_id", p.User.ID,
+				"error", err,
+			)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
