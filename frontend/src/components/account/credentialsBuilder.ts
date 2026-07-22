@@ -25,7 +25,7 @@ export function applyAntigravityProjectID(
   }
 }
 
-// ========== 请求头覆写（anthropic/openai 的 api_key 账号 + grok 的 api_key/oauth 账号） ==========
+// ========== 请求头覆写（仅 anthropic/openai 平台的 api_key 账号） ==========
 
 export const HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY = 'header_override_enabled'
 export const HEADER_OVERRIDES_CREDENTIAL_KEY = 'header_overrides'
@@ -37,13 +37,7 @@ export interface HeaderOverrideRow {
 
 /** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
 export function isHeaderOverrideCapable(platform: string, type: string): boolean {
-  if (platform === 'anthropic' || platform === 'openai') {
-    return type === 'apikey'
-  }
-  if (platform === 'grok') {
-    return type === 'apikey' || type === 'oauth'
-  }
-  return false
+  return (platform === 'anthropic' || platform === 'openai') && type === 'apikey'
 }
 
 /** 禁止覆写的请求头（与后端 headerOverrideBlockedNames 保持一致） */
@@ -196,51 +190,6 @@ export function serializeHeaderOverrideRows(rows: HeaderOverrideRow[]): string {
   }
   return JSON.stringify(record, null, 2)
 }
-
-// ========== Grok 自定义转发地址（base_url 仅改写转发端点，凭证生命周期不受影响） ==========
-
-/** OAuth 账号建号/刷新默认写入的 CLI 网关 host——只有它视同"未定制"。 */
-const GROK_DEFAULT_GATEWAY_HOST = 'cli-chat-proxy.grok.com'
-
-/**
- * 判断 Grok 账号存储的 base_url 是否为主动指定的上游端点。
- * 运营方可在官方 API / 区域 API / 第三方转发地址之间手动切换（应对单端点
- * 不可用），这些值都必须回显（开关开启 + 显示地址）。仅默认 CLI 网关
- * （建号/刷新自动写入）、空值与无法解析的值视为"未定制"（与后端
- * GetGrokBaseURL 的回落语义对齐），用于 OAuth 账号编辑时决定开关初始状态。
- */
-export function isCustomGrokBaseUrl(value: unknown): boolean {
-  if (typeof value !== 'string') return false
-  const trimmed = value.trim()
-  if (!trimmed) return false
-  let parsed: URL
-  try {
-    parsed = new URL(trimmed)
-  } catch {
-    return false
-  }
-  return parsed.hostname.toLowerCase() !== GROK_DEFAULT_GATEWAY_HOST
-}
-
-export interface GrokBaseUrlPreset {
-  /** i18n 子键：admin.accounts.grokCustomBaseUrl.presets.<labelKey> */
-  labelKey?: 'cli' | 'official'
-  /** 字面标签（如区域标识 us-east-1），专有名词不参与 i18n */
-  label?: string
-  url: string
-}
-
-/**
- * Grok 快捷端点（仅供快速填充，输入框仍可自由填写任意转发地址）。
- * 官方端点偶发不可用时，运营方靠这组预设在端点间手动切换。
- */
-export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
-  { labelKey: 'cli', url: 'https://cli-chat-proxy.grok.com/v1' },
-  { labelKey: 'official', url: 'https://api.x.ai/v1' },
-  { label: 'us-east-1', url: 'https://us-east-1.api.x.ai/v1' },
-  { label: 'us-west-2', url: 'https://us-west-2.api.x.ai/v1' },
-  { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
-]
 
 /**
  * 将请求头覆写写入 credentials。

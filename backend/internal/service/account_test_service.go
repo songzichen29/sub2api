@@ -714,9 +714,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 			return s.sendErrorAndEnd(c, "Grok token provider not configured")
 		}
 		var err error
-		// 手动测试不走生产调度资格门：关闭调度、限流/过载/临时冷却中的账号
-		// 也应能被管理员探测（#4598），与 Codex/OpenAI 测试行为一致。
-		authToken, err = s.grokTokenProvider.GetAccessTokenForManualTest(ctx, account)
+		authToken, err = s.grokTokenProvider.GetAccessToken(ctx, account)
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Grok access token: %s", err.Error()))
 		}
@@ -740,7 +738,11 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
+	payloadBytes, err := json.Marshal(map[string]any{
+		"model":  testModelID,
+		"input":  "hi",
+		"stream": true,
+	})
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
 	}
@@ -759,8 +761,6 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	if account.IsGrokOAuth() {
 		applyGrokCLIHeaders(req.Header)
 	}
-	// 连通性测试与真实转发保持同一套账号级请求头覆写。
-	account.ApplyHeaderOverrides(req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

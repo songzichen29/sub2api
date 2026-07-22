@@ -47,11 +47,6 @@
             "
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
-          <GrokBaseUrlPresets
-            v-if="account.platform === 'grok'"
-            class="mt-2"
-            @select="editBaseUrl = $event"
-          />
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
@@ -428,68 +423,7 @@
 
       </div>
 
-      <!-- Grok OAuth client-tool prompt cache opt-in -->
-      <div
-        v-if="account.platform === 'grok' && account.type === 'oauth'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <div class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <label class="input-label mb-0">{{ t('admin.accounts.grokClientToolCache.title') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.grokClientToolCache.hint') }}
-            </p>
-          </div>
-          <Toggle
-            v-model="grokClientToolCacheEnabled"
-            data-testid="grok-client-tool-cache-toggle"
-            :aria-label="t('admin.accounts.grokClientToolCache.title')"
-          />
-        </div>
-      </div>
-
-      <!-- Grok OAuth Custom Upstream URL (仅改写转发端点，OAuth 授权/刷新不受影响) -->
-      <div
-        v-if="account.platform === 'grok' && account.type === 'oauth'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <div class="mb-3 flex items-center justify-between">
-          <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.grokCustomBaseUrl.title') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.grokCustomBaseUrl.hint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="grok-custom-base-url-toggle"
-            @click="grokOAuthCustomBaseUrlEnabled = !grokOAuthCustomBaseUrlEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              grokOAuthCustomBaseUrlEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                grokOAuthCustomBaseUrlEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-        <div v-if="grokOAuthCustomBaseUrlEnabled" class="space-y-2">
-          <input
-            v-model="grokOAuthBaseUrl"
-            type="text"
-            class="input"
-            data-testid="grok-custom-base-url-input"
-            :placeholder="t('admin.accounts.grokCustomBaseUrl.placeholder')"
-          />
-          <GrokBaseUrlPresets @select="grokOAuthBaseUrl = $event" />
-        </div>
-      </div>
-
-      <!-- Header Override Section (anthropic/openai apikey + grok apikey/oauth) -->
+      <!-- Header Override Section (anthropic/openai apikey only) -->
       <div v-if="headerOverrideCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <div>
@@ -2610,7 +2544,6 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
-import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   applyAntigravityProjectID,
@@ -2619,7 +2552,6 @@ import {
   applyPlanType,
   buildPlanTypeOptions,
   readPlanType,
-  isCustomGrokBaseUrl,
   isHeaderOverrideCapable,
   splitHeaderOverridesObject,
   validateHeaderOverrideRows,
@@ -2719,7 +2651,6 @@ const allowedModels = ref<string[]>([])
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
-const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
 const poolModeEnabled = ref(false)
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
@@ -2764,13 +2695,6 @@ const headerOverrideRows = ref<HeaderOverrideRow[]>([])
 const headerOverrideCapable = computed(
   () => !!props.account && isHeaderOverrideCapable(props.account.platform, props.account.type)
 )
-
-// Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
-const grokOAuthCustomBaseUrlEnabled = ref(false)
-const grokOAuthBaseUrl = ref('')
-// Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
-// explicit false in the account extra as the opt-out signal.
-const grokClientToolCacheEnabled = ref(true)
 
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(false)
@@ -3421,25 +3345,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     headerOverrideRows.value = splitHeaderOverridesObject(
       overrideCreds[HEADER_OVERRIDES_CREDENTIAL_KEY]
     )
-  }
-
-  // Load Grok OAuth custom upstream URL state（存储的官方地址视同未定制）
-  grokOAuthCustomBaseUrlEnabled.value = false
-  grokOAuthBaseUrl.value = ''
-  const grokClientToolCacheSetting =
-    newAccount.platform === 'grok' && newAccount.type === 'oauth'
-      ? newAccount.extra?.[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY]
-      : undefined
-  grokClientToolCacheEnabled.value =
-    newAccount.platform === 'grok' &&
-    newAccount.type === 'oauth' &&
-    (grokClientToolCacheSetting === undefined || grokClientToolCacheSetting === true)
-  if (newAccount.platform === 'grok' && newAccount.type === 'oauth' && newAccount.credentials) {
-    const grokCreds = newAccount.credentials as Record<string, unknown>
-    if (isCustomGrokBaseUrl(grokCreds.base_url)) {
-      grokOAuthCustomBaseUrlEnabled.value = true
-      grokOAuthBaseUrl.value = (grokCreds.base_url as string).trim()
-    }
   }
 
   // Initialize API Key fields for apikey type
@@ -4285,49 +4190,6 @@ const handleSubmit = async () => {
       }
 
       updatePayload.credentials = newCredentials
-    }
-
-    // Grok OAuth: 自定义上游地址 + 请求头覆写。base_url 仅改写转发端点，
-    // OAuth 授权与令牌刷新链路不读取该值；关闭开关即恢复默认官方网关。
-    if (props.account.platform === 'grok' && props.account.type === 'oauth') {
-      const currentCredentials =
-        (updatePayload.credentials as Record<string, unknown>) ||
-        ((props.account.credentials as Record<string, unknown>) || {})
-      const newCredentials: Record<string, unknown> = { ...currentCredentials }
-
-      if (grokOAuthCustomBaseUrlEnabled.value) {
-        const trimmedBaseUrl = grokOAuthBaseUrl.value.trim()
-        if (!trimmedBaseUrl) {
-          appStore.showError(t('admin.accounts.grokCustomBaseUrl.required'))
-          return
-        }
-        if (!/^https?:\/\//i.test(trimmedBaseUrl)) {
-          appStore.showError(t('admin.accounts.grokCustomBaseUrl.invalid'))
-          return
-        }
-        newCredentials.base_url = trimmedBaseUrl
-      } else {
-        delete newCredentials.base_url
-      }
-
-      if (headerOverrideEnabled.value) {
-        const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
-        if (headerError) {
-          appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
-          return
-        }
-      }
-      applyHeaderOverride(newCredentials, headerOverrideEnabled.value, headerOverrideRows.value, 'edit')
-
-      updatePayload.credentials = newCredentials
-
-      const newExtra: Record<string, unknown> = {
-        ...((props.account.extra as Record<string, unknown>) || {})
-      }
-      // Persist both states so a disabled account remains opted out when the
-      // backend applies the default-enabled policy to missing values.
-      newExtra[GROK_CLIENT_TOOL_CACHE_EXTRA_KEY] = grokClientToolCacheEnabled.value
-      updatePayload.extra = newExtra
     }
 
     // OpenAI: 手动覆盖订阅档位 plan_type（Plus/Pro/Free）。仅 OAuth 非影子账号：

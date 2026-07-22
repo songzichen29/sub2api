@@ -28,23 +28,18 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
-	gatewayService             *service.OpenAIGatewayService
-	billingCacheService        *service.BillingCacheService
-	apiKeyService              *service.APIKeyService
-	usageRecordWorkerPool      *service.UsageRecordWorkerPool
-	errorPassthroughService    *service.ErrorPassthroughService
-	contentModerationService   *service.ContentModerationService
-	securityAuditCoordinator   *securityaudit.Coordinator
-	grokMediaEligibilityProber grokMediaEligibilityProber
-	opsService                 *service.OpsService
-	concurrencyHelper          *ConcurrencyHelper
-	imageLimiter               *imageConcurrencyLimiter
-	maxAccountSwitches         int
-	cfg                        *config.Config
-}
-
-type grokMediaEligibilityProber interface {
-	ProbeMediaEligibility(ctx context.Context, accountID int64) (bool, string, error)
+	gatewayService           *service.OpenAIGatewayService
+	billingCacheService      *service.BillingCacheService
+	apiKeyService            *service.APIKeyService
+	usageRecordWorkerPool    *service.UsageRecordWorkerPool
+	errorPassthroughService  *service.ErrorPassthroughService
+	contentModerationService *service.ContentModerationService
+	securityAuditCoordinator *securityaudit.Coordinator
+	opsService               *service.OpsService
+	concurrencyHelper        *ConcurrencyHelper
+	imageLimiter             *imageConcurrencyLimiter
+	maxAccountSwitches       int
+	cfg                      *config.Config
 }
 
 const maxOpenAIFirstOutputTimeoutSwitches = 1
@@ -414,7 +409,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
 					return
 				}
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)

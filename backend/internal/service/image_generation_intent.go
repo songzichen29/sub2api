@@ -114,56 +114,6 @@ func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, bod
 	return imageIntent
 }
 
-// IsImageGenerationIntentForPlatform applies platform-specific intent rules.
-//
-// Codex advertises the image_gen namespace on ordinary Responses requests so
-// that it is available if the model needs it. Grok strips namespace and
-// Responses Lite additional_tools declarations before forwarding, so those
-// declarations alone must not turn every Codex request into an image request.
-// Native image_generation tools, explicit image selection and image models
-// remain image intent. Other platforms retain the original declaration rule.
-func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
-	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
-		return IsImageGenerationIntent(endpoint, requestedModel, body)
-	}
-	return isExplicitGrokImageGenerationIntent(endpoint, requestedModel, body)
-}
-
-func isExplicitGrokImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
-		return true
-	}
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return false
-	}
-
-	var modelSeen, toolsSeen, toolChoiceSeen bool
-	imageIntent := false
-	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
-		switch key.Str {
-		case "model":
-			if !modelSeen {
-				modelSeen = true
-				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
-			}
-		case "tools":
-			if !toolsSeen {
-				toolsSeen = true
-				// Grok removes namespace catalogs before forwarding. Native
-				// image_generation remains an explicit capability request.
-				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
-			}
-		case "tool_choice":
-			if !toolChoiceSeen {
-				toolChoiceSeen = true
-				imageIntent = openAIJSONToolChoiceSelectsExplicitImageGeneration(value)
-			}
-		}
-		return !imageIntent && (!modelSeen || !toolsSeen || !toolChoiceSeen)
-	})
-	return imageIntent
-}
-
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {
@@ -245,8 +195,9 @@ func isOpenAIImageGenNamespaceName(value string) bool {
 	return strings.TrimSpace(value) == "image_gen"
 }
 
-// isImageGenNamespaceTool detects the namespace advertised by Codex's built-in
-// image-generation extension instead of a hosted image_generation tool.
+// isImageGenNamespaceTool detects the Codex namespace-style image generation
+// tool declaration: { "type": "namespace", "name": "image_gen", ... }.
+// Codex /image uses this instead of the flat { "type": "image_generation" }.
 func isImageGenNamespaceTool(tool gjson.Result) bool {
 	return openAIJSONString(tool.Get("type")) == "namespace" &&
 		isOpenAIImageGenNamespaceName(openAIJSONString(tool.Get("name")))

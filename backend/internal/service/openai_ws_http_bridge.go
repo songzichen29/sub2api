@@ -196,16 +196,10 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			releaseUpstreamCtx()
 			return nil, err
 		}
-		grokMixedCacheIntentBody := append([]byte(nil), body...)
 		body, err = applyGrokResponsesCacheIdentity(body, grokIntentSourceBody, grokCacheIdentity, account.IsGrokOAuth())
 		if err != nil {
 			releaseUpstreamCtx()
 			return nil, fmt.Errorf("apply grok prompt cache identity: %w", err)
-		}
-		body, err = applyGrokFreeRequestToolCacheRoute(c, body, grokMixedCacheIntentBody, account, grokCacheIdentity)
-		if err != nil {
-			releaseUpstreamCtx()
-			return nil, fmt.Errorf("apply grok Free function-tool cache route: %w", err)
 		}
 		upstreamReq, err = buildGrokResponsesRequest(upstreamCtx, c, account, body, token, grokCacheIdentity, s.cfg)
 	} else {
@@ -483,10 +477,6 @@ func resolveGrokWSCacheIdentity(c *gin.Context, account *Account, payload []byte
 		return "", err
 	}
 	upstreamModel := resolveGrokWSUpstreamModel(account, body, originalModel)
-	body, err = patchGrokResponsesBody(body, upstreamModel)
-	if err != nil {
-		return "", err
-	}
 	return resolveGrokCacheIdentity(c, body, "", upstreamModel), nil
 }
 

@@ -346,7 +346,7 @@ export default {
         claude: 'Claude',
         grokRequests: '请求',
         grokTokens: 'Token',
-        grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limit}）',
+        grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 2M）',
         grokWeeklyUsage: '周额度已用 {percent}%',
         grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
         grokRetryAfter: '{time} 后重试',
@@ -684,21 +684,6 @@ export default {
         duplicateName: '存在重复的请求头名称（匹配不区分大小写）',
         invalidValue: '请求头值不合法（不允许控制字符，长度不超过 8192）',
         tooManyEntries: '请求头覆写条目过多（最多 64 条）'
-      },
-      grokCustomBaseUrl: {
-        title: '自定义上游地址',
-        hint: '开启后账号流量（对话/媒体/探测）改发指定地址；OAuth 授权与令牌刷新不受影响，仍走官方端点。',
-        placeholder: 'https://relay.example.com/v1',
-        required: '开启自定义上游地址后必须填写地址',
-        invalid: '上游地址格式不正确（需为 http(s):// 开头的完整地址）',
-        presets: {
-          cli: 'Grok Build CLI',
-          official: '官方 API'
-        }
-      },
-      grokClientToolCache: {
-        title: '客户端工具缓存（可能改变自动工具选择）',
-        hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
       },
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',

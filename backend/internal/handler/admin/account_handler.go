@@ -61,7 +61,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
-	grokImportProber        grokImportProber
+	grokImportProber        grokUsageProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 }
 
