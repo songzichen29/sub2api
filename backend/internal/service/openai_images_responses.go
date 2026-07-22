@@ -429,6 +429,33 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	return req, nil
 }
 
+// buildOpenAIAgentIdentityImageResponsesRequest builds the reduced payload
+// accepted by the Agent Identity Codex image endpoint. That endpoint selects
+// the image tool from the tools list implicitly and rejects an explicit
+// tool_choice for image_generation.
+func buildOpenAIAgentIdentityImageResponsesRequest(parsed *OpenAIImagesRequest) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	body, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	if err != nil {
+		return nil, err
+	}
+	body, err = sjson.SetBytes(body, "model", openAICodexImageGenerationModel)
+	if err != nil {
+		return nil, fmt.Errorf("set Agent Identity image model: %w", err)
+	}
+	body, err = sjson.DeleteBytes(body, "tool_choice")
+	if err != nil {
+		return nil, fmt.Errorf("remove Agent Identity image tool_choice: %w", err)
+	}
+	body, err = sjson.SetRawBytes(body, "tools", []byte(`[{"type":"image_generation"}]`))
+	if err != nil {
+		return nil, fmt.Errorf("set Agent Identity image tools: %w", err)
+	}
+	return body, nil
+}
+
 func ensureOpenAIImagesResponsesRequestInvariant(body []byte, parsed *OpenAIImagesRequest, toolModel string) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return nil, false, fmt.Errorf("responses body is empty")

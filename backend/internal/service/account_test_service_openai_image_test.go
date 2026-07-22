@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,25 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestBuildOpenAIAgentIdentityImageResponsesRequestUsesImplicitImageTool(t *testing.T) {
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    "gpt-image-2",
+		Prompt:   "draw a cat",
+	}
+	applyOpenAIImagesDefaults(parsed)
+
+	body, err := buildOpenAIAgentIdentityImageResponsesRequest(parsed)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(body, &payload))
+	require.Equal(t, "codex-gpt-image-2", payload["model"])
+	_, hasToolChoice := payload["tool_choice"]
+	require.False(t, hasToolChoice)
+	require.Equal(t, []any{map[string]any{"type": "image_generation"}}, payload["tools"])
+}
 
 func TestAccountTestService_OpenAIImageOAuthHandlesOutputItemDoneFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
