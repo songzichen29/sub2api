@@ -336,6 +336,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 	}
+	result.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL])
+	result.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey])
+	result.OpenAIFreeImageBridgeAuthKeyConfigured = result.OpenAIFreeImageBridgeAuthKey != ""
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],
