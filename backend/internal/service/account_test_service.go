@@ -1964,7 +1964,10 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	var responsesBody []byte
+	var (
+		responsesBody []byte
+		err           error
+	)
 	if credentialAccount.IsOpenAIAgentIdentity() {
 		responsesBody, err = buildOpenAIAgentIdentityImageResponsesRequest(parsed)
 	} else {
