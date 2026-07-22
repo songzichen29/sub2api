@@ -86,6 +86,7 @@ func TestRegisterAgentIdentityTaskAcceptsPlaintextAndEncryptedResponses(t *testi
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodPost, r.Method)
 		require.Equal(t, "/v1/agent/runtime-test/task/register", r.URL.Path)
+		require.Equal(t, codexCLIUserAgent, r.Header.Get("User-Agent"))
 		var request map[string]string
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		require.NotEmpty(t, request["timestamp"])

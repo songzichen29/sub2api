@@ -207,6 +207,9 @@ func registerAgentIdentityTask(ctx context.Context, account *Account) (string, e
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	// auth.openai.com applies a Cloudflare challenge to requests without a
+	// client User-Agent before the Agent Identity signature is evaluated.
+	req.Header.Set("User-Agent", codexCLIUserAgent)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", errors.New("agent task registration request failed")
