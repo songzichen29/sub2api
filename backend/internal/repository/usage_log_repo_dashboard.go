@@ -485,7 +485,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 	stats.Tpm = tpm
 
 	// 按"有效平台"维度拆分（group.platform 优先，否则 account.platform）。
-	// 与 ops 路径口径一致；HAVING 过滤掉无法确定平台的行（避免出现空字符串平台）。
+	// 与 ops 路径口径一致；HAVING 使用 SELECT 别名以兼容 MySQL 对分组表达式的解析。
 	// 与上面 totalStatsQuery/todayStatsQuery 的总值可能略微差异，原因有二：
 	//   1) 无平台归属的极少数行（group/account 都没 platform）会被 HAVING 排除；
 	//   2) usageLogSuccessFilterUL 会把 actual_cost = 0 的失败 placeholder 行排除，
@@ -505,7 +505,7 @@ func (r *usageLogRepository) GetUserDashboardStats(ctx context.Context, userID i
 		WHERE ul.user_id = ?
 		  AND ` + usageLogSuccessFilterUL + `
 		GROUP BY ` + usageLogEffectivePlatformExpr + `
-		HAVING ` + usageLogEffectivePlatformExpr + ` IS NOT NULL AND ` + usageLogEffectivePlatformExpr + ` <> ''
+		HAVING platform IS NOT NULL AND platform <> ''
 		ORDER BY total_actual_cost DESC
 	`
 	rows, err := r.sql.QueryContext(ctx, platformQuery, today, today, today, userID)
