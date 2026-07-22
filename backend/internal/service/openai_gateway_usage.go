@@ -32,6 +32,7 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	ImageBalanceHold   *OpenAIImageBalanceHold
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
 	ChannelUsageFields
@@ -352,6 +353,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              quotaPlatform,
+			ImageBalanceHold:      input.ImageBalanceHold,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

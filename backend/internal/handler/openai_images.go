@@ -106,6 +106,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, requestModel)
+	channelUsageFields := channelMapping.ToUsageFields(requestModel, channelMapping.MappedModel)
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -133,6 +134,27 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
+	imageBalanceHold, err := h.gatewayService.ReserveOpenAIImageBalance(c.Request.Context(), apiKey, subscription, parsed, channelUsageFields)
+	if err != nil {
+		reqLog.Info("openai.images.balance_hold_failed", zap.Error(err))
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
+		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		return
+	}
+	holdOwnershipTransferred := false
+	defer func() {
+		if imageBalanceHold == nil || holdOwnershipTransferred {
+			return
+		}
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if releaseErr := h.gatewayService.ReleaseOpenAIImageBalance(releaseCtx, apiKey, imageBalanceHold); releaseErr != nil {
+			reqLog.Error("openai.images.balance_hold_release_failed", zap.Error(releaseErr))
+		}
+	}()
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImageGenerationIntent(c.Request.Context())
@@ -351,6 +373,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		} else {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, nil)
 		}
+		holdOwnershipTransferred = true
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
@@ -380,6 +403,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
+				ImageBalanceHold:   imageBalanceHold,
 				ChannelUsageFields: channelMapping.ToUsageFields(requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(
@@ -390,6 +414,13 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					zap.String("model", requestModel),
 					zap.Int64("account_id", account.ID),
 				).Error("openai.images.record_usage_failed", zap.Error(err))
+				if imageBalanceHold != nil {
+					releaseCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if releaseErr := h.gatewayService.ReleaseOpenAIImageBalance(releaseCtx, apiKey, imageBalanceHold); releaseErr != nil {
+						reqLog.Error("openai.images.balance_hold_release_after_billing_failure_failed", zap.Error(releaseErr))
+					}
+				}
 			}
 		})
 
