@@ -85,6 +85,20 @@ func ResolveImageBillingSize(inputSize string, outputSizes []string) ImageBillin
 			outputTier = tier
 		}
 	}
+	// An explicit, valid requested size is the billing contract. Some upstream
+	// image-edit providers return a nonstandard physical canvas (for example,
+	// 1254x1254 for a requested 1024x1024) while still charging the requested
+	// 1K tier. Preserve the actual output dimensions for audit/response data,
+	// but do not silently upgrade the user to a higher tier.
+	if tier, ok := ClassifyImageBillingTier(inputSize); ok {
+		return ImageBillingSizeResolution{
+			BillingSize: tier,
+			InputSize:   inputSize,
+			OutputSize:  outputSize,
+			Source:      ImageSizeSourceInput,
+			Breakdown:   normalizeImageSizeBreakdown(breakdown),
+		}
+	}
 	if outputTier != "" {
 		return ImageBillingSizeResolution{
 			BillingSize: outputTier,
@@ -92,15 +106,6 @@ func ResolveImageBillingSize(inputSize string, outputSizes []string) ImageBillin
 			OutputSize:  outputSize,
 			Source:      ImageSizeSourceOutput,
 			Breakdown:   normalizeImageSizeBreakdown(breakdown),
-		}
-	}
-
-	if tier, ok := ClassifyImageBillingTier(inputSize); ok {
-		return ImageBillingSizeResolution{
-			BillingSize: tier,
-			InputSize:   inputSize,
-			OutputSize:  outputSize,
-			Source:      ImageSizeSourceInput,
 		}
 	}
 
