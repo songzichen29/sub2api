@@ -1897,6 +1897,8 @@ func setDefaults() {
 		"api.openai.com",
 		"api.anthropic.com",
 		"api.kimi.com",
+		"api.moonshot.ai",
+		"api.moonshot.cn",
 		"open.bigmodel.cn",
 		"api.minimaxi.com",
 		"generativelanguage.googleapis.com",
