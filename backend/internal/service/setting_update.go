@@ -114,6 +114,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.GoogleOAuthFrontendRedirectURL == "" {
 		settings.GoogleOAuthFrontendRedirectURL = defaultGoogleOAuthFrontend
 	}
+	settings.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings.OpenAIFreeImageBridgeURL)
+	settings.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
 
 	updates := make(map[string]string)
 
@@ -272,6 +274,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
+	updates[SettingKeyOpenAIFreeImageBridgeURL] = settings.OpenAIFreeImageBridgeURL
+	if settings.OpenAIFreeImageBridgeAuthKey != "" {
+		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = settings.OpenAIFreeImageBridgeAuthKey
+	}
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent

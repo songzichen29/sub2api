@@ -810,8 +810,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")
@@ -1027,61 +1027,6 @@ func TestCalculateCostWithLongContext_PropagatesError(t *testing.T) {
 	_, err := svc.CalculateCostWithLongContext("unknown-model", tokens, 1.0, 200000, 2.0)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "pricing not found")
-}
-
-func TestGetModelPricing_Grok45OfficialFallback(t *testing.T) {
-	svc := newTestBillingService()
-
-		model := model
-		t.Run(model, func(t *testing.T) {
-			pricing, err := svc.GetModelPricing(model)
-			require.NoError(t, err)
-			require.InDelta(t, 2e-6, pricing.InputPricePerToken, 1e-12)
-			require.InDelta(t, 6e-6, pricing.OutputPricePerToken, 1e-12)
-			require.InDelta(t, 0.5e-6, pricing.CacheReadPricePerToken, 1e-12)
-			require.False(t, pricing.SupportsCacheBreakdown)
-		})
-	}
-}
-
-func TestGetModelPricing_GrokCatalogFallbacks(t *testing.T) {
-	svc := newTestBillingService()
-
-	tests := []struct {
-		name      string
-		models    []string
-		input     float64
-		cacheRead float64
-		output    float64
-	}{
-		{
-			models: []string{
-			},
-			input:     1.25e-6,
-			cacheRead: 0.2e-6,
-			output:    2.5e-6,
-		},
-		{
-			models: []string{
-				"composer-2.5",
-			},
-			input:     1e-6,
-			cacheRead: 0.2e-6,
-			output:    2e-6,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for _, model := range tt.models {
-				pricing, err := svc.GetModelPricing(model)
-				require.NoError(t, err, "model %s", model)
-				require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12, "model %s input", model)
-				require.InDelta(t, tt.cacheRead, pricing.CacheReadPricePerToken, 1e-12, "model %s cached input", model)
-				require.InDelta(t, tt.output, pricing.OutputPricePerToken, 1e-12, "model %s output", model)
-			}
-		})
-	}
 }
 
 func TestCalculateCost_SupportsCacheBreakdown(t *testing.T) {

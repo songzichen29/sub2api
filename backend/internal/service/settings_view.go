@@ -354,9 +354,6 @@ type PublicSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// 允许终端用户在用量页查看自己的失败请求
-	OpenAIFreeImageBridgeURL               string `json:"openai_free_image_bridge_url"`
-	OpenAIFreeImageBridgeAuthKeyConfigured bool   `json:"openai_free_image_bridge_auth_key_configured"`
-
 	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
 }
 

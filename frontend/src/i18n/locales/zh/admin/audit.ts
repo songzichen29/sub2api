@@ -100,6 +100,17 @@ export default {
           filter_delete: '按筛选条件删除提示词审计事件'
         }
       },
+      data_management: {
+        s3_config: {
+          read: '查看数据管理 S3 配置'
+        }
+      },
+      proxies: {
+        export: '导出代理'
+      },
+      redeem_codes: {
+        export: '导出兑换码'
+      },
       risk_control: {
         config: {
           update: '更新风险控制配置'
@@ -165,6 +176,8 @@ export default {
       batch: '批量',
       channel_monitors: '渠道监控',
       channels: '渠道',
+      cleanup: '清理',
+      clear_error: '清除错误',
       config: '配置',
       create: '新建',
       data_management: '数据管理',
@@ -177,12 +190,16 @@ export default {
       keys: 'API 密钥',
       login: '登录',
       prompt_audit: '提示词审计',
+      proxies: '代理',
       read: '查看',
+      redeem_codes: '兑换码',
       regenerate: '重新生成',
       restore: '恢复',
       risk_control: '风险控制',
       s3_config: 'S3 配置',
       settings: '系统设置',
+      ops: '运维',
+      system_logs: '系统日志',
       update: '更新',
       usage: '用量',
       user: '用户',

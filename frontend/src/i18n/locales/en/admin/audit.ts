@@ -100,6 +100,17 @@ export default {
           filter_delete: 'Delete prompt audit events by filter'
         }
       },
+      data_management: {
+        s3_config: {
+          read: 'View data management S3 configuration'
+        }
+      },
+      proxies: {
+        export: 'Export proxies'
+      },
+      redeem_codes: {
+        export: 'Export redemption codes'
+      },
       risk_control: {
         config: {
           update: 'Update risk control configuration'
@@ -165,6 +176,8 @@ export default {
       batch: 'Batch',
       channel_monitors: 'Channel monitors',
       channels: 'Channels',
+      cleanup: 'Cleanup',
+      clear_error: 'Clear error',
       config: 'Configuration',
       create: 'Create',
       data_management: 'Data management',
@@ -177,12 +190,16 @@ export default {
       keys: 'API keys',
       login: 'Sign in',
       prompt_audit: 'Prompt audit',
+      proxies: 'Proxies',
       read: 'View',
+      redeem_codes: 'Redemption codes',
       regenerate: 'Regenerate',
       restore: 'Restore',
       risk_control: 'Risk control',
       s3_config: 'S3 configuration',
       settings: 'Settings',
+      ops: 'Operations',
+      system_logs: 'System logs',
       update: 'Update',
       usage: 'Usage',
       user: 'User',

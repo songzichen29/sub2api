@@ -289,6 +289,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.APIBaseURL != after.APIBaseURL {
 		changed = append(changed, "api_base_url")
 	}
+	if before.OpenAIFreeImageBridgeURL != after.OpenAIFreeImageBridgeURL {
+		changed = append(changed, "openai_free_image_bridge_url")
+	}
+	if strings.TrimSpace(req.OpenAIFreeImageBridgeAuthKey) != "" {
+		changed = append(changed, "openai_free_image_bridge_auth_key")
+	}
 	if before.ContactInfo != after.ContactInfo {
 		changed = append(changed, "contact_info")
 	}

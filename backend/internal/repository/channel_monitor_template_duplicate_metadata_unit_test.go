@@ -25,6 +25,8 @@ func TestApplyChannelMonitorTemplatePreservesDuplicateOperationMetadataAtomicall
 
 	const templateID int64 = 7
 	monitorIDs := []int64{41, 42}
+	metadataKey := service.ChannelMonitorDuplicateOperationIDMetadataKey
+	metadataPath := `$."` + metadataKey + `"`
 
 	mock.ExpectBegin()
 	expectChannelMonitorTemplateForApply(mock, templateID)
@@ -40,12 +42,15 @@ func TestApplyChannelMonitorTemplatePreservesDuplicateOperationMetadataAtomicall
 			service.MonitorAPIModeResponses,
 		).
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectExec(`(?s)UPDATE channel_monitors\s+SET extra_headers = \$1::jsonb \|\| CASE\s+WHEN COALESCE\(extra_headers, '\{\}'::jsonb\) \? \(\$2::text\)\s+THEN jsonb_build_object\(\$2::text, COALESCE\(extra_headers, '\{\}'::jsonb\) -> \(\$2::text\)\)\s+ELSE '\{\}'::jsonb\s+END\s+WHERE template_id = \$3\s+AND id = ANY\(\$4\)\s+AND provider = \$5\s+AND api_mode = \$6`).
+	mock.ExpectExec(`(?s)UPDATE channel_monitors\s+SET extra_headers = JSON_MERGE_PATCH\(.*JSON_CONTAINS_PATH.*WHERE template_id = \?.*AND id IN \(\?,\?\).*AND provider = \?.*AND api_mode = \?`).
 		WithArgs(
 			`{"User-Agent":"template-client"}`,
-			service.ChannelMonitorDuplicateOperationIDMetadataKey,
+			metadataPath,
+			metadataKey,
+			metadataPath,
 			templateID,
-			`{41,42}`,
+			monitorIDs[0],
+			monitorIDs[1],
 			service.MonitorProviderOpenAI,
 			service.MonitorAPIModeResponses,
 		).
@@ -68,17 +73,23 @@ func TestApplyChannelMonitorTemplateRollsBackWhenHeaderRowCountDiffers(t *testin
 	t.Cleanup(func() { _ = client.Close() })
 
 	const templateID int64 = 7
+	monitorIDs := []int64{41, 42}
+	metadataKey := service.ChannelMonitorDuplicateOperationIDMetadataKey
+	metadataPath := `$."` + metadataKey + `"`
 
 	mock.ExpectBegin()
 	expectChannelMonitorTemplateForApply(mock, templateID)
 	mock.ExpectExec(`(?s)UPDATE "channel_monitors" SET .*WHERE `).
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectExec(`(?s)UPDATE channel_monitors\s+SET extra_headers = \$1::jsonb \|\| CASE.*jsonb_build_object\(\$2::text,.*WHERE template_id = \$3.*AND id = ANY\(\$4\)`).
+	mock.ExpectExec(`(?s)UPDATE channel_monitors\s+SET extra_headers = JSON_MERGE_PATCH\(.*JSON_CONTAINS_PATH.*WHERE template_id = \?.*AND id IN \(\?,\?\)`).
 		WithArgs(
 			`{"User-Agent":"template-client"}`,
-			service.ChannelMonitorDuplicateOperationIDMetadataKey,
+			metadataPath,
+			metadataKey,
+			metadataPath,
 			templateID,
-			`{41,42}`,
+			monitorIDs[0],
+			monitorIDs[1],
 			service.MonitorProviderOpenAI,
 			service.MonitorAPIModeResponses,
 		).
@@ -86,7 +97,7 @@ func TestApplyChannelMonitorTemplateRollsBackWhenHeaderRowCountDiffers(t *testin
 	mock.ExpectRollback()
 
 	repo := NewChannelMonitorRequestTemplateRepository(client, db)
-	affected, err := repo.ApplyToMonitors(context.Background(), templateID, []int64{41, 42})
+	affected, err := repo.ApplyToMonitors(context.Background(), templateID, monitorIDs)
 
 	require.Zero(t, affected)
 	require.EqualError(t, err, "apply template headers: affected 1 rows, expected 2")

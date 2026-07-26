@@ -3,6 +3,8 @@
 package repository
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +12,41 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+type usageLogSQLRecorder struct {
+	query string
+	args  []any
+}
+
+func (r *usageLogSQLRecorder) ExecContext(_ context.Context, query string, args ...any) (sql.Result, error) {
+	r.query = query
+	r.args = append([]any(nil), args...)
+	return usageLogStaticResult{}, nil
+}
+
+func (r *usageLogSQLRecorder) QueryContext(context.Context, string, ...any) (*sql.Rows, error) {
+	panic("unexpected QueryContext call")
+}
+
+type usageLogStaticResult struct{}
+
+func (usageLogStaticResult) LastInsertId() (int64, error) { return 1, nil }
+func (usageLogStaticResult) RowsAffected() (int64, error) { return 1, nil }
+
+func usageLogInsertColumns(t *testing.T, query string) []string {
+	t.Helper()
+	const prefix = "INSERT INTO usage_logs ("
+	start := strings.Index(query, prefix)
+	require.NotEqual(t, -1, start)
+	columnsStart := start + len(prefix)
+	columnsEnd := strings.Index(query[columnsStart:], ") VALUES")
+	require.NotEqual(t, -1, columnsEnd)
+	columns := strings.Split(query[columnsStart:columnsStart+columnsEnd], ",")
+	for index := range columns {
+		columns[index] = strings.TrimSpace(columns[index])
+	}
+	return columns
+}
 
 func TestSafeDateFormat(t *testing.T) {
 	tests := []struct {
@@ -62,4 +99,40 @@ func TestBuildUsageLogBatchInsertQuery_UsesOnDuplicateKeyUpdate(t *testing.T) {
 
 	require.Contains(t, query, "ON DUPLICATE KEY UPDATE id = id")
 	require.NotContains(t, strings.ToUpper(query), "ON CONFLICT")
+}
+
+func TestUsageLogSQLShapeMatchesPreparedArguments(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:      1,
+		APIKeyID:    2,
+		AccountID:   3,
+		RequestID:   "req-sql-shape",
+		Model:       "gpt-5",
+		CreatedAt:   time.Now().UTC(),
+		InputTokens: 10,
+	})
+
+	t.Run("single insert", func(t *testing.T) {
+		recorder := &usageLogSQLRecorder{}
+		_, err := execUsageLogInsert(context.Background(), recorder, prepared)
+		require.NoError(t, err)
+		require.Len(t, usageLogInsertColumns(t, recorder.query), len(prepared.args))
+		require.Equal(t, len(prepared.args), strings.Count(recorder.query, "?"))
+		require.Len(t, recorder.args, len(prepared.args))
+	})
+
+	t.Run("multi insert", func(t *testing.T) {
+		query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared, prepared})
+		require.Len(t, usageLogInsertColumns(t, query), len(prepared.args))
+		require.Equal(t, len(prepared.args)*2, strings.Count(query, "?"))
+		require.Len(t, args, len(prepared.args)*2)
+	})
+
+	t.Run("select scan", func(t *testing.T) {
+		selectColumns := strings.Split(usageLogSelectColumns, ",")
+		require.Len(t, selectColumns, len(prepared.args)+1, "SELECT includes id plus every inserted column")
+		require.Contains(t, selectColumns, " image_input_tokens")
+		require.Contains(t, selectColumns, " image_input_cost")
+		require.Contains(t, selectColumns, " long_context_billing_applied")
+	})
 }

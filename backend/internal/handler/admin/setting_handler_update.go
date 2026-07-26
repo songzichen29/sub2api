@@ -132,20 +132,22 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	SiteName                     string                `json:"site_name"`
+	SiteLogo                     string                `json:"site_logo"`
+	SiteSubtitle                 string                `json:"site_subtitle"`
+	APIBaseURL                   string                `json:"api_base_url"`
+	OpenAIFreeImageBridgeURL     *string               `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKey string                `json:"openai_free_image_bridge_auth_key"`
+	ContactInfo                  string                `json:"contact_info"`
+	DocURL                       string                `json:"doc_url"`
+	HomeContent                  string                `json:"home_content"`
+	HideCcsImportButton          bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled  *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL      *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize         int                   `json:"table_default_page_size"`
+	TablePageSizeOptions         []int                 `json:"table_page_size_options"`
+	CustomMenuItems              *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints              *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -412,6 +414,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
 		forwardedClientIPHeaders = append([]string(nil), (*req.ForwardedClientIPHeaders)...)
+	}
+	openAIFreeImageBridgeURL := previousSettings.OpenAIFreeImageBridgeURL
+	if req.OpenAIFreeImageBridgeURL != nil {
+		openAIFreeImageBridgeURL = strings.TrimSpace(*req.OpenAIFreeImageBridgeURL)
+	}
+	openAIFreeImageBridgeAuthKey := strings.TrimSpace(req.OpenAIFreeImageBridgeAuthKey)
+	if openAIFreeImageBridgeAuthKey == "" {
+		openAIFreeImageBridgeAuthKey = previousSettings.OpenAIFreeImageBridgeAuthKey
 	}
 
 	// 开启敏感操作 step-up 门控属自锁风险操作：仅允许本人已启用 TOTP 的管理员会话开启，
@@ -1387,6 +1397,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                               req.SiteLogo,
 		SiteSubtitle:                           req.SiteSubtitle,
 		APIBaseURL:                             req.APIBaseURL,
+		OpenAIFreeImageBridgeURL:               openAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKey:           openAIFreeImageBridgeAuthKey,
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
@@ -1925,6 +1937,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                                               updatedSettings.SiteLogo,
 		SiteSubtitle:                                           updatedSettings.SiteSubtitle,
 		APIBaseURL:                                             updatedSettings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:                               updatedSettings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured:                 updatedSettings.OpenAIFreeImageBridgeAuthKeyConfigured,
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,

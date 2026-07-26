@@ -354,6 +354,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { formatAuditActionLabel } from '@/utils/auditActionLabel'
 import { adminAPI, type AuditLog } from '@/api/admin'
 import { totpAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -500,27 +501,7 @@ function authMethodLabel(method: string): string {
 }
 
 function actionLabel(action: string): string {
-  const normalized = action.startsWith('admin.') ? action.slice('admin.'.length) : action
-  const actionKey = normalized.replace(/(^|\.)2fa(?=\.|$)/g, '$1twoFactor')
-  const key = `admin.audit.actions.${actionKey}`
-  const nestedLabelKey = `${key}._label`
-  if (te(nestedLabelKey)) {
-    return t(nestedLabelKey)
-  }
-  if (te(key) && typeof tm(key) === 'string') {
-    return t(key)
-  }
-
-  // 普通写操作由后端根据路由自动生成动作码。逐段翻译可覆盖新增路由，
-  // 同时保留未登记术语，方便排查未知动作。
-  return normalized
-    .split('.')
-    .filter(Boolean)
-    .map((segment) => {
-      const segmentKey = `admin.audit.actionSegments.${segment === '2fa' ? 'twoFactor' : segment}`
-      return te(segmentKey) ? t(segmentKey) : segment.replace(/[_-]+/g, ' ')
-    })
-    .join(' / ') || action
+  return formatAuditActionLabel(action, (key) => t(key), (key) => te(key), (key) => tm(key))
 }
 
 function toRFC3339(local: string): string | undefined {

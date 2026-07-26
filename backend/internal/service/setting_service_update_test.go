@@ -100,6 +100,24 @@ func (s *defaultSubGroupReaderStub) GetByID(ctx context.Context, id int64) (*Gro
 	return nil, ErrGroupNotFound
 }
 
+func TestSettingService_UpdateSettings_OpenAIFreeImageBridge(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		OpenAIFreeImageBridgeURL:     "  http://127.0.0.1:8787  ",
+		OpenAIFreeImageBridgeAuthKey: "  bridge-secret  ",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "http://127.0.0.1:8787", repo.updates[SettingKeyOpenAIFreeImageBridgeURL])
+	require.Equal(t, "bridge-secret", repo.updates[SettingKeyOpenAIFreeImageBridgeAuthKey])
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{})
+	require.NoError(t, err)
+	require.Equal(t, "", repo.updates[SettingKeyOpenAIFreeImageBridgeURL])
+	require.NotContains(t, repo.updates, SettingKeyOpenAIFreeImageBridgeAuthKey)
+}
+
 func TestSettingService_UpdateSettings_DefaultSubscriptions_ValidGroup(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	groupReader := &defaultSubGroupReaderStub{

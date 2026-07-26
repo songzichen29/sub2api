@@ -87,6 +87,30 @@ func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, resp.Data.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingHandler_GetPublicSettings_DoesNotExposeOpenAIFreeImageBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+		values: map[string]string{
+			service.SettingKeyOpenAIFreeImageBridgeURL:     "http://bridge.internal:8787",
+			service.SettingKeyOpenAIFreeImageBridgeAuthKey: "bridge-secret",
+		},
+	}, &config.Config{}), "test-version")
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+	h.GetPublicSettings(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var responseBody map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &responseBody))
+	data, ok := responseBody["data"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, data, "openai_free_image_bridge_url")
+	require.NotContains(t, data, "openai_free_image_bridge_auth_key_configured")
+	require.NotContains(t, recorder.Body.String(), "bridge-secret")
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{

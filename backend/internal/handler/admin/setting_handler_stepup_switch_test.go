@@ -157,6 +157,39 @@ func TestUpdateSettingsOmittedSecuritySwitchesKeepDisabled(t *testing.T) {
 	require.Equal(t, "false", repo.values[service.SettingKeySessionBindingEnabled])
 }
 
+func TestUpdateSettingsOpenAIFreeImageBridgePreservesAndUpdatesSecret(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
+		service.SettingKeyOpenAIFreeImageBridgeURL:     "http://127.0.0.1:8787",
+		service.SettingKeyOpenAIFreeImageBridgeAuthKey: "old-secret",
+	})
+
+	preserved := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
+	require.Equal(t, http.StatusOK, preserved.Code)
+	require.Equal(t, "http://127.0.0.1:8787", repo.values[service.SettingKeyOpenAIFreeImageBridgeURL])
+	require.Equal(t, "old-secret", repo.values[service.SettingKeyOpenAIFreeImageBridgeAuthKey])
+	require.Contains(t, preserved.Body.String(), `"openai_free_image_bridge_auth_key_configured":true`)
+	require.NotContains(t, preserved.Body.String(), "old-secret")
+
+	updated := doUpdateSettings(t, h, map[string]any{
+		"openai_free_image_bridge_url":      "  http://bridge.internal:8787  ",
+		"openai_free_image_bridge_auth_key": "  new-secret  ",
+	}, nil)
+	require.Equal(t, http.StatusOK, updated.Code)
+	require.Equal(t, "http://bridge.internal:8787", repo.values[service.SettingKeyOpenAIFreeImageBridgeURL])
+	require.Equal(t, "new-secret", repo.values[service.SettingKeyOpenAIFreeImageBridgeAuthKey])
+	require.Contains(t, updated.Body.String(), `"openai_free_image_bridge_url":"http://bridge.internal:8787"`)
+	require.Contains(t, updated.Body.String(), `"openai_free_image_bridge_auth_key_configured":true`)
+	require.NotContains(t, updated.Body.String(), "new-secret")
+
+	clearedURL := doUpdateSettings(t, h, map[string]any{
+		"openai_free_image_bridge_url":      "",
+		"openai_free_image_bridge_auth_key": "",
+	}, nil)
+	require.Equal(t, http.StatusOK, clearedURL.Code)
+	require.Equal(t, "", repo.values[service.SettingKeyOpenAIFreeImageBridgeURL])
+	require.Equal(t, "new-secret", repo.values[service.SettingKeyOpenAIFreeImageBridgeAuthKey])
+}
+
 func TestUpdateSettingsForwardedClientIPHeadersOmittedPreservesAndEmptyClears(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeyForwardedClientIPHeaders: `["X-Cdn-Ip","True-Client-Ip"]`,
