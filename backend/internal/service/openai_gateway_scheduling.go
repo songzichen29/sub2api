@@ -1174,6 +1174,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.
 	if s.isOpenAIAccountRequestRuntimeBlocked(fresh, requestedModel) {
 		return nil
 	}
+	if s.isOAuthQuotaNearLimit(fresh) {
+		return nil
+	}
 	return fresh
 }
 
@@ -1203,6 +1206,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 			return nil
 		}
+		if s.isOAuthQuotaNearLimit(account) {
+			return nil
+		}
 		return account
 	}
 
@@ -1220,6 +1226,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDB(ctx context.Co
 		return nil
 	}
 	if s.isOpenAIAccountRequestRuntimeBlocked(latest, requestedModel) {
+		return nil
+	}
+	if s.isOAuthQuotaNearLimit(latest) {
 		return nil
 	}
 	return latest
@@ -1284,7 +1293,7 @@ func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, a
 }
 
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
-	if s.cfg != nil {
+	if s != nil && s.cfg != nil {
 		return s.cfg.Gateway.Scheduling
 	}
 	return config.GatewaySchedulingConfig{
@@ -1295,4 +1304,26 @@ func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 	}
+}
+
+// isOAuthQuotaNearLimit skips OpenAI OAuth accounts whose fresh Codex usage
+// snapshot has reached the configured scheduling threshold.
+func (s *OpenAIGatewayService) isOAuthQuotaNearLimit(account *Account) bool {
+	if account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	threshold := s.schedulingConfig().OpenAIOAuthQuotaThreshold
+	if threshold <= 0 {
+		return false
+	}
+
+	if updatedAt := account.getExtraString("codex_usage_updated_at"); updatedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, updatedAt); err == nil && time.Since(parsed) > 5*time.Minute {
+			return false
+		}
+	}
+
+	secondary := account.getExtraFloat64("codex_secondary_used_percent")
+	primary := account.getExtraFloat64("codex_primary_used_percent")
+	return secondary >= threshold || primary >= threshold
 }

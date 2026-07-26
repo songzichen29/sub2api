@@ -180,7 +180,7 @@ func (r *subscriptionEntRepo) UpdateDailyOverdraft(ctx context.Context, subscrip
 func (r *subscriptionEntRepo) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows")
 }
-func (r *subscriptionEntRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+func (r *subscriptionEntRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time, time.Time) error {
 	panic("unexpected ResetUsageWindows")
 }
 func (r *subscriptionEntRepo) ResetDailyUsage(ctx context.Context, id int64, _ *time.Time, newWindowStart time.Time) error {

@@ -236,8 +236,21 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, errors.New("cannot disable admin user")
 	}
 
-	oldConcurrency := user.Concurrency
 	oldStatus := user.Status
+	if isStatusOnlyUserUpdate(input) {
+		if updater, ok := s.userRepo.(adminUserStatusUpdater); ok {
+			updated, err := updater.UpdateUserStatus(ctx, id, input.Status)
+			if err != nil {
+				return nil, err
+			}
+			if s.authCacheInvalidator != nil && updated.Status != oldStatus {
+				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, updated.ID)
+			}
+			return updated, nil
+		}
+	}
+
+	oldConcurrency := user.Concurrency
 	oldRole := user.Role
 	oldRPMLimit := user.RPMLimit
 	oldAllowedGroups := append([]int64(nil), user.AllowedGroups...)
@@ -534,7 +547,10 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 	}
 
 	if user.Balance < 0 {
-		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance)
+		return nil, infraerrors.BadRequest(
+			"BALANCE_NEGATIVE",
+			fmt.Sprintf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", oldBalance, user.Balance),
+		)
 	}
 
 	if err := s.userRepo.Update(ctx, user); err != nil {

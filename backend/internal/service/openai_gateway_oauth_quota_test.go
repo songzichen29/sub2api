@@ -199,16 +199,16 @@ func TestResolveFreshSchedulableOpenAIAccount_SkipsOAuthNearLimit(t *testing.T) 
 	}
 	now := time.Now().Format(time.RFC3339)
 	account := &Account{
-		ID:         1,
-		Type:       AccountTypeOAuth,
-		Platform:   PlatformOpenAI,
-		Status:     StatusActive,
+		ID:          1,
+		Type:        AccountTypeOAuth,
+		Platform:    PlatformOpenAI,
+		Status:      StatusActive,
 		Schedulable: true,
 		Extra: map[string]any{
 			"codex_secondary_used_percent": 95.0,
 			"codex_usage_updated_at":       now,
 		},
 	}
-	result := svc.resolveFreshSchedulableOpenAIAccount(context.Background(), account, "", false)
+	result := svc.resolveFreshSchedulableOpenAIAccount(context.Background(), account, PlatformOpenAI, "", false, "")
 	require.Nil(t, result, "account near quota limit should be skipped")
 }

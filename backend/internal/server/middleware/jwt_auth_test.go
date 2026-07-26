@@ -277,12 +277,12 @@ func TestJWTAuth_UserLookupInternalError(t *testing.T) {
 	userSvc := &errJWTUserReader{err: errors.New("query user_avatars: Error 1146")}
 
 	r := gin.New()
-	r.Use(jwtAuth(authSvc, userSvc, nil))
+	r.Use(jwtAuth(authSvc, userSvc, nil, nil, nil))
 	r.GET("/protected", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
-	token, err := authSvc.GenerateToken(&service.User{
+	token, err := authSvc.GenerateToken(context.Background(), &service.User{
 		ID:           1,
 		Email:        "test@example.com",
 		Role:         "user",

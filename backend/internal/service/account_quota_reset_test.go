@@ -54,11 +54,11 @@ func TestNextFixedDailyReset_NonUTCTimezone(t *testing.T) {
 	tz, err := time.LoadLocation("America/Los_Angeles")
 	require.NoError(t, err)
 
-	// 2026-03-14 07:00 UTC = 2026-03-14 15:00 CST, reset hour = 9 (CST)
+	// 2026-03-14 07:00 UTC = 2026-03-13 23:00 PST, reset hour = 9 (local time)
 	after := time.Date(2026, 3, 14, 7, 0, 0, 0, time.UTC)
 	got := nextFixedDailyReset(9, tz, after)
-	// Already past 9:00 CST today → tomorrow 9:00 CST = 2026-03-15 01:00 UTC
-	want := time.Date(2026, 3, 15, 9, 0, 0, 0, tz)
+	// The next reset is 2026-03-14 09:00 PDT.
+	want := time.Date(2026, 3, 14, 9, 0, 0, 0, tz)
 	assert.Equal(t, want, got)
 }
 

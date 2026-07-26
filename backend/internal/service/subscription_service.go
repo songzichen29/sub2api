@@ -1655,31 +1655,19 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	if err := validateResetTargets(sub.Group, resetDaily, resetWeekly, resetMonthly); err != nil {
 		return nil, err
 	}
+	if sub.AllowsDailyOverdraft(sub.Group) && (resetWeekly || resetMonthly) {
+		return nil, ErrInvalidResetTarget
+	}
 
 	now := time.Now()
-	if resetDaily {
-		windowStart := sub.CurrentDailyWindowStart(now)
-		if err := s.userSubRepo.ResetDailyUsage(ctx, sub.ID, sub.DailyWindowStart, windowStart); err != nil {
-			return nil, err
-		}
-	}
-	if resetWeekly {
-		if sub.AllowsDailyOverdraft(sub.Group) {
-			return nil, ErrInvalidResetTarget
-		}
-		windowStart := sub.CurrentWeeklyWindowStart(now)
-		if err := s.userSubRepo.ResetWeeklyUsage(ctx, sub.ID, sub.WeeklyWindowStart, windowStart); err != nil {
-			return nil, err
-		}
-	}
-	if resetMonthly {
-		if sub.AllowsDailyOverdraft(sub.Group) {
-			return nil, ErrInvalidResetTarget
-		}
-		windowStart := sub.CurrentMonthlyWindowStart(now)
-		if err := s.userSubRepo.ResetMonthlyUsage(ctx, sub.ID, sub.MonthlyWindowStart, windowStart); err != nil {
-			return nil, err
-		}
+	dailyStart := sub.CurrentDailyWindowStart(now)
+	weeklyStart := sub.CurrentWeeklyWindowStart(now)
+	monthlyStart := sub.CurrentMonthlyWindowStart(now)
+	if err := s.userSubRepo.ResetUsageWindows(
+		ctx, sub.ID, resetDaily, resetWeekly, resetMonthly,
+		dailyStart, weeklyStart, monthlyStart,
+	); err != nil {
+		return nil, err
 	}
 	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {
 		return nil, err

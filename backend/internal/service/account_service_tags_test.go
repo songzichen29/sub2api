@@ -149,6 +149,9 @@ func (r *inMemoryAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Con
 func (r *inMemoryAccountRepo) ListSchedulableUngroupedByPlatforms(ctx context.Context, platforms []string) ([]Account, error) {
 	panic("unexpected")
 }
+func (r *inMemoryAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, platforms []string, includeGrouped bool) ([]Account, error) {
+	panic("unexpected")
+}
 func (r *inMemoryAccountRepo) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
 	panic("unexpected")
 }
@@ -193,6 +196,9 @@ func (r *inMemoryAccountRepo) RevertProxyFallback(ctx context.Context, accountID
 	panic("unexpected")
 }
 func (r *inMemoryAccountRepo) ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error) {
+	panic("unexpected")
+}
+func (r *inMemoryAccountRepo) ListShadowsByParent(ctx context.Context, parentID int64) ([]*Account, error) {
 	panic("unexpected")
 }
 

@@ -657,6 +657,8 @@ func TestRequireGroupAssignmentMarksUngroupedKeyBusinessLimited(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, w.Code)
 	require.Contains(t, w.Body.String(), "未分配分组")
+	require.True(t, rejected)
+	require.Equal(t, IngressRejectGroupUnassigned, rejectReason)
 	require.True(t, markedBusinessLimited)
 	require.Equal(t, service.OpsClientBusinessLimitedReasonAPIKeyGroupUnassigned, businessLimitedReason)
 }
@@ -1019,7 +1021,7 @@ func TestAPIKeyAuthTouchesLastUsedInStandardMode(t *testing.T) {
 func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	t.Run("responses endpoint maps quota exhausted to billing_error", func(t *testing.T) {
+	t.Run("responses endpoint maps quota exhausted to insufficient_quota", func(t *testing.T) {
 		user := &service.User{
 			ID:          10,
 			Role:        service.RoleUser,
@@ -1057,11 +1059,11 @@ func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
 		req.Header.Set("x-api-key", apiKey.Key)
 		router.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusForbidden, w.Code)
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
 		var resp responsesProtocolError
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-		require.Equal(t, "billing_error", resp.Error.Code)
-		require.Equal(t, "当前 API Key 配额已用完，请充值或联系管理员。", resp.Error.Message)
+		require.Equal(t, "insufficient_quota", resp.Error.Code)
+		require.Equal(t, "API key 额度已用完", resp.Error.Message)
 	})
 
 	t.Run("anthropic endpoint maps insufficient balance to billing_error", func(t *testing.T) {
@@ -1144,11 +1146,11 @@ func TestAPIKeyAuthGatewayProtocolsReturnNativeBillingErrors(t *testing.T) {
 		req.Header.Set("x-api-key", apiKey.Key)
 		router.ServeHTTP(w, req)
 
-		require.Equal(t, http.StatusForbidden, w.Code)
+		require.Equal(t, http.StatusTooManyRequests, w.Code)
 		var resp ErrorResponse
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 		require.Equal(t, "API_KEY_QUOTA_EXHAUSTED", resp.Code)
-		require.Equal(t, "当前 API Key 配额已用完，请充值或联系管理员。", resp.Message)
+		require.Equal(t, "API key 额度已用完", resp.Message)
 	})
 }
 
@@ -1493,6 +1495,10 @@ func (r *stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64
 	if r.activateWindow != nil {
 		return r.activateWindow(ctx, id, dailyStart, weeklyStart, monthlyStart)
 	}
+	return errors.New("not implemented")
+}
+
+func (r *stubUserSubscriptionRepo) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time, time.Time) error {
 	return errors.New("not implemented")
 }
 

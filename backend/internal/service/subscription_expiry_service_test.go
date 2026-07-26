@@ -95,7 +95,7 @@ func (r *subscriptionExpiryRepoStub) GetLatestUsedAtBySubscriptionIDs(context.Co
 	return nil, nil
 }
 
-func (r *subscriptionExpiryRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+func (r *subscriptionExpiryRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time, time.Time) error {
 	return nil
 }
 

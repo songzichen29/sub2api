@@ -168,6 +168,27 @@ type UpdateUserInput struct {
 	ActorAdminID int64
 }
 
+type adminUserStatusUpdater interface {
+	UpdateUserStatus(ctx context.Context, id int64, status string) (*User, error)
+}
+
+func isStatusOnlyUserUpdate(input *UpdateUserInput) bool {
+	if input == nil {
+		return false
+	}
+	return input.Status != "" &&
+		input.Email == "" &&
+		input.Password == "" &&
+		input.Username == nil &&
+		input.Notes == nil &&
+		input.Role == "" &&
+		input.Balance == nil &&
+		input.Concurrency == nil &&
+		input.RPMLimit == nil &&
+		input.AllowedGroups == nil &&
+		input.GroupRates == nil
+}
+
 type AdminBindAuthIdentityInput struct {
 	ProviderType    string
 	ProviderKey     string

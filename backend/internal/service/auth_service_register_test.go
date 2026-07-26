@@ -270,6 +270,9 @@ func (r *registerUserRepoWithEnt) BatchSetConcurrency(context.Context, []int64, 
 func (r *registerUserRepoWithEnt) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	panic("unexpected BatchAddConcurrency call")
 }
+func (r *registerUserRepoWithEnt) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	panic("unexpected BatchUpdateLimits call")
+}
 func (r *registerUserRepoWithEnt) GetByIDIncludeDeleted(context.Context, int64) (*User, error) {
 	panic("unexpected GetByIDIncludeDeleted call")
 }

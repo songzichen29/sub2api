@@ -102,7 +102,7 @@ func (r *redeemSubscriptionRepoStub) UpdateDailyOverdraft(context.Context, int64
 func (r *redeemSubscriptionRepoStub) ActivateWindows(context.Context, int64, time.Time, time.Time, time.Time) error {
 	panic("unexpected ActivateWindows call")
 }
-func (r *redeemSubscriptionRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time) error {
+func (r *redeemSubscriptionRepoStub) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time, time.Time) error {
 	panic("unexpected ResetUsageWindows call")
 }
 func (r *redeemSubscriptionRepoStub) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
