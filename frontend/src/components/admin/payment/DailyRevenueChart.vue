@@ -76,17 +76,12 @@ import {
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
+import type { DailyPaymentStats } from '@/types/payment'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
-interface DailyPaymentStat {
-  date: string
-  amount: number
-  count: number
-}
-
 const props = withDefaults(defineProps<{
-  data: DailyPaymentStat[]
+  data: DailyPaymentStats[]
   loading?: boolean
   days: number
   dayOptions: readonly number[]
@@ -101,21 +96,35 @@ defineEmits<{
 
 const { t } = useI18n()
 
+const colors = [
+  ['rgb(59, 130, 246)', 'rgba(59, 130, 246, 0.1)'],
+  ['rgb(168, 85, 247)', 'rgba(168, 85, 247, 0.1)'],
+  ['rgb(245, 158, 11)', 'rgba(245, 158, 11, 0.1)'],
+  ['rgb(239, 68, 68)', 'rgba(239, 68, 68, 0.1)'],
+]
+
+const currencies = computed(() => {
+  return [...new Set(props.data.flatMap(day => Object.keys(day.amount)))].sort()
+})
+
 const chartData = computed(() => {
   if (!props.data || props.data.length === 0) return null
   return {
     labels: props.data.map(d => formatChartDate(d.date)),
     datasets: [
-      {
-        label: t('payment.admin.revenueWithCurrency'),
-        data: props.data.map(d => d.amount),
-        borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.12)',
-        fill: true,
-        tension: 0.35,
-        pointRadius: 2.5,
-        pointHoverRadius: 5,
-      },
+      ...currencies.value.map((currency, index) => {
+        const [borderColor, backgroundColor] = colors[index % colors.length]
+        return {
+          label: `${currency} ${t('payment.admin.revenue')}`,
+          data: props.data.map(day => day.amount[currency] || 0),
+          borderColor,
+          backgroundColor,
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+        }
+      }),
       {
         label: t('payment.admin.orderCount'),
         data: props.data.map(d => d.count),
@@ -168,30 +177,37 @@ const chartOptions = computed(() => ({
         label(context: TooltipItem<'line'>) {
           const value = typeof context.parsed.y === 'number' ? context.parsed.y : 0
           if (context.dataset.yAxisID === 'y1') return `${context.dataset.label}: ${value}`
-          return `${context.dataset.label}: $${formatMoney(value)}`
+          const currency = currencies.value[context.datasetIndex]
+          return `${context.dataset.label}: ${formatMoney(currency, value)}`
         }
       }
     }
   }
 }))
 
-const maxRevenueDay = computed(() => {
-  return props.data.reduce<DailyPaymentStat | null>((best, item) => {
-    if (!best || item.amount > best.amount) return item
-    return best
-  }, null)
+const maxRevenueByCurrency = computed(() => {
+  return currencies.value.map(currency => {
+    const day = props.data.reduce<DailyPaymentStats | null>((best, item) => {
+      if (!best || (item.amount[currency] || 0) > (best.amount[currency] || 0)) return item
+      return best
+    }, null)
+    return { currency, amount: day?.amount[currency] || 0, date: day?.date || '-' }
+  })
 })
 
 const maxOrdersDay = computed(() => {
-  return props.data.reduce<DailyPaymentStat | null>((best, item) => {
+  return props.data.reduce<DailyPaymentStats | null>((best, item) => {
     if (!best || item.count > best.count) return item
     return best
   }, null)
 })
 
-const averageRevenue = computed(() => {
-  if (!props.data.length) return 0
-  return props.data.reduce((sum, item) => sum + item.amount, 0) / props.data.length
+const averageRevenueByCurrency = computed(() => {
+  if (!props.data.length) return []
+  return currencies.value.map(currency => ({
+    currency,
+    amount: props.data.reduce((sum, item) => sum + (item.amount[currency] || 0), 0) / props.data.length,
+  }))
 })
 
 const averageOrders = computed(() => {
@@ -203,8 +219,8 @@ const summaryItems = computed(() => [
   {
     key: 'maxRevenue',
     label: t('payment.admin.maxDailyRevenue'),
-    value: `$${formatMoney(maxRevenueDay.value?.amount || 0)}`,
-    meta: formatDate(maxRevenueDay.value?.date),
+    value: formatAmountList(maxRevenueByCurrency.value),
+    meta: maxRevenueByCurrency.value.map(item => `${item.currency}: ${formatDate(item.date)}`).join(' · '),
     icon: 'trendingUp' as const,
     iconClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
   },
@@ -219,7 +235,7 @@ const summaryItems = computed(() => [
   {
     key: 'avgRevenue',
     label: t('payment.admin.avgDailyRevenue'),
-    value: `$${formatMoney(averageRevenue.value)}`,
+    value: formatAmountList(averageRevenueByCurrency.value),
     meta: t('payment.admin.inSelectedRange'),
     icon: 'chart' as const,
     iconClass: 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
@@ -234,8 +250,14 @@ const summaryItems = computed(() => [
   },
 ])
 
-function formatMoney(value: number): string {
-  return value.toFixed(2)
+function formatMoney(currency: string | undefined, value: number): string {
+  if (!currency) return value.toFixed(2)
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(value)
+}
+
+function formatAmountList(items: { currency: string; amount: number }[]): string {
+  if (!items.length) return '-'
+  return items.map(item => formatMoney(item.currency, item.amount)).join(' · ')
 }
 
 function formatChartDate(value: string): string {

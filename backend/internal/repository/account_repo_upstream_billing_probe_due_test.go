@@ -16,8 +16,9 @@ func TestAccountRepositoryListDueUpstreamBillingProbeAccountsBoundsQuery(t *test
 
 	now := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 	var capturedSQL string
-	mock.ExpectQuery("(?s)SELECT id,.*JSON_UNQUOTE.*FROM accounts").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "probe_status", "next_probe_at"}))
+	mock.ExpectQuery("WITH candidates AS").
+		WithArgs(now, 20).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	repo := newAccountRepositoryWithSQL(nil, captureQuerySQL{db: db, captured: &capturedSQL}, nil)
 
 	accounts, err := repo.ListDueUpstreamBillingProbeAccounts(context.Background(), now, 20)
@@ -29,9 +30,12 @@ func TestAccountRepositoryListDueUpstreamBillingProbeAccountsBoundsQuery(t *test
 	require.Contains(t, normalized, "status = 'active'")
 	require.Contains(t, normalized, "platform = 'openai'")
 	require.Contains(t, normalized, "type = 'apikey'")
-	require.Contains(t, normalized, "JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled') = TRUE")
-	require.Contains(t, normalized, "JSON_UNQUOTE(JSON_EXTRACT(extra, '$.upstream_billing_probe.status'))")
-	require.Contains(t, normalized, "JSON_UNQUOTE(JSON_EXTRACT(extra, '$.upstream_billing_probe.next_probe_at'))")
+	require.Contains(t, normalized, `extra @> '{"upstream_billing_probe_enabled": true}'::jsonb`)
+	require.Contains(t, normalized, "jsonb_path_query_first_tz")
+	require.Contains(t, normalized, `'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$'`)
+	require.Contains(t, normalized, "parsed AS MATERIALIZED")
+	require.Contains(t, normalized, "parsed_next_probe_at::timestamptz <= $1")
+	require.Contains(t, normalized, "LIMIT $2")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

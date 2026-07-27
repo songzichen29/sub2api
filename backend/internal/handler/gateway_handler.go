@@ -188,6 +188,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	// 解析渠道级模型映射
@@ -218,6 +219,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 验证 model 必填
 	if reqModel == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	if !compositeTargetPlatformResolved(c, apiKey, reqModel) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
 		return
 	}
 
@@ -278,10 +283,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		zap.String("metadata_user_id_raw", parsedReq.MetadataUserID),
 	)
 
-	// 获取平台：优先使用强制平台（/antigravity 路由，中间件已设置 request.Context），否则使用分组平台
+	// 获取平台：优先使用强制平台（/antigravity 路由），其次使用 composite 解析出的目标平台，否则使用分组平台
 	platform := ""
 	if forcePlatform, ok := middleware2.GetForcePlatformFromContext(c); ok {
 		platform = forcePlatform
+	} else if resolvedPlatform, ok := service.ResolvedTargetPlatformFromContext(c.Request.Context()); ok {
+		platform = resolvedPlatform
 	} else if apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 	}
@@ -526,6 +533,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
+			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
+			forceCacheBilling := fs.ForceCacheBilling
+			quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+			sessionID := service.ExtractClientSessionID(c)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -537,10 +548,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					UpstreamEndpoint:   upstreamEndpoint,
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
+					SessionID:          sessionID,
 					RequestPayloadHash: requestPayloadHash,
-					ForceCacheBilling:  fs.ForceCacheBilling,
+					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					QuotaPlatform:      quotaPlatform,
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -965,6 +978,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 			forceCacheBilling := fs.ForceCacheBilling
 			quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
+			sessionID := service.ExtractClientSessionID(c)
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
@@ -977,10 +991,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					UpstreamEndpoint:   upstreamEndpoint,
 					UserAgent:          userAgent,
 					IPAddress:          clientIP,
+					SessionID:          sessionID,
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -1018,24 +1033,36 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
+	if platform == service.PlatformComposite {
+		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
+			writeCustomModelsList(c, service.PlatformComposite, availableModels)
+			return
+		}
+		if len(availableModels) > 0 {
+			writeModelsList(c, service.PlatformComposite, availableModels)
+			return
+		}
+		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		return
+	}
+
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
+		fallbackModels := defaultModelIDsForPlatform(platform)
+		availableModels = filterModelsByCustomList(
+			customModelsListSource(platform, availableModels, fallbackModels),
+			fallbackModels,
+			apiKey.Group.ModelsListConfig.Models,
+		)
+		writeCustomModelsList(c, platform, availableModels)
+		return
+	}
 
 	if len(availableModels) > 0 {
-		// Build model list from whitelist
-		models := make([]claude.Model, 0, len(availableModels))
-		for _, modelID := range availableModels {
-			models = append(models, claude.Model{
-				ID:          modelID,
-				Type:        "model",
-				DisplayName: modelID,
-				CreatedAt:   "2024-01-01T00:00:00Z",
-			})
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   models,
-		})
+		writeModelsList(c, platform, availableModels)
 		return
 	}
 
@@ -1055,11 +1082,259 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		})
 		return
 	}
+	if platform == service.PlatformGrok {
+		writeGrokModelsList(c, defaultGrokModelIDs())
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   claude.DefaultModels,
 	})
+}
+
+func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
+	if h == nil || h.gatewayService == nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	models := make([]string, 0)
+	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
+		if len(platformModels) == 0 {
+			if _, ok := schedulablePlatforms[platform]; ok {
+				platformModels = defaultModelIDsForPlatform(platform)
+			}
+		}
+		for _, model := range platformModels {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			models = append(models, model)
+		}
+	}
+	return models
+}
+
+func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+	if platform == service.PlatformGrok {
+		writeGrokModelsList(c, modelIDs)
+		return
+	}
+	models := make([]claude.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, claude.Model{
+			ID:          modelID,
+			Type:        "model",
+			DisplayName: modelID,
+			CreatedAt:   "2024-01-01T00:00:00Z",
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
+	if platform == service.PlatformOpenAI {
+		writeOpenAIModelsList(c, modelIDs)
+		return
+	}
+	writeModelsList(c, platform, modelIDs)
+}
+
+func writeGrokModelsList(c *gin.Context, modelIDs []string) {
+	models := make([]claude.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		models = append(models, claude.Model{
+			ID:          modelID,
+			Type:        "model",
+			DisplayName: modelID,
+			CreatedAt:   "2024-01-01T00:00:00Z",
+		})
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]openai.Model, len(openai.DefaultModels))
+	for _, model := range openai.DefaultModels {
+		defaultsByID[model.ID] = model
+	}
+
+	models := make([]openai.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, openai.Model{
+			ID:          modelID,
+			Object:      "model",
+			Created:     1704067200,
+			OwnedBy:     "openai",
+			Type:        "model",
+			DisplayName: modelID,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"object": "list",
+		"data":   models,
+	})
+}
+
+func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
+	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
+		return mergeModelIDs(availableModels, fallbackModels)
+	}
+	return availableModels
+}
+
+func filterModelsByCustomList(availableModels, fallbackModels, selectedModels []string) []string {
+	if len(selectedModels) == 0 {
+		return availableModels
+	}
+	source := availableModels
+	if len(source) == 0 {
+		source = fallbackModels
+	}
+	if len(source) == 0 {
+		return nil
+	}
+
+	allowed := make([]string, 0, len(source))
+	for _, model := range source {
+		model = strings.TrimSpace(model)
+		if model != "" {
+			allowed = append(allowed, model)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(selectedModels))
+	filtered := make([]string, 0, len(selectedModels))
+	for _, model := range selectedModels {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if !customModelsListAllowsModel(allowed, model) {
+			continue
+		}
+		if _, ok := seen[model]; ok {
+			continue
+		}
+		seen[model] = struct{}{}
+		filtered = append(filtered, model)
+	}
+	return filtered
+}
+
+func customModelsListAllowsModel(availablePatterns []string, model string) bool {
+	for _, pattern := range availablePatterns {
+		if pattern == model {
+			return true
+		}
+		if strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultModelIDsForPlatform(platform string) []string {
+	switch platform {
+	case service.PlatformOpenAI:
+		return openai.DefaultModelIDs()
+	case service.PlatformGemini:
+		ids := make([]string, 0, len(geminicli.DefaultModels))
+		for _, model := range geminicli.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case service.PlatformAntigravity:
+		models := antigravity.DefaultModels()
+		ids := make([]string, 0, len(models))
+		for _, model := range models {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	case service.PlatformAnthropic:
+		ids := make([]string, 0, len(claude.DefaultModels)+len(antigravity.DefaultModels()))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		for _, model := range antigravity.DefaultModels() {
+			ids = append(ids, model.ID)
+		}
+		return mergeModelIDs(ids, nil)
+	case service.PlatformGrok:
+		return defaultGrokModelIDs()
+	case service.PlatformComposite:
+		ids := make([]string, 0)
+		seen := make(map[string]struct{})
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+		return ids
+	default:
+		ids := make([]string, 0, len(claude.DefaultModels))
+		for _, model := range claude.DefaultModels {
+			ids = append(ids, model.ID)
+		}
+		return ids
+	}
+}
+
+// defaultGrokModelIDs returns the text-capable models supported by the local
+// Grok/grok2api compatibility gateway. The official xAI media-only models are
+// intentionally excluded because this production branch does not expose that
+// implementation.
+func defaultGrokModelIDs() []string {
+	return []string{
+		"grok-4.5",
+		"grok-4.3",
+		"grok-build-0.1",
+		"grok-composer-2.5-fast",
+		"grok-4.20-0309-reasoning",
+		"grok-4.20-0309-non-reasoning",
+		"grok-4.20-multi-agent-0309",
+	}
+}
+
+func mergeModelIDs(primary, secondary []string) []string {
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	merged := make([]string, 0, len(primary)+len(secondary))
+	for _, models := range [][]string{primary, secondary} {
+		for _, model := range models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			merged = append(merged, model)
+		}
+	}
+	return merged
 }
 
 // AntigravityModels 返回 Antigravity 支持的全部模型
@@ -1686,6 +1961,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	// count_tokens 走 messages 严格校验时，复用已解析请求，避免二次反序列化。
 	SetClaudeCodeClientContext(c, body, parsedReq)
+	ensureCompositeTargetPlatform(c, apiKey, parsedReq.Model)
 	reqLog = reqLog.With(zap.String("model", parsedReq.Model), zap.Bool("stream", parsedReq.Stream))
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
@@ -1693,6 +1969,10 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 验证 model 必填
 	if parsedReq.Model == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		return
+	}
+	if !compositeTargetPlatformResolved(c, apiKey, parsedReq.Model) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
 		return
 	}
 

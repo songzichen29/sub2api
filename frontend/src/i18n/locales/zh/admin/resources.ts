@@ -427,7 +427,8 @@ export default {
     failedToUpdate: '更新公告失败',
     failedToDelete: '删除公告失败',
     failedToLoadReadStatus: '加载已读情况失败',
-    deleteConfirm: '确定要删除该公告吗？此操作无法撤销。'
+    deleteConfirm: '确定要删除该公告吗？此操作无法撤销。',
+    preview: '预览',
   },
   promo: {
     title: '优惠码管理',

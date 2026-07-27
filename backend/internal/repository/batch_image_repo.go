@@ -765,7 +765,7 @@ INSERT INTO batch_image_jobs (
     batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price,
     pricing_snapshot_version,
     currency, hold_id,
-    idempotency_key, request_hash, manifest_hash, retry_count, output_expires_at
+    idempotency_key, request_hash, manifest_hash, retry_count, session_id, output_expires_at
 ) VALUES (
     ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?,
@@ -775,7 +775,7 @@ INSERT INTO batch_image_jobs (
     ?, ?, ?, ?,
     ?,
     ?, ?,
-    ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?
 )`,
 		params.BatchID, params.UserID, params.APIKeyID, params.AccountID, params.Provider, params.Model, params.TaskName, params.ParentBatchID, params.Status,
 		params.ProviderJobName, params.ProviderInputRef, params.ProviderOutputRef, params.GCSInputURI, params.GCSOutputURI,
@@ -785,7 +785,7 @@ INSERT INTO batch_image_jobs (
 		params.BatchDiscountMultiplier, params.HoldMultiplier, params.BillableUnitPrice, params.HoldUnitPrice,
 		params.PricingSnapshotVersion,
 		params.Currency, params.HoldID,
-		params.IdempotencyKey, params.RequestHash, params.ManifestHash, params.RetryCount, params.OutputExpiresAt,
+		params.IdempotencyKey, params.RequestHash, params.ManifestHash, params.RetryCount, params.SessionID, params.OutputExpiresAt,
 	); err != nil {
 		return nil, err
 	}
@@ -844,7 +844,7 @@ batch_discount_multiplier, hold_multiplier, billable_unit_price, hold_unit_price
 pricing_snapshot_version,
 currency, hold_id,
 idempotency_key, request_hash, manifest_hash,
-retry_count, version, output_expires_at, input_deleted_at, output_deleted_at, downloaded_at, user_deleted_at,
+retry_count, version, session_id, output_expires_at, input_deleted_at, output_deleted_at, downloaded_at, user_deleted_at,
 last_error_code, last_error_message,
 created_at, updated_at, submitted_at, started_at, finished_at, settled_at`
 
@@ -857,6 +857,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	var parentBatchID sql.NullString
 	var holdAmount, actualCost sql.NullFloat64
 	var holdID, idempotencyKey, requestHash, manifestHash sql.NullString
+	var sessionID sql.NullString
 	var outputExpiresAt, inputDeletedAt, outputDeletedAt, downloadedAt, userDeletedAt sql.NullTime
 	var lastErrorCode, lastErrorMessage sql.NullString
 	var submittedAt, startedAt, finishedAt, settledAt sql.NullTime
@@ -871,7 +872,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 		&job.PricingSnapshotVersion,
 		&job.Currency, &holdID,
 		&idempotencyKey, &requestHash, &manifestHash,
-		&job.RetryCount, &job.Version, &outputExpiresAt, &inputDeletedAt, &outputDeletedAt, &downloadedAt, &userDeletedAt,
+		&job.RetryCount, &job.Version, &sessionID, &outputExpiresAt, &inputDeletedAt, &outputDeletedAt, &downloadedAt, &userDeletedAt,
 		&lastErrorCode, &lastErrorMessage,
 		&job.CreatedAt, &job.UpdatedAt, &submittedAt, &startedAt, &finishedAt, &settledAt,
 	)
@@ -893,6 +894,7 @@ func scanBatchImageJob(row rowScanner) (*service.BatchImageJob, error) {
 	job.IdempotencyKey = batchImageNullStringPtr(idempotencyKey)
 	job.RequestHash = batchImageNullStringPtr(requestHash)
 	job.ManifestHash = batchImageNullStringPtr(manifestHash)
+	job.SessionID = batchImageNullStringPtr(sessionID)
 	job.OutputExpiresAt = batchImageNullTimePtr(outputExpiresAt)
 	job.InputDeletedAt = batchImageNullTimePtr(inputDeletedAt)
 	job.OutputDeletedAt = batchImageNullTimePtr(outputDeletedAt)

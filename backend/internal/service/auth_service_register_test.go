@@ -182,6 +182,10 @@ func (r *registerUserRepoWithEnt) Create(ctx context.Context, user *User) error 
 	return nil
 }
 
+func (r *registerUserRepoWithEnt) CreateWithEmailAliasGuard(ctx context.Context, user *User) error {
+	return r.Create(ctx, user)
+}
+
 func (r *registerUserRepoWithEnt) GetByID(ctx context.Context, id int64) (*User, error) {
 	entity, err := r.entClient(ctx).User.Get(ctx, id)
 	if err != nil {
@@ -220,6 +224,20 @@ func (r *registerUserRepoWithEnt) GetByEmail(ctx context.Context, email string) 
 
 func (r *registerUserRepoWithEnt) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return r.entClient(ctx).User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
+}
+
+func (r *registerUserRepoWithEnt) ExistsByEmailAlias(ctx context.Context, email string) (bool, error) {
+	identity := NormalizeEmailForAliasDedup(email)
+	users, err := r.entClient(ctx).User.Query().Select(dbuser.FieldEmail).All(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, user := range users {
+		if NormalizeEmailForAliasDedup(user.Email) == identity {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *registerUserRepoWithEnt) GetFirstAdmin(context.Context) (*User, error) {
@@ -627,6 +645,30 @@ func TestAuthService_Register_EmailExists(t *testing.T) {
 
 	_, _, err := service.Register(context.Background(), "user@test.com", "password")
 	require.ErrorIs(t, err, ErrEmailExists)
+}
+
+func TestAuthService_Register_AliasDuplicateRejected(t *testing.T) {
+	repo := &userRepoStub{aliasExists: true}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, _, err := service.Register(context.Background(), "some.one+bulk294@gmail.com", "password")
+	require.ErrorIs(t, err, ErrEmailExists)
+	require.Empty(t, repo.created)
+}
+
+func TestAuthService_Register_UsesAliasGuardedCreate(t *testing.T) {
+	// 注册必须走带别名兜底的创建路径：服务层前置查重与写入之间存在竞态窗口。
+	repo := &userRepoStub{nextID: 91}
+	service := newAuthService(repo, map[string]string{
+		SettingKeyRegistrationEnabled: "true",
+	}, nil, nil)
+
+	_, user, err := service.Register(context.Background(), "newuser@gmail.com", "password")
+	require.NoError(t, err)
+	require.NotNil(t, user)
+	require.Equal(t, 1, repo.guardedCreates)
 }
 
 func TestAuthService_Register_CheckEmailError(t *testing.T) {

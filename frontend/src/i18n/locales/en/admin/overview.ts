@@ -962,7 +962,8 @@ export default {
       openai: 'OpenAI',
       gemini: 'Gemini',
       antigravity: 'Antigravity',
-      grok: 'Grok'
+      grok: 'Grok',
+      composite: 'Composite',
     },
     deleteConfirm: 'Are you sure you want to delete \'{name}\'? All associated API keys will no longer belong to any group.',
     deleteConfirmSubscription: 'Are you sure you want to delete subscription group \'{name}\'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.',
@@ -1085,7 +1086,14 @@ export default {
       noRules: 'No routing rules',
       noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
       searchAccountPlaceholder: 'Search accounts...',
-      accountsHint: 'Select accounts to prioritize for this model pattern'
+      accountsHint: 'Select accounts to prioritize for this model pattern',
+      claudeMaxSimulation: {
+        title: 'Claude Max Usage Simulation',
+        tooltip: 'When enabled, for Claude models without upstream cache-write usage, the system deterministically maps tokens to a small input plus 1h cache creation while keeping total tokens unchanged.',
+        enabled: 'Enabled (simulate 1h cache)',
+        disabled: 'Disabled',
+        hint: 'Only token categories in usage billing logs are adjusted. No per-request mapping state is persisted.'
+      }
     },
     mcpXml: {
       title: 'MCP XML Protocol Injection',
@@ -1110,6 +1118,75 @@ export default {
       chatgpt: 'ChatGPT',
       gemini: 'Gemini',
       grok: 'Grok'
-    }
+    },
+    videoPricing: {
+      title: 'Video Generation Pricing',
+      description:
+        'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+      independentMultiplier: 'Use independent video multiplier',
+      videoMultiplier: 'Video multiplier',
+      modeHint:
+        'Videos are billed per second: per-second price × duration (1-15s, default 8s). By default the current effective group multiplier applies; independent mode uses the video multiplier instead.',
+      finalPricePreview: 'Final per-second price preview',
+      notConfigured: 'Not configured'
+    },
+    compositeRoutes: {
+      action: 'Routes',
+      title: 'Composite Routes',
+      titleWithGroup: 'Composite Routes: {name}',
+      routes: 'Saved Routes',
+      empty: 'No composite routes configured',
+      publicModel: 'Public Model',
+      target: 'Target',
+      scope: 'Scope',
+      priority: 'Priority',
+      addRoute: 'Add Route',
+      editRoute: 'Edit Route',
+      matchType: 'Match',
+      endpoint: 'Endpoint',
+      targetPlatform: 'Target Platform',
+      upstreamModel: 'Upstream Model',
+      upstreamModelHint: 'Leave empty to pass the original requested model through: under prefix match each matched model forwards verbatim (e.g. deepseek-v4-flash and deepseek-v4-pro each forwarded as-is); set a value to forward every matched request to that fixed model.',
+      notes: 'Notes',
+      enabled: 'Enabled',
+      preview: 'Preview',
+      matched: 'Matched',
+      notMatched: 'No Match',
+      publicModelRequired: 'Public model is required',
+      routeCreated: 'Composite route created',
+      routeUpdated: 'Composite route updated',
+      routeDeleted: 'Composite route deleted',
+      failedToLoad: 'Failed to load composite routes',
+      failedToSave: 'Failed to save composite route',
+      failedToDelete: 'Failed to delete composite route',
+      failedToPreview: 'Failed to preview composite route',
+      deleteConfirm: 'Delete this composite route?',
+      endpoints: {
+        any: 'Any',
+        messages: 'Messages',
+        countTokens: 'Count Tokens',
+        responses: 'Responses',
+        chatCompletions: 'Chat Completions',
+        embeddings: 'Embeddings',
+        images: 'Images',
+        gemini: 'Gemini Native'
+      },
+      match: {
+        exact: 'Exact',
+        prefix: 'Prefix'
+      },
+      sources: {
+        route: 'Route',
+        detector: 'Detector'
+      }
+    },
+    openaiLive: {
+      title: 'OpenAI Live',
+      allow: 'Allow Live access',
+      hint: 'When enabled, API keys in this OpenAI group can create and control Live voice sessions. Disabled by default. The Sub2API server must run on Apple Silicon macOS with the official ChatGPT app installed; client platforms are unrestricted.',
+      unsupportedTitle: 'Current server does not support Live',
+      unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
+      enableAnyway: 'Enable anyway'
+    },
   }
 }

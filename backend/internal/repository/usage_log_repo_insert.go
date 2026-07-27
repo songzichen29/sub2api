@@ -76,6 +76,7 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // billing_tier
 	"text",        // billing_mode
 	"numeric",     // account_stats_cost
+	"text",        // session_id
 	"datetime(6)", // created_at
 }
 
@@ -592,7 +593,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 }
 
 func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) (sql.Result, error) {
-	return sqlq.ExecContext(ctx, `
+	query := `
 		INSERT INTO usage_logs (
 			user_id,
 			api_key_id,
@@ -647,17 +648,12 @@ func execUsageLogInsert(ctx context.Context, sqlq sqlExecutor, prepared usageLog
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			session_id,
 			created_at
-		) VALUES (
-			?, ?, ?, ?, ?, ?, ?,
-			?, ?,
-			?, ?, ?, ?,
-			?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-		)
+		) VALUES (` + strings.TrimSuffix(strings.Repeat("?,", len(prepared.args)), ",") + `)
 		ON DUPLICATE KEY UPDATE id = id
-	`, prepared.args...)
+	`
+	return sqlq.ExecContext(ctx, query, prepared.args...)
 }
 
 func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
@@ -693,6 +689,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	modelMappingChain := nullString(log.ModelMappingChain)
 	billingTier := nullString(log.BillingTier)
 	billingMode := nullString(log.BillingMode)
+	sessionID := nullString(log.SessionID)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -764,6 +761,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			billingTier,
 			billingMode,
 			log.AccountStatsCost, // account_stats_cost
+			sessionID,            // session_id
 			createdAt,
 		},
 	}
@@ -826,6 +824,7 @@ func buildUsageLogMultiInsertQuery(preparedList []usageLogInsertPrepared) string
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			session_id,
 			created_at
 		) VALUES
 	`)

@@ -84,7 +84,7 @@ const DefaultCacheControlTTL = "1h"
 // CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
 // 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
-const CLICurrentVersion = "2.1.197"
+const CLICurrentVersion = "2.1.220"
 
 // CLIBuildTime 是从 Claude Code v2.1.197 native binary 中提取的真实 build_time。
 const CLIBuildTime = "2026-06-29T19:08:42Z"
@@ -242,6 +242,12 @@ var DefaultModels = []Model{
 		Type:        "model",
 		DisplayName: "Claude Opus 4.8",
 		CreatedAt:   "2026-05-29T00:00:00Z",
+	},
+	{
+		ID:          "claude-opus-5",
+		Type:        "model",
+		DisplayName: "Claude Opus 5",
+		CreatedAt:   "2026-07-25T00:00:00Z",
 	},
 	{
 		ID:          "claude-sonnet-5",

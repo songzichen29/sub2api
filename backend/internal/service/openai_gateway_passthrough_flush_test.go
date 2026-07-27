@@ -127,7 +127,7 @@ func TestOpenAIStreamingPassthroughFlushesAtCompleteEventBoundaries(t *testing.T
 	require.Equal(t, 2, result.usage.OutputTokens)
 }
 
-func TestOpenAIStreamingPassthroughFlushesPreambleBeforeFirstOutputBoundary(t *testing.T) {
+func TestOpenAIStreamingPassthroughBuffersPreambleUntilFirstOutputBoundary(t *testing.T) {
 	preambleEvent := "event: response.created\n" +
 		`data: {"type":"response.created","response":{"id":"resp_pending"}}` + "\n\n"
 	heartbeat := ": waiting\n\n"
@@ -141,8 +141,6 @@ func TestOpenAIStreamingPassthroughFlushesPreambleBeforeFirstOutputBoundary(t *t
 	require.NoError(t, err)
 	require.Equal(t, upstream, recorder.Body.String())
 	require.Equal(t, []int{
-		len(preambleEvent),
-		len(preamble),
 		len(preamble) + len(firstOutput),
 		len(upstream),
 	}, writer.flushBodyLengths)
@@ -163,7 +161,7 @@ func TestOpenAIStreamingPassthroughFlushesTerminalEventAtEOFWithoutBlankLine(t *
 	require.Equal(t, 2, result.usage.OutputTokens)
 }
 
-func TestOpenAIStreamingPassthroughFailedAfterPreambleFlushesWithoutFailover(t *testing.T) {
+func TestOpenAIStreamingPassthroughFailedAfterBufferedPreambleCanFailover(t *testing.T) {
 	preambleEvent := "event: response.created\n" +
 		`data: {"type":"response.created","response":{"id":"resp_failover"}}` + "\n\n"
 	failedEvent := "event: response.failed\n" +
@@ -174,13 +172,10 @@ func TestOpenAIStreamingPassthroughFailedAfterPreambleFlushesWithoutFailover(t *
 
 	require.Error(t, err)
 	var failoverErr *UpstreamFailoverError
-	require.False(t, errors.As(err, &failoverErr))
+	require.ErrorAs(t, err, &failoverErr)
 	require.NotNil(t, result)
-	require.Equal(t, upstream, recorder.Body.String())
-	require.Equal(t, []int{
-		len(preambleEvent),
-		len(upstream),
-	}, writer.flushBodyLengths)
+	require.Empty(t, recorder.Body.String())
+	require.Empty(t, writer.flushBodyLengths)
 }
 
 func TestOpenAIStreamingPassthroughNonRetryableFailedBeforeOutputFlushesAtBoundary(t *testing.T) {

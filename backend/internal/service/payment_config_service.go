@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -30,23 +31,24 @@ const (
 	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
 	// SettingSubscriptionUSDToCNYRate 是订阅 CNY 换算汇率（1 USD = X CNY）。
 	// 0/未配置 = 关闭换算（订阅按 price 数值直付），显式配置后 CNY 通道订阅按 price × rate 收款。
-	SettingSubscriptionUSDToCNYRate = "SUBSCRIPTION_USD_TO_CNY_RATE"
-	SettingDiscountRules            = "PAYMENT_DISCOUNT_RULES"
-	SettingQuickAmounts             = "PAYMENT_QUICK_AMOUNTS"
-	SettingPaidUserRateEnabled      = "PAID_USER_RATE_ENABLED"
-	SettingPaidUserRateRules        = "PAID_USER_RATE_RULES"
-	SettingPaidUserRateBackfill     = "PAID_USER_RATE_BACKFILL"
-	SettingRechargeFeeRate          = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix        = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix        = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL             = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText                 = "PAYMENT_HELP_TEXT"
-	SettingAlipayForceQRCode        = "PAYMENT_ALIPAY_FORCE_QRCODE"
-	SettingCancelRateLimitOn        = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax       = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize         = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit         = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode         = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingSubscriptionUSDToCNYRate      = "SUBSCRIPTION_USD_TO_CNY_RATE"
+	SettingDiscountRules                 = "PAYMENT_DISCOUNT_RULES"
+	SettingQuickAmounts                  = "PAYMENT_QUICK_AMOUNTS"
+	SettingPaidUserRateEnabled           = "PAID_USER_RATE_ENABLED"
+	SettingPaidUserRateRules             = "PAID_USER_RATE_RULES"
+	SettingPaidUserRateBackfill          = "PAID_USER_RATE_BACKFILL"
+	SettingRechargeFeeRate               = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix             = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText                      = "PAYMENT_HELP_TEXT"
+	SettingAlipayForceQRCode             = "PAYMENT_ALIPAY_FORCE_QRCODE"
+	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit              = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode              = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingAlipayMobilePrecreateDeepLink = "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"
 )
 
 // Default values for payment configuration settings.
@@ -129,6 +131,8 @@ type PaymentConfig struct {
 	CancelRateLimitWindow  int    `json:"cancel_rate_limit_window"`
 	CancelRateLimitUnit    string `json:"cancel_rate_limit_unit"`
 	CancelRateLimitMode    string `json:"cancel_rate_limit_window_mode"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	AlipayMobilePrecreateDeepLink bool `json:"alipay_mobile_precreate_deep_link"`
 }
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
@@ -162,10 +166,12 @@ type UpdatePaymentConfigRequest struct {
 	CancelRateLimitUnit    *string `json:"cancel_rate_limit_unit"`
 	CancelRateLimitMode    *string `json:"cancel_rate_limit_window_mode"`
 
-	VisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
-	VisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
-	VisibleMethodAlipayEnabled *bool   `json:"payment_visible_method_alipay_enabled"`
-	VisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
+	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
+	AlipayMobilePrecreateDeepLink *bool   `json:"alipay_mobile_precreate_deep_link"`
+	VisibleMethodAlipaySource     *string `json:"payment_visible_method_alipay_source"`
+	VisibleMethodWxpaySource      *string `json:"payment_visible_method_wxpay_source"`
+	VisibleMethodAlipayEnabled    *bool   `json:"payment_visible_method_alipay_enabled"`
+	VisibleMethodWxpayEnabled     *bool   `json:"payment_visible_method_wxpay_enabled"`
 }
 
 // MethodLimits holds per-payment-type limits.
@@ -305,6 +311,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText, SettingAlipayForceQRCode,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
+		SettingAlipayMobilePrecreateDeepLink,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
 	}
@@ -362,12 +369,17 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		HelpText:                  vals[SettingHelpText],
 		AlipayForceQRCode:         vals[SettingAlipayForceQRCode] == "true",
 
-		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
-		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
-		CancelRateLimitWindow:  pcParseInt(vals[SettingCancelWindowSize], 1),
-		CancelRateLimitUnit:    vals[SettingCancelWindowUnit],
-		CancelRateLimitMode:    vals[SettingCancelWindowMode],
+		CancelRateLimitEnabled:        vals[SettingCancelRateLimitOn] == "true",
+		CancelRateLimitMax:            pcParseInt(vals[SettingCancelRateLimitMax], 10),
+		CancelRateLimitWindow:         pcParseInt(vals[SettingCancelWindowSize], 1),
+		CancelRateLimitUnit:           vals[SettingCancelWindowUnit],
+		CancelRateLimitMode:           vals[SettingCancelWindowMode],
+		AlipayMobilePrecreateDeepLink: vals[SettingAlipayMobilePrecreateDeepLink] == "true",
 	}
+	cfg.AlipayMobilePrecreateDeepLink = pcEnvBoolOverride(
+		SettingAlipayMobilePrecreateDeepLink,
+		cfg.AlipayMobilePrecreateDeepLink,
+	)
 	if cfg.LoadBalanceStrategy == "" {
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 	}
@@ -382,6 +394,18 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		cfg.EnabledTypes = NormalizeVisibleMethods(types)
 	}
 	return cfg
+}
+
+func pcEnvBoolOverride(key string, fallback bool) bool {
+	raw, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
@@ -471,6 +495,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		SettingCancelWindowSize:                  formatPositiveInt(req.CancelRateLimitWindow),
 		SettingCancelWindowUnit:                  derefStr(req.CancelRateLimitUnit),
 		SettingCancelWindowMode:                  derefStr(req.CancelRateLimitMode),
+		SettingAlipayMobilePrecreateDeepLink:     formatBoolOrEmpty(req.AlipayMobilePrecreateDeepLink),
 		SettingPaymentVisibleMethodAlipaySource:  derefStr(req.VisibleMethodAlipaySource),
 		SettingPaymentVisibleMethodWxpaySource:   derefStr(req.VisibleMethodWxpaySource),
 		SettingPaymentVisibleMethodAlipayEnabled: formatBoolOrEmpty(req.VisibleMethodAlipayEnabled),

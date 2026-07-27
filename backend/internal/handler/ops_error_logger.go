@@ -890,7 +890,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 
 			fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
-			platform := resolveOpsPlatform(apiKey, fallbackPlatform)
+			platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
 			requestID := c.Writer.Header().Get("X-Request-Id")
 			if requestID == "" {
@@ -1100,7 +1100,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		}
 
 		fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
-		platform := resolveOpsPlatform(apiKey, fallbackPlatform)
+		platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
 		requestID := c.Writer.Header().Get("X-Request-Id")
 		if requestID == "" {
@@ -1308,7 +1308,7 @@ func logOpsStreamError(c *gin.Context, ops *service.OpsService, wireStatus int) 
 	}
 
 	fallbackPlatform := guessPlatformFromPath(c.Request.URL.Path)
-	platform := resolveOpsPlatform(apiKey, fallbackPlatform)
+	platform := resolveOpsPlatform(c.Request.Context(), apiKey, fallbackPlatform)
 
 	requestID := c.Writer.Header().Get("X-Request-Id")
 	if requestID == "" {
@@ -1508,7 +1508,10 @@ func getOpsAPIKey(c *gin.Context) *service.APIKey {
 	return nil
 }
 
-func resolveOpsPlatform(apiKey *service.APIKey, fallback string) string {
+func resolveOpsPlatform(ctx context.Context, apiKey *service.APIKey, fallback string) string {
+	if platform, ok := service.ResolvedTargetPlatformFromContext(ctx); ok {
+		return platform
+	}
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform != "" {
 		return apiKey.Group.Platform
 	}

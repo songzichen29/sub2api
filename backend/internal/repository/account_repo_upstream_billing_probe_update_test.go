@@ -79,10 +79,10 @@ func TestLockAndMergeAccountProbeExtraUsesCurrentDatabaseSnapshot(t *testing.T) 
 			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 			t.Cleanup(func() { _ = client.Close() })
 
-			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR UPDATE")).
-				WithArgs(service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil, int64(27)).
-				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "enabled", "snapshot"}).
-					AddRow(tt.identityUnchanged, tt.databaseEnabled, tt.databaseSnapshot))
+			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
+				WithArgs(int64(27), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil).
+				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+					AddRow(tt.identityUnchanged, false, true, tt.databaseEnabled, tt.databaseSnapshot, nil, nil, nil))
 
 			account := &service.Account{
 				ID:          27,
@@ -104,6 +104,45 @@ func TestLockAndMergeAccountProbeExtraUsesCurrentDatabaseSnapshot(t *testing.T) 
 	}
 }
 
+func TestLockAndMergeAccountProbeExtraProtectsOllamaManagedFields(t *testing.T) {
+	for _, identityUnchanged := range []bool{true, false} {
+		t.Run(map[bool]string{true: "same identity keeps snapshot", false: "changed identity clears snapshot"}[identityUnchanged], func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = db.Close() })
+			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
+			t.Cleanup(func() { _ = client.Close() })
+
+			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
+				WithArgs(int64(29), service.PlatformAnthropic, service.AccountTypeAPIKey, `{"api_key":"key","base_url":"https://ollama.com"}`, nil).
+				WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+					AddRow(identityUnchanged, identityUnchanged, true, nil, nil, []byte(`"local-ciphertext"`), []byte(`true`), []byte(`{"status":"ok"}`)))
+
+			account := &service.Account{
+				ID: 29, Platform: service.PlatformAnthropic, Type: service.AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "key", "base_url": "https://ollama.com"},
+				Extra: map[string]any{
+					service.OllamaCloudUsageSessionExtraKey:     "forged-ciphertext",
+					service.OllamaCloudUsageAutoRefreshExtraKey: false,
+					service.OllamaCloudUsageSnapshotExtraKey:    map[string]any{"status": "forged"},
+				},
+			}
+			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil)
+			require.NoError(t, err)
+			if identityUnchanged {
+				require.Equal(t, "local-ciphertext", got[service.OllamaCloudUsageSessionExtraKey])
+				require.Equal(t, true, got[service.OllamaCloudUsageAutoRefreshExtraKey])
+				require.Equal(t, map[string]any{"status": "ok"}, got[service.OllamaCloudUsageSnapshotExtraKey])
+			} else {
+				require.NotContains(t, got, service.OllamaCloudUsageSessionExtraKey)
+				require.NotContains(t, got, service.OllamaCloudUsageAutoRefreshExtraKey)
+				require.NotContains(t, got, service.OllamaCloudUsageSnapshotExtraKey)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestUpdateExtraExplicitProbeDisableRemovesSnapshot(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -112,7 +151,7 @@ func TestUpdateExtraExplicitProbeDisableRemovesSnapshot(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = JSON_REMOVE\(.*upstream_billing_probe`).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'upstream_billing_probe'`).
 		WithArgs(`{"upstream_billing_probe_enabled":false}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
@@ -135,7 +174,7 @@ func TestUpdateExtraNilProbeRemovesKeyInsteadOfWritingJSONNull(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = JSON_REMOVE\(.*upstream_billing_probe`).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'upstream_billing_probe'`).
 		WithArgs(`{"upstream_billing_probe":null}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
@@ -160,7 +199,7 @@ func TestBulkUpdateNilProbeRemovesKeyInsteadOfWritingJSONNull(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotEmpty(t, exec.execQueries)
-	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "JSON_REMOVE")
+	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "- 'upstream_billing_probe'")
 }
 
 func TestBulkUpdateDisablingProbeRemovesSnapshot(t *testing.T) {
@@ -173,7 +212,7 @@ func TestBulkUpdateDisablingProbeRemovesSnapshot(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotEmpty(t, exec.execQueries)
-	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "JSON_REMOVE")
+	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "- 'upstream_billing_probe'")
 	payload, ok := exec.execArgs[0][0].([]byte)
 	require.True(t, ok)
 	require.Equal(t, `{"upstream_billing_probe_enabled":false}`, string(payload))
@@ -188,10 +227,9 @@ func TestBulkUpdateProbeEligibilityMismatchRollsBack(t *testing.T) {
 
 	enabled := true
 	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT id, platform, type FROM accounts.*id IN \(\?,\?\).*FOR UPDATE`).
-		WithArgs(int64(27), int64(28)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "platform", "type"}).
-			AddRow(int64(27), service.PlatformOpenAI, service.AccountTypeAPIKey))
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* WHERE id = ANY\(\$2\) AND deleted_at IS NULL AND platform = \$3 AND type = \$4`).
+		WithArgs(sqlmock.AnyArg(), `{27,28}`, service.PlatformOpenAI, service.AccountTypeAPIKey).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectRollback()
 
 	repo := newAccountRepositoryWithSQL(client, db, nil)
@@ -212,15 +250,9 @@ func TestUpdateCredentialsAtomicallyClearsProbeForOpenAIAPIKeyIdentityChange(t *
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts".*"id" = \$1`).
-		WithArgs(int64(27)).
-		WillReturnRows(updatedAccountRows(27, `{"upstream_billing_probe":{"status":"ok"}}`))
-	mock.ExpectExec(`(?s)UPDATE "accounts" SET .*"credentials" = \$2.*"extra" = \$3.*WHERE "id" = \$4`).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), int64(27)).
+	mock.ExpectExec(`(?s)UPDATE accounts.*credentials IS DISTINCT FROM \$1::jsonb.*- 'upstream_billing_probe'`).
+		WithArgs(`{"api_key":"sk-new"}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts" WHERE "id" = \$1`).
-		WithArgs(int64(27)).
-		WillReturnRows(updatedAccountRows(27, `{}`))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
 		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(27), nil, nil, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -241,10 +273,10 @@ func TestUpdateWithUpstreamBillingProbeEnabledRollsBackWhenOutboxFails(t *testin
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR UPDATE")).
-		WithArgs(service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil, int64(27)).
-		WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "enabled", "snapshot"}).
-			AddRow(true, []byte(`true`), []byte(`{"status":"ok"}`)))
+	mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
+		WithArgs(int64(27), service.PlatformOpenAI, service.AccountTypeAPIKey, `{"api_key":"sk-test"}`, nil).
+		WillReturnRows(sqlmock.NewRows([]string{"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged", "enabled", "snapshot", "ollama_session", "ollama_auto", "ollama_snapshot"}).
+			AddRow(true, false, true, []byte(`true`), []byte(`{"status":"ok"}`), nil, nil, nil))
 	mock.ExpectExec(`(?s)UPDATE .*accounts.*SET.*WHERE .*id.*`).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts" WHERE "id" = \$1`).
@@ -285,7 +317,7 @@ func TestUpdateExtraRollsBackWhenOutboxFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET extra = JSON_REMOVE\(.*upstream_billing_probe`).
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .* - 'upstream_billing_probe'`).
 		WithArgs(`{"upstream_billing_probe_enabled":false}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).WillReturnError(errors.New("outbox failed"))
@@ -306,15 +338,9 @@ func TestUpdateCredentialsRollsBackWhenOutboxFails(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts".*"id" = \$1`).
-		WithArgs(int64(27)).
-		WillReturnRows(updatedAccountRows(27, `{"upstream_billing_probe":{"status":"ok"}}`))
-	mock.ExpectExec(`(?s)UPDATE "accounts" SET .*"credentials" = \$2.*"extra" = \$3.*WHERE "id" = \$4`).
-		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), int64(27)).
+	mock.ExpectExec(`(?s)UPDATE accounts.*credentials IS DISTINCT FROM \$1::jsonb.*- 'upstream_billing_probe'`).
+		WithArgs(`{"api_key":"sk-new"}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectQuery(`(?s)SELECT .* FROM "accounts" WHERE "id" = \$1`).
-		WithArgs(int64(27)).
-		WillReturnRows(updatedAccountRows(27, `{}`))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).WillReturnError(errors.New("outbox failed"))
 	mock.ExpectRollback()
 
@@ -334,8 +360,8 @@ func TestBulkUpdateRollsBackWhenOutboxFails(t *testing.T) {
 
 	name := "renamed"
 	mock.ExpectBegin()
-	mock.ExpectExec(`(?s)UPDATE accounts SET name = \?.*WHERE id IN \(\?,\?\)`).
-		WithArgs(name, int64(27), int64(28)).
+	mock.ExpectExec(`(?s)UPDATE accounts SET name = \$1.*WHERE id = ANY\(\$2\)`).
+		WithArgs(name, `{27,28}`).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).WillReturnError(errors.New("outbox failed"))
 	mock.ExpectRollback()

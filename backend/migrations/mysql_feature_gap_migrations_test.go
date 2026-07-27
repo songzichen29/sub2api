@@ -278,6 +278,13 @@ func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 		{"061_auth_cache_invalidation_outbox.sql", []string{"CREATE TABLE IF NOT EXISTS `auth_cache_invalidation_outbox`", "SHA2(OLD.`key`, 256)", "trg_user_allowed_groups_auth_cache_delete"}},
 		{"062_group_reasoning_effort_policy.sql", []string{"`max_reasoning_effort` VARCHAR(20)", "`reasoning_effort_mappings` JSON"}},
 		{"063_add_usage_log_billing_mode.sql", []string{"table_name = 'usage_logs'", "column_name = 'billing_mode'", "ADD COLUMN `billing_mode` varchar(20) NULL"}},
+		{"064_composite_model_routes.sql", []string{"CREATE TABLE IF NOT EXISTS `composite_model_routes`", "idx_composite_model_routes_unique_active", "fk_composite_model_routes_group"}},
+		{"065_alipay_mobile_precreate_deep_link.sql", []string{"INSERT IGNORE INTO `settings`", "ALIPAY_MOBILE_PRECREATE_DEEP_LINK"}},
+		{"066_group_auth_cache_image_generation.sql", []string{"trg_groups_auth_cache_invalidation_update", "allow_image_generation", "SHA2(k.`key`, 256)"}},
+		{"067_add_usage_log_session_id.sql", []string{"table_name = 'usage_logs'", "table_name = 'batch_image_jobs'", "ADD COLUMN `session_id` VARCHAR(255)"}},
+		{"068_allow_live_usage_request_type.sql", []string{"chk_usage_logs_request_type", "`request_type` >= 0", "`request_type` <= 5"}},
+		{"069_add_group_allow_live.sql", []string{"table_name = 'groups'", "column_name = 'allow_live'", "ADD COLUMN `allow_live` BOOLEAN NOT NULL DEFAULT FALSE"}},
+		{"070_add_users_email_alias_dedup_index.sql", []string{"email_dot_stripped", "GENERATED ALWAYS AS", "idx_users_email_dot_stripped"}},
 	}
 
 	for _, tt := range tests {

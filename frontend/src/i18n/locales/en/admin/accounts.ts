@@ -75,6 +75,9 @@ export default {
     crsBack: 'Back',
     editAccount: 'Edit Account',
     deleteAccount: 'Delete Account',
+    deleteConfirmMessage: 'Are you sure you want to delete account \'{name}\'?',
+    refreshCookie: 'Refresh Cookie',
+    testAccount: 'Test Account',
     searchAccounts: 'Search accounts...',
     notes: 'Notes',
     notesPlaceholder: 'Enter notes',
@@ -111,7 +114,9 @@ export default {
       grokOauth: 'Grok OAuth',
       antigravityApikey: 'Connect via Base URL + API Key',
       upstream: 'Upstream',
-      upstreamDesc: 'Connect via Base URL + API Key'
+      upstreamDesc: 'Connect via Base URL + API Key',
+      api_key: 'API Key',
+      cookie: 'Cookie'
     },
     antigravityProjectIdLabel: 'GCP Project ID (optional)',
     antigravityProjectIdPlaceholder: 'your-gcp-project-id',
@@ -389,6 +394,39 @@ export default {
     failedToRefresh: 'Failed to refresh token',
     failedToDelete: 'Failed to delete account',
     failedToClearRateLimit: 'Failed to clear rate limit',
+    form: {
+      nameLabel: 'Account Name',
+      namePlaceholder: 'Enter account name',
+      platformLabel: 'Platform',
+      selectPlatform: 'Select a platform',
+      typeLabel: 'Type',
+      selectType: 'Select a type',
+      credentialsLabel: 'Credentials',
+      credentialsPlaceholder: 'Enter Cookie or API Key',
+      priorityLabel: 'Priority',
+      priorityHint: 'A lower value has higher priority',
+      weightLabel: 'Weight',
+      weightHint: 'Weight used for load balancing',
+      statusLabel: 'Status'
+    },
+    filters: {
+      platform: 'Platform',
+      allPlatforms: 'All Platforms',
+      type: 'Type',
+      allTypes: 'All Types',
+      status: 'Status',
+      allStatuses: 'All Statuses'
+    },
+    saving: 'Saving...',
+    refreshing: 'Refreshing...',
+    noAccounts: 'No accounts',
+    noAccountsDescription: 'Add an AI platform account to start using the API gateway.',
+    accountCreatedSuccess: 'Account added successfully',
+    accountUpdatedSuccess: 'Account updated successfully',
+    accountDeletedSuccess: 'Account deleted successfully',
+    cookieRefreshedSuccess: 'Cookie refreshed successfully',
+    testSuccess: 'Account test passed',
+    failedToSave: 'Failed to save account',
     deleteConfirm: 'Are you sure you want to delete \'{name}\'? This action cannot be undone.',
     platform: 'Platform',
     accountName: 'Account Name',
@@ -860,7 +898,12 @@ export default {
         pleaseEnterRefreshToken: 'Please enter Refresh Token',
         pleaseEnterSessionToken: 'Please enter Session Token',
         mobileRefreshTokenAuth: 'Manual Mobile RT Input',
-        accessTokenAuth: 'Manual AT Input'
+        accessTokenAuth: 'Manual AT Input',
+        agentIdentityAuth: 'Agent Identity auth.json',
+        agentIdentityDesc: 'Import a Codex Agent Identity auth.json. No OAuth access or refresh token is stored.',
+        agentIdentityInputLabel: 'Agent Identity auth.json',
+        agentIdentityPlaceholder: 'Paste one Agent Identity auth.json object',
+        agentIdentityHint: 'The file must use auth_mode=agentIdentity. Upstream requests are signed dynamically.',
       },
       gemini: {
         title: 'Gemini Account Authorization',
@@ -924,7 +967,56 @@ export default {
         validateAndCreate: 'Validate & Create',
         pleaseEnterRefreshToken: 'Please enter Refresh Token',
         failedToValidateRT: 'Failed to validate Refresh Token'
-      }
+      },
+      grok: {
+        title: 'Grok Account Authorization',
+        followSteps: 'Follow these steps to authorize your xAI/Grok account:',
+        step1GenerateUrl: 'Generate the xAI authorization URL',
+        generateAuthUrl: 'Generate Auth URL',
+        step2OpenUrl: 'Open the URL in your browser and complete authorization',
+        openUrlDesc: 'Open the authorization URL in a new tab, sign in to xAI, and authorize API access.',
+        importantNotice: 'When the browser reaches the local callback URL, copy the full URL or the code query parameter back here.',
+        step3EnterCode: 'Enter Authorization URL or Code',
+        authCodeDesc: 'After authorization, paste the callback URL, query string, or authorization code:',
+        authCode: 'Authorization URL or Code',
+        authCodePlaceholder: 'Paste the full callback URL, ?code=... query string, or code value',
+        authCodeHint: 'Full callback URLs, query strings, and bare codes are accepted.',
+        refreshTokenAuth: 'Manual RT Input',
+        refreshTokenDesc: 'Enter existing xAI refresh token(s). Supports batch input, one per line.',
+        refreshTokenPlaceholder: 'Paste your xAI refresh token...\nSupports multiple, one per line',
+        ssoCookieAuth: 'SSO Cookie Import',
+        ssoCookieDesc: 'Paste one Grok Web SSO key per line. The server will complete the xAI Device Flow and convert them into Grok Build OAuth credentials.',
+        ssoCookieLabel: 'Grok Web SSO Key',
+        ssoCookiePlaceholder: 'One SSO key per line\nSupports multiple, one per line',
+        ssoCookieHint: 'One SSO key per line. Multiple keys are imported with 3-way concurrency; expect about 90 seconds per batch. Use a matching-region proxy if needed.',
+        convertingSSO: 'Converting...',
+        convertSSOAndCreate: 'Convert & Create Account',
+        validating: 'Validating...',
+        validateAndCreate: 'Validate & Create Account',
+        pleaseEnterRefreshToken: 'Please enter Refresh Token',
+        failedToGenerateUrl: 'Failed to generate Grok auth URL',
+        missingExchangeParams: 'Missing authorization code, state, or OAuth session',
+        failedToExchangeCode: 'Failed to exchange Grok authorization code',
+        failedToValidateRT: 'Failed to validate Grok refresh token',
+        failedToConvertSSO: 'Failed to convert Grok SSO cookie',
+        errors: {
+          GROK_OAUTH_SESSION_NOT_FOUND:
+            'Grok OAuth session was not found or has expired. Generate a new auth URL and paste the newest callback URL.',
+          GROK_OAUTH_INVALID_STATE:
+            'Grok OAuth state does not match this session. Paste the callback URL from the same generated auth link.',
+          GROK_OAUTH_STATE_REQUIRED:
+            'The callback URL is missing the OAuth state. Paste the full callback URL, not only the code.',
+          GROK_OAUTH_CODE_REQUIRED:
+            'The Grok authorization code is missing. Paste the full callback URL, query string, or code value.',
+          GROK_OAUTH_NO_REFRESH_TOKEN:
+            'The Grok response did not include a refresh token. Generate a new auth URL and approve offline access again.',
+          GROK_OAUTH_PROXY_NOT_AVAILABLE:
+            'Grok OAuth proxy lookup is unavailable. Check the selected proxy and retry.',
+          GROK_OAUTH_PROXY_NOT_FOUND:
+            'The selected proxy could not be found. Choose an available proxy and retry.'
+        },
+        oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
+      },
     },
     gemini: {
       helpButton: 'Help',
@@ -1147,7 +1239,21 @@ export default {
       gemini3Image: 'G31FI',
       claude: 'Claude',
       passiveSampled: 'Passive',
-      activeQuery: 'Query'
+      activeQuery: 'Query',
+      grokRequests: 'Req',
+      grokTokens: 'Tok',
+      grokFreeQuota24hHint: 'Estimated from local token usage over the rolling 24-hour window ({limit} limit)',
+      grokWeeklyUsage: 'Weekly {percent}%',
+      grokUnknown: 'Grok quota is unknown until the first upstream response includes xAI rate-limit headers.',
+      grokRetryAfter: 'Retry after {time}',
+      grokProbe: 'Probe',
+      grokProbeTooltip: 'Send a minimal xAI Responses probe and read quota headers',
+      grokResetUnsupported: 'Reset unsupported',
+      grokResetUnsupportedTooltip: 'xAI does not expose reset credits for Grok OAuth accounts',
+      grokNoHeaders: 'No quota headers observed',
+      grokLastStatus: 'Status {status}',
+      grokLastProbe: 'Probe {time}',
+      grokLastHeadersSeen: 'Headers {time}',
     },
     openaiQuotaReset: {
       count: 'Credits',
@@ -1250,6 +1356,74 @@ export default {
       filterClear: 'Clear'
     },
     fromModel: 'Source model',
-    toModel: 'Target model'
+    toModel: 'Target model',
+    ollamaCloud: {
+      title: 'Ollama Cloud usage',
+      sessionSecurityHint: 'The browser session is encrypted at rest and sent only to the fixed official settings URL.',
+      configured: 'Configured',
+      notConfigured: 'Not configured',
+      notRefreshed: 'Not refreshed',
+      encryptionKeyRequired: 'Set a persistent TOTP_ENCRYPTION_KEY before storing a browser session.',
+      sessionLabel: 'Ollama browser Cookie',
+      sessionPlaceholder: 'wos-session=...; __Secure-authjs.session-token.0=...',
+      writeOnlyHint: 'Write-only. The saved value cannot be viewed and an empty value never replaces it.',
+      deleteSession: 'Delete session',
+      deleteConfirm: 'Delete the stored Ollama browser session and its usage snapshot?',
+      refreshNow: 'Refresh usage',
+      autoRefresh: 'Automatic usage refresh',
+      autoRefreshHint: 'Runs only when the account switch and the global switch are both enabled.',
+      plan: 'Plan',
+      fiveHour: '5 hour',
+      fiveHourShort: '5h',
+      sevenDay: '7 day',
+      sevenDayShort: '7d',
+      balance: 'Balance',
+      models: 'Models',
+      status: 'Status',
+      updatedAt: 'Updated',
+      ok: 'Current',
+      unauthorized: 'Session expired',
+      failed: 'Refresh failed',
+      windowWithReset: '{percent} used, resets {reset}',
+      loadFailed: 'Failed to load Ollama Cloud usage settings',
+      sessionSaved: 'Ollama browser session saved',
+      sessionSaveFailed: 'Failed to save Ollama browser session',
+      sessionDeleted: 'Ollama browser session deleted',
+      sessionDeleteFailed: 'Failed to delete Ollama browser session',
+      autoRefreshFailed: 'Failed to update automatic usage refresh',
+      refreshSuccess: 'Ollama Cloud usage refreshed',
+      refreshFailed: 'Failed to refresh Ollama Cloud usage',
+      errors: {
+        request_failed: 'Request failed',
+        empty_response: 'Empty response',
+        response_host_mismatch: 'Unexpected response host',
+        redirect_blocked: 'Official settings redirected the request',
+        unauthorized: 'Browser session expired',
+        http_error: 'Official settings returned an error',
+        response_read_failed: 'Failed to read the response',
+        response_too_large: 'Settings page exceeded the response limit',
+        invalid_html: 'Settings page format was not recognized',
+        OLLAMA_CLOUD_USAGE_REFRESH_RATE_LIMITED: 'Refresh is limited. Try again in {retry_after_seconds} seconds.'
+      }
+    },
+    grok: {
+      baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
+      apiKeyHint: 'Grok subscription support uses OAuth refresh tokens; API keys are out of scope for this account type.'
+    },
+    grokCustomBaseUrl: {
+      title: 'Custom Upstream URL',
+      hint: 'When enabled, account traffic (chat/media/probes) is forwarded to the specified address. OAuth authorization and token refresh are unaffected and stay on the official endpoints.',
+      placeholder: 'https://relay.example.com/v1',
+      required: 'An address is required when Custom Upstream URL is enabled',
+      invalid: 'Invalid upstream address (must be a full http(s):// URL)',
+      presets: {
+        cli: 'Grok Build CLI',
+        official: 'Official API'
+      }
+    },
+    grokClientToolCache: {
+      title: 'Client Tool Cache (May Change Automatic Tool Selection)',
+      hint: 'For detected Grok Free OAuth accounts, this is enabled by default for client function tools such as Codex and Trae. Turn it off to opt out if the automatic tool-selection behavior is not acceptable.'
+    },
   }
 }

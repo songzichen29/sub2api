@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -187,7 +188,7 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 	if currentIdentity == proxyProbeIdentityFromService(proxyIn) {
 		return updated, nil
 	}
-	accountIDs, err := invalidateProxyProbeSnapshots(ctx, client, proxyIn.ID)
+	accountIDs, err := invalidateProxyProbeSnapshots(ctx, client, client.Driver().Dialect(), proxyIn.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,12 +199,21 @@ func updateProxyAndInvalidateProbeSnapshots(ctx context.Context, client *dbent.C
 }
 
 func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID int64) (proxyProbeIdentity, error) {
-	rows, err := client.QueryContext(ctx, `
+	query := `
 		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
 		FROM proxies
 		WHERE id = ? AND deleted_at IS NULL
 		FOR UPDATE
-	`, proxyID)
+	`
+	if client == nil || client.Driver() == nil || client.Driver().Dialect() != dialect.MySQL {
+		query = `
+			SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+			FROM proxies
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR NO KEY UPDATE
+		`
+	}
+	rows, err := client.QueryContext(ctx, query, proxyID)
 	if err != nil {
 		return proxyProbeIdentity{}, err
 	}
@@ -221,14 +231,64 @@ func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID i
 	return identity, rows.Err()
 }
 
-func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, dbDialect string, proxyID int64) ([]int64, error) {
+	if dbDialect != dialect.MySQL {
+		return invalidateProxyProbeSnapshotsPostgres(ctx, exec, proxyID)
+	}
+	return invalidateProxyProbeSnapshotsMySQL(ctx, exec, proxyID)
+}
+
+func invalidateProxyProbeSnapshotsPostgres(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
+	rows, err := exec.QueryContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb)
+				- 'upstream_billing_probe'
+				- 'ollama_cloud_usage_snapshot',
+			updated_at = NOW()
+		WHERE proxy_id = $1
+			AND type = 'apikey'
+			AND (
+				(platform = 'openai'
+					AND extra ? 'upstream_billing_probe'
+					AND extra -> 'upstream_billing_probe' <> 'null'::jsonb)
+				OR (platform IN ('openai', 'anthropic')
+					AND extra ? 'ollama_cloud_usage_snapshot'
+					AND extra -> 'ollama_cloud_usage_snapshot' <> 'null'::jsonb)
+			)
+			AND deleted_at IS NULL
+		RETURNING id
+	`, proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	accountIDs := make([]int64, 0)
+	for rows.Next() {
+		var accountID int64
+		if err := rows.Scan(&accountID); err != nil {
+			return nil, err
+		}
+		accountIDs = append(accountIDs, accountID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return accountIDs, nil
+}
+
+func invalidateProxyProbeSnapshotsMySQL(ctx context.Context, exec sqlExecutor, proxyID int64) ([]int64, error) {
 	rows, err := exec.QueryContext(ctx, `
 		SELECT id FROM accounts
 		WHERE proxy_id = ?
-			AND platform = 'openai'
 			AND type = 'apikey'
-			AND JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
-			AND JSON_TYPE(JSON_EXTRACT(extra, '$.upstream_billing_probe')) <> 'NULL'
+			AND (
+				(platform = 'openai'
+					AND JSON_CONTAINS_PATH(extra, 'one', '$.upstream_billing_probe')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.upstream_billing_probe')) <> 'NULL')
+				OR (platform IN ('openai', 'anthropic')
+					AND JSON_CONTAINS_PATH(extra, 'one', '$.ollama_cloud_usage_snapshot')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot')) <> 'NULL')
+			)
 			AND deleted_at IS NULL
 		FOR UPDATE
 	`, proxyID)
@@ -256,7 +316,11 @@ func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, proxyI
 	placeholders, args := buildGroupInt64InClause(accountIDs)
 	if _, err := exec.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe'), updated_at = NOW(6)
+		SET extra = JSON_REMOVE(
+			COALESCE(extra, JSON_OBJECT()),
+			'$.upstream_billing_probe',
+			'$.ollama_cloud_usage_snapshot'
+		), updated_at = NOW(6)
 		WHERE id IN (`+placeholders+`)`, args...); err != nil {
 		return nil, err
 	}
@@ -751,7 +815,11 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		return nil, err
 	}
 	if !change {
-		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, proxyID)
+		dbDialect := dialect.MySQL
+		if r.client != nil && r.client.Driver() != nil {
+			dbDialect = r.client.Driver().Dialect()
+		}
+		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, dbDialect, proxyID)
 		if err != nil {
 			return nil, err
 		}

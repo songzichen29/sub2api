@@ -15,7 +15,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +29,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -73,6 +73,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_7d_",
 	"passive_usage_",
 	"upstream_billing_probe",
+	"ollama_cloud_usage",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -336,6 +337,112 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 }
 
 func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+	if accountRepositoryDialect(r) == dialect.MySQL {
+		return r.listDueUpstreamBillingProbeAccountsMySQL(ctx, now, limit)
+	}
+	return r.listDueUpstreamBillingProbeAccountsPostgres(ctx, now, limit)
+}
+
+func (r *accountRepository) listDueUpstreamBillingProbeAccountsPostgres(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+	if limit <= 0 {
+		return []service.Account{}, nil
+	}
+	if r.sql == nil {
+		return nil, errors.New("account repository SQL executor not configured")
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH candidates AS (
+			SELECT
+				id,
+				extra #>> '{upstream_billing_probe,status}' AS probe_status,
+				extra #>> '{upstream_billing_probe,next_probe_at}' AS next_probe_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND status = 'active'
+				AND platform = 'openai'
+				AND type = 'apikey'
+				AND extra @> '{"upstream_billing_probe_enabled": true}'::jsonb
+		), parsed AS MATERIALIZED (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				next_probe_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' AS rfc3339_shape,
+				jsonb_path_query_first_tz(
+					jsonb_build_object(
+						'value',
+						replace(regexp_replace(regexp_replace(
+							next_probe_at,
+							'(\.[0-9]{6})[0-9]+(Z|[+-][0-9]{2}:[0-9]{2})$',
+							'\1\2'
+						), 'Z$', '+00:00'), 'T', ' ')
+					),
+					'$.value.datetime()',
+					'{}'::jsonb,
+					true
+				) #>> '{}' AS parsed_next_probe_at
+			FROM candidates
+		), normalized AS (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				parsed_next_probe_at,
+				rfc3339_shape AND parsed_next_probe_at IS NOT NULL AS valid_next_probe_at
+			FROM parsed
+		)
+		SELECT id
+		FROM normalized
+		WHERE probe_status NOT IN ('ok', 'unsupported', 'failed')
+			OR probe_status IS NULL
+			OR next_probe_at IS NULL
+			OR NOT valid_next_probe_at
+			OR CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz <= $1 ELSE FALSE END
+		ORDER BY
+			CASE
+				WHEN probe_status NOT IN ('ok', 'unsupported', 'failed')
+					OR probe_status IS NULL
+					OR next_probe_at IS NULL
+					OR NOT valid_next_probe_at
+				THEN 0
+				ELSE 1
+			END ASC,
+			CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz END ASC NULLS FIRST,
+			id ASC
+		LIMIT $2
+	`, now.UTC(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []service.Account{}, nil
+	}
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account != nil {
+			out = append(out, *account)
+		}
+	}
+	return out, nil
+}
+
+func (r *accountRepository) listDueUpstreamBillingProbeAccountsMySQL(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
 	if limit <= 0 {
 		return []service.Account{}, nil
 	}
@@ -653,6 +760,61 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 }
 
 func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
+	if client != nil && client.Driver() != nil && client.Driver().Dialect() == dialect.MySQL {
+		return lockAndMergeAccountProbeExtraMySQL(ctx, client, account, explicitProbeEnabled)
+	}
+	return lockAndMergeAccountProbeExtraPostgres(ctx, client, account, explicitProbeEnabled)
+}
+
+func lockAndMergeAccountProbeExtraPostgres(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
+	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
+	if err != nil {
+		return nil, err
+	}
+	var proxyID any
+	if account.ProxyID != nil {
+		proxyID = *account.ProxyID
+	}
+	rows, err := client.QueryContext(ctx, `
+		SELECT
+			platform = $2
+			AND type = $3
+			AND credentials = $4::jsonb
+			AND proxy_id IS NOT DISTINCT FROM $5,
+			COALESCE(
+				platform IN ('openai', 'anthropic')
+				AND $2 IN ('openai', 'anthropic')
+				AND type = 'apikey'
+				AND $3 = 'apikey'
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key'
+				AND `+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+`
+				AND `+ollamaCloudBaseURLMatchesSQL("$4::jsonb ->> 'base_url'")+`,
+				false
+			),
+			proxy_id IS NOT DISTINCT FROM $5,
+			extra -> 'upstream_billing_probe_enabled',
+			extra -> 'upstream_billing_probe',
+			extra -> 'ollama_cloud_usage_session',
+			extra -> 'ollama_cloud_usage_auto_refresh',
+			extra -> 'ollama_cloud_usage_snapshot'
+		FROM accounts
+		WHERE id = $1 AND deleted_at IS NULL
+		FOR NO KEY UPDATE
+	`, account.ID, account.Platform, account.Type, string(credentials), proxyID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, service.ErrAccountNotFound
+	}
+	return mergeLockedAccountProbeExtraRows(rows, account, explicitProbeEnabled)
+}
+
+func lockAndMergeAccountProbeExtraMySQL(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
 	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
 	if err != nil {
 		return nil, err
@@ -667,12 +829,27 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 			AND type = ?
 			AND credentials = CAST(? AS JSON)
 			AND proxy_id <=> ?,
+			COALESCE(
+				platform IN ('openai', 'anthropic')
+				AND ? IN ('openai', 'anthropic')
+				AND type = 'apikey'
+				AND ? = 'apikey'
+				AND JSON_EXTRACT(credentials, '$.api_key') <=> JSON_EXTRACT(CAST(? AS JSON), '$.api_key')
+				AND `+ollamaCloudBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.base_url'))")+`
+				AND `+ollamaCloudBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(CAST(? AS JSON), '$.base_url'))")+`,
+				FALSE
+			),
+			proxy_id <=> ?,
 			JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled'),
-			JSON_EXTRACT(extra, '$.upstream_billing_probe')
+			JSON_EXTRACT(extra, '$.upstream_billing_probe'),
+			JSON_EXTRACT(extra, '$.ollama_cloud_usage_session'),
+			JSON_EXTRACT(extra, '$.ollama_cloud_usage_auto_refresh'),
+			JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot')
 		FROM accounts
 		WHERE id = ? AND deleted_at IS NULL
 		FOR UPDATE
-	`, account.Platform, account.Type, string(credentials), proxyID, account.ID)
+	`, account.Platform, account.Type, string(credentials), proxyID,
+		account.Platform, account.Type, string(credentials), string(credentials), proxyID, account.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -684,12 +861,30 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 		return nil, service.ErrAccountNotFound
 	}
 
+	return mergeLockedAccountProbeExtraRows(rows, account, explicitProbeEnabled)
+}
+
+func mergeLockedAccountProbeExtraRows(rows *sql.Rows, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
 	var (
-		identityUnchanged bool
-		currentEnabled    []byte
-		currentSnapshot   []byte
+		identityUnchanged            bool
+		ollamaGroupIdentityUnchanged bool
+		ollamaProxyIdentityUnchanged bool
+		currentEnabled               []byte
+		currentSnapshot              []byte
+		currentOllamaSession         []byte
+		currentOllamaAutoRefresh     []byte
+		currentOllamaSnapshot        []byte
 	)
-	if err := rows.Scan(&identityUnchanged, &currentEnabled, &currentSnapshot); err != nil {
+	if err := rows.Scan(
+		&identityUnchanged,
+		&ollamaGroupIdentityUnchanged,
+		&ollamaProxyIdentityUnchanged,
+		&currentEnabled,
+		&currentSnapshot,
+		&currentOllamaSession,
+		&currentOllamaAutoRefresh,
+		&currentOllamaSnapshot,
+	); err != nil {
 		return nil, err
 	}
 	if err := rows.Err(); err != nil {
@@ -697,46 +892,94 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
-	delete(extra, service.UpstreamBillingProbeEnabledExtraKey)
-	delete(extra, service.UpstreamBillingProbeExtraKey)
+	for _, key := range []string{
+		service.UpstreamBillingProbeEnabledExtraKey,
+		service.UpstreamBillingProbeExtraKey,
+		service.OllamaCloudUsageSessionExtraKey,
+		service.OllamaCloudUsageAutoRefreshExtraKey,
+		service.OllamaCloudUsageSnapshotExtraKey,
+	} {
+		delete(extra, key)
+	}
 	probeExplicitlyDisabled := false
 	probeAccount := account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeAPIKey
 	if probeAccount && explicitProbeEnabled != nil {
 		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
 		probeExplicitlyDisabled = !*explicitProbeEnabled
-	} else if probeAccount && len(currentEnabled) > 0 && string(currentEnabled) != "null" {
-		var enabled any
-		if err := json.Unmarshal(currentEnabled, &enabled); err != nil {
+	} else if probeAccount {
+		if enabled, ok, err := decodeAccountExtraJSON(currentEnabled); err != nil {
 			return nil, err
+		} else if ok {
+			extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
+			if value, isBool := enabled.(bool); isBool && !value {
+				probeExplicitlyDisabled = true
+			}
 		}
-		extra[service.UpstreamBillingProbeEnabledExtraKey] = enabled
-		if value, ok := enabled.(bool); ok && !value {
-			probeExplicitlyDisabled = true
+	}
+	if identityUnchanged && !probeExplicitlyDisabled {
+		if snapshot, ok, err := decodeAccountExtraJSON(currentSnapshot); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.UpstreamBillingProbeExtraKey] = snapshot
 		}
 	}
-	if !identityUnchanged || probeExplicitlyDisabled || len(currentSnapshot) == 0 || string(currentSnapshot) == "null" {
-		return extra, nil
+
+	if service.IsOllamaCloudUsageAccount(account) && ollamaGroupIdentityUnchanged {
+		for key, raw := range map[string][]byte{
+			service.OllamaCloudUsageSessionExtraKey:     currentOllamaSession,
+			service.OllamaCloudUsageAutoRefreshExtraKey: currentOllamaAutoRefresh,
+		} {
+			if value, ok, err := decodeAccountExtraJSON(raw); err != nil {
+				return nil, err
+			} else if ok {
+				extra[key] = value
+			}
+		}
+		if ollamaProxyIdentityUnchanged {
+			if snapshot, ok, err := decodeAccountExtraJSON(currentOllamaSnapshot); err != nil {
+				return nil, err
+			} else if ok {
+				extra[service.OllamaCloudUsageSnapshotExtraKey] = snapshot
+			}
+		}
 	}
-	var snapshot any
-	if err := json.Unmarshal(currentSnapshot, &snapshot); err != nil {
-		return nil, err
-	}
-	extra[service.UpstreamBillingProbeExtraKey] = snapshot
 	return extra, nil
 }
 
+func decodeAccountExtraJSON(raw []byte) (any, bool, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, false, nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, false, err
+	}
+	return value, true, nil
+}
+
 func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error {
-	normalizedCredentials := normalizeJSONMap(credentials)
+	if accountRepositoryDialect(r) == dialect.MySQL {
+		return r.updateCredentialsMySQL(ctx, id, credentials)
+	}
+	return r.updateCredentialsPostgres(ctx, id, credentials)
+}
+
+func (r *accountRepository) updateCredentialsPostgres(ctx context.Context, id int64, credentials map[string]any) error {
+	payload, err := json.Marshal(normalizeJSONMap(credentials))
+	if err != nil {
+		return err
+	}
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
-	client := clientFromContext(ctx, r.client)
-
+	client := r.client
 	var tx *dbent.Tx
-	if contextTx == nil {
-		var err error
-		tx, err = r.client.Tx(ctx)
-		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
-			return err
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else if r.client != nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return txErr
 		}
 		if tx != nil {
 			defer func() { _ = tx.Rollback() }()
@@ -744,24 +987,127 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 			client = tx.Client()
 		}
 	}
-
-	current, err := client.Account.Query().
-		Where(dbaccount.IDEQ(id), dbaccount.DeletedAtIsNil()).
-		Only(ctx)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET
+			credentials = $1::jsonb,
+			extra = CASE
+				WHEN platform IN ('openai', 'anthropic')
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND (
+						credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
+						OR NOT (
+							COALESCE(`+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+`, false)
+							AND COALESCE(`+ollamaCloudBaseURLMatchesSQL("$1::jsonb ->> 'base_url'")+`, false)
+						)
+					)
+				THEN (CASE
+						WHEN platform = 'openai' THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+						ELSE COALESCE(extra, '{}'::jsonb)
+					END)
+					- 'ollama_cloud_usage_session'
+					- 'ollama_cloud_usage_auto_refresh'
+					- 'ollama_cloud_usage_snapshot'
+				WHEN platform = 'openai'
+					AND type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+				ELSE extra
+			END,
+			updated_at = NOW()
+		WHERE id = $2 AND deleted_at IS NULL
+	`, string(payload), id)
 	if err != nil {
-		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+		return err
 	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		return err
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+	}
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, id)
+	}
+	return nil
+}
 
-	update := client.Account.UpdateOneID(id).SetCredentials(normalizedCredentials)
-	if current.Platform == service.PlatformOpenAI &&
-		current.Type == service.AccountTypeAPIKey &&
-		!reflect.DeepEqual(normalizeJSONMap(current.Credentials), normalizedCredentials) {
-		extra := normalizeJSONMap(current.Extra)
-		delete(extra, service.UpstreamBillingProbeExtraKey)
-		update.SetExtra(extra)
+func (r *accountRepository) updateCredentialsMySQL(ctx context.Context, id int64, credentials map[string]any) error {
+	payload, err := json.Marshal(normalizeJSONMap(credentials))
+	if err != nil {
+		return err
 	}
-	if _, err := update.Save(ctx); err != nil {
-		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := r.client
+	var tx *dbent.Tx
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else if r.client != nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return txErr
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
+	}
+	payloadString := string(payload)
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET
+			credentials = CAST(? AS JSON),
+			extra = CASE
+				WHEN platform IN ('openai', 'anthropic')
+					AND type = 'apikey'
+					AND NOT (credentials <=> CAST(? AS JSON))
+					AND (
+						NOT (JSON_EXTRACT(credentials, '$.api_key') <=> JSON_EXTRACT(CAST(? AS JSON), '$.api_key'))
+						OR NOT (
+							COALESCE(`+ollamaCloudBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.base_url'))")+`, FALSE)
+							AND COALESCE(`+ollamaCloudBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(CAST(? AS JSON), '$.base_url'))")+`, FALSE)
+						)
+					)
+				THEN JSON_REMOVE(
+					CASE
+						WHEN platform = 'openai' THEN JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe')
+						ELSE COALESCE(extra, JSON_OBJECT())
+					END,
+					'$.ollama_cloud_usage_session',
+					'$.ollama_cloud_usage_auto_refresh',
+					'$.ollama_cloud_usage_snapshot'
+				)
+				WHEN platform = 'openai'
+					AND type = 'apikey'
+					AND NOT (credentials <=> CAST(? AS JSON))
+				THEN JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe')
+				ELSE extra
+			END,
+			updated_at = NOW(6)
+		WHERE id = ? AND deleted_at IS NULL
+	`, payloadString, payloadString, payloadString, payloadString, payloadString, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrAccountNotFound
 	}
 	if err := enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		return err
@@ -2122,13 +2468,24 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 			client = tx.Client()
 		}
 	}
+	dbDialect := accountRepositoryDialect(r)
 	extraExpression := "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON))"
-	if clearProbeSnapshot {
-		extraExpression = "JSON_REMOVE(" + extraExpression + ", '$.upstream_billing_probe')"
+	query := "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = ? AND deleted_at IS NULL"
+	if dbDialect == dialect.MySQL {
+		if clearProbeSnapshot {
+			extraExpression = "JSON_REMOVE(" + extraExpression + ", '$.upstream_billing_probe')"
+		}
+		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW(6) WHERE id = ? AND deleted_at IS NULL"
+	} else {
+		extraExpression = "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
+		if clearProbeSnapshot {
+			extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+		}
+		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
 	}
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = "+extraExpression+", updated_at = NOW() WHERE id = ? AND deleted_at IS NULL",
+		query,
 		string(payload), id,
 	)
 
@@ -2241,18 +2598,34 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if account.ProxyID != nil {
 		proxyID = *account.ProxyID
 	}
-	result, err := client.ExecContext(ctx, `
-		UPDATE accounts
-		SET extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON)), updated_at = NOW(6)
-		WHERE id = ?
-			AND platform = ?
-			AND type = ?
-			AND credentials = CAST(? AS JSON)
-			AND proxy_id <=> ?
-			AND COALESCE(JSON_EXTRACT(extra, '$.upstream_billing_probe'), JSON_EXTRACT('null', '$')) = CAST(? AS JSON)
-			AND COALESCE(JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled'), JSON_EXTRACT('null', '$')) = CAST(? AS JSON)
-			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	var result sql.Result
+	if client.Driver() != nil && client.Driver().Dialect() == dialect.MySQL {
+		result, err = client.ExecContext(ctx, `
+			UPDATE accounts
+			SET extra = JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON)), updated_at = NOW(6)
+			WHERE id = ?
+				AND platform = ?
+				AND type = ?
+				AND credentials = CAST(? AS JSON)
+				AND proxy_id <=> ?
+				AND COALESCE(JSON_EXTRACT(extra, '$.upstream_billing_probe'), JSON_EXTRACT('null', '$')) = CAST(? AS JSON)
+				AND COALESCE(JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled'), JSON_EXTRACT('null', '$')) = CAST(? AS JSON)
+				AND deleted_at IS NULL
+		`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	} else {
+		result, err = client.ExecContext(ctx, `
+			UPDATE accounts
+			SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW()
+			WHERE id = $2
+				AND platform = $3
+				AND type = $4
+				AND credentials = $5::jsonb
+				AND proxy_id IS NOT DISTINCT FROM $6
+				AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
+				AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
+				AND deleted_at IS NULL
+		`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	}
 	if err != nil {
 		return err
 	}
@@ -2270,12 +2643,21 @@ func lockAndMatchProbeProxyIdentity(ctx context.Context, client *dbent.Client, a
 	if account.ProxyID == nil {
 		return true, nil
 	}
-	rows, err := client.QueryContext(ctx, `
+	query := `
 		SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
 		FROM proxies
 		WHERE id = ? AND deleted_at IS NULL
 		FOR SHARE
-	`, *account.ProxyID)
+	`
+	if client == nil || client.Driver() == nil || client.Driver().Dialect() != dialect.MySQL {
+		query = `
+			SELECT protocol, host, port, COALESCE(username, ''), COALESCE(password, ''), status
+			FROM proxies
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR SHARE
+		`
+	}
+	rows, err := client.QueryContext(ctx, query, *account.ProxyID)
 	if err != nil {
 		return false, err
 	}
@@ -2335,7 +2717,228 @@ func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
 	return ok && value == nil
 }
 
+func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
+	value, ok := extra[service.OllamaCloudUsageSnapshotExtraKey]
+	return ok && value == nil
+}
+
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
+	if accountRepositoryDialect(r) == dialect.MySQL {
+		return r.bulkUpdateMySQL(ctx, ids, updates)
+	}
+	return r.bulkUpdatePostgres(ctx, ids, updates)
+}
+
+func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	setClauses := make([]string, 0, 8)
+	args := make([]any, 0, 8)
+	idx := 1
+	ollamaProxyIdentityChanged := ""
+	if updates.Name != nil {
+		setClauses = append(setClauses, "name = $"+itoa(idx))
+		args = append(args, *updates.Name)
+		idx++
+	}
+	if updates.ProxyID != nil {
+		if *updates.ProxyID == 0 {
+			setClauses = append(setClauses, "proxy_id = NULL")
+			ollamaProxyIdentityChanged = "proxy_id IS NOT NULL"
+		} else {
+			proxyPlaceholder := "$" + itoa(idx)
+			setClauses = append(setClauses, "proxy_id = "+proxyPlaceholder)
+			ollamaProxyIdentityChanged = "proxy_id IS DISTINCT FROM " + proxyPlaceholder
+			args = append(args, *updates.ProxyID)
+			idx++
+		}
+	}
+	if updates.Concurrency != nil {
+		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
+		args = append(args, *updates.Concurrency)
+		idx++
+	}
+	if updates.Priority != nil {
+		setClauses = append(setClauses, "priority = $"+itoa(idx))
+		args = append(args, *updates.Priority)
+		idx++
+	}
+	if updates.RateMultiplier != nil {
+		setClauses = append(setClauses, "rate_multiplier = $"+itoa(idx))
+		args = append(args, *updates.RateMultiplier)
+		idx++
+	}
+	if updates.LoadFactor != nil {
+		if *updates.LoadFactor <= 0 {
+			setClauses = append(setClauses, "load_factor = NULL")
+		} else {
+			setClauses = append(setClauses, "load_factor = $"+itoa(idx))
+			args = append(args, *updates.LoadFactor)
+			idx++
+		}
+	}
+	if updates.Status != nil {
+		setClauses = append(setClauses, "status = $"+itoa(idx))
+		args = append(args, *updates.Status)
+		idx++
+	}
+	if updates.Schedulable != nil {
+		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
+		args = append(args, *updates.Schedulable)
+		idx++
+	}
+	if updates.ProbeEnabled != nil {
+		if updates.Extra == nil {
+			updates.Extra = make(map[string]any)
+		}
+		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
+	}
+	credentialPlaceholder := ""
+	if len(updates.Credentials) > 0 {
+		payload, err := json.Marshal(updates.Credentials)
+		if err != nil {
+			return 0, err
+		}
+		credentialPlaceholder = "$" + itoa(idx)
+		setClauses = append(setClauses, "credentials = COALESCE(credentials, '{}'::jsonb) || "+credentialPlaceholder+"::jsonb")
+		args = append(args, payload)
+		idx++
+	}
+
+	ollamaGroupIdentityChanges := make([]string, 0, 2)
+	if _, ok := updates.Credentials["api_key"]; ok {
+		ollamaGroupIdentityChanges = append(ollamaGroupIdentityChanges, "credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+	}
+	if _, ok := updates.Credentials["base_url"]; ok {
+		ollamaGroupIdentityChanges = append(ollamaGroupIdentityChanges,
+			"NOT (COALESCE("+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+", false)"+
+				" AND COALESCE("+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+", false))")
+	}
+
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
+		extraExpression := "COALESCE(extra, '{}'::jsonb)"
+		if len(updates.Extra) > 0 {
+			payload, err := json.Marshal(updates.Extra)
+			if err != nil {
+				return 0, err
+			}
+			extraExpression += " || $" + itoa(idx) + "::jsonb"
+			args = append(args, payload)
+			idx++
+			if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
+				extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+			}
+			if ollamaCloudUsageSnapshotClearRequested(updates.Extra) {
+				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"
+			}
+		}
+		eligibleAccount := "platform IN ('openai', 'anthropic') AND type = 'apikey'"
+		groupIdentityChanged := ""
+		if len(ollamaGroupIdentityChanges) > 0 {
+			groupIdentityChanged = "(" + eligibleAccount + " AND (" + joinClauses(ollamaGroupIdentityChanges, " OR ") + "))"
+		}
+		snapshotIdentityChanged := groupIdentityChanged
+		if ollamaProxyIdentityChanged != "" {
+			proxyChanged := "(" + eligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
+			if snapshotIdentityChanged == "" {
+				snapshotIdentityChanged = proxyChanged
+			} else {
+				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
+			}
+		}
+		if groupIdentityChanged != "" {
+			extraExpression = "CASE" +
+				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
+				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
+				" ELSE " + extraExpression + " END"
+		} else if snapshotIdentityChanged != "" {
+			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		}
+		setClauses = append(setClauses, "extra = "+extraExpression)
+	}
+
+	if len(setClauses) == 0 {
+		return 0, nil
+	}
+	setClauses = append(setClauses, "updated_at = NOW()")
+	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
+	args = append(args, pq.Array(ids))
+	idx++
+	if updates.ProbeEnabled != nil {
+		whereClause += " AND platform = $" + itoa(idx) + " AND type = $" + itoa(idx+1)
+		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
+	}
+	query := "UPDATE accounts SET " + joinClauses(setClauses, ", ") + whereClause
+
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	exec := r.sql
+	var tx *dbent.Tx
+	if contextTx != nil {
+		exec = contextTx.Client()
+	} else if r.client != nil {
+		var txErr error
+		tx, txErr = r.client.Tx(ctx)
+		if txErr != nil && !errors.Is(txErr, dbent.ErrTxStarted) {
+			return 0, txErr
+		}
+		if tx != nil {
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			exec = tx.Client()
+		}
+	}
+	result, err := exec.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if updates.ProbeEnabled != nil {
+		expectedRows := int64(0)
+		seenIDs := make(map[int64]struct{}, len(ids))
+		for _, id := range ids {
+			if _, seen := seenIDs[id]; seen {
+				continue
+			}
+			seenIDs[id] = struct{}{}
+			expectedRows++
+		}
+		if rows != expectedRows {
+			return 0, service.ErrUpstreamBillingProbeAccountInvalid
+		}
+	}
+	if rows > 0 {
+		payload := map[string]any{"account_ids": ids}
+		if err := enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, payload); err != nil {
+			return 0, err
+		}
+	}
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+	}
+	if rows > 0 && contextTx == nil {
+		shouldSync := false
+		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
+			shouldSync = true
+		}
+		if updates.Schedulable != nil && !*updates.Schedulable {
+			shouldSync = true
+		}
+		if shouldSync {
+			r.syncSchedulerAccountSnapshots(baseCtx, ids)
+		}
+	}
+	return rows, nil
+}
+
+func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
@@ -2472,6 +3075,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		if err := validateUpstreamBillingProbeBulkTargets(ctx, exec, ids); err != nil {
 			return 0, err
 		}
+	}
+	if err := invalidateOllamaCloudUsageForBulkUpdateMySQL(ctx, exec, ids, updates); err != nil {
+		return 0, err
 	}
 
 	result, err := exec.ExecContext(ctx, query, args...)

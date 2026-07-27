@@ -345,7 +345,21 @@ export default {
       gemini3Image: 'G31FI',
       claude: 'Claude',
       passiveSampled: '被动采样',
-      activeQuery: '查询'
+      activeQuery: '查询',
+      grokRequests: '请求',
+      grokTokens: 'Token',
+      grokFreeQuota24hHint: '按 sub2api 近 24 小时本地 Token 用量估算（上限 {limit}）',
+      grokWeeklyUsage: '周额度已用 {percent}%',
+      grokUnknown: 'Grok 配额需等待首次上游响应返回 xAI rate-limit 头后显示。',
+      grokRetryAfter: '{time} 后重试',
+      grokProbe: '探测',
+      grokProbeTooltip: '发送最小 xAI Responses 探测请求并读取配额响应头',
+      grokResetUnsupported: '不支持重置',
+      grokResetUnsupportedTooltip: 'xAI 未向 Grok OAuth 账号开放重置额度接口',
+      grokNoHeaders: '未观察到配额响应头',
+      grokLastStatus: '状态 {status}',
+      grokLastProbe: '探测 {time}',
+      grokLastHeadersSeen: '响应头 {time}',
     },
     openaiQuotaReset: {
       count: '次数',
@@ -951,7 +965,12 @@ export default {
         pleaseEnterRefreshToken: '请输入 Refresh Token',
         pleaseEnterSessionToken: '请输入 Session Token',
         mobileRefreshTokenAuth: '手动输入 Mobile RT',
-        accessTokenAuth: '手动输入 AT'
+        accessTokenAuth: '手动输入 AT',
+        agentIdentityAuth: 'Agent Identity auth.json',
+        agentIdentityDesc: '导入 Codex Agent Identity auth.json，不保存 OAuth access token 或 refresh token。',
+        agentIdentityInputLabel: 'Agent Identity auth.json',
+        agentIdentityPlaceholder: '粘贴一个 Agent Identity auth.json 对象',
+        agentIdentityHint: '文件必须使用 auth_mode=agentIdentity；每次上游请求都会动态签名。',
       },
       gemini: {
         title: 'Gemini 账户授权',
@@ -1015,7 +1034,56 @@ export default {
         validateAndCreate: '验证并创建账号',
         pleaseEnterRefreshToken: '请输入 Refresh Token',
         failedToValidateRT: '验证 Refresh Token 失败'
-      }
+      },
+      grok: {
+        title: 'Grok 账号授权',
+        followSteps: '请按照以下步骤授权您的 xAI/Grok 账号：',
+        step1GenerateUrl: '生成 xAI 授权链接',
+        generateAuthUrl: '生成授权链接',
+        step2OpenUrl: '在浏览器中打开链接并完成授权',
+        openUrlDesc: '在新标签页中打开授权链接，登录 xAI 并授权 API 访问。',
+        importantNotice: '当浏览器跳转到本地 callback URL 后，请复制完整 URL 或 code 参数回填到这里。',
+        step3EnterCode: '输入授权链接或 Code',
+        authCodeDesc: '授权完成后，粘贴 callback URL、查询字符串或授权码：',
+        authCode: '授权链接或 Code',
+        authCodePlaceholder: '粘贴完整 callback URL、?code=... 查询字符串或 code 值',
+        authCodeHint: '支持完整 callback URL、查询字符串或裸 code。',
+        refreshTokenAuth: '手动输入 RT',
+        refreshTokenDesc: '输入已有的 xAI refresh token，支持批量输入（每行一个）。',
+        refreshTokenPlaceholder: '粘贴您的 xAI refresh token...\n支持多个，每行一个',
+        ssoCookieAuth: 'SSO Cookie 导入',
+        ssoCookieDesc: '每行粘贴一个 Grok Web SSO key，系统会自动走 xAI Device Flow 并转换为 Grok Build OAuth 凭据。',
+        ssoCookieLabel: 'Grok Web SSO Key',
+        ssoCookiePlaceholder: '每行一个 SSO key\n支持多个，每行一个',
+        ssoCookieHint: '每行一个 SSO key；多个 key 会 3 路并发导入，耗时约 90 秒 × 批次数，建议使用对应地区代理。',
+        convertingSSO: '转换中...',
+        convertSSOAndCreate: '转换并创建账号',
+        validating: '验证中...',
+        validateAndCreate: '验证并创建账号',
+        pleaseEnterRefreshToken: '请输入 Refresh Token',
+        failedToGenerateUrl: '生成 Grok 授权链接失败',
+        missingExchangeParams: '缺少授权码、state 或 OAuth 会话',
+        failedToExchangeCode: 'Grok 授权码兑换失败',
+        failedToValidateRT: '验证 Grok refresh token 失败',
+        failedToConvertSSO: 'Grok SSO 转换失败',
+        errors: {
+          GROK_OAUTH_SESSION_NOT_FOUND:
+            'Grok OAuth 会话不存在或已过期。请重新生成授权链接，并粘贴最新的回调链接。',
+          GROK_OAUTH_INVALID_STATE:
+            'Grok OAuth state 与当前会话不匹配。请粘贴同一次生成的授权链接返回的回调 URL。',
+          GROK_OAUTH_STATE_REQUIRED:
+            '回调链接缺少 OAuth state。请粘贴完整 callback URL，不要只粘贴 code。',
+          GROK_OAUTH_CODE_REQUIRED:
+            '缺少 Grok 授权码。请粘贴完整 callback URL、查询字符串或 code 值。',
+          GROK_OAUTH_NO_REFRESH_TOKEN:
+            'Grok 响应未返回 refresh token。请重新生成授权链接，并再次确认 offline access 授权。',
+          GROK_OAUTH_PROXY_NOT_AVAILABLE:
+            '无法查询 Grok OAuth 代理配置。请检查选择的代理后重试。',
+          GROK_OAUTH_PROXY_NOT_FOUND:
+            '找不到所选代理。请选择可用代理后重试。'
+        },
+        oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
+      },
     },
     gemini: {
       helpButton: '使用帮助',
@@ -1288,6 +1356,74 @@ export default {
     testConnectElapsed: '建连耗时',
     testFirstResponseElapsed: '首个响应耗时',
     fromModel: '源模型',
-    toModel: '目标模型'
+    toModel: '目标模型',
+    ollamaCloud: {
+      title: 'Ollama Cloud 用量',
+      sessionSecurityHint: '浏览器会话会加密落库，且只发送到固定的 Ollama 官方设置页。',
+      configured: '已配置',
+      notConfigured: '未配置',
+      notRefreshed: '尚未刷新',
+      encryptionKeyRequired: '请先配置持久 TOTP_ENCRYPTION_KEY，再保存浏览器会话。',
+      sessionLabel: 'Ollama 浏览器 Cookie',
+      sessionPlaceholder: 'wos-session=...; __Secure-authjs.session-token.0=...',
+      writeOnlyHint: '仅写入。已保存内容不可查看，留空不会覆盖。',
+      deleteSession: '删除会话',
+      deleteConfirm: '确定删除已保存的 Ollama 浏览器会话及其用量快照？',
+      refreshNow: '刷新用量',
+      autoRefresh: '自动刷新用量',
+      autoRefreshHint: '只有账号开关和全局开关同时启用时才会定时刷新。',
+      plan: '套餐',
+      fiveHour: '5 小时',
+      fiveHourShort: '5h',
+      sevenDay: '7 天',
+      sevenDayShort: '7d',
+      balance: '余额',
+      models: '模型',
+      status: '状态',
+      updatedAt: '更新时间',
+      ok: '正常',
+      unauthorized: '会话已过期',
+      failed: '刷新失败',
+      windowWithReset: '已用 {percent}，{reset} 重置',
+      loadFailed: '加载 Ollama Cloud 用量设置失败',
+      sessionSaved: 'Ollama 浏览器会话已保存',
+      sessionSaveFailed: '保存 Ollama 浏览器会话失败',
+      sessionDeleted: 'Ollama 浏览器会话已删除',
+      sessionDeleteFailed: '删除 Ollama 浏览器会话失败',
+      autoRefreshFailed: '更新自动刷新设置失败',
+      refreshSuccess: 'Ollama Cloud 用量已刷新',
+      refreshFailed: '刷新 Ollama Cloud 用量失败',
+      errors: {
+        request_failed: '请求失败',
+        empty_response: '响应为空',
+        response_host_mismatch: '响应主机不符合安全边界',
+        redirect_blocked: '官方设置页发生重定向',
+        unauthorized: '浏览器会话已过期',
+        http_error: '官方设置页返回错误',
+        response_read_failed: '读取响应失败',
+        response_too_large: '设置页超过响应大小限制',
+        invalid_html: '无法识别设置页格式',
+        OLLAMA_CLOUD_USAGE_REFRESH_RATE_LIMITED: '刷新过于频繁，请在 {retry_after_seconds} 秒后重试。'
+      }
+    },
+    grok: {
+      baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
+      apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
+    },
+    grokCustomBaseUrl: {
+      title: '自定义上游地址',
+      hint: '开启后账号流量（对话/媒体/探测）改发指定地址；OAuth 授权与令牌刷新不受影响，仍走官方端点。',
+      placeholder: 'https://relay.example.com/v1',
+      required: '开启自定义上游地址后必须填写地址',
+      invalid: '上游地址格式不正确（需为 http(s):// 开头的完整地址）',
+      presets: {
+        cli: 'Grok Build CLI',
+        official: '官方 API'
+      }
+    },
+    grokClientToolCache: {
+      title: '客户端工具缓存（可能改变自动工具选择）',
+      hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
+    },
   }
 }

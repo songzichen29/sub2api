@@ -344,7 +344,15 @@ export default {
       waitingPayment: 'Waiting for payment...',
       cancelOrder: 'Cancel Order',
       failed: 'Order Failed',
-      failedDesc: 'This order failed. Please retry or contact support.'
+      failedDesc: 'This order failed. Please retry or contact support.',
+      alipayOpening: 'Opening Alipay',
+      alipayContinueInApp: 'Complete payment in Alipay',
+      alipayWaitingHint: 'The server will confirm the payment and update this page automatically',
+      alipayFallbackTitle: 'Alipay did not open',
+      alipayFallbackHint: 'Try opening Alipay again, or save the QR code and scan it from your Alipay photo album',
+      reopenAlipay: 'Open Alipay Again',
+      saveQRCode: 'Save QR Code',
+      alipaySaveAndScanHint: 'Save the QR code, open Alipay Scan, then select it from your photo album',
     },
     orders: {
       title: 'My Orders',

@@ -763,14 +763,6 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	return !openAIStreamEventIsPreamble(eventType)
 }
 
-func openAIStreamDataShouldFlushPreamble(data, eventType string) bool {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "" || trimmed == "[DONE]" {
-		return false
-	}
-	return openAIStreamEventIsPreamble(eventType)
-}
-
 func openAIStreamDataStartsFirstToken(data, eventType string) bool {
 	trimmed := strings.TrimSpace(data)
 	eventType = strings.TrimSpace(eventType)
@@ -1084,7 +1076,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	for documentScanner.Scan() {
 		line := documentScanner.Text()
 		lineStartsClientOutput := false
-		lineShouldFlushDownstream := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
@@ -1180,7 +1171,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			lineShouldFlushDownstream = lineStartsClientOutput || openAIStreamDataShouldFlushPreamble(trimmedData, eventType)
 			if firstTokenMs == nil && openAIStreamDataStartsFirstToken(trimmedData, eventType) {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
@@ -1189,7 +1179,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 
 		if !clientDisconnected {
-			if !clientOutputStarted && !lineShouldFlushDownstream {
+			if !clientOutputStarted && !lineStartsClientOutput {
 				pendingLines = append(pendingLines, line)
 				continue
 			}
@@ -1211,7 +1201,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 	if err := documentScanner.Err(); err != nil {
-		if sawTerminalEvent && !sawFailedEvent {
+		if (sawDone || sawTerminalEvent) && !sawFailedEvent {
+			s.clearOpenAIProxyStreamDisconnect(account)
 			return resultWithUsage(), nil
 		}
 		if sawFailedEvent {
@@ -1235,6 +1226,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if clientDisconnected {
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete after disconnect: %w", err)
 		}
+		s.recordOpenAIProxyStreamDisconnect(account, err, upstreamRequestID)
 		logger.LegacyPrintf("service.openai_gateway",
 			"[OpenAI passthrough] 流读取异常中断: account=%d request_id=%s err=%v",
 			account.ID,
@@ -1256,7 +1248,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			return resultWithUsage(),
 				s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, nil, "OpenAI stream ended before a terminal event")
 		}
+		s.recordOpenAIProxyStreamDisconnect(account, errors.New("stream ended before terminal event"), upstreamRequestID)
 		return resultWithUsage(), errors.New("stream usage incomplete: missing terminal event")
+	}
+	if (sawDone || sawTerminalEvent) && !sawFailedEvent {
+		s.clearOpenAIProxyStreamDisconnect(account)
 	}
 
 	return resultWithUsage(), nil

@@ -108,7 +108,9 @@ export default {
         subscriptionEnabled: '启用订阅返利',
         subscriptionEnabledHint: '开启后，被邀请用户购买订阅时可按实付金额返利给邀请人。',
         rechargeRebateRate: '充值返利比例',
-        subscriptionRebateRate: '订阅返利比例'
+        subscriptionRebateRate: '订阅返利比例',
+        adminRechargeRebate: '管理员充值参与返利',
+        adminRechargeRebateHint: '开启后，通过“用户管理 > 充值”增加的余额会产生邀请返利；设置余额和扣款不参与返利。',
       }
     },
     emailTabDisabledTitle: '邮箱验证未启用',
@@ -745,7 +747,9 @@ export default {
       discountTypeRate: '折后比例',
       discountTypeReduce: '固定减免',
       discountValue: '值',
-      discountLabel: '描述'
+      discountLabel: '描述',
+      alipayMobilePrecreateDeepLink: '支付宝移动端当面付唤起',
+      alipayMobilePrecreateDeepLinkHint: '启用后，移动端官方支付宝订单调用当面付并尝试打开支付宝；失败时显示动态二维码。该设置优先于强制二维码支付',
     },
     balanceNotify: {
       title: '余额不足提醒',
@@ -1218,7 +1222,37 @@ export default {
       passwordMissingHint: '启用前必须设置访问密码。',
       route: '访问路由',
       routeHint: '保存设置后，可把该路由提供给需要执行账号导入的人。'
-    }
+    },
+    panelRateLimit: {
+      title: '面板接口限流',
+      description: '限制面板 API 的请求频率，防止高频刷接口（如用量统计、仪表盘查询）打爆数据库',
+      proxySafeNote: '登录后的接口按「用户账号」维度计数，与来源 IP 无关——反向代理、NAT 共享出口等场景不会被误拦截；公开接口按真实客户端 IP 计数，回环与内网地址（反代内部转发地址）会自动跳过。',
+      enabled: '启用面板接口限流',
+      enabledHint: '对登录后的面板接口按账号限流；超出阈值返回 429，窗口重置后自动恢复。',
+      userRpm: '每账号请求上限',
+      userRpmHint: '单个账号每分钟允许的面板 API 请求总数，正常页面操作远达不到该阈值；0 表示不限制。',
+      heavyRpm: '重查询请求上限',
+      heavyRpmHint: '单个账号每分钟允许的用量/仪表盘等聚合统计查询次数（这类请求对数据库压力最大）；0 表示不限制。',
+      publicIpRpm: '公开接口每 IP 上限',
+      publicIpRpmHint: '无需登录的公开接口（如站点公开设置）每个真实客户端 IP 每分钟的请求上限；0 表示不限制。',
+      perMinute: '次/分钟',
+      exemptAdmin: '管理员豁免',
+      exemptAdminHint: '开启后管理员账号不受面板限流约束，避免批量运维操作被误拦。',
+      saved: '面板接口限流配置已保存',
+      saveFailed: '保存面板接口限流配置失败'
+    },
+    ollamaCloudUsage: {
+      title: 'Ollama Cloud 用量刷新',
+      description: '在模型请求驱动下刷新账号在 Ollama 官方设置页展示的用量；默认关闭。无新请求时不会自动抓取。',
+      enabled: '启用全局自动刷新',
+      enabledHint: '仅刷新已保存浏览器会话且账号自身也开启自动刷新的账号；需有后续模型请求才会触发。手动刷新不受影响。',
+      intervalMinutes: '持续请求最长等待（分钟）',
+      intervalHint: '范围 15–1440 分钟。请求持续不断导致 debounce 一直后移时，最晚在此时间强制刷新。',
+      debounceMinutes: '请求安静等待（分钟）',
+      debounceHint: '范围 1–60 分钟。最后一次模型请求安静满此时长后再抓取用量。',
+      saved: 'Ollama Cloud 用量刷新设置已保存',
+      saveFailed: '保存 Ollama Cloud 用量刷新设置失败'
+    },
   },
   errorPassthrough: {
     title: '错误透传规则',

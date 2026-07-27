@@ -517,6 +517,11 @@
         因此当 showUsageQueryPlaceholder=true 且 today stats 全为 0 时整行不渲染。
         有真实使用量时仍正常展示，避免误伤还在工作的 apikey 账号。
       -->
+      <OllamaCloudUsageCell
+        v-if="account.ollama_cloud_usage?.eligible"
+        :account="account"
+      />
+      <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
         v-if="todayStats && !(showUsageQueryPlaceholder && isZeroTodayStats)"
         class="mb-0.5 flex items-center"
@@ -582,7 +587,7 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !showUsageQueryPlaceholder"
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !showUsageQueryPlaceholder && !account.ollama_cloud_usage?.eligible"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -600,6 +605,7 @@ import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
+import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()

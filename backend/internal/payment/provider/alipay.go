@@ -16,6 +16,7 @@ import (
 // Alipay product codes.
 const (
 	alipayProductCodePreCreate = "FACE_TO_FACE_PAYMENT"
+	alipayProductCodeWapPay    = "QUICK_WAP_WAY"
 	alipayProductCodePagePay   = "FAST_INSTANT_TRADE_PAY"
 )
 
@@ -27,6 +28,9 @@ const (
 )
 
 var (
+	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+		return client.TradeWapPay(param)
+	}
 	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
 		return client.TradePreCreate(ctx, param)
 	}
@@ -104,10 +108,10 @@ func (a *Alipay) MerchantIdentityMetadata() map[string]string {
 }
 
 // CreatePayment creates an Alipay payment using the following routing:
-//   - Desktop and mobile/H5: alipay.trade.precreate only, returning the native face-to-face
-//     QR payload in qr_code. Do not silently fall back to page.pay here: callers
-//     that request an Alipay QR must either receive a real precreate
-//     scan payload or a clear provider error.
+//   - Mobile (H5), default: alipay.trade.wap.pay — browser redirect into Alipay.
+//   - Mobile with AlipayMobilePrecreate: alipay.trade.precreate — return the
+//     dynamic QR payload so the frontend can open it through the Alipay app.
+//   - Desktop: alipay.trade.precreate only, returning a native face-to-face QR payload.
 func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
@@ -123,7 +127,32 @@ func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		returnURL = req.ReturnURL
 	}
 
+	if req.IsMobile {
+		if req.AlipayMobilePrecreate {
+			return a.createPrecreateTrade(ctx, client, req, notifyURL)
+		}
+		return a.createWapTrade(client, req, notifyURL, returnURL)
+	}
 	return a.createDesktopTrade(ctx, client, req, notifyURL, returnURL)
+}
+
+func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
+	param := alipay.TradeWapPay{}
+	param.OutTradeNo = req.OrderID
+	param.TotalAmount = req.Amount
+	param.Subject = req.Subject
+	param.ProductCode = alipayProductCodeWapPay
+	param.NotifyURL = notifyURL
+	param.ReturnURL = returnURL
+
+	payURL, err := alipayTradeWapPay(client, param)
+	if err != nil {
+		return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
+	}
+	return &payment.CreatePaymentResponse{
+		TradeNo: req.OrderID,
+		PayURL:  payURL.String(),
+	}, nil
 }
 
 func (a *Alipay) createDesktopTrade(ctx context.Context, client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {

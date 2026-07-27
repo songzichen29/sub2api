@@ -261,28 +261,29 @@ type SystemSettings struct {
 	AllowUserViewErrorRequests bool                                    `json:"allow_user_view_error_requests"`
 
 	// Payment configuration
-	PaymentEnabled                   bool                              `json:"payment_enabled"`
-	PaymentMinAmount                 float64                           `json:"payment_min_amount"`
-	PaymentMaxAmount                 float64                           `json:"payment_max_amount"`
-	PaymentDailyLimit                float64                           `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           int                               `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          int                               `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string                          `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           bool                              `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier float64                           `json:"payment_balance_recharge_multiplier"`
-	PaymentSubscriptionUSDToCNYRate  float64                           `json:"payment_subscription_usd_to_cny_rate"`
-	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
-	PaymentQuickAmounts              []float64                         `json:"payment_quick_amounts"`
-	PaymentPaidUserRateEnabled       bool                              `json:"payment_paid_user_rate_enabled"`
-	PaymentPaidUserRateRules         []PaymentPaidUserRateRule         `json:"payment_paid_user_rate_rules"`
-	PaymentPaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"payment_paid_user_rate_backfill"`
-	PaymentRechargeFeeRate           float64                           `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          string                            `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         string                            `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         string                            `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              string                            `json:"payment_help_image_url"`
-	PaymentHelpText                  string                            `json:"payment_help_text"`
-	PaymentAlipayForceQRCode         bool                              `json:"payment_alipay_force_qrcode"`
+	PaymentEnabled                       bool                              `json:"payment_enabled"`
+	PaymentMinAmount                     float64                           `json:"payment_min_amount"`
+	PaymentMaxAmount                     float64                           `json:"payment_max_amount"`
+	PaymentDailyLimit                    float64                           `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin               int                               `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders              int                               `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes                  []string                          `json:"payment_enabled_types"`
+	PaymentBalanceDisabled               bool                              `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier     float64                           `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate      float64                           `json:"payment_subscription_usd_to_cny_rate"`
+	PaymentDiscountRules                 []service.DiscountRule            `json:"payment_discount_rules"`
+	PaymentQuickAmounts                  []float64                         `json:"payment_quick_amounts"`
+	PaymentPaidUserRateEnabled           bool                              `json:"payment_paid_user_rate_enabled"`
+	PaymentPaidUserRateRules             []PaymentPaidUserRateRule         `json:"payment_paid_user_rate_rules"`
+	PaymentPaidUserRateBackfill          PaymentPaidUserRateBackfillStatus `json:"payment_paid_user_rate_backfill"`
+	PaymentRechargeFeeRate               float64                           `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat              string                            `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix             string                            `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix             string                            `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL                  string                            `json:"payment_help_image_url"`
+	PaymentHelpText                      string                            `json:"payment_help_text"`
+	PaymentAlipayForceQRCode             bool                              `json:"payment_alipay_force_qrcode"`
+	PaymentAlipayMobilePrecreateDeepLink bool                              `json:"payment_alipay_mobile_precreate_deep_link"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -409,6 +410,15 @@ type OverloadCooldownSettings struct {
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+// PanelRateLimitSettings 面板 API 限流配置 DTO
+type PanelRateLimitSettings struct {
+	Enabled     bool `json:"enabled"`
+	UserRPM     int  `json:"user_rpm"`
+	HeavyRPM    int  `json:"heavy_rpm"`
+	ExemptAdmin bool `json:"exempt_admin"`
+	PublicIPRPM int  `json:"public_ip_rpm"`
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO

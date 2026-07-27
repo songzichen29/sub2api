@@ -11,7 +11,7 @@
               <p class="truncate text-xs font-medium text-gray-500 dark:text-gray-400">{{ item.label }}</p>
               <Icon name="infoCircle" size="xs" class="shrink-0 text-gray-400 dark:text-gray-500" />
             </div>
-            <p class="mt-1 text-2xl font-semibold leading-none text-gray-900 dark:text-white">{{ item.value }}</p>
+            <p class="mt-1 text-xl font-semibold leading-tight text-gray-900 dark:text-white">{{ item.value }}</p>
             <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ item.meta }}</p>
           </div>
         </div>
@@ -29,7 +29,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import type { DashboardStats } from '@/types/payment'
+import type { CurrencyAmounts, DashboardStats } from '@/types/payment'
 
 const props = defineProps<{
   stats: DashboardStats
@@ -41,7 +41,7 @@ const cards = computed(() => [
   {
     key: 'today_amount',
     label: t('payment.admin.todayRevenue'),
-    value: `$${formatMoney(props.stats.today_amount)}`,
+    value: formatCurrencyAmounts(props.stats.today_amount),
     meta: `${props.stats.today_count} ${t('payment.admin.orders')}`,
     icon: 'creditCard' as const,
     iconClass: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -52,7 +52,7 @@ const cards = computed(() => [
   {
     key: 'total_amount',
     label: t('payment.admin.totalRevenue'),
-    value: `$${formatMoney(props.stats.total_amount)}`,
+    value: formatCurrencyAmounts(props.stats.total_amount),
     meta: `${props.stats.total_count} ${t('payment.admin.orders')}`,
     icon: 'creditCard' as const,
     iconClass: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
@@ -64,7 +64,7 @@ const cards = computed(() => [
     key: 'today_count',
     label: t('payment.admin.todayOrders'),
     value: String(props.stats.today_count),
-    meta: `${t('payment.admin.avgAmount')} $${formatMoney(props.stats.avg_amount)}`,
+    meta: `${t('payment.admin.avgAmount')} ${formatCurrencyAmounts(props.stats.avg_amount)}`,
     icon: 'clipboard' as const,
     iconClass: 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
     sparkClass: 'text-purple-500',
@@ -74,8 +74,8 @@ const cards = computed(() => [
   {
     key: 'avg_amount',
     label: t('payment.admin.avgAmount'),
-    value: `$${formatMoney(props.stats.avg_amount)}`,
-    meta: `${t('payment.admin.totalRevenue')} $${formatMoney(props.stats.total_amount)}`,
+    value: formatCurrencyAmounts(props.stats.avg_amount),
+    meta: `${t('payment.admin.totalRevenue')} ${formatCurrencyAmounts(props.stats.total_amount)}`,
     icon: 'database' as const,
     iconClass: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400',
     sparkClass: 'text-amber-500',
@@ -84,7 +84,17 @@ const cards = computed(() => [
   },
 ])
 
-function formatMoney(value: number): string {
-  return value.toFixed(2)
+function formatCurrencyAmounts(amounts: CurrencyAmounts): string {
+  const values = Object.entries(amounts).sort(([left], [right]) => left.localeCompare(right))
+  if (!values.length) return '-'
+  return values.map(([currency, amount]) => formatMoney(currency, amount)).join(' · ')
+}
+
+function formatMoney(currency: string, amount: number): string {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`
+  }
 }
 </script>

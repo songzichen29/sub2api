@@ -33,7 +33,8 @@
               @next="goNextCalendarPeriod"
               @today="goCurrentCalendarPeriod"
             />
-            <PaymentMethodDonut :methods="stats.payment_methods || []" />
+            <PaymentMethodChart :methods="stats.payment_methods || []" />
+            <TopUsersLeaderboard :users="stats.top_users || {}" />
           </div>
         </div>
       </template>
@@ -47,13 +48,14 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminPaymentAPI } from '@/api/admin/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
-import type { DashboardStats, DailyPaymentStat, PaymentOrder } from '@/types/payment'
+import type { DailyPaymentStats, DashboardStats, PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import OrderStatsCards from '@/components/admin/payment/OrderStatsCards.vue'
 import DailyRevenueChart from '@/components/admin/payment/DailyRevenueChart.vue'
 import PaymentDailyCalendar from '@/components/admin/payment/PaymentDailyCalendar.vue'
-import PaymentMethodDonut from '@/components/admin/payment/PaymentMethodDonut.vue'
+import PaymentMethodChart from '@/components/admin/payment/PaymentMethodChart.vue'
+import TopUsersLeaderboard from '@/components/admin/payment/TopUsersLeaderboard.vue'
 import LatestOrdersCard from '@/components/admin/payment/LatestOrdersCard.vue'
 
 type CalendarMode = 'week' | 'month'
@@ -70,7 +72,7 @@ const stats = ref<DashboardStats | null>(null)
 const latestOrders = ref<PaymentOrder[]>([])
 const calendarMode = ref<CalendarMode>('month')
 const calendarAnchor = ref(formatDateKey(new Date()))
-const calendarSeries = ref<DailyPaymentStat[]>([])
+const calendarSeries = ref<DailyPaymentStats[]>([])
 
 async function loadDashboard() {
   loading.value = true

@@ -37,6 +37,11 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.PUT("/api/v1/admin/groups/sort-order", groupHandler.UpdateSortOrder)
 	router.GET("/api/v1/admin/groups/:id/models-list-candidates", groupHandler.GetModelsListCandidates)
 	router.GET("/api/v1/admin/groups/:id/available-models", groupHandler.GetAvailableModels)
+	router.GET("/api/v1/admin/groups/:id/composite-routes", groupHandler.ListCompositeRoutes)
+	router.POST("/api/v1/admin/groups/:id/composite-routes", groupHandler.CreateCompositeRoute)
+	router.POST("/api/v1/admin/groups/:id/composite-routes/preview", groupHandler.PreviewCompositeRoute)
+	router.PUT("/api/v1/admin/groups/:id/composite-routes/:route_id", groupHandler.UpdateCompositeRoute)
+	router.DELETE("/api/v1/admin/groups/:id/composite-routes/:route_id", groupHandler.DeleteCompositeRoute)
 	router.GET("/api/v1/admin/groups/:id", groupHandler.GetByID)
 	router.POST("/api/v1/admin/groups", groupHandler.Create)
 	router.PUT("/api/v1/admin/groups/:id", groupHandler.Update)
@@ -208,6 +213,53 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), "claude-sonnet-4-6")
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/2/composite-routes", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "openrouter/gpt-5")
+
+	body, _ = json.Marshal(map[string]any{
+		"public_model":    "openrouter/gpt-5",
+		"match_type":      "exact",
+		"target_platform": "openai",
+		"upstream_model":  "gpt-5",
+		"endpoint":        "chat_completions",
+		"enabled":         true,
+	})
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/2/composite-routes", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code)
+	require.Contains(t, rec.Body.String(), "gpt-5")
+
+	body, _ = json.Marshal(map[string]any{
+		"public_model":    "openrouter/gpt-5",
+		"target_platform": "openai",
+		"upstream_model":  "gpt-5",
+		"endpoint":        "responses",
+		"enabled":         true,
+	})
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/2/composite-routes/1", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	body, _ = json.Marshal(map[string]any{"model": "gpt-5", "endpoint": "responses"})
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/2/composite-routes/preview", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"source":"detector"`)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/admin/groups/2/composite-routes/1", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
 
 	body, _ = json.Marshal(map[string]any{"name": "new", "platform": "anthropic", "subscription_type": "standard"})
 	rec = httptest.NewRecorder()

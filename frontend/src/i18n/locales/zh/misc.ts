@@ -344,7 +344,15 @@ export default {
       waitingPayment: '等待支付...',
       cancelOrder: '取消订单',
       failed: '订单失败',
-      failedDesc: '订单处理失败，请重试或联系客服'
+      failedDesc: '订单处理失败，请重试或联系客服',
+      alipayOpening: '正在打开支付宝',
+      alipayContinueInApp: '请在支付宝中完成支付',
+      alipayWaitingHint: '支付结果将由服务端确认，本页面会自动更新',
+      alipayFallbackTitle: '打开支付宝未成功',
+      alipayFallbackHint: '可重新打开支付宝，或保存下方二维码后从支付宝相册识别',
+      reopenAlipay: '重新打开支付宝',
+      saveQRCode: '保存二维码',
+      alipaySaveAndScanHint: '保存二维码后，打开支付宝扫一扫，从相册选择二维码',
     },
     orders: {
       title: '我的订单',

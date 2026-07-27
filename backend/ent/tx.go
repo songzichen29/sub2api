@@ -42,6 +42,8 @@ type Tx struct {
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
 	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
+	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
+	CompositeModelRoute *CompositeModelRouteClient
 	// Coupon is the client for interacting with the Coupon builders.
 	Coupon *CouponClient
 	// CouponUsage is the client for interacting with the CouponUsage builders.
@@ -247,6 +249,7 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(tx.config)
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
+	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
 	tx.Coupon = NewCouponClient(tx.config)
 	tx.CouponUsage = NewCouponUsageClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)

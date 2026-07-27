@@ -189,8 +189,8 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		}
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化，防止单个收件箱批量派生注册）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return "", nil, ErrServiceUnavailable
@@ -234,7 +234,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		defer func() { _ = tx.Rollback() }()
 		txCtx := dbent.NewTxContext(ctx, tx)
 
-		if err := s.userRepo.Create(txCtx, user); err != nil {
+		if err := s.userRepo.CreateWithEmailAliasGuard(txCtx, user); err != nil {
 			// 优先检查邮箱冲突错误（竞态条件下可能发生）
 			if errors.Is(err, ErrEmailExists) {
 				return "", nil, ErrEmailExists
@@ -265,7 +265,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 			return "", nil, ErrServiceUnavailable
 		}
 		handledInviteAffiliate = true
-	} else if err := s.userRepo.Create(ctx, user); err != nil {
+	} else if err := s.userRepo.CreateWithEmailAliasGuard(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
 		if errors.Is(err, ErrEmailExists) {
 			return "", nil, ErrEmailExists
@@ -337,8 +337,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 		return err
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化，防止单个收件箱批量派生注册）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return ErrServiceUnavailable
@@ -378,8 +378,8 @@ func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, loc
 		return nil, err
 	}
 
-	// 检查邮箱是否已存在
-	existsEmail, err := s.userRepo.ExistsByEmail(ctx, email)
+	// 检查邮箱是否已存在（含 +别名 / Gmail 点号变体归一化；在发信前拦截，避免批量脚本消耗发信配额）
+	existsEmail, err := s.existsByEmailOrAlias(ctx, email)
 	if err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Database error checking email exists: %v", err)
 		return nil, ErrServiceUnavailable

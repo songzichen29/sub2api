@@ -59,7 +59,14 @@
     <div class="mb-3 grid grid-cols-2 gap-3">
       <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.totalRevenue') }}</p>
-        <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">${{ formatMoney(periodAmount) }}</p>
+        <p
+          v-for="[currency, amount] in sortedAmounts(periodAmounts)"
+          :key="currency"
+          class="mt-1 text-lg font-semibold text-gray-900 dark:text-white"
+        >
+          {{ formatMoney(currency, amount) }}
+        </p>
+        <p v-if="!Object.keys(periodAmounts).length" class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">-</p>
       </div>
       <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.totalOrders') }}</p>
@@ -106,8 +113,12 @@
             </div>
 
             <template v-if="hasActivity(day)">
-              <div class="mt-2 truncate text-sm font-semibold text-gray-900 dark:text-white">
-                ${{ compactMoney(day.amount) }}
+              <div
+                v-for="[currency, amount] in sortedAmounts(day.amounts)"
+                :key="currency"
+                class="mt-1 truncate text-xs font-semibold text-gray-900 first:mt-2 dark:text-white"
+              >
+                {{ compactMoney(currency, amount) }}
               </div>
               <div class="mt-1 truncate text-xs text-gray-500 dark:text-gray-400">
                 {{ day.count }} {{ t('payment.admin.orders') }}
@@ -128,7 +139,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { DailyPaymentStat } from '@/types/payment'
+import type { CurrencyAmounts, DailyPaymentStats } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 
@@ -138,13 +149,13 @@ interface CalendarDay {
   key: string
   date: Date
   inPeriod: boolean
-  amount: number
+  amounts: CurrencyAmounts
   count: number
   isToday: boolean
 }
 
 const props = withDefaults(defineProps<{
-  data: DailyPaymentStat[]
+  data: DailyPaymentStats[]
   loading?: boolean
   mode: CalendarMode
   anchorDate: string
@@ -179,7 +190,7 @@ const weekdays = computed(() => [
 const anchor = computed(() => parseDate(props.anchorDate) || new Date())
 
 const statsByDate = computed(() => {
-  const map = new Map<string, DailyPaymentStat>()
+  const map = new Map<string, DailyPaymentStats>()
   for (const item of props.data || []) {
     map.set(item.date, item)
   }
@@ -194,14 +205,27 @@ const calendarDays = computed(() => {
 
 const periodDays = computed(() => calendarDays.value.filter(day => day.inPeriod))
 
-const periodAmount = computed(() => {
-  const amount = periodDays.value.reduce((sum, day) => sum + day.amount, 0)
-  return Math.round(amount * 100) / 100
+const periodAmounts = computed<CurrencyAmounts>(() => {
+  const totals: CurrencyAmounts = {}
+  for (const day of periodDays.value) {
+    for (const [currency, amount] of Object.entries(day.amounts)) {
+      totals[currency] = Math.round(((totals[currency] || 0) + amount) * 100) / 100
+    }
+  }
+  return totals
 })
 
 const periodCount = computed(() => periodDays.value.reduce((sum, day) => sum + day.count, 0))
 
-const maxAmount = computed(() => periodDays.value.reduce((max, day) => Math.max(max, day.amount || 0), 0))
+const maxAmounts = computed<CurrencyAmounts>(() => {
+  const maximums: CurrencyAmounts = {}
+  for (const day of periodDays.value) {
+    for (const [currency, amount] of Object.entries(day.amounts)) {
+      maximums[currency] = Math.max(maximums[currency] || 0, amount)
+    }
+  }
+  return maximums
+})
 
 const periodLabel = computed(() => {
   if (props.mode === 'month') return formatMonth(range.value.start)
@@ -248,7 +272,7 @@ function buildDay(date: Date, inPeriod: boolean, todayKey: string): CalendarDay 
     key,
     date,
     inPeriod,
-    amount: inPeriod ? (stat?.amount || 0) : 0,
+    amounts: inPeriod ? (stat?.amount || {}) : {},
     count: inPeriod ? (stat?.count || 0) : 0,
     isToday: key === todayKey,
   }
@@ -306,29 +330,48 @@ function formatDayNumber(date: Date): string {
   return String(date.getDate())
 }
 
-function formatMoney(value: number): string {
-  return value.toFixed(2)
+function formatMoney(currency: string, value: number): string {
+  try {
+    return new Intl.NumberFormat(locale.value, { style: 'currency', currency }).format(value)
+  } catch {
+    return `${currency} ${value.toFixed(2)}`
+  }
 }
 
-function compactMoney(value: number): string {
-  if (value >= 10000) return `${(value / 10000).toFixed(1)}w`
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
-  return value.toFixed(value >= 100 ? 0 : 2)
+function compactMoney(currency: string, value: number): string {
+  try {
+    return new Intl.NumberFormat(locale.value, {
+      style: 'currency',
+      currency,
+      notation: 'compact',
+      maximumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return `${currency} ${value.toFixed(value >= 100 ? 0 : 2)}`
+  }
 }
 
 function dayCellClass(day: CalendarDay): string {
-  if (day.amount <= 0) return 'bg-white dark:bg-dark-800'
-  const ratio = maxAmount.value > 0 ? day.amount / maxAmount.value : 0
+  const ratios = Object.entries(day.amounts).map(([currency, amount]) => {
+    return amount / (maxAmounts.value[currency] || 1)
+  })
+  const ratio = ratios.length ? Math.max(...ratios) : 0
+  if (ratio <= 0) return 'bg-white dark:bg-dark-800'
   if (ratio >= 0.75) return 'bg-emerald-200/80 dark:bg-emerald-700/50'
   if (ratio >= 0.4) return 'bg-emerald-100/90 dark:bg-emerald-800/40'
   return 'bg-emerald-50 dark:bg-emerald-900/25'
 }
 
 function hasActivity(day: CalendarDay): boolean {
-  return day.amount > 0 || day.count > 0
+  return Object.values(day.amounts).some(amount => amount > 0) || day.count > 0
 }
 
 function dayTitle(day: CalendarDay): string {
-  return `${formatDateKey(day.date)} · $${formatMoney(day.amount)} · ${day.count} ${t('payment.admin.orders')}`
+  const amounts = sortedAmounts(day.amounts).map(([currency, amount]) => formatMoney(currency, amount)).join(' · ')
+  return `${formatDateKey(day.date)} · ${amounts || '-'} · ${day.count} ${t('payment.admin.orders')}`
+}
+
+function sortedAmounts(amounts: CurrencyAmounts): [string, number][] {
+  return Object.entries(amounts).sort(([left], [right]) => left.localeCompare(right))
 }
 </script>

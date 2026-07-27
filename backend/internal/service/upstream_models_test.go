@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -17,6 +18,25 @@ func upstreamModelSyncTestConfig() *config.Config {
 		Security: config.SecurityConfig{
 			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
 		},
+	}
+}
+
+func grokOAuthModelSyncTestAccount(baseURL string) *Account {
+	credentials := map[string]any{
+		"access_token":  "oauth-access-token",
+		"refresh_token": "oauth-refresh-token",
+		"expires_at":    time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+		"sub":           "grok-user-id",
+		"email":         "grok-user@example.com",
+	}
+	if strings.TrimSpace(baseURL) != "" {
+		credentials["base_url"] = baseURL
+	}
+	return &Account{
+		ID:          10,
+		Platform:    PlatformGrok,
+		Type:        AccountTypeOAuth,
+		Credentials: credentials,
 	}
 }
 
@@ -115,6 +135,11 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			body: `[{"id":"z-model"},{"name":"models/a-model"}]`,
 			want: []string{"a-model", "z-model"},
 		},
+		{
+			name: "standard id wins over provider-specific model field",
+			body: `{"data":[{"id":"canonical-id","model":"display-model"}]}`,
+			want: []string{"canonical-id"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -127,6 +152,14 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestExtractGrokUpstreamModelIDs(t *testing.T) {
+	t.Parallel()
+
+	models, err := extractGrokUpstreamModelIDs([]byte(`{"data":[{"id":"display-id","model":"grok-4.5"},{"modelId":"grok-build-0.1"},{"model_id":"grok-composer-2.5-fast"},{"name":"Grok Meta Display Name","_meta":{"model":"grok-meta"}},{"name":"grok-name"},{"id":"grok-safe","_meta":"not-an-object"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, []string{"grok-4.5", "grok-build-0.1", "grok-composer-2.5-fast", "grok-meta", "grok-name", "grok-safe"}, models)
 }
 
 func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
@@ -225,22 +258,6 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.Equal(t, "https://gateway.example.com/antigravity/v1/models", antigravityRootReq.URL.String())
 }
 
-func TestBuildUpstreamModelsRequestRejectsGrokOAuth(t *testing.T) {
-	t.Parallel()
-
-	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
-	_, err := svc.buildUpstreamModelsRequest(context.Background(), &Account{
-		Platform: PlatformGrok,
-		Type:     AccountTypeOAuth,
-	})
-	require.Error(t, err)
-
-	var syncErr *UpstreamModelSyncError
-	require.True(t, errors.As(err, &syncErr))
-	require.Equal(t, UpstreamModelSyncErrorUnsupported, syncErr.Kind)
-	require.Contains(t, syncErr.SafeMessage(), "Unsupported Grok account type")
-}
-
 func TestBuildAntigravityAPIKeyModelsRequestRejectsOfficialCloudCodeBase(t *testing.T) {
 	t.Parallel()
 
@@ -302,34 +319,6 @@ func TestFetchUpstreamSupportedModelsParsesOpenAIResponse(t *testing.T) {
 	require.Equal(t, []string{"gpt-5", "o3"}, models)
 	require.Equal(t, "https://openai.example.com/v1/models", upstream.lastReq.URL.String())
 	require.Equal(t, "Bearer openai-key", upstream.lastReq.Header.Get("Authorization"))
-}
-
-func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {
-	t.Parallel()
-
-	upstream := &httpUpstreamRecorder{resp: &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"grok-4.5"},{"id":"grok-4.5"},{"id":"grok-imagine"}]}`)),
-	}}
-	svc := &AccountTestService{
-		httpUpstream: upstream,
-		cfg:          upstreamModelSyncTestConfig(),
-	}
-
-	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
-		ID:       9,
-		Platform: PlatformGrok,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"api_key":  "xai-key",
-			"base_url": "https://xai.example.com/v1",
-		},
-	})
-	require.NoError(t, err)
-	require.Equal(t, []string{"grok-4.5", "grok-imagine"}, models)
-	require.Equal(t, "https://xai.example.com/v1/models", upstream.lastReq.URL.String())
-	require.Equal(t, "Bearer xai-key", upstream.lastReq.Header.Get("Authorization"))
 }
 
 func TestFetchUpstreamSupportedModelsDoesNotExposeUpstreamBody(t *testing.T) {
