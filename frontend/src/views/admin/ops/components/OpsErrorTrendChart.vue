@@ -46,6 +46,7 @@ const colors = computed(() => ({
 }))
 
 const totalRequestErrors = computed(() => sumNumbers(props.points.map((p) => p.error_count_sla ?? 0)))
+const totalBusinessLimited = computed(() => sumNumbers(props.points.map((p) => p.business_limited_count ?? 0)))
 
 const totalUpstreamErrors = computed(() =>
   sumNumbers(
@@ -57,7 +58,7 @@ const totalDisplayed = computed(() =>
   sumNumbers(props.points.map((p) => (p.error_count_sla ?? 0) + (p.upstream_error_count_excl_429_529 ?? 0) + (p.business_limited_count ?? 0)))
 )
 
-const hasRequestErrors = computed(() => totalRequestErrors.value > 0)
+const hasRequestErrors = computed(() => totalRequestErrors.value + totalBusinessLimited.value > 0)
 const hasUpstreamErrors = computed(() => totalUpstreamErrors.value > 0)
 
 const chartData = computed(() => {

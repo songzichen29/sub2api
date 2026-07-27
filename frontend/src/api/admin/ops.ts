@@ -945,6 +945,72 @@ export interface OpsSystemLogSinkHealth {
   last_error?: string
 }
 
+export interface OpsErrorLogIngestionHealth {
+  queue_depth: number
+  queue_capacity: number
+  queue_bytes: number
+  queue_bytes_capacity: number
+  enqueued_count: number
+  processed_count: number
+  persisted_count: number
+  skipped_count: number
+  dropped_count: number
+  write_failed_count: number
+  sanitized_count: number
+  workers_started: boolean
+  accepting: boolean
+  last_error?: string
+  last_error_at?: string
+}
+
+export interface OpsIngressRejectAggregate {
+  id: number
+  bucket_start: string
+  reject_reason: string
+  route_family: string
+  protocol: string
+  client_ip: string
+  user_id?: number | null
+  api_key_id?: number | null
+  request_count: number
+  first_seen: string
+  last_seen: string
+}
+
+export interface OpsIngressRejectListResponse {
+  items: OpsIngressRejectAggregate[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface OpsIngressRejectHealth {
+  cardinality: number
+  capacity: number
+  pending_batches: number
+  pending_rows: number
+  overflowed_count: number
+  dropped_count: number
+  flushed_request_count: number
+  flush_failure_count: number
+  accepting: boolean
+  last_error?: string
+}
+
+export interface OpsIngressRejectQuery {
+  page?: number
+  page_size?: number
+  time_range?: string
+  start_time?: string
+  end_time?: string
+  reason?: string
+  route_family?: string
+  protocol?: string
+  client_ip?: string
+  user_id?: number
+  api_key_id?: number
+}
+
 export interface OpsErrorLog {
   id: number
   created_at: string
@@ -1366,6 +1432,21 @@ export async function getSystemLogSinkHealth(): Promise<OpsSystemLogSinkHealth> 
   return data
 }
 
+export async function getErrorLogIngestionHealth(): Promise<OpsErrorLogIngestionHealth> {
+  const { data } = await apiClient.get<OpsErrorLogIngestionHealth>('/admin/ops/error-log-ingestion/health')
+  return data
+}
+
+export async function listIngressRejections(params: OpsIngressRejectQuery): Promise<OpsIngressRejectListResponse> {
+  const { data } = await apiClient.get<OpsIngressRejectListResponse>('/admin/ops/ingress-rejections', { params })
+  return data
+}
+
+export async function getIngressRejectHealth(): Promise<OpsIngressRejectHealth> {
+  const { data } = await apiClient.get<OpsIngressRejectHealth>('/admin/ops/ingress-rejections/health')
+  return data
+}
+
 // Advanced settings (DB-backed)
 export async function getAdvancedSettings(): Promise<OpsAdvancedSettings> {
   const { data } = await apiClient.get<OpsAdvancedSettings>('/admin/ops/advanced-settings')
@@ -1443,7 +1524,10 @@ export const opsAPI = {
   updateMetricThresholds,
   listSystemLogs,
   cleanupSystemLogs,
-  getSystemLogSinkHealth
+  getSystemLogSinkHealth,
+  getErrorLogIngestionHealth,
+  listIngressRejections,
+  getIngressRejectHealth
 }
 
 export default opsAPI

@@ -44,10 +44,10 @@ function mountTable(row: Partial<OpsErrorLog>) {
   })
 }
 
-describe('OpsErrorLogTable user/api-key/account columns', () => {
+describe('OpsErrorLogTable user/api-key/account/group columns', () => {
   // 回归:上游错误行(phase=upstream, owner=provider)以前在单一「用户」列里只显示账号、
-  // 丢失用户;现在用户/API Key/账号各占独立列,三者同时可见。
-  it('renders user, api key and account in separate columns for an upstream row', () => {
+  // 丢失用户;现在用户/API Key/账号/分组各占独立列,四者同时可见。
+  it('renders user, api key, account and group in separate columns for an upstream row', () => {
     const wrapper = mountTable({
       user_id: 2,
       user_email: 'alice@test.com',
@@ -55,12 +55,15 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
       api_key_name: 'my-key',
       account_id: 9,
       account_name: 'acct-A',
+      group_id: 11,
+      group_name: 'premium-group',
     })
 
     const text = wrapper.text()
     expect(text).toContain('alice@test.com') // 用户列(上游行也显示用户)
     expect(text).toContain('my-key') // API Key 列
     expect(text).toContain('acct-A') // 账号列
+    expect(text).toContain('premium-group') // 分组列
   })
 
   it('shows the deleted badge for a soft-deleted api key', () => {
@@ -84,8 +87,9 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
 describe('OpsErrorLogTable i18n keys exist in the errorLog namespace', () => {
   const locales: Record<string, any> = { zh: zhLocale, en: enLocale }
   for (const [name, msgs] of Object.entries(locales)) {
-    it(`has apiKey & keyDeletedBadge for ${name}`, () => {
+    it(`has group, apiKey & keyDeletedBadge for ${name}`, () => {
       const errorLog = msgs?.admin?.ops?.errorLog
+      expect(errorLog?.group).toBeTruthy()
       expect(errorLog?.apiKey).toBeTruthy()
       expect(errorLog?.keyDeletedBadge).toBeTruthy()
     })

@@ -2,11 +2,14 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -37,11 +40,31 @@ func (r *ingressRejectSettingRepo) Set(context.Context, string, string) error {
 type ingressRejectOpsRepo struct {
 	service.OpsRepository
 	insertCalls int
+	insertErr   error
 }
 
 func (r *ingressRejectOpsRepo) InsertErrorLog(context.Context, *service.OpsInsertErrorLogInput) (int64, error) {
 	r.insertCalls++
-	return 0, nil
+	return 0, r.insertErr
+}
+
+func TestFlushOpsErrorLogBatch_TracksPersistenceFailure(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	repo := &ingressRejectOpsRepo{insertErr: errors.New("database unavailable")}
+	ops := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	flushOpsErrorLogBatch([]opsErrorLogJob{{
+		ops: ops,
+		entry: &service.OpsInsertErrorLogInput{
+			ErrorPhase: "upstream",
+			ErrorType:  "upstream_error",
+		},
+	}})
+
+	require.Equal(t, int64(1), OpsErrorLogProcessedTotal())
+	require.Zero(t, OpsErrorLogPersistedTotal())
+	require.Equal(t, int64(1), OpsErrorLogWriteFailedTotal())
+	require.Equal(t, "database unavailable", OpsErrorLogIngestionHealthSnapshot().LastError)
 }
 
 func (r *ingressRejectOpsRepo) BatchInsertErrorLogs(context.Context, []*service.OpsInsertErrorLogInput) (int64, error) {
@@ -115,12 +138,43 @@ func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	opsErrorLogEnqueued.Store(0)
 	opsErrorLogDropped.Store(0)
 	opsErrorLogProcessed.Store(0)
+	opsErrorLogPersisted.Store(0)
+	opsErrorLogSkipped.Store(0)
+	opsErrorLogWriteFailed.Store(0)
 	opsErrorLogSanitized.Store(0)
 	opsErrorLogLastDropLogAt.Store(0)
+	opsErrorLogLastWriteErrorAt.Store(0)
+	opsErrorLogLastWriteError = atomic.Value{}
 
 	opsErrorLogShutdownCh = make(chan struct{})
 	opsErrorLogShutdownOnce = sync.Once{}
 	opsErrorLogDrained.Store(false)
+}
+
+func TestGetOpsErrorLogIngestionHealth(t *testing.T) {
+	resetOpsErrorLoggerStateForTest(t)
+	opsErrorLogEnqueued.Store(8)
+	opsErrorLogProcessed.Store(7)
+	opsErrorLogPersisted.Store(5)
+	opsErrorLogSkipped.Store(1)
+	opsErrorLogWriteFailed.Store(1)
+	opsErrorLogDropped.Store(2)
+	opsErrorLogLastWriteError.Store("database unavailable")
+	opsErrorLogLastWriteErrorAt.Store(time.Now().Unix())
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/ops/error-log-ingestion/health", nil)
+	GetOpsErrorLogIngestionHealth(context)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"enqueued_count":8`)
+	require.Contains(t, recorder.Body.String(), `"processed_count":7`)
+	require.Contains(t, recorder.Body.String(), `"persisted_count":5`)
+	require.Contains(t, recorder.Body.String(), `"skipped_count":1`)
+	require.Contains(t, recorder.Body.String(), `"write_failed_count":1`)
+	require.Contains(t, recorder.Body.String(), `"dropped_count":2`)
+	require.Contains(t, recorder.Body.String(), `"last_error":"database unavailable"`)
 }
 
 func TestEnqueueOpsErrorLog_QueueFullDrop(t *testing.T) {

@@ -81,8 +81,8 @@ const globalStubs = {
   },
 }
 
-describe('Ops SLA-scoped error charts', () => {
-  it('错误分布图按 SLA 错误数统计，不把业务限制错误算进请求错误分布', () => {
+describe('Ops error chart visibility', () => {
+  it('错误分布图按全部错误数统计，业务限制错误也保持可见', () => {
     const wrapper = mount(OpsErrorDistributionChart, {
       props: {
         loading: false,
@@ -100,12 +100,12 @@ describe('Ops SLA-scoped error charts', () => {
     const doughnut = wrapper.findComponent({ name: 'Doughnut' })
     expect(doughnut.exists()).toBe(true)
     expect(doughnut.props('data')).toMatchObject({
-      labels: ['admin.ops.client'],
-      datasets: [{ data: [2] }],
+      labels: ['admin.ops.upstream', 'admin.ops.client'],
+      datasets: [{ data: [3, 7] }],
     })
   })
 
-  it('错误分布图在只有业务限制错误时显示为空态', () => {
+  it('错误分布图在只有业务限制错误时仍显示图表和明细入口', () => {
     const wrapper = mount(OpsErrorDistributionChart, {
       props: {
         loading: false,
@@ -117,11 +117,11 @@ describe('Ops SLA-scoped error charts', () => {
       global: globalStubs,
     })
 
-    expect(wrapper.findComponent({ name: 'Doughnut' }).exists()).toBe(false)
-    expect(wrapper.find('.empty-state-stub').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'Doughnut' }).exists()).toBe(true)
+    expect(wrapper.find('button').attributes('disabled')).toBeUndefined()
   })
 
-  it('错误趋势图的请求错误详情按钮只按 SLA 错误启用', () => {
+  it('错误趋势图在只有业务限制错误时也启用请求错误详情按钮', () => {
     const wrapper = mount(OpsErrorTrendChart, {
       props: {
         loading: false,
@@ -142,6 +142,6 @@ describe('Ops SLA-scoped error charts', () => {
     })
 
     const requestErrorsButton = wrapper.findAll('button')[0]
-    expect(requestErrorsButton.attributes('disabled')).toBeDefined()
+    expect(requestErrorsButton.attributes('disabled')).toBeUndefined()
   })
 })

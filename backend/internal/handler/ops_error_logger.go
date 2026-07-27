@@ -20,8 +20,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/gin-gonic/gin"
 )
 
@@ -95,18 +97,23 @@ var (
 	opsErrorLogOnce  sync.Once
 	opsErrorLogQueue chan opsErrorLogJob
 
-	opsErrorLogStopOnce   sync.Once
-	opsErrorLogWorkersWg  sync.WaitGroup
-	opsErrorLogMu         sync.RWMutex
-	opsErrorLogStopping   bool
-	opsErrorLogQueueLen   atomic.Int64
-	opsErrorLogQueueBytes atomic.Int64
-	opsErrorLogEnqueued   atomic.Int64
-	opsErrorLogDropped    atomic.Int64
-	opsErrorLogProcessed  atomic.Int64
-	opsErrorLogSanitized  atomic.Int64
+	opsErrorLogStopOnce    sync.Once
+	opsErrorLogWorkersWg   sync.WaitGroup
+	opsErrorLogMu          sync.RWMutex
+	opsErrorLogStopping    bool
+	opsErrorLogQueueLen    atomic.Int64
+	opsErrorLogQueueBytes  atomic.Int64
+	opsErrorLogEnqueued    atomic.Int64
+	opsErrorLogDropped     atomic.Int64
+	opsErrorLogProcessed   atomic.Int64
+	opsErrorLogPersisted   atomic.Int64
+	opsErrorLogSkipped     atomic.Int64
+	opsErrorLogWriteFailed atomic.Int64
+	opsErrorLogSanitized   atomic.Int64
 
-	opsErrorLogLastDropLogAt atomic.Int64
+	opsErrorLogLastDropLogAt    atomic.Int64
+	opsErrorLogLastWriteErrorAt atomic.Int64
+	opsErrorLogLastWriteError   atomic.Value
 
 	opsErrorLogShutdownCh   = make(chan struct{})
 	opsErrorLogShutdownOnce sync.Once
@@ -196,16 +203,25 @@ func flushOpsErrorLogBatch(batch []opsErrorLogJob) {
 	if processed == 0 {
 		return
 	}
+	opsErrorLogProcessed.Add(processed)
 
 	for opsSvc, entries := range grouped {
 		if opsSvc == nil || len(entries) == 0 {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), opsErrorLogTimeout)
-		_ = opsSvc.RecordErrorBatch(ctx, entries)
+		result, err := opsSvc.RecordErrorBatchWithResult(ctx, entries)
 		cancel()
+		opsErrorLogPersisted.Add(result.Persisted)
+		opsErrorLogSkipped.Add(result.Skipped)
+		opsErrorLogWriteFailed.Add(result.Failed)
+		if err != nil {
+			message := truncateString(logredact.RedactText(err.Error()), 1024)
+			opsErrorLogLastWriteError.Store(message)
+			opsErrorLogLastWriteErrorAt.Store(time.Now().Unix())
+			log.Printf("[OpsErrorLogger] batch persistence failed: %s", message)
+		}
 	}
-	opsErrorLogProcessed.Add(processed)
 }
 
 func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLogInput) {
@@ -345,8 +361,87 @@ func OpsErrorLogProcessedTotal() int64 {
 	return opsErrorLogProcessed.Load()
 }
 
+func OpsErrorLogPersistedTotal() int64 {
+	return opsErrorLogPersisted.Load()
+}
+
+func OpsErrorLogSkippedTotal() int64 {
+	return opsErrorLogSkipped.Load()
+}
+
+func OpsErrorLogWriteFailedTotal() int64 {
+	return opsErrorLogWriteFailed.Load()
+}
+
 func OpsErrorLogSanitizedTotal() int64 {
 	return opsErrorLogSanitized.Load()
+}
+
+type OpsErrorLogIngestionHealth struct {
+	QueueDepth       int64      `json:"queue_depth"`
+	QueueCapacity    int        `json:"queue_capacity"`
+	QueueBytes       int64      `json:"queue_bytes"`
+	QueueBytesCap    int64      `json:"queue_bytes_capacity"`
+	EnqueuedCount    int64      `json:"enqueued_count"`
+	ProcessedCount   int64      `json:"processed_count"`
+	PersistedCount   int64      `json:"persisted_count"`
+	SkippedCount     int64      `json:"skipped_count"`
+	DroppedCount     int64      `json:"dropped_count"`
+	WriteFailedCount int64      `json:"write_failed_count"`
+	SanitizedCount   int64      `json:"sanitized_count"`
+	WorkersStarted   bool       `json:"workers_started"`
+	Accepting        bool       `json:"accepting"`
+	LastError        string     `json:"last_error,omitempty"`
+	LastErrorAt      *time.Time `json:"last_error_at,omitempty"`
+}
+
+func OpsErrorLogIngestionHealthSnapshot() OpsErrorLogIngestionHealth {
+	opsErrorLogMu.RLock()
+	workersStarted := opsErrorLogQueue != nil
+	accepting := !opsErrorLogStopping
+	queueCapacity := 0
+	if opsErrorLogQueue != nil {
+		queueCapacity = cap(opsErrorLogQueue)
+	}
+	opsErrorLogMu.RUnlock()
+	select {
+	case <-opsErrorLogShutdownCh:
+		accepting = false
+	default:
+	}
+	if queueCapacity == 0 {
+		_, queueCapacity = opsErrorLogConfig()
+	}
+
+	health := OpsErrorLogIngestionHealth{
+		QueueDepth:       OpsErrorLogQueueLength(),
+		QueueCapacity:    queueCapacity,
+		QueueBytes:       OpsErrorLogQueueBytes(),
+		QueueBytesCap:    OpsErrorLogQueueBytesCapacity(),
+		EnqueuedCount:    OpsErrorLogEnqueuedTotal(),
+		ProcessedCount:   OpsErrorLogProcessedTotal(),
+		PersistedCount:   OpsErrorLogPersistedTotal(),
+		SkippedCount:     OpsErrorLogSkippedTotal(),
+		DroppedCount:     OpsErrorLogDroppedTotal(),
+		WriteFailedCount: OpsErrorLogWriteFailedTotal(),
+		SanitizedCount:   OpsErrorLogSanitizedTotal(),
+		WorkersStarted:   workersStarted,
+		Accepting:        accepting,
+	}
+	if value := opsErrorLogLastWriteError.Load(); value != nil {
+		health.LastError, _ = value.(string)
+	}
+	if unix := opsErrorLogLastWriteErrorAt.Load(); unix > 0 {
+		at := time.Unix(unix, 0).UTC()
+		health.LastErrorAt = &at
+	}
+	return health
+}
+
+// GetOpsErrorLogIngestionHealth exposes process-local async queue health to
+// authenticated administrators. It intentionally does not start the workers.
+func GetOpsErrorLogIngestionHealth(c *gin.Context) {
+	response.Success(c, OpsErrorLogIngestionHealthSnapshot())
 }
 
 func maybeLogOpsErrorLogDrop() {
@@ -367,7 +462,7 @@ func maybeLogOpsErrorLogDrop() {
 	queueCap := OpsErrorLogQueueCapacity()
 
 	log.Printf(
-		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d queued_bytes=%d bytes_cap=%d enqueued_total=%d dropped_total=%d processed_total=%d sanitized_total=%d)",
+		"[OpsErrorLogger] queue is full; dropping logs (queued=%d cap=%d queued_bytes=%d bytes_cap=%d enqueued_total=%d dropped_total=%d processed_total=%d persisted_total=%d write_failed_total=%d sanitized_total=%d)",
 		queued,
 		queueCap,
 		queuedBytes,
@@ -375,6 +470,8 @@ func maybeLogOpsErrorLogDrop() {
 		opsErrorLogEnqueued.Load(),
 		opsErrorLogDropped.Load(),
 		opsErrorLogProcessed.Load(),
+		opsErrorLogPersisted.Load(),
+		opsErrorLogWriteFailed.Load(),
 		opsErrorLogSanitized.Load(),
 	)
 }

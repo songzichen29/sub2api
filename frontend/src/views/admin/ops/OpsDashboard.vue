@@ -84,6 +84,14 @@
         />
       </div>
 
+      <OpsErrorIngestionPanel
+        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
+        :time-range="timeRange"
+        :custom-start-time="customStartTime"
+        :custom-end-time="customEndTime"
+        :refresh-token="dashboardRefreshToken"
+      />
+
       <!-- Row: OpenAI Token Stats -->
       <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
@@ -164,6 +172,7 @@ import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
 import OpsErrorDetailModal from './components/OpsErrorDetailModal.vue'
 import OpsErrorDistributionChart from './components/OpsErrorDistributionChart.vue'
+import OpsErrorIngestionPanel from './components/OpsErrorIngestionPanel.vue'
 import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'
 import OpsErrorTrendChart from './components/OpsErrorTrendChart.vue'
 import OpsLatencyChart from './components/OpsLatencyChart.vue'

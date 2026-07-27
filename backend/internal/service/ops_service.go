@@ -412,30 +412,56 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 	return nil
 }
 
+type OpsRecordErrorBatchResult struct {
+	Persisted int64
+	Skipped   int64
+	Failed    int64
+}
+
 func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertErrorLogInput) error {
+	_, err := s.RecordErrorBatchWithResult(ctx, entries)
+	return err
+}
+
+// RecordErrorBatchWithResult records a batch and reports how many entries were
+// persisted, skipped by runtime settings, or failed before/during persistence.
+// The detailed result is used by the async ingestion health endpoint so a
+// dequeued item is not incorrectly reported as successfully stored.
+func (s *OpsService) RecordErrorBatchWithResult(ctx context.Context, entries []*OpsInsertErrorLogInput) (OpsRecordErrorBatchResult, error) {
+	var result OpsRecordErrorBatchResult
 	if len(entries) == 0 {
-		return nil
+		return result, nil
 	}
 	prepared := make([]*OpsInsertErrorLogInput, 0, len(entries))
+	var firstPrepareErr error
 	for _, entry := range entries {
 		item, ok, err := s.prepareErrorLogInput(ctx, entry)
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch prepare failed: %v", err)
+			result.Failed++
+			if firstPrepareErr == nil {
+				firstPrepareErr = err
+			}
 			continue
 		}
 		if ok {
 			prepared = append(prepared, item)
+		} else {
+			result.Skipped++
 		}
 	}
 	if len(prepared) == 0 {
-		return nil
+		return result, firstPrepareErr
 	}
 	if len(prepared) == 1 {
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
+			result.Failed++
+			return result, err
 		}
-		return err
+		result.Persisted++
+		return result, firstPrepareErr
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
@@ -444,14 +470,21 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 		for _, entry := range prepared {
 			if _, insertErr := s.opsRepo.InsertErrorLog(ctx, entry); insertErr != nil {
 				log.Printf("[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
+				result.Failed++
 				if firstErr == nil {
 					firstErr = insertErr
 				}
+			} else {
+				result.Persisted++
 			}
 		}
-		return firstErr
+		if firstErr != nil {
+			return result, firstErr
+		}
+		return result, firstPrepareErr
 	}
-	return nil
+	result.Persisted += int64(len(prepared))
+	return result, firstPrepareErr
 }
 
 func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput) (*OpsInsertErrorLogInput, bool, error) {
