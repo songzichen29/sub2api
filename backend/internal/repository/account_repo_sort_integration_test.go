@@ -62,7 +62,7 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByUpstreamBillingRateWithMiss
 	} {
 		accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 			Page: 1, PageSize: 10, SortBy: "upstream_billing_rate", SortOrder: tc.order,
-		}, "", "", "", "", 0, "")
+		}, "", "", "", "", 0, "", nil)
 		s.Require().NoError(err)
 		s.Require().Len(accounts, 4)
 		for i, name := range tc.want {
@@ -130,7 +130,7 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByCurrentUpstreamBillingRateD
 	} {
 		accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 			Page: 1, PageSize: 10, SortBy: "upstream_billing_rate", SortOrder: tc.order,
-		}, "", "", "", "", 0, "")
+		}, "", "", "", "", 0, "", nil)
 		s.Require().NoError(err)
 		s.Require().Len(accounts, 2)
 		for i, name := range tc.want {
