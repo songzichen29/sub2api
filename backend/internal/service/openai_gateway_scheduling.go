@@ -563,22 +563,24 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
 	}
 
-	// 1. 尝试粘性会话命中
-	// Try sticky session hit
-	if account := s.tryStickySessionHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability); account != nil {
-		return account, nil
-	}
-
-	// 2. 获取可调度的 OpenAI 账号
+	// 1. 获取可调度的 OpenAI 账号。即使存在粘性绑定，也必须读取当前
+	// 候选池，才能在管理员提升其他账号优先级后及时切换。
 	// Get schedulable OpenAI accounts
 	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 
-	// 3. 按优先级 + LRU 选择最佳账号
+	// 2. 按优先级 + LRU 选择当前最佳账号。
 	// Select by priority + LRU
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, platform, accounts, requestedModel, excludedIDs, requireCompact, requiredCapability, preferLowUpstreamRate)
+
+	// 3. 粘性只在当前账号仍处于最高可用优先级层时生效。数值更小的
+	// 优先级账号出现后，应覆盖旧绑定；同优先级仍保持会话连续性。
+	sticky := s.tryStickySessionHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability)
+	if sticky != nil && (selected == nil || selected.Priority >= sticky.Priority) {
+		return sticky, nil
+	}
 
 	if selected == nil {
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked, "")
@@ -662,6 +664,46 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	// Refresh session TTL and return account
 	_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
 	return account
+}
+
+func (s *OpenAIGatewayService) hasAvailableHigherPriorityOpenAIAccount(
+	ctx context.Context,
+	groupID *int64,
+	platform string,
+	accounts []Account,
+	sticky *Account,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requireCompact bool,
+	requiredCapability OpenAIEndpointCapability,
+) bool {
+	if sticky == nil {
+		return false
+	}
+	platform = normalizeOpenAICompatiblePlatform(platform)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	parentLookup := s.parentAccountLookup(ctx)
+	candidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		candidate := &accounts[i]
+		if candidate.ID == sticky.ID || candidate.Priority >= sticky.Priority {
+			continue
+		}
+		if _, excluded := excludedIDs[candidate.ID]; excluded {
+			continue
+		}
+		if !isOpenAICompatibleAccountEligibleForRequest(ctx, candidate, platform, requestedModel, requireCompact, requiredCapability) {
+			continue
+		}
+		if !parentHealthyForShadow(candidate, parentLookup) || s.isOpenAIAccountRequestRuntimeBlocked(candidate, requestedModel) {
+			continue
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, candidate, requestedModel, requireCompact) {
+			continue
+		}
+		candidates = append(candidates, candidate)
+	}
+	return hasAvailableHigherPriorityAccount(ctx, s.concurrencyService, sticky, candidates)
 }
 
 // selectBestAccount 从候选账号中选择最佳账号（优先级 + LRU）。
@@ -854,24 +896,44 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
-						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
-						if err == nil && result != nil && result.Acquired {
-							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
-							if selectErr != nil {
-								return nil, selectErr
+						if s.hasAvailableHigherPriorityOpenAIAccount(
+							ctx,
+							groupID,
+							platform,
+							accounts,
+							account,
+							requestedModel,
+							excludedIDs,
+							requireCompact,
+							requiredCapability,
+						) {
+							slog.Debug("openai_sticky_priority_preempted",
+								"account_id", account.ID,
+								"priority", account.Priority,
+								"session", shortSessionHash(sessionHash),
+							)
+							// Continue to Layer 2. It will select and bind an available
+							// account from the higher-priority tier.
+						} else {
+							result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+							if err == nil && result != nil && result.Acquired {
+								selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+								if selectErr != nil {
+									return nil, selectErr
+								}
+								_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
+								return selection, nil
 							}
-							_ = s.refreshStickySessionTTL(ctx, groupID, sessionHash, openaiStickySessionTTL)
-							return selection, nil
-						}
 
-						waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
-						if waitingCount < cfg.StickySessionMaxWaiting {
-							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-								AccountID:      accountID,
-								MaxConcurrency: account.Concurrency,
-								Timeout:        cfg.StickySessionWaitTimeout,
-								MaxWaiting:     cfg.StickySessionMaxWaiting,
-							})
+							waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, accountID)
+							if waitingCount < cfg.StickySessionMaxWaiting {
+								return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+									AccountID:      accountID,
+									MaxConcurrency: account.Concurrency,
+									Timeout:        cfg.StickySessionWaitTimeout,
+									MaxWaiting:     cfg.StickySessionMaxWaiting,
+								})
+							}
 						}
 					}
 				}

@@ -2494,7 +2494,12 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		}
 	}
 	if rows > 0 && contextTx == nil {
-		shouldSync := false
+		// Priority affects every scheduling decision, including whether an
+		// existing sticky session may keep its current account. Publish it to
+		// the per-account snapshot immediately instead of waiting for outbox
+		// polling, otherwise a bulk priority edit can remain invisible on the
+		// hot path.
+		shouldSync := updates.Priority != nil
 		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
 			shouldSync = true
 		}

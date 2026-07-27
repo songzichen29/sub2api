@@ -1246,6 +1246,8 @@ func (s *AccountRepoSuite) TestListCRSAccountIDs_ExcludesSparkShadow() {
 func (s *AccountRepoSuite) TestBulkUpdate() {
 	a1 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "bulk1", Priority: 1})
 	a2 := mustCreateAccount(s.T(), s.client, &service.Account{Name: "bulk2", Priority: 1})
+	cacheRecorder := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cacheRecorder
 
 	newPriority := 99
 	affected, err := s.repo.BulkUpdate(s.ctx, []int64{a1.ID, a2.ID}, service.AccountBulkUpdate{
@@ -1258,6 +1260,9 @@ func (s *AccountRepoSuite) TestBulkUpdate() {
 	got2, _ := s.repo.GetByID(s.ctx, a2.ID)
 	s.Require().Equal(99, got1.Priority)
 	s.Require().Equal(99, got2.Priority)
+	s.Require().Len(cacheRecorder.setAccounts, 2)
+	s.Require().Equal(99, cacheRecorder.accounts[a1.ID].Priority)
+	s.Require().Equal(99, cacheRecorder.accounts[a2.ID].Priority)
 }
 
 func (s *AccountRepoSuite) TestBulkUpdate_MergeCredentials() {
