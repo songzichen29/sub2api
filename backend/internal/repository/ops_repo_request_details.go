@@ -117,7 +117,7 @@ WITH combined AS (
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     o.model AS model,
     o.duration_ms AS duration_ms,
-    o.status_code AS status_code,
+    COALESCE(NULLIF(o.upstream_status_code, 0), o.status_code, 0) AS status_code,
     o.id AS error_id,
     o.error_phase AS phase,
     o.severity AS severity,
@@ -132,7 +132,7 @@ WITH combined AS (
   LEFT JOIN %s g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
   WHERE o.created_at >= ? AND o.created_at < ?
-    AND COALESCE(o.status_code, 0) >= 400
+    AND COALESCE(NULLIF(o.upstream_status_code, 0), o.status_code, 0) >= 400
 )
 `, quotedGroupsTable, quotedGroupsTable)
 

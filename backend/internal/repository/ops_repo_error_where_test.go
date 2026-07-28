@@ -46,3 +46,17 @@ func TestBuildOpsErrorLogsWhere_UserQueryUsesExistsSubquery(t *testing.T) {
 		t.Fatalf("where should include EXISTS user email condition: %s", where)
 	}
 }
+
+func TestBuildOpsErrorLogsWhere_UsesEffectiveUpstreamStatus(t *testing.T) {
+	where, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{})
+
+	const effectiveStatus = "COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0)"
+	if !strings.Contains(where, effectiveStatus+" >= 400") {
+		t.Fatalf("where should use upstream status for streaming errors: %s", where)
+	}
+
+	orderBy := opsErrorLogsOrderBy(&service.OpsErrorLogFilter{SortBy: "status_code"})
+	if !strings.Contains(orderBy, effectiveStatus) {
+		t.Fatalf("status sort should use effective upstream status: %s", orderBy)
+	}
+}

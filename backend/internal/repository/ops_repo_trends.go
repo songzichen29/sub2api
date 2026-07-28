@@ -53,7 +53,7 @@ error_buckets AS (
          COUNT(*) AS error_count
   FROM ops_error_logs
   ` + errorWhere + `
-    AND COALESCE(status_code, 0) >= 400
+    AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400
   GROUP BY 1
 ),
 switch_buckets AS (
@@ -205,7 +205,7 @@ error_totals AS (
          COUNT(*) AS error_count
   FROM ops_error_logs
   WHERE created_at >= ? AND created_at < ?
-    AND COALESCE(status_code, 0) >= 400
+    AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400
     AND is_count_tokens = FALSE  -- 排除 count_tokens 请求的错误
   GROUP BY 1
 ),
@@ -283,7 +283,7 @@ error_totals AS (
   WHERE created_at >= ? AND created_at < ?
     AND platform = ?
     AND group_id IS NOT NULL
-    AND COALESCE(status_code, 0) >= 400
+    AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400
     AND is_count_tokens = FALSE  -- 排除 count_tokens 请求的错误
   GROUP BY 1
 ),
@@ -463,12 +463,12 @@ func (r *opsRepository) GetErrorTrend(ctx context.Context, filter *service.OpsDa
 	q := `
 SELECT
   ` + bucketExpr + ` AS bucket,
-  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 THEN 1 ELSE 0 END), 0) AS error_total,
-  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited,
-  COALESCE(SUM(CASE WHEN COALESCE(status_code, 0) >= 400 AND NOT is_business_limited THEN 1 ELSE 0 END), 0) AS error_sla,
-  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529) THEN 1 ELSE 0 END), 0) AS upstream_excl,
-  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
-  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
+  COALESCE(SUM(CASE WHEN COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400 THEN 1 ELSE 0 END), 0) AS error_total,
+  COALESCE(SUM(CASE WHEN COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400 AND is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited,
+  COALESCE(SUM(CASE WHEN COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400 AND NOT is_business_limited THEN 1 ELSE 0 END), 0) AS error_sla,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) NOT IN (429, 529) THEN 1 ELSE 0 END), 0) AS upstream_excl,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) = 429 THEN 1 ELSE 0 END), 0) AS upstream_429,
+  COALESCE(SUM(CASE WHEN error_owner = 'provider' AND NOT is_business_limited AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) = 529 THEN 1 ELSE 0 END), 0) AS upstream_529
 FROM ops_error_logs
 ` + where + `
 GROUP BY 1
@@ -574,13 +574,13 @@ func (r *opsRepository) GetErrorDistribution(ctx context.Context, filter *servic
 
 	q := `
 SELECT
-  COALESCE(upstream_status_code, status_code, 0) AS status_code,
+  COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) AS status_code,
   COUNT(*) AS total,
   COALESCE(SUM(CASE WHEN NOT is_business_limited THEN 1 ELSE 0 END), 0) AS sla,
   COALESCE(SUM(CASE WHEN is_business_limited THEN 1 ELSE 0 END), 0) AS business_limited
 FROM ops_error_logs
 ` + where + `
-  AND COALESCE(status_code, 0) >= 400
+  AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400
 GROUP BY 1
 ORDER BY total DESC
 LIMIT 20`

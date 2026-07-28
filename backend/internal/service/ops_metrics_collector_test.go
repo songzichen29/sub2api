@@ -34,7 +34,7 @@ func TestOpsMetricsCollectorQueryErrorCountsExcludesCountTokens(t *testing.T) {
 	start := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	end := start.Add(time.Hour)
 
-	mock.ExpectQuery(`(?s)FROM ops_error_logs\s+WHERE created_at >= \? AND created_at < \?\s+AND is_count_tokens = FALSE`).
+	mock.ExpectQuery(`(?s)COALESCE\(NULLIF\(upstream_status_code, 0\), status_code, 0\) >= 400.*FROM ops_error_logs\s+WHERE created_at >= \? AND created_at < \?\s+AND is_count_tokens = FALSE`).
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"error_total",

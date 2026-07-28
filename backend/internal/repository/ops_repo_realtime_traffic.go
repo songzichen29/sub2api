@@ -54,7 +54,7 @@ error_buckets AS (
     COALESCE(COUNT(*), 0) AS error_count
   FROM ops_error_logs
   ` + errorWhere + `
-    AND COALESCE(status_code, 0) >= 400
+    AND COALESCE(NULLIF(upstream_status_code, 0), status_code, 0) >= 400
   GROUP BY 1
 ),
 combined AS (

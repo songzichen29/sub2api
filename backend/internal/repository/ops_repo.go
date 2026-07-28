@@ -191,7 +191,7 @@ func opsErrorLogsOrderBy(filter *service.OpsErrorLogFilter) string {
 	case "model":
 		column = "COALESCE(NULLIF(TRIM(e.requested_model), ''), e.model)"
 	case "status_code":
-		column = "COALESCE(e.upstream_status_code, e.status_code, 0)"
+		column = "COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0)"
 	default:
 		column = "e.created_at"
 	}
@@ -242,7 +242,7 @@ SELECT
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
   e.severity,
-  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0),
   COALESCE(e.platform, ''),
   COALESCE(e.model, ''),
   COALESCE(e.resolved, false),
@@ -424,7 +424,7 @@ SELECT
   COALESCE(e.error_owner, ''),
   COALESCE(e.error_source, ''),
   e.severity,
-  COALESCE(e.upstream_status_code, e.status_code, 0),
+  COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0),
   COALESCE(e.platform, ''),
   COALESCE(e.model, ''),
   COALESCE(e.resolved, false),
@@ -934,12 +934,13 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 	resolvedFilter := filter.Resolved
 	// Keep list endpoints scoped to client errors unless explicitly opting into
 	// recovered upstream rows (Phase=="upstream" + IncludeRecoveredUpstream).
-	// cyber_policy is exempt from the status >= 400 guard: streaming cyber hits arrive with
+	// The effective status prefers the concrete upstream status when a stream has already
+	// sent its HTTP 200 headers. cyber_policy is exempt from the status >= 400 guard:
 	// status 200 (the SSE stream opened successfully before upstream returned response.failed),
 	// but they are always client-visible blocked requests that belong in admin + user error
 	// lists.  Without the exemption the entire streaming-path cyber sink would be invisible.
 	if phaseFilter != "upstream" || !filter.IncludeRecoveredUpstream {
-		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
+		clauses = append(clauses, "(COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
 	}
 
 	if filter.StartTime != nil && !filter.StartTime.IsZero() {
@@ -1001,7 +1002,7 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 			ph = append(ph, "?")
 			args = append(args, code)
 		}
-		clauses = append(clauses, "COALESCE(e.upstream_status_code, e.status_code, 0) IN ("+strings.Join(ph, ",")+")")
+		clauses = append(clauses, "COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0) IN ("+strings.Join(ph, ",")+")")
 	} else if filter.StatusCodesOther {
 		// "Other" means: status codes not in the common list.
 		known := []int{400, 401, 403, 404, 409, 422, 429, 500, 502, 503, 504, 529}
@@ -1010,7 +1011,7 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 			ph = append(ph, "?")
 			args = append(args, code)
 		}
-		clauses = append(clauses, "NOT (COALESCE(e.upstream_status_code, e.status_code, 0) IN ("+strings.Join(ph, ",")+"))")
+		clauses = append(clauses, "NOT (COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0) IN ("+strings.Join(ph, ",")+"))")
 	}
 	// Exact correlation keys (preferred for request↔upstream linkage).
 	if rid := strings.TrimSpace(filter.RequestID); rid != "" {
