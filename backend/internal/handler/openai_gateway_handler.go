@@ -1368,12 +1368,32 @@ func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	reqLog *zap.Logger,
 ) (func(), bool) {
 	ctx := c.Request.Context()
+	fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireUserSlot(ctx, userID, userConcurrency)
+	if err != nil {
+		reqLog.Warn("openai.user_slot_quick_acquire_failed", zap.Error(err))
+		h.handleConcurrencyError(c, err, "user", *streamStarted)
+		return nil, false
+	}
+	if fastAcquired {
+		fastReleaseFunc = h.concurrencyHelper.withAPIKeySlotFromGin(c, fastReleaseFunc)
+		return wrapReleaseOnDone(ctx, fastReleaseFunc), true
+	}
+
+	waitStartedAt := time.Now()
+	reqLog.Info("openai.user_slot_wait_started",
+		zap.Int64("user_id", userID),
+		zap.Int("max_concurrency", userConcurrency),
+	)
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, userID, userConcurrency, reqStream, streamStarted)
 	if err != nil {
 		reqLog.Warn("openai.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", *streamStarted)
 		return nil, false
 	}
+	reqLog.Info("openai.user_slot_wait_completed",
+		zap.Int64("user_id", userID),
+		zap.Int64("wait_latency_ms", time.Since(waitStartedAt).Milliseconds()),
+	)
 	return wrapReleaseOnDone(ctx, userReleaseFunc), true
 }
 
