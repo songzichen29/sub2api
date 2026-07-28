@@ -42,3 +42,27 @@ func TestOpsErrorLogInsertDoesNotPersistRequestReplayFields(t *testing.T) {
 		}
 	}
 }
+
+func TestOpsErrorLogInsertSQLArityMatchesArguments(t *testing.T) {
+	const columnsPrefix = "INSERT INTO ops_error_logs ("
+	const valuesMarker = ") VALUES ("
+
+	columnsStart := strings.Index(insertOpsErrorLogSQL, columnsPrefix)
+	valuesStart := strings.Index(insertOpsErrorLogSQL, valuesMarker)
+	if columnsStart < 0 || valuesStart < 0 || valuesStart <= columnsStart+len(columnsPrefix) {
+		t.Fatalf("unexpected ops error log insert SQL shape")
+	}
+
+	columnCount := 0
+	for _, column := range strings.Split(insertOpsErrorLogSQL[columnsStart+len(columnsPrefix):valuesStart], ",") {
+		if strings.TrimSpace(column) != "" {
+			columnCount++
+		}
+	}
+	placeholderCount := strings.Count(insertOpsErrorLogSQL[valuesStart+len(valuesMarker):], "?")
+	argumentCount := len(opsInsertErrorLogArgs(&service.OpsInsertErrorLogInput{}))
+
+	if columnCount != placeholderCount || placeholderCount != argumentCount {
+		t.Fatalf("ops error log insert arity mismatch: columns=%d placeholders=%d arguments=%d", columnCount, placeholderCount, argumentCount)
+	}
+}
