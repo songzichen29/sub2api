@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const (
@@ -260,6 +261,16 @@ func (s *OpenAIGatewayService) newOpenAIFirstOutputTimeoutError(
 		"OpenAI first output timeout: account=%d model=%s effort=%s phase=%s elapsed=%s limit=%s",
 		account.ID, originalModel, reasoningEffort, phase, elapsed, timeout,
 	)
+	if c != nil && c.Request != nil {
+		logger.FromContext(c.Request.Context()).Warn("openai.responses.first_output_timeout",
+			zap.Int64("account_id", account.ID),
+			zap.String("model", originalModel),
+			zap.String("reasoning_effort", reasoningEffort),
+			zap.String("phase", phase),
+			zap.Int64("elapsed_ms", elapsed.Milliseconds()),
+			zap.Int64("timeout_ms", timeout.Milliseconds()),
+		)
+	}
 	requestID := strings.TrimSpace(responseHeaders.Get("x-request-id"))
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,

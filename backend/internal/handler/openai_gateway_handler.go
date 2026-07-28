@@ -340,6 +340,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	bindRequestLogger(c, logger.FromContext(c.Request.Context()).With(
+		zap.Int64("user_id", subject.UserID),
+		zap.Int64("api_key_id", apiKey.ID),
+		zap.Any("group_id", apiKey.GroupID),
+		zap.String("model", reqModel),
+		zap.Bool("stream", reqStream),
+	))
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String())
 	if previousResponseID != "" {
 		previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
@@ -533,7 +540,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		)
 		account := selection.Account
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
-		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
+		reqLog.Info("openai.responses.account_selected",
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.String("platform", account.Platform),
+			zap.Int("account_concurrency", account.Concurrency),
+			zap.String("schedule_layer", scheduleDecision.Layer),
+			zap.Bool("sticky_previous_hit", scheduleDecision.StickyPreviousHit),
+			zap.Bool("sticky_session_hit", scheduleDecision.StickySessionHit),
+		)
 		setOpsSelectedAccount(c, account.ID, account.Platform, account.Name)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
@@ -543,6 +558,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		reqLog.Info("openai.responses.upstream_request_started",
+			zap.Int64("account_id", account.ID),
+			zap.String("platform", account.Platform),
+			zap.Int64("routing_latency_ms", time.Since(routingStart).Milliseconds()),
+		)
 		forwardStart := time.Now()
 		// 用扣除 compact 心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
@@ -1420,6 +1440,13 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		}
 	}
 	defer releaseWait()
+	waitStartedAt := time.Now()
+	reqLog.Info("openai.account_slot_wait_started",
+		zap.Int64("account_id", account.ID),
+		zap.Int("max_concurrency", selection.WaitPlan.MaxConcurrency),
+		zap.Int("max_waiting", selection.WaitPlan.MaxWaiting),
+		zap.Duration("wait_timeout", selection.WaitPlan.Timeout),
+	)
 
 	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 		c,
@@ -1437,6 +1464,10 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 
 	// Slot acquired: no longer waiting in queue.
 	releaseWait()
+	reqLog.Info("openai.account_slot_wait_completed",
+		zap.Int64("account_id", account.ID),
+		zap.Int64("wait_latency_ms", time.Since(waitStartedAt).Milliseconds()),
+	)
 	if err := h.gatewayService.BindStickySession(ctx, groupID, sessionHash, account.ID); err != nil {
 		reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}

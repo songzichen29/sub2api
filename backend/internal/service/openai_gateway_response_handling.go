@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 // openaiStreamingResult streaming response result
@@ -238,6 +239,17 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	eventInProgress := false
 	eventStartsClientOutput := false
 	eventShouldFlush := false
+	logSlowFirstOutput := func(ms int) {
+		if ms < 10000 {
+			return
+		}
+		logger.FromContext(c.Request.Context()).Warn("openai.responses.stream_slow_first_output",
+			zap.Int64("account_id", account.ID),
+			zap.String("model", originalModel),
+			zap.Int("first_token_ms", ms),
+			zap.String("upstream_request_id", upstreamRequestID),
+		)
+	}
 	handlePendingWriteError := func(err error) {
 		if firstOutputStage != nil && firstTokenMs == nil && !firstOutputStage.closed {
 			message := "OpenAI first-output staging failed"
@@ -277,6 +289,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 			stopFirstOutputTimer()
+			logSlowFirstOutput(ms)
 		}
 		eventStartsClientOutput = false
 		eventShouldFlush = false
@@ -572,6 +585,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
 				stopFirstOutputTimer()
+				logSlowFirstOutput(ms)
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 			return
@@ -712,7 +726,24 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
 			}
-			logger.LegacyPrintf("service.openai_gateway", "Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			idleFor := time.Since(lastRead)
+			logger.FromContext(c.Request.Context()).Warn("openai.responses.stream_data_interval_timeout",
+				zap.Int64("account_id", account.ID),
+				zap.String("model", originalModel),
+				zap.Duration("configured_timeout", streamInterval),
+				zap.Int64("idle_ms", idleFor.Milliseconds()),
+				zap.String("upstream_request_id", upstreamRequestID),
+			)
+			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+				Platform:           account.Platform,
+				AccountID:          account.ID,
+				AccountName:        account.Name,
+				UpstreamStatusCode: http.StatusGatewayTimeout,
+				UpstreamRequestID:  upstreamRequestID,
+				Kind:               "stream_timeout",
+				Message:            "OpenAI upstream stream data interval timeout",
+				Detail:             fmt.Sprintf("idle_ms=%d timeout_ms=%d", idleFor.Milliseconds(), streamInterval.Milliseconds()),
+			})
 			// 处理流超时，可能标记账户为临时不可调度或错误状态
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
