@@ -145,6 +145,16 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		if cost.ActualCost > 0 {
 			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
+			} else {
+				result := &UsageBillingApplyResult{}
+				markDailyOverdraftPoolExhausted(billingCtx, p, deps, result)
+				if result.SubscriptionQuotaExhausted && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil && deps.billingCacheService != nil {
+					groupID := *p.APIKey.GroupID
+					if err := deps.billingCacheService.InvalidateSubscription(billingCtx, p.User.ID, groupID); err != nil {
+						slog.Warn("invalidate subscription cache after legacy quota exhaustion failed", "user_id", p.User.ID, "group_id", groupID, "error", err)
+					}
+					_ = deps.billingCacheService.PublishSubscriptionCacheInvalidation(billingCtx, subCacheKey(p.User.ID, groupID))
+				}
 			}
 		}
 	} else {
@@ -341,6 +351,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		}
 	}
 
+	markDailyOverdraftPoolExhausted(billingCtx, p, deps, result)
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
 }
@@ -441,6 +452,41 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 	// no dependency on the request context or upstream connection.
 	go notifyBalanceLow(p, deps, result)
 	go notifyAccountQuota(p, deps, result)
+}
+
+// markDailyOverdraftPoolExhausted closes the gap between pre-dispatch
+// eligibility and post-fact billing. The request that crosses the pool is
+// recorded, then following requests see an exhausted subscription.
+func markDailyOverdraftPoolExhausted(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+	if p == nil || deps == nil || result == nil || result.SubscriptionQuotaExhausted ||
+		!p.IsSubscriptionBill || p.Cost == nil || p.Cost.ActualCost <= 0 ||
+		p.Subscription == nil || p.APIKey == nil || p.APIKey.Group == nil || deps.userSubRepo == nil {
+		return
+	}
+
+	group := p.APIKey.Group
+	if !group.AllowsDailyOverdraft() {
+		return
+	}
+
+	subscription, err := deps.userSubRepo.GetByID(ctx, p.Subscription.ID)
+	if err != nil {
+		slog.Warn("load subscription after billing failed", "subscription_id", p.Subscription.ID, "error", err)
+		return
+	}
+	if subscription.Status != SubscriptionStatusActive || !subscription.AllowsDailyOverdraft(group) {
+		return
+	}
+
+	limit, ok := subscription.DailyOverdraftLimitUSD(group)
+	if !ok || subscription.DailyOverdraftUsedUSD(group) < limit {
+		return
+	}
+	if err := deps.userSubRepo.UpdateStatus(ctx, subscription.ID, SubscriptionStatusQuotaExhausted); err != nil {
+		slog.Warn("mark daily overdraft pool exhausted failed", "subscription_id", subscription.ID, "error", err)
+		return
+	}
+	result.SubscriptionQuotaExhausted = true
 }
 
 func syncBalanceCacheAfterDeduction(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {

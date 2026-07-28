@@ -214,7 +214,9 @@ func (s *UserSubscription) DailyOverdraftUsedUSDAt(group *Group, now time.Time) 
 	if s == nil {
 		return 0
 	}
-	actualUsed := s.WeeklyUsageUSD
+	// QuotaUsedUSD is cumulative subscription spend. WeeklyUsageUSD is a
+	// rolling window and cannot by itself enforce the full overdraft pool.
+	actualUsed := math.Max(s.WeeklyUsageUSD, s.QuotaUsedUSD)
 	if group == nil || !s.AllowsDailyOverdraft(group) || !group.HasDailyLimit() || !s.IsDayValidityUnit() {
 		return actualUsed
 	}

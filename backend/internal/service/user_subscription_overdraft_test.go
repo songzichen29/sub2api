@@ -64,6 +64,28 @@ func TestUserSubscription_DailyOverdraftUsedUSDAt_CountsExpiredDailyQuota(t *tes
 	require.InDelta(t, 35.0, sub.DailyOverdraftUsedUSDAt(group, now), 0.0001)
 }
 
+func TestUserSubscription_DailyOverdraftUsesCumulativeUsageForTotalPool(t *testing.T) {
+	daily := 10.0
+	startsAt := time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC)
+	group := &Group{
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &daily,
+		AllowDailyOverdraft: true,
+	}
+	sub := &UserSubscription{
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+		QuotaUsedUSD:        50,
+		AllowDailyOverdraft: true,
+	}
+
+	// A weekly window may reset before the subscription ends. The cumulative
+	// amount must still prevent spending beyond this five-day $50 pool.
+	now := startsAt.Add(time.Hour)
+	require.InDelta(t, 50.0, sub.DailyOverdraftUsedUSDAt(group, now), 0.0001)
+	require.False(t, sub.checkDailyLimitAt(group, 0, now))
+}
+
 func TestUserSubscription_DailyOverdraftUsedUSDAt_WeekMonthUseActualUsage(t *testing.T) {
 	daily := 10.0
 	now := time.Date(2026, 5, 11, 12, 0, 0, 0, time.UTC)

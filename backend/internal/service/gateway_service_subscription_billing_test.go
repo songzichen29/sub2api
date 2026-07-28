@@ -3,7 +3,9 @@
 package service
 
 import (
+	"context"
 	"testing"
+	"time"
 )
 
 // TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier locks in the fix
@@ -97,4 +99,54 @@ func TestBuildUsageBillingCommand_SubscriptionAppliesRateMultiplier(t *testing.T
 			}
 		})
 	}
+}
+
+func TestMarkDailyOverdraftPoolExhausted(t *testing.T) {
+	daily := 10.0
+	startsAt := time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC)
+	group := &Group{
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &daily,
+		AllowDailyOverdraft: true,
+	}
+	subscription := &UserSubscription{
+		ID:                  42,
+		StartsAt:            startsAt,
+		ExpiresAt:           startsAt.Add(5 * 24 * time.Hour),
+		Status:              SubscriptionStatusActive,
+		QuotaUsedUSD:        50,
+		AllowDailyOverdraft: true,
+	}
+	repo := &dailyOverdraftBillingSubRepoStub{subscription: subscription}
+	result := &UsageBillingApplyResult{Applied: true}
+
+	markDailyOverdraftPoolExhausted(context.Background(), &postUsageBillingParams{
+		Cost:               &CostBreakdown{ActualCost: 0.01},
+		APIKey:             &APIKey{Group: group},
+		Subscription:       &UserSubscription{ID: subscription.ID},
+		IsSubscriptionBill: true,
+	}, &billingDeps{userSubRepo: repo}, result)
+
+	if !result.SubscriptionQuotaExhausted {
+		t.Fatal("expected total-pool exhaustion to be reported")
+	}
+	if repo.status != SubscriptionStatusQuotaExhausted {
+		t.Fatalf("status = %q, want %q", repo.status, SubscriptionStatusQuotaExhausted)
+	}
+}
+
+type dailyOverdraftBillingSubRepoStub struct {
+	userSubRepoNoop
+	subscription *UserSubscription
+	status       string
+}
+
+func (r *dailyOverdraftBillingSubRepoStub) GetByID(context.Context, int64) (*UserSubscription, error) {
+	return r.subscription, nil
+}
+
+func (r *dailyOverdraftBillingSubRepoStub) UpdateStatus(_ context.Context, _ int64, status string) error {
+	r.status = status
+	r.subscription.Status = status
+	return nil
 }
