@@ -56,6 +56,10 @@ func TestUserRepositoryExistsByEmailAlias(t *testing.T) {
 	}
 }
 
+func TestEscapeLikeWildcards(t *testing.T) {
+	require.Equal(t, `a!!b!%c!_d\e`, escapeLikeWildcards(`a!b%c_d\e`))
+}
+
 func TestUserRepositoryExistsByEmailAliasIgnoresMalformedInput(t *testing.T) {
 	repo, _ := newUserEntRepo(t)
 	seedUserForAliasTest(t, repo, "someone@gmail.com")

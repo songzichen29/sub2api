@@ -1073,13 +1073,14 @@ func dotStrippedEmailEQ(value string) predicate.User {
 func dotStrippedEmailLike(pattern string) predicate.User {
 	return predicate.User(func(s *entsql.Selector) {
 		s.Where(entsql.P(func(b *entsql.Builder) {
-			dotStrippedEmailExpr(b, s).WriteString(" LIKE ").Arg(pattern).WriteString(` ESCAPE '\'`)
+			dotStrippedEmailExpr(b, s).WriteString(" LIKE ").Arg(pattern).WriteString(` ESCAPE '!'`)
 		}))
 	})
 }
 
-// escapeLikeWildcards 转义 LIKE 元字符：本地部分合法可含 % 与 _，不转义会扩大匹配面。
-var likeWildcardEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+// escapeLikeWildcards 转义 LIKE 元字符和转义字符本身。使用 ! 可避免 MySQL
+// 将 ESCAPE '\' 解析为未闭合字符串，同时保持与 SQLite 的行为一致。
+var likeWildcardEscaper = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_")
 
 func escapeLikeWildcards(value string) string {
 	return likeWildcardEscaper.Replace(value)

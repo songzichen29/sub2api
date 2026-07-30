@@ -143,6 +143,14 @@ func (s *UserRepoSuite) TestExistsByEmail_NormalizesSpacingAndCaseOnMySQL() {
 	s.Require().True(exists)
 }
 
+func (s *UserRepoSuite) TestExistsByEmailAlias_UsesMySQLCompatibleEscapeClause() {
+	s.mustCreateUser(&service.User{Email: "user!_x+tag@qq.com"})
+
+	exists, err := s.repo.ExistsByEmailAlias(s.ctx, "user!_x@qq.com")
+	s.Require().NoError(err, "ExistsByEmailAlias")
+	s.Require().True(exists)
+}
+
 func (s *UserRepoSuite) TestUpdate() {
 	user := s.mustCreateUser(&service.User{Email: "update@test.com", Username: "original"})
 
