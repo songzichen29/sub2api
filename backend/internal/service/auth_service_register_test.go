@@ -243,7 +243,7 @@ func (r *registerUserRepoWithEnt) ExistsByEmailAlias(ctx context.Context, email 
 func (r *registerUserRepoWithEnt) GetFirstAdmin(context.Context) (*User, error) {
 	panic("unexpected GetFirstAdmin call")
 }
-func (r *registerUserRepoWithEnt) Update(context.Context, *User) error {
+func (r *registerUserRepoWithEnt) Update(context.Context, *User, UserUpdateFields) error {
 	panic("unexpected Update call")
 }
 func (r *registerUserRepoWithEnt) Delete(context.Context, int64) error {
@@ -278,6 +278,12 @@ func (r *registerUserRepoWithEnt) UpdateBalance(context.Context, int64, float64)
 }
 func (r *registerUserRepoWithEnt) DeductBalance(context.Context, int64, float64) error {
 	panic("unexpected DeductBalance call")
+}
+func (r *registerUserRepoWithEnt) AdjustBalance(context.Context, int64, float64) (BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+func (r *registerUserRepoWithEnt) SetBalance(context.Context, int64, float64) (BalanceChange, error) {
+	panic("unexpected SetBalance call")
 }
 func (r *registerUserRepoWithEnt) UpdateConcurrency(context.Context, int64, int) error {
 	panic("unexpected UpdateConcurrency call")

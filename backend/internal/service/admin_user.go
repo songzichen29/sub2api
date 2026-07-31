@@ -559,7 +559,10 @@ func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, 
 		return nil, fmt.Errorf("unsupported balance operation: %q", operation)
 	}
 	if errors.Is(err, ErrBalanceNegative) {
-		return nil, fmt.Errorf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", change.Old, change.New)
+		return nil, infraerrors.BadRequest(
+			"BALANCE_NEGATIVE",
+			fmt.Sprintf("balance cannot be negative, current balance: %.2f, requested operation would result in: %.2f", change.Old, change.New),
+		)
 	}
 	if err != nil {
 		return nil, err
