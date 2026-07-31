@@ -206,7 +206,7 @@ func (s *adminServiceImpl) PromoteUserToAdmin(ctx context.Context, id int64) (*U
 		return nil, infraerrors.BadRequest("USER_NOT_ACTIVE", "cannot promote a non-active user to admin")
 	}
 	user.Role = RoleAdmin
-	if err := s.userRepo.Update(ctx, user); err != nil {
+	if err := s.userRepo.Update(ctx, user, UserUpdateFields{Role: true}); err != nil {
 		return nil, err
 	}
 	if s.authCacheInvalidator != nil {
