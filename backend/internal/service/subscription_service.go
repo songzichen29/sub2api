@@ -342,7 +342,11 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 		// subscription can remain immediately unusable.
 		if wasExpired || wasQuotaExhausted || input.RestartPeriod {
 			if (input.RestartPeriod || wasQuotaExhausted) && !wasExpired {
-				newExpiresAt = now.AddDate(0, 0, validityDays)
+				if existingSub.SkipWeekends {
+					newExpiresAt = addWeekendSkippedDuration(now, renewDuration)
+				} else {
+					newExpiresAt = now.AddDate(0, 0, validityDays)
+				}
 				if newExpiresAt.After(MaxExpiresAt) {
 					newExpiresAt = MaxExpiresAt
 				}

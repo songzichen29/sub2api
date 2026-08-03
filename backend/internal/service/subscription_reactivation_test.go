@@ -505,6 +505,7 @@ func TestAssignOrExtendSubscription_WeekendSkipRestartResetsOriginalExpiresAt(t 
 	})
 	require.NoError(t, err)
 	require.True(t, reused)
+	require.WithinDuration(t, addWeekendSkippedDuration(before, 5*24*time.Hour), sub.ExpiresAt, 3*time.Second)
 	require.NotNil(t, sub.WeekendSkipOriginalExpiresAt)
 	require.WithinDuration(t, before.AddDate(0, 0, 5), *sub.WeekendSkipOriginalExpiresAt, 3*time.Second)
 	require.Equal(t, 5, sub.OverdraftValidityDays())
@@ -802,18 +803,21 @@ func TestAssignOrExtendSubscription_QuotaExhaustedRenewalRestartsPeriodAndRestor
 	expiresAt := time.Now().Add(3 * time.Hour)
 	dailyStart := time.Now().Add(-12 * time.Hour)
 	weeklyStart := startsAt
+	originalExpiresAt := expiresAt
 	err = repo.Create(ctx, &UserSubscription{
-		UserID:            user.ID,
-		GroupID:           group.ID,
-		StartsAt:          startsAt,
-		ExpiresAt:         expiresAt,
-		Status:            SubscriptionStatusQuotaExhausted,
-		DailyWindowStart:  &dailyStart,
-		WeeklyWindowStart: &weeklyStart,
-		DailyUsageUSD:     dailyLimit,
-		WeeklyUsageUSD:    weeklyLimit,
-		MonthlyUsageUSD:   weeklyLimit,
-		Source:            "payment",
+		UserID:                       user.ID,
+		GroupID:                      group.ID,
+		StartsAt:                     startsAt,
+		ExpiresAt:                    expiresAt,
+		Status:                       SubscriptionStatusQuotaExhausted,
+		DailyWindowStart:             &dailyStart,
+		WeeklyWindowStart:            &weeklyStart,
+		DailyUsageUSD:                dailyLimit,
+		WeeklyUsageUSD:               weeklyLimit,
+		MonthlyUsageUSD:              weeklyLimit,
+		SkipWeekends:                 true,
+		WeekendSkipOriginalExpiresAt: &originalExpiresAt,
+		Source:                       "payment",
 	})
 	require.NoError(t, err)
 
@@ -841,8 +845,9 @@ func TestAssignOrExtendSubscription_QuotaExhaustedRenewalRestartsPeriodAndRestor
 	require.NotNil(t, sub)
 	require.Equal(t, SubscriptionStatusActive, sub.Status)
 	require.WithinDuration(t, before, sub.StartsAt, 3*time.Second)
-	require.True(t, !sub.ExpiresAt.Before(before.AddDate(0, 0, 7)))
-	require.True(t, !sub.ExpiresAt.After(after.AddDate(0, 0, 7).Add(3*time.Second)))
+	require.WithinDuration(t, addWeekendSkippedDuration(before, 7*24*time.Hour), sub.ExpiresAt, 3*time.Second)
+	require.True(t, sub.ExpiresAt.After(after.AddDate(0, 0, 7)))
+	require.True(t, sub.SkipWeekends)
 	require.Nil(t, sub.DailyWindowStart)
 	require.Nil(t, sub.WeeklyWindowStart)
 	require.Nil(t, sub.MonthlyWindowStart)
