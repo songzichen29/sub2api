@@ -14,9 +14,25 @@ import (
 	"go.uber.org/zap"
 )
 
-// openAITransportErrorTempUnschedDuration is how long an account is temporarily
-// unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
+// openAITransportErrorTempUnschedDuration is reserved for durable credential or
+// configuration failures. Recoverable network failures use the short stepped
+// backoff below instead.
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
+
+var openAITransportNetworkBackoffSteps = [...]time.Duration{
+	5 * time.Second,
+	10 * time.Second,
+	15 * time.Second,
+}
+
+// A quiet period resets the stepped network backoff, so an isolated outage does
+// not make a much later failure start at the maximum delay.
+const openAITransportNetworkBackoffResetAfter = 30 * time.Second
+
+type openAITransportBackoffState struct {
+	failures    int
+	lastFailure time.Time
+}
 
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
@@ -33,25 +49,38 @@ type openAITransportErrorClass struct {
 	// or DNS/routing failure. Such accounts should be temporarily unscheduled
 	// (and alerted on) instead of being repeatedly scheduled into hard failures.
 	Persistent bool
+	// ShortBackoff marks network-availability failures that should temporarily
+	// leave scheduling for only 5/10/15 seconds. It may be true together with
+	// Persistent to preserve the existing durable-fault classification used by
+	// metrics and tests.
+	ShortBackoff bool
 }
 
-// openAIPersistentTransportErrorMarkers are substrings (matched case-insensitively
-// against the raw transport error) that indicate a durable proxy/network fault.
-// Matched signals are intentionally specific failure *reasons*, not the operation
-// (e.g. we match "connection refused", not "proxyconnect") so that a transient
-// failure of the same operation (a proxy timeout) is NOT misclassified as durable.
+// Credential failures retain the longer cooldown because an immediate retry
+// cannot recover without a configuration change.
 var openAIPersistentTransportErrorMarkers = []string{
 	"authentication failed",         // SOCKS5 RFC1929 / proxy credentials rejected (expired account)
 	"proxy authentication required", // HTTP proxy 407
-	"connection refused",            // proxy/upstream endpoint down
+}
+
+// Network availability failures recover quickly during local proxy/container
+// restarts, so they use the short stepped backoff.
+var openAIShortBackoffTransportErrorMarkers = []string{
+	"connection refused", // proxy/upstream endpoint down
 	"no route to host",
 	"network is unreachable",
 	"no such host", // DNS resolution failure (bad/expired proxy hostname)
 }
 
-// classifyOpenAITransportError decides whether a transport-level upstream error
-// is durable (Persistent — evict the account + alert) or a transient blip
-// (fail over to a healthy account but keep this one schedulable).
+var openAIShortBackoffTimeoutMarkers = []string{
+	"i/o timeout",
+	"client.timeout exceeded",
+	"context deadline exceeded",
+}
+
+// classifyOpenAITransportError separates long-lived credential/configuration
+// failures from recoverable network failures. The latter still fail over, but
+// only pause scheduling for the short stepped backoff.
 //
 // Motivating incident: a SOCKS5 proxy whose subscription lapsed returned
 // `username/password authentication failed`; the account was nonetheless
@@ -74,11 +103,18 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 	if errors.Is(err, syscall.ECONNREFUSED) ||
 		errors.Is(err, syscall.EHOSTUNREACH) ||
 		errors.Is(err, syscall.ENETUNREACH) {
-		return openAITransportErrorClass{Persistent: true}
+		return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
 	}
 	var dnsErr *net.DNSError
 	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
-		return openAITransportErrorClass{Persistent: true}
+		return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return openAITransportErrorClass{ShortBackoff: true}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return openAITransportErrorClass{ShortBackoff: true}
 	}
 
 	// — String-marker fallback ————————————————————————————————————————————————
@@ -88,7 +124,52 @@ func classifyOpenAITransportError(err error) openAITransportErrorClass {
 			return openAITransportErrorClass{Persistent: true}
 		}
 	}
+	for _, marker := range openAIShortBackoffTransportErrorMarkers {
+		if strings.Contains(msg, marker) {
+			return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
+		}
+	}
+	for _, marker := range openAIShortBackoffTimeoutMarkers {
+		if strings.Contains(msg, marker) {
+			return openAITransportErrorClass{ShortBackoff: true}
+		}
+	}
 	return openAITransportErrorClass{}
+}
+
+func (s *OpenAIGatewayService) nextOpenAITransportNetworkBackoff(accountID int64, now time.Time) time.Duration {
+	if s == nil || accountID <= 0 {
+		return openAITransportNetworkBackoffSteps[0]
+	}
+
+	s.openaiTransportBackoffMu.Lock()
+	defer s.openaiTransportBackoffMu.Unlock()
+
+	if s.openaiTransportBackoffByAccount == nil {
+		s.openaiTransportBackoffByAccount = make(map[int64]openAITransportBackoffState)
+	}
+	state := s.openaiTransportBackoffByAccount[accountID]
+	if state.lastFailure.IsZero() || now.Sub(state.lastFailure) > openAITransportNetworkBackoffResetAfter {
+		state.failures = 0
+	}
+	state.failures++
+	state.lastFailure = now
+	s.openaiTransportBackoffByAccount[accountID] = state
+
+	step := state.failures - 1
+	if step >= len(openAITransportNetworkBackoffSteps) {
+		step = len(openAITransportNetworkBackoffSteps) - 1
+	}
+	return openAITransportNetworkBackoffSteps[step]
+}
+
+func (s *OpenAIGatewayService) resetOpenAITransportNetworkBackoff(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	s.openaiTransportBackoffMu.Lock()
+	delete(s.openaiTransportBackoffByAccount, accountID)
+	s.openaiTransportBackoffMu.Unlock()
 }
 
 // handleOpenAIUpstreamTransportError handles a transport-level upstream failure
@@ -129,8 +210,15 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
 	}
 
-	if classifyOpenAITransportError(err).Persistent {
-		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
+	errClass := classifyOpenAITransportError(err)
+	if errClass.ShortBackoff {
+		backoff := s.nextOpenAITransportNetworkBackoff(account.ID, time.Now())
+		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr, backoff)
+	} else if errClass.Persistent {
+		// Authentication/configuration failures still need the original long
+		// cooldown; they cannot recover merely by waiting a few seconds.
+		s.resetOpenAITransportNetworkBackoff(account.ID)
+		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr, openAITransportErrorTempUnschedDuration)
 	}
 
 	return &UpstreamFailoverError{
@@ -150,11 +238,14 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 //     accountRepo is nil (in-memory only; no persistence).
 //   - "openai.account_temp_unscheduled_transport_failed" — DB write attempted
 //     but returned an error.
-func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Context, account *Account, safeErr string) {
+func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Context, account *Account, safeErr string, duration time.Duration) {
 	if s == nil || account == nil {
 		return
 	}
-	until := time.Now().Add(openAITransportErrorTempUnschedDuration)
+	if duration <= 0 {
+		duration = openAITransportErrorTempUnschedDuration
+	}
+	until := time.Now().Add(duration)
 	reason := "upstream transport error (proxy/network): " + safeErr
 
 	// Immediate in-memory block (honoured by the scheduler at selection time),
@@ -170,6 +261,7 @@ func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Co
 			zap.String("account_name", account.Name),
 			zap.String("platform", account.Platform),
 			zap.Time("until", until),
+			zap.Duration("cooldown", duration),
 			zap.String("reason", reason),
 		)
 		return
@@ -193,6 +285,7 @@ func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Co
 		zap.String("account_name", account.Name),
 		zap.String("platform", account.Platform),
 		zap.Time("until", until),
+		zap.Duration("cooldown", duration),
 		zap.String("reason", reason),
 	)
 }

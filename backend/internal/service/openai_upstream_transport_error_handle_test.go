@@ -87,23 +87,27 @@ func TestHandleOpenAIUpstreamTransportError_PersistentEvictsAndFailsOver(t *test
 	require.Equal(t, 0, rec.Body.Len())
 }
 
-// A transient blip should fail over but must NOT evict the account.
-func TestHandleOpenAIUpstreamTransportError_TransientFailsOverWithoutEviction(t *testing.T) {
+// A timeout should fail over and apply only the first short backoff step.
+func TestHandleOpenAIUpstreamTransportError_TimeoutUsesShortBackoff(t *testing.T) {
 	repo := &openaiTransportAccountRepoStub{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
 	account := &Account{ID: 99, Name: "flaky", Platform: PlatformOpenAI}
 	c, rec := newOpenAITransportErrTestContext()
 
+	before := time.Now()
 	err := svc.handleOpenAIUpstreamTransportError(context.Background(), c, account,
 		errors.New(`Post "https://chatgpt.com/...": context deadline exceeded (Client.Timeout exceeded while awaiting headers)`), false)
+	after := time.Now()
 
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "transient error must return *UpstreamFailoverError")
 	require.Equal(t, http.StatusBadGateway, fo.StatusCode)
 
-	// Transient → do NOT evict.
-	require.Empty(t, repo.tempUnschedCalls)
-	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	// Timeout → first short step is 5 seconds, not the durable 10-minute block.
+	require.Len(t, repo.tempUnschedCalls, 1)
+	require.True(t, repo.tempUnschedCalls[0].until.After(before.Add(4*time.Second)))
+	require.True(t, repo.tempUnschedCalls[0].until.Before(after.Add(6*time.Second)))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 	require.Equal(t, 0, rec.Body.Len())
 }
 
@@ -156,7 +160,7 @@ func TestTempUnscheduleOpenAITransportError_NilAccountRepo_InMemoryBlockOnly(t *
 	svc := &OpenAIGatewayService{accountRepo: nil}
 	account := &Account{ID: 55, Name: "no-db", Platform: PlatformOpenAI}
 
-	svc.tempUnscheduleOpenAITransportError(context.Background(), account, "proxy refused")
+	svc.tempUnscheduleOpenAITransportError(context.Background(), account, "proxy refused", 5*time.Second)
 
 	// In-memory block must still happen.
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account),
