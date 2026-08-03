@@ -861,7 +861,7 @@ func TestAssignOrExtendSubscription_QuotaExhaustedRenewalRestartsPeriodAndRestor
 		DailyLimitUSD:    &dailyLimit,
 		WeeklyLimitUSD:   &weeklyLimit,
 	}
-	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
+	err = svc.CheckUsageLimits(context.Background(), sub, sub.Group, 0)
 	require.NoError(t, err)
 }
 
