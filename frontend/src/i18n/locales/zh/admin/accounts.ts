@@ -1323,9 +1323,10 @@ export default {
     modelMappingNotePlaceholder: '可选备注：记录这个模型映射的用途、限制或别名',
     usageQuery: {
       title: '用量查询',
-      hint: '通过第三方面板（如 newapi）查询该账号在上游的剩余额度。仅 API Key 类型账号支持。',
+      hint: '查询该账号在上游的剩余额度。仅 API Key 类型账号支持。',
       enable: '启用第三方用量查询',
       provider: '提供商',
+      sub2apiOption: 'Sub2API（复用当前 URL 与 Key）',
       baseUrl: '面板地址',
       accessToken: '访问令牌',
       accessTokenPlaceholder: '输入访问令牌',

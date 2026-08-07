@@ -2186,39 +2186,42 @@
           </p>
         </div>
         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
+          <input data-testid="usage-query-enabled" type="checkbox" v-model="usageQueryEnabled" class="h-4 w-4 rounded border-gray-300" />
           <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
         </label>
         <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
           <div>
             <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
-            <select v-model="usageQueryProvider" class="input">
+            <select v-model="usageQueryProvider" data-testid="usage-query-provider" class="input">
               <option value="newapi">newapi</option>
+              <option value="sub2api">{{ t('admin.accounts.usageQuery.sub2apiOption') }}</option>
             </select>
           </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
-            <input
-              v-model="usageQueryBaseUrl"
-              type="text"
-              class="input"
-              placeholder="https://newapi.example.com"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
-            <input
-              v-model="usageQueryAccessToken"
-              type="password"
-              class="input font-mono"
-              autocomplete="new-password"
-              :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
-            <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
-          </div>
+          <template v-if="usageQueryProvider === 'newapi'">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+              <input
+                v-model="usageQueryBaseUrl"
+                type="text"
+                class="input"
+                placeholder="https://newapi.example.com"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+              <input
+                v-model="usageQueryAccessToken"
+                type="password"
+                class="input font-mono"
+                autocomplete="new-password"
+                :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')"
+              />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+              <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+            </div>
+          </template>
         </div>
       </div>
 
@@ -3702,6 +3705,10 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  buildUsageQueryConfig,
+  type AccountUsageQueryProvider
+} from '@/utils/accountUsageQuery'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3830,9 +3837,9 @@ const editWeeklyResetMode = ref<'rolling' | 'fixed' | null>(null)
 const editWeeklyResetDay = ref<number | null>(null)
 const editWeeklyResetHour = ref<number | null>(null)
 const editResetTimezone = ref<string | null>(null)
-// 第三方面板用量查询（仅 apikey 类型；当前仅支持 newapi）
+// 第三方面板用量查询（仅 apikey 类型）
 const usageQueryEnabled = ref(false)
-const usageQueryProvider = ref<'newapi'>('newapi')
+const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
 const usageQueryBaseUrl = ref('')
 const usageQueryAccessToken = ref('')
 const usageQueryUserId = ref('')
@@ -5243,22 +5250,18 @@ const handleSubmit = async () => {
   // 这条创建路径不经过 createAccountAndFinish，原本的校验 + 注入逻辑都不会触发，
   // 导致用户开启用量查询后哪怕一项都不填也能提交成功，并且填完整也不会被保存。
   if (usageQueryEnabled.value) {
-    const baseUrl = usageQueryBaseUrl.value.trim()
-    const userId = usageQueryUserId.value.trim()
-    const token = usageQueryAccessToken.value.trim()
-    if (!baseUrl || !userId || !token) {
+    const usageQuery = buildUsageQueryConfig(usageQueryProvider.value, {
+      baseUrl: usageQueryBaseUrl.value,
+      accessToken: usageQueryAccessToken.value,
+      userId: usageQueryUserId.value
+    })
+    if (!usageQuery) {
       appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
       return
     }
     extra = {
       ...(extra || {}),
-      usage_query: {
-        enabled: true,
-        provider: usageQueryProvider.value,
-        base_url: baseUrl,
-        access_token: token,
-        user_id: userId
-      }
+      usage_query: usageQuery
     }
   }
 
@@ -5353,23 +5356,19 @@ const createAccountAndFinish = async (
     writeQuotaNotifyToExtra(quotaExtra, 'create')
     // 第三方面板用量查询配置（仅 apikey）
     if (type === 'apikey' && usageQueryEnabled.value) {
-      const baseUrl = usageQueryBaseUrl.value.trim()
-      const userId = usageQueryUserId.value.trim()
-      const token = usageQueryAccessToken.value.trim()
-      if (!baseUrl || !userId || !token) {
+      const usageQuery = buildUsageQueryConfig(usageQueryProvider.value, {
+        baseUrl: usageQueryBaseUrl.value,
+        accessToken: usageQueryAccessToken.value,
+        userId: usageQueryUserId.value
+      })
+      if (!usageQuery) {
         // 任一必填项空时阻止提交，避免静默丢弃整个 usage_query 配置——
         // 老逻辑里这里仅注释"由提交流程统一处理"但并未真的拦截，导致用户开启
         // 用量查询填一半也能提交，列表上也看不到生效结果。
         appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
         return
       }
-      quotaExtra.usage_query = {
-        enabled: true,
-        provider: usageQueryProvider.value,
-        base_url: baseUrl,
-        access_token: token,
-        user_id: userId
-      }
+      quotaExtra.usage_query = usageQuery
     }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra

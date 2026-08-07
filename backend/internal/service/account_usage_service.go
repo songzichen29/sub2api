@@ -297,9 +297,9 @@ type AccountUsageService struct {
 	// 第三方面板（newapi 等）Provider 工厂；nil 时走默认实现
 	thirdPartyFactory func(usage_provider.ProviderType) (usage_provider.Provider, error)
 	// 凭据加密器，用于解密 account.extra.usage_query.access_token
-	secretEncryptor SecretEncryptor
-	agentIdentityTaskMu     sync.Mutex
-	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	secretEncryptor     SecretEncryptor
+	agentIdentityTaskMu sync.Mutex
+	agentIdentityWS     agentIdentityWSConnectionInvalidator
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -333,7 +333,7 @@ func NewAccountUsageService(
 // GetUsage 获取账号使用量
 // OAuth账号: 调用Anthropic API获取真实数据（需要profile scope），API响应缓存10分钟，窗口统计缓存1分钟
 // Setup Token账号: 根据session_window推算5h窗口，7d数据不可用（没有profile scope）
-// API Key账号: 当 extra.usage_query.enabled = true 时通过 newapi 查询
+// API Key账号: 当 extra.usage_query.enabled = true 时通过配置的第三方 Provider 查询
 func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, force ...bool) (*UsageInfo, error) {
 	forceProbe := len(force) > 0 && force[0]
 
@@ -345,7 +345,7 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	// API Key 类型账号：若开启第三方面板查询则走该路径，优先于其它平台分支
 	if account.Type == AccountTypeAPIKey {
 		if cfg, ok := extractUsageQueryConfig(account); ok {
-			usage, fetchErr := s.getThirdPartyUsage(ctx, accountID, cfg)
+			usage, fetchErr := s.getThirdPartyUsage(ctx, account, cfg, forceProbe)
 			if fetchErr == nil {
 				s.tryClearRecoverableAccountError(ctx, account)
 			}

@@ -60,8 +60,28 @@ func extractUsageQueryConfig(account *Account) (usageQueryConfig, bool) {
 	return cfg, true
 }
 
-// resolveProviderConfig 把内部 usageQueryConfig 解密并校验后转成 Provider 期望的 Config。
-func (s *AccountUsageService) resolveProviderConfig(cfg usageQueryConfig) (usage_provider.Config, error) {
+// resolveProviderConfig 把内部 usageQueryConfig 转成 Provider 期望的 Config。
+// sub2api 复用账号本身的 base_url/api_key；其它 Provider 继续使用独立加密凭据。
+func (s *AccountUsageService) resolveProviderConfig(account *Account, cfg usageQueryConfig) (usage_provider.Config, error) {
+	provider := cfg.Provider
+	if provider == "" {
+		provider = usage_provider.ProviderNewAPI
+	}
+	if provider == usage_provider.ProviderSub2API {
+		if account == nil {
+			return usage_provider.Config{}, fmt.Errorf("account is required")
+		}
+		providerCfg := usage_provider.Config{
+			Provider:    provider,
+			BaseURL:     strings.TrimSpace(account.GetCredential("base_url")),
+			AccessToken: strings.TrimSpace(account.GetCredential("api_key")),
+		}
+		if err := providerCfg.Validate(); err != nil {
+			return usage_provider.Config{}, err
+		}
+		return providerCfg, nil
+	}
+
 	if s.secretEncryptor == nil {
 		return usage_provider.Config{}, fmt.Errorf("secret encryptor not configured")
 	}
@@ -71,10 +91,6 @@ func (s *AccountUsageService) resolveProviderConfig(cfg usageQueryConfig) (usage
 	plaintext, err := s.secretEncryptor.Decrypt(cfg.EncryptedAccessKey)
 	if err != nil {
 		return usage_provider.Config{}, fmt.Errorf("decrypt access_token failed: %w", err)
-	}
-	provider := cfg.Provider
-	if provider == "" {
-		provider = usage_provider.ProviderNewAPI
 	}
 	pc := usage_provider.Config{
 		Provider:    provider,
@@ -90,9 +106,13 @@ func (s *AccountUsageService) resolveProviderConfig(cfg usageQueryConfig) (usage
 
 // getThirdPartyUsage 通过第三方 Provider 拉取额度，带 5 分钟成功 / 1 分钟错误负缓存
 // + singleflight，防止短时间内大量请求击穿。
-func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, accountID int64, cfg usageQueryConfig) (*UsageInfo, error) {
+func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *Account, cfg usageQueryConfig, force bool) (*UsageInfo, error) {
+	if account == nil {
+		return buildThirdPartyUsageInfo(nil, fmt.Errorf("account is required")), nil
+	}
+	accountID := account.ID
 	// 1. 检查缓存
-	if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok {
+	if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok && !force {
 		if entry, ok := cached.(*thirdPartyUsageCache); ok {
 			age := time.Since(entry.timestamp)
 			if entry.err != nil && age < thirdPartyErrorCacheTTL {
@@ -107,7 +127,7 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, accountID 
 	flightKey := fmt.Sprintf("third_party_usage:%d", accountID)
 	result, fetchErr, _ := s.cache.thirdPartyFlight.Do(flightKey, func() (any, error) {
 		// 双检
-		if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok {
+		if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok && !force {
 			if entry, ok := cached.(*thirdPartyUsageCache); ok {
 				age := time.Since(entry.timestamp)
 				if entry.err != nil && age < thirdPartyErrorCacheTTL {
@@ -119,7 +139,7 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, accountID 
 			}
 		}
 
-		providerCfg, err := s.resolveProviderConfig(cfg)
+		providerCfg, err := s.resolveProviderConfig(account, cfg)
 		if err != nil {
 			s.cache.thirdPartyCache.Store(accountID, &thirdPartyUsageCache{
 				err:       err,

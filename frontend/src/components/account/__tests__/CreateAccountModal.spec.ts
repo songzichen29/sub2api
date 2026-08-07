@@ -167,6 +167,25 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
 
+  it('submits sub2api usage query without separate panel credentials', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Sub2 upstream')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-sub2')
+    await wrapper.get<HTMLInputElement>('[data-testid="usage-query-enabled"]').setValue(true)
+    await wrapper.get<HTMLSelectElement>('[data-testid="usage-query-provider"]').setValue('sub2api')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.usage_query).toEqual({
+      enabled: true,
+      provider: 'sub2api'
+    })
+  })
+
   it('enables upstream billing probes by default for new OpenAI API key accounts', async () => {
     await submitApiKeyAccount('openai')
 

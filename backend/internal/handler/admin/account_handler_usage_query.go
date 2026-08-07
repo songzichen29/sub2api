@@ -3,9 +3,11 @@ package admin
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
 )
 
 // errUsageQueryAccessTokenRequired 用户首次开启用量查询但未填 access_token 时返回。
@@ -29,6 +31,15 @@ func encryptUsageQueryToken(extra map[string]any, prevExtra map[string]any, enc 
 	}
 	uq, ok := rawUQ.(map[string]any)
 	if !ok {
+		return nil
+	}
+	provider, _ := uq["provider"].(string)
+	if usage_provider.ProviderType(strings.TrimSpace(provider)) == usage_provider.ProviderSub2API {
+		// Sub2API 必须始终复用账号 credentials，避免在 extra 中复制 API key。
+		delete(uq, "base_url")
+		delete(uq, "access_token")
+		delete(uq, "user_id")
+		extra["usage_query"] = uq
 		return nil
 	}
 	tokenRaw, hasToken := uq["access_token"]

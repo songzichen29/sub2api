@@ -1326,9 +1326,10 @@ export default {
     testFirstResponseElapsed: 'First response',
     usageQuery: {
       title: 'Usage Query',
-      hint: 'Query upstream remaining quota via a third-party panel (e.g. newapi). Only available for API Key accounts.',
+      hint: 'Query this account\'s remaining upstream quota. Only available for API Key accounts.',
       enable: 'Enable third-party usage query',
       provider: 'Provider',
+      sub2apiOption: 'Sub2API (reuse current URL and key)',
       baseUrl: 'Panel URL',
       accessToken: 'Access Token',
       accessTokenPlaceholder: 'Enter access token',

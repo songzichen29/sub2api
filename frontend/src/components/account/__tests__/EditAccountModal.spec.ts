@@ -307,6 +307,31 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it('restores and submits sub2api usage query without separate panel credentials', async () => {
+    const account = buildAccount()
+    account.extra = {
+      usage_query: {
+        enabled: true,
+        provider: 'sub2api'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const provider = wrapper.get<HTMLSelectElement>('[data-testid="usage-query-provider"]')
+    expect(provider.element.value).toBe('sub2api')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageQuery.accessToken')
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.usage_query).toEqual({
+      enabled: true,
+      provider: 'sub2api'
+    })
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

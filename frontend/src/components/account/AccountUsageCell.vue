@@ -457,7 +457,7 @@
         </div>
         <div v-else-if="usageInfo?.third_party_quota" class="flex items-center gap-2">
           <div class="min-w-0 flex-1 space-y-1">
-            <div class="flex items-center gap-2">
+            <div v-if="thirdPartyTotalKnown" class="flex items-center gap-2">
               <div class="relative h-2 flex-1 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/80">
                 <div
                   class="h-full rounded-full transition-all duration-300"
@@ -474,7 +474,7 @@
             </div>
             <div class="text-[11px] tabular-nums">
               <span :class="['font-semibold', thirdPartyAmountClass]">${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}</span>
-              <span class="text-gray-400 dark:text-gray-500"> / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}</span>
+              <span v-if="thirdPartyTotalKnown" class="text-gray-400 dark:text-gray-500"> / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}</span>
             </div>
           </div>
           <button
@@ -682,6 +682,11 @@ const thirdPartyPercentRaw = computed(() => {
   const u = usageInfo.value?.third_party_quota?.utilization
   if (typeof u !== 'number' || !isFinite(u)) return 0
   return u * 100
+})
+
+// 老 Provider 没有 total_known 字段时仍按“总额已知”处理，保持向后兼容。
+const thirdPartyTotalKnown = computed(() => {
+  return usageInfo.value?.third_party_quota?.total_known !== false
 })
 
 const thirdPartyBarWidth = computed(() => {

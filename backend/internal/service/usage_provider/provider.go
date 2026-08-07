@@ -13,11 +13,12 @@ import (
 
 // ProviderType 第三方面板提供商类型。
 //
-// 当前仅实现 newapi；预留扩展位用于后续新增 oneapi、custom 等。
+// 支持独立面板凭据的 newapi，以及复用账号上游凭据的 sub2api。
 type ProviderType string
 
 const (
-	ProviderNewAPI ProviderType = "newapi"
+	ProviderNewAPI  ProviderType = "newapi"
+	ProviderSub2API ProviderType = "sub2api"
 )
 
 // Config 第三方面板查询所需配置（解密后的明文凭据）。
@@ -39,7 +40,7 @@ func (c Config) Validate() error {
 	if c.AccessToken == "" {
 		return errors.New("access_token is required")
 	}
-	if c.UserID == "" {
+	if c.Provider == ProviderNewAPI && c.UserID == "" {
 		return errors.New("user_id is required")
 	}
 	return nil
@@ -56,6 +57,7 @@ type QuotaInfo struct {
 	Total       float64 `json:"total"`                // 总额（remaining + used）
 	Unit        string  `json:"unit"`                 // 单位（USD / CNY / quota 等）
 	Utilization float64 `json:"utilization"`          // 使用率 0~1，由 used/total 计算
+	TotalKnown  bool    `json:"total_known"`          // false 表示上游只提供当前余额，无法可靠推导历史总额
 	UpdatedAt   int64   `json:"updated_at,omitempty"` // 拉取时间戳（毫秒，可选）
 }
 
@@ -72,11 +74,13 @@ type Provider interface {
 
 // New 工厂函数：根据 ProviderType 构造对应实现。
 //
-// 当前仅支持 newapi；其它取值返回 ErrUnsupportedProvider。
+// 不支持的取值返回 ErrUnsupportedProvider。
 func New(provider ProviderType) (Provider, error) {
 	switch provider {
 	case ProviderNewAPI:
 		return NewNewAPIProvider(), nil
+	case ProviderSub2API:
+		return NewSub2APIProvider(), nil
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedProvider, provider)
 	}
