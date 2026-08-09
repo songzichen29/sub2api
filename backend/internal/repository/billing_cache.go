@@ -63,6 +63,7 @@ const (
 	subFieldAllowDailyOverdraft      = "allow_daily_overdraft"
 	subFieldSkipWeekends             = "skip_weekends"
 	subFieldWeekendSkipUserChangedAt = "weekend_skip_user_changed_at"
+	subFieldOverdraftValidityDays    = "overdraft_validity_days"
 	subFieldVersion                  = "version"
 )
 
@@ -264,6 +265,9 @@ func (c *billingCache) parseSubscriptionCache(data map[string]string) (*service.
 			result.WeekendSkipUserChangedAt = &changedAt
 		}
 	}
+	if validityDaysStr, ok := data[subFieldOverdraftValidityDays]; ok {
+		result.OverdraftValidityDays, _ = strconv.Atoi(validityDaysStr)
+	}
 
 	if versionStr, ok := data[subFieldVersion]; ok {
 		result.Version, _ = strconv.ParseInt(versionStr, 10, 64)
@@ -280,17 +284,18 @@ func (c *billingCache) SetSubscriptionCache(ctx context.Context, userID, groupID
 	key := billingSubKey(userID, groupID)
 
 	fields := map[string]any{
-		subFieldStatus:              data.Status,
-		subFieldStartsAt:            data.StartsAt.Unix(),
-		subFieldExpiresAt:           data.ExpiresAt.Unix(),
-		subFieldValidityUnit:        normalizeBillingCacheValidityUnit(data.ValidityUnit),
-		subFieldDailyUsage:          data.DailyUsage,
-		subFieldWeeklyUsage:         data.WeeklyUsage,
-		subFieldMonthlyUsage:        data.MonthlyUsage,
-		subFieldQuotaUsedUSD:        data.QuotaUsedUSD,
-		subFieldAllowDailyOverdraft: data.AllowDailyOverdraft,
-		subFieldSkipWeekends:        data.SkipWeekends,
-		subFieldVersion:             data.Version,
+		subFieldStatus:                data.Status,
+		subFieldStartsAt:              data.StartsAt.Unix(),
+		subFieldExpiresAt:             data.ExpiresAt.Unix(),
+		subFieldValidityUnit:          normalizeBillingCacheValidityUnit(data.ValidityUnit),
+		subFieldDailyUsage:            data.DailyUsage,
+		subFieldWeeklyUsage:           data.WeeklyUsage,
+		subFieldMonthlyUsage:          data.MonthlyUsage,
+		subFieldQuotaUsedUSD:          data.QuotaUsedUSD,
+		subFieldAllowDailyOverdraft:   data.AllowDailyOverdraft,
+		subFieldSkipWeekends:          data.SkipWeekends,
+		subFieldOverdraftValidityDays: data.OverdraftValidityDays,
+		subFieldVersion:               data.Version,
 	}
 	if data.WeekendSkipUserChangedAt != nil && !data.WeekendSkipUserChangedAt.IsZero() {
 		fields[subFieldWeekendSkipUserChangedAt] = data.WeekendSkipUserChangedAt.Unix()

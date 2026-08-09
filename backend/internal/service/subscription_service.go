@@ -645,12 +645,14 @@ func appendSubscriptionNotes(existingNotes, newNotes string) string {
 }
 
 func (s *SubscriptionService) advanceWeekendSkipOriginalExpiresAt(sub *UserSubscription, previousExpiresAt, restartAnchor time.Time, validityDays int, restart bool) {
-	if sub == nil || !sub.SkipWeekends || validityDays <= 0 {
+	if sub == nil || validityDays <= 0 || (!sub.SkipWeekends && !sub.hasCurrentWeekendSkipQuotaAnchor()) {
 		return
 	}
 	var base time.Time
 	if restart {
 		base = restartAnchor
+	} else if !sub.SkipWeekends {
+		base = *sub.WeekendSkipOriginalExpiresAt
 	} else {
 		base = inferWeekendSkipNaturalExpiresAt(sub, previousExpiresAt)
 	}
@@ -1355,7 +1357,7 @@ func (s *SubscriptionService) EnableUserWeekendSkip(ctx context.Context, userID,
 	if sub.UserID != userID {
 		return nil, ErrSubscriptionNotFound
 	}
-	now := timezone.Now()
+	now := weekendSkipNow()
 	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) || now.Before(sub.StartsAt) {
 		return nil, ErrSubscriptionNotFound
 	}
@@ -1391,7 +1393,7 @@ func (s *SubscriptionService) AdminSetWeekendSkip(ctx context.Context, adminID, 
 	if err != nil {
 		return nil, err
 	}
-	now := timezone.Now()
+	now := weekendSkipNow()
 	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
 		return nil, ErrSubscriptionExpired
 	}
@@ -1424,7 +1426,7 @@ func (s *SubscriptionService) AdminPreviewWeekendSkip(ctx context.Context, subsc
 	if err != nil {
 		return nil, err
 	}
-	now := timezone.Now()
+	now := weekendSkipNow()
 	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) {
 		return nil, ErrSubscriptionExpired
 	}

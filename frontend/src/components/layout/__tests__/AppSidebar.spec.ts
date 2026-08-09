@@ -53,3 +53,10 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar default logo', () => {
+  it('uses the published SVG asset when no custom logo is configured', () => {
+    expect(componentSource).toContain("siteLogo || '/logo.svg'")
+    expect(componentSource).not.toContain("siteLogo || '/logo.png'")
+  })
+})

@@ -19,5 +19,6 @@ type SubscriptionCacheData struct {
 	AllowDailyOverdraft      bool
 	SkipWeekends             bool
 	WeekendSkipUserChangedAt *time.Time
+	OverdraftValidityDays    int
 	Version                  int64
 }

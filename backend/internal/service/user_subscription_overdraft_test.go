@@ -206,7 +206,7 @@ func TestUserSubscription_OverdraftValidityDays_CapsAtOriginalExpiresWhenSkippin
 func TestUserSubscription_OverdraftValidityDays_IgnoresStaleOriginalExpiresWhenWeekendSkipOff(t *testing.T) {
 	daily := 40.0
 	startsAt := time.Date(2026, 7, 14, 17, 16, 47, 0, time.UTC)
-	expiresAt := startsAt.Add(5 * 24 * time.Hour)
+	expiresAt := startsAt.Add(10 * 24 * time.Hour)
 	staleOriginalExpires := time.Date(2026, 7, 18, 10, 35, 9, 0, time.UTC)
 	group := &Group{
 		SubscriptionType:    SubscriptionTypeSubscription,
@@ -221,11 +221,50 @@ func TestUserSubscription_OverdraftValidityDays_IgnoresStaleOriginalExpiresWhenW
 		AllowDailyOverdraft:          true,
 	}
 
-	require.Equal(t, 5, sub.EffectiveValidityDays())
+	require.Equal(t, 10, sub.EffectiveValidityDays())
+	require.Equal(t, 10, sub.OverdraftValidityDays())
+	limit, ok := sub.DailyOverdraftLimitUSD(group)
+	require.True(t, ok)
+	require.InDelta(t, 400.0, limit, 0.0001)
+}
+
+func TestUserSubscription_OverdraftValidityDays_PreservesPlanAfterAdminDisablesWeekendSkip(t *testing.T) {
+	daily := 40.0
+	startsAt := time.Date(2026, 8, 8, 22, 52, 15, 0, time.UTC)
+	originalExpiresAt := startsAt.Add(5 * 24 * time.Hour)
+	userEnabledAt := time.Date(2026, 8, 8, 23, 8, 35, 0, time.UTC)
+	adminDisabledAt := time.Date(2026, 8, 9, 13, 45, 27, 0, time.UTC)
+	group := &Group{
+		SubscriptionType:    SubscriptionTypeSubscription,
+		DailyLimitUSD:       &daily,
+		AllowDailyOverdraft: true,
+	}
+	sub := &UserSubscription{
+		StartsAt:                     startsAt,
+		ExpiresAt:                    time.Date(2026, 8, 14, 13, 29, 8, 0, time.UTC),
+		SkipWeekends:                 false,
+		WeekendSkipUserChangedAt:     &userEnabledAt,
+		WeekendSkipOriginalExpiresAt: &originalExpiresAt,
+		WeekendSkipAdminUpdatedAt:    &adminDisabledAt,
+		AllowDailyOverdraft:          true,
+	}
+
+	require.Equal(t, 6, sub.EffectiveValidityDays())
 	require.Equal(t, 5, sub.OverdraftValidityDays())
 	limit, ok := sub.DailyOverdraftLimitUSD(group)
 	require.True(t, ok)
 	require.InDelta(t, 200.0, limit, 0.0001)
+}
+
+func TestUserSubscription_OverdraftValidityDays_UsesCacheOverride(t *testing.T) {
+	startsAt := time.Date(2026, 8, 8, 22, 52, 15, 0, time.UTC)
+	sub := &UserSubscription{
+		StartsAt:                      startsAt,
+		ExpiresAt:                     startsAt.Add(6 * 24 * time.Hour),
+		OverdraftValidityDaysOverride: 5,
+	}
+
+	require.Equal(t, 5, sub.OverdraftValidityDays())
 }
 
 func TestUserSubscription_OverdraftValidityDays_IgnoresStaleWeekendSkipOriginal(t *testing.T) {

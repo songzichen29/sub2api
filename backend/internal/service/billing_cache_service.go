@@ -50,6 +50,7 @@ type subscriptionCacheData struct {
 	AllowDailyOverdraft      bool
 	SkipWeekends             bool
 	WeekendSkipUserChangedAt *time.Time
+	OverdraftValidityDays    int
 	Version                  int64
 }
 
@@ -464,6 +465,7 @@ func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) 
 		AllowDailyOverdraft:      data.AllowDailyOverdraft,
 		SkipWeekends:             data.SkipWeekends,
 		WeekendSkipUserChangedAt: data.WeekendSkipUserChangedAt,
+		OverdraftValidityDays:    data.OverdraftValidityDays,
 		Version:                  data.Version,
 	}
 }
@@ -483,6 +485,7 @@ func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *S
 		AllowDailyOverdraft:      data.AllowDailyOverdraft,
 		SkipWeekends:             data.SkipWeekends,
 		WeekendSkipUserChangedAt: data.WeekendSkipUserChangedAt,
+		OverdraftValidityDays:    data.OverdraftValidityDays,
 		Version:                  data.Version,
 	}
 }
@@ -508,6 +511,7 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 		AllowDailyOverdraft:      sub.AllowDailyOverdraft,
 		SkipWeekends:             sub.SkipWeekends,
 		WeekendSkipUserChangedAt: sub.WeekendSkipUserChangedAt,
+		OverdraftValidityDays:    sub.OverdraftValidityDays(),
 		Version:                  sub.UpdatedAt.Unix(),
 	}, nil
 }
@@ -954,18 +958,19 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 
 	// 检查限额（使用传入的Group限额配置）
 	cacheSub := &UserSubscription{
-		StartsAt:                 subData.StartsAt,
-		ExpiresAt:                subData.ExpiresAt,
-		ValidityUnit:             normalizeSubscriptionValidityUnit(subData.ValidityUnit),
-		DailyWindowStart:         subData.DailyWindowStart,
-		DailyUsageUSD:            subData.DailyUsage,
-		WeeklyUsageUSD:           subData.WeeklyUsage,
-		MonthlyUsageUSD:          subData.MonthlyUsage,
-		QuotaLimitUSD:            subData.QuotaLimitUSD,
-		QuotaUsedUSD:             subData.QuotaUsedUSD,
-		AllowDailyOverdraft:      subData.AllowDailyOverdraft,
-		SkipWeekends:             subData.SkipWeekends,
-		WeekendSkipUserChangedAt: subData.WeekendSkipUserChangedAt,
+		StartsAt:                      subData.StartsAt,
+		ExpiresAt:                     subData.ExpiresAt,
+		ValidityUnit:                  normalizeSubscriptionValidityUnit(subData.ValidityUnit),
+		DailyWindowStart:              subData.DailyWindowStart,
+		DailyUsageUSD:                 subData.DailyUsage,
+		WeeklyUsageUSD:                subData.WeeklyUsage,
+		MonthlyUsageUSD:               subData.MonthlyUsage,
+		QuotaLimitUSD:                 subData.QuotaLimitUSD,
+		QuotaUsedUSD:                  subData.QuotaUsedUSD,
+		AllowDailyOverdraft:           subData.AllowDailyOverdraft,
+		SkipWeekends:                  subData.SkipWeekends,
+		WeekendSkipUserChangedAt:      subData.WeekendSkipUserChangedAt,
+		OverdraftValidityDaysOverride: subData.OverdraftValidityDays,
 	}
 	if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 		return ErrSubscriptionWeekendDisabled
@@ -984,9 +989,11 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		cacheSub.AllowDailyOverdraft = subscription.AllowDailyOverdraft
 		cacheSub.SkipWeekends = subscription.SkipWeekends
 		cacheSub.WeekendSkipUserChangedAt = subscription.WeekendSkipUserChangedAt
+		cacheSub.OverdraftValidityDaysOverride = subscription.OverdraftValidityDays()
 		subData.AllowDailyOverdraft = subscription.AllowDailyOverdraft
 		subData.SkipWeekends = subscription.SkipWeekends
 		subData.WeekendSkipUserChangedAt = subscription.WeekendSkipUserChangedAt
+		subData.OverdraftValidityDays = cacheSub.OverdraftValidityDaysOverride
 		if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 			return ErrSubscriptionWeekendDisabled
 		}
@@ -1009,7 +1016,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 		subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
 		needsDayOverdraftAccounting = group != nil && group.AllowsDailyOverdraft() && cacheSub.IsDayValidityUnit()
 	}
-	if needsDayOverdraftAccounting && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt) || cacheSub.DailyWindowStart == nil) {
+	if needsDayOverdraftAccounting && s.subRepo != nil && (cacheSub.StartsAt.IsZero() || !cacheSub.ExpiresAt.After(cacheSub.StartsAt) || cacheSub.DailyWindowStart == nil || cacheSub.OverdraftValidityDaysOverride <= 0) {
 		if freshSub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, group.ID); err == nil && freshSub != nil {
 			cacheSub.StartsAt = freshSub.StartsAt
 			cacheSub.ExpiresAt = freshSub.ExpiresAt
@@ -1023,6 +1030,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			cacheSub.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			cacheSub.SkipWeekends = freshSub.SkipWeekends
 			cacheSub.WeekendSkipUserChangedAt = freshSub.WeekendSkipUserChangedAt
+			cacheSub.OverdraftValidityDaysOverride = freshSub.OverdraftValidityDays()
 			subData.StartsAt = freshSub.StartsAt
 			subData.ExpiresAt = freshSub.ExpiresAt
 			subData.ValidityUnit = cacheSub.ValidityUnit
@@ -1035,6 +1043,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 			subData.AllowDailyOverdraft = freshSub.AllowDailyOverdraft
 			subData.SkipWeekends = freshSub.SkipWeekends
 			subData.WeekendSkipUserChangedAt = freshSub.WeekendSkipUserChangedAt
+			subData.OverdraftValidityDays = cacheSub.OverdraftValidityDaysOverride
 			if cacheSub.SkipWeekends && isWeekendTime(weekendSkipNow()) {
 				return ErrSubscriptionWeekendDisabled
 			}
@@ -1052,6 +1061,7 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 				AllowDailyOverdraft:      freshSub.AllowDailyOverdraft,
 				SkipWeekends:             freshSub.SkipWeekends,
 				WeekendSkipUserChangedAt: freshSub.WeekendSkipUserChangedAt,
+				OverdraftValidityDays:    cacheSub.OverdraftValidityDaysOverride,
 				Version:                  freshSub.UpdatedAt.Unix(),
 			})
 			subAllowsOverdraft = cacheSub.AllowsDailyOverdraft(group)
@@ -1134,6 +1144,7 @@ func (s *BillingCacheService) subscriptionCacheLimitRecheckAllows(ctx context.Co
 			AllowDailyOverdraft:      freshSub.AllowDailyOverdraft,
 			SkipWeekends:             freshSub.SkipWeekends,
 			WeekendSkipUserChangedAt: freshSub.WeekendSkipUserChangedAt,
+			OverdraftValidityDays:    freshSub.OverdraftValidityDays(),
 			Version:                  freshSub.UpdatedAt.Unix(),
 		})
 	}
