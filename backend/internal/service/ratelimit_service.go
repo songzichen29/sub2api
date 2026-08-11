@@ -128,7 +128,6 @@ func (s *RateLimitService) notifyAccountSchedulingBlocked(account *Account, unti
 	s.runtimeBlocker.BlockAccountScheduling(account, until, reason)
 }
 
-//nolint:unused // reserved for runtime scheduling block recovery hooks.
 func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) {
 	if s == nil || s.runtimeBlocker == nil || accountID <= 0 {
 		return
@@ -1818,6 +1817,11 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	if result.ClearedError || result.ClearedRateLimit {
 		s.ResetOpenAI403Counter(ctx, accountID)
 	}
+	// RecoverAccountState is an explicit recovery action. The durable state may
+	// already have been cleared by an earlier attempt while the in-memory fast
+	// path still blocks scheduling, so always clear it after durable recovery
+	// completes successfully.
+	s.notifyAccountSchedulingBlockCleared(accountID)
 
 	return result, nil
 }
