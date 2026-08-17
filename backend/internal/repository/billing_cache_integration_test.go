@@ -174,6 +174,7 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 					WeeklyUsage:              2.0,
 					MonthlyUsage:             3.0,
 					WeekendSkipUserChangedAt: &weekendSkipChangedAt,
+					OverdraftValidityDays:    5,
 					Version:                  7,
 				}
 				require.NoError(s.T(), cache.SetSubscriptionCache(ctx, userID, groupID, data), "SetSubscriptionCache")
@@ -185,6 +186,7 @@ func (s *BillingCacheSuite) TestSubscriptionCache() {
 				require.Equal(s.T(), 1.0, gotSub.DailyUsage)
 				require.NotNil(s.T(), gotSub.WeekendSkipUserChangedAt)
 				require.WithinDuration(s.T(), weekendSkipChangedAt, *gotSub.WeekendSkipUserChangedAt, time.Second)
+				require.Equal(s.T(), 5, gotSub.OverdraftValidityDays)
 
 				ttl, err := rdb.TTL(ctx, subKey).Result()
 				require.NoError(s.T(), err, "TTL subKey")

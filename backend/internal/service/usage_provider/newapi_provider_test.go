@@ -161,7 +161,8 @@ func TestConfig_Validate(t *testing.T) {
 		cfg     Config
 		wantErr bool
 	}{
-		{"valid", Config{Provider: ProviderNewAPI, BaseURL: "https://x", AccessToken: "t", UserID: "1"}, false},
+		{"valid newapi", Config{Provider: ProviderNewAPI, BaseURL: "https://x", AccessToken: "t", UserID: "1"}, false},
+		{"valid sub2api without user id", Config{Provider: ProviderSub2API, BaseURL: "https://x", AccessToken: "t"}, false},
 		{"missing provider", Config{BaseURL: "https://x", AccessToken: "t", UserID: "1"}, true},
 		{"missing base_url", Config{Provider: ProviderNewAPI, AccessToken: "t", UserID: "1"}, true},
 		{"missing access_token", Config{Provider: ProviderNewAPI, BaseURL: "https://x", UserID: "1"}, true},
@@ -184,6 +185,13 @@ func TestNew_FactoryDispatch(t *testing.T) {
 	}
 	if p.Type() != ProviderNewAPI {
 		t.Errorf("Type() = %q, want newapi", p.Type())
+	}
+	p, err = New(ProviderSub2API)
+	if err != nil {
+		t.Fatalf("New(sub2api) err = %v", err)
+	}
+	if p.Type() != ProviderSub2API {
+		t.Errorf("Type() = %q, want sub2api", p.Type())
 	}
 
 	if _, err := New("oneapi"); err == nil {

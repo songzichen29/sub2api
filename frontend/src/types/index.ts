@@ -1188,11 +1188,12 @@ export interface AntigravityModelQuota {
 // GET 响应里以 "••••••••" 占位符返回。
 export interface AccountUsageQueryConfig {
   enabled: boolean
-  provider: 'newapi' | string
-  base_url: string
+  provider: 'newapi' | 'sub2api' | string
+  // newapi 使用独立面板凭据；sub2api 复用账号 credentials，因此以下字段不存在。
+  base_url?: string
   // 后端返回时是占位符；前端编辑表单未修改时原样回传
-  access_token: string
-  user_id: string
+  access_token?: string
+  user_id?: string
 }
 
 // 第三方面板返回的额度信息（已规整化为统一单位）
@@ -1203,6 +1204,7 @@ export interface AccountThirdPartyQuotaInfo {
   total: number
   unit: string
   utilization: number  // 0~1
+  total_known?: boolean
   updated_at?: number
 }
 

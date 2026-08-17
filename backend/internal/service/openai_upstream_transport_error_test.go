@@ -9,6 +9,9 @@ import (
 	"os"
 	"syscall"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestClassifyOpenAITransportError pins which transport-level upstream failures
@@ -82,6 +85,42 @@ func TestClassifyOpenAITransportError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClassifyOpenAITransportError_ShortBackoff(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"connection refused", syscall.ECONNREFUSED, true},
+		{"network unreachable", syscall.ENETUNREACH, true},
+		{"timeout", context.DeadlineExceeded, true},
+		{"proxy credentials rejected", errors.New("proxy authentication required"), false},
+		{"connection reset", errors.New("connection reset by peer"), false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, classifyOpenAITransportError(tc.err).ShortBackoff)
+		})
+	}
+}
+
+func TestOpenAITransportNetworkBackoffStepsAndReset(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	const accountID int64 = 2756
+	base := time.Unix(1000, 0)
+
+	require.Equal(t, 5*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base))
+	require.Equal(t, 10*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base.Add(5*time.Second)))
+	require.Equal(t, 15*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base.Add(15*time.Second)))
+	require.Equal(t, 15*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base.Add(30*time.Second)))
+
+	// A quiet period or an explicit scheduling-block clear starts again at 5s.
+	require.Equal(t, 5*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base.Add(61*time.Second)))
+	svc.resetOpenAITransportNetworkBackoff(accountID)
+	require.Equal(t, 5*time.Second, svc.nextOpenAITransportNetworkBackoff(accountID, base.Add(62*time.Second)))
 }
 
 func errString(err error) string {

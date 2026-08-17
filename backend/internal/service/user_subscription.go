@@ -65,6 +65,11 @@ type UserSubscription struct {
 	// 误当成整笔订阅的总池用量。
 	AdminTotalPoolUsedUSD *float64
 
+	// OverdraftValidityDaysOverride is a non-persistent cache snapshot. Billing
+	// cache reads use it to preserve the DB-calculated plan length without
+	// reconstructing weekend-skip history from a partial cache record.
+	OverdraftValidityDaysOverride int
+
 	User           *User
 	Group          *Group
 	AssignedByUser *User
@@ -113,18 +118,22 @@ func (s *UserSubscription) EffectiveValidityDays() int {
 // OverdraftValidityDays 返回日透支总额度对应的“计划天数”。
 //
 // 规则：
-//  1. 默认与日历有效期一致；
-//  2. 若开启跳过周末，则按 starts~expires 之间的工作日可用时长折算天数，
+//  1. 缓存快照明确记录了计划天数时，直接使用该值；
+//  2. 默认与日历有效期一致；
+//  3. 若开启跳过周末，则按 starts~expires 之间的工作日可用时长折算天数，
 //     避免把周末不可用天数算进透支池；
-//  3. 若记录了原自然到期时间，则同时用它校准计划天数。历史续费数据可能
-//     遗留过旧 original，因此取 original 与工作日反推值中更大的有效值。
+//  4. 若当前订阅期存在有效的周末补偿锚点，则用原自然到期时间校准计划天数。
+//     管理员关闭跳过周末后，墙钟跨度仍包含已经补偿的周末，但额度天数不能增加。
 func (s *UserSubscription) OverdraftValidityDays() int {
 	if s == nil || !s.ExpiresAt.After(s.StartsAt) {
 		return 0
 	}
+	if s.OverdraftValidityDaysOverride > 0 {
+		return s.OverdraftValidityDaysOverride
+	}
 	days := validityDaysBetween(s.StartsAt, s.ExpiresAt)
+	plannedDays := 0
 	if s.SkipWeekends {
-		plannedDays := 0
 		usable := weekendSkippedDurationBetween(s.StartsAt, s.ExpiresAt)
 		if usable > 0 {
 			plannedDays = int(math.Ceil(usable.Hours() / 24))
@@ -132,20 +141,36 @@ func (s *UserSubscription) OverdraftValidityDays() int {
 				plannedDays = 1
 			}
 		}
-		if s.WeekendSkipOriginalExpiresAt != nil && s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
-			originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
-			if originalDays > plannedDays {
-				plannedDays = originalDays
-			}
+	}
+	if s.hasCurrentWeekendSkipQuotaAnchor() {
+		originalDays := validityDaysBetween(s.StartsAt, *s.WeekendSkipOriginalExpiresAt)
+		if !s.SkipWeekends || originalDays > plannedDays {
+			plannedDays = originalDays
 		}
-		if plannedDays > 0 {
-			days = plannedDays
-		}
+	}
+	if plannedDays > 0 {
+		days = plannedDays
 	}
 	if days < 1 {
 		return 1
 	}
 	return days
+}
+
+func (s *UserSubscription) hasCurrentWeekendSkipQuotaAnchor() bool {
+	if s == nil || s.WeekendSkipOriginalExpiresAt == nil || !s.WeekendSkipOriginalExpiresAt.After(s.StartsAt) {
+		return false
+	}
+	if s.SkipWeekends {
+		return true
+	}
+	// An original expiry on a non-skipping historical row may be stale. The
+	// admin timestamp proves that skipping was disabled during this term, so
+	// the original expiry still represents its quota plan rather than old data.
+	if s.WeekendSkipAdminUpdatedAt == nil || s.WeekendSkipAdminUpdatedAt.Before(s.StartsAt) {
+		return false
+	}
+	return s.WeekendSkipUserChangedAt == nil || !s.WeekendSkipAdminUpdatedAt.Before(*s.WeekendSkipUserChangedAt)
 }
 
 func validityDaysBetween(startsAt, expiresAt time.Time) int {

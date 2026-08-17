@@ -658,6 +658,44 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.text().trim()).toBe('admin.accounts.usageQuery.notEnabledHint')
   })
 
+  it('Sub2API 钱包余额未知历史总额时只显示当前余额', async () => {
+    getUsage.mockResolvedValue({
+      source: 'active',
+      updated_at: '2026-08-06T00:00:00Z',
+      third_party_quota: {
+        plan_name: '钱包余额',
+        remaining: 26.31452308,
+        used: 0,
+        total: 0,
+        unit: 'USD',
+        utilization: 0,
+        total_known: false
+      }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4387,
+          platform: 'openai',
+          type: 'apikey',
+          extra: { usage_query: { enabled: true, provider: 'sub2api' } }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('$26.31')
+    expect(wrapper.text()).not.toContain('/ $')
+    expect(wrapper.text()).not.toContain('0%')
+  })
+
   it('Vertex 账号会在 Gemini 用量窗口里展示 today stats 徽章', async () => {
 		const wrapper = mount(AccountUsageCell, {
 		  props: {

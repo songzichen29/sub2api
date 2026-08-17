@@ -145,6 +145,7 @@ func (p *newAPIProvider) Fetch(ctx context.Context, cfg Config) (*QuotaInfo, err
 		Total:       total,
 		Unit:        "USD",
 		Utilization: utilization,
+		TotalKnown:  true,
 		UpdatedAt:   time.Now().UnixMilli(),
 	}, nil
 }
