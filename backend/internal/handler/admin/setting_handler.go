@@ -375,10 +375,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 
-		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         settings.GrokDefaultBaseURLMode,
-
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		ModelPlazaEnabled:     settings.ModelPlazaEnabled,
@@ -387,8 +383,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 
-		AccountSchedulingThresholds: settings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:  settings.AllowUserViewErrorRequests,
+		AllowUserViewErrorRequests: settings.AllowUserViewErrorRequests,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)

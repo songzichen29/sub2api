@@ -204,13 +204,6 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 }
 
 func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
-	// Forced durable money-event IDs must win over client/local context IDs so
-	// standalone web_search / async video cannot collapse under a reused client id.
-	if requestID := strings.TrimSpace(upstreamRequestID); requestID != "" {
-		if isForcedUsageBillingRequestID(requestID) {
-			return requestID
-		}
-	}
 	if ctx != nil {
 		if clientRequestID, _ := ctx.Value(ctxkey.ClientRequestID).(string); strings.TrimSpace(clientRequestID) != "" {
 			return "client:" + strings.TrimSpace(clientRequestID)
@@ -223,40 +216,6 @@ func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string)
 		return requestID
 	}
 	return "generated:" + generateRequestID()
-}
-
-func isForcedUsageBillingRequestID(requestID string) bool {
-	id := strings.TrimSpace(requestID)
-	return strings.HasPrefix(id, "web_search:") ||
-		strings.HasPrefix(id, "grok-video:") ||
-		strings.HasPrefix(id, "grok_audio:") ||
-		strings.HasPrefix(id, "grok_realtime:")
-}
-
-// StableGrokAudioBillingRequestID is the durable usage_logs / dedup key for one
-// voice HTTP call (TTS/STT). Prefer an upstream request id when present.
-func StableGrokAudioBillingRequestID(upstreamRequestID string) string {
-	upstreamRequestID = strings.TrimSpace(upstreamRequestID)
-	if strings.HasPrefix(upstreamRequestID, "grok_audio:") {
-		return upstreamRequestID
-	}
-	if upstreamRequestID == "" {
-		upstreamRequestID = generateRequestID()
-	}
-	return "grok_audio:" + upstreamRequestID
-}
-
-// StableGrokRealtimeBillingRequestID is the durable usage_logs / dedup key for
-// one realtime WebSocket session.
-func StableGrokRealtimeBillingRequestID(sessionID string) string {
-	sessionID = strings.TrimSpace(sessionID)
-	if strings.HasPrefix(sessionID, "grok_realtime:") {
-		return sessionID
-	}
-	if sessionID == "" {
-		sessionID = generateRequestID()
-	}
-	return "grok_realtime:" + sessionID
 }
 
 func resolveUsageBillingPayloadFingerprint(ctx context.Context, requestPayloadHash string) string {
@@ -949,41 +908,8 @@ func (s *GatewayService) calculateRecordUsageCost(
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
 	}
 
-	// Voice audio (TTS / STT / realtime) when present on the forward result.
-	if result.AudioUsage != nil {
-		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
-			resolved.Mode == BillingModePerRequest {
-			gid := apiKey.Group.ID
-			cost, err := s.billingService.CalculateCostUnified(CostInput{
-				Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-				UsageUnits: result.AudioUsage.DurationOrUnits, SizeTier: result.AudioUsage.Mode,
-				RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
-			})
-			if err == nil {
-				return cost
-			}
-		}
-		cfg := groupAudioPriceConfigFromAPIKey(apiKey)
-		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, multiplier)
-	}
-
-	// Token 计费；SearchCount 为叠加 surcharge（不替代 token）。
-	tokenCost := s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
-	if result.SearchCount > 0 {
-		price := groupSearchPricePer1kFromAPIKey(apiKey)
-		if price != nil && *price == 0 {
-			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, result.SearchCount)
-		}
-		searchCost := s.billingService.CalculateSearchCost(result.SearchCount, price, multiplier)
-		if searchCost != nil && (searchCost.TotalCost > 0 || searchCost.ActualCost > 0) {
-			if tokenCost == nil {
-				return searchCost
-			}
-			tokenCost.TotalCost += searchCost.TotalCost
-			tokenCost.ActualCost += searchCost.ActualCost
-		}
-	}
-	return tokenCost
+	// Token 计费
+	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
 }
 
 // compositeBillableModel 决定 composite 分组请求的计费模型：来源覆盖把计费模型
@@ -1059,8 +985,8 @@ func (s *GatewayService) resolveChannelPricing(ctx context.Context, billingModel
 		return nil
 	}
 	gid := apiKey.Group.ID
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, Group: apiKey.Group})
-	if resolved.Source == PricingSourceGroup || resolved.Source == PricingSourceChannel {
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+	if resolved.Source == PricingSourceChannel {
 		return resolved
 	}
 	return nil
@@ -1075,23 +1001,11 @@ func (s *GatewayService) calculateImageCost(
 	multiplier float64,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
-	resolved := s.resolveChannelPricing(ctx, billingModel, apiKey)
-	if resolved != nil && resolved.Source == PricingSourceGroup {
-		gid := apiKey.Group.ID
-		cost, err := s.billingService.CalculateCostUnified(CostInput{
-			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-			RequestCount: result.ImageCount, SizeTier: sizeTier,
-			RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
-		})
-		if err == nil {
-			return cost
-		}
-	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
 		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 	}
-	if resolved != nil && resolved.Source == PricingSourceChannel {
+	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
 			OutputTokens:      result.Usage.OutputTokens,
@@ -1102,7 +1016,6 @@ func (s *GatewayService) calculateImageCost(
 			Ctx:            ctx,
 			Model:          billingModel,
 			GroupID:        &gid,
-			Group:          apiKey.Group,
 			Tokens:         tokens,
 			RequestCount:   result.ImageCount,
 			SizeTier:       sizeTier,
@@ -1142,30 +1055,22 @@ func (s *GatewayService) calculateTokenCost(
 	var cost *CostBreakdown
 	var err error
 
-	// Explicit group/channel pricing wins. Built-in pricing also uses the unified
-	// resolver so the group long-context toggle can veto model-native tiers.
+	// 优先尝试渠道定价 → CalculateCostUnified
 	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {
 		gid := apiKey.Group.ID
 		cost, err = s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
 			Model:          billingModel,
 			GroupID:        &gid,
-			Group:          apiKey.Group,
 			Tokens:         tokens,
 			RequestCount:   1,
 			RateMultiplier: multiplier,
 			Resolver:       s.resolver,
 			Resolved:       resolved,
 		})
-	} else if opts.LongContextThreshold > 0 && (apiKey.Group == nil || apiKey.Group.LongContextPricingEnabled) {
+	} else if opts.LongContextThreshold > 0 {
 		// 长上下文双倍计费（如 Gemini 200K 阈值）
 		cost, err = s.billingService.CalculateCostWithLongContext(billingModel, tokens, multiplier, opts.LongContextThreshold, opts.LongContextMultiplier)
-	} else if s.resolver != nil && apiKey.Group != nil {
-		gid := apiKey.Group.ID
-		cost, err = s.billingService.CalculateCostUnified(CostInput{
-			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, Resolver: s.resolver,
-		})
 	} else {
 		cost, err = s.billingService.CalculateCost(billingModel, tokens, multiplier)
 	}

@@ -301,10 +301,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	}
 
 	platform := NormalizeGroupPlatform(input.Platform)
-	modelPricing, err := normalizeGroupModelPricing(platform, input.ModelPricing)
-	if err != nil {
-		return nil, err
-	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -332,10 +328,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	videoPrice720P := normalizePrice(input.VideoPrice720P)
 	videoPrice1080P := normalizePrice(input.VideoPrice1080P)
 	webSearchPricePerCall := normalizePrice(input.WebSearchPricePerCall)
-	searchPricePer1k := normalizePrice(input.SearchPricePer1k)
-	audioRealtimePricePerMin := normalizePrice(input.AudioRealtimePricePerMin)
-	audioTTSPricePerMillionChars := normalizePrice(input.AudioTTSPricePerMillionChars)
-	audioSTTPricePerHour := normalizePrice(input.AudioSTTPricePerHour)
 	imageRateMultiplier := 1.0
 	if input.ImageRateMultiplier != nil {
 		if *input.ImageRateMultiplier < 0 {
@@ -463,8 +455,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
-		LongContextPricingEnabled:       input.LongContextPricingEnabled,
-		ModelPricing:                    modelPricing,
 		AllowImageGeneration:            allowImageGeneration,
 		AllowBatchImageGeneration:       allowBatchImageGeneration,
 		ImageRateIndependent:            input.ImageRateIndependent,
@@ -486,12 +476,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		VideoPrice480P:                  videoPrice480P,
 		VideoPrice720P:                  videoPrice720P,
 		VideoPrice1080P:                 videoPrice1080P,
-		VideoModelPrices:                NormalizeVideoModelPrices(input.VideoModelPrices),
 		WebSearchPricePerCall:           webSearchPricePerCall,
-		SearchPricePer1k:                searchPricePer1k,
-		AudioRealtimePricePerMin:        audioRealtimePricePerMin,
-		AudioTTSPricePerMillionChars:    audioTTSPricePerMillionChars,
-		AudioSTTPricePerHour:            audioSTTPricePerHour,
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
@@ -665,16 +650,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.Status != "" {
 		group.Status = input.Status
 	}
-	if input.LongContextPricingEnabled != nil {
-		group.LongContextPricingEnabled = *input.LongContextPricingEnabled
-	}
-	if input.ModelPricing != nil {
-		modelPricing, normalizeErr := normalizeGroupModelPricing(group.Platform, *input.ModelPricing)
-		if normalizeErr != nil {
-			return nil, normalizeErr
-		}
-		group.ModelPricing = modelPricing
-	}
 
 	// 订阅相关字段
 	if input.SubscriptionType != "" {
@@ -783,24 +758,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.VideoPrice1080P != nil {
 		group.VideoPrice1080P = normalizePrice(input.VideoPrice1080P)
 	}
-	// nil = leave unchanged; empty map = clear per-model prices.
-	if input.VideoModelPrices != nil {
-		group.VideoModelPrices = NormalizeVideoModelPrices(input.VideoModelPrices)
-	}
 	if input.WebSearchPricePerCall != nil {
 		group.WebSearchPricePerCall = normalizePrice(input.WebSearchPricePerCall)
-	}
-	if input.SearchPricePer1k != nil {
-		group.SearchPricePer1k = normalizePrice(input.SearchPricePer1k)
-	}
-	if input.AudioRealtimePricePerMin != nil {
-		group.AudioRealtimePricePerMin = normalizePrice(input.AudioRealtimePricePerMin)
-	}
-	if input.AudioTTSPricePerMillionChars != nil {
-		group.AudioTTSPricePerMillionChars = normalizePrice(input.AudioTTSPricePerMillionChars)
-	}
-	if input.AudioSTTPricePerHour != nil {
-		group.AudioSTTPricePerHour = normalizePrice(input.AudioSTTPricePerHour)
 	}
 
 	// Claude Code 客户端限制
@@ -979,28 +938,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 
 	return group, nil
-}
-
-func normalizeGroupModelPricing(platform string, pricing []ChannelModelPricing) ([]ChannelModelPricing, error) {
-	out := make([]ChannelModelPricing, len(pricing))
-	for i := range pricing {
-		out[i] = pricing[i].Clone()
-		out[i].ID = 0
-		out[i].ChannelID = 0
-		if strings.TrimSpace(out[i].Platform) == "" {
-			out[i].Platform = platform
-		}
-		for j := range out[i].Models {
-			out[i].Models[j] = strings.TrimSpace(out[i].Models[j])
-		}
-		if len(out[i].Models) == 0 {
-			return nil, infraerrors.New(http.StatusBadRequest, "GROUP_MODEL_PRICING_MODELS_REQUIRED", "group model pricing entry requires at least one model")
-		}
-	}
-	if err := validatePricingEntries(out); err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {

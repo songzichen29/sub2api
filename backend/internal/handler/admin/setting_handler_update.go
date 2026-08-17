@@ -333,11 +333,6 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
 
-	// Grok model mapping policy
-	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
-	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
-	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
-
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 
@@ -361,9 +356,6 @@ type UpdateSettingsRequest struct {
 
 	// 系统全局 platform quota 默认值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
-
-	// 各平台账号自动停调阈值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
-	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
 
 	// auth-source 层 platform quota 覆盖（override 语义：nil = 不修改，non-nil = 整体覆盖该 source 的 quota 配置）。
 	AuthSourceEmailPlatformQuotas    map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_email_platform_quotas"`
@@ -1491,8 +1483,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
-		DefaultPlatformQuotas:       req.DefaultPlatformQuotas,
-		AccountSchedulingThresholds: req.AccountSchedulingThresholds,
+		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
 
 		RegistrationEnabled:                 req.RegistrationEnabled,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
@@ -1888,24 +1879,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ChannelMonitorHideThroughput
 			}
 			return previousSettings.ChannelMonitorHideThroughput
-		}(),
-		GrokDefaultTextModel: func() string {
-			if req.GrokDefaultTextModel != nil {
-				return *req.GrokDefaultTextModel
-			}
-			return previousSettings.GrokDefaultTextModel
-		}(),
-		GrokCrossClientModelMapEnabled: func() bool {
-			if req.GrokCrossClientModelMapEnabled != nil {
-				return *req.GrokCrossClientModelMapEnabled
-			}
-			return previousSettings.GrokCrossClientModelMapEnabled
-		}(),
-		GrokDefaultBaseURLMode: func() string {
-			if req.GrokDefaultBaseURLMode != nil {
-				return strings.TrimSpace(*req.GrokDefaultBaseURLMode)
-			}
-			return previousSettings.GrokDefaultBaseURLMode
 		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
@@ -2343,10 +2316,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
 
-		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
-		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
-		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
-
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
 		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
@@ -2358,7 +2327,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
