@@ -1073,7 +1073,7 @@ import type {
   ModerationProtocol,
   UpdateContentModerationConfig,
 } from '@/api/admin/riskControl'
-import type { AdminGroup, SelectOption } from '@/types'
+import type { AdminGroup, Proxy, SelectOption } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime as formatDateTimeValue } from '@/utils/format'
@@ -1144,6 +1144,7 @@ const activeSettingsTab = ref<SettingsTab>('basic')
 const groupSearch = ref('')
 const flaggedHashInput = ref('')
 const groups = ref<AdminGroup[]>([])
+const proxies = ref<Proxy[]>([])
 const logs = ref<ContentModerationLog[]>([])
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
@@ -1161,6 +1162,7 @@ const configForm = reactive({
   mode: 'pre_block' as ModerationMode,
   base_url: 'https://api.openai.com',
   model: 'omni-moderation-latest',
+  proxy_id: null as number | null,
   api_keys_text: '',
   api_key_configured: false,
   api_key_masked: '',
@@ -1621,6 +1623,7 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.mode = config.mode
   configForm.base_url = config.base_url || 'https://api.openai.com'
   configForm.model = config.model || 'omni-moderation-latest'
+  configForm.proxy_id = config.proxy_id || null
   configForm.api_keys_text = ''
   configForm.api_key_configured = config.api_key_configured
   configForm.api_key_masked = config.api_key_masked || ''
@@ -1664,14 +1667,17 @@ function applyConfig(config: ContentModerationConfig) {
 async function loadAll() {
   loading.value = true
   try {
-    const [config, groupItems, runtimeStatus] = await Promise.all([
+    const [config, groupItems, runtimeStatus, proxyItems] = await Promise.all([
       adminAPI.riskControl.getConfig(),
       adminAPI.groups.getAll(),
       adminAPI.riskControl.getStatus(),
+      // 代理列表加载失败不阻塞风控页面（仅影响下拉可选项）
+      adminAPI.proxies.getAll().catch(() => [] as Proxy[]),
     ])
     applyConfig(config)
     groups.value = groupItems
     status.value = runtimeStatus
+    proxies.value = proxyItems
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
       prunePendingDeleteAPIKeyHashes()
@@ -1715,6 +1721,8 @@ async function saveConfig() {
       mode: configForm.mode,
       base_url: configForm.base_url,
       model: configForm.model,
+      // 后端语义：0 清除代理（直连），>0 指定代理
+      proxy_id: configForm.proxy_id ?? 0,
       timeout_ms: Number(configForm.timeout_ms) || 3000,
       retry_count: Number(configForm.retry_count) || 0,
       sample_rate: Number(configForm.sample_rate) || 0,
@@ -1944,6 +1952,8 @@ async function testApiKeys(useInputKeys: boolean) {
       base_url: configForm.base_url,
       model: configForm.model,
       timeout_ms: Number(configForm.timeout_ms) || 3000,
+      // 与保存语义一致：0 强制直连，>0 指定代理，确保测试与实际审计走同一条链路
+      proxy_id: configForm.proxy_id ?? 0,
       prompt: moderationTestPrompt.value,
       images: moderationTestImages.value,
       protocol: configForm.moderation_protocol,

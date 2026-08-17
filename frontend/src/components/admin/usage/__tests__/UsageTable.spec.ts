@@ -4,6 +4,20 @@ import { nextTick } from 'vue'
 
 import UsageTable from '../UsageTable.vue'
 
+const ipGeoMocks = vi.hoisted(() => ({
+  getEntry: vi.fn(() => ({ status: 'idle' as const })),
+  fetchOne: vi.fn(),
+  fetchBatch: vi.fn(),
+}))
+
+const appStoreMocks = vi.hoisted(() => ({
+  showSuccess: vi.fn(),
+  showError: vi.fn(),
+}))
+
+vi.mock('@/utils/ipGeoLookup', () => ipGeoMocks)
+vi.mock('@/stores/app', () => ({ useAppStore: () => appStoreMocks }))
+
 const messages: Record<string, string> = {
   'usage.costDetails': 'Cost Breakdown',
   'admin.usage.inputCost': 'Input Cost',
@@ -42,6 +56,15 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.requestIdCopied': 'Request ID copied',
+	'keys.copied': 'Copied',
+	'keys.copyToClipboard': 'Copy to clipboard',
+	'common.copyFailed': 'Copy failed',
+	'usage.requestedModel': 'Requested',
+	'usage.sentUpstreamModel': 'Sent upstream',
+	'usage.upstreamResponseModel': 'Upstream response',
+	'usage.modelVariant': 'Possible version variant',
+	'usage.modelMismatch': 'Different model',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -63,6 +86,7 @@ const DataTableStub = {
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-request_id" :row="row" />
       </div>
     </div>
   `,
@@ -230,6 +254,48 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('claude-sonnet-4')
     expect(text).toContain('claude-sonnet-4-20250514')
   })
+
+	it.each([
+		{
+			name: 'possible version variant',
+			responseModel: 'gpt-5.5-2026-08-01',
+			expectedBadge: 'Possible version variant',
+		},
+		{
+			name: 'different upstream model',
+			responseModel: 'gpt-5.4',
+			expectedBadge: 'Different model',
+		},
+	])('shows a compact upstream response audit marker for $name', ({ responseModel, expectedBadge }) => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					request_id: `req-${responseModel}`,
+					model: 'gpt-5.6-sol',
+					upstream_model: 'gpt-5.5',
+					model_mapping_chain: 'gpt-5.6-sol→gpt-5.5',
+					upstream_response_model: responseModel,
+					upstream_model_mismatch: true,
+				}],
+				loading: false,
+				columns: [],
+			},
+			global: {
+				stubs: {
+					DataTable: DataTableStub,
+					EmptyState: true,
+					Icon: true,
+					Teleport: true,
+				},
+			},
+		})
+
+		const text = wrapper.text()
+		expect(text).toContain('gpt-5.6-sol')
+		expect(text).toContain('gpt-5.5')
+		expect(text).toContain(responseModel)
+		expect(text).toContain(expectedBadge)
+	})
 
   it.each([
     {

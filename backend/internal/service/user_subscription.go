@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 const (
@@ -402,27 +404,77 @@ func (s *UserSubscription) NeedsDailyReset() bool {
 }
 
 func (s *UserSubscription) NeedsDailyResetAt(now time.Time) bool {
-	if s.DailyWindowStart == nil {
-		return false
-	}
-	if s.HasOneTimeDailyQuota() {
-		return false
-	}
-	return windowNeedsReset(s.StartsAt, s.DailyWindowStart, now, dailyWindowDuration)
+	_, ok := s.automaticDailyWindowStartAt(now)
+	return ok
 }
 
 func (s *UserSubscription) NeedsWeeklyReset() bool {
+	return s.NeedsWeeklyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsWeeklyResetAt(now time.Time) bool {
 	if s.WeeklyWindowStart == nil {
 		return false
 	}
-	return windowNeedsReset(s.StartsAt, s.WeeklyWindowStart, time.Now(), weeklyWindowDuration)
+	return !now.Before(s.WeeklyWindowStart.Add(weeklyWindowDuration))
 }
 
 func (s *UserSubscription) NeedsMonthlyReset() bool {
+	return s.NeedsMonthlyResetAt(time.Now())
+}
+
+func (s *UserSubscription) NeedsMonthlyResetAt(now time.Time) bool {
 	if s.MonthlyWindowStart == nil {
 		return false
 	}
-	return windowNeedsReset(s.StartsAt, s.MonthlyWindowStart, time.Now(), monthlyWindowDuration)
+	return !now.Before(s.MonthlyWindowStart.Add(monthlyWindowDuration))
+}
+
+func (s *UserSubscription) canAutomaticallyResetDailyAt(now time.Time) bool {
+	_, ok := s.automaticDailyWindowStartAt(now)
+	return ok
+}
+
+func (s *UserSubscription) automaticDailyWindowStartAt(now time.Time) (time.Time, bool) {
+	if s.DailyWindowStart == nil || s.HasOneTimeDailyQuota() {
+		return time.Time{}, false
+	}
+	today := timezone.StartOfDay(now)
+	if !today.After(timezone.StartOfDay(*s.DailyWindowStart)) {
+		return time.Time{}, false
+	}
+	return today, true
+}
+
+func (s *UserSubscription) canAutomaticallyResetWeeklyAt(now time.Time) bool {
+	_, ok := s.automaticWindowStartAt(s.WeeklyWindowStart, weeklyWindowDuration, now)
+	return ok
+}
+
+func (s *UserSubscription) canAutomaticallyResetMonthlyAt(now time.Time) bool {
+	_, ok := s.automaticWindowStartAt(s.MonthlyWindowStart, monthlyWindowDuration, now)
+	return ok
+}
+
+func (s *UserSubscription) automaticWindowStartAt(previous *time.Time, period time.Duration, now time.Time) (time.Time, bool) {
+	if previous == nil {
+		return time.Time{}, false
+	}
+	anchor := *previous
+	legacyAnchor := startOfDay(s.StartsAt)
+	if legacyAnchor.Before(s.StartsAt) && anchor.Equal(legacyAnchor) {
+		anchor = s.StartsAt
+	}
+	next := anchor.Add(period)
+	if now.Before(next) || !next.Before(s.ExpiresAt) {
+		return time.Time{}, false
+	}
+	periods := now.Sub(anchor) / period
+	lastPeriodBeforeExpiry := (s.ExpiresAt.Sub(anchor) - 1) / period
+	if periods > lastPeriodBeforeExpiry {
+		periods = lastPeriodBeforeExpiry
+	}
+	return anchor.Add(periods * period), true
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
@@ -433,21 +485,24 @@ func (s *UserSubscription) DailyResetTime() *time.Time {
 		t := s.ExpiresAt
 		return &t
 	}
-	return windowResetTime(s.StartsAt, s.DailyWindowStart, time.Now(), dailyWindowDuration)
+	t := timezone.StartOfDay(*s.DailyWindowStart).AddDate(0, 0, 1)
+	return &t
 }
 
 func (s *UserSubscription) WeeklyResetTime() *time.Time {
 	if s.WeeklyWindowStart == nil {
 		return nil
 	}
-	return windowResetTime(s.StartsAt, s.WeeklyWindowStart, time.Now(), weeklyWindowDuration)
+	t := s.WeeklyWindowStart.Add(weeklyWindowDuration)
+	return &t
 }
 
 func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	if s.MonthlyWindowStart == nil {
 		return nil
 	}
-	return windowResetTime(s.StartsAt, s.MonthlyWindowStart, time.Now(), monthlyWindowDuration)
+	t := s.MonthlyWindowStart.Add(monthlyWindowDuration)
+	return &t
 }
 
 func (s *UserSubscription) CurrentDailyWindowStart(now time.Time) time.Time {

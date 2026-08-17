@@ -9,6 +9,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/dgraph-io/ristretto"
 	"github.com/stretchr/testify/require"
 )
@@ -123,6 +124,9 @@ func (userSubRepoNoop) Create(context.Context, *UserSubscription) error {
 }
 func (userSubRepoNoop) GetByID(context.Context, int64) (*UserSubscription, error) {
 	panic("unexpected GetByID call")
+}
+func (userSubRepoNoop) GetByIDForUpdate(context.Context, int64) (*UserSubscription, error) {
+	panic("unexpected GetByIDForUpdate call")
 }
 func (userSubRepoNoop) GetByIDIncludeDeleted(context.Context, int64) (*UserSubscription, error) {
 	panic("unexpected GetByIDIncludeDeleted call")
@@ -265,6 +269,10 @@ func (s *subscriptionUserSubRepoStub) GetByID(_ context.Context, id int64) (*Use
 	}
 	cp := *sub
 	return &cp, nil
+}
+
+func (s *subscriptionUserSubRepoStub) GetByIDForUpdate(ctx context.Context, id int64) (*UserSubscription, error) {
+	return s.GetByID(ctx, id)
 }
 
 func (s *subscriptionUserSubRepoStub) Update(_ context.Context, sub *UserSubscription) error {
@@ -454,9 +462,9 @@ func TestAssignSubscriptionRenewsExpiredSemanticMatch(t *testing.T) {
 	require.False(t, sub.StartsAt.Before(before))
 	require.False(t, sub.StartsAt.After(after))
 	require.Equal(t, sub.StartsAt.AddDate(0, 0, 30), sub.ExpiresAt)
-	require.Equal(t, startOfDay(sub.StartsAt), *sub.DailyWindowStart)
-	require.Equal(t, startOfDay(sub.StartsAt), *sub.WeeklyWindowStart)
-	require.Equal(t, startOfDay(sub.StartsAt), *sub.MonthlyWindowStart)
+	require.Equal(t, timezone.StartOfDay(sub.StartsAt), *sub.DailyWindowStart, "续期后日窗口应锚定当天 0 点")
+	require.Equal(t, sub.StartsAt, *sub.WeeklyWindowStart)
+	require.Equal(t, sub.StartsAt, *sub.MonthlyWindowStart)
 	require.Zero(t, sub.DailyUsageUSD)
 	require.Zero(t, sub.WeeklyUsageUSD)
 	require.Zero(t, sub.MonthlyUsageUSD)

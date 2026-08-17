@@ -33,6 +33,9 @@ func (r *redeemSubscriptionRepoStub) Create(context.Context, *UserSubscription) 
 func (r *redeemSubscriptionRepoStub) GetByID(context.Context, int64) (*UserSubscription, error) {
 	return r.clone(), nil
 }
+func (r *redeemSubscriptionRepoStub) GetByIDForUpdate(context.Context, int64) (*UserSubscription, error) {
+	return r.clone(), nil
+}
 func (r *redeemSubscriptionRepoStub) GetByIDIncludeDeleted(context.Context, int64) (*UserSubscription, error) {
 	return r.clone(), nil
 }

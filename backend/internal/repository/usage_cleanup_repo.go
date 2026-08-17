@@ -295,6 +295,9 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 		return 0, fmt.Errorf("cleanup filters missing time range")
 	}
 	args = append(args, limit)
+	if db, ok := r.sql.(*sql.DB); ok {
+		return r.deleteUsageLogsBatchWithRollupInvalidation(ctx, db, whereClause, args)
+	}
 	query := fmt.Sprintf(`
 		WITH target AS (
 			SELECT id
@@ -313,6 +316,65 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
+}
+
+func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, whereClause string, args []any) (int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	rollback := func(err error) (int64, error) {
+		_ = tx.Rollback()
+		return 0, err
+	}
+
+	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+		return rollback(err)
+	}
+	var earliestDeletedAt sql.NullTime
+	selectQuery := fmt.Sprintf(`
+		SELECT MIN(created_at)
+		FROM (
+			SELECT created_at
+			FROM usage_logs
+			WHERE %s
+			ORDER BY created_at ASC, id ASC
+			LIMIT ?
+		) target
+	`, whereClause)
+	if err := tx.QueryRowContext(ctx, selectQuery, args...).Scan(&earliestDeletedAt); err != nil {
+		return rollback(err)
+	}
+	deleteQuery := fmt.Sprintf(`
+		DELETE FROM usage_logs
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id
+				FROM usage_logs
+				WHERE %s
+				ORDER BY created_at ASC, id ASC
+				LIMIT ?
+			) target
+		)
+	`, whereClause)
+	result, err := tx.ExecContext(ctx, deleteQuery, args...)
+	if err != nil {
+		return rollback(err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return rollback(err)
+	}
+
+	if deleted > 0 && earliestDeletedAt.Valid {
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt.Time); err != nil {
+			return rollback(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return deleted, nil

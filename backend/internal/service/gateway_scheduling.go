@@ -64,6 +64,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		// 无分组时只使用原生 anthropic 平台
 		platform = PlatformAnthropic
 	}
+	ctx = s.withGatewayProfitControlGate(ctx, groupID)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -116,6 +117,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	ctx = s.withGroupContext(ctx, group)
+	ctx = s.withGatewayProfitControlGate(ctx, groupID)
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
@@ -284,6 +286,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				}
 				continue
 			}
+			if !s.isGatewayAccountProfitEligible(ctx, account) {
+				continue
+			}
 			if !s.isAccountAllowedForPlatform(account, platform, useMixed) {
 				filteredPlatform++
 				continue
@@ -339,6 +344,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						var stickyCacheMissReason string
 
 						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
+							s.isGatewayAccountProfitEligible(ctx, stickyAccount) &&
 							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
 							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
 							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
@@ -480,7 +486,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							continue
 						}
 						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
+							_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, item.account.ID)
 						}
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
@@ -533,6 +539,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				// accounts 列表构建，账号一定在分组内。而 scheduler snapshot 缓存
 				// 反序列化后 AccountGroups 字段为空，导致 isAccountInGroup 永远返回 false。
 				platformOK := s.isAccountAllowedForPlatform(account, platform, useMixed)
+				profitOK := s.isGatewayAccountProfitEligible(ctx, account)
 				modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)
 				modelSchedulable := s.isAccountSchedulableForModelSelection(ctx, account, requestedModel)
 				quotaOK := s.isAccountSchedulableForQuota(account)
@@ -546,6 +553,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"clear_sticky", clearSticky,
 					"schedulable", schedulable,
 					"platform_ok", platformOK,
+					"profit_ok", profitOK,
 					"model_supported", modelSupported,
 					"model_schedulable", modelSchedulable,
 					"quota_ok", quotaOK,
@@ -657,6 +665,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountSchedulableForSelection(acc) {
 			continue
 		}
+		if !s.isGatewayAccountProfitEligible(ctx, acc) {
+			continue
+		}
 		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
 			continue
 		}
@@ -738,7 +749,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				} else {
 					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
+						_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, selected.account.ID)
 					}
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
@@ -786,7 +797,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 				continue
 			}
 			if sessionHash != "" && s.cache != nil {
-				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
+				_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, acc.ID)
 			}
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
@@ -1504,12 +1515,12 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	if err != nil {
 		return nil, err
 	}
-	return &AccountSelectionResult{
+	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 		Account:     hydrated,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
-	}, nil
+	}), nil
 }
 
 // filterByMinPriority 过滤出优先级最小的账号集合
@@ -1913,6 +1924,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 			if !s.isAccountSchedulableForSelection(acc) {
 				continue
 			}
+			if !s.isGatewayAccountProfitEligible(ctx, acc) {
+				continue
+			}
 			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
 			if schedGroup != nil && schedGroup.RequirePrivacySet && !acc.IsPrivacySet() {
 				_ = s.accountRepo.SetError(ctx, acc.ID,
@@ -1960,7 +1974,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, selected.ID); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -2017,6 +2031,9 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isGatewayAccountProfitEligible(ctx, acc) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -2077,7 +2094,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, selected.ID); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -2132,7 +2149,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 						if clearSticky {
 							_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 						}
-						if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
+						if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) {
 							if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 								allowed := make(map[int64]struct{}, len(routingAccountIDs))
 								for _, id := range routingAccountIDs {
@@ -2178,6 +2195,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 			// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 			// avoid selecting accounts that were recently rate-limited/overloaded.
 			if !s.isAccountSchedulableForSelection(acc) {
+				continue
+			}
+			if !s.isGatewayAccountProfitEligible(ctx, acc) {
 				continue
 			}
 			// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -2231,7 +2251,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 		if selected != nil {
 			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+				if err := s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, selected.ID); err != nil {
 					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 				}
 			}
@@ -2255,7 +2275,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 					if clearSticky {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
 					}
-					if !clearSticky && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
+					if !clearSticky && s.isGatewayAccountProfitEligible(ctx, account) && s.isAccountInGroup(account, groupID) && (requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) && s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) && s.isAccountSchedulableForQuota(account) && s.isAccountSchedulableForWindowCost(ctx, account, true) && s.isAccountSchedulableForRPM(ctx, account, true) && !s.isStickyAccountUpstreamRestricted(ctx, groupID, account, requestedModel) {
 						if account.Platform == nativePlatform || (account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()) {
 							if loadErr := ensureAccountsLoaded(); loadErr != nil || !s.hasAvailableHigherPriorityGatewayAccount(ctx, account, accounts, nativePlatform, true, requestedModel, func(id int64) bool {
 								_, excluded := excludedIDs[id]
@@ -2289,6 +2309,9 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		// Scheduler snapshots can be temporarily stale; re-check schedulability here to
 		// avoid selecting accounts that were recently rate-limited/overloaded.
 		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isGatewayAccountProfitEligible(ctx, acc) {
 			continue
 		}
 		// require_privacy_set: 跳过 privacy 未设置的账号并标记异常
@@ -2353,7 +2376,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 4. 建立粘性绑定
 	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
+		if err := s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, selected.ID); err != nil {
 			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
 		}
 	}
@@ -2369,6 +2392,8 @@ type selectionFailureStats struct {
 	PlatformFiltered   int
 	ModelUnsupported   int
 	ModelRateLimited   int
+	ProfitThreshold    int
+	ProfitInvalidRate  int
 	SamplePlatformIDs  []int64
 	SampleMappingIDs   []int64
 	SampleRateLimitIDs []string
@@ -2392,7 +2417,7 @@ func (s *GatewayService) logDetailedSelectionFailure(
 	stats := s.collectSelectionFailureStats(ctx, accounts, requestedModel, platform, excludedIDs, allowMixedScheduling)
 	logger.LegacyPrintf(
 		"service.gateway",
-		"[SelectAccountDetailed] group_id=%v model=%s platform=%s session=%s total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d sample_platform_filtered=%v sample_model_unsupported=%v sample_model_rate_limited=%v",
+		"[SelectAccountDetailed] group_id=%v model=%s platform=%s session=%s total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d profit_threshold=%d profit_invalid_account_rate=%d sample_platform_filtered=%v sample_model_unsupported=%v sample_model_rate_limited=%v",
 		derefGroupID(groupID),
 		requestedModel,
 		platform,
@@ -2404,6 +2429,8 @@ func (s *GatewayService) logDetailedSelectionFailure(
 		stats.PlatformFiltered,
 		stats.ModelUnsupported,
 		stats.ModelRateLimited,
+		stats.ProfitThreshold,
+		stats.ProfitInvalidRate,
 		stats.SamplePlatformIDs,
 		stats.SampleMappingIDs,
 		stats.SampleRateLimitIDs,
@@ -2441,6 +2468,10 @@ func (s *GatewayService) collectSelectionFailureStats(
 			stats.ModelRateLimited++
 			remaining := acc.GetRateLimitRemainingTimeWithContext(ctx, requestedModel).Truncate(time.Second)
 			stats.SampleRateLimitIDs = appendSelectionFailureRateSample(stats.SampleRateLimitIDs, acc.ID, remaining)
+		case openAIProfitFilterReasonThreshold:
+			stats.ProfitThreshold++
+		case openAIProfitFilterReasonInvalidAccountRate:
+			stats.ProfitInvalidRate++
 		default:
 			stats.Eligible++
 		}
@@ -2485,6 +2516,9 @@ func (s *GatewayService) diagnoseSelectionFailure(
 			Detail:   fmt.Sprintf("remaining=%s", remaining),
 		}
 	}
+	if vetoed, reason := openAIProfitControlVetoReason(ctx, acc); vetoed {
+		return selectionFailureDiagnosis{Category: reason}
+	}
 	return selectionFailureDiagnosis{Category: "eligible"}
 }
 
@@ -2522,7 +2556,7 @@ func appendSelectionFailureRateSample(samples []string, accountID int64, remaini
 
 func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 	return fmt.Sprintf(
-		"total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d",
+		"total=%d eligible=%d excluded=%d unschedulable=%d platform_filtered=%d model_unsupported=%d model_rate_limited=%d profit_threshold=%d profit_invalid_account_rate=%d",
 		stats.Total,
 		stats.Eligible,
 		stats.Excluded,
@@ -2530,6 +2564,8 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 		stats.PlatformFiltered,
 		stats.ModelUnsupported,
 		stats.ModelRateLimited,
+		stats.ProfitThreshold,
+		stats.ProfitInvalidRate,
 	)
 }
 

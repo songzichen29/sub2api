@@ -61,7 +61,7 @@ func TestContentModerationHandlerGetLogRequestBodySuccess(t *testing.T) {
 		Size:        43,
 		CreatedAt:   time.Date(2026, 6, 21, 10, 30, 0, 0, time.UTC),
 	}}
-	svc := service.NewContentModerationService(nil, repo, nil, nil, nil, nil, nil)
+	svc := service.NewContentModerationService(nil, repo, nil, nil, nil, nil, nil, nil)
 	handler := NewContentModerationHandler(svc)
 
 	router := gin.New()
@@ -79,7 +79,7 @@ func TestContentModerationHandlerGetLogRequestBodySuccess(t *testing.T) {
 func TestContentModerationHandlerGetLogRequestBodyErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Run("invalid id", func(t *testing.T) {
-		svc := service.NewContentModerationService(nil, &contentModerationHandlerRepo{}, nil, nil, nil, nil, nil)
+		svc := service.NewContentModerationService(nil, &contentModerationHandlerRepo{}, nil, nil, nil, nil, nil, nil)
 		handler := NewContentModerationHandler(svc)
 		router := gin.New()
 		router.GET("/logs/:id/request-body", handler.GetLogRequestBody)
@@ -95,7 +95,7 @@ func TestContentModerationHandlerGetLogRequestBodyErrors(t *testing.T) {
 		repo := &contentModerationHandlerRepo{
 			err: infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在"),
 		}
-		svc := service.NewContentModerationService(nil, repo, nil, nil, nil, nil, nil)
+		svc := service.NewContentModerationService(nil, repo, nil, nil, nil, nil, nil, nil)
 		handler := NewContentModerationHandler(svc)
 		router := gin.New()
 		router.GET("/logs/:id/request-body", handler.GetLogRequestBody)

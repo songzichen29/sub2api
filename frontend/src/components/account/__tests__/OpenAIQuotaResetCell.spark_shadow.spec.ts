@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Account } from '@/types'
 
 vi.mock('vue-i18n', async () => {
@@ -10,6 +11,11 @@ vi.mock('vue-i18n', async () => {
     useI18n: () => ({ t: (key: string) => key }),
   }
 })
+
+// 缓存水合会丢弃已过期的重置卡，因此缓存类用例必须使用未来时间。
+const FUTURE_EXPIRY_EARLY = '2099-07-03T04:05:06Z'
+const FUTURE_EXPIRY_LATE = '2099-07-05T04:05:06Z'
+const PAST_EXPIRY = '2020-07-03T04:05:06Z'
 
 function makeAccount(overrides: Partial<Account>): Account {
   return {

@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -232,6 +233,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			}
 		}
 	}
+	if account.Platform == PlatformOpenAI {
+		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, responsesBody); changed {
+			responsesBody = policyBody
+			if responsesReq.Reasoning != nil {
+				responsesReq.Reasoning.Effort = gjson.GetBytes(responsesBody, "reasoning.effort").String()
+			}
+		}
+	}
 
 	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	// Mirrors the Claude anthropic-beta "fast-mode-2026-02-01" filter, but keyed
@@ -349,7 +358,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 				Detail:             upstreamDetail,
 			})
 			if s.rateLimitService != nil {
-				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
+				s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, upstreamModel)
 			}
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
@@ -358,7 +367,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			}
 		}
 		// Non-failover error: return Anthropic-formatted error to client
-		return s.handleAnthropicErrorResponse(resp, c, account)
+		return s.handleAnthropicErrorResponse(resp, c, account, upstreamModel)
 	}
 
 	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
@@ -435,8 +444,9 @@ func (s *OpenAIGatewayService) handleAnthropicErrorResponse(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
+	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
-	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError)
+	return s.handleCompatErrorResponse(resp, c, account, writeAnthropicError, requestedModel...)
 }
 
 // handleAnthropicBufferedStreamingResponse reads all Responses SSE events from
@@ -465,6 +475,11 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		writeAnthropicError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
+	}
+	observer.Observe(finalResponse.Model, true)
 
 	// cyber_policy：上游硬阻断（response.failed）。anthropic buffered 原对 failed 无特殊分支，
 	// 此处仅为 cyber 增加：以 Anthropic 错误格式回写，标记供 handler 事后写风控/邮件/tokens=0 用量行。
@@ -488,7 +503,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		}
 		message := openAICompatFailedResponseMessage(finalResponse)
 		if openAIStreamFailedEventShouldFailover(payload, message) {
-			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message)
+			return nil, s.newOpenAIStreamFailoverError(c, account, false, requestID, payload, message, resp.Header)
 		}
 		message = s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", payload, message)
 		if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(
@@ -518,14 +533,16 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		ResponseID:    finalResponse.ID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:                     requestID,
+		ResponseID:                    finalResponse.ID,
+		Usage:                         usage,
+		Model:                         originalModel,
+		BillingModel:                  billingModel,
+		UpstreamModel:                 upstreamModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		Stream:                        false,
+		Duration:                      time.Since(startTime),
 	}, nil
 }
 
@@ -757,6 +774,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var intervalCh <-chan time.Time
 	if intervalTicker != nil {
 		intervalCh = intervalTicker.C
+	}
+	observer := upstreamResponseModelObserverFromContext(c)
+	if observer == nil {
+		observer = beginUpstreamResponseModelObservation(c)
 	}
 
 	// resultWithUsage builds the final result snapshot.

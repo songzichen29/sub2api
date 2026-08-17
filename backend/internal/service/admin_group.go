@@ -297,10 +297,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
 
-	platform := input.Platform
-	if platform == "" {
-		platform = PlatformAnthropic
-	}
+	platform := NormalizeGroupPlatform(input.Platform)
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -372,6 +369,20 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	// 先归一化（非订阅分组清空高峰配置、清洗停用状态下的脏字段）再校验，与 UpdateGroup 同一收口。
 	peakRateEnabled, peakStart, peakEnd, peakRateMultiplier := NormalizePeakRateConfig(subscriptionType, input.PeakRateEnabled, input.PeakStart, input.PeakEnd, peakRateMultiplier)
 	if err := ValidatePeakRateConfig(subscriptionType, peakRateEnabled, peakStart, peakEnd, peakRateMultiplier); err != nil {
+		return nil, err
+	}
+
+	profitMinMargin := 0.0
+	if input.ProfitMinMargin != nil {
+		profitMinMargin = *input.ProfitMinMargin
+	}
+	profitSafetyBuffer := 0.0
+	if input.ProfitSafetyBuffer != nil {
+		profitSafetyBuffer = *input.ProfitSafetyBuffer
+	}
+	// 利润控制与高峰倍率同一收口顺序：先按平台归一化（不支持的平台重置），再校验。
+	profitControlEnabled, profitMinMargin, profitSafetyBuffer := NormalizeProfitControlConfig(platform, input.ProfitControlEnabled, profitMinMargin, profitSafetyBuffer)
+	if err := ValidateProfitControlConfig(platform, profitControlEnabled, profitMinMargin, profitSafetyBuffer); err != nil {
 		return nil, err
 	}
 
@@ -457,6 +468,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		PeakStart:                       peakStart,
 		PeakEnd:                         peakEnd,
 		PeakRateMultiplier:              peakRateMultiplier,
+		ProfitControlEnabled:            profitControlEnabled,
+		ProfitMinMargin:                 profitMinMargin,
+		ProfitSafetyBuffer:              profitSafetyBuffer,
 		ImagePrice1K:                    imagePrice1K,
 		ImagePrice2K:                    imagePrice2K,
 		ImagePrice4K:                    imagePrice4K,
@@ -621,6 +635,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 
+	// 渠道缓存里存了 groupID → platform 的映射，改了平台要让它失效（见函数末尾）
+	previousPlatform := group.Platform
+
 	if input.Name != "" {
 		group.Name = input.Name
 	}
@@ -721,6 +738,21 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	// 防止单独修改 start/end 导致最终 start>=end 等非法配置入库。与 CreateGroup 同一收口。
 	group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier = NormalizePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier)
 	if err := ValidatePeakRateConfig(group.SubscriptionType, group.PeakRateEnabled, group.PeakStart, group.PeakEnd, group.PeakRateMultiplier); err != nil {
+		return nil, err
+	}
+	if input.ProfitControlEnabled != nil {
+		group.ProfitControlEnabled = *input.ProfitControlEnabled
+	}
+	if input.ProfitMinMargin != nil {
+		group.ProfitMinMargin = *input.ProfitMinMargin
+	}
+	if input.ProfitSafetyBuffer != nil {
+		group.ProfitSafetyBuffer = *input.ProfitSafetyBuffer
+	}
+	// 利润控制与高峰同一收口：按合并后的最终平台归一化（转到不支持平台时静默重置），
+	// 再对合并后的最终配置统一校验，防止部分字段更新拼出非法组合入库。
+	group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer = NormalizeProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer)
+	if err := ValidateProfitControlConfig(group.Platform, group.ProfitControlEnabled, group.ProfitMinMargin, group.ProfitSafetyBuffer); err != nil {
 		return nil, err
 	}
 	if input.ImagePrice1K != nil {
@@ -843,6 +875,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
+	}
+
+	// 平台变了就失效渠道缓存：该缓存持有 groupID → platform，而渠道定价 / 模型映射 /
+	// 模型白名单都按平台严格隔离。不失效的话，缓存最长 10 分钟仍按旧平台匹配，
+	// 期间定价查不到会静默回落到 LiteLLM 价格表、映射与白名单也不生效。
+	if group.Platform != previousPlatform && s.channelCacheInvalidator != nil {
+		s.channelCacheInvalidator.InvalidateCache()
 	}
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）

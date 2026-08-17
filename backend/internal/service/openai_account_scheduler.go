@@ -3,6 +3,7 @@ package service
 import (
 	"container/heap"
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
@@ -390,7 +391,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			decision.SelectedAccountID = selection.Account.ID
 			decision.SelectedAccountType = selection.Account.Type
 			if req.SessionHash != "" {
-				_ = s.service.BindStickySession(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
+				_ = s.service.bindOpenAIStickySessionDuringSelection(ctx, req.GroupID, req.SessionHash, selection.Account.ID)
 			}
 			return selection, decision, nil
 		}
@@ -1540,7 +1541,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if s != nil && s.service != nil && s.service.isOpenAIAccountRuntimeBlocked(account) {
 		return false, "runtime_blocked"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(account) {
+	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
 		return false, "proxy_stream_quarantined"
 	}
 	// Quota auto-pause must be evaluated during the initial filter too. Without it the
@@ -1567,6 +1568,11 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	}
 	if !accountSupportsOpenAICapabilities(account, req.RequiredEndpointCapability, req.RequiredImageCapability) {
 		return false, "capability_mismatch"
+	}
+	// 分组利润控制：不合格账号在候选过滤与抢槽后终检阶段即被排除，
+	// 排序/评分/粘性/熔断只在合格账号之间工作；named reason 进入 filter stats。
+	if vetoed, reason := openAIProfitControlVetoReason(ctx, account); vetoed {
+		return false, reason
 	}
 	return true, ""
 }
@@ -1840,6 +1846,13 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	return selection, decision, err
 }
 
+// selectAccountWithScheduler wraps selectAccountWithSchedulerOnce with a
+// fail-open second pass for the proxy stream circuit (#5056): when the only
+// reason no account is available is that every candidate sits behind a
+// quarantined proxy, the quarantine must degrade to a preference instead of
+// zeroing out capacity. The retry re-runs the exact same selection with the
+// quarantine checks bypassed, so healthy proxies always win the first pass
+// and quarantined ones only serve when nothing else can.
 func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	ctx context.Context,
 	groupID *int64,
@@ -1855,7 +1868,50 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	selection, decision, err := s.selectAccountWithSchedulerOnce(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredEndpointCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
+		return selection, decision, err
+	}
+	if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
+		return selection, decision, err
+	}
+	// The circuit only ever quarantines PlatformOpenAI accounts.
+	if normalizeOpenAICompatiblePlatform(platform) != PlatformOpenAI {
+		return selection, decision, err
+	}
+	blocked := s.getOpenAIProxyStreamCircuit().activeBlockCount(time.Now())
+	if blocked == 0 {
+		return selection, decision, err
+	}
+	s.logOpenAIProxyStreamQuarantineFailOpen(requestedModel, blocked)
+	return s.selectAccountWithSchedulerOnce(withOpenAIProxyStreamQuarantineBypass(ctx), groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredEndpointCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredEndpointCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
+	// 分组利润控制：唯一文本调度入口的防御性装门。handler 文本
+	// 入口已在请求开始经 WithOpenAIRequestPricingContext 装门并固定 pricingAt，
+	// 此处对同分组门直接复用（failover 重入阈值稳定），仅为不经 handler 装配的
+	// 内部调用兜底。图片/视频调度不在利润门范围：requiredImageCapability 非空的
+	// Images 调度不装门；其他使用 Responses 能力的文本请求（包括原生远程压缩）
+	// 仍须装门。其余媒体路径通过 WithOpenAIProfitControlSuppressed 显式跳过。
+	if requiredImageCapability == "" {
+		ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+	}
 	platform = normalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
@@ -2365,6 +2421,15 @@ func newOpenAILegacyUpstreamRateOrder(accounts []*Account, now time.Time, oauthS
 	var first float64
 	distinct := false
 	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		// 与 openAIUpstreamCostFactors 使用同一道平台门控：只有 OpenAI 平台账号
+		// 的倍率参与 legacy 低倍率优先排序。上游自报倍率来自中转方，不能让它对
+		// 其他平台的调度产生影响——否则自报低价即可吸走流量，而实际结算走本地倍率。
+		if !account.IsOpenAIApiKey() && !account.IsOpenAIOAuth() {
+			continue
+		}
 		rate, ok := openAISchedulingRate(account, now, oauthSchedulingRateMultiplier)
 		if !ok {
 			continue

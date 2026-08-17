@@ -10,7 +10,8 @@ import (
 )
 
 type dashboardAggregationRepository struct {
-	sql sqlExecutor
+	sql   sqlExecutor
+	clock func() time.Time
 }
 
 const usageLogsCleanupBatchSize = 10000
@@ -25,7 +26,14 @@ func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregati
 }
 
 func newDashboardAggregationRepositoryWithSQL(sqlq sqlExecutor) *dashboardAggregationRepository {
-	return &dashboardAggregationRepository{sql: sqlq}
+	return &dashboardAggregationRepository{sql: sqlq, clock: time.Now}
+}
+
+func (r *dashboardAggregationRepository) now() time.Time {
+	if r.clock != nil {
+		return r.clock()
+	}
+	return time.Now()
 }
 
 func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, start, end time.Time) error {
@@ -112,8 +120,20 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 		if err != nil {
 			return err
 		}
+		if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, start); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
 		txRepo := newDashboardAggregationRepositoryWithSQL(tx)
 		if err := txRepo.recomputeRangeInTx(ctx, hourStart, hourEnd, dayStart, dayEnd); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		if err := txRepo.syncGroupUsageRollupsInTx(ctx, service.GroupUsageTodayStart(r.now())); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
@@ -198,14 +218,28 @@ func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, c
 		return err
 	}
 	if isPartitioned {
-		return r.dropUsageLogsPartitions(ctx, cutoff)
-	}
-	for {
-		res, err := r.sql.ExecContext(ctx, `DELETE FROM usage_logs WHERE id IN (SELECT id FROM (SELECT id FROM usage_logs WHERE created_at < ? ORDER BY id LIMIT ?) v)`, cutoff.UTC(), usageLogsCleanupBatchSize)
-		if err != nil {
+		if err := r.dropUsageLogsPartitions(ctx, cutoff); err != nil {
 			return err
 		}
-		affected, err := res.RowsAffected()
+	} else if err := r.cleanupUsageLogsBatches(ctx, cutoff); err != nil {
+		return err
+	}
+	return r.SyncGroupUsageRollups(ctx, service.GroupUsageTodayStart(r.now()))
+}
+
+func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Context, cutoff time.Time) error {
+	for {
+		var affected int64
+		var err error
+		if db, ok := r.sql.(*sql.DB); ok {
+			affected, err = cleanupUsageLogsBatchWithRollupInvalidation(ctx, db, cutoff)
+		} else {
+			var res sql.Result
+			res, err = r.sql.ExecContext(ctx, `DELETE FROM usage_logs WHERE id IN (SELECT id FROM (SELECT id FROM usage_logs WHERE created_at < ? ORDER BY created_at ASC, id ASC LIMIT ?) v)`, cutoff.UTC(), usageLogsCleanupBatchSize)
+			if err == nil {
+				affected, err = res.RowsAffected()
+			}
+		}
 		if err != nil {
 			return err
 		}
@@ -213,6 +247,61 @@ func (r *dashboardAggregationRepository) CleanupUsageLogs(ctx context.Context, c
 			return nil
 		}
 	}
+}
+
+func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	rollback := func(err error) (int64, error) {
+		_ = tx.Rollback()
+		return 0, err
+	}
+
+	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
+		return rollback(err)
+	}
+	var earliestDeletedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+		SELECT MIN(created_at)
+		FROM (
+			SELECT created_at
+			FROM usage_logs
+			WHERE created_at < ?
+			ORDER BY created_at ASC, id ASC
+			LIMIT ?
+		) victims
+	`, cutoff.UTC(), usageLogsCleanupBatchSize).Scan(&earliestDeletedAt); err != nil {
+		return rollback(err)
+	}
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM usage_logs
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id FROM usage_logs
+				WHERE created_at < ?
+				ORDER BY created_at ASC, id ASC
+				LIMIT ?
+			) victims
+		)
+	`, cutoff.UTC(), usageLogsCleanupBatchSize)
+	if err != nil {
+		return rollback(err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return rollback(err)
+	}
+	if affected > 0 && earliestDeletedAt.Valid {
+		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt.Time); err != nil {
+			return rollback(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
 func (r *dashboardAggregationRepository) CleanupUsageBillingDedup(ctx context.Context, cutoff time.Time) error {

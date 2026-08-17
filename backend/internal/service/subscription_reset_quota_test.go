@@ -45,6 +45,8 @@ func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64
 	r.resetDailyCalled = resetDaily
 	r.resetWeeklyCalled = resetWeekly
 	r.resetMonthlyCalled = resetMonthly
+	r.dailyStart = dailyStart
+	r.periodicStart = periodicStart
 	if resetDaily && r.resetDailyErr != nil {
 		return r.resetDailyErr
 	}
@@ -149,6 +151,8 @@ func newAdminSub(id int64) *UserSubscription {
 func TestAdminResetQuota_ResetBoth(t *testing.T) {
 	stub := &resetQuotaUserSubRepoStub{sub: newAdminSub(1)}
 	svc := newResetQuotaSvc(stub)
+	resetAt := time.Date(2026, 7, 1, 10, 37, 42, 123, time.UTC)
+	svc.now = func() time.Time { return resetAt }
 
 	result, err := svc.AdminResetQuota(context.Background(), 1, true, true, false)
 
@@ -157,6 +161,11 @@ func TestAdminResetQuota_ResetBoth(t *testing.T) {
 	require.True(t, stub.resetDailyCalled, "应调用 ResetDailyUsage")
 	require.True(t, stub.resetWeeklyCalled, "应调用 ResetWeeklyUsage")
 	require.False(t, stub.resetMonthlyCalled, "不应调用 ResetMonthlyUsage")
+	// 手动重置后日窗口锚定当天 0 点（保持 0 点刷新节奏），周窗口锚定重置时刻。
+	require.Equal(t, timezone.StartOfDay(resetAt), stub.dailyStart)
+	require.Equal(t, resetAt, stub.periodicStart)
+	require.Equal(t, timezone.StartOfDay(resetAt), *result.DailyWindowStart)
+	require.Equal(t, resetAt, *result.WeeklyWindowStart)
 }
 
 func TestAdminResetQuota_ResetDailyOnly(t *testing.T) {

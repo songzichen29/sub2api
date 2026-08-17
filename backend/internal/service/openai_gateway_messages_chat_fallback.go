@@ -12,6 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -78,6 +79,14 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	if normalizedBody, normalized := NormalizeGLMOpenAIReasoningEffort(chatBody, upstreamModel); normalized {
 		chatBody = normalizedBody
 	}
+	if account.Platform == PlatformOpenAI {
+		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, chatBody); changed {
+			chatBody = policyBody
+			if effectiveEffort := strings.TrimSpace(gjson.GetBytes(chatBody, "reasoning_effort").String()); effectiveEffort != "" {
+				reasoningEffort = &effectiveEffort
+			}
+		}
+	}
 	// Unlike forwardResponsesViaRawChatCompletions, applyOpenAIFastPolicyToBody
 	// is intentionally skipped: Anthropic Messages bodies carry no service_tier,
 	// so the converted Chat Completions body never contains one and the policy
@@ -110,7 +119,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		}
 		// Non-failover error: return Anthropic-formatted error to client via the
 		// shared compat handler (passthrough rules, ops recording, cyber_policy).
-		return s.handleAnthropicErrorResponse(resp, c, account)
+		return s.handleAnthropicErrorResponse(resp, c, account, upstreamModel)
 	}
 
 	// 5. Convert response

@@ -814,6 +814,28 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 }
 
 func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	// 上游代理 / CDN 在请求到达 OpenAI API 之前就拦下时，回的是 HTML 403 页面而不是
+	// {"error":{...}} 结构化错误。这类响应描述的是「这条链路 / 这个端点被挡了」，
+	// 不构成账号凭据或权限失效的证据——例如无效的 /v1/responses 子路径（#5334）。
+	//
+	// 据此写账号状态会把请求级错误放大成账号级处罚：首次即 temp-unschedulable，
+	// 连续 openAI403DisableThreshold 次直接永久禁用；而 403 又在 failover 状态集里，
+	// 同一个坏请求会被逐个账号重放，足以把整组账号打下线。
+	//
+	// 与既有口径一致：count_tokens 路径的 isOpenAIOAuthInputTokensUnsupported 已把
+	// 「HTML 403 page without a structured error」按端点级响应处理；
+	// shouldApplyOpenAIAlphaSearchAccountErrorSideEffects 的不变式也是端点级错误
+	// 只换号、不写账号错误状态。这里只跳过账号处罚，不改变 failover 行为——
+	// 换个走不同代理的账号仍有可能成功。
+	if isHTMLResponse(responseBody) {
+		slog.Warn(
+			"openai_403_html_body_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
@@ -2080,6 +2102,9 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	if modelKey == "" {
 		return false
 	}
+	if shouldSkipCodexPlanGatedImageModelCooldown(ctx, reason, requestedModel, modelKey) {
+		return true
+	}
 	resetAt := time.Now().Add(cooldown)
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, reason); err != nil {
 		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "reason", reason, "error", err)
@@ -2087,6 +2112,29 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	}
 	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+// shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否
+// 属于"图片模型被文本端点拒绝"。
+//
+// 这类错误是确定性的端点错配，不是账号能力缺失：同一账号通过 /v1/images/* 依然
+// 能出图。在这里写 per-model 冷却，会让一次用错端点的请求把整个号池对正确的生图
+// 端点下线（#4828）。
+//
+// 但请求本身就从 /v1/images/* 入站时不适用——那种情况下被拒说明账号确实不具备
+// 该模型能力，冷却是必要的刹车：没有它，每个生图请求都会完整走一遍号池，对上游
+// 形成无上界的 400 放大。
+//
+// 请求模型与最终冷却键都要判：冷却键走的是 account.GetMappedModel，账号可能把
+// 文本别名映射到 gpt-image-*，只判请求模型会漏掉这种形态。
+func shouldSkipCodexPlanGatedImageModelCooldown(ctx context.Context, reason, requestedModel, modelKey string) bool {
+	if reason != upstreamCodexPlanGatedModelReason {
+		return false
+	}
+	if OpenAIImagesEndpointFromContext(ctx) {
+		return false
+	}
+	return IsGPTImageGenerationModel(requestedModel) || IsGPTImageGenerationModel(modelKey)
 }
 
 func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {

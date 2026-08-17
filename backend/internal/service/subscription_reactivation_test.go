@@ -10,6 +10,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,6 +58,10 @@ func (r *subscriptionEntRepo) GetByID(ctx context.Context, id int64) (*UserSubsc
 		return nil, ErrSubscriptionNotFound
 	}
 	return entUserSubscriptionToService(m), nil
+}
+
+func (r *subscriptionEntRepo) GetByIDForUpdate(ctx context.Context, id int64) (*UserSubscription, error) {
+	return r.GetByID(ctx, id)
 }
 
 func (r *subscriptionEntRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*UserSubscription, error) {
@@ -571,7 +576,8 @@ func TestAssignOrExtendSubscription_PaidOneDayRenewalResetsDailyUsageAndRestarts
 	require.NotNil(t, sub)
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 	require.NotNil(t, sub.DailyWindowStart)
-	require.WithinDuration(t, before, *sub.DailyWindowStart, 3*time.Second)
+	require.WithinDuration(t, timezone.StartOfDay(before), *sub.DailyWindowStart, 3*time.Second)
+	require.WithinDuration(t, before, sub.StartsAt, 3*time.Second)
 	require.WithinDuration(t, after.Add(24*time.Hour), sub.ExpiresAt, 3*time.Second)
 	require.True(t, sub.ExpiresAt.Before(expiresAt.Add(23*time.Hour)), "1-day renewal should restart one fresh day instead of cumulative expiry plus a reset")
 	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit}
@@ -707,7 +713,7 @@ func TestAssignOrExtendSubscription_PaidOneDayRenewalDoesNotShrinkOverdraftPool(
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 	require.False(t, sub.ExpiresAt.Before(expiresAt), "overdraft renewal must not shrink the period pool")
 	require.NotNil(t, sub.DailyWindowStart)
-	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *sub.DailyWindowStart, 3*time.Second)
+	require.WithinDuration(t, timezone.StartOfDay(time.Now()), *sub.DailyWindowStart, 3*time.Second)
 	sub.Group = &Group{ID: group.ID, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &dailyLimit, AllowDailyOverdraft: true}
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)
 	require.NoError(t, err)
@@ -922,7 +928,7 @@ func TestGetActiveSubscription_QuotaExhaustedDailyOverdraftRecoversAfterDailyWin
 	require.NotNil(t, sub)
 	require.Equal(t, SubscriptionStatusActive, sub.Status)
 	require.NotNil(t, sub.DailyWindowStart)
-	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *sub.DailyWindowStart, 3*time.Second)
+	require.WithinDuration(t, timezone.StartOfDay(time.Now()), *sub.DailyWindowStart, 3*time.Second)
 	require.Equal(t, 0.0, sub.DailyUsageUSD)
 	sub.Group = group
 	_, err = svc.ValidateAndCheckLimits(context.Background(), sub, sub.Group)

@@ -248,8 +248,7 @@ func invalidateProxyProbeSnapshotsPostgres(ctx context.Context, exec sqlExecutor
 		WHERE proxy_id = $1
 			AND type = 'apikey'
 			AND (
-				(platform = 'openai'
-					AND extra ? 'upstream_billing_probe'
+				(extra ? 'upstream_billing_probe'
 					AND extra -> 'upstream_billing_probe' <> 'null'::jsonb)
 				OR (platform IN ('openai', 'anthropic')
 					AND extra ? 'ollama_cloud_usage_snapshot'

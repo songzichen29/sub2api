@@ -1,10 +1,13 @@
 module github.com/Wei-Shaw/sub2api
 
-go 1.26.5
+go 1.26.6
 
 require (
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/alibabacloud-go/captcha-20230305 v1.1.3
+	github.com/alibabacloud-go/darabonba-openapi/v2 v2.2.4
+	github.com/alibabacloud-go/tea v1.5.3
 	github.com/alicebob/miniredis/v2 v2.35.0
 	github.com/alitto/pond/v2 v2.6.2
 	github.com/andybalholm/brotli v1.2.0
@@ -17,7 +20,8 @@ require (
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/go-webauthn/webauthn v0.17.4
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/google/wire v0.7.0
 	github.com/gorilla/websocket v1.5.3
@@ -35,6 +39,8 @@ require (
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.11.1
 	github.com/stripe/stripe-go/v85 v85.0.0
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/captcha v1.3.52
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.160
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.40.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.40.0
 	github.com/tidwall/gjson v1.18.0
@@ -61,6 +67,10 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
+	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
+	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/tea-utils/v2 v2.0.9 // indirect
+	github.com/aliyun/credentials-go v1.4.5 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.18 // indirect
@@ -82,6 +92,7 @@ require (
 	github.com/bytedance/sonic v1.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/chenzhuoyu/base64x v0.0.0-20221115062448-fe3a3abad311 // indirect
+	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -99,6 +110,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.2 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -108,9 +120,12 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.14.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-webauthn/x v0.2.6 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.18.1 // indirect
@@ -139,6 +154,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
@@ -160,10 +176,13 @@ require (
 	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
+	github.com/tinylib/msgp v1.6.4 // indirect
+	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.11 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect

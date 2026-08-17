@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"os"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -39,6 +40,45 @@ func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, b
 // ProvideEmailQueueService creates EmailQueueService with default worker count
 func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
+}
+
+// ProvideAuthService wires the optional captcha providers into AuthService while
+// keeping NewAuthService's public constructor compatible with existing tests.
+func ProvideAuthService(
+	entClient *dbent.Client,
+	userRepo UserRepository,
+	redeemRepo RedeemCodeRepository,
+	refreshTokenCache RefreshTokenCache,
+	cfg *config.Config,
+	settingService *SettingService,
+	emailService *EmailService,
+	turnstileService *TurnstileService,
+	tencentCaptchaService *TencentCaptchaService,
+	aliyunCaptchaService *AliyunCaptchaService,
+	emailQueueService *EmailQueueService,
+	promoService *PromoService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
+) *AuthService {
+	svc := NewAuthService(
+		entClient,
+		userRepo,
+		redeemRepo,
+		refreshTokenCache,
+		cfg,
+		settingService,
+		emailService,
+		turnstileService,
+		emailQueueService,
+		promoService,
+		defaultSubAssigner,
+		affiliateService,
+		userPlatformQuotaRepo,
+	)
+	svc.SetTencentCaptchaService(tencentCaptchaService)
+	svc.SetAliyunCaptchaService(aliyunCaptchaService)
+	return svc
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
@@ -259,6 +299,18 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
+	svc.Start()
+	return svc
+}
+
+// ProvideOpenAICodexVersionSyncService creates and starts OpenAICodexVersionSyncService.
+// 出站 Codex 身份的版本号靠它跟随官方发布，无需为了跟版本而发新版本；面板可关闭。
+func ProvideOpenAICodexVersionSyncService(
+	settingRepo SettingRepository,
+	settingService *SettingService,
+	githubClient GitHubReleaseClient,
+) *OpenAICodexVersionSyncService {
+	svc := NewOpenAICodexVersionSyncService(settingRepo, settingService, githubClient, openAICodexVersionSyncInterval)
 	svc.Start()
 	return svc
 }
@@ -560,8 +612,11 @@ func ProvideBackupService(
 	encryptor SecretEncryptor,
 	storeFactory BackupObjectStoreFactory,
 	dumper DBDumper,
+	lockCache LeaderLockCache,
+	db *sql.DB,
 ) *BackupService {
 	svc := NewBackupService(settingRepo, cfg, encryptor, storeFactory, dumper)
+	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
 }
@@ -730,7 +785,8 @@ func ProvideOpenAIGatewayService(
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
-	NewAuthService,
+	ProvideAuthService,
+	NewPasskeyService,
 	NewUserService,
 	ProvideAPIKeyService,
 	ProvideAPIKeyAuthCacheInvalidator,
@@ -796,6 +852,8 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIOAuthErrorAlertService,
 	ProvideEmailQueueService,
 	NewTurnstileService,
+	NewTencentCaptchaService,
+	NewAliyunCaptchaService,
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
@@ -807,6 +865,7 @@ var ProviderSet = wire.NewSet(
 	ProvideUpdateService,
 	ProvideTokenRefreshService,
 	ProvideAccountExpiryService,
+	ProvideOpenAICodexVersionSyncService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
 	ProvideTimingWheelService,
@@ -828,6 +887,7 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,
+	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
 	NewModelPricingResolver,
 	NewContentModerationService,
 	NewAffiliateService,
@@ -841,6 +901,8 @@ var ProviderSet = wire.NewSet(
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
+	ProvideChannelMonitorV2Service,
+	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
@@ -887,11 +949,15 @@ func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderE
 
 // ProvideChannelMonitorService 创建渠道监控服务（CRUD + RunCheck + 用户视图聚合）。
 // 加密器复用 wire 中已注入的 SecretEncryptor（AES-256-GCM）。
+// settingService gates RunCheck via channel_monitor_enabled + channel_monitor_mode.
 func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
+	settingService *SettingService,
 ) *ChannelMonitorService {
-	return NewChannelMonitorService(repo, encryptor)
+	svc := NewChannelMonitorService(repo, encryptor)
+	svc.SetRuntimeReader(settingService)
+	return svc
 }
 
 // ProvideChannelMonitorRunner 创建并启动渠道监控调度器。
@@ -900,9 +966,31 @@ func ProvideChannelMonitorService(
 // settingService 用于 runner 每次 fire 读取功能开关。
 func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
-	svc.SetScheduler(r)
+	if svc != nil {
+		// Ensure runtime reader is set even if ProvideChannelMonitorService
+		// was constructed without settings (tests / alternate providers).
+		svc.SetRuntimeReader(settingService)
+		svc.SetScheduler(r)
+	}
 	r.Start()
 	return r
+}
+
+// ProvideChannelMonitorV2Service wires settings for user-facing privacy flags.
+func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
+	svc := NewChannelMonitorV2Service(repo)
+	svc.SetRuntimeReader(settingService)
+	return svc
+}
+
+// ProvideChannelMonitorV2Aggregator starts the passive minute-rollup worker.
+func ProvideChannelMonitorV2Aggregator(repo ChannelMonitorV2Repository, db *sql.DB, settingService *SettingService) *ChannelMonitorV2Aggregator {
+	aggregator := NewChannelMonitorV2Aggregator(repo, db, settingService)
+	if os.Getenv("CHANNEL_MONITOR_V2_DISABLE_AGGREGATOR") == "1" {
+		return aggregator
+	}
+	aggregator.Start()
+	return aggregator
 }
 
 // ProvideUserPlatformQuotaUsageFlusher creates and starts UserPlatformQuotaUsageFlusher.

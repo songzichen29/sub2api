@@ -339,6 +339,16 @@
               </div>
               <div class="text-gray-500 dark:text-gray-400">
                 <span class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.usageYesterday")
+                }}</span>
+                <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
+                  >${{
+                    formatCost(usageMap.get(row.id)?.yesterday_cost ?? 0)
+                  }}</span
+                >
+              </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{
                   t("admin.groups.usageTotal")
                 }}</span>
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
@@ -614,7 +624,7 @@
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
-          v-if="createForm.platform === 'openai'"
+          v-if="supportsReasoningEffortPolicyPlatform(createForm.platform)"
           ref="createReasoningEffortPolicyRef"
           id-prefix="create-group-reasoning"
           :platform="createForm.platform"
@@ -2143,7 +2153,7 @@
           <p class="input-hint">{{ t("admin.groups.form.rpmLimitHint") }}</p>
         </div>
         <ReasoningEffortPolicyFields
-          v-if="editForm.platform === 'openai'"
+          v-if="supportsReasoningEffortPolicyPlatform(editForm.platform)"
           ref="editReasoningEffortPolicyRef"
           id-prefix="edit-group-reasoning"
           :platform="editForm.platform"
@@ -4049,9 +4059,17 @@ import {
 import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
+  isProfitControlPlatform,
+  profitPercentToDecimal,
+  profitDecimalToPercent,
+  validateProfitControlFormState,
+  type ProfitControlFormState,
+} from "./groupsProfitControl";
+import {
   normalizeReasoningEffortForPlatform,
   reasoningEffortMappingsToAPI,
   reasoningEffortMappingsToRows,
+  supportsReasoningEffortPolicyPlatform,
   type ReasoningEffortMappingRow,
 } from "./groupsReasoningEffort";
 import {
@@ -4422,6 +4440,7 @@ const groups = ref<AdminGroup[]>([]);
 const loading = ref(false);
 type GroupUsageSummary = {
   today_cost: number;
+  yesterday_cost: number;
   total_cost: number;
 };
 
@@ -4575,6 +4594,10 @@ const createForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
+  profit_control_enabled: false,
+  profit_min_margin_percent: 0,
+  profit_safety_buffer_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -4928,6 +4951,10 @@ const editForm = reactive({
   peak_start: "",
   peak_end: "",
   peak_rate_multiplier: 1.0,
+  // 分组利润控制（五个 token 平台）；界面按百分比输入，提交时转小数
+  profit_control_enabled: false,
+  profit_min_margin_percent: 0,
+  profit_safety_buffer_percent: 0,
   // Claude Code 客户端限制（仅 anthropic 平台使用）
   claude_code_only: false,
   fallback_group_id: null as number | null,
@@ -5206,12 +5233,12 @@ const loadUsageSummary = async () => {
   }
   usageLoading.value = true;
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const data = await adminAPI.groups.getUsageSummary(tz);
+    const data = await adminAPI.groups.getUsageSummary();
     const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
       map.set(item.group_id, {
         today_cost: item.today_cost,
+        yesterday_cost: item.yesterday_cost,
         total_cost: item.total_cost,
       });
     }
@@ -5358,6 +5385,9 @@ const closeCreateModal = () => {
   createForm.peak_start = "";
   createForm.peak_end = "";
   createForm.peak_rate_multiplier = 1.0;
+  createForm.profit_control_enabled = false;
+  createForm.profit_min_margin_percent = 0;
+  createForm.profit_safety_buffer_percent = 0;
   createForm.claude_code_only = false;
   createForm.fallback_group_id = null;
   createForm.fallback_group_id_on_invalid_request = null;
@@ -5407,16 +5437,32 @@ const normalizeImageRateMultiplier = (
 
 const normalizeRateMultiplier = normalizeImageRateMultiplier;
 
+// 利润控制表单辅助（换算与校验逻辑见 groupsProfitControl.ts，便于单测）。
+const percentToDecimal = profitPercentToDecimal;
+const decimalToPercent = profitDecimalToPercent;
+
+const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
+  const errorKey = validateProfitControlFormState(form);
+  if (errorKey) {
+    appStore.showError(t(`admin.groups.profitControl.${errorKey}`));
+    return false;
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
   }
   if (
-    createForm.platform === "openai" &&
+    supportsReasoningEffortPolicyPlatform(createForm.platform) &&
     createReasoningEffortPolicyRef.value &&
     !createReasoningEffortPolicyRef.value.validate()
   ) {
+    return;
+  }
+  if (!validateProfitControlForm(createForm)) {
     return;
   }
   submitting.value = true;
@@ -5457,7 +5503,17 @@ const handleCreateGroup = async () => {
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         createForm.reasoning_effort_mappings,
       ),
+      // 利润控制：界面百分比转小数提交；仅五个 token 平台可启用
+      profit_control_enabled:
+        isProfitControlPlatform(createForm.platform) &&
+        createForm.profit_control_enabled,
+      profit_min_margin: percentToDecimal(createForm.profit_min_margin_percent),
+      profit_safety_buffer: percentToDecimal(
+        createForm.profit_safety_buffer_percent,
+      ),
     };
+    delete (requestData as Record<string, unknown>).profit_min_margin_percent;
+    delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
@@ -5546,6 +5602,13 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.peak_start = group.peak_start ?? "";
   editForm.peak_end = group.peak_end ?? "";
   editForm.peak_rate_multiplier = group.peak_rate_multiplier ?? 1.0;
+  editForm.profit_control_enabled = group.profit_control_enabled ?? false;
+  editForm.profit_min_margin_percent = decimalToPercent(
+    group.profit_min_margin ?? 0,
+  );
+  editForm.profit_safety_buffer_percent = decimalToPercent(
+    group.profit_safety_buffer ?? 0,
+  );
   editForm.claude_code_only = group.claude_code_only || false;
   editForm.fallback_group_id = group.fallback_group_id;
   editForm.fallback_group_id_on_invalid_request =
@@ -5636,10 +5699,13 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (
-    editForm.platform === "openai" &&
+    supportsReasoningEffortPolicyPlatform(editForm.platform) &&
     editReasoningEffortPolicyRef.value &&
     !editReasoningEffortPolicyRef.value.validate()
   ) {
+    return;
+  }
+  if (!validateProfitControlForm(editForm)) {
     return;
   }
 
@@ -5687,7 +5753,17 @@ const handleUpdateGroup = async () => {
       reasoning_effort_mappings: reasoningEffortMappingsToAPI(
         editForm.reasoning_effort_mappings,
       ),
+      // 利润控制：界面百分比转小数提交；仅五个 token 平台可启用
+      profit_control_enabled:
+        isProfitControlPlatform(editForm.platform) &&
+        editForm.profit_control_enabled,
+      profit_min_margin: percentToDecimal(editForm.profit_min_margin_percent),
+      profit_safety_buffer: percentToDecimal(
+        editForm.profit_safety_buffer_percent,
+      ),
     };
+    delete (payload as Record<string, unknown>).profit_min_margin_percent;
+    delete (payload as Record<string, unknown>).profit_safety_buffer_percent;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
@@ -6021,6 +6097,11 @@ watch(
     } else {
       void syncCreateOpenAIAvailableModels();
     }
+    if (!isProfitControlPlatform(newVal)) {
+      createForm.profit_control_enabled = false;
+      createForm.profit_min_margin_percent = 0;
+      createForm.profit_safety_buffer_percent = 0;
+    }
     createForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,
       createForm.max_reasoning_effort,
@@ -6076,6 +6157,11 @@ watch(
       editForm.allow_live = false;
     } else if (editingGroup.value) {
       void syncEditOpenAIAvailableModels(editingGroup.value.id);
+    }
+    if (!isProfitControlPlatform(newVal)) {
+      editForm.profit_control_enabled = false;
+      editForm.profit_min_margin_percent = 0;
+      editForm.profit_safety_buffer_percent = 0;
     }
     editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
       newVal,

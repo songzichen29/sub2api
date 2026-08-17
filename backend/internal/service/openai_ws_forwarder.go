@@ -218,6 +218,10 @@ func (e *OpenAIWSClientCloseError) Reason() string {
 
 // OpenAIWSIngressHooks 定义入站 WS 每个 turn 的生命周期回调。
 type OpenAIWSIngressHooks struct {
+	// ClientLifecycleContext is the request context before an ingress lease
+	// adds its independent cancellation signal. Downstream writes bind to it
+	// so shutdown and disconnect cancellation remain direct during lease loss.
+	ClientLifecycleContext context.Context
 	// InitialRequestModel is the client-facing model from the first frame,
 	// before channel or account mapping. Ingress modes preserve it for usage
 	// attribution while MapRequestModel determines the upstream model.
@@ -1195,7 +1199,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	storeDisabledConnMode := s.openAIWSStoreDisabledConnMode()
 	forceNewConnByPolicy := shouldForceNewConnOnStoreDisabled(storeDisabledConnMode, lastFailureReason)
 	forceNewConn := forceNewConnByPolicy && storeDisabled && previousResponseID == "" && sessionHash != "" && preferredConnID == ""
-	wsHeaders, sessionResolution, buildHdrErr := s.buildOpenAIWSHeaders(ctx, c, account, token, decision, isCodexCLI, turnState, turnMetadata, promptCacheKey)
+	wsHeaders, sessionResolution, buildHdrErr := s.buildOpenAIWSHeaders(
+		ctx, c, account, token, decision, isCodexCLI,
+		turnState, turnMetadata, promptCacheKey,
+		openAIWSPayloadString(payload, "model"),
+		openAIWSPayloadString(payload, "service_tier"),
+	)
 	if buildHdrErr != nil {
 		return nil, fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
@@ -2097,6 +2106,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	if s == nil {
 		return nil, nil
 	}
+	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
 	responseID := strings.TrimSpace(previousResponseID)
 	if responseID == "" {
 		return nil, nil
@@ -2133,9 +2143,12 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		return nil, nil
 	}
 	requiredCapability := firstRequiredOpenAIEndpointCapability(nil)
-	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, PlatformOpenAI, requestedModel, requireCompact, requiredCapability)
+	account = s.recheckSelectedOpenAIAccountFromDBBeforeProfit(ctx, account, groupID, PlatformOpenAI, requestedModel, requireCompact, requiredCapability)
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil
+	}
+	if vetoed, _ := openAIProfitControlVetoReason(ctx, account); vetoed {
 		return nil, nil
 	}
 	// Quota auto-pause must also gate the previous_response_id sticky path; otherwise an
@@ -2168,6 +2181,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		if paused, _ := shouldAutoPauseOpenAIAccountByQuota(ctx, latest); paused {
 			return nil, nil
 		}
+		if vetoed, _ := openAIProfitControlVetoReason(ctx, latest); vetoed {
+			return nil, nil
+		}
 		if s.isOpenAIAccountRuntimeBlocked(latest) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return nil, nil
@@ -2187,16 +2203,16 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			responseID,
 			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
 		)
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
-		}, nil
+		}), nil
 	}
 
 	cfg := s.schedulingConfig()
 	if s.concurrencyService != nil {
-		return &AccountSelectionResult{
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
 				AccountID:      accountID,
@@ -2204,7 +2220,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 				Timeout:        cfg.StickySessionWaitTimeout,
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
-		}, nil
+		}), nil
 	}
 	return nil, nil
 }

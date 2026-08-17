@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -66,7 +67,7 @@ func TestCalculateProgress_DailyUsage(t *testing.T) {
 	assert.Equal(t, 7.0, progress.Daily.RemainingUSD)
 	assert.Equal(t, 30.0, progress.Daily.Percentage)
 	assert.Equal(t, dailyStart, progress.Daily.WindowStart)
-	assert.WithinDuration(t, startsAt.Add(72*time.Hour), progress.Daily.ResetsAt, 2*time.Second)
+	assert.Equal(t, timezone.StartOfDay(dailyStart).AddDate(0, 0, 1), progress.Daily.ResetsAt)
 }
 
 func TestCalculateProgress_DailyCardUsesExpiryAsDailyResetTime(t *testing.T) {
@@ -285,8 +286,8 @@ func TestCalculateProgress_DailyResetAnchoredToSubscriptionStart(t *testing.T) {
 	progress := svc.calculateProgress(sub, group)
 
 	require.NotNil(t, progress.Daily)
-	expectedResetAt := startsAt.Add(72 * time.Hour)
-	assert.WithinDuration(t, expectedResetAt, progress.Daily.ResetsAt, 2*time.Second)
+	expectedResetAt := timezone.StartOfDay(dailyStart).AddDate(0, 0, 1)
+	assert.Equal(t, expectedResetAt, progress.Daily.ResetsAt)
 }
 
 func TestCalculateProgress_DailyOverdraftUsesEffectivePeriodUsage(t *testing.T) {
