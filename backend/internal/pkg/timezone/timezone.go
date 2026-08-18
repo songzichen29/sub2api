@@ -18,10 +18,10 @@ var (
 
 // Init initializes the global timezone setting.
 // This should be called once at application startup.
-// Example timezone values: "America/Los_Angeles", "America/New_York", "UTC"
+// Example timezone values: "Asia/Shanghai", "America/New_York", "UTC"
 func Init(tz string) error {
 	if tz == "" {
-		tz = "America/Los_Angeles" // Default timezone
+		tz = "Asia/Shanghai" // Default timezone
 	}
 
 	loc, err := time.LoadLocation(tz)

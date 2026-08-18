@@ -23,7 +23,7 @@
 
 ## 时区
 
-- 宿主机与容器均为 `America/Los_Angeles`（见 `backend/Dockerfile` 的 `ENV TZ` 与 `deploy/docker-compose*.yml` 的 `TZ`）。
+- 容器默认使用 `Asia/Shanghai`（见 `backend/Dockerfile` 的 `ENV TZ` 与 `deploy/docker-compose*.yml` 的 `TZ`），运行时可通过 `TZ` 覆盖。
 - 遥测 `client_timestamp` 始终用 UTC（`time.Now().UTC()`），与真实 CC 一致；`deployment_environment` 不再泄露真实 hostname。
 
 ## 反检测开关（per-account，账户编辑页「反检测」分组）

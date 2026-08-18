@@ -101,6 +101,9 @@ RUN --mount=type=cache,id=sub2api-gomod,target=/go/pkg/mod \
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
+# Default deployment timezone. Runtime environments can override this with -e TZ=...
+ENV TZ=Asia/Shanghai
+
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"

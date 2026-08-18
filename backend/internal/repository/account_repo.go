@@ -1489,8 +1489,22 @@ func accountListOrder(params pagination.PaginationParams, dbDialect string) []fu
 		field = dbaccount.FieldRateMultiplier
 		defaultOrder = false
 	case "last_used_at":
-		field = dbaccount.FieldLastUsedAt
-		defaultOrder = false
+		direction := "ASC"
+		tieOrder := entsql.Asc
+		if sortOrder == pagination.SortOrderDesc {
+			direction = "DESC"
+			tieOrder = entsql.Desc
+		}
+		return []func(*entsql.Selector){func(s *entsql.Selector) {
+			lastUsedAt := s.C(dbaccount.FieldLastUsedAt)
+			if dbDialect == dialect.MySQL {
+				s.OrderExpr(entsql.Expr(lastUsedAt + " IS NULL ASC"))
+				s.OrderExpr(entsql.Expr(lastUsedAt + " " + direction))
+			} else {
+				s.OrderExpr(entsql.Expr(lastUsedAt + " " + direction + " NULLS LAST"))
+			}
+			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
+		}}
 	case "expires_at":
 		field = dbaccount.FieldExpiresAt
 		defaultOrder = false

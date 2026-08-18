@@ -21,8 +21,8 @@ RUN VERSION_VALUE="$(./scripts/resolve-version.sh)" && \
 # 暴露端口
 EXPOSE 8080
 
-# 容器时区与宿主机（America/Los_Angeles）一致；可被 compose 的 TZ 环境变量覆盖
-ENV TZ=America/Los_Angeles
+# 默认使用上海时区；可被运行时 TZ 环境变量覆盖
+ENV TZ=Asia/Shanghai
 
 # 运行应用
 CMD ["./main"]

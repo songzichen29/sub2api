@@ -32,6 +32,33 @@ func TestParseTimeRange(t *testing.T) {
 	require.False(t, end.IsZero())
 }
 
+func TestParseTimeRangeDefaultsToToday(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/?timezone=Asia/Shanghai", nil)
+
+	start, end := parseTimeRange(c)
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	now := time.Now().In(loc)
+
+	require.Equal(t, time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc), start)
+	require.Equal(t, start.AddDate(0, 0, 1), end)
+}
+
+func TestParseTimeRangeUsesCalendarDayAcrossDST(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodGet, "/?start_date=2024-03-10&end_date=2024-03-10&timezone=America/New_York", nil)
+
+	start, end := parseTimeRange(c)
+	loc, err := time.LoadLocation("America/New_York")
+	require.NoError(t, err)
+	require.Equal(t, time.Date(2024, 3, 10, 0, 0, 0, 0, loc), start)
+	require.Equal(t, time.Date(2024, 3, 11, 0, 0, 0, 0, loc), end)
+	require.Equal(t, 23*time.Hour, end.Sub(start))
+}
+
 func TestParseOpsViewParam(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()

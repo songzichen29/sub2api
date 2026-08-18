@@ -168,6 +168,13 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		endTime = t.AddDate(0, 0, 1)
 		endPtr = &endTime
 	}
+	// 明细列表未指定范围时默认查询今天，避免直接调用接口退化为全量历史。
+	if !requireRange && startPtr == nil && endPtr == nil {
+		startTime = timezone.StartOfDayInUserLocation(now, userTZ)
+		endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+		startPtr = &startTime
+		endPtr = &endTime
+	}
 
 	if requireRange {
 		if startPtr == nil {
@@ -179,7 +186,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 			case "month":
 				startTime = now.AddDate(0, -1, 0)
 			default:
-				startTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, -7), userTZ)
+				startTime = timezone.StartOfDayInUserLocation(now, userTZ)
 			}
 			startPtr = &startTime
 		}
@@ -292,6 +299,13 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 		}
 		t = t.AddDate(0, 0, 1)
 		filter.EndTime = &t
+	}
+	if filter.StartTime == nil && filter.EndTime == nil {
+		now := timezone.NowInUserLocation(userTZ)
+		start := timezone.StartOfDayInUserLocation(now, userTZ)
+		end := timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+		filter.StartTime = &start
+		filter.EndTime = &end
 	}
 
 	filter.Model = strings.TrimSpace(c.Query("model"))
@@ -471,7 +485,7 @@ func (h *UsageHandler) DashboardTrend(c *gin.Context) {
 	response.Success(c, gin.H{
 		"trend":       trend,
 		"start_date":  parsed.StartTime.Format("2006-01-02"),
-		"end_date":    parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":    parsed.EndTime.AddDate(0, 0, -1).Format("2006-01-02"),
 		"granularity": granularity,
 	})
 }
@@ -499,7 +513,7 @@ func (h *UsageHandler) DashboardModels(c *gin.Context) {
 	response.Success(c, gin.H{
 		"models":     userModelStatsFromUsageStats(stats),
 		"start_date": parsed.StartTime.Format("2006-01-02"),
-		"end_date":   parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":   parsed.EndTime.AddDate(0, 0, -1).Format("2006-01-02"),
 	})
 }
 
@@ -531,7 +545,7 @@ func (h *UsageHandler) DashboardSnapshotV2(c *gin.Context) {
 	resp := gin.H{
 		"generated_at": time.Now().UTC().Format(time.RFC3339),
 		"start_date":   parsed.StartTime.Format("2006-01-02"),
-		"end_date":     parsed.EndTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"end_date":     parsed.EndTime.AddDate(0, 0, -1).Format("2006-01-02"),
 		"granularity":  granularity,
 	}
 

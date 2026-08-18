@@ -175,6 +175,14 @@ func (h *UsageHandler) List(c *gin.Context) {
 		t = t.AddDate(0, 0, 1)
 		endTime = &t
 	}
+	// 明细列表未指定范围时默认查询今天，避免直接调用接口退化为全量历史。
+	if startTime == nil && endTime == nil {
+		now := timezone.NowInUserLocation(userTZ)
+		start := timezone.StartOfDayInUserLocation(now, userTZ)
+		end := timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
+		startTime = &start
+		endTime = &end
+	}
 
 	params := pagination.PaginationParams{
 		Page:      page,
@@ -513,7 +521,7 @@ func (h *UsageHandler) CreateCleanupTask(c *gin.Context) {
 		response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
 		return
 	}
-	endTime = endTime.Add(24*time.Hour - time.Nanosecond)
+	endTime = endTime.AddDate(0, 0, 1).Add(-time.Nanosecond)
 
 	var requestType *int16
 	stream := req.Stream

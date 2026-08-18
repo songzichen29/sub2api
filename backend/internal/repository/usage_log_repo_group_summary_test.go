@@ -15,14 +15,15 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := newUsageLogRepositoryWithSQL(nil, db)
 	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
-	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
-	yesterdayStart := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
+	todayStart := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
+	tomorrowStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
+	yesterdayStart := time.Date(2026, 3, 7, 5, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery(`SELECT CAST\(closed_before AS CHAR\), retained_from, timezone_name.*usage_group_rollup_state`).
 		WillReturnRows(sqlmock.NewRows([]string{"closed_before", "retained_from", "timezone_name"}).
-			AddRow("2026-03-09", time.Date(2026, 3, 1, 5, 0, 0, 0, time.UTC), "America/New_York"))
+			AddRow("2026-03-08", time.Date(2026, 3, 1, 5, 0, 0, 0, time.UTC), "America/New_York"))
 	mock.ExpectQuery(`(?s)WITH historical AS.*usage_group_daily_rollups.*ul\.created_at >= \?`).
-		WithArgs("2026-03-08", true, "2026-03-01", "2026-03-09", todayStart, yesterdayStart, todayStart, todayStart).
+		WithArgs("2026-03-07", true, "2026-03-01", "2026-03-08", todayStart, tomorrowStart, yesterdayStart, todayStart, todayStart).
 		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}).
 			AddRow(int64(7), 12.5, 1.25, 2.5))
 

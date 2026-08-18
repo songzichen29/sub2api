@@ -273,6 +273,7 @@ func resolveUsageStatsTimezone() string {
 // GetAccountTodayStats 获取账号今日统计
 func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID int64) (*usagestats.AccountStats, error) {
 	today := timezone.Today()
+	tomorrow := today.AddDate(0, 0, 1)
 
 	query := `
 		SELECT
@@ -282,7 +283,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 			COALESCE(SUM(total_cost), 0) as standard_cost,
 			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
-		WHERE account_id = ? AND created_at >= ?
+		WHERE account_id = ? AND created_at >= ? AND created_at < ?
 	`
 
 	stats := &usagestats.AccountStats{}
@@ -290,7 +291,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		ctx,
 		r.sql,
 		query,
-		[]any{accountID, today},
+		[]any{accountID, today, tomorrow},
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
@@ -510,9 +511,9 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 			ul.user_id,
 			`+usageLogEffectivePlatformExpr+` as platform,
 			COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
-			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) as today_cost
+			COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs ul
-		LEFT JOIN ` + quotedGroupsTable + ` g ON g.id = ul.group_id
+		LEFT JOIN `+quotedGroupsTable+` g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
 		WHERE ul.user_id IN (%s)
 		  AND ul.created_at >= LEAST(?, ?)
@@ -521,7 +522,8 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		GROUP BY ul.user_id, `+usageLogEffectivePlatformExpr+`
 	`, inClause)
 	today := timezone.Today()
-	args := append([]any{startTime, endTime, today}, inArgs...)
+	tomorrow := today.AddDate(0, 0, 1)
+	args := append([]any{startTime, endTime, today, tomorrow}, inArgs...)
 	args = append(args, startTime, today, endTime)
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -592,7 +594,7 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		SELECT
 			api_key_id,
 			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN actual_cost ELSE 0 END), 0) as total_cost,
-			COALESCE(SUM(CASE WHEN created_at >= ? THEN actual_cost ELSE 0 END), 0) as today_cost
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs
 		WHERE api_key_id IN (%s)
 		  AND created_at >= LEAST(?, ?)
@@ -600,7 +602,8 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		GROUP BY api_key_id
 	`, inClause)
 	today := timezone.Today()
-	args := append([]any{startTime, endTime, today}, inArgs...)
+	tomorrow := today.AddDate(0, 0, 1)
+	args := append([]any{startTime, endTime, today, tomorrow}, inArgs...)
 	args = append(args, startTime, today, endTime)
 	rows, err := r.sql.QueryContext(ctx, query, args...)
 	if err != nil {

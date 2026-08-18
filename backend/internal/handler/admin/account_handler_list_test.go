@@ -52,6 +52,30 @@ func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {
 	require.Equal(t, 0, offset)
 }
 
+func TestAccountHandlerListUsesLastUsedAtSortByDefault(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "last_used_at", adminSvc.lastListAccounts.sortBy)
+	require.Equal(t, "desc", adminSvc.lastListAccounts.sortOrder)
+}
+
+func TestAccountHandlerListPassesExplicitLastUsedAtSort(t *testing.T) {
+	router, adminSvc := setupAccountListRouter()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&sort_by=last_used_at&sort_order=asc", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "last_used_at", adminSvc.lastListAccounts.sortBy)
+	require.Equal(t, "asc", adminSvc.lastListAccounts.sortOrder)
+}
+
 func TestAccountHandlerListReturnsSchedulerScoresPerGroup(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
 	now := time.Now().UTC()

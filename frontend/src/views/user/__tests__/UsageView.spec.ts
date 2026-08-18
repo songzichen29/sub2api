@@ -195,10 +195,16 @@ describe('user UsageView', () => {
     mountUsageView()
     await flushPromises()
 
-    expect(query).toHaveBeenCalled()
-    expect(getStats).toHaveBeenCalled()
-    expect(getDashboardModels).toHaveBeenCalled()
+    const today = new Date()
+    const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+
+    expect(query.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ start_date: todayString, end_date: todayString }))
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ start_date: todayString, end_date: todayString }))
+    expect(getDashboardModels).toHaveBeenCalledWith(expect.objectContaining({ start_date: todayString, end_date: todayString }))
     expect(getDashboardSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: todayString,
+      end_date: todayString,
+      granularity: 'hour',
       include_trend: true,
       include_model_stats: false,
       include_group_stats: true,

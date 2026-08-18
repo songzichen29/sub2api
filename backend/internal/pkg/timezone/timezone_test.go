@@ -3,6 +3,8 @@ package timezone
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestInit(t *testing.T) {
@@ -26,6 +28,13 @@ func TestInit(t *testing.T) {
 	if Name() != "America/Los_Angeles" {
 		t.Errorf("Name() not set correctly, got %s", Name())
 	}
+}
+
+func TestInitUsesShanghaiByDefault(t *testing.T) {
+	t.Cleanup(func() { _ = Init("UTC") })
+	require.NoError(t, Init(""))
+	require.Equal(t, "Asia/Shanghai", Name())
+	require.Equal(t, "Asia/Shanghai", Location().String())
 }
 
 func TestInitInvalidTimezone(t *testing.T) {

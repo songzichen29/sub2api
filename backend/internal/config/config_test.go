@@ -1252,7 +1252,7 @@ func TestConfigAddressHelpers(t *testing.T) {
 		t.Fatalf("DatabaseConfig.DSNWithTimezone() should include loc=America%%2FLos_Angeles: %q", dbCfg.DSNWithTimezone("America/Los_Angeles"))
 	}
 
-	if !strings.Contains(dbCfg.DSNWithTimezone(""), "loc=America%2FLos_Angeles") {
+	if !strings.Contains(dbCfg.DSNWithTimezone(""), "loc=Asia%2FShanghai") {
 		t.Fatalf("DatabaseConfig.DSNWithTimezone() should use default timezone")
 	}
 	if !strings.Contains(dbCfg.DSNWithTimezone("UTC"), "tls=false") {

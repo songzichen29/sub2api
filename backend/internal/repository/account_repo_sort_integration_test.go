@@ -37,6 +37,31 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByPriorityDesc() {
 	s.Require().Equal("low-priority", accounts[1].Name)
 }
 
+func (s *AccountRepoSuite) TestListWithFilters_SortByLastUsedAtKeepsMissingLast() {
+	earlier := time.Now().Add(-2 * time.Hour)
+	later := time.Now().Add(-time.Hour)
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "earlier-used", LastUsedAt: &earlier})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "later-used", LastUsedAt: &later})
+	mustCreateAccount(s.T(), s.client, &service.Account{Name: "never-used"})
+
+	for _, tc := range []struct {
+		order string
+		want  []string
+	}{
+		{order: "asc", want: []string{"earlier-used", "later-used", "never-used"}},
+		{order: "desc", want: []string{"later-used", "earlier-used", "never-used"}},
+	} {
+		accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
+			Page: 1, PageSize: 10, SortBy: "last_used_at", SortOrder: tc.order,
+		}, "", "", "", "", 0, "", nil)
+		s.Require().NoError(err)
+		s.Require().Len(accounts, 3)
+		for i, name := range tc.want {
+			s.Require().Equal(name, accounts[i].Name)
+		}
+	}
+}
+
 func (s *AccountRepoSuite) TestListWithFilters_SortByUpstreamBillingRateWithMissingLast() {
 	makeAccount := func(name, status string, rate any) {
 		extra := map[string]any{}

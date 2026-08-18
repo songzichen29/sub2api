@@ -768,9 +768,10 @@ func TestUsageLogRepositoryGetBatchAPIKeyUsageStats_BindsQueryArgsInCorrectOrder
 	start := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC)
 	today := timezone.Today()
+	tomorrow := today.AddDate(0, 0, 1)
 
 	mock.ExpectQuery("SELECT\\s+api_key_id,.*FROM usage_logs").
-		WithArgs(start, end, today, int64(101), int64(202), start, today, end).
+		WithArgs(start, end, today, tomorrow, int64(101), int64(202), start, today, end).
 		WillReturnRows(sqlmock.NewRows([]string{"api_key_id", "total_cost", "today_cost"}).
 			AddRow(int64(101), 1.23, 0.45).
 			AddRow(int64(202), 6.78, 0.9))
@@ -782,6 +783,58 @@ func TestUsageLogRepositoryGetBatchAPIKeyUsageStats_BindsQueryArgsInCorrectOrder
 	require.InDelta(t, 0.45, stats[101].TodayActualCost, 0.0001)
 	require.InDelta(t, 6.78, stats[202].TotalActualCost, 0.0001)
 	require.InDelta(t, 0.9, stats[202].TodayActualCost, 0.0001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryGetBatchUserUsageStats_BindsTodayUpperBound(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	start := time.Date(2025, 1, 10, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC)
+	today := timezone.Today()
+	tomorrow := today.AddDate(0, 0, 1)
+
+	mock.ExpectQuery("SELECT\\s+ul.user_id,.*FROM usage_logs ul").
+		WithArgs(start, end, today, tomorrow, int64(101), int64(202), start, today, end).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "platform", "total_cost", "today_cost"}).
+			AddRow(int64(101), "openai", 1.23, 0.45).
+			AddRow(int64(202), "anthropic", 6.78, 0.9))
+
+	stats, err := repo.GetBatchUserUsageStats(context.Background(), []int64{101, 202}, start, end)
+	require.NoError(t, err)
+	require.Len(t, stats, 2)
+	require.InDelta(t, 0.45, stats[101].TodayActualCost, 0.0001)
+	require.InDelta(t, 0.9, stats[202].TodayActualCost, 0.0001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestUsageLogRepositoryDashboardEntityStatsBoundsTodayNewUsers(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	today := timezone.Today()
+	tomorrow := today.AddDate(0, 0, 1)
+	now := timezone.Now()
+	mock.ExpectQuery("SELECT\\s+COUNT\\(\\*\\) as total_users,\\s+COUNT\\(CASE WHEN created_at >= \\? AND created_at < \\? THEN 1 END\\) as today_new_users").
+		WithArgs(today, tomorrow).
+		WillReturnRows(sqlmock.NewRows([]string{"total_users", "today_new_users"}).AddRow(int64(10), int64(2)))
+	mock.ExpectQuery("SELECT\\s+COUNT\\(\\*\\) as total_api_keys").
+		WithArgs(service.StatusActive).
+		WillReturnRows(sqlmock.NewRows([]string{"total_api_keys", "active_api_keys"}).AddRow(int64(4), int64(3)))
+	mock.ExpectQuery("SELECT\\s+COUNT\\(\\*\\) as total_accounts").
+		WithArgs(service.StatusActive, service.StatusError, now, now).
+		WillReturnRows(sqlmock.NewRows([]string{"total_accounts", "normal_accounts", "error_accounts", "ratelimit_accounts", "overload_accounts"}).
+			AddRow(int64(3), int64(2), int64(1), int64(0), int64(0)))
+
+	stats := &DashboardStats{}
+	err := repo.fillDashboardEntityStats(context.Background(), stats, today, tomorrow, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), stats.TotalUsers)
+	require.Equal(t, int64(2), stats.TodayNewUsers)
+	require.Equal(t, int64(4), stats.TotalAPIKeys)
+	require.Equal(t, int64(3), stats.ActiveAPIKeys)
+	require.Equal(t, int64(3), stats.TotalAccounts)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

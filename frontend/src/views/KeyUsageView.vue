@@ -503,9 +503,23 @@ function getDateParams(): string {
     let start: string
     switch (currentRange.value) {
       case 'today': start = end; break
-      case '7d': start = formatDateLocalInput(new Date(now.getTime() - 7 * 86400000)); break
-      case '30d': start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000)); break
-      default: start = formatDateLocalInput(new Date(now.getTime() - 30 * 86400000))
+      case '7d': {
+        const startDate = new Date(now)
+        startDate.setDate(startDate.getDate() - 6)
+        start = formatDateLocalInput(startDate)
+        break
+      }
+      case '30d': {
+        const startDate = new Date(now)
+        startDate.setDate(startDate.getDate() - 29)
+        start = formatDateLocalInput(startDate)
+        break
+      }
+      default: {
+        const startDate = new Date(now)
+        startDate.setDate(startDate.getDate() - 29)
+        start = formatDateLocalInput(startDate)
+      }
     }
     params.set('start_date', start)
     params.set('end_date', end)

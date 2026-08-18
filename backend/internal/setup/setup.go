@@ -97,7 +97,7 @@ type SetupConfig struct {
 	Admin                   AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
 	Server                  ServerConfig   `json:"server" yaml:"server"`
 	JWT                     JWTConfig      `json:"jwt" yaml:"jwt"`
-	Timezone                string         `json:"timezone" yaml:"timezone"` // e.g. "America/Los_Angeles", "UTC"
+	Timezone                string         `json:"timezone" yaml:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	MigrationTimeoutSeconds int            `json:"migration_timeout_seconds" yaml:"migration_timeout_seconds"`
 }
 
@@ -509,7 +509,7 @@ func writeConfigFile(cfg *SetupConfig) error {
 	// Ensure timezone has a default value
 	tz := cfg.Timezone
 	if tz == "" {
-		tz = "America/Los_Angeles"
+		tz = "Asia/Shanghai"
 	}
 
 	// Prepare config for YAML (exclude sensitive data and admin config)
@@ -617,7 +617,7 @@ func AutoSetupFromEnv() error {
 	// Get timezone from TZ or TIMEZONE env var (TZ is standard for Docker)
 	tz := getEnvOrDefault("TZ", "")
 	if tz == "" {
-		tz = getEnvOrDefault("TIMEZONE", "America/Los_Angeles")
+		tz = getEnvOrDefault("TIMEZONE", "Asia/Shanghai")
 	}
 
 	// Build config from environment variables

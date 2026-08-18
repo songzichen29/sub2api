@@ -56,7 +56,7 @@ func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, sta
 	dayStart := truncateToDay(startLocal)
 	dayEnd := truncateToDay(endLocal)
 	if endLocal.After(dayEnd) {
-		dayEnd = dayEnd.Add(24 * time.Hour)
+		dayEnd = dayEnd.AddDate(0, 0, 1)
 	}
 
 	if db, ok := r.sql.(*sql.DB); ok {
@@ -111,7 +111,7 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 	dayStart := truncateToDay(startLocal)
 	dayEnd := truncateToDay(endLocal)
 	if endLocal.After(dayEnd) {
-		dayEnd = dayEnd.Add(24 * time.Hour)
+		dayEnd = dayEnd.AddDate(0, 0, 1)
 	}
 
 	// 尽量使用事务保证范围内的一致性（允许在非 *sql.DB 的情况下退化为非事务执行）。

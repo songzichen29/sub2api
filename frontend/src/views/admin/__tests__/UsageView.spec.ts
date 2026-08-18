@@ -370,9 +370,8 @@ describe('admin UsageView distribution metric toggles', () => {
 
     expect(getSnapshotV2).toHaveBeenCalledTimes(1)
     const today = formatLocalDate(new Date())
-    const yesterday = formatLocalDate(new Date(Date.now() - 24 * 60 * 60 * 1000))
     expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
-      start_date: yesterday,
+      start_date: today,
       end_date: today,
       granularity: 'hour'
     }))

@@ -753,7 +753,7 @@ func (h *GroupHandler) GetStats(c *gin.Context) {
 }
 
 // GetUsageSummary returns today's and cumulative cost for all groups.
-// GET /api/v1/admin/groups/usage-summary?timezone=America/Los_Angeles
+// GET /api/v1/admin/groups/usage-summary?timezone=Asia/Shanghai
 func (h *GroupHandler) GetUsageSummary(c *gin.Context) {
 	todayStart := service.GroupUsageTodayStart(time.Now())
 

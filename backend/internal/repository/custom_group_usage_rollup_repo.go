@@ -16,6 +16,11 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	timezoneName := service.GroupUsageTimezoneName()
 	todayDate := service.GroupUsageDate(todayStart)
 	yesterdayDate := service.GroupUsageDate(yesterdayStart)
+	todayDateStart, parseErr := service.ParseGroupUsageDate(todayDate)
+	if parseErr != nil {
+		return nil, fmt.Errorf("解析分组用量汇总日期 %q: %w", todayDate, parseErr)
+	}
+	tomorrowStart := todayDateStart.AddDate(0, 0, 1).UTC()
 
 	var closedBefore string
 	var retainedFrom time.Time
@@ -55,7 +60,7 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			SELECT
 				ul.group_id,
 				COALESCE(SUM(ul.actual_cost), 0) AS actual_cost,
-				COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) AS today_cost,
+				COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) AS today_cost,
 				COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) AS yesterday_cost
 			FROM usage_logs ul
 			WHERE ul.created_at >= ?
@@ -80,6 +85,7 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 		retainedDate,
 		closedBefore,
 		todayStart,
+		tomorrowStart,
 		yesterdayStart,
 		todayStart,
 		tailStart,

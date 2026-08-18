@@ -53,10 +53,6 @@ func init() {
 // initLogger configures the default slog handler based on gin.Mode().
 // In non-release mode, Debug level logs are enabled.
 func main() {
-	// Pin process timezone to match the deploy host (America/Los_Angeles) so
-	// local time operations are consistent with the server. The container also
-	// sets TZ via Dockerfile/compose; this covers bare-metal/helm deploys.
-	_ = os.Setenv("TZ", "America/Los_Angeles")
 	logger.InitBootstrap()
 	defer logger.Sync()
 
