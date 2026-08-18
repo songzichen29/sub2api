@@ -26,6 +26,7 @@ export default {
     password: 'Password',
     submit: 'Submit',
     back: 'Back',
+    previous: 'Previous',
     next: 'Next',
     yes: 'Yes',
     no: 'No',
@@ -212,6 +213,57 @@ export default {
     keyUsage: 'Usage Query',
     modelMarketplace: 'Model Marketplace',
     paymentCoupons: 'Payment Coupons'
+  },
+  stepUp: {
+    title: 'Sensitive action verification',
+    hint: 'Enter the six-digit code from your authenticator app to continue.',
+    verifyFailed: 'Verification failed. Please try again.',
+    notEnabled: 'Step-up verification is not enabled for this administrator.',
+    adminApiKeyForbidden: 'This action cannot be performed with an admin API key. Use an authenticated administrator session.'
+  },
+  modelPlaza: {
+    title: 'Model Plaza',
+    description: 'Browse available models and their effective prices by platform and group.',
+    anonymousHint: 'Sign in to see models and prices available to your account.',
+    loadFailed: 'Failed to load the model plaza.',
+    empty: 'No models are currently available.',
+    noSearchResult: 'No models match your search.',
+    badges: {
+      exclusive: 'Exclusive',
+      subscription: 'Subscription'
+    },
+    detail: {
+      noModels: 'No models in this group.',
+      peakNote: 'Peak rate: {multiplier}x ({window})'
+    },
+    filters: {
+      all: 'All',
+      platformLabel: 'Platform',
+      groupLabel: 'Group',
+      rateLabel: 'Rate',
+      modelLabel: 'Model',
+      searchPlaceholder: 'Search model name...'
+    },
+    nav: {
+      backToDashboard: 'Back to dashboard',
+      login: 'Log in'
+    },
+    table: {
+      model: 'Model',
+      paidPrice: 'Your price',
+      officialPrice: 'Official price',
+      rate: 'Rate',
+      input: 'Input',
+      output: 'Output',
+      cache: 'Cache',
+      cacheWrite: 'Cache write',
+      cacheRead: 'Cache read',
+      unitPerMillion: '/ 1M tokens',
+      perRequest: 'Per request',
+      perImage: 'Per image',
+      perUnitRequest: 'request',
+      perUnitImage: 'image'
+    }
   },
   auth: {
     welcomeBack: 'Welcome Back',

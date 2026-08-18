@@ -145,6 +145,7 @@ export default {
       expiresAt: '过期时间',
       triggeredBy: '触发方式',
       startedAt: '开始时间',
+      parts: '分片数',
       actions: '操作'
     },
     status: {
@@ -171,7 +172,11 @@ export default {
       restorePasswordPrompt: '请输入管理员密码以确认恢复操作',
       restoreSuccess: '数据库恢复成功',
       deleteConfirm: '确定要删除此备份吗？',
-      deleted: '备份已删除'
+      deleted: '备份已删除',
+      downloadFailed: '备份下载失败',
+      downloadParts: '下载备份分片',
+      downloadPartsHint: '该备份由多个文件组成，请分别下载以下分片。',
+      partLabel: '分片 {index}'
     },
     r2Guide: {
       title: 'Cloudflare R2 配置教程',
@@ -826,6 +831,7 @@ export default {
       userStatus: '状态'
     },
     usageToday: '今日',
+    usageYesterday: '昨日',
     usageTotal: '累计',
     accountsAvailable: '可用:',
     accountsRateLimited: '限流:',

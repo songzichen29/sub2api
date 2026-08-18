@@ -145,6 +145,7 @@ export default {
       expiresAt: 'Expires At',
       triggeredBy: 'Triggered By',
       startedAt: 'Started At',
+      parts: 'Parts',
       actions: 'Actions'
     },
     status: {
@@ -171,7 +172,11 @@ export default {
       restorePasswordPrompt: 'Please enter your admin password to confirm the restore operation',
       restoreSuccess: 'Database restored successfully',
       deleteConfirm: 'Are you sure you want to delete this backup?',
-      deleted: 'Backup deleted'
+      deleted: 'Backup deleted',
+      downloadFailed: 'Failed to download backup',
+      downloadParts: 'Download Backup Parts',
+      downloadPartsHint: 'This backup is split into multiple files. Download each part below.',
+      partLabel: 'Part {index}'
     },
     r2Guide: {
       title: 'Cloudflare R2 Setup Guide',
@@ -831,6 +836,7 @@ export default {
       userStatus: 'Status'
     },
     usageToday: 'Today',
+    usageYesterday: 'Yesterday',
     usageTotal: 'Total',
     accountsAvailable: 'Avail:',
     accountsRateLimited: 'Limited:',

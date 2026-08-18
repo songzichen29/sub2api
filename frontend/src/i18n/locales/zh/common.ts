@@ -26,6 +26,7 @@ export default {
     password: '密码',
     submit: '提交',
     back: '返回',
+    previous: '上一页',
     next: '下一步',
     yes: '是',
     no: '否',
@@ -212,6 +213,57 @@ export default {
     keyUsage: '用量查询',
     modelMarketplace: '模型广场',
     paymentCoupons: '支付优惠券'
+  },
+  stepUp: {
+    title: '敏感操作二次验证',
+    hint: '请输入验证器应用中的 6 位验证码以继续。',
+    verifyFailed: '验证失败，请重试。',
+    notEnabled: '当前管理员未启用敏感操作二次验证。',
+    adminApiKeyForbidden: '管理员 API 密钥不能执行此操作，请使用已登录的管理员会话。'
+  },
+  modelPlaza: {
+    title: '模型广场',
+    description: '按平台和分组查看可用模型及当前生效价格。',
+    anonymousHint: '登录后可查看当前账户可用的模型和价格。',
+    loadFailed: '模型广场加载失败。',
+    empty: '当前暂无可用模型。',
+    noSearchResult: '没有匹配搜索条件的模型。',
+    badges: {
+      exclusive: '专属',
+      subscription: '订阅'
+    },
+    detail: {
+      noModels: '该分组暂无模型。',
+      peakNote: '高峰倍率：{multiplier}x（{window}）'
+    },
+    filters: {
+      all: '全部',
+      platformLabel: '平台',
+      groupLabel: '分组',
+      rateLabel: '倍率',
+      modelLabel: '模型',
+      searchPlaceholder: '搜索模型名称...'
+    },
+    nav: {
+      backToDashboard: '返回仪表盘',
+      login: '登录'
+    },
+    table: {
+      model: '模型',
+      paidPrice: '您的价格',
+      officialPrice: '官方价格',
+      rate: '倍率',
+      input: '输入',
+      output: '输出',
+      cache: '缓存',
+      cacheWrite: '缓存写入',
+      cacheRead: '缓存读取',
+      unitPerMillion: '/ 1M Token',
+      perRequest: '按请求',
+      perImage: '按图片',
+      perUnitRequest: '请求',
+      perUnitImage: '图片'
+    }
   },
   auth: {
     welcomeBack: '欢迎回来',
