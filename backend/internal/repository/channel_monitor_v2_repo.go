@@ -14,6 +14,8 @@ import (
 
 type channelMonitorV2Repository struct{ db *sql.DB }
 
+const channelMonitorV2GroupsTable = "`groups`"
+
 func NewChannelMonitorV2Repository(db *sql.DB) service.ChannelMonitorV2Repository {
 	return &channelMonitorV2Repository{db: db}
 }
@@ -153,7 +155,7 @@ func (r *channelMonitorV2Repository) GetDimensions(ctx context.Context, filter s
 	query := `SELECT m.platform, COALESCE(g.name, ''), lower(COALESCE(NULLIF(TRIM(g.platform), ''), 'unknown')), m.group_id, m.model,
 	                 SUM(m.success_requests + m.error_requests)
 	          FROM ` + channelMonitorV2MetricsTable(catalogFilter) + ` m
-	          LEFT JOIN groups g ON g.id = NULLIF(m.group_id, 0) ` + where + `
+	          LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id = NULLIF(m.group_id, 0) ` + where + `
 	          GROUP BY m.platform, g.name, g.platform, m.group_id, m.model`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -623,7 +625,7 @@ type channelMonitorV2GroupInfo struct {
 }
 
 func (r *channelMonitorV2Repository) listActiveGroupIDs(ctx context.Context) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM groups WHERE deleted_at IS NULL AND status = 'active' ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, "SELECT id FROM `groups` WHERE deleted_at IS NULL AND status = 'active' ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -649,7 +651,7 @@ func (r *channelMonitorV2Repository) loadChannelMonitorV2GroupInfo(ctx context.C
 		args = append(args, id)
 	}
 	query := `SELECT id, COALESCE(name, ''), lower(COALESCE(NULLIF(TRIM(platform), ''), 'unknown'))
-		FROM groups WHERE id IN (` + sqlPlaceholders(len(groupIDs)) + `)
+		FROM ` + channelMonitorV2GroupsTable + ` WHERE id IN (` + sqlPlaceholders(len(groupIDs)) + `)
 		AND deleted_at IS NULL AND status = 'active'`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -951,7 +953,7 @@ func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter servi
 			group = bucketExpr + "," + group
 		}
 	}
-	query := `SELECT ` + bucketExpr + `,m.platform,m.group_id,COALESCE(g.name,''),m.model,SUM(m.success_requests),SUM(m.error_requests),SUM(m.upstream_affected_requests),SUM(m.upstream_attempt_count),SUM(m.input_tokens),SUM(m.output_tokens),SUM(m.cache_creation_tokens),SUM(m.cache_read_tokens),SUM(m.ttft_sum_ms),SUM(m.ttft_count),SUM(m.duration_sum_ms),SUM(m.duration_count) FROM ` + channelMonitorV2MetricsTable(filter) + ` m LEFT JOIN groups g ON g.id=NULLIF(m.group_id,0) ` + where + ` GROUP BY ` + group
+	query := `SELECT ` + bucketExpr + `,m.platform,m.group_id,COALESCE(g.name,''),m.model,SUM(m.success_requests),SUM(m.error_requests),SUM(m.upstream_affected_requests),SUM(m.upstream_attempt_count),SUM(m.input_tokens),SUM(m.output_tokens),SUM(m.cache_creation_tokens),SUM(m.cache_read_tokens),SUM(m.ttft_sum_ms),SUM(m.ttft_count),SUM(m.duration_sum_ms),SUM(m.duration_count) FROM ` + channelMonitorV2MetricsTable(filter) + ` m LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id=NULLIF(m.group_id,0) ` + where + ` GROUP BY ` + group
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -20,11 +21,14 @@ const (
 	RequestTypeWSV2         RequestType = 3
 	RequestTypeCyberBlocked RequestType = 4 // cyber_policy 命中（透传但被上游安全策略拒绝）
 	RequestTypeLive         RequestType = 5
+	// RequestTypeChannelMonitor 是内部主动健康探测产生的用量行。
+	// 它保留在 usage_logs 便于审计，但不应污染用户/账号请求统计。
+	RequestTypeChannelMonitor RequestType = 6
 )
 
 func (t RequestType) IsValid() bool {
 	switch t {
-	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked, RequestTypeLive:
+	case RequestTypeUnknown, RequestTypeSync, RequestTypeStream, RequestTypeWSV2, RequestTypeCyberBlocked, RequestTypeLive, RequestTypeChannelMonitor:
 		return true
 	default:
 		return false
@@ -50,6 +54,8 @@ func (t RequestType) String() string {
 		return "cyber"
 	case RequestTypeLive:
 		return "live"
+	case RequestTypeChannelMonitor:
+		return "channel_monitor"
 	default:
 		return "unknown"
 	}
@@ -73,9 +79,25 @@ func ParseUsageRequestType(value string) (RequestType, error) {
 		return RequestTypeCyberBlocked, nil
 	case "live":
 		return RequestTypeLive, nil
+	case "channel_monitor":
+		return RequestTypeChannelMonitor, nil
 	default:
-		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live")
+		return RequestTypeUnknown, fmt.Errorf("invalid request_type, allowed values: unknown, sync, stream, ws_v2, cyber, live, channel_monitor")
 	}
+}
+
+// ChannelMonitorRequestHeader marks the private HTTP request emitted by the
+// active channel monitor. The marker lets the gateway preserve the probe in
+// usage_logs while excluding it from normal user/account latency statistics.
+const ChannelMonitorRequestHeader = "X-Sub2API-Channel-Monitor"
+
+// ChannelMonitorUserAgent identifies monitor requests in access and usage logs.
+const ChannelMonitorUserAgent = "sub2api-channel-monitor/1"
+
+// IsChannelMonitorRequest reports whether an authenticated request is an
+// internal active channel-monitor probe.
+func IsChannelMonitorRequest(headers http.Header) bool {
+	return headers != nil && strings.TrimSpace(headers.Get(ChannelMonitorRequestHeader)) == "1"
 }
 
 func RequestTypeFromLegacy(stream bool, openAIWSMode bool) RequestType {

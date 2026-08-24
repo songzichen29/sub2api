@@ -10,11 +10,14 @@ import (
 // 这些是 MVP 阶段的硬编码值，按需可以提到 config 中。
 const (
 	// monitorRequestTimeout 单次模型请求总超时（含 Body 读取）。
-	monitorRequestTimeout = 45 * time.Second
+	// 网关账号可能经历 failover 或较长的上游排队；45 秒会把仍在处理的
+	// 请求误记为 transport error。监控只在 120 秒后才判定为真正超时。
+	monitorRequestTimeout = 120 * time.Second
 	// monitorPingTimeout HEAD 请求 endpoint origin 的超时。
 	monitorPingTimeout = 8 * time.Second
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
-	monitorDegradedThreshold = 6 * time.Second
+	// 6 秒低于当前 OpenAI 账号池的正常长尾，导致大量成功请求被标慢。
+	monitorDegradedThreshold = 15 * time.Second
 	// monitorHistoryRetentionDays 明细历史保留天数。
 	// 60s 默认间隔 * 30 天 ≈ 43200 行/monitor/model，一般部署总量 <= 2M 行，
 	// PG 无压力；所以直接保留完整明细一个月，可用率查询可以全走原始行不依赖聚合。
@@ -102,7 +105,9 @@ const (
 	// monitorTLSHandshakeTimeout HTTP transport TLS 握手超时。
 	monitorTLSHandshakeTimeout = 10 * time.Second
 	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。
-	monitorResponseHeaderTimeout = 30 * time.Second
+	// 必须与 monitorRequestTimeout 同量级，避免 Client.Timeout 尚未到期时
+	// 先由 Transport 以 30 秒截断并产生假错误。
+	monitorResponseHeaderTimeout = 120 * time.Second
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
 

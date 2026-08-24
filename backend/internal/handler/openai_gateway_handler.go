@@ -378,7 +378,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
-	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	requestType := service.RequestTypeFromLegacy(reqStream, false)
+	if service.IsChannelMonitorRequest(c.Request.Header) {
+		requestType = service.RequestTypeChannelMonitor
+	}
+	setOpsEndpointContext(c, "", int16(requestType))
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
@@ -769,6 +773,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
+				RequestType:        requestType,
 				InboundEndpoint:    inboundEndpoint,
 				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
@@ -791,10 +796,19 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				).Error("openai.record_usage_failed", zap.Error(err))
 			}
 		})
-		reqLog.Debug("openai.request_completed",
+		completedFields := []zap.Field{
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
-		)
+			zap.Int64("forward_duration_ms", forwardDurationMs),
+		}
+		if upstreamLatencyMs > 0 {
+			completedFields = append(completedFields, zap.Int64("upstream_latency_ms", upstreamLatencyMs))
+		}
+		if result != nil && result.FirstTokenMs != nil {
+			completedFields = append(completedFields, zap.Int("first_token_ms", *result.FirstTokenMs))
+		}
+		completedFields = append(completedFields, zap.Int64("response_latency_ms", responseLatencyMs))
+		reqLog.Debug("openai.request_completed", completedFields...)
 		return
 	}
 }
@@ -1014,7 +1028,11 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
-	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	requestType := service.RequestTypeFromLegacy(reqStream, false)
+	if service.IsChannelMonitorRequest(c.Request.Header) {
+		requestType = service.RequestTypeChannelMonitor
+	}
+	setOpsEndpointContext(c, "", int16(requestType))
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.anthropicSecurityAuditError(c, decision)
@@ -1280,6 +1298,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
+				RequestType:        requestType,
 				InboundEndpoint:    inboundEndpoint,
 				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
@@ -1302,10 +1321,19 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				).Error("openai_messages.record_usage_failed", zap.Error(err))
 			}
 		})
-		reqLog.Debug("openai_messages.request_completed",
+		completedFields := []zap.Field{
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
-		)
+			zap.Int64("forward_duration_ms", forwardDurationMs),
+		}
+		if upstreamLatencyMs > 0 {
+			completedFields = append(completedFields, zap.Int64("upstream_latency_ms", upstreamLatencyMs))
+		}
+		if result != nil && result.FirstTokenMs != nil {
+			completedFields = append(completedFields, zap.Int("first_token_ms", *result.FirstTokenMs))
+		}
+		completedFields = append(completedFields, zap.Int64("response_latency_ms", responseLatencyMs))
+		reqLog.Debug("openai_messages.request_completed", completedFields...)
 		return
 	}
 }

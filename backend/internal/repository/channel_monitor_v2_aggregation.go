@@ -163,7 +163,7 @@ func (r *channelMonitorV2Repository) RecomputeRange(ctx context.Context, start, 
 	return nil
 }
 
-const channelMonitorV2UsageMetricsSQL = `
+var channelMonitorV2UsageMetricsSQL = `
 INSERT INTO channel_monitor_v2_metrics_1m (
   bucket_start, platform, group_id, model, success_requests,
   input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
@@ -183,12 +183,12 @@ SELECT TIMESTAMPADD(MINUTE, TIMESTAMPDIFF(MINUTE, '1970-01-01 00:00:00', ul.crea
        COALESCE(SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN ul.duration_ms ELSE 0 END), 0),
        SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN 1 ELSE 0 END), NOW(6)
 FROM usage_logs ul
-LEFT JOIN groups g ON g.id = ul.group_id
+LEFT JOIN ` + "`groups`" + ` g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
 WHERE ul.created_at >= ? AND ul.created_at < ?
 GROUP BY 1, 2, 3, 4`
 
-const channelMonitorV2UserMetricsSQL = `
+var channelMonitorV2UserMetricsSQL = `
 INSERT INTO channel_monitor_v2_user_metrics_1m (
   bucket_start, platform, group_id, model, user_id, success_requests,
   input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
@@ -208,12 +208,12 @@ SELECT TIMESTAMPADD(MINUTE, TIMESTAMPDIFF(MINUTE, '1970-01-01 00:00:00', ul.crea
        COALESCE(SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN ul.duration_ms ELSE 0 END), 0),
        SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN 1 ELSE 0 END), NOW(6)
 FROM usage_logs ul
-LEFT JOIN groups g ON g.id = ul.group_id
+LEFT JOIN ` + "`groups`" + ` g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
 WHERE ul.created_at >= ? AND ul.created_at < ? AND ul.user_id IS NOT NULL
 GROUP BY 1, 2, 3, 4, 5`
 
-const channelMonitorV2HistogramSQL = `
+var channelMonitorV2HistogramSQL = `
 INSERT INTO channel_monitor_v2_latency_histograms_1m (
   bucket_start, platform, group_id, model, user_id, metric, upper_bound_ms, sample_count
 )
@@ -221,7 +221,7 @@ SELECT TIMESTAMPADD(MINUTE, TIMESTAMPDIFF(MINUTE, '1970-01-01 00:00:00', ul.crea
        %s, COALESCE(ul.group_id, 0), %s,
        audience.user_id, latency.metric, %s, COUNT(*)
 FROM usage_logs ul
-LEFT JOIN groups g ON g.id = ul.group_id
+LEFT JOIN ` + "`groups`" + ` g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
 JOIN JSON_TABLE(JSON_ARRAY(0, ul.user_id), '$[*]'
   COLUMNS (user_id BIGINT PATH '$' NULL ON ERROR)) AS audience ON TRUE

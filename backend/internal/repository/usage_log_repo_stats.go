@@ -119,6 +119,7 @@ func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, acco
 			COALESCE(AVG(COALESCE(duration_ms, 0)), 0) as avg_duration_ms
 		FROM usage_logs
 		WHERE account_id = ? AND created_at >= ? AND created_at < ?
+		  AND COALESCE(request_type, 0) <> ?
 	`
 
 	var stats usagestats.UsageStats
@@ -126,7 +127,7 @@ func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, acco
 		ctx,
 		r.sql,
 		query,
-		[]any{accountID, startTime, endTime},
+		[]any{accountID, startTime, endTime, int16(service.RequestTypeChannelMonitor)},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
 		&stats.TotalOutputTokens,
@@ -284,6 +285,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = ? AND created_at >= ? AND created_at < ?
+		  AND COALESCE(request_type, 0) <> ?
 	`
 
 	stats := &usagestats.AccountStats{}
@@ -291,7 +293,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 		ctx,
 		r.sql,
 		query,
-		[]any{accountID, today, tomorrow},
+		[]any{accountID, today, tomorrow, int16(service.RequestTypeChannelMonitor)},
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
@@ -314,6 +316,7 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = ? AND created_at >= ?
+		  AND COALESCE(request_type, 0) <> ?
 	`
 
 	stats := &usagestats.AccountStats{}
@@ -321,7 +324,7 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 		ctx,
 		r.sql,
 		query,
-		[]any{accountID, startTime},
+		[]any{accountID, startTime, int16(service.RequestTypeChannelMonitor)},
 		&stats.Requests,
 		&stats.Tokens,
 		&stats.Cost,
@@ -1005,11 +1008,12 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
 		WHERE account_id = ? AND created_at >= ? AND created_at < ?
+		  AND COALESCE(request_type, 0) <> ?
 		GROUP BY date
 		ORDER BY date ASC
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, accountID, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, query, accountID, startTime, endTime, int16(service.RequestTypeChannelMonitor))
 	if err != nil {
 		return nil, err
 	}
@@ -1073,9 +1077,9 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 		actualDaysUsed = 1
 	}
 
-	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = ? AND created_at >= ? AND created_at < ?"
+	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = ? AND created_at >= ? AND created_at < ? AND COALESCE(request_type, 0) <> ?"
 	var avgDuration float64
-	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTime}, &avgDuration); err != nil {
+	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTime, int16(service.RequestTypeChannelMonitor)}, &avgDuration); err != nil {
 		return nil, err
 	}
 

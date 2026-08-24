@@ -375,7 +375,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 const (
 	channelMonitorIntervalMin      = 15
 	channelMonitorIntervalMax      = 3600
-	channelMonitorIntervalFallback = 60
+	channelMonitorIntervalFallback = 600
 	defaultChannelMonitorMode      = ChannelMonitorModeV1
 )
 
