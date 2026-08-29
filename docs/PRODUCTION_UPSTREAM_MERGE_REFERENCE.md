@@ -133,4 +133,4 @@ frontend/src/views/admin/__tests__/ChannelMonitorView.grok.spec.ts
 - 前端 vue-tsc --noEmit：通过。
 - 关键前端 Vitest：136 tests 通过。
 - 本地 Go：宿主没有 Go；Docker golang:1.27.0 已尝试编译，曾发现缺失 go.sum 和 Grok 过滤后的共享引用，已补 go.sum 和中性兼容层。完整 Go 测试以 GitHub Actions 为准。
-- GitHub Actions：待推送集成分支后运行。
+- GitHub Actions：已运行但未通过。提交 8df9a5d7d 的 CI/Security Scan 失败；随后重做合并提交 a7bc9e073 的 CI/Security Scan 仍失败。前端和 shell job 曾通过，backend Go test、golangci-lint 或 govulncheck 未通过，因此尚未进入生产分支和发布阶段。
