@@ -28,12 +28,6 @@ const (
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
-	// FieldDiscountAmount holds the string denoting the discount_amount field in the database.
-	FieldDiscountAmount = "discount_amount"
-	// FieldCouponCode holds the string denoting the coupon_code field in the database.
-	FieldCouponCode = "coupon_code"
-	// FieldCouponDiscountAmount holds the string denoting the coupon_discount_amount field in the database.
-	FieldCouponDiscountAmount = "coupon_discount_amount"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -54,16 +48,8 @@ const (
 	FieldPlanID = "plan_id"
 	// FieldSubscriptionGroupID holds the string denoting the subscription_group_id field in the database.
 	FieldSubscriptionGroupID = "subscription_group_id"
-	// FieldSubscriptionID holds the string denoting the subscription_id field in the database.
-	FieldSubscriptionID = "subscription_id"
 	// FieldSubscriptionDays holds the string denoting the subscription_days field in the database.
 	FieldSubscriptionDays = "subscription_days"
-	// FieldSubscriptionQuotaUsd holds the string denoting the subscription_quota_usd field in the database.
-	FieldSubscriptionQuotaUsd = "subscription_quota_usd"
-	// FieldSubscriptionValidityUnit holds the string denoting the subscription_validity_unit field in the database.
-	FieldSubscriptionValidityUnit = "subscription_validity_unit"
-	// FieldSubscriptionPlanExpiresAt holds the string denoting the subscription_plan_expires_at field in the database.
-	FieldSubscriptionPlanExpiresAt = "subscription_plan_expires_at"
 	// FieldProviderInstanceID holds the string denoting the provider_instance_id field in the database.
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldProviderKey holds the string denoting the provider_key field in the database.
@@ -72,10 +58,6 @@ const (
 	FieldProviderSnapshot = "provider_snapshot"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
-	// FieldInvoiceStatus holds the string denoting the invoice_status field in the database.
-	FieldInvoiceStatus = "invoice_status"
-	// FieldInvoiceApplicationID holds the string denoting the invoice_application_id field in the database.
-	FieldInvoiceApplicationID = "invoice_application_id"
 	// FieldRefundAmount holds the string denoting the refund_amount field in the database.
 	FieldRefundAmount = "refund_amount"
 	// FieldRefundReason holds the string denoting the refund_reason field in the database.
@@ -112,10 +94,6 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
-	// EdgeCouponUsages holds the string denoting the coupon_usages edge name in mutations.
-	EdgeCouponUsages = "coupon_usages"
-	// EdgeInvoiceApplicationOrders holds the string denoting the invoice_application_orders edge name in mutations.
-	EdgeInvoiceApplicationOrders = "invoice_application_orders"
 	// Table holds the table name of the paymentorder in the database.
 	Table = "payment_orders"
 	// UserTable is the table that holds the user relation/edge.
@@ -125,20 +103,6 @@ const (
 	UserInverseTable = "users"
 	// UserColumn is the table column denoting the user relation/edge.
 	UserColumn = "user_id"
-	// CouponUsagesTable is the table that holds the coupon_usages relation/edge.
-	CouponUsagesTable = "coupon_usages"
-	// CouponUsagesInverseTable is the table name for the CouponUsage entity.
-	// It exists in this package in order to avoid circular dependency with the "couponusage" package.
-	CouponUsagesInverseTable = "coupon_usages"
-	// CouponUsagesColumn is the table column denoting the coupon_usages relation/edge.
-	CouponUsagesColumn = "order_id"
-	// InvoiceApplicationOrdersTable is the table that holds the invoice_application_orders relation/edge.
-	InvoiceApplicationOrdersTable = "invoice_application_orders"
-	// InvoiceApplicationOrdersInverseTable is the table name for the InvoiceApplicationOrder entity.
-	// It exists in this package in order to avoid circular dependency with the "invoiceapplicationorder" package.
-	InvoiceApplicationOrdersInverseTable = "invoice_application_orders"
-	// InvoiceApplicationOrdersColumn is the table column denoting the invoice_application_orders relation/edge.
-	InvoiceApplicationOrdersColumn = "order_id"
 )
 
 // Columns holds all SQL columns for paymentorder fields.
@@ -151,9 +115,6 @@ var Columns = []string{
 	FieldAmount,
 	FieldPayAmount,
 	FieldFeeRate,
-	FieldDiscountAmount,
-	FieldCouponCode,
-	FieldCouponDiscountAmount,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,
@@ -164,17 +125,11 @@ var Columns = []string{
 	FieldOrderType,
 	FieldPlanID,
 	FieldSubscriptionGroupID,
-	FieldSubscriptionID,
 	FieldSubscriptionDays,
-	FieldSubscriptionQuotaUsd,
-	FieldSubscriptionValidityUnit,
-	FieldSubscriptionPlanExpiresAt,
 	FieldProviderInstanceID,
 	FieldProviderKey,
 	FieldProviderSnapshot,
 	FieldStatus,
-	FieldInvoiceStatus,
-	FieldInvoiceApplicationID,
 	FieldRefundAmount,
 	FieldRefundReason,
 	FieldRefundAt,
@@ -211,14 +166,6 @@ var (
 	UserNameValidator func(string) error
 	// DefaultFeeRate holds the default value on creation for the "fee_rate" field.
 	DefaultFeeRate float64
-	// DefaultDiscountAmount holds the default value on creation for the "discount_amount" field.
-	DefaultDiscountAmount float64
-	// DefaultCouponCode holds the default value on creation for the "coupon_code" field.
-	DefaultCouponCode string
-	// CouponCodeValidator is a validator for the "coupon_code" field. It is called by the builders before save.
-	CouponCodeValidator func(string) error
-	// DefaultCouponDiscountAmount holds the default value on creation for the "coupon_discount_amount" field.
-	DefaultCouponDiscountAmount float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
 	RechargeCodeValidator func(string) error
 	// DefaultOutTradeNo holds the default value on creation for the "out_trade_no" field.
@@ -233,8 +180,6 @@ var (
 	DefaultOrderType string
 	// OrderTypeValidator is a validator for the "order_type" field. It is called by the builders before save.
 	OrderTypeValidator func(string) error
-	// SubscriptionValidityUnitValidator is a validator for the "subscription_validity_unit" field. It is called by the builders before save.
-	SubscriptionValidityUnitValidator func(string) error
 	// ProviderInstanceIDValidator is a validator for the "provider_instance_id" field. It is called by the builders before save.
 	ProviderInstanceIDValidator func(string) error
 	// ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
@@ -243,10 +188,6 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
-	// DefaultInvoiceStatus holds the default value on creation for the "invoice_status" field.
-	DefaultInvoiceStatus string
-	// InvoiceStatusValidator is a validator for the "invoice_status" field. It is called by the builders before save.
-	InvoiceStatusValidator func(string) error
 	// DefaultRefundAmount holds the default value on creation for the "refund_amount" field.
 	DefaultRefundAmount float64
 	// DefaultForceRefund holds the default value on creation for the "force_refund" field.
@@ -308,21 +249,6 @@ func ByFeeRate(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFeeRate, opts...).ToFunc()
 }
 
-// ByDiscountAmount orders the results by the discount_amount field.
-func ByDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldDiscountAmount, opts...).ToFunc()
-}
-
-// ByCouponCode orders the results by the coupon_code field.
-func ByCouponCode(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCouponCode, opts...).ToFunc()
-}
-
-// ByCouponDiscountAmount orders the results by the coupon_discount_amount field.
-func ByCouponDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldCouponDiscountAmount, opts...).ToFunc()
-}
-
 // ByRechargeCode orders the results by the recharge_code field.
 func ByRechargeCode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRechargeCode, opts...).ToFunc()
@@ -373,29 +299,9 @@ func BySubscriptionGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscriptionGroupID, opts...).ToFunc()
 }
 
-// BySubscriptionID orders the results by the subscription_id field.
-func BySubscriptionID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSubscriptionID, opts...).ToFunc()
-}
-
 // BySubscriptionDays orders the results by the subscription_days field.
 func BySubscriptionDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSubscriptionDays, opts...).ToFunc()
-}
-
-// BySubscriptionQuotaUsd orders the results by the subscription_quota_usd field.
-func BySubscriptionQuotaUsd(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSubscriptionQuotaUsd, opts...).ToFunc()
-}
-
-// BySubscriptionValidityUnit orders the results by the subscription_validity_unit field.
-func BySubscriptionValidityUnit(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSubscriptionValidityUnit, opts...).ToFunc()
-}
-
-// BySubscriptionPlanExpiresAt orders the results by the subscription_plan_expires_at field.
-func BySubscriptionPlanExpiresAt(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldSubscriptionPlanExpiresAt, opts...).ToFunc()
 }
 
 // ByProviderInstanceID orders the results by the provider_instance_id field.
@@ -411,16 +317,6 @@ func ByProviderKey(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
-}
-
-// ByInvoiceStatus orders the results by the invoice_status field.
-func ByInvoiceStatus(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldInvoiceStatus, opts...).ToFunc()
-}
-
-// ByInvoiceApplicationID orders the results by the invoice_application_id field.
-func ByInvoiceApplicationID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldInvoiceApplicationID, opts...).ToFunc()
 }
 
 // ByRefundAmount orders the results by the refund_amount field.
@@ -514,52 +410,10 @@ func ByUserField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newUserStep(), sql.OrderByField(field, opts...))
 	}
 }
-
-// ByCouponUsagesCount orders the results by coupon_usages count.
-func ByCouponUsagesCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newCouponUsagesStep(), opts...)
-	}
-}
-
-// ByCouponUsages orders the results by coupon_usages terms.
-func ByCouponUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newCouponUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
-// ByInvoiceApplicationOrdersCount orders the results by invoice_application_orders count.
-func ByInvoiceApplicationOrdersCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newInvoiceApplicationOrdersStep(), opts...)
-	}
-}
-
-// ByInvoiceApplicationOrders orders the results by invoice_application_orders terms.
-func ByInvoiceApplicationOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newInvoiceApplicationOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
 func newUserStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(UserInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, UserTable, UserColumn),
-	)
-}
-func newCouponUsagesStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(CouponUsagesInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, CouponUsagesTable, CouponUsagesColumn),
-	)
-}
-func newInvoiceApplicationOrdersStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(InvoiceApplicationOrdersInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationOrdersTable, InvoiceApplicationOrdersColumn),
 	)
 }

@@ -35,12 +35,12 @@ func (SubscriptionPlan) Fields() []ent.Field {
 			MaxLen(100).
 			NotEmpty(),
 		field.String("description").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
 		field.Float("price").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
 		field.Float("original_price").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
 			Optional().
 			Nillable(),
 		field.String("currency").
@@ -51,26 +51,12 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.String("validity_unit").
 			MaxLen(10).
 			Default("day"),
-		field.Float("quota_limit_usd").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
-			Optional().
-			Nillable().
-			Comment("Total USD quota granted by this plan during the subscription period"),
-		field.Time("expires_at").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
-			Comment("Fixed subscription end time; when set, purchases expire at this timestamp instead of now + validity_days"),
 		field.String("features").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
 		field.String("product_name").
 			MaxLen(100).
 			Default(""),
-		field.Int("max_buy_count").
-			Optional().
-			Nillable().
-			Comment("Per-user purchase limit; NULL means unlimited"),
 		field.Bool("for_sale").
 			Default(true),
 		field.Int("sort_order").
@@ -78,11 +64,11 @@ func (SubscriptionPlan) Fields() []ent.Field {
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

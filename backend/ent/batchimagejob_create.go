@@ -88,20 +88,6 @@ func (_c *BatchImageJobCreate) SetNillableTaskName(v *string) *BatchImageJobCrea
 	return _c
 }
 
-// SetParentBatchID sets the "parent_batch_id" field.
-func (_c *BatchImageJobCreate) SetParentBatchID(v string) *BatchImageJobCreate {
-	_c.mutation.SetParentBatchID(v)
-	return _c
-}
-
-// SetNillableParentBatchID sets the "parent_batch_id" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableParentBatchID(v *string) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetParentBatchID(*v)
-	}
-	return _c
-}
-
 // SetStatus sets the "status" field.
 func (_c *BatchImageJobCreate) SetStatus(v string) *BatchImageJobCreate {
 	_c.mutation.SetStatus(v)
@@ -272,118 +258,6 @@ func (_c *BatchImageJobCreate) SetActualCost(v float64) *BatchImageJobCreate {
 func (_c *BatchImageJobCreate) SetNillableActualCost(v *float64) *BatchImageJobCreate {
 	if v != nil {
 		_c.SetActualCost(*v)
-	}
-	return _c
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (_c *BatchImageJobCreate) SetBaseUnitPrice(v float64) *BatchImageJobCreate {
-	_c.mutation.SetBaseUnitPrice(v)
-	return _c
-}
-
-// SetNillableBaseUnitPrice sets the "base_unit_price" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableBaseUnitPrice(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetBaseUnitPrice(*v)
-	}
-	return _c
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (_c *BatchImageJobCreate) SetGroupRateMultiplier(v float64) *BatchImageJobCreate {
-	_c.mutation.SetGroupRateMultiplier(v)
-	return _c
-}
-
-// SetNillableGroupRateMultiplier sets the "group_rate_multiplier" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableGroupRateMultiplier(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetGroupRateMultiplier(*v)
-	}
-	return _c
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (_c *BatchImageJobCreate) SetAccountRateMultiplier(v float64) *BatchImageJobCreate {
-	_c.mutation.SetAccountRateMultiplier(v)
-	return _c
-}
-
-// SetNillableAccountRateMultiplier sets the "account_rate_multiplier" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableAccountRateMultiplier(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetAccountRateMultiplier(*v)
-	}
-	return _c
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (_c *BatchImageJobCreate) SetBatchDiscountMultiplier(v float64) *BatchImageJobCreate {
-	_c.mutation.SetBatchDiscountMultiplier(v)
-	return _c
-}
-
-// SetNillableBatchDiscountMultiplier sets the "batch_discount_multiplier" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableBatchDiscountMultiplier(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetBatchDiscountMultiplier(*v)
-	}
-	return _c
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (_c *BatchImageJobCreate) SetHoldMultiplier(v float64) *BatchImageJobCreate {
-	_c.mutation.SetHoldMultiplier(v)
-	return _c
-}
-
-// SetNillableHoldMultiplier sets the "hold_multiplier" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableHoldMultiplier(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetHoldMultiplier(*v)
-	}
-	return _c
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (_c *BatchImageJobCreate) SetBillableUnitPrice(v float64) *BatchImageJobCreate {
-	_c.mutation.SetBillableUnitPrice(v)
-	return _c
-}
-
-// SetNillableBillableUnitPrice sets the "billable_unit_price" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableBillableUnitPrice(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetBillableUnitPrice(*v)
-	}
-	return _c
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (_c *BatchImageJobCreate) SetHoldUnitPrice(v float64) *BatchImageJobCreate {
-	_c.mutation.SetHoldUnitPrice(v)
-	return _c
-}
-
-// SetNillableHoldUnitPrice sets the "hold_unit_price" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillableHoldUnitPrice(v *float64) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetHoldUnitPrice(*v)
-	}
-	return _c
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (_c *BatchImageJobCreate) SetPricingSnapshotVersion(v int) *BatchImageJobCreate {
-	_c.mutation.SetPricingSnapshotVersion(v)
-	return _c
-}
-
-// SetNillablePricingSnapshotVersion sets the "pricing_snapshot_version" field if the given value is not nil.
-func (_c *BatchImageJobCreate) SetNillablePricingSnapshotVersion(v *int) *BatchImageJobCreate {
-	if v != nil {
-		_c.SetPricingSnapshotVersion(*v)
 	}
 	return _c
 }
@@ -727,38 +601,6 @@ func (_c *BatchImageJobCreate) defaults() {
 		v := batchimagejob.DefaultEstimatedCost
 		_c.mutation.SetEstimatedCost(v)
 	}
-	if _, ok := _c.mutation.BaseUnitPrice(); !ok {
-		v := batchimagejob.DefaultBaseUnitPrice
-		_c.mutation.SetBaseUnitPrice(v)
-	}
-	if _, ok := _c.mutation.GroupRateMultiplier(); !ok {
-		v := batchimagejob.DefaultGroupRateMultiplier
-		_c.mutation.SetGroupRateMultiplier(v)
-	}
-	if _, ok := _c.mutation.AccountRateMultiplier(); !ok {
-		v := batchimagejob.DefaultAccountRateMultiplier
-		_c.mutation.SetAccountRateMultiplier(v)
-	}
-	if _, ok := _c.mutation.BatchDiscountMultiplier(); !ok {
-		v := batchimagejob.DefaultBatchDiscountMultiplier
-		_c.mutation.SetBatchDiscountMultiplier(v)
-	}
-	if _, ok := _c.mutation.HoldMultiplier(); !ok {
-		v := batchimagejob.DefaultHoldMultiplier
-		_c.mutation.SetHoldMultiplier(v)
-	}
-	if _, ok := _c.mutation.BillableUnitPrice(); !ok {
-		v := batchimagejob.DefaultBillableUnitPrice
-		_c.mutation.SetBillableUnitPrice(v)
-	}
-	if _, ok := _c.mutation.HoldUnitPrice(); !ok {
-		v := batchimagejob.DefaultHoldUnitPrice
-		_c.mutation.SetHoldUnitPrice(v)
-	}
-	if _, ok := _c.mutation.PricingSnapshotVersion(); !ok {
-		v := batchimagejob.DefaultPricingSnapshotVersion
-		_c.mutation.SetPricingSnapshotVersion(v)
-	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		v := batchimagejob.DefaultCurrency
 		_c.mutation.SetCurrency(v)
@@ -818,11 +660,6 @@ func (_c *BatchImageJobCreate) check() error {
 			return &ValidationError{Name: "task_name", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.task_name": %w`, err)}
 		}
 	}
-	if v, ok := _c.mutation.ParentBatchID(); ok {
-		if err := batchimagejob.ParentBatchIDValidator(v); err != nil {
-			return &ValidationError{Name: "parent_batch_id", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.parent_batch_id": %w`, err)}
-		}
-	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "BatchImageJob.status"`)}
 	}
@@ -870,30 +707,6 @@ func (_c *BatchImageJobCreate) check() error {
 	}
 	if _, ok := _c.mutation.EstimatedCost(); !ok {
 		return &ValidationError{Name: "estimated_cost", err: errors.New(`ent: missing required field "BatchImageJob.estimated_cost"`)}
-	}
-	if _, ok := _c.mutation.BaseUnitPrice(); !ok {
-		return &ValidationError{Name: "base_unit_price", err: errors.New(`ent: missing required field "BatchImageJob.base_unit_price"`)}
-	}
-	if _, ok := _c.mutation.GroupRateMultiplier(); !ok {
-		return &ValidationError{Name: "group_rate_multiplier", err: errors.New(`ent: missing required field "BatchImageJob.group_rate_multiplier"`)}
-	}
-	if _, ok := _c.mutation.AccountRateMultiplier(); !ok {
-		return &ValidationError{Name: "account_rate_multiplier", err: errors.New(`ent: missing required field "BatchImageJob.account_rate_multiplier"`)}
-	}
-	if _, ok := _c.mutation.BatchDiscountMultiplier(); !ok {
-		return &ValidationError{Name: "batch_discount_multiplier", err: errors.New(`ent: missing required field "BatchImageJob.batch_discount_multiplier"`)}
-	}
-	if _, ok := _c.mutation.HoldMultiplier(); !ok {
-		return &ValidationError{Name: "hold_multiplier", err: errors.New(`ent: missing required field "BatchImageJob.hold_multiplier"`)}
-	}
-	if _, ok := _c.mutation.BillableUnitPrice(); !ok {
-		return &ValidationError{Name: "billable_unit_price", err: errors.New(`ent: missing required field "BatchImageJob.billable_unit_price"`)}
-	}
-	if _, ok := _c.mutation.HoldUnitPrice(); !ok {
-		return &ValidationError{Name: "hold_unit_price", err: errors.New(`ent: missing required field "BatchImageJob.hold_unit_price"`)}
-	}
-	if _, ok := _c.mutation.PricingSnapshotVersion(); !ok {
-		return &ValidationError{Name: "pricing_snapshot_version", err: errors.New(`ent: missing required field "BatchImageJob.pricing_snapshot_version"`)}
 	}
 	if _, ok := _c.mutation.Currency(); !ok {
 		return &ValidationError{Name: "currency", err: errors.New(`ent: missing required field "BatchImageJob.currency"`)}
@@ -995,10 +808,6 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 		_spec.SetField(batchimagejob.FieldTaskName, field.TypeString, value)
 		_node.TaskName = value
 	}
-	if value, ok := _c.mutation.ParentBatchID(); ok {
-		_spec.SetField(batchimagejob.FieldParentBatchID, field.TypeString, value)
-		_node.ParentBatchID = &value
-	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(batchimagejob.FieldStatus, field.TypeString, value)
 		_node.Status = value
@@ -1050,38 +859,6 @@ func (_c *BatchImageJobCreate) createSpec() (*BatchImageJob, *sqlgraph.CreateSpe
 	if value, ok := _c.mutation.ActualCost(); ok {
 		_spec.SetField(batchimagejob.FieldActualCost, field.TypeFloat64, value)
 		_node.ActualCost = &value
-	}
-	if value, ok := _c.mutation.BaseUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBaseUnitPrice, field.TypeFloat64, value)
-		_node.BaseUnitPrice = value
-	}
-	if value, ok := _c.mutation.GroupRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldGroupRateMultiplier, field.TypeFloat64, value)
-		_node.GroupRateMultiplier = value
-	}
-	if value, ok := _c.mutation.AccountRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldAccountRateMultiplier, field.TypeFloat64, value)
-		_node.AccountRateMultiplier = value
-	}
-	if value, ok := _c.mutation.BatchDiscountMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldBatchDiscountMultiplier, field.TypeFloat64, value)
-		_node.BatchDiscountMultiplier = value
-	}
-	if value, ok := _c.mutation.HoldMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldHoldMultiplier, field.TypeFloat64, value)
-		_node.HoldMultiplier = value
-	}
-	if value, ok := _c.mutation.BillableUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBillableUnitPrice, field.TypeFloat64, value)
-		_node.BillableUnitPrice = value
-	}
-	if value, ok := _c.mutation.HoldUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldHoldUnitPrice, field.TypeFloat64, value)
-		_node.HoldUnitPrice = value
-	}
-	if value, ok := _c.mutation.PricingSnapshotVersion(); ok {
-		_spec.SetField(batchimagejob.FieldPricingSnapshotVersion, field.TypeInt, value)
-		_node.PricingSnapshotVersion = value
 	}
 	if value, ok := _c.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)
@@ -1314,24 +1091,6 @@ func (u *BatchImageJobUpsert) SetTaskName(v string) *BatchImageJobUpsert {
 // UpdateTaskName sets the "task_name" field to the value that was provided on create.
 func (u *BatchImageJobUpsert) UpdateTaskName() *BatchImageJobUpsert {
 	u.SetExcluded(batchimagejob.FieldTaskName)
-	return u
-}
-
-// SetParentBatchID sets the "parent_batch_id" field.
-func (u *BatchImageJobUpsert) SetParentBatchID(v string) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldParentBatchID, v)
-	return u
-}
-
-// UpdateParentBatchID sets the "parent_batch_id" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateParentBatchID() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldParentBatchID)
-	return u
-}
-
-// ClearParentBatchID clears the value of the "parent_batch_id" field.
-func (u *BatchImageJobUpsert) ClearParentBatchID() *BatchImageJobUpsert {
-	u.SetNull(batchimagejob.FieldParentBatchID)
 	return u
 }
 
@@ -1572,150 +1331,6 @@ func (u *BatchImageJobUpsert) AddActualCost(v float64) *BatchImageJobUpsert {
 // ClearActualCost clears the value of the "actual_cost" field.
 func (u *BatchImageJobUpsert) ClearActualCost() *BatchImageJobUpsert {
 	u.SetNull(batchimagejob.FieldActualCost)
-	return u
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (u *BatchImageJobUpsert) SetBaseUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldBaseUnitPrice, v)
-	return u
-}
-
-// UpdateBaseUnitPrice sets the "base_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateBaseUnitPrice() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldBaseUnitPrice)
-	return u
-}
-
-// AddBaseUnitPrice adds v to the "base_unit_price" field.
-func (u *BatchImageJobUpsert) AddBaseUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldBaseUnitPrice, v)
-	return u
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsert) SetGroupRateMultiplier(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldGroupRateMultiplier, v)
-	return u
-}
-
-// UpdateGroupRateMultiplier sets the "group_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateGroupRateMultiplier() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldGroupRateMultiplier)
-	return u
-}
-
-// AddGroupRateMultiplier adds v to the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsert) AddGroupRateMultiplier(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldGroupRateMultiplier, v)
-	return u
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsert) SetAccountRateMultiplier(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldAccountRateMultiplier, v)
-	return u
-}
-
-// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateAccountRateMultiplier() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldAccountRateMultiplier)
-	return u
-}
-
-// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsert) AddAccountRateMultiplier(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldAccountRateMultiplier, v)
-	return u
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsert) SetBatchDiscountMultiplier(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldBatchDiscountMultiplier, v)
-	return u
-}
-
-// UpdateBatchDiscountMultiplier sets the "batch_discount_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateBatchDiscountMultiplier() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldBatchDiscountMultiplier)
-	return u
-}
-
-// AddBatchDiscountMultiplier adds v to the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsert) AddBatchDiscountMultiplier(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldBatchDiscountMultiplier, v)
-	return u
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (u *BatchImageJobUpsert) SetHoldMultiplier(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldHoldMultiplier, v)
-	return u
-}
-
-// UpdateHoldMultiplier sets the "hold_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateHoldMultiplier() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldHoldMultiplier)
-	return u
-}
-
-// AddHoldMultiplier adds v to the "hold_multiplier" field.
-func (u *BatchImageJobUpsert) AddHoldMultiplier(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldHoldMultiplier, v)
-	return u
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (u *BatchImageJobUpsert) SetBillableUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldBillableUnitPrice, v)
-	return u
-}
-
-// UpdateBillableUnitPrice sets the "billable_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateBillableUnitPrice() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldBillableUnitPrice)
-	return u
-}
-
-// AddBillableUnitPrice adds v to the "billable_unit_price" field.
-func (u *BatchImageJobUpsert) AddBillableUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldBillableUnitPrice, v)
-	return u
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (u *BatchImageJobUpsert) SetHoldUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldHoldUnitPrice, v)
-	return u
-}
-
-// UpdateHoldUnitPrice sets the "hold_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdateHoldUnitPrice() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldHoldUnitPrice)
-	return u
-}
-
-// AddHoldUnitPrice adds v to the "hold_unit_price" field.
-func (u *BatchImageJobUpsert) AddHoldUnitPrice(v float64) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldHoldUnitPrice, v)
-	return u
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsert) SetPricingSnapshotVersion(v int) *BatchImageJobUpsert {
-	u.Set(batchimagejob.FieldPricingSnapshotVersion, v)
-	return u
-}
-
-// UpdatePricingSnapshotVersion sets the "pricing_snapshot_version" field to the value that was provided on create.
-func (u *BatchImageJobUpsert) UpdatePricingSnapshotVersion() *BatchImageJobUpsert {
-	u.SetExcluded(batchimagejob.FieldPricingSnapshotVersion)
-	return u
-}
-
-// AddPricingSnapshotVersion adds v to the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsert) AddPricingSnapshotVersion(v int) *BatchImageJobUpsert {
-	u.Add(batchimagejob.FieldPricingSnapshotVersion, v)
 	return u
 }
 
@@ -2216,27 +1831,6 @@ func (u *BatchImageJobUpsertOne) UpdateTaskName() *BatchImageJobUpsertOne {
 	})
 }
 
-// SetParentBatchID sets the "parent_batch_id" field.
-func (u *BatchImageJobUpsertOne) SetParentBatchID(v string) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetParentBatchID(v)
-	})
-}
-
-// UpdateParentBatchID sets the "parent_batch_id" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateParentBatchID() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateParentBatchID()
-	})
-}
-
-// ClearParentBatchID clears the value of the "parent_batch_id" field.
-func (u *BatchImageJobUpsertOne) ClearParentBatchID() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.ClearParentBatchID()
-	})
-}
-
 // SetStatus sets the "status" field.
 func (u *BatchImageJobUpsertOne) SetStatus(v string) *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
@@ -2514,174 +2108,6 @@ func (u *BatchImageJobUpsertOne) UpdateActualCost() *BatchImageJobUpsertOne {
 func (u *BatchImageJobUpsertOne) ClearActualCost() *BatchImageJobUpsertOne {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearActualCost()
-	})
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (u *BatchImageJobUpsertOne) SetBaseUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBaseUnitPrice(v)
-	})
-}
-
-// AddBaseUnitPrice adds v to the "base_unit_price" field.
-func (u *BatchImageJobUpsertOne) AddBaseUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBaseUnitPrice(v)
-	})
-}
-
-// UpdateBaseUnitPrice sets the "base_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateBaseUnitPrice() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBaseUnitPrice()
-	})
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsertOne) SetGroupRateMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetGroupRateMultiplier(v)
-	})
-}
-
-// AddGroupRateMultiplier adds v to the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsertOne) AddGroupRateMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddGroupRateMultiplier(v)
-	})
-}
-
-// UpdateGroupRateMultiplier sets the "group_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateGroupRateMultiplier() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateGroupRateMultiplier()
-	})
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsertOne) SetAccountRateMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetAccountRateMultiplier(v)
-	})
-}
-
-// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsertOne) AddAccountRateMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddAccountRateMultiplier(v)
-	})
-}
-
-// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateAccountRateMultiplier() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateAccountRateMultiplier()
-	})
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsertOne) SetBatchDiscountMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBatchDiscountMultiplier(v)
-	})
-}
-
-// AddBatchDiscountMultiplier adds v to the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsertOne) AddBatchDiscountMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBatchDiscountMultiplier(v)
-	})
-}
-
-// UpdateBatchDiscountMultiplier sets the "batch_discount_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateBatchDiscountMultiplier() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBatchDiscountMultiplier()
-	})
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (u *BatchImageJobUpsertOne) SetHoldMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetHoldMultiplier(v)
-	})
-}
-
-// AddHoldMultiplier adds v to the "hold_multiplier" field.
-func (u *BatchImageJobUpsertOne) AddHoldMultiplier(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddHoldMultiplier(v)
-	})
-}
-
-// UpdateHoldMultiplier sets the "hold_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateHoldMultiplier() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateHoldMultiplier()
-	})
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (u *BatchImageJobUpsertOne) SetBillableUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBillableUnitPrice(v)
-	})
-}
-
-// AddBillableUnitPrice adds v to the "billable_unit_price" field.
-func (u *BatchImageJobUpsertOne) AddBillableUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBillableUnitPrice(v)
-	})
-}
-
-// UpdateBillableUnitPrice sets the "billable_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateBillableUnitPrice() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBillableUnitPrice()
-	})
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (u *BatchImageJobUpsertOne) SetHoldUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetHoldUnitPrice(v)
-	})
-}
-
-// AddHoldUnitPrice adds v to the "hold_unit_price" field.
-func (u *BatchImageJobUpsertOne) AddHoldUnitPrice(v float64) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddHoldUnitPrice(v)
-	})
-}
-
-// UpdateHoldUnitPrice sets the "hold_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdateHoldUnitPrice() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateHoldUnitPrice()
-	})
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsertOne) SetPricingSnapshotVersion(v int) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetPricingSnapshotVersion(v)
-	})
-}
-
-// AddPricingSnapshotVersion adds v to the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsertOne) AddPricingSnapshotVersion(v int) *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddPricingSnapshotVersion(v)
-	})
-}
-
-// UpdatePricingSnapshotVersion sets the "pricing_snapshot_version" field to the value that was provided on create.
-func (u *BatchImageJobUpsertOne) UpdatePricingSnapshotVersion() *BatchImageJobUpsertOne {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdatePricingSnapshotVersion()
 	})
 }
 
@@ -3403,27 +2829,6 @@ func (u *BatchImageJobUpsertBulk) UpdateTaskName() *BatchImageJobUpsertBulk {
 	})
 }
 
-// SetParentBatchID sets the "parent_batch_id" field.
-func (u *BatchImageJobUpsertBulk) SetParentBatchID(v string) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetParentBatchID(v)
-	})
-}
-
-// UpdateParentBatchID sets the "parent_batch_id" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateParentBatchID() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateParentBatchID()
-	})
-}
-
-// ClearParentBatchID clears the value of the "parent_batch_id" field.
-func (u *BatchImageJobUpsertBulk) ClearParentBatchID() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.ClearParentBatchID()
-	})
-}
-
 // SetStatus sets the "status" field.
 func (u *BatchImageJobUpsertBulk) SetStatus(v string) *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
@@ -3701,174 +3106,6 @@ func (u *BatchImageJobUpsertBulk) UpdateActualCost() *BatchImageJobUpsertBulk {
 func (u *BatchImageJobUpsertBulk) ClearActualCost() *BatchImageJobUpsertBulk {
 	return u.Update(func(s *BatchImageJobUpsert) {
 		s.ClearActualCost()
-	})
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (u *BatchImageJobUpsertBulk) SetBaseUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBaseUnitPrice(v)
-	})
-}
-
-// AddBaseUnitPrice adds v to the "base_unit_price" field.
-func (u *BatchImageJobUpsertBulk) AddBaseUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBaseUnitPrice(v)
-	})
-}
-
-// UpdateBaseUnitPrice sets the "base_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateBaseUnitPrice() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBaseUnitPrice()
-	})
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsertBulk) SetGroupRateMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetGroupRateMultiplier(v)
-	})
-}
-
-// AddGroupRateMultiplier adds v to the "group_rate_multiplier" field.
-func (u *BatchImageJobUpsertBulk) AddGroupRateMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddGroupRateMultiplier(v)
-	})
-}
-
-// UpdateGroupRateMultiplier sets the "group_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateGroupRateMultiplier() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateGroupRateMultiplier()
-	})
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsertBulk) SetAccountRateMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetAccountRateMultiplier(v)
-	})
-}
-
-// AddAccountRateMultiplier adds v to the "account_rate_multiplier" field.
-func (u *BatchImageJobUpsertBulk) AddAccountRateMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddAccountRateMultiplier(v)
-	})
-}
-
-// UpdateAccountRateMultiplier sets the "account_rate_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateAccountRateMultiplier() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateAccountRateMultiplier()
-	})
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsertBulk) SetBatchDiscountMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBatchDiscountMultiplier(v)
-	})
-}
-
-// AddBatchDiscountMultiplier adds v to the "batch_discount_multiplier" field.
-func (u *BatchImageJobUpsertBulk) AddBatchDiscountMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBatchDiscountMultiplier(v)
-	})
-}
-
-// UpdateBatchDiscountMultiplier sets the "batch_discount_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateBatchDiscountMultiplier() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBatchDiscountMultiplier()
-	})
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (u *BatchImageJobUpsertBulk) SetHoldMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetHoldMultiplier(v)
-	})
-}
-
-// AddHoldMultiplier adds v to the "hold_multiplier" field.
-func (u *BatchImageJobUpsertBulk) AddHoldMultiplier(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddHoldMultiplier(v)
-	})
-}
-
-// UpdateHoldMultiplier sets the "hold_multiplier" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateHoldMultiplier() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateHoldMultiplier()
-	})
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (u *BatchImageJobUpsertBulk) SetBillableUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetBillableUnitPrice(v)
-	})
-}
-
-// AddBillableUnitPrice adds v to the "billable_unit_price" field.
-func (u *BatchImageJobUpsertBulk) AddBillableUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddBillableUnitPrice(v)
-	})
-}
-
-// UpdateBillableUnitPrice sets the "billable_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateBillableUnitPrice() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateBillableUnitPrice()
-	})
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (u *BatchImageJobUpsertBulk) SetHoldUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetHoldUnitPrice(v)
-	})
-}
-
-// AddHoldUnitPrice adds v to the "hold_unit_price" field.
-func (u *BatchImageJobUpsertBulk) AddHoldUnitPrice(v float64) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddHoldUnitPrice(v)
-	})
-}
-
-// UpdateHoldUnitPrice sets the "hold_unit_price" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdateHoldUnitPrice() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdateHoldUnitPrice()
-	})
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsertBulk) SetPricingSnapshotVersion(v int) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.SetPricingSnapshotVersion(v)
-	})
-}
-
-// AddPricingSnapshotVersion adds v to the "pricing_snapshot_version" field.
-func (u *BatchImageJobUpsertBulk) AddPricingSnapshotVersion(v int) *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.AddPricingSnapshotVersion(v)
-	})
-}
-
-// UpdatePricingSnapshotVersion sets the "pricing_snapshot_version" field to the value that was provided on create.
-func (u *BatchImageJobUpsertBulk) UpdatePricingSnapshotVersion() *BatchImageJobUpsertBulk {
-	return u.Update(func(s *BatchImageJobUpsert) {
-		s.UpdatePricingSnapshotVersion()
 	})
 }
 

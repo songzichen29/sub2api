@@ -20,13 +20,13 @@ func (TimeMixin) Fields() []ent.Field {
 			Immutable().
 			Default(time.Now).
 			SchemaType(map[string]string{
-				dialect.MySQL: "datetime(6)",
+				dialect.Postgres: "timestamptz",
 			}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
 			SchemaType(map[string]string{
-				dialect.MySQL: "datetime(6)",
+				dialect.Postgres: "timestamptz",
 			}),
 	}
 }

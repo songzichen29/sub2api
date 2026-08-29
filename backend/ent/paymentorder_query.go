@@ -4,7 +4,6 @@ package ent
 
 import (
 	"context"
-	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,8 +12,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/couponusage"
-	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -23,14 +20,12 @@ import (
 // PaymentOrderQuery is the builder for querying PaymentOrder entities.
 type PaymentOrderQuery struct {
 	config
-	ctx                          *QueryContext
-	order                        []paymentorder.OrderOption
-	inters                       []Interceptor
-	predicates                   []predicate.PaymentOrder
-	withUser                     *UserQuery
-	withCouponUsages             *CouponUsageQuery
-	withInvoiceApplicationOrders *InvoiceApplicationOrderQuery
-	modifiers                    []func(*sql.Selector)
+	ctx        *QueryContext
+	order      []paymentorder.OrderOption
+	inters     []Interceptor
+	predicates []predicate.PaymentOrder
+	withUser   *UserQuery
+	modifiers  []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -82,50 +77,6 @@ func (_q *PaymentOrderQuery) QueryUser() *UserQuery {
 			sqlgraph.From(paymentorder.Table, paymentorder.FieldID, selector),
 			sqlgraph.To(user.Table, user.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, paymentorder.UserTable, paymentorder.UserColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryCouponUsages chains the current query on the "coupon_usages" edge.
-func (_q *PaymentOrderQuery) QueryCouponUsages() *CouponUsageQuery {
-	query := (&CouponUsageClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(paymentorder.Table, paymentorder.FieldID, selector),
-			sqlgraph.To(couponusage.Table, couponusage.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, paymentorder.CouponUsagesTable, paymentorder.CouponUsagesColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
-// QueryInvoiceApplicationOrders chains the current query on the "invoice_application_orders" edge.
-func (_q *PaymentOrderQuery) QueryInvoiceApplicationOrders() *InvoiceApplicationOrderQuery {
-	query := (&InvoiceApplicationOrderClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(paymentorder.Table, paymentorder.FieldID, selector),
-			sqlgraph.To(invoiceapplicationorder.Table, invoiceapplicationorder.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, paymentorder.InvoiceApplicationOrdersTable, paymentorder.InvoiceApplicationOrdersColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -320,14 +271,12 @@ func (_q *PaymentOrderQuery) Clone() *PaymentOrderQuery {
 		return nil
 	}
 	return &PaymentOrderQuery{
-		config:                       _q.config,
-		ctx:                          _q.ctx.Clone(),
-		order:                        append([]paymentorder.OrderOption{}, _q.order...),
-		inters:                       append([]Interceptor{}, _q.inters...),
-		predicates:                   append([]predicate.PaymentOrder{}, _q.predicates...),
-		withUser:                     _q.withUser.Clone(),
-		withCouponUsages:             _q.withCouponUsages.Clone(),
-		withInvoiceApplicationOrders: _q.withInvoiceApplicationOrders.Clone(),
+		config:     _q.config,
+		ctx:        _q.ctx.Clone(),
+		order:      append([]paymentorder.OrderOption{}, _q.order...),
+		inters:     append([]Interceptor{}, _q.inters...),
+		predicates: append([]predicate.PaymentOrder{}, _q.predicates...),
+		withUser:   _q.withUser.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -342,28 +291,6 @@ func (_q *PaymentOrderQuery) WithUser(opts ...func(*UserQuery)) *PaymentOrderQue
 		opt(query)
 	}
 	_q.withUser = query
-	return _q
-}
-
-// WithCouponUsages tells the query-builder to eager-load the nodes that are connected to
-// the "coupon_usages" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *PaymentOrderQuery) WithCouponUsages(opts ...func(*CouponUsageQuery)) *PaymentOrderQuery {
-	query := (&CouponUsageClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withCouponUsages = query
-	return _q
-}
-
-// WithInvoiceApplicationOrders tells the query-builder to eager-load the nodes that are connected to
-// the "invoice_application_orders" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *PaymentOrderQuery) WithInvoiceApplicationOrders(opts ...func(*InvoiceApplicationOrderQuery)) *PaymentOrderQuery {
-	query := (&InvoiceApplicationOrderClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withInvoiceApplicationOrders = query
 	return _q
 }
 
@@ -445,10 +372,8 @@ func (_q *PaymentOrderQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	var (
 		nodes       = []*PaymentOrder{}
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [1]bool{
 			_q.withUser != nil,
-			_q.withCouponUsages != nil,
-			_q.withInvoiceApplicationOrders != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -475,22 +400,6 @@ func (_q *PaymentOrderQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	if query := _q.withUser; query != nil {
 		if err := _q.loadUser(ctx, query, nodes, nil,
 			func(n *PaymentOrder, e *User) { n.Edges.User = e }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withCouponUsages; query != nil {
-		if err := _q.loadCouponUsages(ctx, query, nodes,
-			func(n *PaymentOrder) { n.Edges.CouponUsages = []*CouponUsage{} },
-			func(n *PaymentOrder, e *CouponUsage) { n.Edges.CouponUsages = append(n.Edges.CouponUsages, e) }); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withInvoiceApplicationOrders; query != nil {
-		if err := _q.loadInvoiceApplicationOrders(ctx, query, nodes,
-			func(n *PaymentOrder) { n.Edges.InvoiceApplicationOrders = []*InvoiceApplicationOrder{} },
-			func(n *PaymentOrder, e *InvoiceApplicationOrder) {
-				n.Edges.InvoiceApplicationOrders = append(n.Edges.InvoiceApplicationOrders, e)
-			}); err != nil {
 			return nil, err
 		}
 	}
@@ -523,66 +432,6 @@ func (_q *PaymentOrderQuery) loadUser(ctx context.Context, query *UserQuery, nod
 		for i := range nodes {
 			assign(nodes[i], n)
 		}
-	}
-	return nil
-}
-func (_q *PaymentOrderQuery) loadCouponUsages(ctx context.Context, query *CouponUsageQuery, nodes []*PaymentOrder, init func(*PaymentOrder), assign func(*PaymentOrder, *CouponUsage)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*PaymentOrder)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(couponusage.FieldOrderID)
-	}
-	query.Where(predicate.CouponUsage(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(paymentorder.CouponUsagesColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.OrderID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "order_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *PaymentOrderQuery) loadInvoiceApplicationOrders(ctx context.Context, query *InvoiceApplicationOrderQuery, nodes []*PaymentOrder, init func(*PaymentOrder), assign func(*PaymentOrder, *InvoiceApplicationOrder)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*PaymentOrder)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(invoiceapplicationorder.FieldOrderID)
-	}
-	query.Where(predicate.InvoiceApplicationOrder(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(paymentorder.InvoiceApplicationOrdersColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.OrderID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "order_id" returned %v for node %v`, fk, n.ID)
-		}
-		assign(node, n)
 	}
 	return nil
 }

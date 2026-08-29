@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <AppLayout>
     <TablePageLayout>
       <template #filters>
@@ -280,23 +280,12 @@
           >
             <!-- Groups -->
             <div>
-              <div class="mb-1 flex items-center justify-between gap-3">
-                <label class="input-label mb-0 text-xs">
-                  {{ t('admin.channels.form.groups') }} <span class="text-red-500">*</span>
-                  <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                    ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }) }})
-                  </span>
-                </label>
-                <button
-                  type="button"
-                  class="rounded-md border border-primary-200 px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-900/20"
-                  :disabled="importingModelsByPlatform[section.platform] || section.group_ids.length === 0"
-                  @click="importSectionModelsFromAccounts(sIdx)"
-                >
-                  <span v-if="importingModelsByPlatform[section.platform]">{{ t('common.loading') }}</span>
-                  <span v-else>{{ t('admin.channels.form.importModelsFromAccounts') }}</span>
-                </button>
-              </div>
+              <label class="input-label text-xs">
+                {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
+                <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
+                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }) }})
+                </span>
+              </label>
               <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
                 <div v-if="groupsLoading" class="py-2 text-center text-xs text-gray-500">
                   {{ t('common.loading', 'Loading...') }}
@@ -398,41 +387,32 @@
                 <div
                   v-for="(_, srcModel) in section.model_mapping"
                   :key="srcModel"
-                  class="space-y-2"
+                  class="flex items-center gap-2"
                 >
-                  <div class="flex items-center gap-2">
-                    <input
-                      :value="srcModel"
-                      type="text"
-                      class="input flex-1 text-xs"
-                      :class="platformTextClass(section.platform)"
-                      :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
-                      @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
-                    />
-                    <span class="text-gray-400 text-xs">→</span>
-                    <input
-                      :value="section.model_mapping[srcModel]"
-                      type="text"
-                      class="input flex-1 text-xs"
-                      :class="platformTextClass(section.platform)"
-                      :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
-                      @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
-                    />
-                    <button
-                      type="button"
-                      @click="removeMappingEntry(sIdx, srcModel)"
-                      class="rounded p-0.5 text-gray-400 hover:text-red-500"
-                    >
-                      <Icon name="trash" size="sm" />
-                    </button>
-                  </div>
                   <input
-                    v-model="section.model_mapping_notes[srcModel]"
+                    :value="srcModel"
                     type="text"
-                    class="input text-xs"
+                    class="input flex-1 text-xs"
                     :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingNotePlaceholder', 'Optional note for this mapping')"
+                    :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
+                    @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
                   />
+                  <span class="text-gray-400 text-xs">→</span>
+                  <input
+                    :value="section.model_mapping[srcModel]"
+                    type="text"
+                    class="input flex-1 text-xs"
+                    :class="platformTextClass(section.platform)"
+                    :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
+                    @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+                  />
+                  <button
+                    type="button"
+                    @click="removeMappingEntry(sIdx, srcModel)"
+                    class="rounded p-0.5 text-gray-400 hover:text-red-500"
+                  >
+                    <Icon name="trash" size="sm" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -467,6 +447,8 @@
                   :key="idx"
                   :entry="entry"
                   :platform="section.platform"
+                  enable-time-pricing
+                  enable-tier-multipliers
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
@@ -645,15 +627,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, ModelDefaultPricing } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
-import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
-import type { AdminGroup, GroupPlatform, Account } from '@/types'
+import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formTimePricingToAPI, isValidPositiveMultiplier, mTokToPerToken, perTokenToMTok, validateIntervals, validateTimePricing } from '@/components/admin/channel/types'
+import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -701,7 +683,6 @@ interface PlatformSection {
   collapsed: boolean
   group_ids: number[]
   model_mapping: Record<string, string>
-  model_mapping_notes: Record<string, string>
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
@@ -767,9 +748,6 @@ const groupsLoading = ref(false)
 
 // All channels for group-conflict detection (independent of current page)
 const allChannelsForConflict = ref<Channel[]>([])
-const importingModelsByPlatform = ref<Partial<Record<GroupPlatform, boolean>>>({})
-const defaultPricingCache = ref<Record<string, ModelDefaultPricing>>({})
-
 
 // Form data
 const form = reactive({
@@ -785,7 +763,9 @@ const form = reactive({
 let abortController: AbortController | null = null
 
 // ── Platform config ──
-const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok']
+const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
+// Composite pricing/mapping may target every concrete schedulable provider.
+const compositePlatforms: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity', 'grok', 'kimi', 'zhipu', 'deepseek']
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -803,7 +783,6 @@ function addPlatformSection(platform: GroupPlatform) {
     collapsed: false,
     group_ids: [],
     model_mapping: {},
-    model_mapping_notes: {},
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
@@ -825,7 +804,9 @@ function togglePlatform(platform: GroupPlatform) {
 }
 
 function getGroupsForPlatform(platform: GroupPlatform): AdminGroup[] {
-  return allGroups.value.filter(g => g.platform === platform || g.platform === 'composite')
+  return allGroups.value.filter(
+    g => g.platform === platform || (g.platform === 'composite' && compositePlatforms.includes(platform))
+  )
 }
 
 // ── Group helpers ──
@@ -881,10 +862,13 @@ function addPricingEntry(sectionIdx: number) {
     output_price: null,
     cache_write_price: null,
     cache_read_price: null,
+    fast_multiplier: null,
+    flex_multiplier: null,
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
@@ -914,10 +898,13 @@ async function syncLatestModels(sectionIdx: number) {
       output_price: null,
       cache_write_price: null,
       cache_read_price: null,
+      fast_multiplier: null,
+      flex_multiplier: null,
       image_input_price: null,
       image_output_price: null,
       per_request_price: null,
-      intervals: []
+      intervals: [],
+      time_pricing: createDefaultTimePricingForm()
     })
     appStore.showSuccess(t('admin.channels.form.syncModelsSuccess', { count: newModels.length }))
   } catch (error) {
@@ -935,112 +922,6 @@ function removePricingEntry(sectionIdx: number, idx: number) {
   form.platforms[sectionIdx].model_pricing.splice(idx, 1)
 }
 
-function mergeModelsIntoPricingEntries(entries: PricingFormEntry[], models: string[]) {
-  const existing = new Set(entries.flatMap(entry => entry.models))
-  for (const model of models) {
-    if (existing.has(model)) continue
-    entries.push({
-      models: [model],
-      billing_mode: 'token',
-      input_price: null,
-      output_price: null,
-      cache_write_price: null,
-      cache_read_price: null,
-      image_input_price: null,
-      image_output_price: null,
-      per_request_price: null,
-      intervals: []
-    })
-    existing.add(model)
-  }
-}
-
-async function getCachedDefaultPricing(model: string): Promise<ModelDefaultPricing> {
-  const cached = defaultPricingCache.value[model]
-  if (cached) return cached
-  const pricing = await adminAPI.channels.getModelDefaultPricing(model)
-  defaultPricingCache.value[model] = pricing
-  return pricing
-}
-
-function applyDefaultPricingToEntry(entry: PricingFormEntry, pricing: ModelDefaultPricing) {
-  if (!pricing.found) return
-  if (entry.input_price == null || entry.input_price === '') entry.input_price = perTokenToMTok(pricing.input_price)
-  if (entry.output_price == null || entry.output_price === '') entry.output_price = perTokenToMTok(pricing.output_price)
-  if (entry.cache_write_price == null || entry.cache_write_price === '') entry.cache_write_price = perTokenToMTok(pricing.cache_write_price)
-  if (entry.cache_read_price == null || entry.cache_read_price === '') entry.cache_read_price = perTokenToMTok(pricing.cache_read_price)
-  if (entry.image_output_price == null || entry.image_output_price === '') entry.image_output_price = perTokenToMTok(pricing.image_output_price)
-}
-
-function extractAccountModels(accounts: Account[]): string[] {
-  const ordered: string[] = []
-  const seen = new Set<string>()
-  for (const account of accounts) {
-    const mapping = account.credentials?.model_mapping as Record<string, unknown> | undefined
-    if (!mapping || typeof mapping !== 'object') continue
-    for (const key of Object.keys(mapping)) {
-      const model = key.trim()
-      if (!model || seen.has(model)) continue
-      seen.add(model)
-      ordered.push(model)
-    }
-  }
-  return ordered.sort((a, b) => a.localeCompare(b))
-}
-
-async function importSectionModelsFromAccounts(sectionIdx: number) {
-  const section = form.platforms[sectionIdx]
-  if (!section || section.group_ids.length === 0) {
-    appStore.showInfo(t('admin.channels.form.selectGroupsBeforeImport', '请先选择分组再导入模型'))
-    return
-  }
-
-  importingModelsByPlatform.value[section.platform] = true
-  try {
-    const accountMap = new Map<number, Account>()
-    for (const groupId of section.group_ids) {
-      const res = await adminAPI.accounts.list(1, 1000, { platform: section.platform, group: String(groupId) })
-      for (const account of res.items) {
-        accountMap.set(account.id, account)
-      }
-    }
-
-    const models = extractAccountModels([...accountMap.values()])
-    if (models.length === 0) {
-      appStore.showInfo(t('admin.channels.form.noImportableAccountModels', '所选分组下没有可导入的账号模型'))
-      return
-    }
-
-    for (const model of models) {
-      if (!(model in section.model_mapping)) {
-        section.model_mapping[model] = model
-      }
-    }
-
-    mergeModelsIntoPricingEntries(section.model_pricing, models)
-
-    await Promise.all(section.model_pricing.map(async (entry) => {
-      if (entry.models.length !== 1) return
-      const model = entry.models[0]
-      if (!models.includes(model)) return
-      const pricing = await getCachedDefaultPricing(model)
-      applyDefaultPricingToEntry(entry, pricing)
-    }))
-
-    appStore.showSuccess(
-      t(
-        'admin.channels.form.importModelsSuccess',
-        { count: models.length },
-        `已导入 ${models.length} 个模型到映射和定价`
-      )
-    )
-  } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.importModelsError', '导入账号模型失败')))
-  } finally {
-    importingModelsByPlatform.value[section.platform] = false
-  }
-}
-
 // ── Model Mapping helpers ──
 function addMappingEntry(sectionIdx: number) {
   const mapping = form.platforms[sectionIdx].model_mapping
@@ -1055,7 +936,6 @@ function addMappingEntry(sectionIdx: number) {
 
 function removeMappingEntry(sectionIdx: number, key: string) {
   delete form.platforms[sectionIdx].model_mapping[key]
-  delete form.platforms[sectionIdx].model_mapping_notes[key]
 }
 
 function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
@@ -1064,13 +944,8 @@ function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
   const mapping = form.platforms[sectionIdx].model_mapping
   if (newKey in mapping) return
   const value = mapping[oldKey]
-  const note = form.platforms[sectionIdx].model_mapping_notes[oldKey]
   delete mapping[oldKey]
   mapping[newKey] = value
-  if (typeof note === 'string' && note.trim()) {
-    form.platforms[sectionIdx].model_mapping_notes[newKey] = note
-  }
-  delete form.platforms[sectionIdx].model_mapping_notes[oldKey]
 }
 
 // ── Account Stats Pricing helpers ──
@@ -1094,7 +969,8 @@ function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
     image_input_price: null,
     image_output_price: null,
     per_request_price: null,
-    intervals: []
+    intervals: [],
+    time_pricing: createDefaultTimePricingForm()
   })
 }
 
@@ -1210,39 +1086,13 @@ function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
             image_input_price: mTokToPerToken(p.image_input_price),
             image_output_price: mTokToPerToken(p.image_output_price),
             per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
-            intervals: formIntervalsToAPI(p.intervals || [])
+            intervals: formIntervalsToAPI(p.intervals || []),
+            time_pricing: null
           }))
       })
     }
   }
   return rules
-}
-
-function normalizeModelMappingNotes(
-  mapping: Record<string, string>,
-  notes: Record<string, string>
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(notes)
-      .map(([source, note]) => [source.trim(), note.trim()] as const)
-      .filter(([source, note]) => source in mapping && note.length > 0)
-  )
-}
-
-function getPlatformModelMappingNotes(
-  featuresConfig: Record<string, unknown> | undefined,
-  platform: GroupPlatform
-): Record<string, string> {
-  const raw = (featuresConfig?.model_mapping_notes as Record<string, unknown> | undefined)?.[platform]
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return {}
-  }
-
-  return Object.fromEntries(
-    Object.entries(raw as Record<string, unknown>)
-      .filter(([, value]) => typeof value === 'string' && value.trim().length > 0)
-      .map(([source, note]) => [source, (note as string).trim()])
-  )
 }
 
 // ── Form ↔ API conversion ──
@@ -1275,31 +1125,17 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         output_price: mTokToPerToken(entry.output_price),
         cache_write_price: mTokToPerToken(entry.cache_write_price),
         cache_read_price: mTokToPerToken(entry.cache_read_price),
+        fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
+        flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
         per_request_price: entry.per_request_price != null && entry.per_request_price !== '' ? Number(entry.per_request_price) : null,
-        intervals: formIntervalsToAPI(entry.intervals || [])
+        intervals: formIntervalsToAPI(entry.intervals || []),
+        time_pricing: formTimePricingToAPI(entry.time_pricing)
       })
     }
   }
   const uniqueGroupIds = Array.from(new Set(group_ids))
-
-  const mappingNotesByPlatform: Record<string, Record<string, string>> = {}
-  for (const section of form.platforms) {
-    if (!section.enabled) continue
-    const normalizedNotes = normalizeModelMappingNotes(
-      section.model_mapping,
-      section.model_mapping_notes
-    )
-    if (Object.keys(normalizedNotes).length > 0) {
-      mappingNotesByPlatform[section.platform] = normalizedNotes
-    }
-  }
-  if (Object.keys(mappingNotesByPlatform).length > 0) {
-    featuresConfig.model_mapping_notes = mappingNotesByPlatform
-  } else {
-    delete featuresConfig.model_mapping_notes
-  }
 
   // Collect web_search_emulation (only anthropic platform supports it)
   // Always write the key so that disabling in the UI correctly sets platform to false,
@@ -1358,7 +1194,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
   for (const gid of channel.group_ids || []) {
     const p = groupPlatformMap.get(gid)
     if (p === 'composite') {
-      platformOrder.forEach(platform => activePlatforms.add(platform))
+      compositePlatforms.forEach(platform => activePlatforms.add(platform))
     } else if (p) {
       activePlatforms.add(p)
     }
@@ -1377,10 +1213,10 @@ function apiToForm(channel: Channel): PlatformSection[] {
 
     const groupIds = (channel.group_ids || []).filter(gid => {
       const groupPlatform = groupPlatformMap.get(gid)
-      return groupPlatform === platform || groupPlatform === 'composite'
+      return groupPlatform === platform ||
+        (groupPlatform === 'composite' && compositePlatforms.includes(platform))
     })
     const mapping = (channel.model_mapping || {})[platform] || {}
-    const mappingNotes = getPlatformModelMappingNotes(channel.features_config, platform)
     const pricing = (channel.model_pricing || [])
       .filter(p => (p.platform || 'anthropic') === platform)
       .map(p => ({
@@ -1390,10 +1226,13 @@ function apiToForm(channel: Channel): PlatformSection[] {
         output_price: perTokenToMTok(p.output_price),
         cache_write_price: perTokenToMTok(p.cache_write_price),
         cache_read_price: perTokenToMTok(p.cache_read_price),
+        fast_multiplier: p.fast_multiplier,
+        flex_multiplier: p.flex_multiplier,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_pricing: apiTimePricingToForm(p.time_pricing)
       } as PricingFormEntry))
 
     // Read web_search_emulation from features_config
@@ -1410,7 +1249,6 @@ function apiToForm(channel: Channel): PlatformSection[] {
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping },
-      model_mapping_notes: { ...mappingNotes },
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,
@@ -1513,19 +1351,7 @@ function resetForm() {
   ruleAccountSearchRunner.clearAll()
   clearAllRuleAccountSearchState()
   ruleAccountNameCache.value = {}
-  importingModelsByPlatform.value = {}
-  defaultPricingCache.value = {}
 }
-
-watch(
-  () => showDialog.value,
-  (visible) => {
-    if (!visible) {
-      importingModelsByPlatform.value = {}
-      defaultPricingCache.value = {}
-    }
-  }
-)
 
 async function openCreateDialog() {
   editingChannel.value = null
@@ -1595,7 +1421,8 @@ function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
         per_request_price: p.per_request_price,
-        intervals: apiIntervalsToForm(p.intervals || [])
+        intervals: apiIntervalsToForm(p.intervals || []),
+        time_pricing: createDefaultTimePricingForm()
       } as PricingFormEntry))
     }
     section.account_stats_pricing_rules.push(formRule)
@@ -1706,12 +1533,34 @@ async function handleSubmit() {
   // 校验区间合法性（范围、重叠等）
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
+      if (!isValidPositiveMultiplier(entry.fast_multiplier) ||
+          !isValidPositiveMultiplier(entry.flex_multiplier)) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${t('admin.channels.form.multiplierPositive')}`)
+        activeTab.value = section.platform
+        return
+      }
       if (!entry.intervals || entry.intervals.length === 0) continue
       const intervalErr = validateIntervals(entry.intervals, entry.billing_mode, t)
       if (intervalErr) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${intervalErr}`)
+        activeTab.value = section.platform
+        return
+      }
+    }
+  }
+
+  // 校验时间段定价，并切换到对应平台便于修正
+  for (const section of form.platforms.filter(s => s.enabled)) {
+    for (const entry of section.model_pricing) {
+      const timePricingError = validateTimePricing(entry.time_pricing, t)
+      if (timePricingError) {
+        const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
+        appStore.showError(`${platformLabel} - ${modelLabel}: ${timePricingError}`)
         activeTab.value = section.platform
         return
       }

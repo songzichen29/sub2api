@@ -10,12 +10,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
 // InitializeDefaultSettings 初始化默认设置
@@ -126,10 +126,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
-		SettingKeyAffiliateRechargeEnabled:                  strconv.FormatBool(AffiliateRechargeEnabledDefault),
-		SettingKeyAffiliateSubscriptionEnabled:              strconv.FormatBool(AffiliateSubscriptionEnabledDefault),
-		SettingKeyAffiliateRechargeRebateRate:               strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
-		SettingKeyAffiliateSubscriptionRebateRate:           strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
@@ -189,20 +185,26 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpsQueryModeDefault:          "auto",
 		SettingKeyOpsMetricsIntervalSeconds:    "60",
 
-		// Channel monitor defaults (enabled, 600s). Active probes are expensive
-		// and should not create a five-minute duplicate load by default.
+		// Channel monitor defaults (enabled, 60s)
 		SettingKeyChannelMonitorEnabled:                "true",
 		SettingKeyChannelMonitorMode:                   ChannelMonitorModeV1,
-		SettingKeyChannelMonitorDefaultIntervalSeconds: "600",
+		SettingKeyChannelMonitorDefaultIntervalSeconds: "60",
 		SettingKeyChannelMonitorHideThroughput:         "true",
+		SettingKeyChannelMonitorShowQuota:              "false",
+
+		// Grok: safe defaults — no cross-vendor model rewrite unless operators enable it.
+		SettingKeyGrokDefaultTextModel:           "grok-4.6",
+		SettingKeyGrokCrossClientModelMapEnabled: "true",
+		SettingKeyGrokDefaultBaseURLMode:         GrokDefaultBaseURLModeCLI,
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
-		SettingKeyModelPlazaEnabled:     "false",
-		SettingKeyModelPlazaRequireAuth: "false",
-		SettingKeyModelPlazaDescription: "",
+		SettingKeyModelPlazaEnabled:       "false",
+		SettingKeyModelPlazaRequireAuth:   "false",
+		SettingKeyModelPlazaDescription:   "",
+		SettingKeyPluginManagementEnabled: "false",
 
 		// Affiliate (邀请返利) feature (default disabled; opt-in)
 		SettingKeyAffiliateEnabled:              "false",
@@ -363,9 +365,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		CustomEndpoints:                        settings[SettingKeyCustomEndpoints],
 		BackendModeEnabled:                     settings[SettingKeyBackendModeEnabled] == "true",
 	}
-	result.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL])
-	result.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey])
-	result.OpenAIFreeImageBridgeAuthKeyConfigured = result.OpenAIFreeImageBridgeAuthKey != ""
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
 		settings[SettingKeyTableDefaultPageSize],
 		settings[SettingKeyTablePageSizeOptions],
@@ -398,18 +397,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.AffiliateRebateRate = clampAffiliateRebateRate(rebateRate)
 	} else {
 		result.AffiliateRebateRate = AffiliateRebateRateDefault
-	}
-	result.AffiliateRechargeEnabled = !isFalseSettingValue(settings[SettingKeyAffiliateRechargeEnabled])
-	result.AffiliateSubscriptionEnabled = settings[SettingKeyAffiliateSubscriptionEnabled] == "true"
-	if rechargeRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRechargeRebateRate], 64); err == nil {
-		result.AffiliateRechargeRebateRate = clampAffiliateRebateRate(rechargeRate)
-	} else {
-		result.AffiliateRechargeRebateRate = result.AffiliateRebateRate
-	}
-	if subscriptionRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateSubscriptionRebateRate], 64); err == nil {
-		result.AffiliateSubscriptionRebateRate = clampAffiliateRebateRate(subscriptionRate)
-	} else {
-		result.AffiliateSubscriptionRebateRate = result.AffiliateRebateRate
 	}
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {
@@ -804,7 +791,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		}
 	}
 
-	// Channel monitor feature (default: enabled, 600s)
+	// Channel monitor feature (default: enabled, 60s)
 	result.ChannelMonitorEnabled = !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled])
 	result.ChannelMonitorMode = normalizeChannelMonitorMode(settings[SettingKeyChannelMonitorMode])
 	result.ChannelMonitorDefaultIntervalSeconds = parseChannelMonitorInterval(
@@ -813,6 +800,19 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 默认隐藏吞吐（迁移 206 的隐私默认）：未配置时必须与 setting_public.go 的
 	// 公开读取路径给出同一个值，否则管理端看到“未隐藏”而用户端实际已隐藏。
 	result.ChannelMonitorHideThroughput = !isFalseSettingValue(settings[SettingKeyChannelMonitorHideThroughput])
+	// 配额展示默认关闭且 fail-closed：仅字面 "true" 视为开启
+	// （与 setting_public.go 公开读取路径保持一致）。
+	result.ChannelMonitorShowQuota = settings[SettingKeyChannelMonitorShowQuota] == "true"
+
+	// Grok default mapping policy
+	result.GrokDefaultTextModel = strings.TrimSpace(settings[SettingKeyGrokDefaultTextModel])
+	if result.GrokDefaultTextModel == "" {
+		result.GrokDefaultTextModel = "grok-4.6"
+	}
+	// Default true (missing/empty → enabled) so Claude/Codex→Grok mapping keeps working.
+	// Operators can set false to disable silent cross-client rewrite.
+	result.GrokCrossClientModelMapEnabled = !isFalseSettingValue(settings[SettingKeyGrokCrossClientModelMapEnabled])
+	result.GrokDefaultBaseURLMode = normalizeGrokDefaultBaseURLMode(settings[SettingKeyGrokDefaultBaseURLMode])
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
@@ -821,6 +821,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.ModelPlazaEnabled = settings[SettingKeyModelPlazaEnabled] == "true"
 	result.ModelPlazaRequireAuth = settings[SettingKeyModelPlazaRequireAuth] == "true"
 	result.ModelPlazaDescription = settings[SettingKeyModelPlazaDescription]
+	result.PluginManagementEnabled = settings[SettingKeyPluginManagementEnabled] == "true"
 
 	// Affiliate (邀请返利) feature (default: disabled; strict true)
 	result.AffiliateEnabled = settings[SettingKeyAffiliateEnabled] == "true"
@@ -968,6 +969,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 
 	result.AllowUserViewErrorRequests = settings[SettingKeyAllowUserViewErrorRequests] == "true" // default false
+
+	// Publish Grok default model_mapping options for accounts with empty mapping.
+	xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{
+		DefaultText:          result.GrokDefaultTextModel,
+		EnableCrossClientMap: result.GrokCrossClientModelMapEnabled,
+	})
 
 	return result
 }
@@ -1156,76 +1163,16 @@ func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 
 	normalized := make([]DefaultSubscriptionSetting, 0, len(items))
 	for _, item := range items {
-		normalizedItem, ok := normalizeDefaultSubscriptionSetting(item)
-		if !ok {
+		if item.GroupID <= 0 || item.ValidityDays <= 0 {
 			continue
 		}
-		normalized = append(normalized, normalizedItem)
+		if item.ValidityDays > MaxValidityDays {
+			item.ValidityDays = MaxValidityDays
+		}
+		normalized = append(normalized, item)
 	}
 
 	return normalized
-}
-
-func validateDefaultSubscriptionSettings(items []DefaultSubscriptionSetting) error {
-	for _, item := range items {
-		if _, ok := normalizeDefaultSubscriptionSetting(item); !ok {
-			return ErrDefaultSubSettingInvalid.WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(item.GroupID, 10),
-			})
-		}
-	}
-	return nil
-}
-
-func normalizeDefaultSubscriptionSetting(item DefaultSubscriptionSetting) (DefaultSubscriptionSetting, bool) {
-	if item.GroupID <= 0 {
-		return DefaultSubscriptionSetting{}, false
-	}
-
-	startRaw := ""
-	if item.StartsAt != nil {
-		startRaw = strings.TrimSpace(*item.StartsAt)
-	}
-	endRaw := ""
-	if item.ExpiresAt != nil {
-		endRaw = strings.TrimSpace(*item.ExpiresAt)
-	}
-
-	if startRaw != "" || endRaw != "" {
-		if startRaw == "" || endRaw == "" {
-			return DefaultSubscriptionSetting{}, false
-		}
-		startAt, err := time.Parse(time.RFC3339, startRaw)
-		if err != nil {
-			return DefaultSubscriptionSetting{}, false
-		}
-		expiresAt, err := time.Parse(time.RFC3339, endRaw)
-		if err != nil {
-			return DefaultSubscriptionSetting{}, false
-		}
-		if !expiresAt.After(startAt) {
-			return DefaultSubscriptionSetting{}, false
-		}
-		startValue := startAt.UTC().Format(time.RFC3339)
-		expiresValue := expiresAt.UTC().Format(time.RFC3339)
-		return DefaultSubscriptionSetting{
-			GroupID:   item.GroupID,
-			StartsAt:  &startValue,
-			ExpiresAt: &expiresValue,
-		}, true
-	}
-
-	if item.ValidityDays <= 0 {
-		return DefaultSubscriptionSetting{}, false
-	}
-	if item.ValidityDays > MaxValidityDays {
-		item.ValidityDays = MaxValidityDays
-	}
-
-	return DefaultSubscriptionSetting{
-		GroupID:      item.GroupID,
-		ValidityDays: item.ValidityDays,
-	}, true
 }
 
 func parseProviderDefaultGrantSettings(settings map[string]string, keys authSourceDefaultKeySet) ProviderDefaultGrantSettings {

@@ -1,7 +1,6 @@
 package service
 
 import (
-	"encoding/json"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -115,6 +114,56 @@ func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, bod
 	return imageIntent
 }
 
+// IsImageGenerationIntentForPlatform applies platform-specific intent rules.
+//
+// Codex advertises the image_gen namespace on ordinary Responses requests so
+// that it is available if the model needs it. Grok strips namespace and
+// Responses Lite additional_tools declarations before forwarding, so those
+// declarations alone must not turn every Codex request into an image request.
+// Native image_generation tools, explicit image selection and image models
+// remain image intent. Other platforms retain the original declaration rule.
+func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
+	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
+		return IsImageGenerationIntent(endpoint, requestedModel, body)
+	}
+	return isExplicitGrokImageGenerationIntent(endpoint, requestedModel, body)
+}
+
+func isExplicitGrokImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
+	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
+		return true
+	}
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+
+	var modelSeen, toolsSeen, toolChoiceSeen bool
+	imageIntent := false
+	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+		switch key.Str {
+		case "model":
+			if !modelSeen {
+				modelSeen = true
+				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
+			}
+		case "tools":
+			if !toolsSeen {
+				toolsSeen = true
+				// Grok removes namespace catalogs before forwarding. Native
+				// image_generation remains an explicit capability request.
+				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
+			}
+		case "tool_choice":
+			if !toolChoiceSeen {
+				toolChoiceSeen = true
+				imageIntent = openAIJSONToolChoiceSelectsExplicitImageGeneration(value)
+			}
+		}
+		return !imageIntent && (!modelSeen || !toolsSeen || !toolChoiceSeen)
+	})
+	return imageIntent
+}
+
 // IsImageGenerationIntentMap is the map-backed variant used after service-side request mutation.
 func IsImageGenerationIntentMap(endpoint string, requestedModel string, reqBody map[string]any) bool {
 	if IsImageGenerationEndpoint(endpoint) {
@@ -157,13 +206,6 @@ func normalizeImageGenerationEndpoint(endpoint string) string {
 	return strings.TrimRight(endpoint, "/")
 }
 
-func openAIJSONString(value gjson.Result) string {
-	if !value.Exists() {
-		return ""
-	}
-	return strings.TrimSpace(value.String())
-}
-
 func openAIJSONToolsContainImageGeneration(tools gjson.Result) bool {
 	if !tools.IsArray() {
 		return false
@@ -203,9 +245,8 @@ func isOpenAIImageGenNamespaceName(value string) bool {
 	return strings.TrimSpace(value) == "image_gen"
 }
 
-// isImageGenNamespaceTool detects the Codex namespace-style image generation
-// tool declaration: { "type": "namespace", "name": "image_gen", ... }.
-// Codex /image uses this instead of the flat { "type": "image_generation" }.
+// isImageGenNamespaceTool detects the namespace advertised by Codex's built-in
+// image-generation extension instead of a hosted image_generation tool.
 func isImageGenNamespaceTool(tool gjson.Result) bool {
 	return openAIJSONString(tool.Get("type")) == "namespace" &&
 		isOpenAIImageGenNamespaceName(openAIJSONString(tool.Get("name")))
@@ -252,8 +293,13 @@ func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
 		if openAIJSONString(item.Get("type")) != "image_generation" {
 			return true
 		}
-		// 已带详细参数的 image_generation 工具需要走 raw body 归一化，避免丢失格式字段。
+		// 只有旧字段或明确的模型不兼容字段需要修正时才进入 map 修改。
 		if item.Get("format").Exists() || item.Get("compression").Exists() {
+			needsNormalization = true
+			return false
+		}
+		imageModel := strings.ToLower(strings.TrimSpace(item.Get("model").String()))
+		if strings.HasPrefix(imageModel, "gpt-image-2") && item.Get("input_fidelity").Exists() {
 			needsNormalization = true
 			return false
 		}
@@ -372,19 +418,6 @@ func apiKeyGroup(apiKey *APIKey) *Group {
 	return apiKey.Group
 }
 
-func cloneRequestMapForImageIntent(body []byte) map[string]any {
-	if len(body) == 0 {
-		return nil
-	}
-	var out map[string]any
-	dec := json.NewDecoder(strings.NewReader(string(body)))
-	dec.UseNumber()
-	if err := dec.Decode(&out); err != nil {
-		return nil
-	}
-	return out
-}
-
 type OpenAIResponsesImageBillingConfig struct {
 	Model     string
 	SizeTier  string
@@ -440,8 +473,43 @@ func resolveOpenAIResponsesImageBillingConfigFromBody(body []byte, fallbackModel
 }
 
 func resolveOpenAIResponsesImageBillingConfigDetailedFromBody(body []byte, fallbackModel string) (OpenAIResponsesImageBillingConfig, error) {
-	reqBody := cloneRequestMapForImageIntent(body)
-	return resolveOpenAIResponsesImageBillingConfigDetailed(reqBody, fallbackModel)
+	imageModel := ""
+	imageSize := ""
+	hasImageTool := false
+	if len(body) > 0 && gjson.ValidBytes(body) {
+		tools := gjson.GetBytes(body, "tools")
+		if tools.IsArray() {
+			tools.ForEach(func(_, item gjson.Result) bool {
+				if openAIJSONString(item.Get("type")) != "image_generation" {
+					return true
+				}
+				hasImageTool = true
+				imageModel = openAIJSONString(item.Get("model"))
+				imageSize = openAIJSONString(item.Get("size"))
+				return false
+			})
+		}
+		if imageSize == "" {
+			imageSize = openAIJSONString(gjson.GetBytes(body, "size"))
+		}
+		if imageModel == "" {
+			bodyModel := openAIJSONString(gjson.GetBytes(body, "model"))
+			if isOpenAIImageBillingModelAlias(bodyModel) || !hasImageTool {
+				imageModel = bodyModel
+			}
+		}
+	}
+	if imageModel == "" && hasImageTool {
+		imageModel = "gpt-image-2"
+	}
+	if imageModel == "" {
+		imageModel = strings.TrimSpace(fallbackModel)
+	}
+	return OpenAIResponsesImageBillingConfig{
+		Model:     imageModel,
+		SizeTier:  normalizeOpenAIImageSizeTier(imageSize),
+		InputSize: imageSize,
+	}, nil
 }
 
 func isOpenAIImageBillingModelAlias(model string) bool {
@@ -450,4 +518,11 @@ func isOpenAIImageBillingModelAlias(model string) bool {
 		return false
 	}
 	return isOpenAIImageGenerationModel(normalized) || strings.Contains(normalized, "image")
+}
+
+func openAIJSONString(value gjson.Result) string {
+	if value.Type != gjson.String {
+		return ""
+	}
+	return strings.TrimSpace(value.String())
 }

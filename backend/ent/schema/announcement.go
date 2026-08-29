@@ -34,7 +34,7 @@ func (Announcement) Fields() []ent.Field {
 			NotEmpty().
 			Comment("公告标题"),
 		field.String("content").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			NotEmpty().
 			Comment("公告内容（支持 Markdown）"),
 		field.String("status").
@@ -47,17 +47,17 @@ func (Announcement) Fields() []ent.Field {
 			Comment("通知模式: silent(仅铃铛), popup(弹窗提醒)"),
 		field.JSON("targeting", domain.AnnouncementTargeting{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("展示条件（JSON 规则）"),
 		field.Time("starts_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("开始展示时间（为空表示立即生效）"),
 		field.Time("ends_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("结束展示时间（为空表示永久生效）"),
 		field.Int64("created_by").
 			Optional().
@@ -70,11 +70,11 @@ func (Announcement) Fields() []ent.Field {
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

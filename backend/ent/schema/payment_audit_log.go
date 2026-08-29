@@ -35,7 +35,7 @@ func (PaymentAuditLog) Fields() []ent.Field {
 		field.String("action").
 			MaxLen(50),
 		field.String("detail").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
 		field.String("operator").
 			MaxLen(100).
@@ -43,7 +43,7 @@ func (PaymentAuditLog) Fields() []ent.Field {
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

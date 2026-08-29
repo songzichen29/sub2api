@@ -13,45 +13,24 @@ export interface MessagesDispatchFormState {
   exact_model_mappings: MessagesDispatchMappingRow[];
 }
 
-export const DEFAULT_MESSAGES_DISPATCH_MODEL_CANDIDATES = {
-  opus: ["gpt-5.4", "gpt-5.5", "gpt-5.3-codex", "gpt-5.2", "gpt-5.4-mini"],
-  sonnet: ["gpt-5.3-codex", "gpt-5.4", "gpt-5.5", "gpt-5.2", "gpt-5.4-mini"],
-  haiku: ["gpt-5.4-mini", "gpt-5.4", "gpt-5.3-codex", "gpt-5.2", "gpt-5.5"],
-} as const;
-
-export function pickMessagesDispatchDefaultModel(
-  availableModels: string[],
-  family: keyof typeof DEFAULT_MESSAGES_DISPATCH_MODEL_CANDIDATES,
-): string {
-  const normalizedAvailable = availableModels
-    .map((model) => model.trim())
-    .filter(Boolean);
-  const set = new Set(normalizedAvailable);
-  for (const candidate of DEFAULT_MESSAGES_DISPATCH_MODEL_CANDIDATES[family]) {
-    if (set.has(candidate)) {
-      return candidate;
-    }
-  }
-  return normalizedAvailable[0] || DEFAULT_MESSAGES_DISPATCH_MODEL_CANDIDATES[family][0];
+export function supportsMessagesDispatchPlatform(platform: string): boolean {
+  return platform === "openai" || platform === "composite";
 }
 
-export function createDefaultMessagesDispatchFormState(
-  availableModels: string[] = [],
-): MessagesDispatchFormState {
+export function createDefaultMessagesDispatchFormState(): MessagesDispatchFormState {
   return {
     allow_messages_dispatch: false,
-    opus_mapped_model: pickMessagesDispatchDefaultModel(availableModels, "opus"),
-    sonnet_mapped_model: pickMessagesDispatchDefaultModel(availableModels, "sonnet"),
-    haiku_mapped_model: pickMessagesDispatchDefaultModel(availableModels, "haiku"),
+    opus_mapped_model: "gpt-5.4",
+    sonnet_mapped_model: "gpt-5.3-codex",
+    haiku_mapped_model: "gpt-5.4-mini",
     exact_model_mappings: [],
   };
 }
 
 export function messagesDispatchConfigToFormState(
   config?: OpenAIMessagesDispatchModelConfig | null,
-  availableModels: string[] = [],
 ): MessagesDispatchFormState {
-  const defaults = createDefaultMessagesDispatchFormState(availableModels);
+  const defaults = createDefaultMessagesDispatchFormState();
   const exactMappings = Object.entries(config?.exact_model_mappings || {})
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([claude_model, target_model]) => ({ claude_model, target_model }));
@@ -87,9 +66,8 @@ export function messagesDispatchFormStateToConfig(
 
 export function resetMessagesDispatchFormState(
   target: MessagesDispatchFormState,
-  availableModels: string[] = [],
 ): void {
-  const defaults = createDefaultMessagesDispatchFormState(availableModels);
+  const defaults = createDefaultMessagesDispatchFormState();
   target.allow_messages_dispatch = defaults.allow_messages_dispatch;
   target.opus_mapped_model = defaults.opus_mapped_model;
   target.sonnet_mapped_model = defaults.sonnet_mapped_model;

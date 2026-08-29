@@ -41,7 +41,8 @@ func (UserPlatformQuota) Fields() []ent.Field {
 				// 注意：平台列表的单一权威源为 service.AllowedQuotaPlatforms；
 				// 此处为 ent 构建期约束，需与 service.AllowedQuotaPlatforms 保持同步。
 				switch s {
-				case "anthropic", "openai", "gemini", "antigravity":
+				case "anthropic", "openai", "gemini", "antigravity", "grok",
+					"kimi", "zhipu", "deepseek":
 					return nil
 				default:
 					return fmt.Errorf("platform %q is not allowed", s)
@@ -55,40 +56,40 @@ func (UserPlatformQuota) Fields() []ent.Field {
 		field.Float("daily_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("weekly_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("monthly_limit_usd").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 当前窗口已用量（USD，preflight 时与 limit 比较）
 		field.Float("daily_usage_usd").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("weekly_usage_usd").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("monthly_usage_usd").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 
 		// 窗口起点（NULL = 首次还未初始化，由 InitWindowStarts 用 COALESCE 兜底）
 		field.Time("daily_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("weekly_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("monthly_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

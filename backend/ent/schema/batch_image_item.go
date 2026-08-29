@@ -28,7 +28,7 @@ func (BatchImageItem) Fields() []ent.Field {
 		field.String("custom_id").MaxLen(255),
 		field.String("status").MaxLen(32),
 		field.String("request_hash").Optional().Nillable().MaxLen(128),
-		field.String("prompt_preview").Optional().Nillable().SchemaType(map[string]string{dialect.MySQL: "longtext", dialect.Postgres: "text"}),
+		field.String("prompt_preview").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("provider_source_object").Optional().Nillable().MaxLen(1024),
 		field.Int("source_line_number").Optional().Nillable(),
 		field.Int64("source_byte_offset").Optional().Nillable(),
@@ -37,10 +37,10 @@ func (BatchImageItem) Fields() []ent.Field {
 		field.String("file_extension").Optional().Nillable().MaxLen(32),
 		field.Int("image_count").Default(0),
 		field.String("error_code").Optional().Nillable().MaxLen(128),
-		field.String("error_message").Optional().Nillable().SchemaType(map[string]string{dialect.MySQL: "longtext", dialect.Postgres: "text"}),
-		field.Float("billed_amount").Optional().Nillable().SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
-		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
-		field.Time("indexed_at").Optional().Nillable().SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
+		field.String("error_message").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.Float("billed_amount").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("indexed_at").Optional().Nillable().SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

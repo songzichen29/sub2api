@@ -31,12 +31,12 @@ func (AnnouncementRead) Fields() []ent.Field {
 		field.Int64("user_id"),
 		field.Time("read_at").
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("用户首次已读时间"),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

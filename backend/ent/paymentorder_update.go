@@ -11,8 +11,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/couponusage"
-	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -153,62 +151,6 @@ func (_u *PaymentOrderUpdate) SetNillableFeeRate(v *float64) *PaymentOrderUpdate
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
 	_u.mutation.AddFeeRate(v)
-	return _u
-}
-
-// SetDiscountAmount sets the "discount_amount" field.
-func (_u *PaymentOrderUpdate) SetDiscountAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetDiscountAmount()
-	_u.mutation.SetDiscountAmount(v)
-	return _u
-}
-
-// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetDiscountAmount(*v)
-	}
-	return _u
-}
-
-// AddDiscountAmount adds value to the "discount_amount" field.
-func (_u *PaymentOrderUpdate) AddDiscountAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddDiscountAmount(v)
-	return _u
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (_u *PaymentOrderUpdate) SetCouponCode(v string) *PaymentOrderUpdate {
-	_u.mutation.SetCouponCode(v)
-	return _u
-}
-
-// SetNillableCouponCode sets the "coupon_code" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableCouponCode(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetCouponCode(*v)
-	}
-	return _u
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (_u *PaymentOrderUpdate) SetCouponDiscountAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetCouponDiscountAmount()
-	_u.mutation.SetCouponDiscountAmount(v)
-	return _u
-}
-
-// SetNillableCouponDiscountAmount sets the "coupon_discount_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableCouponDiscountAmount(v *float64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetCouponDiscountAmount(*v)
-	}
-	return _u
-}
-
-// AddCouponDiscountAmount adds value to the "coupon_discount_amount" field.
-func (_u *PaymentOrderUpdate) AddCouponDiscountAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddCouponDiscountAmount(v)
 	return _u
 }
 
@@ -396,33 +338,6 @@ func (_u *PaymentOrderUpdate) ClearSubscriptionGroupID() *PaymentOrderUpdate {
 	return _u
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (_u *PaymentOrderUpdate) SetSubscriptionID(v int64) *PaymentOrderUpdate {
-	_u.mutation.ResetSubscriptionID()
-	_u.mutation.SetSubscriptionID(v)
-	return _u
-}
-
-// SetNillableSubscriptionID sets the "subscription_id" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableSubscriptionID(v *int64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetSubscriptionID(*v)
-	}
-	return _u
-}
-
-// AddSubscriptionID adds value to the "subscription_id" field.
-func (_u *PaymentOrderUpdate) AddSubscriptionID(v int64) *PaymentOrderUpdate {
-	_u.mutation.AddSubscriptionID(v)
-	return _u
-}
-
-// ClearSubscriptionID clears the value of the "subscription_id" field.
-func (_u *PaymentOrderUpdate) ClearSubscriptionID() *PaymentOrderUpdate {
-	_u.mutation.ClearSubscriptionID()
-	return _u
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (_u *PaymentOrderUpdate) SetSubscriptionDays(v int) *PaymentOrderUpdate {
 	_u.mutation.ResetSubscriptionDays()
@@ -447,73 +362,6 @@ func (_u *PaymentOrderUpdate) AddSubscriptionDays(v int) *PaymentOrderUpdate {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (_u *PaymentOrderUpdate) ClearSubscriptionDays() *PaymentOrderUpdate {
 	_u.mutation.ClearSubscriptionDays()
-	return _u
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdate) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetSubscriptionQuotaUsd()
-	_u.mutation.SetSubscriptionQuotaUsd(v)
-	return _u
-}
-
-// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetSubscriptionQuotaUsd(*v)
-	}
-	return _u
-}
-
-// AddSubscriptionQuotaUsd adds value to the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdate) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddSubscriptionQuotaUsd(v)
-	return _u
-}
-
-// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdate) ClearSubscriptionQuotaUsd() *PaymentOrderUpdate {
-	_u.mutation.ClearSubscriptionQuotaUsd()
-	return _u
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (_u *PaymentOrderUpdate) SetSubscriptionValidityUnit(v string) *PaymentOrderUpdate {
-	_u.mutation.SetSubscriptionValidityUnit(v)
-	return _u
-}
-
-// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetSubscriptionValidityUnit(*v)
-	}
-	return _u
-}
-
-// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
-func (_u *PaymentOrderUpdate) ClearSubscriptionValidityUnit() *PaymentOrderUpdate {
-	_u.mutation.ClearSubscriptionValidityUnit()
-	return _u
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (_u *PaymentOrderUpdate) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpdate {
-	_u.mutation.SetSubscriptionPlanExpiresAt(v)
-	return _u
-}
-
-// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetSubscriptionPlanExpiresAt(*v)
-	}
-	return _u
-}
-
-// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
-func (_u *PaymentOrderUpdate) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpdate {
-	_u.mutation.ClearSubscriptionPlanExpiresAt()
 	return _u
 }
 
@@ -580,47 +428,6 @@ func (_u *PaymentOrderUpdate) SetNillableStatus(v *string) *PaymentOrderUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
-	return _u
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (_u *PaymentOrderUpdate) SetInvoiceStatus(v string) *PaymentOrderUpdate {
-	_u.mutation.SetInvoiceStatus(v)
-	return _u
-}
-
-// SetNillableInvoiceStatus sets the "invoice_status" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableInvoiceStatus(v *string) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetInvoiceStatus(*v)
-	}
-	return _u
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (_u *PaymentOrderUpdate) SetInvoiceApplicationID(v int64) *PaymentOrderUpdate {
-	_u.mutation.ResetInvoiceApplicationID()
-	_u.mutation.SetInvoiceApplicationID(v)
-	return _u
-}
-
-// SetNillableInvoiceApplicationID sets the "invoice_application_id" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableInvoiceApplicationID(v *int64) *PaymentOrderUpdate {
-	if v != nil {
-		_u.SetInvoiceApplicationID(*v)
-	}
-	return _u
-}
-
-// AddInvoiceApplicationID adds value to the "invoice_application_id" field.
-func (_u *PaymentOrderUpdate) AddInvoiceApplicationID(v int64) *PaymentOrderUpdate {
-	_u.mutation.AddInvoiceApplicationID(v)
-	return _u
-}
-
-// ClearInvoiceApplicationID clears the value of the "invoice_application_id" field.
-func (_u *PaymentOrderUpdate) ClearInvoiceApplicationID() *PaymentOrderUpdate {
-	_u.mutation.ClearInvoiceApplicationID()
 	return _u
 }
 
@@ -912,36 +719,6 @@ func (_u *PaymentOrderUpdate) SetUser(v *User) *PaymentOrderUpdate {
 	return _u.SetUserID(v.ID)
 }
 
-// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
-func (_u *PaymentOrderUpdate) AddCouponUsageIDs(ids ...int64) *PaymentOrderUpdate {
-	_u.mutation.AddCouponUsageIDs(ids...)
-	return _u
-}
-
-// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
-func (_u *PaymentOrderUpdate) AddCouponUsages(v ...*CouponUsage) *PaymentOrderUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddCouponUsageIDs(ids...)
-}
-
-// AddInvoiceApplicationOrderIDs adds the "invoice_application_orders" edge to the InvoiceApplicationOrder entity by IDs.
-func (_u *PaymentOrderUpdate) AddInvoiceApplicationOrderIDs(ids ...int64) *PaymentOrderUpdate {
-	_u.mutation.AddInvoiceApplicationOrderIDs(ids...)
-	return _u
-}
-
-// AddInvoiceApplicationOrders adds the "invoice_application_orders" edges to the InvoiceApplicationOrder entity.
-func (_u *PaymentOrderUpdate) AddInvoiceApplicationOrders(v ...*InvoiceApplicationOrder) *PaymentOrderUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddInvoiceApplicationOrderIDs(ids...)
-}
-
 // Mutation returns the PaymentOrderMutation object of the builder.
 func (_u *PaymentOrderUpdate) Mutation() *PaymentOrderMutation {
 	return _u.mutation
@@ -951,48 +728,6 @@ func (_u *PaymentOrderUpdate) Mutation() *PaymentOrderMutation {
 func (_u *PaymentOrderUpdate) ClearUser() *PaymentOrderUpdate {
 	_u.mutation.ClearUser()
 	return _u
-}
-
-// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
-func (_u *PaymentOrderUpdate) ClearCouponUsages() *PaymentOrderUpdate {
-	_u.mutation.ClearCouponUsages()
-	return _u
-}
-
-// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
-func (_u *PaymentOrderUpdate) RemoveCouponUsageIDs(ids ...int64) *PaymentOrderUpdate {
-	_u.mutation.RemoveCouponUsageIDs(ids...)
-	return _u
-}
-
-// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
-func (_u *PaymentOrderUpdate) RemoveCouponUsages(v ...*CouponUsage) *PaymentOrderUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveCouponUsageIDs(ids...)
-}
-
-// ClearInvoiceApplicationOrders clears all "invoice_application_orders" edges to the InvoiceApplicationOrder entity.
-func (_u *PaymentOrderUpdate) ClearInvoiceApplicationOrders() *PaymentOrderUpdate {
-	_u.mutation.ClearInvoiceApplicationOrders()
-	return _u
-}
-
-// RemoveInvoiceApplicationOrderIDs removes the "invoice_application_orders" edge to InvoiceApplicationOrder entities by IDs.
-func (_u *PaymentOrderUpdate) RemoveInvoiceApplicationOrderIDs(ids ...int64) *PaymentOrderUpdate {
-	_u.mutation.RemoveInvoiceApplicationOrderIDs(ids...)
-	return _u
-}
-
-// RemoveInvoiceApplicationOrders removes "invoice_application_orders" edges to InvoiceApplicationOrder entities.
-func (_u *PaymentOrderUpdate) RemoveInvoiceApplicationOrders(v ...*InvoiceApplicationOrder) *PaymentOrderUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveInvoiceApplicationOrderIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -1043,11 +778,6 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.CouponCode(); ok {
-		if err := paymentorder.CouponCodeValidator(v); err != nil {
-			return &ValidationError{Name: "coupon_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.coupon_code": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -1073,11 +803,6 @@ func (_u *PaymentOrderUpdate) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SubscriptionValidityUnit(); ok {
-		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
-			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -1091,11 +816,6 @@ func (_u *PaymentOrderUpdate) check() error {
 	if v, ok := _u.mutation.Status(); ok {
 		if err := paymentorder.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.InvoiceStatus(); ok {
-		if err := paymentorder.InvoiceStatusValidator(v); err != nil {
-			return &ValidationError{Name: "invoice_status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.invoice_status": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.RefundRequestedBy(); ok {
@@ -1161,21 +881,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.DiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
-		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.CouponCode(); ok {
-		_spec.SetField(paymentorder.FieldCouponCode, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.CouponDiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCouponDiscountAmount(); ok {
-		_spec.AddField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
-	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 	}
@@ -1227,15 +932,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.SubscriptionGroupIDCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionGroupID, field.TypeInt64)
 	}
-	if value, ok := _u.mutation.SubscriptionID(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedSubscriptionID(); ok {
-		_spec.AddField(paymentorder.FieldSubscriptionID, field.TypeInt64, value)
-	}
-	if _u.mutation.SubscriptionIDCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionID, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.SubscriptionDays(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 	}
@@ -1244,27 +940,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
-	}
-	if value, ok := _u.mutation.SubscriptionQuotaUsd(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedSubscriptionQuotaUsd(); ok {
-		_spec.AddField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
-	}
-	if _u.mutation.SubscriptionQuotaUsdCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64)
-	}
-	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
-	}
-	if _u.mutation.SubscriptionValidityUnitCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
-	}
-	if value, ok := _u.mutation.SubscriptionPlanExpiresAt(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
-	}
-	if _u.mutation.SubscriptionPlanExpiresAtCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1286,18 +961,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.InvoiceStatus(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.InvoiceApplicationID(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedInvoiceApplicationID(); ok {
-		_spec.AddField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64, value)
-	}
-	if _u.mutation.InvoiceApplicationIDCleared() {
-		_spec.ClearField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
@@ -1402,96 +1065,6 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.CouponUsagesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.InvoiceApplicationOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedInvoiceApplicationOrdersIDs(); len(nodes) > 0 && !_u.mutation.InvoiceApplicationOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.InvoiceApplicationOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1641,62 +1214,6 @@ func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpd
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddFeeRate(v)
-	return _u
-}
-
-// SetDiscountAmount sets the "discount_amount" field.
-func (_u *PaymentOrderUpdateOne) SetDiscountAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetDiscountAmount()
-	_u.mutation.SetDiscountAmount(v)
-	return _u
-}
-
-// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableDiscountAmount(v *float64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetDiscountAmount(*v)
-	}
-	return _u
-}
-
-// AddDiscountAmount adds value to the "discount_amount" field.
-func (_u *PaymentOrderUpdateOne) AddDiscountAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddDiscountAmount(v)
-	return _u
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (_u *PaymentOrderUpdateOne) SetCouponCode(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetCouponCode(v)
-	return _u
-}
-
-// SetNillableCouponCode sets the "coupon_code" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableCouponCode(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetCouponCode(*v)
-	}
-	return _u
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (_u *PaymentOrderUpdateOne) SetCouponDiscountAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetCouponDiscountAmount()
-	_u.mutation.SetCouponDiscountAmount(v)
-	return _u
-}
-
-// SetNillableCouponDiscountAmount sets the "coupon_discount_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableCouponDiscountAmount(v *float64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetCouponDiscountAmount(*v)
-	}
-	return _u
-}
-
-// AddCouponDiscountAmount adds value to the "coupon_discount_amount" field.
-func (_u *PaymentOrderUpdateOne) AddCouponDiscountAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddCouponDiscountAmount(v)
 	return _u
 }
 
@@ -1884,33 +1401,6 @@ func (_u *PaymentOrderUpdateOne) ClearSubscriptionGroupID() *PaymentOrderUpdateO
 	return _u
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (_u *PaymentOrderUpdateOne) SetSubscriptionID(v int64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetSubscriptionID()
-	_u.mutation.SetSubscriptionID(v)
-	return _u
-}
-
-// SetNillableSubscriptionID sets the "subscription_id" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionID(v *int64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetSubscriptionID(*v)
-	}
-	return _u
-}
-
-// AddSubscriptionID adds value to the "subscription_id" field.
-func (_u *PaymentOrderUpdateOne) AddSubscriptionID(v int64) *PaymentOrderUpdateOne {
-	_u.mutation.AddSubscriptionID(v)
-	return _u
-}
-
-// ClearSubscriptionID clears the value of the "subscription_id" field.
-func (_u *PaymentOrderUpdateOne) ClearSubscriptionID() *PaymentOrderUpdateOne {
-	_u.mutation.ClearSubscriptionID()
-	return _u
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (_u *PaymentOrderUpdateOne) SetSubscriptionDays(v int) *PaymentOrderUpdateOne {
 	_u.mutation.ResetSubscriptionDays()
@@ -1935,73 +1425,6 @@ func (_u *PaymentOrderUpdateOne) AddSubscriptionDays(v int) *PaymentOrderUpdateO
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (_u *PaymentOrderUpdateOne) ClearSubscriptionDays() *PaymentOrderUpdateOne {
 	_u.mutation.ClearSubscriptionDays()
-	return _u
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdateOne) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetSubscriptionQuotaUsd()
-	_u.mutation.SetSubscriptionQuotaUsd(v)
-	return _u
-}
-
-// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetSubscriptionQuotaUsd(*v)
-	}
-	return _u
-}
-
-// AddSubscriptionQuotaUsd adds value to the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdateOne) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddSubscriptionQuotaUsd(v)
-	return _u
-}
-
-// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
-func (_u *PaymentOrderUpdateOne) ClearSubscriptionQuotaUsd() *PaymentOrderUpdateOne {
-	_u.mutation.ClearSubscriptionQuotaUsd()
-	return _u
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (_u *PaymentOrderUpdateOne) SetSubscriptionValidityUnit(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetSubscriptionValidityUnit(v)
-	return _u
-}
-
-// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetSubscriptionValidityUnit(*v)
-	}
-	return _u
-}
-
-// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
-func (_u *PaymentOrderUpdateOne) ClearSubscriptionValidityUnit() *PaymentOrderUpdateOne {
-	_u.mutation.ClearSubscriptionValidityUnit()
-	return _u
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (_u *PaymentOrderUpdateOne) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpdateOne {
-	_u.mutation.SetSubscriptionPlanExpiresAt(v)
-	return _u
-}
-
-// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetSubscriptionPlanExpiresAt(*v)
-	}
-	return _u
-}
-
-// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
-func (_u *PaymentOrderUpdateOne) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpdateOne {
-	_u.mutation.ClearSubscriptionPlanExpiresAt()
 	return _u
 }
 
@@ -2068,47 +1491,6 @@ func (_u *PaymentOrderUpdateOne) SetNillableStatus(v *string) *PaymentOrderUpdat
 	if v != nil {
 		_u.SetStatus(*v)
 	}
-	return _u
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (_u *PaymentOrderUpdateOne) SetInvoiceStatus(v string) *PaymentOrderUpdateOne {
-	_u.mutation.SetInvoiceStatus(v)
-	return _u
-}
-
-// SetNillableInvoiceStatus sets the "invoice_status" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableInvoiceStatus(v *string) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetInvoiceStatus(*v)
-	}
-	return _u
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (_u *PaymentOrderUpdateOne) SetInvoiceApplicationID(v int64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetInvoiceApplicationID()
-	_u.mutation.SetInvoiceApplicationID(v)
-	return _u
-}
-
-// SetNillableInvoiceApplicationID sets the "invoice_application_id" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableInvoiceApplicationID(v *int64) *PaymentOrderUpdateOne {
-	if v != nil {
-		_u.SetInvoiceApplicationID(*v)
-	}
-	return _u
-}
-
-// AddInvoiceApplicationID adds value to the "invoice_application_id" field.
-func (_u *PaymentOrderUpdateOne) AddInvoiceApplicationID(v int64) *PaymentOrderUpdateOne {
-	_u.mutation.AddInvoiceApplicationID(v)
-	return _u
-}
-
-// ClearInvoiceApplicationID clears the value of the "invoice_application_id" field.
-func (_u *PaymentOrderUpdateOne) ClearInvoiceApplicationID() *PaymentOrderUpdateOne {
-	_u.mutation.ClearInvoiceApplicationID()
 	return _u
 }
 
@@ -2400,36 +1782,6 @@ func (_u *PaymentOrderUpdateOne) SetUser(v *User) *PaymentOrderUpdateOne {
 	return _u.SetUserID(v.ID)
 }
 
-// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
-func (_u *PaymentOrderUpdateOne) AddCouponUsageIDs(ids ...int64) *PaymentOrderUpdateOne {
-	_u.mutation.AddCouponUsageIDs(ids...)
-	return _u
-}
-
-// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
-func (_u *PaymentOrderUpdateOne) AddCouponUsages(v ...*CouponUsage) *PaymentOrderUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddCouponUsageIDs(ids...)
-}
-
-// AddInvoiceApplicationOrderIDs adds the "invoice_application_orders" edge to the InvoiceApplicationOrder entity by IDs.
-func (_u *PaymentOrderUpdateOne) AddInvoiceApplicationOrderIDs(ids ...int64) *PaymentOrderUpdateOne {
-	_u.mutation.AddInvoiceApplicationOrderIDs(ids...)
-	return _u
-}
-
-// AddInvoiceApplicationOrders adds the "invoice_application_orders" edges to the InvoiceApplicationOrder entity.
-func (_u *PaymentOrderUpdateOne) AddInvoiceApplicationOrders(v ...*InvoiceApplicationOrder) *PaymentOrderUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddInvoiceApplicationOrderIDs(ids...)
-}
-
 // Mutation returns the PaymentOrderMutation object of the builder.
 func (_u *PaymentOrderUpdateOne) Mutation() *PaymentOrderMutation {
 	return _u.mutation
@@ -2439,48 +1791,6 @@ func (_u *PaymentOrderUpdateOne) Mutation() *PaymentOrderMutation {
 func (_u *PaymentOrderUpdateOne) ClearUser() *PaymentOrderUpdateOne {
 	_u.mutation.ClearUser()
 	return _u
-}
-
-// ClearCouponUsages clears all "coupon_usages" edges to the CouponUsage entity.
-func (_u *PaymentOrderUpdateOne) ClearCouponUsages() *PaymentOrderUpdateOne {
-	_u.mutation.ClearCouponUsages()
-	return _u
-}
-
-// RemoveCouponUsageIDs removes the "coupon_usages" edge to CouponUsage entities by IDs.
-func (_u *PaymentOrderUpdateOne) RemoveCouponUsageIDs(ids ...int64) *PaymentOrderUpdateOne {
-	_u.mutation.RemoveCouponUsageIDs(ids...)
-	return _u
-}
-
-// RemoveCouponUsages removes "coupon_usages" edges to CouponUsage entities.
-func (_u *PaymentOrderUpdateOne) RemoveCouponUsages(v ...*CouponUsage) *PaymentOrderUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveCouponUsageIDs(ids...)
-}
-
-// ClearInvoiceApplicationOrders clears all "invoice_application_orders" edges to the InvoiceApplicationOrder entity.
-func (_u *PaymentOrderUpdateOne) ClearInvoiceApplicationOrders() *PaymentOrderUpdateOne {
-	_u.mutation.ClearInvoiceApplicationOrders()
-	return _u
-}
-
-// RemoveInvoiceApplicationOrderIDs removes the "invoice_application_orders" edge to InvoiceApplicationOrder entities by IDs.
-func (_u *PaymentOrderUpdateOne) RemoveInvoiceApplicationOrderIDs(ids ...int64) *PaymentOrderUpdateOne {
-	_u.mutation.RemoveInvoiceApplicationOrderIDs(ids...)
-	return _u
-}
-
-// RemoveInvoiceApplicationOrders removes "invoice_application_orders" edges to InvoiceApplicationOrder entities.
-func (_u *PaymentOrderUpdateOne) RemoveInvoiceApplicationOrders(v ...*InvoiceApplicationOrder) *PaymentOrderUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveInvoiceApplicationOrderIDs(ids...)
 }
 
 // Where appends a list predicates to the PaymentOrderUpdate builder.
@@ -2544,11 +1854,6 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "user_name", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.user_name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.CouponCode(); ok {
-		if err := paymentorder.CouponCodeValidator(v); err != nil {
-			return &ValidationError{Name: "coupon_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.coupon_code": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.RechargeCode(); ok {
 		if err := paymentorder.RechargeCodeValidator(v); err != nil {
 			return &ValidationError{Name: "recharge_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.recharge_code": %w`, err)}
@@ -2574,11 +1879,6 @@ func (_u *PaymentOrderUpdateOne) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.SubscriptionValidityUnit(); ok {
-		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
-			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -2592,11 +1892,6 @@ func (_u *PaymentOrderUpdateOne) check() error {
 	if v, ok := _u.mutation.Status(); ok {
 		if err := paymentorder.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.InvoiceStatus(); ok {
-		if err := paymentorder.InvoiceStatusValidator(v); err != nil {
-			return &ValidationError{Name: "invoice_status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.invoice_status": %w`, err)}
 		}
 	}
 	if v, ok := _u.mutation.RefundRequestedBy(); ok {
@@ -2679,21 +1974,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 	}
-	if value, ok := _u.mutation.DiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedDiscountAmount(); ok {
-		_spec.AddField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.CouponCode(); ok {
-		_spec.SetField(paymentorder.FieldCouponCode, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.CouponDiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedCouponDiscountAmount(); ok {
-		_spec.AddField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
-	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 	}
@@ -2745,15 +2025,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	if _u.mutation.SubscriptionGroupIDCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionGroupID, field.TypeInt64)
 	}
-	if value, ok := _u.mutation.SubscriptionID(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedSubscriptionID(); ok {
-		_spec.AddField(paymentorder.FieldSubscriptionID, field.TypeInt64, value)
-	}
-	if _u.mutation.SubscriptionIDCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionID, field.TypeInt64)
-	}
 	if value, ok := _u.mutation.SubscriptionDays(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 	}
@@ -2762,27 +2033,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if _u.mutation.SubscriptionDaysCleared() {
 		_spec.ClearField(paymentorder.FieldSubscriptionDays, field.TypeInt)
-	}
-	if value, ok := _u.mutation.SubscriptionQuotaUsd(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedSubscriptionQuotaUsd(); ok {
-		_spec.AddField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
-	}
-	if _u.mutation.SubscriptionQuotaUsdCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64)
-	}
-	if value, ok := _u.mutation.SubscriptionValidityUnit(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
-	}
-	if _u.mutation.SubscriptionValidityUnitCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString)
-	}
-	if value, ok := _u.mutation.SubscriptionPlanExpiresAt(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
-	}
-	if _u.mutation.SubscriptionPlanExpiresAtCleared() {
-		_spec.ClearField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -2804,18 +2054,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.InvoiceStatus(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.InvoiceApplicationID(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64, value)
-	}
-	if value, ok := _u.mutation.AddedInvoiceApplicationID(); ok {
-		_spec.AddField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64, value)
-	}
-	if _u.mutation.InvoiceApplicationIDCleared() {
-		_spec.ClearField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
@@ -2920,96 +2158,6 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.CouponUsagesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedCouponUsagesIDs(); len(nodes) > 0 && !_u.mutation.CouponUsagesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.CouponUsagesIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.InvoiceApplicationOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedInvoiceApplicationOrdersIDs(); len(nodes) > 0 && !_u.mutation.InvoiceApplicationOrdersCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.InvoiceApplicationOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

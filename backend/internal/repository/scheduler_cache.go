@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -1001,6 +1000,14 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
+		"codex_fingerprint_mode",
+		"codex_fingerprint_seed",
+		"codex_5h_used_percent",
+		"codex_7d_used_percent",
+		"codex_5h_reset_at",
+		"codex_7d_reset_at",
+		"codex_5h_reset_after_seconds",
+		"codex_7d_reset_after_seconds",
 		"codex_usage_updated_at",
 		"auto_pause_5h_threshold",
 		"auto_pause_7d_threshold",
@@ -1008,10 +1015,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"auto_pause_7d_disabled",
 		"model_rate_limits",
 		service.UpstreamBillingProbeExtraKey,
-	}
-	prefixes := []string{
-		"codex_5h_",
-		"codex_7d_",
+		service.GrokMediaEligibleExtraKey,
+		"grok_billing_snapshot",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
@@ -1024,17 +1029,6 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 				value = filteredProbe
 			}
 			filtered[key] = value
-		}
-	}
-	for key, value := range extra {
-		if value == nil {
-			continue
-		}
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(key, prefix) {
-				filtered[key] = value
-				break
-			}
 		}
 	}
 	if len(filtered) == 0 {

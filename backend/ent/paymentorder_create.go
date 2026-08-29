@@ -11,8 +11,6 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
-	"github.com/Wei-Shaw/sub2api/ent/couponusage"
-	"github.com/Wei-Shaw/sub2api/ent/invoiceapplicationorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 )
@@ -79,48 +77,6 @@ func (_c *PaymentOrderCreate) SetFeeRate(v float64) *PaymentOrderCreate {
 func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate {
 	if v != nil {
 		_c.SetFeeRate(*v)
-	}
-	return _c
-}
-
-// SetDiscountAmount sets the "discount_amount" field.
-func (_c *PaymentOrderCreate) SetDiscountAmount(v float64) *PaymentOrderCreate {
-	_c.mutation.SetDiscountAmount(v)
-	return _c
-}
-
-// SetNillableDiscountAmount sets the "discount_amount" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableDiscountAmount(v *float64) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetDiscountAmount(*v)
-	}
-	return _c
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (_c *PaymentOrderCreate) SetCouponCode(v string) *PaymentOrderCreate {
-	_c.mutation.SetCouponCode(v)
-	return _c
-}
-
-// SetNillableCouponCode sets the "coupon_code" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableCouponCode(v *string) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetCouponCode(*v)
-	}
-	return _c
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (_c *PaymentOrderCreate) SetCouponDiscountAmount(v float64) *PaymentOrderCreate {
-	_c.mutation.SetCouponDiscountAmount(v)
-	return _c
-}
-
-// SetNillableCouponDiscountAmount sets the "coupon_discount_amount" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableCouponDiscountAmount(v *float64) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetCouponDiscountAmount(*v)
 	}
 	return _c
 }
@@ -241,20 +197,6 @@ func (_c *PaymentOrderCreate) SetNillableSubscriptionGroupID(v *int64) *PaymentO
 	return _c
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (_c *PaymentOrderCreate) SetSubscriptionID(v int64) *PaymentOrderCreate {
-	_c.mutation.SetSubscriptionID(v)
-	return _c
-}
-
-// SetNillableSubscriptionID sets the "subscription_id" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableSubscriptionID(v *int64) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetSubscriptionID(*v)
-	}
-	return _c
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (_c *PaymentOrderCreate) SetSubscriptionDays(v int) *PaymentOrderCreate {
 	_c.mutation.SetSubscriptionDays(v)
@@ -265,48 +207,6 @@ func (_c *PaymentOrderCreate) SetSubscriptionDays(v int) *PaymentOrderCreate {
 func (_c *PaymentOrderCreate) SetNillableSubscriptionDays(v *int) *PaymentOrderCreate {
 	if v != nil {
 		_c.SetSubscriptionDays(*v)
-	}
-	return _c
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (_c *PaymentOrderCreate) SetSubscriptionQuotaUsd(v float64) *PaymentOrderCreate {
-	_c.mutation.SetSubscriptionQuotaUsd(v)
-	return _c
-}
-
-// SetNillableSubscriptionQuotaUsd sets the "subscription_quota_usd" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableSubscriptionQuotaUsd(v *float64) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetSubscriptionQuotaUsd(*v)
-	}
-	return _c
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (_c *PaymentOrderCreate) SetSubscriptionValidityUnit(v string) *PaymentOrderCreate {
-	_c.mutation.SetSubscriptionValidityUnit(v)
-	return _c
-}
-
-// SetNillableSubscriptionValidityUnit sets the "subscription_validity_unit" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableSubscriptionValidityUnit(v *string) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetSubscriptionValidityUnit(*v)
-	}
-	return _c
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (_c *PaymentOrderCreate) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderCreate {
-	_c.mutation.SetSubscriptionPlanExpiresAt(v)
-	return _c
-}
-
-// SetNillableSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableSubscriptionPlanExpiresAt(v *time.Time) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetSubscriptionPlanExpiresAt(*v)
 	}
 	return _c
 }
@@ -355,34 +255,6 @@ func (_c *PaymentOrderCreate) SetStatus(v string) *PaymentOrderCreate {
 func (_c *PaymentOrderCreate) SetNillableStatus(v *string) *PaymentOrderCreate {
 	if v != nil {
 		_c.SetStatus(*v)
-	}
-	return _c
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (_c *PaymentOrderCreate) SetInvoiceStatus(v string) *PaymentOrderCreate {
-	_c.mutation.SetInvoiceStatus(v)
-	return _c
-}
-
-// SetNillableInvoiceStatus sets the "invoice_status" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableInvoiceStatus(v *string) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetInvoiceStatus(*v)
-	}
-	return _c
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (_c *PaymentOrderCreate) SetInvoiceApplicationID(v int64) *PaymentOrderCreate {
-	_c.mutation.SetInvoiceApplicationID(v)
-	return _c
-}
-
-// SetNillableInvoiceApplicationID sets the "invoice_application_id" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableInvoiceApplicationID(v *int64) *PaymentOrderCreate {
-	if v != nil {
-		_c.SetInvoiceApplicationID(*v)
 	}
 	return _c
 }
@@ -606,36 +478,6 @@ func (_c *PaymentOrderCreate) SetUser(v *User) *PaymentOrderCreate {
 	return _c.SetUserID(v.ID)
 }
 
-// AddCouponUsageIDs adds the "coupon_usages" edge to the CouponUsage entity by IDs.
-func (_c *PaymentOrderCreate) AddCouponUsageIDs(ids ...int64) *PaymentOrderCreate {
-	_c.mutation.AddCouponUsageIDs(ids...)
-	return _c
-}
-
-// AddCouponUsages adds the "coupon_usages" edges to the CouponUsage entity.
-func (_c *PaymentOrderCreate) AddCouponUsages(v ...*CouponUsage) *PaymentOrderCreate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddCouponUsageIDs(ids...)
-}
-
-// AddInvoiceApplicationOrderIDs adds the "invoice_application_orders" edge to the InvoiceApplicationOrder entity by IDs.
-func (_c *PaymentOrderCreate) AddInvoiceApplicationOrderIDs(ids ...int64) *PaymentOrderCreate {
-	_c.mutation.AddInvoiceApplicationOrderIDs(ids...)
-	return _c
-}
-
-// AddInvoiceApplicationOrders adds the "invoice_application_orders" edges to the InvoiceApplicationOrder entity.
-func (_c *PaymentOrderCreate) AddInvoiceApplicationOrders(v ...*InvoiceApplicationOrder) *PaymentOrderCreate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _c.AddInvoiceApplicationOrderIDs(ids...)
-}
-
 // Mutation returns the PaymentOrderMutation object of the builder.
 func (_c *PaymentOrderCreate) Mutation() *PaymentOrderMutation {
 	return _c.mutation
@@ -675,18 +517,6 @@ func (_c *PaymentOrderCreate) defaults() {
 		v := paymentorder.DefaultFeeRate
 		_c.mutation.SetFeeRate(v)
 	}
-	if _, ok := _c.mutation.DiscountAmount(); !ok {
-		v := paymentorder.DefaultDiscountAmount
-		_c.mutation.SetDiscountAmount(v)
-	}
-	if _, ok := _c.mutation.CouponCode(); !ok {
-		v := paymentorder.DefaultCouponCode
-		_c.mutation.SetCouponCode(v)
-	}
-	if _, ok := _c.mutation.CouponDiscountAmount(); !ok {
-		v := paymentorder.DefaultCouponDiscountAmount
-		_c.mutation.SetCouponDiscountAmount(v)
-	}
 	if _, ok := _c.mutation.OutTradeNo(); !ok {
 		v := paymentorder.DefaultOutTradeNo
 		_c.mutation.SetOutTradeNo(v)
@@ -698,10 +528,6 @@ func (_c *PaymentOrderCreate) defaults() {
 	if _, ok := _c.mutation.Status(); !ok {
 		v := paymentorder.DefaultStatus
 		_c.mutation.SetStatus(v)
-	}
-	if _, ok := _c.mutation.InvoiceStatus(); !ok {
-		v := paymentorder.DefaultInvoiceStatus
-		_c.mutation.SetInvoiceStatus(v)
 	}
 	if _, ok := _c.mutation.RefundAmount(); !ok {
 		v := paymentorder.DefaultRefundAmount
@@ -751,20 +577,6 @@ func (_c *PaymentOrderCreate) check() error {
 	if _, ok := _c.mutation.FeeRate(); !ok {
 		return &ValidationError{Name: "fee_rate", err: errors.New(`ent: missing required field "PaymentOrder.fee_rate"`)}
 	}
-	if _, ok := _c.mutation.DiscountAmount(); !ok {
-		return &ValidationError{Name: "discount_amount", err: errors.New(`ent: missing required field "PaymentOrder.discount_amount"`)}
-	}
-	if _, ok := _c.mutation.CouponCode(); !ok {
-		return &ValidationError{Name: "coupon_code", err: errors.New(`ent: missing required field "PaymentOrder.coupon_code"`)}
-	}
-	if v, ok := _c.mutation.CouponCode(); ok {
-		if err := paymentorder.CouponCodeValidator(v); err != nil {
-			return &ValidationError{Name: "coupon_code", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.coupon_code": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.CouponDiscountAmount(); !ok {
-		return &ValidationError{Name: "coupon_discount_amount", err: errors.New(`ent: missing required field "PaymentOrder.coupon_discount_amount"`)}
-	}
 	if _, ok := _c.mutation.RechargeCode(); !ok {
 		return &ValidationError{Name: "recharge_code", err: errors.New(`ent: missing required field "PaymentOrder.recharge_code"`)}
 	}
@@ -805,11 +617,6 @@ func (_c *PaymentOrderCreate) check() error {
 			return &ValidationError{Name: "order_type", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.order_type": %w`, err)}
 		}
 	}
-	if v, ok := _c.mutation.SubscriptionValidityUnit(); ok {
-		if err := paymentorder.SubscriptionValidityUnitValidator(v); err != nil {
-			return &ValidationError{Name: "subscription_validity_unit", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.subscription_validity_unit": %w`, err)}
-		}
-	}
 	if v, ok := _c.mutation.ProviderInstanceID(); ok {
 		if err := paymentorder.ProviderInstanceIDValidator(v); err != nil {
 			return &ValidationError{Name: "provider_instance_id", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.provider_instance_id": %w`, err)}
@@ -826,14 +633,6 @@ func (_c *PaymentOrderCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := paymentorder.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.status": %w`, err)}
-		}
-	}
-	if _, ok := _c.mutation.InvoiceStatus(); !ok {
-		return &ValidationError{Name: "invoice_status", err: errors.New(`ent: missing required field "PaymentOrder.invoice_status"`)}
-	}
-	if v, ok := _c.mutation.InvoiceStatus(); ok {
-		if err := paymentorder.InvoiceStatusValidator(v); err != nil {
-			return &ValidationError{Name: "invoice_status", err: fmt.Errorf(`ent: validator failed for field "PaymentOrder.invoice_status": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.RefundAmount(); !ok {
@@ -926,18 +725,6 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 		_node.FeeRate = value
 	}
-	if value, ok := _c.mutation.DiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldDiscountAmount, field.TypeFloat64, value)
-		_node.DiscountAmount = value
-	}
-	if value, ok := _c.mutation.CouponCode(); ok {
-		_spec.SetField(paymentorder.FieldCouponCode, field.TypeString, value)
-		_node.CouponCode = value
-	}
-	if value, ok := _c.mutation.CouponDiscountAmount(); ok {
-		_spec.SetField(paymentorder.FieldCouponDiscountAmount, field.TypeFloat64, value)
-		_node.CouponDiscountAmount = value
-	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 		_node.RechargeCode = value
@@ -978,25 +765,9 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldSubscriptionGroupID, field.TypeInt64, value)
 		_node.SubscriptionGroupID = &value
 	}
-	if value, ok := _c.mutation.SubscriptionID(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionID, field.TypeInt64, value)
-		_node.SubscriptionID = &value
-	}
 	if value, ok := _c.mutation.SubscriptionDays(); ok {
 		_spec.SetField(paymentorder.FieldSubscriptionDays, field.TypeInt, value)
 		_node.SubscriptionDays = &value
-	}
-	if value, ok := _c.mutation.SubscriptionQuotaUsd(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionQuotaUsd, field.TypeFloat64, value)
-		_node.SubscriptionQuotaUsd = &value
-	}
-	if value, ok := _c.mutation.SubscriptionValidityUnit(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionValidityUnit, field.TypeString, value)
-		_node.SubscriptionValidityUnit = &value
-	}
-	if value, ok := _c.mutation.SubscriptionPlanExpiresAt(); ok {
-		_spec.SetField(paymentorder.FieldSubscriptionPlanExpiresAt, field.TypeTime, value)
-		_node.SubscriptionPlanExpiresAt = &value
 	}
 	if value, ok := _c.mutation.ProviderInstanceID(); ok {
 		_spec.SetField(paymentorder.FieldProviderInstanceID, field.TypeString, value)
@@ -1013,14 +784,6 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 		_node.Status = value
-	}
-	if value, ok := _c.mutation.InvoiceStatus(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceStatus, field.TypeString, value)
-		_node.InvoiceStatus = value
-	}
-	if value, ok := _c.mutation.InvoiceApplicationID(); ok {
-		_spec.SetField(paymentorder.FieldInvoiceApplicationID, field.TypeInt64, value)
-		_node.InvoiceApplicationID = &value
 	}
 	if value, ok := _c.mutation.RefundAmount(); ok {
 		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
@@ -1105,38 +868,6 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.UserID = nodes[0]
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := _c.mutation.CouponUsagesIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.CouponUsagesTable,
-			Columns: []string{paymentorder.CouponUsagesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(couponusage.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges = append(_spec.Edges, edge)
-	}
-	if nodes := _c.mutation.InvoiceApplicationOrdersIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   paymentorder.InvoiceApplicationOrdersTable,
-			Columns: []string{paymentorder.InvoiceApplicationOrdersColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(invoiceapplicationorder.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -1296,54 +1027,6 @@ func (u *PaymentOrderUpsert) UpdateFeeRate() *PaymentOrderUpsert {
 // AddFeeRate adds v to the "fee_rate" field.
 func (u *PaymentOrderUpsert) AddFeeRate(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldFeeRate, v)
-	return u
-}
-
-// SetDiscountAmount sets the "discount_amount" field.
-func (u *PaymentOrderUpsert) SetDiscountAmount(v float64) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldDiscountAmount, v)
-	return u
-}
-
-// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateDiscountAmount() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldDiscountAmount)
-	return u
-}
-
-// AddDiscountAmount adds v to the "discount_amount" field.
-func (u *PaymentOrderUpsert) AddDiscountAmount(v float64) *PaymentOrderUpsert {
-	u.Add(paymentorder.FieldDiscountAmount, v)
-	return u
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (u *PaymentOrderUpsert) SetCouponCode(v string) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldCouponCode, v)
-	return u
-}
-
-// UpdateCouponCode sets the "coupon_code" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateCouponCode() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldCouponCode)
-	return u
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsert) SetCouponDiscountAmount(v float64) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldCouponDiscountAmount, v)
-	return u
-}
-
-// UpdateCouponDiscountAmount sets the "coupon_discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateCouponDiscountAmount() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldCouponDiscountAmount)
-	return u
-}
-
-// AddCouponDiscountAmount adds v to the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsert) AddCouponDiscountAmount(v float64) *PaymentOrderUpsert {
-	u.Add(paymentorder.FieldCouponDiscountAmount, v)
 	return u
 }
 
@@ -1509,30 +1192,6 @@ func (u *PaymentOrderUpsert) ClearSubscriptionGroupID() *PaymentOrderUpsert {
 	return u
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (u *PaymentOrderUpsert) SetSubscriptionID(v int64) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldSubscriptionID, v)
-	return u
-}
-
-// UpdateSubscriptionID sets the "subscription_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateSubscriptionID() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldSubscriptionID)
-	return u
-}
-
-// AddSubscriptionID adds v to the "subscription_id" field.
-func (u *PaymentOrderUpsert) AddSubscriptionID(v int64) *PaymentOrderUpsert {
-	u.Add(paymentorder.FieldSubscriptionID, v)
-	return u
-}
-
-// ClearSubscriptionID clears the value of the "subscription_id" field.
-func (u *PaymentOrderUpsert) ClearSubscriptionID() *PaymentOrderUpsert {
-	u.SetNull(paymentorder.FieldSubscriptionID)
-	return u
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (u *PaymentOrderUpsert) SetSubscriptionDays(v int) *PaymentOrderUpsert {
 	u.Set(paymentorder.FieldSubscriptionDays, v)
@@ -1554,66 +1213,6 @@ func (u *PaymentOrderUpsert) AddSubscriptionDays(v int) *PaymentOrderUpsert {
 // ClearSubscriptionDays clears the value of the "subscription_days" field.
 func (u *PaymentOrderUpsert) ClearSubscriptionDays() *PaymentOrderUpsert {
 	u.SetNull(paymentorder.FieldSubscriptionDays)
-	return u
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsert) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldSubscriptionQuotaUsd, v)
-	return u
-}
-
-// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldSubscriptionQuotaUsd)
-	return u
-}
-
-// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsert) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsert {
-	u.Add(paymentorder.FieldSubscriptionQuotaUsd, v)
-	return u
-}
-
-// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsert) ClearSubscriptionQuotaUsd() *PaymentOrderUpsert {
-	u.SetNull(paymentorder.FieldSubscriptionQuotaUsd)
-	return u
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsert) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldSubscriptionValidityUnit, v)
-	return u
-}
-
-// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateSubscriptionValidityUnit() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldSubscriptionValidityUnit)
-	return u
-}
-
-// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsert) ClearSubscriptionValidityUnit() *PaymentOrderUpsert {
-	u.SetNull(paymentorder.FieldSubscriptionValidityUnit)
-	return u
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsert) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldSubscriptionPlanExpiresAt, v)
-	return u
-}
-
-// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldSubscriptionPlanExpiresAt)
-	return u
-}
-
-// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsert) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsert {
-	u.SetNull(paymentorder.FieldSubscriptionPlanExpiresAt)
 	return u
 }
 
@@ -1680,42 +1279,6 @@ func (u *PaymentOrderUpsert) SetStatus(v string) *PaymentOrderUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *PaymentOrderUpsert) UpdateStatus() *PaymentOrderUpsert {
 	u.SetExcluded(paymentorder.FieldStatus)
-	return u
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (u *PaymentOrderUpsert) SetInvoiceStatus(v string) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldInvoiceStatus, v)
-	return u
-}
-
-// UpdateInvoiceStatus sets the "invoice_status" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateInvoiceStatus() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldInvoiceStatus)
-	return u
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (u *PaymentOrderUpsert) SetInvoiceApplicationID(v int64) *PaymentOrderUpsert {
-	u.Set(paymentorder.FieldInvoiceApplicationID, v)
-	return u
-}
-
-// UpdateInvoiceApplicationID sets the "invoice_application_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsert) UpdateInvoiceApplicationID() *PaymentOrderUpsert {
-	u.SetExcluded(paymentorder.FieldInvoiceApplicationID)
-	return u
-}
-
-// AddInvoiceApplicationID adds v to the "invoice_application_id" field.
-func (u *PaymentOrderUpsert) AddInvoiceApplicationID(v int64) *PaymentOrderUpsert {
-	u.Add(paymentorder.FieldInvoiceApplicationID, v)
-	return u
-}
-
-// ClearInvoiceApplicationID clears the value of the "invoice_application_id" field.
-func (u *PaymentOrderUpsert) ClearInvoiceApplicationID() *PaymentOrderUpsert {
-	u.SetNull(paymentorder.FieldInvoiceApplicationID)
 	return u
 }
 
@@ -2148,62 +1711,6 @@ func (u *PaymentOrderUpsertOne) UpdateFeeRate() *PaymentOrderUpsertOne {
 	})
 }
 
-// SetDiscountAmount sets the "discount_amount" field.
-func (u *PaymentOrderUpsertOne) SetDiscountAmount(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetDiscountAmount(v)
-	})
-}
-
-// AddDiscountAmount adds v to the "discount_amount" field.
-func (u *PaymentOrderUpsertOne) AddDiscountAmount(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddDiscountAmount(v)
-	})
-}
-
-// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateDiscountAmount() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateDiscountAmount()
-	})
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (u *PaymentOrderUpsertOne) SetCouponCode(v string) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetCouponCode(v)
-	})
-}
-
-// UpdateCouponCode sets the "coupon_code" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateCouponCode() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateCouponCode()
-	})
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsertOne) SetCouponDiscountAmount(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetCouponDiscountAmount(v)
-	})
-}
-
-// AddCouponDiscountAmount adds v to the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsertOne) AddCouponDiscountAmount(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddCouponDiscountAmount(v)
-	})
-}
-
-// UpdateCouponDiscountAmount sets the "coupon_discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateCouponDiscountAmount() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateCouponDiscountAmount()
-	})
-}
-
 // SetRechargeCode sets the "recharge_code" field.
 func (u *PaymentOrderUpsertOne) SetRechargeCode(v string) *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -2393,34 +1900,6 @@ func (u *PaymentOrderUpsertOne) ClearSubscriptionGroupID() *PaymentOrderUpsertOn
 	})
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (u *PaymentOrderUpsertOne) SetSubscriptionID(v int64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionID(v)
-	})
-}
-
-// AddSubscriptionID adds v to the "subscription_id" field.
-func (u *PaymentOrderUpsertOne) AddSubscriptionID(v int64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddSubscriptionID(v)
-	})
-}
-
-// UpdateSubscriptionID sets the "subscription_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateSubscriptionID() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionID()
-	})
-}
-
-// ClearSubscriptionID clears the value of the "subscription_id" field.
-func (u *PaymentOrderUpsertOne) ClearSubscriptionID() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionID()
-	})
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (u *PaymentOrderUpsertOne) SetSubscriptionDays(v int) *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -2446,76 +1925,6 @@ func (u *PaymentOrderUpsertOne) UpdateSubscriptionDays() *PaymentOrderUpsertOne 
 func (u *PaymentOrderUpsertOne) ClearSubscriptionDays() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
-	})
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertOne) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionQuotaUsd(v)
-	})
-}
-
-// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertOne) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddSubscriptionQuotaUsd(v)
-	})
-}
-
-// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionQuotaUsd()
-	})
-}
-
-// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertOne) ClearSubscriptionQuotaUsd() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionQuotaUsd()
-	})
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsertOne) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionValidityUnit(v)
-	})
-}
-
-// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateSubscriptionValidityUnit() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionValidityUnit()
-	})
-}
-
-// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsertOne) ClearSubscriptionValidityUnit() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionValidityUnit()
-	})
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsertOne) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionPlanExpiresAt(v)
-	})
-}
-
-// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionPlanExpiresAt()
-	})
-}
-
-// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsertOne) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionPlanExpiresAt()
 	})
 }
 
@@ -2593,48 +2002,6 @@ func (u *PaymentOrderUpsertOne) SetStatus(v string) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateStatus() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateStatus()
-	})
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (u *PaymentOrderUpsertOne) SetInvoiceStatus(v string) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetInvoiceStatus(v)
-	})
-}
-
-// UpdateInvoiceStatus sets the "invoice_status" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateInvoiceStatus() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateInvoiceStatus()
-	})
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (u *PaymentOrderUpsertOne) SetInvoiceApplicationID(v int64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetInvoiceApplicationID(v)
-	})
-}
-
-// AddInvoiceApplicationID adds v to the "invoice_application_id" field.
-func (u *PaymentOrderUpsertOne) AddInvoiceApplicationID(v int64) *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddInvoiceApplicationID(v)
-	})
-}
-
-// UpdateInvoiceApplicationID sets the "invoice_application_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsertOne) UpdateInvoiceApplicationID() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateInvoiceApplicationID()
-	})
-}
-
-// ClearInvoiceApplicationID clears the value of the "invoice_application_id" field.
-func (u *PaymentOrderUpsertOne) ClearInvoiceApplicationID() *PaymentOrderUpsertOne {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearInvoiceApplicationID()
 	})
 }
 
@@ -3276,62 +2643,6 @@ func (u *PaymentOrderUpsertBulk) UpdateFeeRate() *PaymentOrderUpsertBulk {
 	})
 }
 
-// SetDiscountAmount sets the "discount_amount" field.
-func (u *PaymentOrderUpsertBulk) SetDiscountAmount(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetDiscountAmount(v)
-	})
-}
-
-// AddDiscountAmount adds v to the "discount_amount" field.
-func (u *PaymentOrderUpsertBulk) AddDiscountAmount(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddDiscountAmount(v)
-	})
-}
-
-// UpdateDiscountAmount sets the "discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateDiscountAmount() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateDiscountAmount()
-	})
-}
-
-// SetCouponCode sets the "coupon_code" field.
-func (u *PaymentOrderUpsertBulk) SetCouponCode(v string) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetCouponCode(v)
-	})
-}
-
-// UpdateCouponCode sets the "coupon_code" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateCouponCode() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateCouponCode()
-	})
-}
-
-// SetCouponDiscountAmount sets the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsertBulk) SetCouponDiscountAmount(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetCouponDiscountAmount(v)
-	})
-}
-
-// AddCouponDiscountAmount adds v to the "coupon_discount_amount" field.
-func (u *PaymentOrderUpsertBulk) AddCouponDiscountAmount(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddCouponDiscountAmount(v)
-	})
-}
-
-// UpdateCouponDiscountAmount sets the "coupon_discount_amount" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateCouponDiscountAmount() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateCouponDiscountAmount()
-	})
-}
-
 // SetRechargeCode sets the "recharge_code" field.
 func (u *PaymentOrderUpsertBulk) SetRechargeCode(v string) *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -3521,34 +2832,6 @@ func (u *PaymentOrderUpsertBulk) ClearSubscriptionGroupID() *PaymentOrderUpsertB
 	})
 }
 
-// SetSubscriptionID sets the "subscription_id" field.
-func (u *PaymentOrderUpsertBulk) SetSubscriptionID(v int64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionID(v)
-	})
-}
-
-// AddSubscriptionID adds v to the "subscription_id" field.
-func (u *PaymentOrderUpsertBulk) AddSubscriptionID(v int64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddSubscriptionID(v)
-	})
-}
-
-// UpdateSubscriptionID sets the "subscription_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateSubscriptionID() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionID()
-	})
-}
-
-// ClearSubscriptionID clears the value of the "subscription_id" field.
-func (u *PaymentOrderUpsertBulk) ClearSubscriptionID() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionID()
-	})
-}
-
 // SetSubscriptionDays sets the "subscription_days" field.
 func (u *PaymentOrderUpsertBulk) SetSubscriptionDays(v int) *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
@@ -3574,76 +2857,6 @@ func (u *PaymentOrderUpsertBulk) UpdateSubscriptionDays() *PaymentOrderUpsertBul
 func (u *PaymentOrderUpsertBulk) ClearSubscriptionDays() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.ClearSubscriptionDays()
-	})
-}
-
-// SetSubscriptionQuotaUsd sets the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertBulk) SetSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionQuotaUsd(v)
-	})
-}
-
-// AddSubscriptionQuotaUsd adds v to the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertBulk) AddSubscriptionQuotaUsd(v float64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddSubscriptionQuotaUsd(v)
-	})
-}
-
-// UpdateSubscriptionQuotaUsd sets the "subscription_quota_usd" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateSubscriptionQuotaUsd() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionQuotaUsd()
-	})
-}
-
-// ClearSubscriptionQuotaUsd clears the value of the "subscription_quota_usd" field.
-func (u *PaymentOrderUpsertBulk) ClearSubscriptionQuotaUsd() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionQuotaUsd()
-	})
-}
-
-// SetSubscriptionValidityUnit sets the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsertBulk) SetSubscriptionValidityUnit(v string) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionValidityUnit(v)
-	})
-}
-
-// UpdateSubscriptionValidityUnit sets the "subscription_validity_unit" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateSubscriptionValidityUnit() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionValidityUnit()
-	})
-}
-
-// ClearSubscriptionValidityUnit clears the value of the "subscription_validity_unit" field.
-func (u *PaymentOrderUpsertBulk) ClearSubscriptionValidityUnit() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionValidityUnit()
-	})
-}
-
-// SetSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsertBulk) SetSubscriptionPlanExpiresAt(v time.Time) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetSubscriptionPlanExpiresAt(v)
-	})
-}
-
-// UpdateSubscriptionPlanExpiresAt sets the "subscription_plan_expires_at" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateSubscriptionPlanExpiresAt() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateSubscriptionPlanExpiresAt()
-	})
-}
-
-// ClearSubscriptionPlanExpiresAt clears the value of the "subscription_plan_expires_at" field.
-func (u *PaymentOrderUpsertBulk) ClearSubscriptionPlanExpiresAt() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearSubscriptionPlanExpiresAt()
 	})
 }
 
@@ -3721,48 +2934,6 @@ func (u *PaymentOrderUpsertBulk) SetStatus(v string) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateStatus() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateStatus()
-	})
-}
-
-// SetInvoiceStatus sets the "invoice_status" field.
-func (u *PaymentOrderUpsertBulk) SetInvoiceStatus(v string) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetInvoiceStatus(v)
-	})
-}
-
-// UpdateInvoiceStatus sets the "invoice_status" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateInvoiceStatus() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateInvoiceStatus()
-	})
-}
-
-// SetInvoiceApplicationID sets the "invoice_application_id" field.
-func (u *PaymentOrderUpsertBulk) SetInvoiceApplicationID(v int64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.SetInvoiceApplicationID(v)
-	})
-}
-
-// AddInvoiceApplicationID adds v to the "invoice_application_id" field.
-func (u *PaymentOrderUpsertBulk) AddInvoiceApplicationID(v int64) *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.AddInvoiceApplicationID(v)
-	})
-}
-
-// UpdateInvoiceApplicationID sets the "invoice_application_id" field to the value that was provided on create.
-func (u *PaymentOrderUpsertBulk) UpdateInvoiceApplicationID() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.UpdateInvoiceApplicationID()
-	})
-}
-
-// ClearInvoiceApplicationID clears the value of the "invoice_application_id" field.
-func (u *PaymentOrderUpsertBulk) ClearInvoiceApplicationID() *PaymentOrderUpsertBulk {
-	return u.Update(func(s *PaymentOrderUpsert) {
-		s.ClearInvoiceApplicationID()
 	})
 }
 

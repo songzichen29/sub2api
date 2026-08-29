@@ -74,9 +74,9 @@ func TestChannelMonitorV2WhereUsesConfiguredScopeAndEmptyFilterMeansAllConfigure
 		GroupIDs:  []int64{3, 4},
 	}
 	where, args := channelMonitorV2Where(filter, cfg, "m")
-	require.Contains(t, where, "m.platform IN (?)")
-	require.Contains(t, where, "m.group_id IN (?,?)")
-	require.Len(t, args, 5)
+	require.Contains(t, where, "m.platform = ANY($3)")
+	require.Contains(t, where, "m.group_id = ANY($4)")
+	require.Len(t, args, 4)
 }
 
 func TestChannelMonitorV2WhereRejectsGroupFilterOutsideConfiguredScope(t *testing.T) {
@@ -89,29 +89,41 @@ func TestChannelMonitorV2WhereRejectsGroupFilterOutsideConfiguredScope(t *testin
 	}
 	where, args := channelMonitorV2Where(filter, cfg, "m")
 	require.Contains(t, where, "FALSE")
-	require.NotContains(t, where, "m.group_id IN")
+	require.NotContains(t, where, "m.group_id = ANY")
 	require.Len(t, args, 3)
 }
 
 func TestChannelMonitorV2ErrorAggregationCountsFinalUserErrorsOnly(t *testing.T) {
-	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL + channelMonitorV2ErrorMetricsInsertSQL)
+	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL)
 	require.Contains(t, query, "not current_error.is_count_tokens")
 	require.Contains(t, query, "error_type = 'cyber_policy'")
-	require.Contains(t, query, "row_number() over")
+	require.Contains(t, query, "distinct on")
 	require.Contains(t, query, "candidate_ids")
-	require.Contains(t, query, "where bucket_start >= ? and bucket_start < ?")
+	require.Contains(t, query, "where bucket_start >= $1 and bucket_start < $2")
 	require.Contains(t, query, "upstream_affected_requests")
-	require.Contains(t, query, "json_length(current_error.upstream_errors)")
+	require.Contains(t, query, "jsonb_array_length(current_error.upstream_errors) > 0")
 	// request_id dedup must be time-bounded (no full-history scan).
-	require.Equal(t, 90*time.Minute, channelMonitorV2ErrorDedupLookback)
-	require.Contains(t, query, "current_error.created_at >= ?")
+	require.Contains(t, query, "interval '90 minutes'")
+	require.Contains(t, query, "current_error.created_at >= $1 - interval '90 minutes'")
+}
+
+func TestChannelMonitorV2ErrorAggregationResolvesCompositePlatform(t *testing.T) {
+	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL)
+	// Composite groups are a routing layer: error facts must resolve the concrete
+	// account platform (joining groups/accounts) so they aggregate under the same
+	// platform key as usage facts instead of the never-enabled 'composite' platform.
+	require.Contains(t, query, "g.platform = 'composite'")
+	require.Contains(t, query, "left join groups g on g.id = current_error.group_id")
+	require.Contains(t, query, "left join accounts a on a.id = current_error.account_id")
+	require.Contains(t, query, "a.platform")
+	require.Contains(t, query, "nullif(trim(a.platform), '')")
+	require.NotContains(t, query, "nullif(trim(a.platform))")
 }
 
 func TestChannelMonitorV2UsageSuccessExcludesCyberBillingRows(t *testing.T) {
 	for _, query := range []string{channelMonitorV2UsageMetricsSQL, channelMonitorV2UserMetricsSQL} {
 		require.Contains(t, query, "COALESCE(ul.request_type, 0) NOT IN (4, 6)")
 		require.Contains(t, query, "ul.actual_cost > 0")
-		require.Contains(t, query, "LEFT JOIN `groups` g")
 	}
 	require.Contains(t, channelMonitorV2PlatformSQL, "g.platform = 'composite'")
 	require.Contains(t, channelMonitorV2PlatformSQL, "a.platform")
@@ -148,7 +160,7 @@ func TestChannelMonitorV2TierRetentionPolicy(t *testing.T) {
 	require.Equal(t, 45*24*time.Hour, channelMonitorV2RetentionRollup12h)
 	require.Equal(t, 90*24*time.Hour, channelMonitorV2RetentionRollup1d)
 	require.Equal(t, channelMonitorV2RetentionRollup1d, channelMonitorV2MaxRetention())
-	require.Contains(t, channelMonitorV2WatermarkSQL, "TIMESTAMPADD(DAY, -90")
+	require.Contains(t, channelMonitorV2WatermarkSQL, "INTERVAL '90 days'")
 
 	// Every fixed rollup second must appear with a retention rule.
 	wantSeconds := map[int]time.Duration{
@@ -276,9 +288,9 @@ func TestChannelMonitorV2CatalogFilterClearsMultiSelectDimensions(t *testing.T) 
 	_, metricArgs := channelMonitorV2Where(filter, cfg, "m")
 
 	// Catalog WHERE still applies config scope (enabled platforms + group allow-list).
-	require.Contains(t, catalogWhere, "m.platform IN")
-	require.Contains(t, catalogWhere, "m.group_id IN")
-	require.Len(t, catalogArgs, 6) // start, end, 2 platforms, 2 groups
+	require.Contains(t, catalogWhere, "m.platform = ANY")
+	require.Contains(t, catalogWhere, "m.group_id = ANY")
+	require.Len(t, catalogArgs, 4) // start, end, platforms, groups
 	require.Len(t, metricArgs, 4)
 
 	// Metrics WHERE is narrower once multi-select platforms/groups are applied.

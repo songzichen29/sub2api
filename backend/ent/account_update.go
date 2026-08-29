@@ -10,7 +10,6 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
-	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -531,18 +530,6 @@ func (_u *AccountUpdate) ClearSessionWindowStatus() *AccountUpdate {
 	return _u
 }
 
-// SetTags sets the "tags" field.
-func (_u *AccountUpdate) SetTags(v []string) *AccountUpdate {
-	_u.mutation.SetTags(v)
-	return _u
-}
-
-// AppendTags appends value to the "tags" field.
-func (_u *AccountUpdate) AppendTags(v []string) *AccountUpdate {
-	_u.mutation.AppendTags(v)
-	return _u
-}
-
 // SetParentAccountID sets the "parent_account_id" field.
 func (_u *AccountUpdate) SetParentAccountID(v int64) *AccountUpdate {
 	_u.mutation.SetParentAccountID(v)
@@ -955,14 +942,6 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
-	}
-	if value, ok := _u.mutation.Tags(); ok {
-		_spec.SetField(account.FieldTags, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedTags(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, account.FieldTags, value)
-		})
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)
@@ -1691,18 +1670,6 @@ func (_u *AccountUpdateOne) ClearSessionWindowStatus() *AccountUpdateOne {
 	return _u
 }
 
-// SetTags sets the "tags" field.
-func (_u *AccountUpdateOne) SetTags(v []string) *AccountUpdateOne {
-	_u.mutation.SetTags(v)
-	return _u
-}
-
-// AppendTags appends value to the "tags" field.
-func (_u *AccountUpdateOne) AppendTags(v []string) *AccountUpdateOne {
-	_u.mutation.AppendTags(v)
-	return _u
-}
-
 // SetParentAccountID sets the "parent_account_id" field.
 func (_u *AccountUpdateOne) SetParentAccountID(v int64) *AccountUpdateOne {
 	_u.mutation.SetParentAccountID(v)
@@ -2145,14 +2112,6 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.SessionWindowStatusCleared() {
 		_spec.ClearField(account.FieldSessionWindowStatus, field.TypeString)
-	}
-	if value, ok := _u.mutation.Tags(); ok {
-		_spec.SetField(account.FieldTags, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedTags(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, account.FieldTags, value)
-		})
 	}
 	if value, ok := _u.mutation.QuotaDimension(); ok {
 		_spec.SetField(account.FieldQuotaDimension, field.TypeEnum, value)

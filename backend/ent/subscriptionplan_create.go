@@ -110,34 +110,6 @@ func (_c *SubscriptionPlanCreate) SetNillableValidityUnit(v *string) *Subscripti
 	return _c
 }
 
-// SetQuotaLimitUsd sets the "quota_limit_usd" field.
-func (_c *SubscriptionPlanCreate) SetQuotaLimitUsd(v float64) *SubscriptionPlanCreate {
-	_c.mutation.SetQuotaLimitUsd(v)
-	return _c
-}
-
-// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
-func (_c *SubscriptionPlanCreate) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanCreate {
-	if v != nil {
-		_c.SetQuotaLimitUsd(*v)
-	}
-	return _c
-}
-
-// SetExpiresAt sets the "expires_at" field.
-func (_c *SubscriptionPlanCreate) SetExpiresAt(v time.Time) *SubscriptionPlanCreate {
-	_c.mutation.SetExpiresAt(v)
-	return _c
-}
-
-// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
-func (_c *SubscriptionPlanCreate) SetNillableExpiresAt(v *time.Time) *SubscriptionPlanCreate {
-	if v != nil {
-		_c.SetExpiresAt(*v)
-	}
-	return _c
-}
-
 // SetFeatures sets the "features" field.
 func (_c *SubscriptionPlanCreate) SetFeatures(v string) *SubscriptionPlanCreate {
 	_c.mutation.SetFeatures(v)
@@ -162,20 +134,6 @@ func (_c *SubscriptionPlanCreate) SetProductName(v string) *SubscriptionPlanCrea
 func (_c *SubscriptionPlanCreate) SetNillableProductName(v *string) *SubscriptionPlanCreate {
 	if v != nil {
 		_c.SetProductName(*v)
-	}
-	return _c
-}
-
-// SetMaxBuyCount sets the "max_buy_count" field.
-func (_c *SubscriptionPlanCreate) SetMaxBuyCount(v int) *SubscriptionPlanCreate {
-	_c.mutation.SetMaxBuyCount(v)
-	return _c
-}
-
-// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
-func (_c *SubscriptionPlanCreate) SetNillableMaxBuyCount(v *int) *SubscriptionPlanCreate {
-	if v != nil {
-		_c.SetMaxBuyCount(*v)
 	}
 	return _c
 }
@@ -433,14 +391,6 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
 		_node.ValidityUnit = value
 	}
-	if value, ok := _c.mutation.QuotaLimitUsd(); ok {
-		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
-		_node.QuotaLimitUsd = &value
-	}
-	if value, ok := _c.mutation.ExpiresAt(); ok {
-		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)
-		_node.ExpiresAt = &value
-	}
 	if value, ok := _c.mutation.Features(); ok {
 		_spec.SetField(subscriptionplan.FieldFeatures, field.TypeString, value)
 		_node.Features = value
@@ -448,10 +398,6 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 	if value, ok := _c.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
 		_node.ProductName = value
-	}
-	if value, ok := _c.mutation.MaxBuyCount(); ok {
-		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
-		_node.MaxBuyCount = &value
 	}
 	if value, ok := _c.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -647,48 +593,6 @@ func (u *SubscriptionPlanUpsert) UpdateValidityUnit() *SubscriptionPlanUpsert {
 	return u
 }
 
-// SetQuotaLimitUsd sets the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsert) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsert {
-	u.Set(subscriptionplan.FieldQuotaLimitUsd, v)
-	return u
-}
-
-// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsert) UpdateQuotaLimitUsd() *SubscriptionPlanUpsert {
-	u.SetExcluded(subscriptionplan.FieldQuotaLimitUsd)
-	return u
-}
-
-// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsert) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsert {
-	u.Add(subscriptionplan.FieldQuotaLimitUsd, v)
-	return u
-}
-
-// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsert) ClearQuotaLimitUsd() *SubscriptionPlanUpsert {
-	u.SetNull(subscriptionplan.FieldQuotaLimitUsd)
-	return u
-}
-
-// SetExpiresAt sets the "expires_at" field.
-func (u *SubscriptionPlanUpsert) SetExpiresAt(v time.Time) *SubscriptionPlanUpsert {
-	u.Set(subscriptionplan.FieldExpiresAt, v)
-	return u
-}
-
-// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsert) UpdateExpiresAt() *SubscriptionPlanUpsert {
-	u.SetExcluded(subscriptionplan.FieldExpiresAt)
-	return u
-}
-
-// ClearExpiresAt clears the value of the "expires_at" field.
-func (u *SubscriptionPlanUpsert) ClearExpiresAt() *SubscriptionPlanUpsert {
-	u.SetNull(subscriptionplan.FieldExpiresAt)
-	return u
-}
-
 // SetFeatures sets the "features" field.
 func (u *SubscriptionPlanUpsert) SetFeatures(v string) *SubscriptionPlanUpsert {
 	u.Set(subscriptionplan.FieldFeatures, v)
@@ -710,30 +614,6 @@ func (u *SubscriptionPlanUpsert) SetProductName(v string) *SubscriptionPlanUpser
 // UpdateProductName sets the "product_name" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateProductName() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldProductName)
-	return u
-}
-
-// SetMaxBuyCount sets the "max_buy_count" field.
-func (u *SubscriptionPlanUpsert) SetMaxBuyCount(v int) *SubscriptionPlanUpsert {
-	u.Set(subscriptionplan.FieldMaxBuyCount, v)
-	return u
-}
-
-// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsert) UpdateMaxBuyCount() *SubscriptionPlanUpsert {
-	u.SetExcluded(subscriptionplan.FieldMaxBuyCount)
-	return u
-}
-
-// AddMaxBuyCount adds v to the "max_buy_count" field.
-func (u *SubscriptionPlanUpsert) AddMaxBuyCount(v int) *SubscriptionPlanUpsert {
-	u.Add(subscriptionplan.FieldMaxBuyCount, v)
-	return u
-}
-
-// ClearMaxBuyCount clears the value of the "max_buy_count" field.
-func (u *SubscriptionPlanUpsert) ClearMaxBuyCount() *SubscriptionPlanUpsert {
-	u.SetNull(subscriptionplan.FieldMaxBuyCount)
 	return u
 }
 
@@ -971,55 +851,6 @@ func (u *SubscriptionPlanUpsertOne) UpdateValidityUnit() *SubscriptionPlanUpsert
 	})
 }
 
-// SetQuotaLimitUsd sets the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertOne) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetQuotaLimitUsd(v)
-	})
-}
-
-// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertOne) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.AddQuotaLimitUsd(v)
-	})
-}
-
-// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertOne) UpdateQuotaLimitUsd() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateQuotaLimitUsd()
-	})
-}
-
-// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertOne) ClearQuotaLimitUsd() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearQuotaLimitUsd()
-	})
-}
-
-// SetExpiresAt sets the "expires_at" field.
-func (u *SubscriptionPlanUpsertOne) SetExpiresAt(v time.Time) *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetExpiresAt(v)
-	})
-}
-
-// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertOne) UpdateExpiresAt() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateExpiresAt()
-	})
-}
-
-// ClearExpiresAt clears the value of the "expires_at" field.
-func (u *SubscriptionPlanUpsertOne) ClearExpiresAt() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearExpiresAt()
-	})
-}
-
 // SetFeatures sets the "features" field.
 func (u *SubscriptionPlanUpsertOne) SetFeatures(v string) *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
@@ -1045,34 +876,6 @@ func (u *SubscriptionPlanUpsertOne) SetProductName(v string) *SubscriptionPlanUp
 func (u *SubscriptionPlanUpsertOne) UpdateProductName() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
-	})
-}
-
-// SetMaxBuyCount sets the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertOne) SetMaxBuyCount(v int) *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetMaxBuyCount(v)
-	})
-}
-
-// AddMaxBuyCount adds v to the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertOne) AddMaxBuyCount(v int) *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.AddMaxBuyCount(v)
-	})
-}
-
-// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertOne) UpdateMaxBuyCount() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateMaxBuyCount()
-	})
-}
-
-// ClearMaxBuyCount clears the value of the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertOne) ClearMaxBuyCount() *SubscriptionPlanUpsertOne {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearMaxBuyCount()
 	})
 }
 
@@ -1483,55 +1286,6 @@ func (u *SubscriptionPlanUpsertBulk) UpdateValidityUnit() *SubscriptionPlanUpser
 	})
 }
 
-// SetQuotaLimitUsd sets the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertBulk) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetQuotaLimitUsd(v)
-	})
-}
-
-// AddQuotaLimitUsd adds v to the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertBulk) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.AddQuotaLimitUsd(v)
-	})
-}
-
-// UpdateQuotaLimitUsd sets the "quota_limit_usd" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertBulk) UpdateQuotaLimitUsd() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateQuotaLimitUsd()
-	})
-}
-
-// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
-func (u *SubscriptionPlanUpsertBulk) ClearQuotaLimitUsd() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearQuotaLimitUsd()
-	})
-}
-
-// SetExpiresAt sets the "expires_at" field.
-func (u *SubscriptionPlanUpsertBulk) SetExpiresAt(v time.Time) *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetExpiresAt(v)
-	})
-}
-
-// UpdateExpiresAt sets the "expires_at" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertBulk) UpdateExpiresAt() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateExpiresAt()
-	})
-}
-
-// ClearExpiresAt clears the value of the "expires_at" field.
-func (u *SubscriptionPlanUpsertBulk) ClearExpiresAt() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearExpiresAt()
-	})
-}
-
 // SetFeatures sets the "features" field.
 func (u *SubscriptionPlanUpsertBulk) SetFeatures(v string) *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
@@ -1557,34 +1311,6 @@ func (u *SubscriptionPlanUpsertBulk) SetProductName(v string) *SubscriptionPlanU
 func (u *SubscriptionPlanUpsertBulk) UpdateProductName() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateProductName()
-	})
-}
-
-// SetMaxBuyCount sets the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertBulk) SetMaxBuyCount(v int) *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.SetMaxBuyCount(v)
-	})
-}
-
-// AddMaxBuyCount adds v to the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertBulk) AddMaxBuyCount(v int) *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.AddMaxBuyCount(v)
-	})
-}
-
-// UpdateMaxBuyCount sets the "max_buy_count" field to the value that was provided on create.
-func (u *SubscriptionPlanUpsertBulk) UpdateMaxBuyCount() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.UpdateMaxBuyCount()
-	})
-}
-
-// ClearMaxBuyCount clears the value of the "max_buy_count" field.
-func (u *SubscriptionPlanUpsertBulk) ClearMaxBuyCount() *SubscriptionPlanUpsertBulk {
-	return u.Update(func(s *SubscriptionPlanUpsert) {
-		s.ClearMaxBuyCount()
 	})
 }
 

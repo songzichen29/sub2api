@@ -412,79 +412,37 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 	return nil
 }
 
-type OpsRecordErrorBatchResult struct {
-	Persisted int64
-	Skipped   int64
-	Failed    int64
-}
-
 func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertErrorLogInput) error {
-	_, err := s.RecordErrorBatchWithResult(ctx, entries)
-	return err
-}
-
-// RecordErrorBatchWithResult records a batch and reports how many entries were
-// persisted, skipped by runtime settings, or failed before/during persistence.
-// The detailed result is used by the async ingestion health endpoint so a
-// dequeued item is not incorrectly reported as successfully stored.
-func (s *OpsService) RecordErrorBatchWithResult(ctx context.Context, entries []*OpsInsertErrorLogInput) (OpsRecordErrorBatchResult, error) {
-	var result OpsRecordErrorBatchResult
 	if len(entries) == 0 {
-		return result, nil
+		return nil
 	}
 	prepared := make([]*OpsInsertErrorLogInput, 0, len(entries))
-	var firstPrepareErr error
 	for _, entry := range entries {
 		item, ok, err := s.prepareErrorLogInput(ctx, entry)
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch prepare failed: %v", err)
-			result.Failed++
-			if firstPrepareErr == nil {
-				firstPrepareErr = err
-			}
 			continue
 		}
 		if ok {
 			prepared = append(prepared, item)
-		} else {
-			result.Skipped++
 		}
 	}
 	if len(prepared) == 0 {
-		return result, firstPrepareErr
+		return nil
 	}
 	if len(prepared) == 1 {
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
-			result.Failed++
-			return result, err
 		}
-		result.Persisted++
-		return result, firstPrepareErr
+		return err
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
-		log.Printf("[Ops] RecordErrorBatch failed, fallback to single inserts: %v", err)
-		var firstErr error
-		for _, entry := range prepared {
-			if _, insertErr := s.opsRepo.InsertErrorLog(ctx, entry); insertErr != nil {
-				log.Printf("[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
-				result.Failed++
-				if firstErr == nil {
-					firstErr = insertErr
-				}
-			} else {
-				result.Persisted++
-			}
-		}
-		if firstErr != nil {
-			return result, firstErr
-		}
-		return result, firstPrepareErr
+		log.Printf("[Ops] RecordErrorBatch failed: %v", err)
+		return err
 	}
-	result.Persisted += int64(len(prepared))
-	return result, firstPrepareErr
+	return nil
 }
 
 func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertErrorLogInput) (*OpsInsertErrorLogInput, bool, error) {
@@ -513,6 +471,33 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		entry.ErrorType = "api_error"
 	}
 
+	// Credential acquisition is a gateway/account-auth stage, not an inference
+	// HTTP attempt. Enforce that ownership at the persistence boundary so an
+	// earlier inference attempt cannot leak its status or text into top-level
+	// auth fields even if a caller supplied stale single-value context.
+	for i := len(entry.UpstreamErrors) - 1; i >= 0; i-- {
+		last := entry.UpstreamErrors[i]
+		if last == nil {
+			continue
+		}
+		if last.Stage == string(GatewayFailureStageAccountAuth) {
+			entry.ErrorPhase = string(GatewayFailureStageAccountAuth)
+			entry.ErrorOwner = "provider"
+			entry.ErrorSource = "gateway"
+			code := 0
+			entry.UpstreamStatusCode = &code
+			entry.UpstreamErrorMessage = nil
+			if message := strings.TrimSpace(last.Message); message != "" {
+				entry.UpstreamErrorMessage = &message
+			}
+			entry.UpstreamErrorDetail = nil
+			if detail := strings.TrimSpace(last.Detail); detail != "" {
+				entry.UpstreamErrorDetail = &detail
+			}
+		}
+		break
+	}
+
 	// Sanitize + truncate error_body to avoid storing sensitive data.
 	if strings.TrimSpace(entry.ErrorBody) != "" {
 		sanitized, _ := sanitizeErrorBodyForStorage(entry.ErrorBody, opsMaxStoredErrorBodyBytes)
@@ -520,7 +505,7 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	}
 
 	// Sanitize upstream error context if provided by gateway services.
-	if entry.UpstreamStatusCode != nil && *entry.UpstreamStatusCode <= 0 {
+	if entry.UpstreamStatusCode != nil && *entry.UpstreamStatusCode <= 0 && entry.ErrorPhase != string(GatewayFailureStageAccountAuth) {
 		entry.UpstreamStatusCode = nil
 	}
 	if entry.UpstreamErrorMessage != nil {
@@ -609,25 +594,6 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 			out.Detail = ""
 		}
 
-		out.UpstreamRequestBody = strings.TrimSpace(out.UpstreamRequestBody)
-		if out.UpstreamRequestBody != "" {
-			// The mysql branch still attaches upstream request bodies into upstream_errors JSON.
-			// Keep the payload redacted and bounded so removing replay columns does not leak data.
-			sanitizedBody, truncated, _ := sanitizeAndTrimJSONPayload([]byte(out.UpstreamRequestBody), 10*1024)
-			if sanitizedBody != "" {
-				out.UpstreamRequestBody = sanitizedBody
-				if truncated {
-					out.Kind = strings.TrimSpace(out.Kind)
-					if out.Kind == "" {
-						out.Kind = "upstream"
-					}
-					out.Kind = out.Kind + ":request_body_truncated"
-				}
-			} else {
-				out.UpstreamRequestBody = ""
-			}
-		}
-
 		// Drop fully-empty events (can happen if only status code was known).
 		if out.UpstreamStatusCode == 0 && out.Message == "" && out.Detail == "" {
 			continue
@@ -672,7 +638,7 @@ func (s *OpsService) ListUserErrorRequests(ctx context.Context, userID int64, fi
 	// "user_id = 自己 AND api_key_id = X" 双重约束保证——传入他人 key 只会得到空集，无泄露。
 	filter.View = "all"
 	filter.ExcludeCountTokens = true
-	filter.ModelFuzzy = true // 用户端模型过滤走 LIKE 模糊；管理端不设此字段，保持精确
+	filter.ModelFuzzy = true // 用户端模型过滤走 ILIKE 模糊；管理端不设此字段，保持精确
 	// 防御：用户端不接受这些 admin-only / 特殊维度
 	filter.UserQuery = ""
 	filter.Owner = ""

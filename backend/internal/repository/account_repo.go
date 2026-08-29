@@ -86,6 +86,39 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 
 const queryParameterBatchSize = 50000
 
+const codexFingerprintSeedCanonicalPattern = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+const codexFingerprintNilSeed = "00000000-0000-0000-0000-000000000000"
+
+func codexFingerprintSeedValidSQL(extraExpr string) string {
+	value := "(" + extraExpr + " ->> 'codex_fingerprint_seed')"
+	return "(" + value + " ~ '" + codexFingerprintSeedCanonicalPattern + "' AND " + value + " <> '" + codexFingerprintNilSeed + "')"
+}
+
+func ensureCodexFingerprintSeedSQL(extraExpr string) string {
+	return "CASE WHEN platform = 'openai' AND type = 'oauth' THEN " +
+		"jsonb_set(" + extraExpr + ", '{codex_fingerprint_seed}', " +
+		"CASE WHEN " + codexFingerprintSeedValidSQL("extra") +
+		" THEN to_jsonb(extra ->> 'codex_fingerprint_seed') ELSE to_jsonb(gen_random_uuid()::text) END, true) " +
+		"ELSE " + extraExpr + " END"
+}
+
+func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]any {
+	if extra == nil {
+		return nil
+	}
+	if _, exists := extra["codex_fingerprint_seed"]; !exists {
+		return extra
+	}
+	stripped := make(map[string]any, len(extra)-1)
+	for key, value := range extra {
+		if key == "codex_fingerprint_seed" {
+			continue
+		}
+		stripped[key] = value
+	}
+	return stripped
+}
+
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
@@ -2518,6 +2551,7 @@ func (r *accountRepository) AutoPauseExpiredAccounts(ctx context.Context, now ti
 }
 
 func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	updates = stripCodexFingerprintSeedFromExtraUpdate(updates)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -2560,6 +2594,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 			extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 		}
 		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
+	}
+	if service.ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates) {
+		extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
 	}
 	result, err := client.ExecContext(
 		ctx,
@@ -2844,6 +2881,7 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 	if len(ids) == 0 {
 		return 0, nil
 	}
+	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
@@ -2928,7 +2966,7 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 				" AND COALESCE("+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+", false))")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" {
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -2966,6 +3004,9 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 				" ELSE " + extraExpression + " END"
 		} else if snapshotIdentityChanged != "" {
 			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+		}
+		if updates.EnsureCodexFingerprintSeed {
+			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
 	}
@@ -3109,13 +3150,39 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 	}
 	// JSON 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
-		payload, err := json.Marshal(updates.Credentials)
+		credentialPayload := updates.Credentials
+		modelMappingPayload, hasModelMapping := updates.Credentials["model_mapping"]
+		if hasModelMapping {
+			// Keep model_mapping out of the recursive merge payload. It is bound
+			// separately below so the whole nested object can be replaced.
+			credentialPayload = copyJSONMap(updates.Credentials)
+			delete(credentialPayload, "model_mapping")
+		}
+		payload, err := json.Marshal(credentialPayload)
 		if err != nil {
 			return 0, err
 		}
-		setClauses = append(setClauses, "credentials = JSON_MERGE_PATCH(COALESCE(credentials, JSON_OBJECT()), CAST($"+itoa(idx)+" AS JSON))")
-		args = append(args, payload)
-		idx++
+		credentialPlaceholder := "$" + itoa(idx)
+		credentialExpression := "JSON_MERGE_PATCH(COALESCE(credentials, JSON_OBJECT()), CAST(" + credentialPlaceholder + " AS JSON))"
+		// JSON_MERGE_PATCH recursively merges nested objects. That is correct for
+		// independent credential fields, but wrong for model_mapping: the bulk
+		// editor sends the complete allowlist and omitted models must be removed.
+		// Replace the top-level mapping after the merge so MySQL matches the
+		// PostgreSQL JSONB concatenation semantics (including an explicit {}).
+		if hasModelMapping {
+			modelPayload, err := json.Marshal(modelMappingPayload)
+			if err != nil {
+				return 0, err
+			}
+			modelPlaceholder := "$" + itoa(idx+1)
+			credentialExpression = "JSON_SET(" + credentialExpression + ", '$.model_mapping', CAST(" + modelPlaceholder + " AS JSON))"
+			args = append(args, payload, modelPayload)
+			idx += 2
+		} else {
+			args = append(args, payload)
+			idx++
+		}
+		setClauses = append(setClauses, "credentials = "+credentialExpression)
 	}
 	if len(updates.Extra) > 0 || updates.ProbeEnabled != nil {
 		extraUpdates := copyJSONMap(updates.Extra)

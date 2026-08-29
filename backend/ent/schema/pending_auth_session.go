@@ -59,59 +59,56 @@ func (PendingAuthSession) Fields() []ent.Field {
 			Validate(validateAuthProviderType),
 		field.String("provider_key").
 			NotEmpty().
-			MaxLen(255).
-			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("provider_subject").
 			NotEmpty().
-			MaxLen(255).
-			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Int64("target_user_id").
 			Optional().
 			Nillable(),
 		field.String("redirect_to").
 			Default("").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("resolved_email").
 			Default("").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("registration_password_hash").
 			Default("").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.JSON("upstream_identity_claims", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.JSON("local_flow_state", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("browser_session_key").
 			Default("").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("completion_code_hash").
 			Default("").
-			MaxLen(255).
-			SchemaType(map[string]string{dialect.MySQL: "varchar(255)"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Time("completion_code_expires_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("email_verified_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("password_verified_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("totp_verified_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("expires_at").
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("consumed_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

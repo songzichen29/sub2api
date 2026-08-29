@@ -52,7 +52,7 @@ func (UserAttributeDefinition) Fields() []ent.Field {
 
 		// description: Optional description/help text for the attribute
 		field.String("description").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
 
 		// type: Attribute type - text, textarea, number, email, url, date, select, multi_select
@@ -64,7 +64,7 @@ func (UserAttributeDefinition) Fields() []ent.Field {
 		// Format: [{"value": "xxx", "label": "XXX"}, ...]
 		field.JSON("options", []map[string]any{}).
 			Default([]map[string]any{}).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// required: Whether this attribute is required when editing a user
 		field.Bool("required").
@@ -74,7 +74,7 @@ func (UserAttributeDefinition) Fields() []ent.Field {
 		// Format: {"min_length": 1, "max_length": 100, "min": 0, "max": 100, "pattern": "^[a-z]+$", "message": "..."}
 		field.JSON("validation", map[string]any{}).
 			Default(map[string]any{}).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// placeholder: Placeholder text shown in input fields
 		field.String("placeholder").

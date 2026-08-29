@@ -92,25 +92,25 @@ func (UsageLog) Fields() []ent.Field {
 		// 成本字段
 		field.Float("input_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("output_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("cache_creation_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("cache_read_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("total_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("actual_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
 		field.Float("rate_multiplier").
 			Default(1).
-			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
 		field.Bool("long_context_billing_applied").
 			Default(false).
 			Comment("Whether long-context pricing changed token prices for this request"),
@@ -119,7 +119,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Float("account_rate_multiplier").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
 
 		// 其他字段
 		field.Int8("billing_type").
@@ -130,9 +130,6 @@ func (UsageLog) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.Int("first_token_ms").
-			Optional().
-			Nillable(),
-		field.Int("upstream_first_event_ms").
 			Optional().
 			Nillable(),
 		field.String("user_agent").
@@ -167,6 +164,19 @@ func (UsageLog) Fields() []ent.Field {
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
+		// 视频生成字段（Grok 视频按秒计费；billing_mode 走 token/其他模式时这些列仍标记视频用量）
+		field.Int("video_count").
+			Default(0).
+			Comment("视频生成数量；>0 表示本行是视频生成用量"),
+		field.String("video_resolution").
+			MaxLen(10).
+			Optional().
+			Nillable().
+			Comment("计费用视频分辨率 480p/720p/1080p"),
+		field.Int("video_duration_seconds").
+			Optional().
+			Nillable().
+			Comment("提交时请求的视频时长（秒），按秒计费的乘数"),
 		// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 		field.Bool("cache_ttl_overridden").
 			Default(false),
@@ -175,7 +185,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-const featureKeyModelMappingNotes = "model_mapping_notes"
-
 // BillingMode 计费模式
 type BillingMode string
 
@@ -16,13 +14,13 @@ const (
 	BillingModeToken      BillingMode = "token"       // 按 token 区间计费
 	BillingModePerRequest BillingMode = "per_request" // 按次计费（支持上下文窗口分层）
 	BillingModeImage      BillingMode = "image"       // 图片计费（当前按次，预留 token 计费）
-	BillingModeVideo      BillingMode = "video"       // 仅用于历史/外部视频使用记录筛选，不启用官方 Grok 视频计费
+	BillingModeVideo      BillingMode = "video"       // 视频生成计费（按视频生成次数）
 )
 
 // IsValid 检查 BillingMode 是否为合法值
 func (m BillingMode) IsValid() bool {
 	switch m {
-	case BillingModeToken, BillingModePerRequest, BillingModeImage, "":
+	case BillingModeToken, BillingModePerRequest, BillingModeImage, BillingModeVideo, "":
 		return true
 	}
 	return false
@@ -89,38 +87,59 @@ type AccountStatsPricingRule struct {
 
 // ChannelModelPricing 渠道模型定价条目
 type ChannelModelPricing struct {
-	ID               int64
-	ChannelID        int64
-	Platform         string            // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          // 绑定的模型列表
-	BillingMode      BillingMode       // 计费模式
-	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64          // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          // 缓存写入价格
-	CacheReadPrice   *float64          // 缓存读取价格
-	ImageInputPrice  *float64          // 图片输入 token 价格（如 gpt-image-2 图片编辑）；未配置时回退文本输入价
-	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64          // 默认按次计费价格（USD）
-	Intervals        []PricingInterval // 区间定价列表
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               int64               `json:"id,omitempty"`
+	ChannelID        int64               `json:"channel_id,omitempty"`
+	Platform         string              `json:"platform"` // 所属平台（anthropic/openai/gemini/...）
+	Models           []string            `json:"models"`
+	BillingMode      BillingMode         `json:"billing_mode"`
+	InputPrice       *float64            `json:"input_price"`
+	OutputPrice      *float64            `json:"output_price"`
+	CacheWritePrice  *float64            `json:"cache_write_price"`
+	CacheReadPrice   *float64            `json:"cache_read_price"`
+	FastMultiplier   *float64            `json:"fast_multiplier"`
+	FlexMultiplier   *float64            `json:"flex_multiplier"`
+	ImageInputPrice  *float64            `json:"image_input_price"`
+	ImageOutputPrice *float64            `json:"image_output_price"`
+	PerRequestPrice  *float64            `json:"per_request_price"`
+	Intervals        []PricingInterval   `json:"intervals"`
+	TimePricing      *ChannelTimePricing `json:"time_pricing,omitempty"`
+	CreatedAt        time.Time           `json:"created_at,omitempty"`
+	UpdatedAt        time.Time           `json:"updated_at,omitempty"`
+}
+
+// ChannelTimePricing 渠道模型定价的分时倍率配置。
+type ChannelTimePricing struct {
+	Timezone     string                     `json:"timezone"`
+	WeekdaysOnly bool                       `json:"weekdays_only,omitempty"`
+	Periods      []ChannelTimePricingPeriod `json:"periods"`
+}
+
+// ChannelTimePricingPeriod 是秒级的左闭右开分时倍率区间，并兼容历史 HH:mm 数据。
+type ChannelTimePricingPeriod struct {
+	StartTime  string  `json:"start_time"`
+	EndTime    string  `json:"end_time"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // PricingInterval 定价区间（token 区间 / 按次分层 / 图片分辨率分层）
 type PricingInterval struct {
-	ID              int64
-	PricingID       int64
-	MinTokens       int      // 区间下界（含）
-	MaxTokens       *int     // 区间上界（不含），nil = 无上限
-	TierLabel       string   // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
-	InputPrice      *float64 // token 模式：每 token 输入价
-	OutputPrice     *float64 // token 模式：每 token 输出价
-	CacheWritePrice *float64 // token 模式：缓存写入价
-	CacheReadPrice  *float64 // token 模式：缓存读取价
-	PerRequestPrice *float64 // 按次/图片模式：每次请求价格
-	SortOrder       int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                   int64     `json:"id,omitempty"`
+	PricingID            int64     `json:"pricing_id,omitempty"`
+	MinTokens            int       `json:"min_tokens"`
+	MaxTokens            *int      `json:"max_tokens"`
+	TierLabel            string    `json:"tier_label"`
+	InputPrice           *float64  `json:"input_price"`
+	OutputPrice          *float64  `json:"output_price"`
+	CacheWritePrice      *float64  `json:"cache_write_price"`
+	CacheReadPrice       *float64  `json:"cache_read_price"`
+	InputMultiplier      *float64  `json:"input_multiplier"`
+	OutputMultiplier     *float64  `json:"output_multiplier"`
+	CacheWriteMultiplier *float64  `json:"cache_write_multiplier"`
+	CacheReadMultiplier  *float64  `json:"cache_read_multiplier"`
+	PerRequestPrice      *float64  `json:"per_request_price"`
+	SortOrder            int       `json:"sort_order"`
+	CreatedAt            time.Time `json:"created_at,omitempty"`
+	UpdatedAt            time.Time `json:"updated_at,omitempty"`
 }
 
 // IsActive 判断渠道是否启用
@@ -197,6 +216,15 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 		cp.Intervals = make([]PricingInterval, len(p.Intervals))
 		copy(cp.Intervals, p.Intervals)
 	}
+	if p.TimePricing != nil {
+		cp.TimePricing = &ChannelTimePricing{
+			Timezone:     p.TimePricing.Timezone,
+			WeekdaysOnly: p.TimePricing.WeekdaysOnly,
+		}
+		if p.TimePricing.Periods != nil {
+			cp.TimePricing.Periods = append([]ChannelTimePricingPeriod(nil), p.TimePricing.Periods...)
+		}
+	}
 	return cp
 }
 
@@ -265,73 +293,13 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
-func (c *Channel) getPlatformModelMappingNotes(platform string) map[string]string {
-	if c == nil || c.FeaturesConfig == nil {
-		return nil
-	}
-
-	rawByPlatform, ok := c.FeaturesConfig[featureKeyModelMappingNotes].(map[string]any)
-	if !ok {
-		return nil
-	}
-	rawNotes, ok := rawByPlatform[platform].(map[string]any)
-	if !ok {
-		return nil
-	}
-
-	notes := make(map[string]string, len(rawNotes))
-	for pattern, raw := range rawNotes {
-		note, ok := raw.(string)
-		if !ok {
-			continue
-		}
-		note = strings.TrimSpace(note)
-		if note == "" {
-			continue
-		}
-		notes[pattern] = note
-	}
-	if len(notes) == 0 {
-		return nil
-	}
-	return notes
-}
-
-func resolveModelMappingNote(notes map[string]string, model string) string {
-	if len(notes) == 0 {
-		return ""
-	}
-	if exact := strings.TrimSpace(notes[model]); exact != "" {
-		return exact
-	}
-
-	modelLower := strings.ToLower(model)
-	bestPrefixLen := -1
-	bestNote := ""
-	for pattern, note := range notes {
-		prefix, isWildcard := splitWildcardSuffix(pattern)
-		if !isWildcard {
-			continue
-		}
-		prefixLower := strings.ToLower(prefix)
-		if !strings.HasPrefix(modelLower, prefixLower) {
-			continue
-		}
-		if len(prefixLower) > bestPrefixLen {
-			bestPrefixLen = len(prefixLower)
-			bestNote = strings.TrimSpace(note)
-		}
-	}
-	return bestNote
-}
-
 // IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
 // 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
 func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	if c == nil || c.FeaturesConfig == nil {
 		return false
 	}
-	_ = platform
+	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
 	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
 	return ok && enabled
 }
@@ -377,7 +345,7 @@ func ValidateIntervals(intervals []PricingInterval, mode BillingMode) error {
 	}
 
 	// per_request / image 模式按 tier_label 匹配，不做 token 区间重叠校验
-	if mode == BillingModePerRequest || mode == BillingModeImage {
+	if mode == BillingModePerRequest || mode == BillingModeImage || mode == BillingModeVideo {
 		return nil
 	}
 	return validateIntervalOverlap(sorted)
@@ -400,7 +368,7 @@ func validateSingleInterval(iv *PricingInterval, idx int) error {
 	return validateIntervalPrices(iv, idx)
 }
 
-// validateIntervalPrices 校验区间内所有价格字段 >= 0
+// validateIntervalPrices 校验区间价格 >= 0、倍率 > 0。
 func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	prices := []struct {
 		name string
@@ -415,6 +383,20 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	for _, p := range prices {
 		if p.val != nil && *p.val < 0 {
 			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
+		}
+	}
+	multipliers := []struct {
+		name string
+		val  *float64
+	}{
+		{"input_multiplier", iv.InputMultiplier},
+		{"output_multiplier", iv.OutputMultiplier},
+		{"cache_write_multiplier", iv.CacheWriteMultiplier},
+		{"cache_read_multiplier", iv.CacheReadMultiplier},
+	}
+	for _, multiplier := range multipliers {
+		if multiplier.val != nil && *multiplier.val <= 0 {
+			return fmt.Errorf("interval #%d: %s must be > 0", idx+1, multiplier.name)
 		}
 	}
 	return nil
@@ -460,10 +442,9 @@ type ChannelUsageFields struct {
 
 // SupportedModel 渠道的一个支持模型条目（无通配符、可直接展示给用户）
 type SupportedModel struct {
-	Name        string               // 用户侧模型名
-	Platform    string               // 所属平台
-	Pricing     *ChannelModelPricing // 定价详情（nil 表示未配置定价）
-	MappingNote string               // 来自渠道模型映射备注（按源模型规则解析）
+	Name     string               // 用户侧模型名
+	Platform string               // 所属平台
+	Pricing  *ChannelModelPricing // 定价详情（nil 表示未配置定价）
 }
 
 // wildcardSuffix 是模型模式中的通配符后缀标记（仅支持尾部匹配）。
@@ -586,10 +567,6 @@ func (c *Channel) SupportedModels() []SupportedModel {
 	}
 	seen := make(map[dedupKey]struct{})
 	result := make([]SupportedModel, 0)
-	notesByPlatform := make(map[string]map[string]string, len(c.ModelMapping))
-	for platform := range c.ModelMapping {
-		notesByPlatform[platform] = c.getPlatformModelMappingNotes(platform)
-	}
 
 	// lookup 在 platform pricing index 中按精确名查定价，命中时返回定价大小写。
 	lookup := func(pidx *platformPricingIndex, name string) (display string, pricing *ChannelModelPricing) {
@@ -610,10 +587,9 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		}
 		seen[key] = struct{}{}
 		result = append(result, SupportedModel{
-			Name:        displayName,
-			Platform:    platform,
-			Pricing:     pricing,
-			MappingNote: resolveModelMappingNote(notesByPlatform[platform], displayName),
+			Name:     displayName,
+			Platform: platform,
+			Pricing:  pricing,
 		})
 	}
 

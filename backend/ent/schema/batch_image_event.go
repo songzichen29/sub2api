@@ -28,9 +28,9 @@ func (BatchImageEvent) Fields() []ent.Field {
 		field.String("event_type").MaxLen(64),
 		field.JSON("payload", map[string]any{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json", dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("event_hash").Optional().Nillable().MaxLen(128),
-		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
+		field.Time("created_at").Immutable().Default(time.Now).SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

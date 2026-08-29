@@ -1,0 +1,18 @@
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_model_pricing' AND column_name = 'fast_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_model_pricing` ADD COLUMN `fast_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_model_pricing' AND column_name = 'flex_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_model_pricing` ADD COLUMN `flex_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_pricing_intervals' AND column_name = 'input_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_pricing_intervals` ADD COLUMN `input_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_pricing_intervals' AND column_name = 'output_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_pricing_intervals` ADD COLUMN `output_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_pricing_intervals' AND column_name = 'cache_write_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_pricing_intervals` ADD COLUMN `cache_write_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_pricing_intervals' AND column_name = 'cache_read_multiplier');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_pricing_intervals` ADD COLUMN `cache_read_multiplier` DECIMAL(12,6) NULL', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

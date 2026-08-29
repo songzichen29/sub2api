@@ -74,8 +74,6 @@ const (
 	FieldSessionWindowEnd = "session_window_end"
 	// FieldSessionWindowStatus holds the string denoting the session_window_status field in the database.
 	FieldSessionWindowStatus = "session_window_status"
-	// FieldTags holds the string denoting the tags field in the database.
-	FieldTags = "tags"
 	// FieldParentAccountID holds the string denoting the parent_account_id field in the database.
 	FieldParentAccountID = "parent_account_id"
 	// FieldQuotaDimension holds the string denoting the quota_dimension field in the database.
@@ -162,7 +160,6 @@ var Columns = []string{
 	FieldSessionWindowStart,
 	FieldSessionWindowEnd,
 	FieldSessionWindowStatus,
-	FieldTags,
 	FieldParentAccountID,
 	FieldQuotaDimension,
 }
@@ -223,8 +220,6 @@ var (
 	DefaultSchedulable bool
 	// SessionWindowStatusValidator is a validator for the "session_window_status" field. It is called by the builders before save.
 	SessionWindowStatusValidator func(string) error
-	// DefaultTags holds the default value on creation for the "tags" field.
-	DefaultTags []string
 )
 
 // QuotaDimension defines the type for the "quota_dimension" enum field.

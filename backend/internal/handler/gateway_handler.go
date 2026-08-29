@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -31,28 +32,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
-
-func gatewayModelPrecheckError(err error) (status int, errType string, message string, ok bool) {
-	switch {
-	case errors.Is(err, service.ErrModelBlockedByGroup):
-		return http.StatusBadRequest, "model_not_allowed", extractTrailingErrorMessage(err), true
-	case errors.Is(err, service.ErrModelUnsupportedByGroupAccount):
-		return http.StatusBadRequest, "model_not_configured", extractTrailingErrorMessage(err), true
-	default:
-		return 0, "", "", false
-	}
-}
-
-func extractTrailingErrorMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-	msg := err.Error()
-	if idx := strings.Index(msg, ": "); idx >= 0 && idx+2 < len(msg) {
-		return msg[idx+2:]
-	}
-	return msg
-}
 
 const gatewayCompatibilityMetricsLogInterval = 1024
 
@@ -64,7 +43,6 @@ type GatewayHandler struct {
 	openAIGatewayService      *service.OpenAIGatewayService
 	geminiCompatService       *service.GeminiMessagesCompatService
 	antigravityGatewayService *service.AntigravityGatewayService
-	grokGatewayService        *service.GrokGatewayService
 	userService               *service.UserService
 	billingCacheService       *service.BillingCacheService
 	usageService              *service.UsageService
@@ -87,7 +65,6 @@ func NewGatewayHandler(
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
-	grokGatewayService *service.GrokGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -124,7 +101,6 @@ func NewGatewayHandler(
 		openAIGatewayService:      openAIGatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
-		grokGatewayService:        grokGatewayService,
 		userService:               userService,
 		billingCacheService:       billingCacheService,
 		usageService:              usageService,
@@ -168,7 +144,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 读取请求体
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
-		writeGatewayRequestBodyReadError(h, c, "handler.gateway.messages", err)
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
 
@@ -177,9 +157,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
-	parsedReq, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
 		logRequestBodyParseFailure(reqLog, body, err)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -188,6 +169,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
+	bindRequestedReasoningEffort(c, body, reqModel)
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -213,7 +195,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
 	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
 
-	setOpsRequestContext(c, reqModel, reqStream, body)
+	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
@@ -336,14 +318,22 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
-					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, service.PlatformGemini)
+					if !cls.ModelNotFound {
+						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					}
 					reqLog.Warn("gateway.select_account_no_available",
 						zap.String("model", reqModel),
 						zap.Int64p("group_id", apiKey.GroupID),
 						zap.String("platform", platform),
+						zap.Bool("model_not_found", cls.ModelNotFound),
 						zap.Error(err),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					message := cls.Message
+					if !cls.ModelNotFound {
+						message = "No available accounts: " + err.Error()
+					}
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -365,7 +355,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID, account.Platform, account.Name)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
 			if account.IsInterceptWarmupEnabled() {
@@ -472,7 +462,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity {
-				result, err = h.antigravityGatewayService.ForwardGemini(requestCtx, c, account, reqModel, "generateContent", reqStream, body, hasBoundSession)
+				result, err = h.antigravityGatewayService.ForwardGemini(
+					requestCtx,
+					c,
+					account,
+					reqModel,
+					"generateContent",
+					reqStream,
+					body,
+					hasBoundSession,
+					service.WithForwardGeminiSession(derefGroupID(apiKey.GroupID), sessionKey),
+				)
 			} else {
 				result, err = h.geminiCompatService.Forward(requestCtx, c, account, body)
 			}
@@ -542,6 +542,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+			stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort))
 			if result.ReasoningEffort == nil {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
@@ -564,6 +565,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 					Result:             result,
+					QuotaPlatform:      quotaPlatform,
 					APIKey:             apiKey,
 					User:               apiKey.User,
 					Account:            account,
@@ -577,7 +579,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
-					QuotaPlatform:      quotaPlatform,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				}); err != nil {
 					logger.L().With(
@@ -619,7 +620,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
-			attemptParsedReq.GroupID = currentAPIKey.GroupID
 
 			// 选择支持该模型的账号
 			reqLog.Info("sticky.selecting_account",
@@ -631,15 +631,23 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
-					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					cls := classifyNoAccountErrorFromGin(c, h.gatewayService, currentAPIKey, reqModel, reqModel, platform)
+					if !cls.ModelNotFound {
+						markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+					}
 					reqLog.Warn("gateway.select_account_no_available",
 						zap.String("model", reqModel),
 						zap.Int64p("group_id", currentAPIKey.GroupID),
 						zap.String("platform", platform),
 						zap.Bool("fallback_used", fallbackUsed),
+						zap.Bool("model_not_found", cls.ModelNotFound),
 						zap.Error(err),
 					)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error(), streamStarted)
+					message := cls.Message
+					if !cls.ModelNotFound {
+						message = "No available accounts: " + err.Error()
+					}
+					h.handleStreamingAwareError(c, cls.Status, cls.ErrType, message, streamStarted)
 					return
 				}
 				action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -661,7 +669,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			account := selection.Account
-			setOpsSelectedAccount(c, account.ID, account.Platform, account.Name)
+			setOpsSelectedAccount(c, account.ID, account.Platform)
 
 			// [DEBUG-STICKY] 打印账号选择结果
 			reqLog.Info("sticky.account_selected",
@@ -830,7 +838,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			// Bedrock CC 兼容：清理 body 专有字段 + 过滤 anthropic-beta header，适用于所有转发路径
-			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, currentAPIKey.GroupID)); err != nil {
+			if err := attemptParsedReq.ReplaceBody(h.gatewayService.ApplyBedrockCCCompat(c, attemptParsedReq.Body.Bytes(), attemptParsedReq.Model, account, apiKey.GroupID)); err != nil {
 				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 				return
 			}
@@ -850,18 +858,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			writerSizeBeforeForward := c.Writer.Size()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
-			} else if account.Platform == service.PlatformGrok {
-				if h.grokGatewayService == nil {
-					h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Grok gateway service is not configured")
-					if queueRelease != nil {
-						queueRelease()
-					}
-					if accountReleaseFunc != nil {
-						accountReleaseFunc()
-					}
-					return
-				}
-				result, err = h.grokGatewayService.Forward(requestCtx, c, account, attemptBody)
 			} else {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
 			}
@@ -888,6 +884,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+				stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort))
 				if result.ReasoningEffort == nil {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 				}
@@ -1109,11 +1106,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
-		availableModels = filterModelsByCustomList(
-			customModelsListSource(platform, availableModels, fallbackModels),
-			fallbackModels,
-			apiKey.Group.ModelsListConfig.Models,
-		)
+		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
 		writeCustomModelsList(c, platform, availableModels)
 		return
 	}
@@ -1140,7 +1133,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, defaultGrokModelIDs())
+		writeGrokModelsList(c, xai.DefaultModelIDs())
 		return
 	}
 
@@ -1150,6 +1143,79 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	})
 }
 
+// CodexModels returns the effective group model list using the manifest shape
+// expected by Codex custom providers. Official OpenAI groups continue to use
+// OpenAIGatewayHandler.CodexModels so their live upstream metadata is preserved.
+func (h *GatewayHandler) CodexModels(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.Group == nil {
+		h.errorResponse(c, http.StatusUnauthorized, "invalid_request_error", "API key group is required")
+		return
+	}
+
+	forcedPlatform := ""
+	if value, exists := middleware2.GetForcePlatformFromContext(c); exists {
+		forcedPlatform = strings.TrimSpace(value)
+	}
+	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
+	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
+	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
+		c.Request.Context(),
+		apiKey.Group,
+		forcedPlatform,
+		modelIDs,
+	)
+	if err != nil {
+		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+		return
+	}
+	etag := service.CodexModelsManifestETag(body)
+	c.Header("ETag", etag)
+	if service.CodexModelsManifestETagMatches(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		c.Writer.WriteHeaderNow()
+		return
+	}
+	c.Data(http.StatusOK, "application/json", body)
+}
+
+func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {
+	if h == nil || h.gatewayService == nil || group == nil {
+		return nil
+	}
+
+	groupID := &group.ID
+	platform := strings.TrimSpace(platformOverride)
+	if platform == "" {
+		platform = group.Platform
+	}
+	if platform == service.PlatformComposite {
+		availableModels := h.compositeAvailableModels(ctx, groupID)
+		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
+		if group.CustomModelsListEnabled() {
+			return filterModelsByCustomList(availableModels, fallbackModels, group.ModelsListConfig.Models)
+		}
+		if len(availableModels) > 0 {
+			return availableModels
+		}
+		return fallbackModels
+	}
+
+	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
+	fallbackModels := defaultCodexModelIDsForPlatform(platform)
+	if group.CustomModelsListEnabled() {
+		return filterModelsByCustomList(
+			customModelsListSource(platform, availableModels, fallbackModels),
+			fallbackModels,
+			group.ModelsListConfig.Models,
+		)
+	}
+	if len(availableModels) > 0 {
+		return availableModels
+	}
+	return fallbackModels
+}
+
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
 	if h == nil || h.gatewayService == nil {
 		return nil
@@ -1157,10 +1223,12 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
-			if _, ok := schedulablePlatforms[platform]; ok {
+			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
+			// default 分支是 Claude 列表），composite 下只暴露账号映射键。
+			if _, ok := schedulablePlatforms[platform]; ok && !service.IsCNProvider(platform) {
 				platformModels = defaultModelIDsForPlatform(platform)
 			}
 		}
@@ -1207,21 +1275,67 @@ func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
 	writeModelsList(c, platform, modelIDs)
 }
 
+type grokReasoningEffortOption struct {
+	Value   string `json:"value"`
+	Label   string `json:"label"`
+	Default bool   `json:"default,omitempty"`
+}
+
+type grokModelListItem struct {
+	xai.Model
+	SupportsReasoningEffort bool                        `json:"supportsReasoningEffort,omitempty"`
+	ReasoningEffort         string                      `json:"reasoningEffort,omitempty"`
+	ReasoningEfforts        []grokReasoningEffortOption `json:"reasoningEfforts,omitempty"`
+}
+
 func writeGrokModelsList(c *gin.Context, modelIDs []string) {
-	models := make([]claude.Model, 0, len(modelIDs))
+	defaults := xai.DefaultModels()
+	defaultsByID := make(map[string]xai.Model, len(defaults))
+	for _, model := range defaults {
+		defaultsByID[model.ID] = model
+	}
+
+	models := make([]grokModelListItem, 0, len(modelIDs))
 	for _, modelID := range modelIDs {
-		models = append(models, claude.Model{
-			ID:          modelID,
-			Type:        "model",
-			DisplayName: modelID,
-			CreatedAt:   "2024-01-01T00:00:00Z",
-		})
+		model, ok := defaultsByID[modelID]
+		if !ok {
+			model = xai.Model{
+				ID:          modelID,
+				Object:      "model",
+				OwnedBy:     "xai",
+				DisplayName: modelID,
+			}
+		}
+		item := grokModelListItem{Model: model}
+		if grokModelSupportsConfigurableReasoning(modelID) {
+			item.SupportsReasoningEffort = true
+			item.ReasoningEffort = "high"
+			efforts := []grokReasoningEffortOption{
+				{Value: "low", Label: "Low"},
+				{Value: "medium", Label: "Medium"},
+				{Value: "high", Label: "High", Default: true},
+			}
+			if service.GrokSupportsXHighReasoningEffort(modelID) {
+				efforts = append(efforts, grokReasoningEffortOption{Value: "xhigh", Label: "xHigh"})
+			}
+			item.ReasoningEfforts = efforts
+		}
+		models = append(models, item)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
 		"data":   models,
 	})
+}
+
+func grokModelSupportsConfigurableReasoning(modelID string) bool {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case "grok-4.6", "grok-4.6-latest", "grok-4.5", "grok-4.5-latest", "grok", "grok-latest", "grok-build", "grok-build-latest", "grok-build-0.1":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
@@ -1306,7 +1420,24 @@ func customModelsListAllowsModel(availablePatterns []string, model string) bool 
 			return true
 		}
 	}
+	normalizedClaudeModel := claude.NormalizeModelID(strings.TrimSuffix(model, "-thinking"))
+	if normalizedClaudeModel != model {
+		for _, pattern := range availablePatterns {
+			if pattern == normalizedClaudeModel {
+				return true
+			}
+		}
+	}
 	return false
+}
+
+func defaultCodexModelIDsForPlatform(platform string) []string {
+	switch platform {
+	case service.PlatformDeepseek:
+		return []string{"deepseek-v4-pro", "deepseek-v4-flash"}
+	default:
+		return defaultModelIDsForPlatform(platform)
+	}
 }
 
 func defaultModelIDsForPlatform(platform string) []string {
@@ -1327,20 +1458,13 @@ func defaultModelIDsForPlatform(platform string) []string {
 		}
 		return ids
 	case service.PlatformAnthropic:
-		ids := make([]string, 0, len(claude.DefaultModels)+len(antigravity.DefaultModels()))
-		for _, model := range claude.DefaultModels {
-			ids = append(ids, model.ID)
-		}
-		for _, model := range antigravity.DefaultModels() {
-			ids = append(ids, model.ID)
-		}
-		return mergeModelIDs(ids, nil)
+		return claude.DefaultModelIDs()
 	case service.PlatformGrok:
-		return defaultGrokModelIDs()
+		return xai.DefaultModelIDs()
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
-		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok} {
+		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
 					continue
@@ -1356,22 +1480,6 @@ func defaultModelIDsForPlatform(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
-	}
-}
-
-// defaultGrokModelIDs returns the text-capable models supported by the local
-// Grok/grok2api compatibility gateway. The official xAI media-only models are
-// intentionally excluded because this production branch does not expose that
-// implementation.
-func defaultGrokModelIDs() []string {
-	return []string{
-		"grok-4.5",
-		"grok-4.3",
-		"grok-build-0.1",
-		"grok-composer-2.5-fast",
-		"grok-4.20-0309-reasoning",
-		"grok-4.20-0309-non-reasoning",
-		"grok-4.20-multi-agent-0309",
 	}
 }
 
@@ -1437,9 +1545,15 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 
 	// 解析可选的日期范围参数（用于 model_stats 查询）
 	startTime, endTime := h.parseUsageDateRange(c)
+	days, ok := parseAPIKeyDailyUsageDays(c.DefaultQuery("days", ""))
+	if !ok {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Invalid days, allowed range is 1-90")
+		return
+	}
 
 	// Best-effort: 获取用量统计（按当前 API Key 过滤），失败不影响基础响应
 	usageData := h.buildUsageData(ctx, apiKey.ID)
+	dailyUsage := h.buildAPIKeyDailyUsage(c, subject.UserID, apiKey.ID, days)
 
 	// Best-effort: 获取模型统计
 	var modelStats any
@@ -1453,38 +1567,11 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	isQuotaLimited := apiKey.Quota > 0 || apiKey.HasRateLimits()
 
 	if isQuotaLimited {
-		h.usageQuotaLimited(c, ctx, apiKey, usageData, modelStats)
+		h.usageQuotaLimited(c, ctx, apiKey, usageData, dailyUsage, modelStats)
 		return
 	}
 
-	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, modelStats)
-}
-
-// UsageModelStats handles refreshing only model statistics for API Key usage page.
-// GET /v1/usage/model-stats
-func (h *GatewayHandler) UsageModelStats(c *gin.Context) {
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok {
-		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
-		return
-	}
-
-	startTime, endTime := h.parseUsageDateRange(c)
-
-	var modelStats any
-	if h.usageService != nil {
-		if stats, err := h.usageService.GetAPIKeyModelStats(c.Request.Context(), apiKey.ID, startTime, endTime); err == nil {
-			modelStats = stats
-		}
-	}
-
-	if modelStats == nil {
-		modelStats = []any{}
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"model_stats": modelStats,
-	})
+	h.usageUnrestricted(c, ctx, apiKey, subject, usageData, dailyUsage, modelStats)
 }
 
 // parseUsageDateRange 解析 start_date / end_date query params，默认返回近 30 天范围
@@ -1542,8 +1629,20 @@ func (h *GatewayHandler) buildUsageData(ctx context.Context, apiKeyID int64) gin
 	}
 }
 
+func (h *GatewayHandler) buildAPIKeyDailyUsage(c *gin.Context, userID, apiKeyID int64, days int) any {
+	if h.usageService == nil {
+		return nil
+	}
+	startTime, endTime := apiKeyDailyUsageRange(days, c.Query("timezone"))
+	stats, err := h.usageService.GetAPIKeyDailyUsage(c.Request.Context(), userID, apiKeyID, startTime, endTime)
+	if err != nil {
+		return nil
+	}
+	return stats
+}
+
 // usageQuotaLimited 处理 quota_limited 模式的响应
-func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, modelStats any) {
+func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, apiKey *service.APIKey, usageData gin.H, dailyUsage any, modelStats any) {
 	resp := gin.H{
 		"mode":    "quota_limited",
 		"isValid": apiKey.Status == service.StatusAPIKeyActive || apiKey.Status == service.StatusAPIKeyQuotaExhausted || apiKey.Status == service.StatusAPIKeyExpired,
@@ -1625,6 +1724,9 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 	if usageData != nil {
 		resp["usage"] = usageData
 	}
+	if dailyUsage != nil {
+		resp["daily_usage"] = dailyUsage
+	}
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
@@ -1633,7 +1735,7 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 }
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
-func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, modelStats any) {
+func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any) {
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		resp := gin.H{
@@ -1648,33 +1750,23 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 		if ok {
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
-			subscriptionData := gin.H{
-				"daily_usage_usd":             subscription.DailyUsageUSD,
-				"weekly_usage_usd":            subscription.WeeklyUsageUSD,
-				"monthly_usage_usd":           subscription.MonthlyUsageUSD,
-				"daily_limit_usd":             apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":            apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd":           apiKey.Group.MonthlyLimitUSD,
-				"expires_at":                  subscription.ExpiresAt,
-				"starts_at":                   subscription.StartsAt,
-				"validity_unit":               subscription.ValidityUnit,
-				"daily_window_start":          subscription.DailyWindowStart,
-				"weekly_window_start":         subscription.WeeklyWindowStart,
-				"allow_daily_overdraft":       subscription.AllowDailyOverdraft,
-				"group_allow_daily_overdraft": apiKey.Group.AllowDailyOverdraft,
+			resp["subscription"] = gin.H{
+				"daily_usage_usd":     subscription.DailyUsageUSD,
+				"weekly_usage_usd":    subscription.WeeklyUsageUSD,
+				"monthly_usage_usd":   subscription.MonthlyUsageUSD,
+				"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
+				"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
+				"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
+				"weekly_window_start": subscription.WeeklyWindowStart,
+				"expires_at":          subscription.ExpiresAt,
 			}
-			if subscription.AllowsDailyOverdraft(apiKey.Group) {
-				if overdraftLimit, ok := subscription.DailyOverdraftLimitUSD(apiKey.Group); ok {
-					subscriptionData["overdraft_limit_usd"] = overdraftLimit
-					subscriptionData["overdraft_used_usd"] = subscription.DailyOverdraftConsumedUSD(apiKey.Group, time.Now())
-					subscriptionData["overdraft_days"] = subscription.DailyOverdraftBorrowedDays(apiKey.Group, time.Now())
-				}
-			}
-			resp["subscription"] = subscriptionData
 		}
 
 		if usageData != nil {
 			resp["usage"] = usageData
+		}
+		if dailyUsage != nil {
+			resp["daily_usage"] = dailyUsage
 		}
 		if modelStats != nil {
 			resp["model_stats"] = modelStats
@@ -1701,6 +1793,9 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 	if usageData != nil {
 		resp["usage"] = usageData
 	}
+	if dailyUsage != nil {
+		resp["daily_usage"] = dailyUsage
+	}
 	if modelStats != nil {
 		resp["model_stats"] = modelStats
 	}
@@ -1709,34 +1804,22 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 
 // calculateSubscriptionRemaining 计算订阅剩余可用额度
 // 逻辑：
-// 1. 非透支订阅：如果日/周/月任一限额达到100%，返回0，否则返回最小剩余额度。
-// 2. 透支订阅：日限额变成单日基础卡，剩余额度按“有效天数×日限额”的订阅期总池计算。
+// 1. 如果日/周/月任一限额达到100%，返回0
+// 2. 否则返回所有已配置周期中剩余额度的最小值
 func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, sub *service.UserSubscription) float64 {
 	var remainingValues []float64
 
 	// 检查日限额
 	if group.HasDailyLimit() {
-		if sub.AllowsDailyOverdraft(group) {
-			limit, ok := sub.DailyOverdraftLimitUSD(group)
-			if !ok {
-				return 0
-			}
-			remaining := limit - sub.DailyOverdraftUsedUSD(group)
-			if remaining <= 0 {
-				return 0
-			}
-			remainingValues = append(remainingValues, remaining)
-		} else {
-			remaining := *group.DailyLimitUSD - sub.DailyUsageUSD
-			if remaining <= 0 {
-				return 0
-			}
-			remainingValues = append(remainingValues, remaining)
+		remaining := *group.DailyLimitUSD - sub.DailyUsageUSD
+		if remaining <= 0 {
+			return 0
 		}
+		remainingValues = append(remainingValues, remaining)
 	}
 
 	// 检查周限额
-	if group.HasWeeklyLimit() && !sub.AllowsDailyOverdraft(group) {
+	if group.HasWeeklyLimit() {
 		remaining := *group.WeeklyLimitUSD - sub.WeeklyUsageUSD
 		if remaining <= 0 {
 			return 0
@@ -1745,7 +1828,7 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	}
 
 	// 检查月限额
-	if group.HasMonthlyLimit() && !sub.AllowsDailyOverdraft(group) {
+	if group.HasMonthlyLimit() {
 		remaining := *group.MonthlyLimitUSD - sub.MonthlyUsageUSD
 		if remaining <= 0 {
 			return 0
@@ -1768,10 +1851,10 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 	return min
 }
 
-// handleConcurrencyError handles concurrency-related errors with proper 429 response
+// handleConcurrencyError handles concurrency-related acquire errors.
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
-	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
-		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+	status, errType, message := concurrencyErrorResponse(err, slotType)
+	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
@@ -1998,7 +2081,11 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 读取请求体
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
-		writeGatewayRequestBodyReadError(h, c, "handler.gateway.messages", err)
+		if maxErr, ok := extractMaxBytesError(err); ok {
+			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+			return
+		}
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
 		return
 	}
 
@@ -2007,9 +2094,10 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, "", false, body)
+	setOpsRequestContext(c, "", false)
 
-	parsedReq, err := service.ParseGatewayRequest(service.NewRequestBodyRef(body), domain.PlatformAnthropic)
+	bodyRef := service.NewRequestBodyRef(body)
+	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
 		logRequestBodyParseFailure(reqLog, body, err)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -2033,7 +2121,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream, body)
+	setOpsRequestContext(c, parsedReq.Model, parsedReq.Stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsedReq.Stream, false)))
 
 	// 获取订阅信息（可能为nil）
@@ -2062,11 +2150,14 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
 		reqLog.Warn("gateway.count_tokens_select_account_failed", zap.Error(err))
-		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
+		cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, parsedReq.Model, parsedReq.Model, service.PlatformAnthropic)
+		if !cls.ModelNotFound {
+			markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
+		}
+		h.errorResponse(c, cls.Status, cls.ErrType, cls.Message)
 		return
 	}
-	setOpsSelectedAccount(c, account.ID, account.Platform, account.Name)
+	setOpsSelectedAccount(c, account.ID, account.Platform)
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
@@ -2289,7 +2380,7 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 }
 
 // extractQuotaResetSeconds 从 quota 错误的 metadata 中提取 window_resets_at 并计算
-// 距重置剩余秒数。fallback 返回 60 秒，避免客户端立即重试进入抖动循环。
+// 距重置剩余秒数。fallback 路径必须返回 ≥1 秒，避免客户端立即重试无限循环。
 func extractQuotaResetSeconds(err error) int {
 	const fallback = 60
 	appErr := pkgerrors.FromError(err)
@@ -2311,6 +2402,8 @@ func extractQuotaResetSeconds(err error) int {
 	}
 	secs := time.Until(resetAt).Seconds()
 	if secs <= 0 {
+		// reset 时间已过：cache 与 DB 应该正在自愈，返回 fallback 让客户端按常规节奏退避，
+		// 避免返回 1 秒导致客户端立即重试仍触发限额的退避循环。
 		return fallback
 	}
 	return int(math.Ceil(secs))
@@ -2346,6 +2439,8 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 	if errors.Is(err, service.ErrUserPlatformDailyQuotaExhausted) ||
 		errors.Is(err, service.ErrUserPlatformWeeklyQuotaExhausted) ||
 		errors.Is(err, service.ErrUserPlatformMonthlyQuotaExhausted) {
+		// 与 RPM 超限一致映射 429 + Retry-After，让 SDK 自动退避（而非 403 直接失败）。
+		// 错误码用 rate_limit_exceeded 与 OpenAI 兼容客户端一致；细分类型由 ErrCode + window_resets_at metadata 区分。
 		msg := pkgerrors.Message(err)
 		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
 	}
@@ -2384,27 +2479,6 @@ func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger
 	)
 }
 
-func (h *GatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64, platform, requestedModel string) error {
-	if h == nil || h.gatewayService == nil {
-		return nil
-	}
-	requestedModel = strings.TrimSpace(requestedModel)
-	if requestedModel == "" {
-		return nil
-	}
-	if h.gatewayService.CheckChannelPricingRestriction(ctx, groupID, requestedModel) {
-		return fmt.Errorf("%w: %s", service.ErrModelBlockedByGroup, service.ModelBlockedByGroupMessage(requestedModel))
-	}
-	snapshot, ok := h.gatewayService.PeekAvailableModelsSnapshot(groupID, platform)
-	if !ok {
-		return nil
-	}
-	if service.SnapshotSupportsRequestedModel(snapshot, platform, requestedModel) {
-		return nil
-	}
-	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
-}
-
 func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
 	if task == nil {
 		return
@@ -2434,6 +2508,33 @@ func (h *GatewayHandler) submitUsageRecordTask(parent context.Context, task serv
 	task(ctx)
 }
 
+// submitMandatoryUsageRecordTask never silently drops billing work on pool overflow.
+func (h *GatewayHandler) submitMandatoryUsageRecordTask(parent context.Context, task service.UsageRecordTask) {
+	if task == nil {
+		return
+	}
+	task = wrapUsageRecordTaskContext(parent, task)
+	if h.usageRecordWorkerPool != nil {
+		if mode := h.usageRecordWorkerPool.Submit(task); !mode.Dropped() {
+			return
+		}
+		logger.L().With(
+			zap.String("component", "handler.gateway.usage"),
+		).Warn("gateway.usage_record_task_mandatory_sync_fallback")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.L().With(
+				zap.String("component", "handler.gateway.usage"),
+				zap.Any("panic", recovered),
+			).Error("gateway.usage_record_task_panic_recovered")
+		}
+	}()
+	task(ctx)
+}
+
 // getUserMsgQueueMode 获取当前请求的 UMQ 模式
 // 返回 "serialize" | "throttle" | ""
 func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *service.ParsedRequest) string {
@@ -2453,38 +2554,4 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 		mode = h.cfg.Gateway.UserMessageQueue.GetEffectiveMode()
 	}
 	return mode
-}
-
-// FeaturesProxy proxies GET /api/features/:key (GrowthBook feature flags) to
-// api.anthropic.com for the request's group, using an OAuth account's token
-// over uTLS+h2 and serving a per-account cached copy when available.
-func (h *GatewayHandler) FeaturesProxy(c *gin.Context) {
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok {
-		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
-		return
-	}
-	featureKey := c.Param("key")
-	status, contentType, body, err := h.gatewayService.ProxyGrowthBookFeature(c.Request.Context(), apiKey.GroupID, featureKey)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy feature request")
-		return
-	}
-	c.Data(status, contentType, body)
-}
-
-// BootstrapProxy proxies GET /api/claude_cli/bootstrap to api.anthropic.com
-// with the OAuth account's token and oauth beta header, per-account cached.
-func (h *GatewayHandler) BootstrapProxy(c *gin.Context) {
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok {
-		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
-		return
-	}
-	status, contentType, body, err := h.gatewayService.ProxyBootstrap(c.Request.Context(), apiKey.GroupID)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy bootstrap request")
-		return
-	}
-	c.Data(status, contentType, body)
 }

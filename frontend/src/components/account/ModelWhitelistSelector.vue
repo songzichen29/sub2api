@@ -149,6 +149,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
+import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import { useClipboard } from '@/composables/useClipboard'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -160,13 +161,18 @@ const props = defineProps<{
   modelValue: string[]
   platform?: string
   platforms?: string[]
-  // 动态模型列表（如 grok 上游探测结果）。提供时优先于按 platform 推导的硬编码集合。
-  dynamicModels?: string[]
   accountId?: number
+  syncCredentials?: {
+    platform: string
+    type: string
+    base_url?: string
+    api_key: string
+  }
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: string[]]
+  'upstream-synced': []
 }>()
 
 const appStore = useAppStore()
@@ -194,19 +200,28 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
-const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const upstreamSyncPlatforms = new Set([
+  'anthropic',
+  'openai',
+  'gemini',
+  'antigravity',
+  'grok',
+  'kimi',
+  'zhipu',
+  'deepseek'
+])
 const canSyncUpstream = computed(() => {
-  if (!props.accountId) return false
-  if (normalizedPlatforms.value.length === 0) return true
-  return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
+  if (props.accountId) {
+    if (normalizedPlatforms.value.length === 0) return true
+    return normalizedPlatforms.value.some(platform => upstreamSyncPlatforms.has(platform.toLowerCase()))
+  }
+  if (props.syncCredentials) {
+    return upstreamSyncPlatforms.has(props.syncCredentials.platform.toLowerCase())
+  }
+  return false
 })
 
 const availableOptions = computed(() => {
-  // dynamicModels 优先：调用方主动提供的运行时模型列表（如 grok2api /v1/models 返回值）
-  if (props.dynamicModels && props.dynamicModels.length > 0) {
-    return props.dynamicModels.map(m => ({ value: m, label: m }))
-  }
-
   if (normalizedPlatforms.value.length === 0) {
     return allModels
   }
@@ -267,17 +282,10 @@ const handleEnter = () => {
 
 const fillRelated = () => {
   const newModels = [...props.modelValue]
-  // dynamicModels 优先：一键填充时也用上游探测结果而非平台硬编码
-  if (props.dynamicModels && props.dynamicModels.length > 0) {
-    for (const model of props.dynamicModels) {
-      if (!newModels.includes(model)) newModels.push(model)
-    }
-  } else {
-    for (const platform of normalizedPlatforms.value) {
-      for (const model of getModelsByPlatform(platform)) {
-        if (!newModels.includes(model)) {
-          newModels.push(model)
-        }
+  for (const platform of normalizedPlatforms.value) {
+    for (const model of getModelsByPlatform(platform)) {
+      if (!newModels.includes(model)) {
+        newModels.push(model)
       }
     }
   }
@@ -285,15 +293,28 @@ const fillRelated = () => {
 }
 
 const syncUpstreamModels = async () => {
-  if (!props.accountId || isSyncingUpstream.value) return
+  if (isSyncingUpstream.value) return
+  if (!props.accountId && !props.syncCredentials) return
 
   isSyncingUpstream.value = true
   try {
-    const result = await accountsAPI.syncUpstreamModels(props.accountId)
+    let result
+    if (props.accountId) {
+      result = await accountsAPI.syncUpstreamModels(props.accountId)
+    } else if (props.syncCredentials) {
+      result = await accountsAPI.syncUpstreamModelsPreview(props.syncCredentials as SyncUpstreamPreviewParams)
+    } else {
+      return
+    }
+
     const upstreamModels = result.models.map(model => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
       return
+    }
+
+    if (!props.accountId) {
+      emit('upstream-synced')
     }
 
     const newModels = [...props.modelValue]
@@ -306,6 +327,10 @@ const syncUpstreamModels = async () => {
     }
 
     emit('update:modelValue', newModels)
+    if (result.warnings?.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
+      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+      return
+    }
     if (addedCount > 0) {
       appStore.showSuccess(t('admin.accounts.syncUpstreamModelsSuccess', { count: addedCount, total: upstreamModels.length }))
     } else {

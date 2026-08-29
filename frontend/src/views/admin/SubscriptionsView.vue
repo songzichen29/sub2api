@@ -211,65 +211,8 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
 
-          <template #cell-starts_at="{ value }">
-            <span v-if="value" class="text-sm text-gray-700 dark:text-gray-300">
-              {{ formatDateOnly(value) }}
-            </span>
-            <span v-else class="text-sm text-gray-500">-</span>
-          </template>
-
-          <template #cell-last_used_at="{ value }">
-            <span v-if="value" class="text-sm text-gray-700 dark:text-gray-300">
-              {{ formatDateTime(value) }}
-            </span>
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
-          </template>
-
           <template #cell-usage="{ row }">
             <div class="min-w-[280px] space-y-2">
-              <!-- Total Quota -->
-              <div v-if="hasTotalQuota(row)" class="usage-row">
-                <div class="flex items-center gap-2">
-                  <span class="usage-label">{{ t('admin.subscriptions.totalQuota') }}</span>
-                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
-                    <div
-                      class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(getTotalQuotaUsed(row), getTotalQuotaLimit(row))"
-                      :style="{
-                        width: getProgressWidth(getTotalQuotaUsed(row), getTotalQuotaLimit(row))
-                      }"
-                    ></div>
-                  </div>
-                  <span class="usage-amount">
-                    ${{ getTotalQuotaUsed(row).toFixed(2) }}
-                    <span class="text-gray-400">/</span>
-                    ${{ getTotalQuotaLimit(row).toFixed(2) }}
-                  </span>
-                </div>
-                <div class="reset-info">
-                  <svg
-                    class="h-3 w-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
-                    />
-                  </svg>
-                  <span>
-                    {{
-                      t('admin.subscriptions.totalQuotaRemaining', {
-                        amount: getTotalQuotaRemaining(row).toFixed(2),
-                      })
-                    }}
-                  </span>
-                </div>
-              </div>
-
               <!-- Daily Usage -->
               <div v-if="row.group?.daily_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
@@ -303,30 +246,30 @@
                       d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>{{ formatResetTime(row.daily_window_start, 'daily') }}</span>
+                  <span>{{ formatDailyUsageWindow(row) }}</span>
                 </div>
               </div>
 
-              <!-- Overdraft / total pool usage -->
-              <div v-if="getOverdraftLimit(row)" class="usage-row">
+              <!-- Weekly Usage -->
+              <div v-if="row.group?.weekly_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
-                  <span class="usage-label">{{ t('admin.subscriptions.overdraftTotal') }}</span>
+                  <span class="usage-label">{{ t('admin.subscriptions.weekly') }}</span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))"
+                      :class="getProgressClass(row.weekly_usage_usd, row.group?.weekly_limit_usd)"
                       :style="{
-                        width: getProgressWidth(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))
+                        width: getProgressWidth(row.weekly_usage_usd, row.group?.weekly_limit_usd)
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
-                    ${{ ((getOverdraftDisplayUsed(row) ?? 0) || 0).toFixed(2) }}
+                    ${{ row.weekly_usage_usd?.toFixed(2) || '0.00' }}
                     <span class="text-gray-400">/</span>
-                    ${{ getOverdraftLimit(row)?.toFixed(2) }}
+                    ${{ row.group?.weekly_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
-                <div v-if="row.allow_daily_overdraft" class="reset-info">
+                <div class="reset-info" v-if="row.weekly_window_start">
                   <svg
                     class="h-3 w-3"
                     fill="none"
@@ -337,18 +280,33 @@
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>
-                    {{
-                      t('admin.subscriptions.todayOverdraftAmount', {
-                        amount: getTodayOverdraftAmount(row).toFixed(2),
-                      })
-                    }}
+                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
+                </div>
+              </div>
+
+              <!-- Monthly Usage -->
+              <div v-if="row.group?.monthly_limit_usd" class="usage-row">
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="getProgressClass(row.monthly_usage_usd, row.group?.monthly_limit_usd)"
+                      :style="{
+                        width: getProgressWidth(row.monthly_usage_usd, row.group?.monthly_limit_usd)
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ row.monthly_usage_usd?.toFixed(2) || '0.00' }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group?.monthly_limit_usd?.toFixed(2) }}
                   </span>
                 </div>
-                <div v-if="getOverdraftLimit(row)" class="reset-info">
+                <div class="reset-info" v-if="row.monthly_window_start">
                   <svg
                     class="h-3 w-3"
                     fill="none"
@@ -359,13 +317,10 @@
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V6m0 10v2"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span>
-                    {{ t('admin.subscriptions.overdraftRemaining') }}:
-                    ${{ getOverdraftRemaining(row).toFixed(2) }}
-                  </span>
+                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
                 </div>
               </div>
 
@@ -374,9 +329,7 @@
                 v-if="
                   !row.group?.daily_limit_usd &&
                   !row.group?.weekly_limit_usd &&
-                  !row.group?.monthly_limit_usd &&
-                  !row.allow_daily_overdraft &&
-                  !hasTotalQuota(row)
+                  !row.group?.monthly_limit_usd
                 "
                 class="flex items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2 dark:from-emerald-900/20 dark:to-teal-900/20"
               >
@@ -400,49 +353,44 @@
               >
                 {{ formatDateTimeToMinute(value) }}
               </span>
-              <div v-if="getRemainingText(value)" class="text-xs text-gray-500">
-                {{ getRemainingText(value) }}
-              </div>
+              <template
+                v-for="remainingExpiry in [formatRemainingExpiry(value)]"
+                :key="remainingExpiry ?? 'expired'"
+              >
+                <div v-if="remainingExpiry" class="text-xs text-gray-500">
+                  {{ remainingExpiry }}
+                </div>
+              </template>
             </div>
             <span v-else class="text-sm text-gray-500">{{
               t('admin.subscriptions.noExpiration')
             }}</span>
           </template>
 
-          <template #cell-status="{ row, value }">
+          <template #cell-status="{ value }">
             <span
               :class="[
                 'badge',
-                isSubscriptionNotStarted(row)
-                  ? 'badge-warning'
-                  : value === 'active'
+                value === 'active'
                   ? 'badge-success'
-                  : value === 'expired' || value === 'quota_exhausted'
+                  : value === 'expired'
                     ? 'badge-warning'
                     : 'badge-danger'
               ]"
             >
-              {{ isSubscriptionNotStarted(row) ? t('admin.subscriptions.status.not_started') : t(`admin.subscriptions.status.${value}`) }}
+              {{ t(`admin.subscriptions.status.${value}`) }}
             </span>
           </template>
 
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button
-                v-if="row.status === 'active' || row.status === 'expired' || row.status === 'quota_exhausted'"
+                v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
                 <Icon name="calendar" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
-              </button>
-              <button
-                @click="handleOrderUsage(row)"
-                :disabled="orderUsageLoading && orderUsageSubscription?.id === row.id"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-              >
-                <Icon name="document" size="sm" />
-                <span class="text-xs">订单用量</span>
               </button>
               <button
                 v-if="row.status === 'active'"
@@ -455,27 +403,19 @@
               </button>
               <button
                 v-if="row.status === 'active'"
-                @click="toggleWeekendSkip(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
-              >
-                <Icon name="calendar" size="sm" />
-                <span class="text-xs">{{ row.skip_weekends ? '关闭周末' : '跳过周末' }}</span>
-              </button>
-              <button
-                v-if="row.weekend_skip_user_changed_at"
-                @click="resetWeekendSkipChange(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
-              >
-                <Icon name="refresh" size="sm" />
-                <span class="text-xs">重置机会</span>
-              </button>
-              <button
-                v-if="row.status === 'active' || row.status === 'quota_exhausted'"
                 @click="handleRevoke(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
                 <Icon name="ban" size="sm" />
                 <span class="text-xs">{{ t('admin.subscriptions.revoke') }}</span>
+              </button>
+              <button
+                v-if="row.status === 'revoked'"
+                @click="handleRestore(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+              >
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.restore') }}</span>
               </button>
             </div>
           </template>
@@ -596,36 +536,9 @@
           <p class="input-hint">{{ t('admin.subscriptions.groupHint') }}</p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.subscriptions.form.assignMode') }}</label>
-          <Select
-            v-model="assignForm.mode"
-            :options="assignModeOptions"
-          />
-          <p class="input-hint">{{ t('admin.subscriptions.assignModeHint') }}</p>
-        </div>
-        <div v-if="assignForm.mode === 'days'">
           <label class="input-label">{{ t('admin.subscriptions.form.validityDays') }}</label>
           <input v-model.number="assignForm.validity_days" type="number" min="1" class="input" />
           <p class="input-hint">{{ t('admin.subscriptions.validityHint') }}</p>
-        </div>
-        <div v-else class="space-y-4">
-          <div>
-            <label class="input-label">{{ t('admin.subscriptions.form.startsAt') }}</label>
-            <input
-              v-model="assignForm.starts_at_local"
-              type="datetime-local"
-              class="input"
-            />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.subscriptions.form.expiresAt') }}</label>
-            <input
-              v-model="assignForm.expires_at_local"
-              type="datetime-local"
-              class="input"
-            />
-          </div>
-          <p class="input-hint">{{ t('admin.subscriptions.timeRangeHint') }}</p>
         </div>
       </form>
       <template #footer>
@@ -695,12 +608,6 @@
               }}
             </span>
           </p>
-          <p v-if="extendingSubscription.starts_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-            {{ t('admin.subscriptions.currentStartTime') }}:
-            <span class="font-medium text-gray-900 dark:text-white">
-              {{ formatDateOnly(extendingSubscription.starts_at) }}
-            </span>
-          </p>
           <p v-if="extendingSubscription.expires_at" class="mt-1 text-sm text-gray-600 dark:text-gray-400">
             {{ t('admin.subscriptions.remainingDays') }}:
             <span class="font-medium text-gray-900 dark:text-white">
@@ -709,14 +616,7 @@
           </p>
         </div>
         <div>
-          <label class="input-label">{{ t('admin.subscriptions.form.assignMode') }}</label>
-          <div class="input flex items-center bg-gray-50 text-sm text-gray-700 dark:bg-dark-700 dark:text-gray-300">
-            {{ extendModeLabel }}
-          </div>
-          <p class="input-hint">{{ t('admin.subscriptions.adjustModeHint') }}</p>
-        </div>
-        <div>
-          <label class="input-label">{{ adjustDaysLabel }}</label>
+          <label class="input-label">{{ t('admin.subscriptions.form.adjustDays') }}</label>
           <div class="flex items-center gap-2">
             <input
               v-model.number="extendForm.days"
@@ -726,18 +626,7 @@
               :placeholder="t('admin.subscriptions.adjustDaysPlaceholder')"
             />
           </div>
-          <p class="input-hint">{{ adjustDaysHint }}</p>
-        </div>
-        <div v-if="extendForm.mode === 'range'" class="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <label class="input-label">{{ t('admin.subscriptions.form.startsAt') }}</label>
-            <input :value="extendForm.range_starts_at_local" type="datetime-local" class="input" readonly />
-          </div>
-          <div>
-            <label class="input-label">{{ t('admin.subscriptions.form.expiresAt') }}</label>
-            <input :value="rangeAdjustedExpiresAtLocal" type="datetime-local" class="input" readonly />
-          </div>
-          <p class="input-hint md:col-span-2">{{ t('admin.subscriptions.rangeAdjustHint') }}</p>
+          <p class="input-hint">{{ t('admin.subscriptions.adjustHint') }}</p>
         </div>
       </form>
       <template #footer>
@@ -769,266 +658,27 @@
       @cancel="showRevokeDialog = false"
     />
 
-    <BaseDialog
-      :show="showWeekendSkipConfirm"
-      :title="weekendSkipTarget?.enabled ? '开启跳过非工作日' : '关闭跳过非工作日'"
-      width="narrow"
-      @close="closeWeekendSkipConfirm"
-    >
-      <div v-if="weekendSkipTarget" class="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-        <p>
-          {{ weekendSkipTarget.enabled ? '开启后周六、周日不可使用，系统会把周末时间补偿到到期时间。' : '关闭后周六、周日恢复可用，系统会把剩余工作日时长换算回自然日到期时间。' }}
-        </p>
-        <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-600">
-          <div class="flex justify-between gap-3 py-1">
-            <span class="text-gray-500 dark:text-dark-400">当前到期时间</span>
-            <span class="font-medium">{{ formatDateTime(weekendSkipTarget.preview.current_expires_at) }}</span>
-          </div>
-          <div class="flex justify-between gap-3 py-1">
-            <span class="text-gray-500 dark:text-dark-400">调整后到期时间</span>
-            <span class="font-medium">{{ formatDateTime(weekendSkipTarget.preview.preview_expires_at) }}</span>
-          </div>
-          <div class="flex justify-between gap-3 py-1">
-            <span class="text-gray-500 dark:text-dark-400">本次时间变化</span>
-            <span :class="weekendSkipTarget.preview.delta_seconds >= 0 ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'">
-              {{ formatDeltaSeconds(weekendSkipTarget.preview.delta_seconds) }}
-            </span>
-          </div>
-        </div>
-        <p class="text-xs text-gray-500 dark:text-dark-400">
-          请确认到期时间变化无误后再继续。
-        </p>
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <button type="button" class="btn btn-secondary" @click="closeWeekendSkipConfirm">{{ t('common.cancel') }}</button>
-          <button type="button" class="btn btn-primary" :disabled="weekendSkipSubmitting" @click="confirmWeekendSkipToggle">
-            {{ weekendSkipSubmitting ? t('common.processing') : t('common.confirm') }}
-          </button>
-        </div>
-      </template>
-    </BaseDialog>
+    <!-- Restore Confirmation Dialog -->
+    <ConfirmDialog
+      :show="showRestoreDialog"
+      :title="t('admin.subscriptions.restoreSubscription')"
+      :message="t('admin.subscriptions.restoreConfirm', { user: restoringSubscription?.user?.email })"
+      :confirm-text="t('admin.subscriptions.restore')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmRestore"
+      @cancel="showRestoreDialog = false"
+    />
 
-    <!-- Reset Quota Multi-Select Dialog -->
-    <BaseDialog
+    <!-- Reset Quota Confirmation Dialog -->
+    <ConfirmDialog
       :show="showResetQuotaConfirm"
       :title="t('admin.subscriptions.resetQuotaTitle')"
-      width="narrow"
-      @close="closeResetQuotaDialog"
-    >
-      <div v-if="resettingSubscription" class="space-y-4">
-        <p class="text-sm text-gray-600 dark:text-gray-300">
-          {{ t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription.user?.email }) }}
-        </p>
-
-        <!-- Paid lock notice -->
-        <div
-          v-if="isPaidSubscription(resettingSubscription)"
-          class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-300"
-        >
-          {{ t('admin.subscriptions.resetQuotaPaidLocked') }}
-        </div>
-
-        <!-- No-limits notice -->
-        <div
-          v-else-if="!hasAnyConfiguredWindow(resettingSubscription)"
-          class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-300"
-        >
-          {{ t('admin.subscriptions.resetQuotaNoLimits') }}
-        </div>
-
-        <!-- Window selectors -->
-        <div v-else class="space-y-2">
-          <p class="text-xs text-gray-500 dark:text-dark-400">
-            {{ t('admin.subscriptions.resetQuotaSelectorHint') }}
-          </p>
-          <label
-            v-for="opt in resetWindowOptions"
-            :key="opt.key"
-            :class="[
-              'flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm transition-colors',
-              opt.disabled
-                ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400 dark:border-dark-600 dark:bg-dark-700/50 dark:text-dark-500'
-                : 'border-gray-200 bg-white hover:border-primary-400 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-500'
-            ]"
-          >
-            <input
-              type="checkbox"
-              class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
-              :checked="resetSelection[opt.key]"
-              :disabled="opt.disabled"
-              @change="toggleResetSelection(opt.key)"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-medium" :class="opt.disabled ? '' : 'text-gray-900 dark:text-white'">
-                  {{ opt.label }}
-                </span>
-                <span v-if="opt.usageText" class="text-xs tabular-nums">{{ opt.usageText }}</span>
-              </div>
-              <p v-if="opt.disabledReason" class="mt-0.5 text-[11px] text-gray-500 dark:text-dark-400">
-                {{ opt.disabledReason }}
-              </p>
-            </div>
-          </label>
-        </div>
-      </div>
-      <template #footer>
-        <div v-if="resettingSubscription" class="flex justify-end gap-3">
-          <button @click="closeResetQuotaDialog" type="button" class="btn btn-secondary">
-            {{ t('common.cancel') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="!canSubmitResetQuota || resettingQuota"
-            @click="confirmResetQuota"
-          >
-            {{ resettingQuota ? t('common.processing') : t('admin.subscriptions.resetQuota') }}
-          </button>
-        </div>
-      </template>
-    </BaseDialog>
-
-    <BaseDialog
-      :show="showOrderUsageModal"
-      title="订单用量明细"
-      width="wide"
-      @close="closeOrderUsageModal"
-    >
-      <div class="space-y-4">
-        <div class="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm dark:border-dark-600 dark:bg-dark-700">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div class="font-medium text-gray-900 dark:text-white">
-                {{ orderUsageSubscription?.user?.email || `用户 #${orderUsageSubscription?.user_id || '-'}` }}
-              </div>
-              <div class="mt-1 text-xs text-gray-500 dark:text-dark-400">
-                订阅 #{{ orderUsageSubscription?.id || '-' }} · {{ orderUsageSubscription?.group?.name || `分组 #${orderUsageSubscription?.group_id || '-'}` }}
-              </div>
-            </div>
-            <div v-if="orderUsageData" class="grid grid-cols-5 gap-3 text-right text-xs">
-              <div>
-                <div class="text-gray-500 dark:text-dark-400">订单数</div>
-                <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ orderUsageData.orders.length }}</div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-dark-400">订单已用</div>
-                <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ orderUsageData.total_used_actual_cost.toFixed(2) }}</div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-dark-400">剩余</div>
-                <div class="mt-1 font-semibold" :class="(orderUsageData.total_remaining_usd ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-900 dark:text-white'">
-                  {{ formatOptionalMoney(orderUsageData.total_remaining_usd) }}
-                </div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-dark-400">窗口订阅</div>
-                <div class="mt-1 font-semibold text-gray-900 dark:text-white">${{ orderUsageData.total_window_subscription_used_usd.toFixed(2) }}</div>
-              </div>
-              <div>
-                <div class="text-gray-500 dark:text-dark-400">窗口余额</div>
-                <div class="mt-1 font-semibold" :class="orderUsageData.total_window_balance_used_usd > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-900 dark:text-white'">
-                  ${{ orderUsageData.total_window_balance_used_usd.toFixed(2) }}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-            订单已用/剩余按已支付订单额度顺序分摊；窗口订阅/余额表示该窗口内实际发生的消费。现有使用日志没有直接保存 order_id。
-          </div>
-        </div>
-
-        <div v-if="orderUsageLoading" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
-          {{ t('common.loading') }}
-        </div>
-        <div v-else-if="!orderUsageData || orderUsageData.orders.length === 0" class="py-8 text-center text-sm text-gray-500 dark:text-dark-400">
-          暂无可归因的已支付订阅订单
-        </div>
-        <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-600">
-          <table class="min-w-[1420px] w-full text-left text-xs">
-            <thead class="bg-gray-50 text-gray-500 dark:bg-dark-700 dark:text-dark-300">
-              <tr>
-                <th class="px-3 py-2 font-medium">订单</th>
-                <th class="px-3 py-2 font-medium">类型</th>
-                <th class="px-3 py-2 font-medium">支付时间</th>
-                <th class="px-3 py-2 font-medium">窗口</th>
-                <th class="px-3 py-2 text-right font-medium">额度</th>
-                <th class="px-3 py-2 text-right font-medium">订单已用</th>
-                <th class="px-3 py-2 text-right font-medium">剩余</th>
-                <th class="px-3 py-2 text-right font-medium">窗口订阅</th>
-                <th class="px-3 py-2 text-right font-medium">窗口余额</th>
-                <th class="px-3 py-2 text-right font-medium">订阅请求</th>
-                <th class="px-3 py-2 text-right font-medium">Tokens</th>
-                <th class="px-3 py-2 font-medium">首末使用</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-              <tr v-for="order in orderUsageData.orders" :key="order.order_id" class="bg-white dark:bg-dark-800">
-                <td class="px-3 py-2 align-top">
-                  <div class="font-medium text-gray-900 dark:text-white">#{{ order.order_id }}</div>
-                  <div class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">{{ order.order_status }}</div>
-                </td>
-                <td class="px-3 py-2 align-top">
-                  <span class="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700 dark:bg-dark-700 dark:text-dark-200">
-                    {{ formatOrderWindowKind(order) }}
-                  </span>
-                  <div class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">
-                    {{ order.subscription_days }} 天 · {{ order.validity_unit || 'day' }}
-                  </div>
-                </td>
-                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
-                  {{ formatDateTime(order.paid_at) }}
-                </td>
-                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
-                  <div>{{ formatDateTime(order.window_start) }}</div>
-                  <div class="mt-1 text-gray-500 dark:text-dark-400">{{ formatDateTime(order.window_end) }}</div>
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
-                  {{ formatOptionalMoney(order.quota_usd) }}
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums" :class="isOrderOverQuota(order) ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-gray-300'">
-                  ${{ order.used_actual_cost_usd.toFixed(2) }}
-                  <div v-if="order.over_quota_usd" class="mt-1 text-[11px] text-red-600 dark:text-red-400">
-                    超 ${{ order.over_quota_usd.toFixed(2) }}
-                  </div>
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums" :class="(order.remaining_usd ?? 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-gray-700 dark:text-gray-300'">
-                  {{ formatOptionalMoney(order.remaining_usd) }}
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
-                  ${{ order.window_subscription_used_usd.toFixed(2) }}
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums" :class="order.window_balance_used_usd > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'">
-                  ${{ order.window_balance_used_usd.toFixed(2) }}
-                  <div v-if="order.balance_request_count" class="mt-1 text-[11px] text-gray-500 dark:text-dark-400">
-                    {{ order.balance_request_count }} 次
-                  </div>
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
-                  {{ order.request_count }}
-                </td>
-                <td class="px-3 py-2 text-right align-top tabular-nums text-gray-700 dark:text-gray-300">
-                  {{ formatCompactNumber(order.input_tokens + order.output_tokens) }}
-                </td>
-                <td class="px-3 py-2 align-top text-gray-700 dark:text-gray-300">
-                  <div>{{ order.first_usage_at ? formatDateTime(order.first_usage_at) : '-' }}</div>
-                  <div class="mt-1 text-gray-500 dark:text-dark-400">{{ order.last_usage_at ? formatDateTime(order.last_usage_at) : '-' }}</div>
-                  <div v-if="order.exhausted_at" class="mt-1 text-[11px] text-red-600 dark:text-red-400">
-                    用完 {{ formatDateTime(order.exhausted_at) }}
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <template #footer>
-        <div class="flex justify-end">
-          <button type="button" class="btn btn-secondary" @click="closeOrderUsageModal">{{ t('common.close') }}</button>
-        </div>
-      </template>
-    </BaseDialog>
+      :message="t('admin.subscriptions.resetQuotaConfirm', { user: resettingSubscription?.user?.email })"
+      :confirm-text="t('admin.subscriptions.resetQuota')"
+      :cancel-text="t('common.cancel')"
+      @confirm="confirmResetQuota"
+      @cancel="showResetQuotaConfirm = false"
+    />
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -1116,21 +766,10 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
-import type {
-  SubscriptionOrderUsageItem,
-  SubscriptionOrderUsageResponse,
-  WeekendSkipPreview
-} from '@/api/admin/subscriptions'
-import type {
-  UserSubscription,
-  Group,
-  GroupPlatform,
-  SubscriptionType,
-  ExtendSubscriptionRequest
-} from '@/types'
+import type { UserSubscription, Group, GroupPlatform, SubscriptionType } from '@/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { Column } from '@/components/common/types'
-import { formatDateOnly, formatDateTime, formatDateTimeToMinute, formatRemainingDuration } from '@/utils/format'
+import { formatDateTimeToMinute } from '@/utils/format'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1143,6 +782,13 @@ import Select from '@/components/common/Select.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
+import {
+  getRemainingDurationParts,
+  getRemainingExpiryDuration,
+  isOneTimeDailyQuota,
+  type RemainingDurationParts
+} from '@/utils/subscriptionQuota'
+import { GROUP_PLATFORM_OPTIONS } from '@/constants/platforms'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1203,9 +849,7 @@ const allColumns = computed<Column[]>(() => [
     sortable: false
   },
   { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false },
-  { key: 'starts_at', label: t('admin.subscriptions.columns.startsAt'), sortable: false },
   { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false },
-  { key: 'last_used_at', label: t('admin.subscriptions.columns.lastUsed'), sortable: true },
   { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true },
   { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true },
   { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false }
@@ -1279,7 +923,6 @@ const statusOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allStatus') },
   { value: 'active', label: t('admin.subscriptions.status.active') },
   { value: 'expired', label: t('admin.subscriptions.status.expired') },
-  { value: 'quota_exhausted', label: t('admin.subscriptions.status.quota_exhausted') },
   { value: 'revoked', label: t('admin.subscriptions.status.revoked') }
 ])
 
@@ -1313,7 +956,7 @@ const filters = reactive({
 
 // Sorting state
 const sortState = reactive({
-  sort_by: 'last_used_at',
+  sort_by: 'created_at',
   sort_order: 'desc' as 'asc' | 'desc'
 })
 
@@ -1327,60 +970,23 @@ const pagination = reactive({
 const showAssignModal = ref(false)
 const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
+const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
-const showOrderUsageModal = ref(false)
-const orderUsageLoading = ref(false)
-const orderUsageSubscription = ref<UserSubscription | null>(null)
-const orderUsageData = ref<SubscriptionOrderUsageResponse | null>(null)
-const showWeekendSkipConfirm = ref(false)
-const weekendSkipSubmitting = ref(false)
-const weekendSkipTarget = ref<{
-  subscription: UserSubscription
-  enabled: boolean
-  preview: WeekendSkipPreview
-} | null>(null)
+const restoringSubscription = ref<UserSubscription | null>(null)
 
 const assignForm = reactive({
   user_id: null as number | null,
   group_id: null as number | null,
-  validity_days: 30,
-  mode: 'days' as 'days' | 'range',
-  starts_at_local: '',
-  expires_at_local: ''
+  validity_days: 30
 })
 
-const assignModeOptions = computed(() => [
-  { value: 'days', label: t('admin.subscriptions.assignModeDays') },
-  { value: 'range', label: t('admin.subscriptions.assignModeRange') }
-])
-const extendModeLabel = computed(() =>
-  extendForm.mode === 'range'
-    ? t('admin.subscriptions.assignModeRange')
-    : t('admin.subscriptions.assignModeDays')
-)
-// 时间段模式下天数字段是「结束时间偏移量」，与 days 模式语义不同，需要更明确的文案
-const adjustDaysLabel = computed(() =>
-  extendForm.mode === 'range'
-    ? t('admin.subscriptions.form.adjustDaysRange')
-    : t('admin.subscriptions.form.adjustDays')
-)
-const adjustDaysHint = computed(() =>
-  extendForm.mode === 'range'
-    ? t('admin.subscriptions.adjustRangeDaysHint')
-    : t('admin.subscriptions.adjustHint')
-)
-
 const extendForm = reactive({
-  days: 30,
-  mode: 'days' as 'days' | 'range',
-  range_starts_at: '',
-  range_expires_at: '',
-  range_starts_at_local: ''
+  days: 30
 })
 
 // Group options for filter (all groups)
@@ -1391,11 +997,7 @@ const groupOptions = computed(() => [
 
 const platformFilterOptions = computed(() => [
   { value: '', label: t('admin.subscriptions.allPlatforms') },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-  { value: 'antigravity', label: 'Antigravity' },
-  { value: 'grok', label: 'Grok' }
+  ...GROUP_PLATFORM_OPTIONS
 ])
 
 // Group options for assign (only subscription type groups)
@@ -1584,33 +1186,11 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadSubscriptions()
 }
 
-const localDateTimeToRFC3339 = (value: string): string | null => {
-  if (!value) return null
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return null
-  return d.toISOString()
-}
-
-const rfc3339ToLocalDateTime = (value?: string | null): string => {
-  if (!value) return ''
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ''
-  const year = d.getFullYear()
-  const month = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const hours = String(d.getHours()).padStart(2, '0')
-  const minutes = String(d.getMinutes()).padStart(2, '0')
-  return `${year}-${month}-${day}T${hours}:${minutes}`
-}
-
 const closeAssignModal = () => {
   showAssignModal.value = false
   assignForm.user_id = null
   assignForm.group_id = null
   assignForm.validity_days = 30
-  assignForm.mode = 'days'
-  assignForm.starts_at_local = ''
-  assignForm.expires_at_local = ''
   // Clear user search state
   selectedUser.value = null
   userSearchKeyword.value = ''
@@ -1627,46 +1207,18 @@ const handleAssignSubscription = async () => {
     appStore.showError(t('admin.subscriptions.pleaseSelectGroup'))
     return
   }
-
-  const payload: {
-    user_id: number
-    group_id: number
-    validity_days?: number
-    starts_at?: string
-    expires_at?: string
-  } = {
-    user_id: assignForm.user_id,
-    group_id: assignForm.group_id
-  }
-
-  if (assignForm.mode === 'days') {
-    if (!assignForm.validity_days || assignForm.validity_days < 1) {
-      appStore.showError(t('admin.subscriptions.validityDaysRequired'))
-      return
-    }
-    payload.validity_days = assignForm.validity_days
-  } else {
-    const startsAt = localDateTimeToRFC3339(assignForm.starts_at_local)
-    const expiresAt = localDateTimeToRFC3339(assignForm.expires_at_local)
-    if (!startsAt || !expiresAt) {
-      appStore.showError(t('admin.subscriptions.timeRangeRequired'))
-      return
-    }
-    if (new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) {
-      appStore.showError(t('admin.subscriptions.timeRangeInvalid'))
-      return
-    }
-    if (new Date(expiresAt).getTime() <= Date.now()) {
-      appStore.showError(t('admin.subscriptions.timeRangeMustBeFuture'))
-      return
-    }
-    payload.starts_at = startsAt
-    payload.expires_at = expiresAt
+  if (!assignForm.validity_days || assignForm.validity_days < 1) {
+    appStore.showError(t('admin.subscriptions.validityDaysRequired'))
+    return
   }
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign(payload)
+    await adminAPI.subscriptions.assign({
+      user_id: assignForm.user_id,
+      group_id: assignForm.group_id,
+      validity_days: assignForm.validity_days
+    })
     appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
     closeAssignModal()
     loadSubscriptions()
@@ -1681,98 +1233,32 @@ const handleAssignSubscription = async () => {
 const handleExtend = (subscription: UserSubscription) => {
   extendingSubscription.value = subscription
   extendForm.days = 30
-  const useRangeMode = shouldAdjustAsRange(subscription)
-  extendForm.mode = useRangeMode ? 'range' : 'days'
-  if (useRangeMode) {
-    extendForm.range_starts_at = subscription.starts_at || ''
-    extendForm.range_expires_at = subscription.expires_at || ''
-    extendForm.range_starts_at_local = rfc3339ToLocalDateTime(subscription.starts_at)
-  } else {
-    extendForm.range_starts_at = ''
-    extendForm.range_expires_at = ''
-    extendForm.range_starts_at_local = ''
-  }
   showExtendModal.value = true
 }
 
 const closeExtendModal = () => {
   showExtendModal.value = false
   extendingSubscription.value = null
-  extendForm.days = 30
-  extendForm.mode = 'days'
-  extendForm.range_starts_at = ''
-  extendForm.range_expires_at = ''
-  extendForm.range_starts_at_local = ''
 }
-
-const shouldAdjustAsRange = (subscription: UserSubscription): boolean => {
-  if (!subscription.starts_at || !subscription.expires_at) return false
-  const startsAtMs = new Date(subscription.starts_at).getTime()
-  const createdAtMs = new Date(subscription.created_at).getTime()
-  if (Number.isNaN(startsAtMs) || Number.isNaN(createdAtMs)) return false
-  if (startsAtMs > Date.now()) return true
-  return Math.abs(startsAtMs - createdAtMs) > 60 * 1000
-}
-
-const rangeAdjustedExpiresAtRFC3339 = computed(() => {
-  if (extendForm.mode !== 'range') return null
-  const baseExpiresAt = new Date(extendForm.range_expires_at)
-  if (Number.isNaN(baseExpiresAt.getTime())) return null
-  const adjusted = new Date(
-    baseExpiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000
-  )
-  if (Number.isNaN(adjusted.getTime())) return null
-  return adjusted.toISOString()
-})
-
-const rangeAdjustedExpiresAtLocal = computed(() =>
-  rfc3339ToLocalDateTime(rangeAdjustedExpiresAtRFC3339.value)
-)
 
 const handleExtendSubscription = async () => {
   if (!extendingSubscription.value) return
 
-  const payload: ExtendSubscriptionRequest = {}
-  if (extendForm.mode === 'range') {
-    const startsAt = new Date(extendForm.range_starts_at)
-    const expiresAt = new Date(rangeAdjustedExpiresAtRFC3339.value || '')
-    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(expiresAt.getTime())) {
-      appStore.showError(t('admin.subscriptions.timeRangeRequired'))
+  // 前端验证：调整后的过期时间必须在未来
+  if (extendingSubscription.value.expires_at) {
+    const expiresAt = new Date(extendingSubscription.value.expires_at)
+    const newExpiresAt = new Date(expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000)
+    if (newExpiresAt <= new Date()) {
+      appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
       return
     }
-    if (expiresAt.getTime() <= startsAt.getTime()) {
-      appStore.showError(t('admin.subscriptions.timeRangeInvalid'))
-      return
-    }
-    if (expiresAt.getTime() <= Date.now()) {
-      appStore.showError(t('admin.subscriptions.timeRangeMustBeFuture'))
-      return
-    }
-    payload.starts_at = startsAt.toISOString()
-    payload.expires_at = expiresAt.toISOString()
-  } else {
-    // 前端验证：调整后的过期时间必须在未来
-    if (extendingSubscription.value.expires_at) {
-      const expiresAt = new Date(extendingSubscription.value.expires_at)
-      const newExpiresAt = new Date(
-        expiresAt.getTime() + extendForm.days * 24 * 60 * 60 * 1000
-      )
-      if (newExpiresAt <= new Date()) {
-        appStore.showError(t('admin.subscriptions.adjustWouldExpire'))
-        return
-      }
-    }
-    payload.days = extendForm.days
-  }
-
-  if (payload.days === undefined && (!payload.starts_at || !payload.expires_at)) {
-    appStore.showError(t('admin.subscriptions.failedToAdjust'))
-    return
   }
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.extend(extendingSubscription.value.id, payload)
+    await adminAPI.subscriptions.extend(extendingSubscription.value.id, {
+      days: extendForm.days
+    })
     appStore.showSuccess(t('admin.subscriptions.subscriptionAdjusted'))
     closeExtendModal()
     loadSubscriptions()
@@ -1787,28 +1273,6 @@ const handleExtendSubscription = async () => {
 const handleRevoke = (subscription: UserSubscription) => {
   revokingSubscription.value = subscription
   showRevokeDialog.value = true
-}
-
-const handleOrderUsage = async (subscription: UserSubscription) => {
-  orderUsageSubscription.value = subscription
-  orderUsageData.value = null
-  showOrderUsageModal.value = true
-  orderUsageLoading.value = true
-  try {
-    orderUsageData.value = await adminAPI.subscriptions.getOrderUsage(subscription.id)
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || '加载订单用量失败')
-    console.error('Error loading subscription order usage:', error)
-  } finally {
-    orderUsageLoading.value = false
-  }
-}
-
-const closeOrderUsageModal = () => {
-  showOrderUsageModal.value = false
-  orderUsageSubscription.value = null
-  orderUsageData.value = null
-  orderUsageLoading.value = false
 }
 
 const confirmRevoke = async () => {
@@ -1826,94 +1290,40 @@ const confirmRevoke = async () => {
   }
 }
 
+const handleRestore = (subscription: UserSubscription) => {
+  restoringSubscription.value = subscription
+  showRestoreDialog.value = true
+}
+
+const confirmRestore = async () => {
+  if (!restoringSubscription.value) return
+
+  try {
+    await adminAPI.subscriptions.restore(restoringSubscription.value.id)
+    appStore.showSuccess(t('admin.subscriptions.subscriptionRestored'))
+    showRestoreDialog.value = false
+    restoringSubscription.value = null
+    loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToRestore'))
+    console.error('Error restoring subscription:', error)
+  }
+}
+
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
-  // 默认勾选所有「合法可重置」的档（与 backend validateResetTargets 规则对齐）
-  resetSelection.daily = isResetWindowEnabled(subscription, 'daily')
-  resetSelection.weekly = isResetWindowEnabled(subscription, 'weekly')
-  resetSelection.monthly = isResetWindowEnabled(subscription, 'monthly')
   showResetQuotaConfirm.value = true
-}
-
-const formatDeltaSeconds = (seconds: number): string => {
-  const sign = seconds > 0 ? '+' : seconds < 0 ? '-' : ''
-  const abs = Math.abs(seconds)
-  const days = Math.floor(abs / 86400)
-  const hours = Math.floor((abs % 86400) / 3600)
-  const minutes = Math.floor((abs % 3600) / 60)
-  const parts: string[] = []
-  if (days) parts.push(`${days} 天`)
-  if (hours) parts.push(`${hours} 小时`)
-  if (minutes || parts.length === 0) parts.push(`${minutes} 分钟`)
-  return `${sign}${parts.join(' ')}`
-}
-
-const toggleWeekendSkip = async (subscription: UserSubscription) => {
-  try {
-    const enabled = !subscription.skip_weekends
-    const preview = await adminAPI.subscriptions.previewWeekendSkip(subscription.id, enabled)
-    weekendSkipTarget.value = { subscription, enabled, preview }
-    showWeekendSkipConfirm.value = true
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || '获取跳过非工作日预览失败')
-  }
-}
-
-const closeWeekendSkipConfirm = () => {
-  showWeekendSkipConfirm.value = false
-  weekendSkipTarget.value = null
-  weekendSkipSubmitting.value = false
-}
-
-const confirmWeekendSkipToggle = async () => {
-  if (!weekendSkipTarget.value || weekendSkipSubmitting.value) return
-  weekendSkipSubmitting.value = true
-  try {
-    await adminAPI.subscriptions.setWeekendSkip(
-      weekendSkipTarget.value.subscription.id,
-      weekendSkipTarget.value.enabled
-    )
-    appStore.showSuccess(weekendSkipTarget.value.enabled ? '已开启跳过非工作日，到期时间已调整' : '已关闭跳过非工作日，到期时间已回算')
-    closeWeekendSkipConfirm()
-    await loadSubscriptions()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || '跳过非工作日设置更新失败')
-  } finally {
-    weekendSkipSubmitting.value = false
-  }
-}
-
-const resetWeekendSkipChange = async (subscription: UserSubscription) => {
-  try {
-    await adminAPI.subscriptions.resetWeekendSkipUserChange(subscription.id)
-    appStore.showSuccess('已重置用户修改机会')
-    await loadSubscriptions()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || '重置用户修改机会失败')
-  }
-}
-
-const closeResetQuotaDialog = () => {
-  showResetQuotaConfirm.value = false
-  resettingSubscription.value = null
-  resetSelection.daily = false
-  resetSelection.weekly = false
-  resetSelection.monthly = false
 }
 
 const confirmResetQuota = async () => {
   if (!resettingSubscription.value) return
   if (resettingQuota.value) return
-  if (!canSubmitResetQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, {
-      daily: resetSelection.daily,
-      weekly: resetSelection.weekly,
-      monthly: resetSelection.monthly
-    })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
-    closeResetQuotaDialog()
+    showResetQuotaConfirm.value = false
+    resettingSubscription.value = null
     await loadSubscriptions()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToResetQuota'))
@@ -1921,88 +1331,6 @@ const confirmResetQuota = async () => {
   } finally {
     resettingQuota.value = false
   }
-}
-
-// ===== Reset quota dialog helpers =====
-
-type ResetWindowKey = 'daily' | 'weekly' | 'monthly'
-
-const resetSelection = reactive({ daily: false, weekly: false, monthly: false })
-
-const isPaidSubscription = (sub: UserSubscription): boolean => sub.source === 'payment'
-
-const hasConfiguredLimit = (sub: UserSubscription, key: ResetWindowKey): boolean => {
-  if (sub.allow_daily_overdraft) return key === 'daily'
-  const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
-  return typeof limit === 'number' && limit > 0
-}
-
-const hasAnyConfiguredWindow = (sub: UserSubscription): boolean =>
-  hasConfiguredLimit(sub, 'daily') ||
-  hasConfiguredLimit(sub, 'weekly') ||
-  hasConfiguredLimit(sub, 'monthly')
-
-// 上限档 = 透支模式下只允许 daily；普通模式下按已配置的最长窗口（monthly > weekly > daily）
-const upperBoundWindow = (sub: UserSubscription): ResetWindowKey | null => {
-  if (sub.allow_daily_overdraft) return 'daily'
-  if (hasConfiguredLimit(sub, 'monthly')) return 'monthly'
-  if (hasConfiguredLimit(sub, 'weekly')) return 'weekly'
-  if (hasConfiguredLimit(sub, 'daily')) return 'daily'
-  return null
-}
-
-const isResetWindowEnabled = (sub: UserSubscription, key: ResetWindowKey): boolean => {
-  if (isPaidSubscription(sub)) return false
-  if (!hasConfiguredLimit(sub, key)) return false
-  return upperBoundWindow(sub) !== key
-}
-
-const formatUsageText = (sub: UserSubscription, key: ResetWindowKey): string => {
-  if (sub.allow_daily_overdraft) {
-    const limit = sub.overdraft_limit_usd
-    const used = getOverdraftDisplayUsed(sub) ?? 0
-    return typeof limit === 'number' ? `$${used.toFixed(2)} / $${limit.toFixed(2)}` : ''
-  }
-  const limit = sub.group?.[`${key}_limit_usd` as 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd']
-  if (typeof limit !== 'number') return ''
-  const used = sub[`${key}_usage_usd` as 'daily_usage_usd' | 'weekly_usage_usd' | 'monthly_usage_usd'] ?? 0
-  return `$${used.toFixed(2)} / $${limit.toFixed(2)}`
-}
-
-const resetWindowOptions = computed(() => {
-  const sub = resettingSubscription.value
-  if (!sub) return []
-  const upper = upperBoundWindow(sub)
-  const labels: Record<ResetWindowKey, string> = {
-    daily: t('admin.subscriptions.daily'),
-    weekly: t('admin.subscriptions.weekly'),
-    monthly: t('admin.subscriptions.monthly')
-  }
-  const keys: ResetWindowKey[] = ['daily', 'weekly', 'monthly']
-  return keys
-    .filter((key) => hasConfiguredLimit(sub, key))
-    .map((key) => {
-      const isUpper = upper === key
-      return {
-        key,
-        label: labels[key],
-        usageText: formatUsageText(sub, key),
-        disabled: isUpper,
-        disabledReason: isUpper ? t('admin.subscriptions.resetQuotaUpperBoundDisabled') : ''
-      }
-    })
-})
-
-const canSubmitResetQuota = computed(() => {
-  const sub = resettingSubscription.value
-  if (!sub) return false
-  if (isPaidSubscription(sub)) return false
-  if (!hasAnyConfiguredWindow(sub)) return false
-  return resetSelection.daily || resetSelection.weekly || resetSelection.monthly
-})
-
-const toggleResetSelection = (key: ResetWindowKey) => {
-  resetSelection[key] = !resetSelection[key]
 }
 
 // Helper functions
@@ -2014,57 +1342,24 @@ const getDaysRemaining = (expiresAt: string): number | null => {
   return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
-const getRemainingText = (expiresAt: string): string | null => formatRemainingDuration(expiresAt)
-
-const formatOptionalMoney = (value?: number | null): string => {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '-'
-  return `$${value.toFixed(2)}`
-}
-
-const formatCompactNumber = (value: number): string => {
-  if (!Number.isFinite(value)) return '0'
-  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
-}
-
-const formatOrderWindowKind = (order: SubscriptionOrderUsageItem): string => {
-  if (order.renewal_mode === 'restart' || order.window_kind === 'restart') return '重开'
-  if (order.window_kind === 'renewal') return '续费'
-  return '购买'
-}
-
-const isOrderOverQuota = (order: SubscriptionOrderUsageItem): boolean => {
-  return typeof order.quota_usd === 'number' && order.used_actual_cost_usd > order.quota_usd + 0.000001
+const formatRemainingExpiry = (expiresAt: string): string | null => {
+  const duration = getRemainingExpiryDuration(expiresAt)
+  if (!duration) return null
+  if (duration.unit === 'days') {
+    return t('admin.subscriptions.daysRemaining', { days: duration.days })
+  }
+  if (duration.hours) {
+    return t('admin.subscriptions.hoursMinutesRemaining', {
+      hours: duration.hours,
+      minutes: duration.minutes
+    })
+  }
+  return t('admin.subscriptions.minutesRemaining', { minutes: duration.minutes })
 }
 
 const isExpiringSoon = (expiresAt: string): boolean => {
   const days = getDaysRemaining(expiresAt)
   return days !== null && days <= 7
-}
-
-const isSubscriptionNotStarted = (sub: UserSubscription): boolean => {
-  if (sub.status !== 'active' || !sub.starts_at) return false
-  const startsAtMs = new Date(sub.starts_at).getTime()
-  if (Number.isNaN(startsAtMs)) return false
-  return startsAtMs > Date.now()
-}
-
-const hasTotalQuota = (sub: UserSubscription): boolean => {
-  return sub.quota_limit_usd != null && sub.quota_limit_usd > 0
-}
-
-const getTotalQuotaLimit = (sub: UserSubscription): number => {
-  return sub.quota_limit_usd && sub.quota_limit_usd > 0 ? sub.quota_limit_usd : 0
-}
-
-const getTotalQuotaUsed = (sub: UserSubscription): number => {
-  return Math.max(sub.quota_used_usd || 0, 0)
-}
-
-const getTotalQuotaRemaining = (sub: UserSubscription): number => {
-  if (typeof sub.quota_remaining_usd === 'number') {
-    return Math.max(sub.quota_remaining_usd, 0)
-  }
-  return Math.max(getTotalQuotaLimit(sub) - getTotalQuotaUsed(sub), 0)
 }
 
 const getProgressWidth = (used: number | null | undefined, limit: number | null): string => {
@@ -2083,92 +1378,41 @@ const getProgressClass = (used: number | null | undefined, limit: number | null)
   return 'bg-green-500'
 }
 
-const getOverdraftLimit = (sub: UserSubscription): number | null => {
-  return typeof sub.overdraft_limit_usd === 'number'
-    && sub.overdraft_limit_usd > 0
-    ? sub.overdraft_limit_usd
-    : null
-}
-
-const getOverdraftDisplayUsed = (sub: UserSubscription): number | null => {
-  const limit = getOverdraftLimit(sub)
-  if (limit === null) return null
-  if (typeof sub.overdraft_used_usd === 'number') {
-    return Math.max(sub.overdraft_used_usd, 0)
+const formatResetDuration = (parts: RemainingDurationParts): string => {
+  if (parts.days > 0) {
+    return t('admin.subscriptions.resetInDaysHours', { days: parts.days, hours: parts.hours })
   }
-  return isDayValidityUnit(sub.validity_unit)
-    ? getDayValidityOverdraftUsed(sub)
-    : (sub.overdraft_used_usd ?? sub.weekly_usage_usd ?? 0)
+
+  if (parts.hours > 0) {
+    return t('admin.subscriptions.resetInHoursMinutes', { hours: parts.hours, minutes: parts.minutes })
+  }
+
+  return t('admin.subscriptions.resetInMinutes', { minutes: parts.minutes })
 }
 
-const isDayValidityUnit = (unit?: string | null): boolean => {
-  const normalized = (unit || 'day').trim().toLowerCase()
-  return normalized === '' || normalized === 'day' || normalized === 'days'
+const formatQuotaEndDuration = (parts: RemainingDurationParts): string => {
+  if (parts.days > 0) {
+    return t('admin.subscriptions.quotaEndsInDaysHours', { days: parts.days, hours: parts.hours })
+  }
+
+  if (parts.hours > 0) {
+    return t('admin.subscriptions.quotaEndsInHoursMinutes', { hours: parts.hours, minutes: parts.minutes })
+  }
+
+  return t('admin.subscriptions.quotaEndsInMinutes', { minutes: parts.minutes })
 }
 
-const getTodayOverdraftAmount = (sub: UserSubscription): number => {
-  const dailyLimit = sub.group?.daily_limit_usd
-  if (!dailyLimit || dailyLimit <= 0 || getOverdraftLimit(sub) === null) return 0
-  return Math.max((sub.daily_usage_usd || 0) - dailyLimit, 0)
-}
+const formatDailyUsageWindow = (subscription: UserSubscription): string => {
+  if (isOneTimeDailyQuota(subscription) && subscription.expires_at) {
+    const parts = getRemainingDurationParts(subscription.expires_at)
+    return parts ? formatQuotaEndDuration(parts) : t('admin.subscriptions.windowNotActive')
+  }
 
-const getOverdraftRemaining = (sub: UserSubscription): number => {
-  const limit = getOverdraftLimit(sub)
-  if (limit === null) return 0
-  return Math.max(limit - (getOverdraftDisplayUsed(sub) ?? 0), 0)
-}
-
-const getElapsedOverdraftQuota = (sub: UserSubscription): number => {
-  const dailyLimit = sub.group?.daily_limit_usd
-  const overdraftLimit = getOverdraftLimit(sub)
-  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
-
-  return Math.min(dailyLimit * getElapsedFullOverdraftDays(sub), overdraftLimit)
-}
-
-const getDayValidityOverdraftUsed = (sub: UserSubscription): number => {
-  const dailyLimit = sub.group?.daily_limit_usd
-  const overdraftLimit = getOverdraftLimit(sub)
-  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
-
-  const expiredQuota = getElapsedOverdraftQuota(sub)
-  const currentDailyUsage = getCurrentDailyWindowUsage(sub)
-  const effectiveUsed = expiredQuota + currentDailyUsage
-  const actualUsed = sub.weekly_usage_usd ?? sub.overdraft_used_usd ?? 0
-  return Math.min(Math.max(actualUsed, effectiveUsed), overdraftLimit)
-}
-
-const getElapsedFullOverdraftDays = (sub: UserSubscription): number => {
-  const dailyLimit = sub.group?.daily_limit_usd
-  const overdraftLimit = getOverdraftLimit(sub)
-  if (!dailyLimit || dailyLimit <= 0 || overdraftLimit === null) return 0
-
-  const startsAt = sub.starts_at ? new Date(sub.starts_at).getTime() : NaN
-  if (!Number.isFinite(startsAt)) return 0
-
-  const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
-  const validityDays = Math.max(1, Math.ceil(overdraftLimit / dailyLimit))
-  return Math.min(elapsedDays, validityDays)
-}
-
-const getCurrentDailyWindowUsage = (sub: UserSubscription): number => {
-  if (!sub.daily_window_start || !sub.starts_at) return 0
-
-  const startsAt = new Date(sub.starts_at).getTime()
-  const dailyWindowStart = new Date(sub.daily_window_start).getTime()
-  if (!Number.isFinite(startsAt) || !Number.isFinite(dailyWindowStart)) return 0
-
-  const dayMs = 24 * 60 * 60 * 1000
-  const elapsedDays = Math.max(0, Math.floor((Date.now() - startsAt) / dayMs))
-  const currentWindowStart = startsAt + elapsedDays * dayMs
-  if (dailyWindowStart !== currentWindowStart) return 0
-
-  return Math.max(sub.daily_usage_usd || 0, 0)
+  return formatResetTime(subscription.daily_window_start, 'daily')
 }
 
 // Format reset time based on window start and period type
-const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'monthly'): string => {
+const formatResetTime = (windowStart: string | null, period: 'daily' | 'weekly' | 'monthly'): string => {
   if (!windowStart) return t('admin.subscriptions.windowNotActive')
 
   const start = new Date(windowStart)
@@ -2184,23 +1428,16 @@ const formatResetTime = (windowStart: string, period: 'daily' | 'weekly' | 'mont
       resetTime = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
       break
     case 'monthly':
-      resetTime = new Date(start)
-      resetTime.setMonth(resetTime.getMonth() + 1)
+      resetTime = new Date(start.getTime() + 30 * 24 * 60 * 60 * 1000)
       break
   }
 
-  if (resetTime <= now) return t('admin.subscriptions.windowNotActive')
+  const parts = getRemainingDurationParts(resetTime, now)
 
-  const diff = resetTime.getTime() - now.getTime()
-  const days = Math.floor(diff / (24 * 60 * 60 * 1000))
-  const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
-  const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000))
-
-  if (days > 0) return t('admin.subscriptions.resetInDaysHours', { days, hours })
-  if (hours > 0) return t('admin.subscriptions.resetInHoursMinutes', { hours, minutes })
-  return t('admin.subscriptions.resetInMinutes', { minutes })
+  return parts ? formatResetDuration(parts) : t('admin.subscriptions.windowNotActive')
 }
 
+// Handle click outside to close dropdowns
 const handleClickOutside = (event: MouseEvent) => {
   const target = event.target as HTMLElement
   if (!target.closest('[data-assign-user-search]')) showUserDropdown.value = false
@@ -2213,16 +1450,12 @@ const handleClickOutside = (event: MouseEvent) => {
 onMounted(() => {
   loadUserColumnMode()
   loadSavedColumns()
-  loadGroups()
   loadSubscriptions()
+  loadGroups()
   document.addEventListener('click', handleClickOutside)
 })
 
 onUnmounted(() => {
-  if (abortController) {
-    abortController.abort()
-    abortController = null
-  }
   document.removeEventListener('click', handleClickOutside)
   if (filterUserSearchTimeout) {
     clearTimeout(filterUserSearchTimeout)

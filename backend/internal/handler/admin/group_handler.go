@@ -24,8 +24,6 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
-	gatewayService       *service.GatewayService
-	openAIGatewayService *service.OpenAIGatewayService
 }
 
 // GetLiveCapability 返回当前服务端是否具备生成 Live attestation 的运行环境。
@@ -88,60 +86,58 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(
-	adminService service.AdminService,
-	dashboardService *service.DashboardService,
-	groupCapacityService *service.GroupCapacityService,
-	gatewayService *service.GatewayService,
-	openAIGatewayService *service.OpenAIGatewayService,
-) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
 	return &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
-		gatewayService:       gatewayService,
-		openAIGatewayService: openAIGatewayService,
 	}
 }
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
-	Name                 string             `json:"name" binding:"required"`
-	Description          string             `json:"description"`
-	Platform             string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok composite"`
-	RateMultiplier       float64            `json:"rate_multiplier"`
-	IsExclusive          bool               `json:"is_exclusive"`
-	SubscriptionType     string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD        optionalLimitField `json:"daily_limit_usd"`
-	DailyLimitResetPrice optionalLimitField `json:"daily_limit_reset_price"`
-	WeeklyLimitUSD       optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD      optionalLimitField `json:"monthly_limit_usd"`
-	AllowDailyOverdraft  bool               `json:"allow_daily_overdraft"`
-	AllowWeekendSkip     bool               `json:"allow_weekend_skip"`
+	Name                      string                        `json:"name" binding:"required"`
+	Description               string                        `json:"description"`
+	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	RateMultiplier            float64                       `json:"rate_multiplier"`
+	IsExclusive               bool                          `json:"is_exclusive"`
+	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
+	WeeklyLimitUSD            optionalLimitField            `json:"weekly_limit_usd"`
+	MonthlyLimitUSD           optionalLimitField            `json:"monthly_limit_usd"`
+	LongContextPricingEnabled bool                          `json:"long_context_pricing_enabled"`
+	ModelPricing              []service.ChannelModelPricing `json:"model_pricing"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	AllowImageGeneration            bool     `json:"allow_image_generation"`
-	AllowBatchImageGeneration       bool     `json:"allow_batch_image_generation"`
-	ImageRateIndependent            bool     `json:"image_rate_independent"`
-	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
-	PeakRateEnabled                 bool     `json:"peak_rate_enabled"`
-	PeakStart                       string   `json:"peak_start"`
-	PeakEnd                         string   `json:"peak_end"`
-	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
-	ProfitControlEnabled            bool     `json:"profit_control_enabled"`
-	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
-	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
-	ImagePrice1K                    *float64 `json:"image_price_1k"`
-	ImagePrice2K                    *float64 `json:"image_price_2k"`
-	ImagePrice4K                    *float64 `json:"image_price_4k"`
-	VideoPrice480P                  *float64 `json:"video_price_480p"`
-	VideoPrice720P                  *float64 `json:"video_price_720p"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
-	WebSearchPricePerCall           *float64 `json:"web_search_price_per_call"`
-	ClaudeCodeOnly                  bool     `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
+	AllowImageGeneration            bool                          `json:"allow_image_generation"`
+	AllowBatchImageGeneration       bool                          `json:"allow_batch_image_generation"`
+	ImageRateIndependent            bool                          `json:"image_rate_independent"`
+	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            bool                          `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	PeakRateEnabled                 bool                          `json:"peak_rate_enabled"`
+	PeakStart                       string                        `json:"peak_start"`
+	PeakEnd                         string                        `json:"peak_end"`
+	PeakRateMultiplier              *float64                      `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            bool                          `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64                      `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64                      `json:"profit_safety_buffer"`
+	ImagePrice1K                    *float64                      `json:"image_price_1k"`
+	ImagePrice2K                    *float64                      `json:"image_price_2k"`
+	ImagePrice4K                    *float64                      `json:"image_price_4k"`
+	VideoPrice480P                  *float64                      `json:"video_price_480p"`
+	VideoPrice720P                  *float64                      `json:"video_price_720p"`
+	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
+	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
+	SearchPricePer1k                *float64                      `json:"search_price_per_1k"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                      `json:"audio_stt_price_per_hour"`
+	ClaudeCodeOnly                  bool                          `json:"claude_code_only"`
+	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
@@ -155,6 +151,7 @@ type CreateGroupRequest struct {
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
 	RPMLimit int `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
@@ -167,43 +164,49 @@ type CreateGroupRequest struct {
 
 // UpdateGroupRequest represents update group request
 type UpdateGroupRequest struct {
-	Name                 string             `json:"name"`
-	Description          *string            `json:"description"`
-	Platform             string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok composite"`
-	RateMultiplier       *float64           `json:"rate_multiplier"`
-	IsExclusive          *bool              `json:"is_exclusive"`
-	Status               string             `json:"status" binding:"omitempty,oneof=active inactive"`
-	SubscriptionType     string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
-	DailyLimitUSD        optionalLimitField `json:"daily_limit_usd"`
-	DailyLimitResetPrice optionalLimitField `json:"daily_limit_reset_price"`
-	WeeklyLimitUSD       optionalLimitField `json:"weekly_limit_usd"`
-	MonthlyLimitUSD      optionalLimitField `json:"monthly_limit_usd"`
-	AllowDailyOverdraft  *bool              `json:"allow_daily_overdraft"`
-	AllowWeekendSkip     *bool              `json:"allow_weekend_skip"`
+	Name                      string                         `json:"name"`
+	Description               *string                        `json:"description"`
+	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek composite"`
+	RateMultiplier            *float64                       `json:"rate_multiplier"`
+	IsExclusive               *bool                          `json:"is_exclusive"`
+	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
+	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	DailyLimitUSD             optionalLimitField             `json:"daily_limit_usd"`
+	WeeklyLimitUSD            optionalLimitField             `json:"weekly_limit_usd"`
+	MonthlyLimitUSD           optionalLimitField             `json:"monthly_limit_usd"`
+	LongContextPricingEnabled *bool                          `json:"long_context_pricing_enabled"`
+	ModelPricing              *[]service.ChannelModelPricing `json:"model_pricing"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
-	AllowImageGeneration            *bool    `json:"allow_image_generation"`
-	AllowBatchImageGeneration       *bool    `json:"allow_batch_image_generation"`
-	ImageRateIndependent            *bool    `json:"image_rate_independent"`
-	ImageRateMultiplier             *float64 `json:"image_rate_multiplier"`
-	BatchImageDiscountMultiplier    *float64 `json:"batch_image_discount_multiplier"`
-	BatchImageHoldMultiplier        *float64 `json:"batch_image_hold_multiplier"`
-	PeakRateEnabled                 *bool    `json:"peak_rate_enabled"`
-	PeakStart                       *string  `json:"peak_start"`
-	PeakEnd                         *string  `json:"peak_end"`
-	PeakRateMultiplier              *float64 `json:"peak_rate_multiplier"`
-	ProfitControlEnabled            *bool    `json:"profit_control_enabled"`
-	ProfitMinMargin                 *float64 `json:"profit_min_margin"`
-	ProfitSafetyBuffer              *float64 `json:"profit_safety_buffer"`
-	ImagePrice1K                    *float64 `json:"image_price_1k"`
-	ImagePrice2K                    *float64 `json:"image_price_2k"`
-	ImagePrice4K                    *float64 `json:"image_price_4k"`
-	VideoPrice480P                  *float64 `json:"video_price_480p"`
-	VideoPrice720P                  *float64 `json:"video_price_720p"`
-	VideoPrice1080P                 *float64 `json:"video_price_1080p"`
-	WebSearchPricePerCall           *float64 `json:"web_search_price_per_call"`
-	ClaudeCodeOnly                  *bool    `json:"claude_code_only"`
-	FallbackGroupID                 *int64   `json:"fallback_group_id"`
-	FallbackGroupIDOnInvalidRequest *int64   `json:"fallback_group_id_on_invalid_request"`
+	AllowImageGeneration            *bool                         `json:"allow_image_generation"`
+	AllowBatchImageGeneration       *bool                         `json:"allow_batch_image_generation"`
+	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
+	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
+	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
+	BatchImageHoldMultiplier        *float64                      `json:"batch_image_hold_multiplier"`
+	VideoRateIndependent            *bool                         `json:"video_rate_independent"`
+	VideoRateMultiplier             *float64                      `json:"video_rate_multiplier"`
+	PeakRateEnabled                 *bool                         `json:"peak_rate_enabled"`
+	PeakStart                       *string                       `json:"peak_start"`
+	PeakEnd                         *string                       `json:"peak_end"`
+	PeakRateMultiplier              *float64                      `json:"peak_rate_multiplier"`
+	ProfitControlEnabled            *bool                         `json:"profit_control_enabled"`
+	ProfitMinMargin                 *float64                      `json:"profit_min_margin"`
+	ProfitSafetyBuffer              *float64                      `json:"profit_safety_buffer"`
+	ImagePrice1K                    *float64                      `json:"image_price_1k"`
+	ImagePrice2K                    *float64                      `json:"image_price_2k"`
+	ImagePrice4K                    *float64                      `json:"image_price_4k"`
+	VideoPrice480P                  *float64                      `json:"video_price_480p"`
+	VideoPrice720P                  *float64                      `json:"video_price_720p"`
+	VideoPrice1080P                 *float64                      `json:"video_price_1080p"`
+	VideoModelPrices                map[string]map[string]float64 `json:"video_model_prices,omitempty"`
+	WebSearchPricePerCall           *float64                      `json:"web_search_price_per_call"`
+	SearchPricePer1k                *float64                      `json:"search_price_per_1k"`
+	AudioRealtimePricePerMin        *float64                      `json:"audio_realtime_price_per_min"`
+	AudioTtsPricePerMillionChars    *float64                      `json:"audio_tts_price_per_million_chars"`
+	AudioSttPricePerHour            *float64                      `json:"audio_stt_price_per_hour"`
+	ClaudeCodeOnly                  *bool                         `json:"claude_code_only"`
+	FallbackGroupID                 *int64                        `json:"fallback_group_id"`
+	FallbackGroupIDOnInvalidRequest *int64                        `json:"fallback_group_id_on_invalid_request"`
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled *bool              `json:"model_routing_enabled"`
@@ -217,6 +220,7 @@ type UpdateGroupRequest struct {
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
 	RPMLimit *int `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
@@ -230,7 +234,7 @@ type UpdateGroupRequest struct {
 type CompositeRouteRequest struct {
 	PublicModel    string `json:"public_model" binding:"required"`
 	MatchType      string `json:"match_type" binding:"omitempty,oneof=exact prefix"`
-	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok"`
+	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek"`
 	UpstreamModel  string `json:"upstream_model"`
 	Endpoint       string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
 	Priority       int    `json:"priority"`
@@ -455,42 +459,7 @@ func (h *GroupHandler) GetByID(c *gin.Context) {
 	response.Success(c, dto.GroupFromServiceAdmin(group))
 }
 
-// GetAvailableModels handles getting currently available models for a group.
-// GET /api/v1/admin/groups/:id/available-models
-func (h *GroupHandler) GetAvailableModels(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
-		return
-	}
-
-	group, err := h.adminService.GetGroup(c.Request.Context(), groupID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	models := []string{}
-	switch group.Platform {
-	case service.PlatformOpenAI:
-		if h.openAIGatewayService != nil {
-			models = h.openAIGatewayService.GetAvailableModels(c.Request.Context(), &groupID)
-		}
-	default:
-		if h.gatewayService != nil {
-			models = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, group.Platform)
-		}
-	}
-
-	if models == nil {
-		models = []string{}
-	}
-	response.Success(c, models)
-}
-
-// GetModelsListCandidates returns the model IDs that may be exposed by the
-// custom /v1/models list for a group. ID 0 is supported for the group-create
-// form and falls back to the selected platform's defaults.
+// GetModelsListCandidates handles getting candidate model IDs for custom /v1/models list.
 // GET /api/v1/admin/groups/:id/models-list-candidates
 func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -498,18 +467,17 @@ func (h *GroupHandler) GetModelsListCandidates(c *gin.Context) {
 		response.BadRequest(c, "Invalid group ID")
 		return
 	}
+
 	models, err := h.adminService.GetGroupModelsListCandidates(
 		c.Request.Context(),
 		groupID,
-		strings.TrimSpace(c.Query("platform")),
+		c.Query("platform"),
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if models == nil {
-		models = []string{}
-	}
+
 	response.Success(c, gin.H{"models": models})
 }
 
@@ -542,17 +510,18 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
-		DailyLimitResetPrice:            req.DailyLimitResetPrice.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
-		AllowDailyOverdraft:             req.AllowDailyOverdraft,
-		AllowWeekendSkip:                req.AllowWeekendSkip,
+		LongContextPricingEnabled:       req.LongContextPricingEnabled,
+		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
+		VideoRateIndependent:            req.VideoRateIndependent,
+		VideoRateMultiplier:             req.VideoRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -566,7 +535,12 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		SearchPricePer1k:                req.SearchPricePer1k,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -580,6 +554,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
@@ -664,17 +639,18 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
-		DailyLimitResetPrice:            req.DailyLimitResetPrice.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
-		AllowDailyOverdraft:             req.AllowDailyOverdraft,
-		AllowWeekendSkip:                req.AllowWeekendSkip,
+		LongContextPricingEnabled:       req.LongContextPricingEnabled,
+		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
 		BatchImageHoldMultiplier:        req.BatchImageHoldMultiplier,
+		VideoRateIndependent:            req.VideoRateIndependent,
+		VideoRateMultiplier:             req.VideoRateMultiplier,
 		PeakRateEnabled:                 req.PeakRateEnabled,
 		PeakStart:                       req.PeakStart,
 		PeakEnd:                         req.PeakEnd,
@@ -688,7 +664,12 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		VideoPrice480P:                  req.VideoPrice480P,
 		VideoPrice720P:                  req.VideoPrice720P,
 		VideoPrice1080P:                 req.VideoPrice1080P,
+		VideoModelPrices:                req.VideoModelPrices,
 		WebSearchPricePerCall:           req.WebSearchPricePerCall,
+		SearchPricePer1k:                req.SearchPricePer1k,
+		AudioRealtimePricePerMin:        req.AudioRealtimePricePerMin,
+		AudioTTSPricePerMillionChars:    req.AudioTtsPricePerMillionChars,
+		AudioSTTPricePerHour:            req.AudioSttPricePerHour,
 		ClaudeCodeOnly:                  req.ClaudeCodeOnly,
 		FallbackGroupID:                 req.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: req.FallbackGroupIDOnInvalidRequest,
@@ -702,6 +683,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
@@ -752,8 +734,8 @@ func (h *GroupHandler) GetStats(c *gin.Context) {
 	_ = groupID // TODO: implement actual stats
 }
 
-// GetUsageSummary returns today's and cumulative cost for all groups.
-// GET /api/v1/admin/groups/usage-summary?timezone=Asia/Shanghai
+// GetUsageSummary returns today's, yesterday's, and cumulative cost for all groups.
+// GET /api/v1/admin/groups/usage-summary
 func (h *GroupHandler) GetUsageSummary(c *gin.Context) {
 	todayStart := service.GroupUsageTodayStart(time.Now())
 

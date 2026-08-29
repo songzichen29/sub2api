@@ -51,6 +51,8 @@ const (
 	FieldLastLoginAt = "last_login_at"
 	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
 	FieldLastActiveAt = "last_active_at"
+	// FieldRestrictPublicGroups holds the string denoting the restrict_public_groups field in the database.
+	FieldRestrictPublicGroups = "restrict_public_groups"
 	// FieldBalanceNotifyEnabled holds the string denoting the balance_notify_enabled field in the database.
 	FieldBalanceNotifyEnabled = "balance_notify_enabled"
 	// FieldBalanceNotifyThresholdType holds the string denoting the balance_notify_threshold_type field in the database.
@@ -81,14 +83,8 @@ const (
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
-	// EdgeCouponUsages holds the string denoting the coupon_usages edge name in mutations.
-	EdgeCouponUsages = "coupon_usages"
 	// EdgePaymentOrders holds the string denoting the payment_orders edge name in mutations.
 	EdgePaymentOrders = "payment_orders"
-	// EdgeInvoiceHeaders holds the string denoting the invoice_headers edge name in mutations.
-	EdgeInvoiceHeaders = "invoice_headers"
-	// EdgeInvoiceApplications holds the string denoting the invoice_applications edge name in mutations.
-	EdgeInvoiceApplications = "invoice_applications"
 	// EdgeAuthIdentities holds the string denoting the auth_identities edge name in mutations.
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
@@ -160,13 +156,6 @@ const (
 	PromoCodeUsagesInverseTable = "promo_code_usages"
 	// PromoCodeUsagesColumn is the table column denoting the promo_code_usages relation/edge.
 	PromoCodeUsagesColumn = "user_id"
-	// CouponUsagesTable is the table that holds the coupon_usages relation/edge.
-	CouponUsagesTable = "coupon_usages"
-	// CouponUsagesInverseTable is the table name for the CouponUsage entity.
-	// It exists in this package in order to avoid circular dependency with the "couponusage" package.
-	CouponUsagesInverseTable = "coupon_usages"
-	// CouponUsagesColumn is the table column denoting the coupon_usages relation/edge.
-	CouponUsagesColumn = "user_id"
 	// PaymentOrdersTable is the table that holds the payment_orders relation/edge.
 	PaymentOrdersTable = "payment_orders"
 	// PaymentOrdersInverseTable is the table name for the PaymentOrder entity.
@@ -174,20 +163,6 @@ const (
 	PaymentOrdersInverseTable = "payment_orders"
 	// PaymentOrdersColumn is the table column denoting the payment_orders relation/edge.
 	PaymentOrdersColumn = "user_id"
-	// InvoiceHeadersTable is the table that holds the invoice_headers relation/edge.
-	InvoiceHeadersTable = "invoice_headers"
-	// InvoiceHeadersInverseTable is the table name for the InvoiceHeader entity.
-	// It exists in this package in order to avoid circular dependency with the "invoiceheader" package.
-	InvoiceHeadersInverseTable = "invoice_headers"
-	// InvoiceHeadersColumn is the table column denoting the invoice_headers relation/edge.
-	InvoiceHeadersColumn = "user_id"
-	// InvoiceApplicationsTable is the table that holds the invoice_applications relation/edge.
-	InvoiceApplicationsTable = "invoice_applications"
-	// InvoiceApplicationsInverseTable is the table name for the InvoiceApplication entity.
-	// It exists in this package in order to avoid circular dependency with the "invoiceapplication" package.
-	InvoiceApplicationsInverseTable = "invoice_applications"
-	// InvoiceApplicationsColumn is the table column denoting the invoice_applications relation/edge.
-	InvoiceApplicationsColumn = "user_id"
 	// AuthIdentitiesTable is the table that holds the auth_identities relation/edge.
 	AuthIdentitiesTable = "auth_identities"
 	// AuthIdentitiesInverseTable is the table name for the AuthIdentity entity.
@@ -239,6 +214,7 @@ var Columns = []string{
 	FieldSignupSource,
 	FieldLastLoginAt,
 	FieldLastActiveAt,
+	FieldRestrictPublicGroups,
 	FieldBalanceNotifyEnabled,
 	FieldBalanceNotifyThresholdType,
 	FieldBalanceNotifyThreshold,
@@ -307,6 +283,8 @@ var (
 	DefaultSignupSource string
 	// SignupSourceValidator is a validator for the "signup_source" field. It is called by the builders before save.
 	SignupSourceValidator func(string) error
+	// DefaultRestrictPublicGroups holds the default value on creation for the "restrict_public_groups" field.
+	DefaultRestrictPublicGroups bool
 	// DefaultBalanceNotifyEnabled holds the default value on creation for the "balance_notify_enabled" field.
 	DefaultBalanceNotifyEnabled bool
 	// DefaultBalanceNotifyThresholdType holds the default value on creation for the "balance_notify_threshold_type" field.
@@ -415,6 +393,11 @@ func ByLastLoginAt(opts ...sql.OrderTermOption) OrderOption {
 // ByLastActiveAt orders the results by the last_active_at field.
 func ByLastActiveAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldLastActiveAt, opts...).ToFunc()
+}
+
+// ByRestrictPublicGroups orders the results by the restrict_public_groups field.
+func ByRestrictPublicGroups(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRestrictPublicGroups, opts...).ToFunc()
 }
 
 // ByBalanceNotifyEnabled orders the results by the balance_notify_enabled field.
@@ -573,20 +556,6 @@ func ByPromoCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByCouponUsagesCount orders the results by coupon_usages count.
-func ByCouponUsagesCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newCouponUsagesStep(), opts...)
-	}
-}
-
-// ByCouponUsages orders the results by coupon_usages terms.
-func ByCouponUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newCouponUsagesStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByPaymentOrdersCount orders the results by payment_orders count.
 func ByPaymentOrdersCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -598,34 +567,6 @@ func ByPaymentOrdersCount(opts ...sql.OrderTermOption) OrderOption {
 func ByPaymentOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	return func(s *sql.Selector) {
 		sqlgraph.OrderByNeighborTerms(s, newPaymentOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
-// ByInvoiceHeadersCount orders the results by invoice_headers count.
-func ByInvoiceHeadersCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newInvoiceHeadersStep(), opts...)
-	}
-}
-
-// ByInvoiceHeaders orders the results by invoice_headers terms.
-func ByInvoiceHeaders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newInvoiceHeadersStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
-// ByInvoiceApplicationsCount orders the results by invoice_applications count.
-func ByInvoiceApplicationsCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newInvoiceApplicationsStep(), opts...)
-	}
-}
-
-// ByInvoiceApplications orders the results by invoice_applications terms.
-func ByInvoiceApplications(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newInvoiceApplicationsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
 
@@ -747,32 +688,11 @@ func newPromoCodeUsagesStep() *sqlgraph.Step {
 		sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
 	)
 }
-func newCouponUsagesStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(CouponUsagesInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, CouponUsagesTable, CouponUsagesColumn),
-	)
-}
 func newPaymentOrdersStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PaymentOrdersInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PaymentOrdersTable, PaymentOrdersColumn),
-	)
-}
-func newInvoiceHeadersStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(InvoiceHeadersInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceHeadersTable, InvoiceHeadersColumn),
-	)
-}
-func newInvoiceApplicationsStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(InvoiceApplicationsInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationsTable, InvoiceApplicationsColumn),
 	)
 }
 func newAuthIdentitiesStep() *sqlgraph.Step {

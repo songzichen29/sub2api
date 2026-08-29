@@ -55,46 +55,46 @@ func (TLSFingerprintProfile) Fields() []ent.Field {
 		// cipher_suites: TLS 加密套件列表（顺序敏感，影响 JA3）
 		field.JSON("cipher_suites", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// curves: 椭圆曲线/支持的组列表
 		field.JSON("curves", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// point_formats: EC 点格式列表
 		field.JSON("point_formats", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// signature_algorithms: 签名算法列表
 		field.JSON("signature_algorithms", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// alpn_protocols: ALPN 协议列表（如 ["http/1.1"]）
 		field.JSON("alpn_protocols", []string{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// supported_versions: 支持的 TLS 版本列表（如 [0x0304, 0x0303]）
 		field.JSON("supported_versions", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// key_share_groups: Key Share 中发送的曲线组（如 [29] 即 X25519）
 		field.JSON("key_share_groups", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// psk_modes: PSK 密钥交换模式（如 [1] 即 psk_dhe_ke）
 		field.JSON("psk_modes", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// extensions: TLS 扩展类型 ID 列表，按发送顺序排列
 		field.JSON("extensions", []uint16{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 	}
 }

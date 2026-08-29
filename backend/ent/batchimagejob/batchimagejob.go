@@ -27,8 +27,6 @@ const (
 	FieldModel = "model"
 	// FieldTaskName holds the string denoting the task_name field in the database.
 	FieldTaskName = "task_name"
-	// FieldParentBatchID holds the string denoting the parent_batch_id field in the database.
-	FieldParentBatchID = "parent_batch_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldProviderJobName holds the string denoting the provider_job_name field in the database.
@@ -55,22 +53,6 @@ const (
 	FieldHoldAmount = "hold_amount"
 	// FieldActualCost holds the string denoting the actual_cost field in the database.
 	FieldActualCost = "actual_cost"
-	// FieldBaseUnitPrice holds the string denoting the base_unit_price field in the database.
-	FieldBaseUnitPrice = "base_unit_price"
-	// FieldGroupRateMultiplier holds the string denoting the group_rate_multiplier field in the database.
-	FieldGroupRateMultiplier = "group_rate_multiplier"
-	// FieldAccountRateMultiplier holds the string denoting the account_rate_multiplier field in the database.
-	FieldAccountRateMultiplier = "account_rate_multiplier"
-	// FieldBatchDiscountMultiplier holds the string denoting the batch_discount_multiplier field in the database.
-	FieldBatchDiscountMultiplier = "batch_discount_multiplier"
-	// FieldHoldMultiplier holds the string denoting the hold_multiplier field in the database.
-	FieldHoldMultiplier = "hold_multiplier"
-	// FieldBillableUnitPrice holds the string denoting the billable_unit_price field in the database.
-	FieldBillableUnitPrice = "billable_unit_price"
-	// FieldHoldUnitPrice holds the string denoting the hold_unit_price field in the database.
-	FieldHoldUnitPrice = "hold_unit_price"
-	// FieldPricingSnapshotVersion holds the string denoting the pricing_snapshot_version field in the database.
-	FieldPricingSnapshotVersion = "pricing_snapshot_version"
 	// FieldCurrency holds the string denoting the currency field in the database.
 	FieldCurrency = "currency"
 	// FieldHoldID holds the string denoting the hold_id field in the database.
@@ -125,7 +107,6 @@ var Columns = []string{
 	FieldProvider,
 	FieldModel,
 	FieldTaskName,
-	FieldParentBatchID,
 	FieldStatus,
 	FieldProviderJobName,
 	FieldProviderInputRef,
@@ -139,14 +120,6 @@ var Columns = []string{
 	FieldEstimatedCost,
 	FieldHoldAmount,
 	FieldActualCost,
-	FieldBaseUnitPrice,
-	FieldGroupRateMultiplier,
-	FieldAccountRateMultiplier,
-	FieldBatchDiscountMultiplier,
-	FieldHoldMultiplier,
-	FieldBillableUnitPrice,
-	FieldHoldUnitPrice,
-	FieldPricingSnapshotVersion,
 	FieldCurrency,
 	FieldHoldID,
 	FieldIdempotencyKey,
@@ -190,8 +163,6 @@ var (
 	DefaultTaskName string
 	// TaskNameValidator is a validator for the "task_name" field. It is called by the builders before save.
 	TaskNameValidator func(string) error
-	// ParentBatchIDValidator is a validator for the "parent_batch_id" field. It is called by the builders before save.
-	ParentBatchIDValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -214,22 +185,6 @@ var (
 	DefaultCancelledCount int
 	// DefaultEstimatedCost holds the default value on creation for the "estimated_cost" field.
 	DefaultEstimatedCost float64
-	// DefaultBaseUnitPrice holds the default value on creation for the "base_unit_price" field.
-	DefaultBaseUnitPrice float64
-	// DefaultGroupRateMultiplier holds the default value on creation for the "group_rate_multiplier" field.
-	DefaultGroupRateMultiplier float64
-	// DefaultAccountRateMultiplier holds the default value on creation for the "account_rate_multiplier" field.
-	DefaultAccountRateMultiplier float64
-	// DefaultBatchDiscountMultiplier holds the default value on creation for the "batch_discount_multiplier" field.
-	DefaultBatchDiscountMultiplier float64
-	// DefaultHoldMultiplier holds the default value on creation for the "hold_multiplier" field.
-	DefaultHoldMultiplier float64
-	// DefaultBillableUnitPrice holds the default value on creation for the "billable_unit_price" field.
-	DefaultBillableUnitPrice float64
-	// DefaultHoldUnitPrice holds the default value on creation for the "hold_unit_price" field.
-	DefaultHoldUnitPrice float64
-	// DefaultPricingSnapshotVersion holds the default value on creation for the "pricing_snapshot_version" field.
-	DefaultPricingSnapshotVersion int
 	// DefaultCurrency holds the default value on creation for the "currency" field.
 	DefaultCurrency string
 	// CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
@@ -299,11 +254,6 @@ func ByTaskName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldTaskName, opts...).ToFunc()
 }
 
-// ByParentBatchID orders the results by the parent_batch_id field.
-func ByParentBatchID(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldParentBatchID, opts...).ToFunc()
-}
-
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -367,46 +317,6 @@ func ByHoldAmount(opts ...sql.OrderTermOption) OrderOption {
 // ByActualCost orders the results by the actual_cost field.
 func ByActualCost(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActualCost, opts...).ToFunc()
-}
-
-// ByBaseUnitPrice orders the results by the base_unit_price field.
-func ByBaseUnitPrice(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBaseUnitPrice, opts...).ToFunc()
-}
-
-// ByGroupRateMultiplier orders the results by the group_rate_multiplier field.
-func ByGroupRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldGroupRateMultiplier, opts...).ToFunc()
-}
-
-// ByAccountRateMultiplier orders the results by the account_rate_multiplier field.
-func ByAccountRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldAccountRateMultiplier, opts...).ToFunc()
-}
-
-// ByBatchDiscountMultiplier orders the results by the batch_discount_multiplier field.
-func ByBatchDiscountMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBatchDiscountMultiplier, opts...).ToFunc()
-}
-
-// ByHoldMultiplier orders the results by the hold_multiplier field.
-func ByHoldMultiplier(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldHoldMultiplier, opts...).ToFunc()
-}
-
-// ByBillableUnitPrice orders the results by the billable_unit_price field.
-func ByBillableUnitPrice(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldBillableUnitPrice, opts...).ToFunc()
-}
-
-// ByHoldUnitPrice orders the results by the hold_unit_price field.
-func ByHoldUnitPrice(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldHoldUnitPrice, opts...).ToFunc()
-}
-
-// ByPricingSnapshotVersion orders the results by the pricing_snapshot_version field.
-func ByPricingSnapshotVersion(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldPricingSnapshotVersion, opts...).ToFunc()
 }
 
 // ByCurrency orders the results by the currency field.

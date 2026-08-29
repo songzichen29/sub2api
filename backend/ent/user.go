@@ -53,6 +53,8 @@ type User struct {
 	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
 	// LastActiveAt holds the value of the "last_active_at" field.
 	LastActiveAt *time.Time `json:"last_active_at,omitempty"`
+	// RestrictPublicGroups holds the value of the "restrict_public_groups" field.
+	RestrictPublicGroups bool `json:"restrict_public_groups,omitempty"`
 	// BalanceNotifyEnabled holds the value of the "balance_notify_enabled" field.
 	BalanceNotifyEnabled bool `json:"balance_notify_enabled,omitempty"`
 	// BalanceNotifyThresholdType holds the value of the "balance_notify_threshold_type" field.
@@ -91,14 +93,8 @@ type UserEdges struct {
 	AttributeValues []*UserAttributeValue `json:"attribute_values,omitempty"`
 	// PromoCodeUsages holds the value of the promo_code_usages edge.
 	PromoCodeUsages []*PromoCodeUsage `json:"promo_code_usages,omitempty"`
-	// CouponUsages holds the value of the coupon_usages edge.
-	CouponUsages []*CouponUsage `json:"coupon_usages,omitempty"`
 	// PaymentOrders holds the value of the payment_orders edge.
 	PaymentOrders []*PaymentOrder `json:"payment_orders,omitempty"`
-	// InvoiceHeaders holds the value of the invoice_headers edge.
-	InvoiceHeaders []*InvoiceHeader `json:"invoice_headers,omitempty"`
-	// InvoiceApplications holds the value of the invoice_applications edge.
-	InvoiceApplications []*InvoiceApplication `json:"invoice_applications,omitempty"`
 	// AuthIdentities holds the value of the auth_identities edge.
 	AuthIdentities []*AuthIdentity `json:"auth_identities,omitempty"`
 	// PendingAuthSessions holds the value of the pending_auth_sessions edge.
@@ -109,7 +105,7 @@ type UserEdges struct {
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [17]bool
+	loadedTypes [14]bool
 }
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -193,46 +189,19 @@ func (e UserEdges) PromoCodeUsagesOrErr() ([]*PromoCodeUsage, error) {
 	return nil, &NotLoadedError{edge: "promo_code_usages"}
 }
 
-// CouponUsagesOrErr returns the CouponUsages value or an error if the edge
-// was not loaded in eager-loading.
-func (e UserEdges) CouponUsagesOrErr() ([]*CouponUsage, error) {
-	if e.loadedTypes[9] {
-		return e.CouponUsages, nil
-	}
-	return nil, &NotLoadedError{edge: "coupon_usages"}
-}
-
 // PaymentOrdersOrErr returns the PaymentOrders value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PaymentOrdersOrErr() ([]*PaymentOrder, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[9] {
 		return e.PaymentOrders, nil
 	}
 	return nil, &NotLoadedError{edge: "payment_orders"}
 }
 
-// InvoiceHeadersOrErr returns the InvoiceHeaders value or an error if the edge
-// was not loaded in eager-loading.
-func (e UserEdges) InvoiceHeadersOrErr() ([]*InvoiceHeader, error) {
-	if e.loadedTypes[11] {
-		return e.InvoiceHeaders, nil
-	}
-	return nil, &NotLoadedError{edge: "invoice_headers"}
-}
-
-// InvoiceApplicationsOrErr returns the InvoiceApplications value or an error if the edge
-// was not loaded in eager-loading.
-func (e UserEdges) InvoiceApplicationsOrErr() ([]*InvoiceApplication, error) {
-	if e.loadedTypes[12] {
-		return e.InvoiceApplications, nil
-	}
-	return nil, &NotLoadedError{edge: "invoice_applications"}
-}
-
 // AuthIdentitiesOrErr returns the AuthIdentities value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) AuthIdentitiesOrErr() ([]*AuthIdentity, error) {
-	if e.loadedTypes[13] {
+	if e.loadedTypes[10] {
 		return e.AuthIdentities, nil
 	}
 	return nil, &NotLoadedError{edge: "auth_identities"}
@@ -241,7 +210,7 @@ func (e UserEdges) AuthIdentitiesOrErr() ([]*AuthIdentity, error) {
 // PendingAuthSessionsOrErr returns the PendingAuthSessions value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PendingAuthSessionsOrErr() ([]*PendingAuthSession, error) {
-	if e.loadedTypes[14] {
+	if e.loadedTypes[11] {
 		return e.PendingAuthSessions, nil
 	}
 	return nil, &NotLoadedError{edge: "pending_auth_sessions"}
@@ -250,7 +219,7 @@ func (e UserEdges) PendingAuthSessionsOrErr() ([]*PendingAuthSession, error) {
 // PlatformQuotasOrErr returns the PlatformQuotas value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) PlatformQuotasOrErr() ([]*UserPlatformQuota, error) {
-	if e.loadedTypes[15] {
+	if e.loadedTypes[12] {
 		return e.PlatformQuotas, nil
 	}
 	return nil, &NotLoadedError{edge: "platform_quotas"}
@@ -259,7 +228,7 @@ func (e UserEdges) PlatformQuotasOrErr() ([]*UserPlatformQuota, error) {
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[16] {
+	if e.loadedTypes[13] {
 		return e.UserAllowedGroups, nil
 	}
 	return nil, &NotLoadedError{edge: "user_allowed_groups"}
@@ -270,7 +239,7 @@ func (*User) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case user.FieldTotpEnabled, user.FieldBalanceNotifyEnabled:
+		case user.FieldTotpEnabled, user.FieldRestrictPublicGroups, user.FieldBalanceNotifyEnabled:
 			values[i] = new(sql.NullBool)
 		case user.FieldBalance, user.FieldFrozenBalance, user.FieldBalanceNotifyThreshold, user.FieldTotalRecharged:
 			values[i] = new(sql.NullFloat64)
@@ -414,6 +383,12 @@ func (_m *User) assignValues(columns []string, values []any) error {
 				_m.LastActiveAt = new(time.Time)
 				*_m.LastActiveAt = value.Time
 			}
+		case user.FieldRestrictPublicGroups:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field restrict_public_groups", values[i])
+			} else if value.Valid {
+				_m.RestrictPublicGroups = value.Bool
+			}
 		case user.FieldBalanceNotifyEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field balance_notify_enabled", values[i])
@@ -509,24 +484,9 @@ func (_m *User) QueryPromoCodeUsages() *PromoCodeUsageQuery {
 	return NewUserClient(_m.config).QueryPromoCodeUsages(_m)
 }
 
-// QueryCouponUsages queries the "coupon_usages" edge of the User entity.
-func (_m *User) QueryCouponUsages() *CouponUsageQuery {
-	return NewUserClient(_m.config).QueryCouponUsages(_m)
-}
-
 // QueryPaymentOrders queries the "payment_orders" edge of the User entity.
 func (_m *User) QueryPaymentOrders() *PaymentOrderQuery {
 	return NewUserClient(_m.config).QueryPaymentOrders(_m)
-}
-
-// QueryInvoiceHeaders queries the "invoice_headers" edge of the User entity.
-func (_m *User) QueryInvoiceHeaders() *InvoiceHeaderQuery {
-	return NewUserClient(_m.config).QueryInvoiceHeaders(_m)
-}
-
-// QueryInvoiceApplications queries the "invoice_applications" edge of the User entity.
-func (_m *User) QueryInvoiceApplications() *InvoiceApplicationQuery {
-	return NewUserClient(_m.config).QueryInvoiceApplications(_m)
 }
 
 // QueryAuthIdentities queries the "auth_identities" edge of the User entity.
@@ -635,6 +595,9 @@ func (_m *User) String() string {
 		builder.WriteString("last_active_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("restrict_public_groups=")
+	builder.WriteString(fmt.Sprintf("%v", _m.RestrictPublicGroups))
 	builder.WriteString(", ")
 	builder.WriteString("balance_notify_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.BalanceNotifyEnabled))

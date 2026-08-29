@@ -92,13 +92,10 @@ func (m *mockAccountRepoForPlatform) Delete(ctx context.Context, id int64) error
 func (m *mockAccountRepoForPlatform) List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error) {
+func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
-func (m *mockAccountRepoForPlatform) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error) {
-	return nil, nil
-}
-func (m *mockAccountRepoForPlatform) ListAllTags(ctx context.Context) ([]string, error) {
+func (m *mockAccountRepoForPlatform) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
@@ -280,6 +277,27 @@ func (m *mockGatewayCacheForPlatform) DeleteSessionAccountID(ctx context.Context
 	return nil
 }
 
+func (m *mockGatewayCacheForPlatform) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForPlatform) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForPlatform) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (m *mockGatewayCacheForPlatform) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForPlatform) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForPlatform) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
 type mockGroupRepoForGateway struct {
 	groups           map[int64]*Group
 	getByIDCalls     int
@@ -375,6 +393,61 @@ func TestGatewayService_SelectAccountForModelWithPlatform_Anthropic(t *testing.T
 	require.NotNil(t, acc)
 	require.Equal(t, int64(1), acc.ID, "应选择优先级最高的 anthropic 账户")
 	require.Equal(t, PlatformAnthropic, acc.Platform, "应只返回 anthropic 平台账户")
+}
+
+// Scenario: account-owned Composite aliases are scheduled only to accounts that declare the exact mapping.
+func TestGatewayService_SelectAccountForModelWithExclusions_CompositeAliasRequiresOwningAccount(t *testing.T) {
+	groupID := int64(77)
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{
+			{
+				ID:            1,
+				Platform:      PlatformAnthropic,
+				Type:          AccountTypeAPIKey,
+				Priority:      1,
+				Status:        StatusActive,
+				Schedulable:   true,
+				AccountGroups: []AccountGroup{{GroupID: groupID}},
+			},
+			{
+				ID:          2,
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeAPIKey,
+				Priority:    2,
+				Status:      StatusActive,
+				Schedulable: true,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"reasoning-alias": "claude-opus-4-8"},
+				},
+				AccountGroups: []AccountGroup{{GroupID: groupID}},
+			},
+		},
+		accountsByID: map[int64]*Account{},
+	}
+	for i := range repo.accounts {
+		repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
+	}
+
+	group := &Group{ID: groupID, Platform: PlatformComposite, Status: StatusActive, Hydrated: true}
+	svc := &GatewayService{
+		accountRepo: repo,
+		groupRepo:   &mockGroupRepoForGateway{groups: map[int64]*Group{groupID: group}},
+		cfg:         testConfig(),
+	}
+	ctx := WithCompositeRouteDecision(context.Background(), CompositeRouteDecision{
+		Matched:        true,
+		Source:         CompositeRouteSourceAccount,
+		GroupID:        groupID,
+		PublicModel:    "reasoning-alias",
+		TargetPlatform: PlatformAnthropic,
+		UpstreamModel:  "reasoning-alias",
+		Endpoint:       CompositeRouteEndpointResponses,
+	})
+
+	account, err := svc.SelectAccountForModelWithExclusions(ctx, &groupID, "", "reasoning-alias", nil)
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(2), account.ID)
 }
 
 // TestGatewayService_SelectAccountForModelWithPlatform_Antigravity 测试 antigravity 单平台选择
@@ -602,7 +675,7 @@ func TestGatewayService_SelectAccountForModelWithPlatform_StickySession(t *testi
 	t.Run("粘性会话命中-同平台", func(t *testing.T) {
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
-				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true},
+				{ID: 1, Platform: PlatformAnthropic, Priority: 2, Status: StatusActive, Schedulable: true},
 				{ID: 2, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true},
 			},
 			accountsByID: map[int64]*Account{},
@@ -1700,7 +1773,7 @@ func TestGatewayService_selectAccountWithMixedScheduling(t *testing.T) {
 		repo := &mockAccountRepoForPlatform{
 			accounts: []Account{
 				{ID: 1, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true},
-				{ID: 2, Platform: PlatformAntigravity, Priority: 1, Status: StatusActive, Schedulable: true, Extra: map[string]any{"mixed_scheduling": true}},
+				{ID: 2, Platform: PlatformAntigravity, Priority: 2, Status: StatusActive, Schedulable: true, Extra: map[string]any{"mixed_scheduling": true}},
 			},
 			accountsByID: map[int64]*Account{},
 		}
@@ -2338,134 +2411,6 @@ func TestGatewayService_SelectAccountWithLoadAwareness(t *testing.T) {
 		require.Equal(t, int64(1), result.Account.ID)
 		require.Equal(t, 0, repo.getByIDCalls, "粘性命中不应调用GetByID")
 		require.Equal(t, 0, concurrencyCache.loadBatchCalls, "粘性命中应在负载批量查询前返回")
-	})
-
-	t.Run("更高优先级账号可用-覆盖旧粘性绑定", func(t *testing.T) {
-		repo := &mockAccountRepoForPlatform{
-			accounts: []Account{
-				{ID: 11, Platform: PlatformAnthropic, Priority: 10, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 12, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-			},
-			accountsByID: map[int64]*Account{},
-		}
-		for i := range repo.accounts {
-			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
-		}
-		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"priority-preempt": 11}}
-		cfg := testConfig()
-		cfg.Gateway.Scheduling.LoadBatchEnabled = true
-		concurrencyCache := &mockConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{
-			11: {AccountID: 11, LoadRate: 0},
-			12: {AccountID: 12, LoadRate: 0},
-		}}
-		svc := &GatewayService{
-			accountRepo:        repo,
-			cache:              cache,
-			cfg:                cfg,
-			concurrencyService: NewConcurrencyService(concurrencyCache),
-		}
-
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "priority-preempt", "claude-3-5-sonnet-20241022", nil, "", 0)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, int64(12), result.Account.ID)
-		require.Equal(t, int64(12), cache.sessionBindings["priority-preempt"])
-		if result.ReleaseFunc != nil {
-			result.ReleaseFunc()
-		}
-	})
-
-	t.Run("更高优先级账号满载-继续使用粘性账号", func(t *testing.T) {
-		repo := &mockAccountRepoForPlatform{
-			accounts: []Account{
-				{ID: 21, Platform: PlatformAnthropic, Priority: 10, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 22, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-			},
-			accountsByID: map[int64]*Account{},
-		}
-		for i := range repo.accounts {
-			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
-		}
-		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"priority-full": 21}}
-		cfg := testConfig()
-		cfg.Gateway.Scheduling.LoadBatchEnabled = true
-		concurrencyCache := &mockConcurrencyCache{
-			acquireResults: map[int64]bool{21: true, 22: false},
-			loadMap: map[int64]*AccountLoadInfo{
-				21: {AccountID: 21, CurrentConcurrency: 0, LoadRate: 0},
-				22: {AccountID: 22, CurrentConcurrency: 5, LoadRate: 100},
-			},
-		}
-		svc := &GatewayService{
-			accountRepo:        repo,
-			cache:              cache,
-			cfg:                cfg,
-			concurrencyService: NewConcurrencyService(concurrencyCache),
-		}
-
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "priority-full", "claude-3-5-sonnet-20241022", nil, "", 0)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, int64(21), result.Account.ID)
-		require.Equal(t, int64(21), cache.sessionBindings["priority-full"])
-		if result.ReleaseFunc != nil {
-			result.ReleaseFunc()
-		}
-	})
-
-	t.Run("同优先级账号-保持粘性绑定", func(t *testing.T) {
-		repo := &mockAccountRepoForPlatform{
-			accounts: []Account{
-				{ID: 31, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 32, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-			},
-			accountsByID: map[int64]*Account{},
-		}
-		for i := range repo.accounts {
-			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
-		}
-		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"same-priority": 31}}
-		cfg := testConfig()
-		cfg.Gateway.Scheduling.LoadBatchEnabled = true
-		concurrencyCache := &mockConcurrencyCache{}
-		svc := &GatewayService{
-			accountRepo:        repo,
-			cache:              cache,
-			cfg:                cfg,
-			concurrencyService: NewConcurrencyService(concurrencyCache),
-		}
-
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "same-priority", "claude-3-5-sonnet-20241022", nil, "", 0)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, int64(31), result.Account.ID)
-		require.Zero(t, concurrencyCache.loadBatchCalls)
-		if result.ReleaseFunc != nil {
-			result.ReleaseFunc()
-		}
-	})
-
-	t.Run("传统调度-更高优先级覆盖旧粘性绑定", func(t *testing.T) {
-		repo := &mockAccountRepoForPlatform{
-			accounts: []Account{
-				{ID: 41, Platform: PlatformAnthropic, Priority: 10, Status: StatusActive, Schedulable: true, Concurrency: 5},
-				{ID: 42, Platform: PlatformAnthropic, Priority: 1, Status: StatusActive, Schedulable: true, Concurrency: 5},
-			},
-			accountsByID: map[int64]*Account{},
-		}
-		for i := range repo.accounts {
-			repo.accountsByID[repo.accounts[i].ID] = &repo.accounts[i]
-		}
-		cache := &mockGatewayCacheForPlatform{sessionBindings: map[string]int64{"legacy-priority-preempt": 41}}
-		cfg := testConfig()
-		cfg.Gateway.Scheduling.LoadBatchEnabled = false
-		svc := &GatewayService{accountRepo: repo, cache: cache, cfg: cfg}
-
-		result, err := svc.SelectAccountWithLoadAwareness(ctx, nil, "legacy-priority-preempt", "claude-3-5-sonnet-20241022", nil, "", 0)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, int64(42), result.Account.ID)
-		require.Equal(t, int64(42), cache.sessionBindings["legacy-priority-preempt"])
 	})
 
 	t.Run("粘性账号不在候选集-回退负载感知选择", func(t *testing.T) {

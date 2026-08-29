@@ -37,7 +37,7 @@ func (PaymentProviderInstance) Fields() []ent.Field {
 			MaxLen(100).
 			Default(""),
 		field.String("config").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.String("supported_types").
 			MaxLen(200).
 			Default(""),
@@ -49,7 +49,7 @@ func (PaymentProviderInstance) Fields() []ent.Field {
 		field.Int("sort_order").
 			Default(0),
 		field.String("limits").
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Default(""),
 		field.Bool("refund_enabled").
 			Default(false),
@@ -58,11 +58,11 @@ func (PaymentProviderInstance) Fields() []ent.Field {
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

@@ -38,7 +38,7 @@ func (PromoCode) Fields() []ent.Field {
 			Unique().
 			Comment("优惠码"),
 		field.Float("bonus_amount").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0).
 			Comment("赠送余额金额"),
 		field.Int("max_uses").
@@ -54,21 +54,21 @@ func (PromoCode) Fields() []ent.Field {
 		field.Time("expires_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("过期时间，null表示永不过期"),
 		field.String("notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
+			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Comment("备注"),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 	}
 }
 

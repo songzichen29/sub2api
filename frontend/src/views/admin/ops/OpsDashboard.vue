@@ -84,14 +84,6 @@
         />
       </div>
 
-      <OpsErrorIngestionPanel
-        v-if="opsEnabled && !(loading && !hasLoadedOnce)"
-        :time-range="timeRange"
-        :custom-start-time="customStartTime"
-        :custom-end-time="customEndTime"
-        :refresh-token="dashboardRefreshToken"
-      />
-
       <!-- Row: OpenAI Token Stats -->
       <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
@@ -127,17 +119,12 @@
           :platform="platform"
           :group-id="groupId"
           :error-type="errorDetailsType"
+          :resume-state="resumeListState"
           @update:show="showErrorDetails = $event"
-          @openErrorDetail="openErrorFromErrorDetails"
+          @openErrorDetail="openError"
         />
 
-        <OpsErrorDetailModal
-          v-model:show="showErrorModal"
-          :error-id="selectedErrorId"
-          :error-type="errorDetailsType"
-          :show-back-button="showErrorBackButton"
-          @back="handleErrorDetailBack"
-        />
+        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="errorDetailsType" :back-to-list="detailReturnTarget !== null" @back="handleBackToList" />
 
         <OpsRequestDetailsModal
           v-model="showRequestDetails"
@@ -145,7 +132,8 @@
           :preset="requestDetailsPreset"
           :platform="platform"
           :group-id="groupId"
-          @openErrorDetail="openErrorFromRequestDetails"
+          :resume-state="resumeListState"
+          @openErrorDetail="openError"
         />
       </template>
     </div>
@@ -174,7 +162,6 @@ import OpsDashboardSkeleton from './components/OpsDashboardSkeleton.vue'
 import OpsConcurrencyCard from './components/OpsConcurrencyCard.vue'
 import OpsErrorDetailModal from './components/OpsErrorDetailModal.vue'
 import OpsErrorDistributionChart from './components/OpsErrorDistributionChart.vue'
-import OpsErrorIngestionPanel from './components/OpsErrorIngestionPanel.vue'
 import OpsErrorDetailsModal from './components/OpsErrorDetailsModal.vue'
 import OpsErrorTrendChart from './components/OpsErrorTrendChart.vue'
 import OpsLatencyChart from './components/OpsLatencyChart.vue'
@@ -381,13 +368,6 @@ const loadingErrorDistribution = ref(false)
 
 const selectedErrorId = ref<number | null>(null)
 const showErrorModal = ref(false)
-// 错误详情的来源弹窗 —— 关闭/返回时据此自动回到对应明细弹窗
-//   'requestDetails'：从请求明细弹窗（OpsRequestDetailsModal）进入
-//   'errorDetails'  ：从错误明细列表弹窗（OpsErrorDetailsModal）进入
-//   null            ：直接入口（无来源，不显示返回按钮、不回退）
-type ErrorDetailBackTarget = null | 'requestDetails' | 'errorDetails'
-const errorDetailBackTarget = ref<ErrorDetailBackTarget>(null)
-const showErrorBackButton = computed(() => errorDetailBackTarget.value !== null)
 
 const showErrorDetails = ref(false)
 const errorDetailsType = ref<'request' | 'upstream'>('request')
@@ -398,6 +378,13 @@ const requestDetailsPreset = ref<OpsRequestDetailsPreset>({
   kind: 'all',
   sort: 'created_at_desc'
 })
+
+// 记录单条错误详情来自哪个列表，便于"返回列表"时重新打开对应弹窗并保留状态。
+type DetailReturnTarget = 'errorList' | 'requestList' | null
+const detailReturnTarget = ref<DetailReturnTarget>(null)
+
+// 从详情返回时，列表弹窗应保留上一次的筛选/分页状态而非重置。
+const resumeListState = ref(false)
 
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
@@ -528,49 +515,35 @@ function onQueryModeChange(v: string | number | boolean | null) {
   queryMode.value = v as QueryMode
 }
 
-// 通用：根据来源打开错误详情，并记下来源用于回退
-function openErrorWith(id: number, from: ErrorDetailBackTarget) {
+function openError(id: number) {
   selectedErrorId.value = id
-  errorDetailBackTarget.value = from
+  // 记录来源列表，便于详情页"返回列表"。
+  detailReturnTarget.value = showRequestDetails.value ? 'requestList' : showErrorDetails.value ? 'errorList' : null
   // Ensure only one modal visible at a time.
   showErrorDetails.value = false
   showRequestDetails.value = false
   showErrorModal.value = true
 }
 
-// 从请求明细弹窗打开错误详情
-function openErrorFromRequestDetails(id: number) {
-  openErrorWith(id, 'requestDetails')
-}
-
-// 从错误明细列表弹窗打开错误详情
-function openErrorFromErrorDetails(id: number) {
-  openErrorWith(id, 'errorDetails')
-}
-
-// 根据来源恢复对应的明细弹窗
-function restoreFromErrorDetail() {
-  const target = errorDetailBackTarget.value
-  errorDetailBackTarget.value = null
-  if (target === 'requestDetails') {
+// 从单条错误详情返回其来源列表，重新打开关联弹窗（保留筛选/分页状态）。
+function handleBackToList() {
+  const target = detailReturnTarget.value
+  resumeListState.value = true
+  if (target === 'requestList') {
+    showErrorModal.value = false
+    showErrorDetails.value = false
     showRequestDetails.value = true
-  } else if (target === 'errorDetails') {
+  } else if (target === 'errorList') {
+    showErrorModal.value = false
+    showRequestDetails.value = false
     showErrorDetails.value = true
   }
+  detailReturnTarget.value = null
+  // 子组件 watch 在本次 show 变化中消费 resumeState 后复位，保证下次手动打开仍会重置筛选。
+  window.setTimeout(() => {
+    resumeListState.value = false
+  }, 0)
 }
-
-// 错误详情显式点击"返回上一页"按钮
-function handleErrorDetailBack() {
-  restoreFromErrorDetail()
-}
-
-// 监听错误详情关闭（点 X / ESC / 点遮罩 / 程序化关闭），如果有来源标记则自动恢复
-watch(showErrorModal, (visible) => {
-  if (visible) return
-  if (errorDetailBackTarget.value !== null) {
-    restoreFromErrorDetail()
-  }
-})
 
 function buildApiParams() {
   const params: any = {
