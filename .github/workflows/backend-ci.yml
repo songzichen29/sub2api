@@ -63,7 +63,17 @@ jobs:
         run: pnpm run lint:check
       - name: Frontend typecheck
         working-directory: frontend
-        run: pnpm run typecheck
+        run: |
+          set +e
+          pnpm run typecheck --pretty false 2>&1 | tee typecheck.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            tail -80 typecheck.log | while IFS= read -r line; do
+              line=${line//$'\r'/}
+              echo "::error file=frontend,typecheck::$line"
+            done
+          fi
+          exit "$status"
       - name: Frontend critical vitest
         run: make test-frontend-critical
 

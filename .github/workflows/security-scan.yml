@@ -33,7 +33,7 @@ jobs:
           status=$?
           echo "govulncheck_exit_code=$status"
           if [ "$status" -ne 0 ]; then
-            sed -n '1,20p' govulncheck.json | while IFS= read -r line; do
+            tail -80 govulncheck.json | while IFS= read -r line; do
               line=${line//$'\r'/}
               line=${line//%25/%2525}
               line=${line//%0A/%250A}
