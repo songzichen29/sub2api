@@ -32,6 +32,15 @@ jobs:
           govulncheck -json ./... > govulncheck.json 2>&1
           status=$?
           echo "govulncheck_exit_code=$status"
+          if [ "$status" -ne 0 ]; then
+            sed -n '1,20p' govulncheck.json | while IFS= read -r line; do
+              line=${line//$'\r'/}
+              line=${line//%25/%2525}
+              line=${line//%0A/%250A}
+              line=${line//%0D/%250D}
+              echo "::error file=backend/go.mod,line=1::$line"
+            done
+          fi
           exit "$status"
       - name: Upload govulncheck diagnostics
         if: always()
