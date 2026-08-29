@@ -27,8 +27,20 @@ jobs:
       - name: Run govulncheck
         working-directory: backend
         run: |
+          set +e
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck -json ./... > govulncheck.json 2>&1
+          status=$?
+          echo "govulncheck_exit_code=$status"
+          exit "$status"
+      - name: Upload govulncheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: govulncheck-diagnostics
+          path: backend/govulncheck.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   frontend-security:
     runs-on: ubuntu-latest
