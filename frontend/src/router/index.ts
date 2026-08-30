@@ -938,11 +938,8 @@ router.beforeEach(async (to, _from, next) => {
     }
     const availableChannelsEnabled = appStore.cachedPublicSettings?.available_channels_enabled === true
     if (appStore.publicSettingsLoaded && !availableChannelsEnabled) {
-      if (appStore.cachedPublicSettings?.model_plaza_enabled === true) {
-        next({ path: '/model-plaza', query: { embedded: '1' } })
-      } else {
-        next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-      }
+      // Do not silently replace Available Channels with Model Plaza.
+      next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       return
     }
     if (availableChannelsEnabled && to.path === '/model-marketplace') {
