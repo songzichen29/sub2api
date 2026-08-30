@@ -508,31 +508,27 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 
 	// GROUP BY (user_id, effective_platform) 一次查询同时得到总值与按平台拆分。
 	// 应用层把同一 user_id 的多行累加为总值，并把非空 platform 行收集到 ByPlatform。
-	inClause, inArgs := buildInt64InClause(normalizedUserIDs)
-	startPos := len(inArgs) + 1
-	endPos := startPos + 1
-	todayPos := endPos + 1
+	inClause := strings.TrimSuffix(strings.Repeat("?,", len(normalizedUserIDs)), ",")
 	query := fmt.Sprintf(`
 		SELECT
 			ul.user_id,
 			`+usageLogEffectivePlatformExpr+` as platform,
-			COALESCE(SUM(CASE WHEN ul.created_at >= $%d AND ul.created_at < $%d THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
-			COALESCE(SUM(CASE WHEN ul.created_at >= $%d THEN ul.actual_cost ELSE 0 END), 0) as today_cost
+			COALESCE(SUM(CASE WHEN ul.created_at >= ? AND ul.created_at < ? THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN ul.created_at >= ? THEN ul.actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs ul
 		LEFT JOIN `+quotedGroupsTable+` g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
 		WHERE ul.user_id IN (%s)
-		  AND ul.created_at >= LEAST($%d, $%d)
+		  AND ul.created_at >= LEAST(?, ?)
 		  AND `+usageLogSuccessFilterUL+`
 		GROUP BY ul.user_id, `+usageLogEffectivePlatformExpr+`
-	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
+	`, inClause)
 	today := timezone.Today()
-	args := append(inArgs, startTime, endTime, today)
-	if r.isMySQLDialect() {
-		// MySQL rebinding expands each repeated PostgreSQL placeholder to a
-		// separate positional '?', so repeat those arguments in occurrence order.
-		args = append(args, startTime, today)
+	args := []any{startTime, endTime, today}
+	for _, id := range normalizedUserIDs {
+		args = append(args, id)
 	}
+	args = append(args, startTime, today)
 	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
@@ -594,26 +590,23 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
 
-	inClause, inArgs := buildInt64InClause(normalizedAPIKeyIDs)
-	startPos := len(inArgs) + 1
-	endPos := startPos + 1
-	todayPos := endPos + 1
+	inClause := strings.TrimSuffix(strings.Repeat("?,", len(normalizedAPIKeyIDs)), ",")
 	query := fmt.Sprintf(`
 		SELECT
 			api_key_id,
-			COALESCE(SUM(CASE WHEN created_at >= $%d AND created_at < $%d THEN actual_cost ELSE 0 END), 0) as total_cost,
-			COALESCE(SUM(CASE WHEN created_at >= $%d THEN actual_cost ELSE 0 END), 0) as today_cost
+			COALESCE(SUM(CASE WHEN created_at >= ? AND created_at < ? THEN actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN created_at >= ? THEN actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs
 		WHERE api_key_id IN (%s)
-		  AND created_at >= LEAST($%d, $%d)
+		  AND created_at >= LEAST(?, ?)
 		GROUP BY api_key_id
-	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
+	`, inClause)
 	today := timezone.Today()
-	args := append(inArgs, startTime, endTime, today)
-	if r.isMySQLDialect() {
-		// Keep repeated placeholder arguments for the MySQL execution path.
-		args = append(args, startTime, today)
+	args := []any{startTime, endTime, today}
+	for _, id := range normalizedAPIKeyIDs {
+		args = append(args, id)
 	}
+	args = append(args, startTime, today)
 	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
