@@ -43,7 +43,7 @@ func buildMonitorInt64InClause(ids []int64) (string, []any) {
 }
 
 func buildMonitorModelTargetsClause(ids []int64, primaryModels map[int64]string) (string, []any) {
-	pairIDs, _ := buildMonitorModelPairs(ids, primaryModels)
+	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
 	if len(pairIDs) == 0 {
 		return "", nil
 	}
@@ -505,7 +505,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 	perMonitorLimit int,
 ) (map[int64][]*service.ChannelMonitorHistoryEntry, error) {
 	out := make(map[int64][]*service.ChannelMonitorHistoryEntry, len(ids))
-	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
+	pairIDs, _ := buildMonitorModelPairs(ids, primaryModels)
 	if len(pairIDs) == 0 {
 		return out, nil
 	}
