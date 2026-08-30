@@ -24,8 +24,8 @@
         >
           {{ siteName }}
         </router-link>
-        <!-- Version Badge -->
-        <VersionBadge :version="siteVersion" />
+        <!-- Version controls are an admin-only operation. -->
+        <VersionBadge v-if="isAdmin" :version="siteVersion" />
       </div>
     </div>
 
