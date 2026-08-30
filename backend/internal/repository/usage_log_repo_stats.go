@@ -13,7 +13,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 )
 
 // GetUserStatsAggregated returns aggregated usage statistics for a user using database-level aggregation
@@ -37,7 +36,7 @@ func (r *usageLogRepository) GetUserStatsAggregated(ctx context.Context, userID 
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{userID, startTime, endTime},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
@@ -76,7 +75,7 @@ func (r *usageLogRepository) GetAPIKeyStatsAggregated(ctx context.Context, apiKe
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{apiKeyID, startTime, endTime},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
@@ -125,7 +124,7 @@ func (r *usageLogRepository) GetAccountStatsAggregated(ctx context.Context, acco
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{accountID, startTime, endTime},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
@@ -165,7 +164,7 @@ func (r *usageLogRepository) GetModelStatsAggregated(ctx context.Context, modelN
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{modelName, startTime, endTime},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
@@ -187,10 +186,19 @@ func (r *usageLogRepository) GetModelStatsAggregated(ctx context.Context, modelN
 // 性能优化：使用 GROUP BY 在数据库层按日期分组聚合，避免应用层循环分组统计
 func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (result []map[string]any, err error) {
 	tzName := resolveUsageStatsTimezone()
-	query := `
+	dateExpr := "TO_CHAR(created_at AT TIME ZONE $4, 'YYYY-MM-DD')"
+	args := []any{userID, startTime, endTime, tzName}
+	if r.isMySQLDialect() {
+		// created_at is stored as UTC DATETIME in the MySQL schema. The handler
+		// already supplies timezone-aware day boundaries, so DATE_FORMAT keeps
+		// grouping stable without requiring MySQL timezone tables.
+		dateExpr = "DATE_FORMAT(created_at, '%Y-%m-%d')"
+		args = args[:3]
+	}
+	query := fmt.Sprintf(`
 		SELECT
 			-- 使用应用时区分组，避免数据库会话时区导致日边界偏移。
-			TO_CHAR(created_at AT TIME ZONE $4, 'YYYY-MM-DD') as date,
+			%s as date,
 			COUNT(*) as total_requests,
 			COALESCE(SUM(input_tokens), 0) as total_input_tokens,
 			COALESCE(SUM(output_tokens), 0) as total_output_tokens,
@@ -202,9 +210,9 @@ func (r *usageLogRepository) GetDailyStatsAggregated(ctx context.Context, userID
 		WHERE user_id = $1 AND created_at >= $2 AND created_at < $3
 		GROUP BY 1
 		ORDER BY 1
-	`
+	`, dateExpr)
 
-	rows, err := r.sql.QueryContext(ctx, query, userID, startTime, endTime, tzName)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +299,7 @@ func (r *usageLogRepository) GetAccountTodayStats(ctx context.Context, accountID
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{accountID, today},
 		&stats.Requests,
 		&stats.Tokens,
@@ -321,7 +329,7 @@ func (r *usageLogRepository) GetAccountWindowStats(ctx context.Context, accountI
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{accountID, startTime},
 		&stats.Requests,
 		&stats.Tokens,
@@ -342,7 +350,9 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 		return result, nil
 	}
 
-	query := `
+	inClause, inArgs := buildInt64InClause(accountIDs)
+	startPos := len(inArgs) + 1
+	query := fmt.Sprintf(`
 		SELECT
 			account_id,
 			COUNT(*) as requests,
@@ -351,10 +361,11 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 			COALESCE(SUM(total_cost), 0) as standard_cost,
 			COALESCE(SUM(actual_cost), 0) as user_cost
 		FROM usage_logs
-		WHERE account_id = ANY($1) AND created_at >= $2
+		WHERE account_id IN (%s) AND created_at >= $%d
 		GROUP BY account_id
-	`
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(accountIDs), startTime)
+	`, inClause, startPos)
+	args := append(inArgs, startTime)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -395,20 +406,24 @@ func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, acco
 		return result, nil
 	}
 
-	query := `
+	inClause, inArgs := buildInt64InClause(accountIDs)
+	startPos := len(inArgs) + 1
+	endPos := startPos + 1
+	query := fmt.Sprintf(`
 		SELECT
 			account_id,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 1 ELSE 0 END), 0) AS flash_requests,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE 1 END), 0) AS pro_requests,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) ELSE 0 END), 0) AS flash_tokens,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) END), 0) AS pro_tokens,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN actual_cost ELSE 0 END), 0) AS flash_cost,
-			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%flash%' OR LOWER(COALESCE(model, '')) LIKE '%lite%' THEN 0 ELSE actual_cost END), 0) AS pro_cost
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN 1 ELSE 0 END), 0) AS flash_requests,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN 0 ELSE 1 END), 0) AS pro_requests,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) ELSE 0 END), 0) AS flash_tokens,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN 0 ELSE (input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) END), 0) AS pro_tokens,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN actual_cost ELSE 0 END), 0) AS flash_cost,
+			COALESCE(SUM(CASE WHEN LOWER(COALESCE(model, '')) LIKE '%%flash%%' OR LOWER(COALESCE(model, '')) LIKE '%%lite%%' THEN 0 ELSE actual_cost END), 0) AS pro_cost
 		FROM usage_logs
-		WHERE account_id = ANY($1) AND created_at >= $2 AND created_at < $3
+		WHERE account_id IN (%s) AND created_at >= $%d AND created_at < $%d
 		GROUP BY account_id
-	`
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(accountIDs), startTime, endTime)
+	`, inClause, startPos, endPos)
+	args := append(inArgs, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -493,22 +508,27 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 
 	// GROUP BY (user_id, effective_platform) 一次查询同时得到总值与按平台拆分。
 	// 应用层把同一 user_id 的多行累加为总值，并把非空 platform 行收集到 ByPlatform。
-	query := `
+	inClause, inArgs := buildInt64InClause(normalizedUserIDs)
+	startPos := len(inArgs) + 1
+	endPos := startPos + 1
+	todayPos := endPos + 1
+	query := fmt.Sprintf(`
 		SELECT
 			ul.user_id,
-			` + usageLogEffectivePlatformExpr + ` as platform,
-			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as total_cost,
-			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) as today_cost
+			`+usageLogEffectivePlatformExpr+` as platform,
+			COALESCE(SUM(CASE WHEN ul.created_at >= $%d AND ul.created_at < $%d THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN ul.created_at >= $%d THEN ul.actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs ul
 		LEFT JOIN groups g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
-		WHERE ul.user_id = ANY($1)
-		  AND ul.created_at >= LEAST($2, $4)
-		  AND ` + usageLogSuccessFilterUL + `
-		GROUP BY ul.user_id, ` + usageLogEffectivePlatformExpr + `
-	`
+		WHERE ul.user_id IN (%s)
+		  AND ul.created_at >= LEAST($%d, $%d)
+		  AND `+usageLogSuccessFilterUL+`
+		GROUP BY ul.user_id, `+usageLogEffectivePlatformExpr+`
+	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedUserIDs), startTime, endTime, today)
+	args := append(inArgs, startTime, endTime, today)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -569,18 +589,23 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 		result[id] = &BatchAPIKeyUsageStats{APIKeyID: id}
 	}
 
-	query := `
+	inClause, inArgs := buildInt64InClause(normalizedAPIKeyIDs)
+	startPos := len(inArgs) + 1
+	endPos := startPos + 1
+	todayPos := endPos + 1
+	query := fmt.Sprintf(`
 		SELECT
 			api_key_id,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $2 AND created_at < $3), 0) as total_cost,
-			COALESCE(SUM(actual_cost) FILTER (WHERE created_at >= $4), 0) as today_cost
+			COALESCE(SUM(CASE WHEN created_at >= $%d AND created_at < $%d THEN actual_cost ELSE 0 END), 0) as total_cost,
+			COALESCE(SUM(CASE WHEN created_at >= $%d THEN actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs
-		WHERE api_key_id = ANY($1)
-		  AND created_at >= LEAST($2, $4)
+		WHERE api_key_id IN (%s)
+		  AND created_at >= LEAST($%d, $%d)
 		GROUP BY api_key_id
-	`
+	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
 	today := timezone.Today()
-	rows, err := r.sql.QueryContext(ctx, query, pq.Array(normalizedAPIKeyIDs), startTime, endTime, today)
+	args := append(inArgs, startTime, endTime, today)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +638,7 @@ func resolveEndpointColumn(endpointType string) string {
 	case "upstream":
 		return "ul.upstream_endpoint"
 	case "path":
-		return "ul.inbound_endpoint || ' -> ' || ul.upstream_endpoint"
+		return "CONCAT(COALESCE(NULLIF(TRIM(ul.inbound_endpoint), ''), 'unknown'), ' -> ', COALESCE(NULLIF(TRIM(ul.upstream_endpoint), ''), 'unknown'))"
 	default:
 		return "ul.inbound_endpoint"
 	}
@@ -638,7 +663,7 @@ func (r *usageLogRepository) GetGlobalStats(ctx context.Context, startTime, endT
 	if err := scanSingleRow(
 		ctx,
 		r.sql,
-		query,
+		r.prepareUsageLogQuery(query),
 		[]any{startTime, endTime},
 		&stats.TotalRequests,
 		&stats.TotalInputTokens,
@@ -694,49 +719,85 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		args = append(args, *filters.EndTime)
 	}
 
-	query := fmt.Sprintf(`
-		WITH scoped AS (
-			SELECT
-				COALESCE(NULLIF(TRIM(inbound_endpoint), ''), 'unknown') AS inbound_endpoint,
-				COALESCE(NULLIF(TRIM(upstream_endpoint), ''), 'unknown') AS upstream_endpoint,
-				input_tokens,
-				output_tokens,
-				cache_creation_tokens,
-				cache_read_tokens,
-				total_cost,
-				actual_cost,
-				COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) AS account_cost,
-				duration_ms
-			FROM usage_logs
-			%s
-		)
-		SELECT
-			GROUPING(inbound_endpoint) AS inbound_grouped,
-			GROUPING(upstream_endpoint) AS upstream_grouped,
-			inbound_endpoint,
-			upstream_endpoint,
-			COUNT(*) AS requests,
-			COALESCE(SUM(input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(output_tokens), 0) AS output_tokens,
-			COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
-			COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
-			COALESCE(SUM(total_cost), 0) AS cost,
-			COALESCE(SUM(actual_cost), 0) AS actual_cost,
-			COALESCE(SUM(account_cost), 0) AS account_cost,
-			COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
-		FROM scoped
-		GROUP BY GROUPING SETS (
-			(),
-			(inbound_endpoint),
-			(upstream_endpoint),
-			(inbound_endpoint, upstream_endpoint)
-		)
-	`, buildWhere(conditions))
+	whereClause := buildWhere(conditions)
+	query := ""
+	if r.isMySQLDialect() {
+		// MySQL does not implement GROUPING SETS. UNION ALL preserves the same
+		// four result categories consumed by the scanner below.
+		query = fmt.Sprintf(`
+			WITH scoped AS (
+				SELECT
+					COALESCE(NULLIF(TRIM(inbound_endpoint), ''), 'unknown') AS inbound_endpoint,
+					COALESCE(NULLIF(TRIM(upstream_endpoint), ''), 'unknown') AS upstream_endpoint,
+					input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+					total_cost, actual_cost,
+					COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) AS account_cost,
+					duration_ms
+				FROM usage_logs
+				%s
+			)
+			SELECT 1 AS inbound_grouped, 1 AS upstream_grouped,
+				CAST(NULL AS CHAR) AS inbound_endpoint, CAST(NULL AS CHAR) AS upstream_endpoint,
+				COUNT(*) AS requests, COALESCE(SUM(input_tokens), 0) AS input_tokens,
+				COALESCE(SUM(output_tokens), 0) AS output_tokens,
+				COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+				COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+				COALESCE(SUM(total_cost), 0) AS cost, COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(account_cost), 0) AS account_cost, COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+			FROM scoped
+			UNION ALL
+			SELECT 0, 1, inbound_endpoint, CAST(NULL AS CHAR), COUNT(*),
+				COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+				COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
+				COALESCE(SUM(total_cost), 0), COALESCE(SUM(actual_cost), 0),
+				COALESCE(SUM(account_cost), 0), COALESCE(AVG(duration_ms), 0)
+			FROM scoped GROUP BY inbound_endpoint
+			UNION ALL
+			SELECT 1, 0, CAST(NULL AS CHAR), upstream_endpoint, COUNT(*),
+				COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+				COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
+				COALESCE(SUM(total_cost), 0), COALESCE(SUM(actual_cost), 0),
+				COALESCE(SUM(account_cost), 0), COALESCE(AVG(duration_ms), 0)
+			FROM scoped GROUP BY upstream_endpoint
+			UNION ALL
+			SELECT 0, 0, inbound_endpoint, upstream_endpoint, COUNT(*),
+				COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+				COALESCE(SUM(cache_creation_tokens), 0), COALESCE(SUM(cache_read_tokens), 0),
+				COALESCE(SUM(total_cost), 0), COALESCE(SUM(actual_cost), 0),
+				COALESCE(SUM(account_cost), 0), COALESCE(AVG(duration_ms), 0)
+			FROM scoped GROUP BY inbound_endpoint, upstream_endpoint
+		`, whereClause)
+	} else {
+		query = fmt.Sprintf(`
+			WITH scoped AS (
+				SELECT
+					COALESCE(NULLIF(TRIM(inbound_endpoint), ''), 'unknown') AS inbound_endpoint,
+					COALESCE(NULLIF(TRIM(upstream_endpoint), ''), 'unknown') AS upstream_endpoint,
+					input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
+					total_cost, actual_cost,
+					COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1) AS account_cost,
+					duration_ms
+				FROM usage_logs
+				%s
+			)
+			SELECT GROUPING(inbound_endpoint) AS inbound_grouped,
+				GROUPING(upstream_endpoint) AS upstream_grouped,
+				inbound_endpoint, upstream_endpoint, COUNT(*) AS requests,
+				COALESCE(SUM(input_tokens), 0) AS input_tokens,
+				COALESCE(SUM(output_tokens), 0) AS output_tokens,
+				COALESCE(SUM(cache_creation_tokens), 0) AS cache_creation_tokens,
+				COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+				COALESCE(SUM(total_cost), 0) AS cost, COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(account_cost), 0) AS account_cost, COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+			FROM scoped
+			GROUP BY GROUPING SETS ((), (inbound_endpoint), (upstream_endpoint), (inbound_endpoint, upstream_endpoint))
+		`, whereClause)
+	}
 
 	stats := &UsageStats{}
 	var totalAccountCost float64
 	useAccountCostForEndpoint := filters.AccountID > 0 && filters.UserID == 0 && filters.APIKeyID == 0
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -879,7 +940,7 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 	query, args = appendUsageLogBillingModeQueryFilter(query, args, billingMode, "")
 	query += " GROUP BY endpoint ORDER BY requests DESC"
 
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}
@@ -921,9 +982,13 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 		daysCount = 30
 	}
 
-	query := `
+	dateExpr := "TO_CHAR(created_at, 'YYYY-MM-DD')"
+	if r.isMySQLDialect() {
+		dateExpr = "DATE_FORMAT(created_at, '%Y-%m-%d')"
+	}
+	query := fmt.Sprintf(`
 		SELECT
-			TO_CHAR(created_at, 'YYYY-MM-DD') as date,
+			%s as date,
 			COUNT(*) as requests,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as tokens,
 			COALESCE(SUM(total_cost), 0) as cost,
@@ -933,9 +998,9 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
 		GROUP BY date
 		ORDER BY date ASC
-	`
+	`, dateExpr)
 
-	rows, err := r.sql.QueryContext(ctx, query, accountID, startTime, endTime)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), accountID, startTime, endTime)
 	if err != nil {
 		return nil, err
 	}
@@ -1001,7 +1066,7 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 
 	avgQuery := "SELECT COALESCE(AVG(duration_ms), 0) as avg_duration_ms FROM usage_logs WHERE account_id = $1 AND created_at >= $2 AND created_at < $3"
 	var avgDuration float64
-	if err := scanSingleRow(ctx, r.sql, avgQuery, []any{accountID, startTime, endTime}, &avgDuration); err != nil {
+	if err := scanSingleRow(ctx, r.sql, r.prepareUsageLogQuery(avgQuery), []any{accountID, startTime, endTime}, &avgDuration); err != nil {
 		return nil, err
 	}
 

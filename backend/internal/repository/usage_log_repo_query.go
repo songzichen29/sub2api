@@ -23,7 +23,7 @@ const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, 
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
-	rows, err := r.sql.QueryContext(ctx, query, id)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), id)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (r *usageLogRepository) ListByModelAndTimeRange(ctx context.Context, modelN
 }
 
 func (r *usageLogRepository) Delete(ctx context.Context, id int64) error {
-	_, err := r.sql.ExecContext(ctx, "DELETE FROM usage_logs WHERE id = $1", id)
+	_, err := r.sql.ExecContext(ctx, r.prepareUsageLogQuery("DELETE FROM usage_logs WHERE id = $1"), id)
 	return err
 }
 
@@ -178,7 +178,7 @@ func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
 func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	countQuery := "SELECT COUNT(*) FROM usage_logs " + whereClause
 	var total int64
-	if err := scanSingleRow(ctx, r.sql, countQuery, args, &total); err != nil {
+	if err := scanSingleRow(ctx, r.sql, r.prepareUsageLogQuery(countQuery), args, &total); err != nil {
 		return nil, nil, err
 	}
 
@@ -243,7 +243,7 @@ func usageLogOrderBy(params pagination.PaginationParams) string {
 }
 
 func (r *usageLogRepository) queryUsageLogs(ctx context.Context, query string, args ...any) (logs []service.UsageLog, err error) {
-	rows, err := r.sql.QueryContext(ctx, query, args...)
+	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
 	}

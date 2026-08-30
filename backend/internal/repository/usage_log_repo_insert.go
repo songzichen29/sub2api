@@ -160,6 +160,11 @@ func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) 
 	if requestID == "" {
 		return r.createSingle(ctx, r.sql, log)
 	}
+	if r.isMySQLDialect() {
+		// The batch CTE below is PostgreSQL-specific. MySQL uses the same
+		// idempotency contract through INSERT IGNORE and a keyed read-back.
+		return r.createSingle(ctx, r.sql, log)
+	}
 	log.RequestID = requestID
 	return r.createBatched(ctx, log)
 }
@@ -171,6 +176,10 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		_, err := r.createSingle(ctx, tx.Client(), log)
+		return err
+	}
+	if r.isMySQLDialect() {
+		_, err := r.createSingle(ctx, r.sql, log)
 		return err
 	}
 	if r.db == nil {
@@ -294,6 +303,36 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
 	`
+	if r.isMySQLDialect() {
+		mysqlQuery := query
+		if conflictPos := strings.Index(mysqlQuery, "\n\t\tON CONFLICT"); conflictPos >= 0 {
+			mysqlQuery = mysqlQuery[:conflictPos] + "\n"
+		}
+		mysqlQuery = strings.Replace(mysqlQuery, "INSERT INTO usage_logs", "INSERT IGNORE INTO usage_logs", 1)
+		mysqlQuery = rebindUsageLogQuery(mysqlQuery, true)
+		result, err := sqlq.ExecContext(ctx, mysqlQuery, prepared.args...)
+		if err != nil {
+			return false, err
+		}
+		if prepared.requestID == "" {
+			id, err := result.LastInsertId()
+			if err != nil {
+				return false, err
+			}
+			log.ID = id
+			return true, nil
+		}
+		selectQuery := "SELECT id, created_at FROM usage_logs WHERE request_id = ? AND api_key_id = ? ORDER BY id DESC LIMIT 1"
+		if err := scanSingleRow(ctx, sqlq, selectQuery, []any{prepared.requestID, log.APIKeyID}, &log.ID, &log.CreatedAt); err != nil {
+			return false, err
+		}
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		log.RateMultiplier = prepared.rateMultiplier
+		return rowsAffected > 0, nil
+	}
 
 	if err := scanSingleRow(ctx, sqlq, query, prepared.args, &log.ID, &log.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) && prepared.requestID != "" {

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -49,7 +50,7 @@ func buildInt64InClause(ids []int64) (string, []any) {
 	placeholders := make([]string, len(ids))
 	args := make([]any, 0, len(ids))
 	for i, id := range ids {
-		placeholders[i] = "?"
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args = append(args, id)
 	}
 	return strings.Join(placeholders, ","), args
@@ -97,10 +98,10 @@ func appendUsageLogBillingModeWhereConditionWithAlias(conditions []string, args 
 		}
 		return alias + "." + name
 	}
-	placeholder := "?"
+	placeholder := fmt.Sprintf("$%d", len(args)+1)
 	switch service.BillingMode(mode) {
 	case service.BillingModeImage:
-		conditions = append(conditions, fmt.Sprintf("(%s = %s OR COALESCE(%s, 0) > 0)", column("billing_mode"), placeholder, column("image_count")))
+		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) > 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
 	case service.BillingModeToken:
 		conditions = append(conditions, fmt.Sprintf("(%s = %s OR ((%s IS NULL OR %s = '') AND COALESCE(%s, 0) <= 0))", column("billing_mode"), placeholder, column("billing_mode"), column("billing_mode"), column("image_count")))
 	default:
@@ -181,6 +182,12 @@ func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLog
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {
 	// 使用 scanSingleRow 替代 QueryRowContext，保证 ent.Tx 作为 sqlExecutor 可用。
 	repo := &usageLogRepository{client: client, sql: sqlq}
+	if client != nil && sqlq != nil {
+		repo.sql = &usageLogDialectExecutor{
+			inner: sqlq,
+			mysql: client.Driver() != nil && client.Driver().Dialect() == dialect.MySQL,
+		}
+	}
 	if db, ok := sqlq.(*sql.DB); ok {
 		repo.db = db
 	}
@@ -190,9 +197,127 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 
 func (r *usageLogRepository) isMySQLDialect() bool {
 	if r == nil || r.client == nil || r.client.Driver() == nil {
-		return true
+		return false
 	}
 	return r.client.Driver().Dialect() == dialect.MySQL
+}
+
+func (r *usageLogRepository) prepareUsageLogQuery(query string) string {
+	return rebindUsageLogQuery(query, r.isMySQLDialect())
+}
+
+type usageLogDialectExecutor struct {
+	inner sqlExecutor
+	mysql bool
+}
+
+func (e *usageLogDialectExecutor) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return e.inner.ExecContext(ctx, rebindUsageLogQuery(query, e.mysql), args...)
+}
+
+func (e *usageLogDialectExecutor) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return e.inner.QueryContext(ctx, rebindUsageLogQuery(query, e.mysql), args...)
+}
+
+// rebindUsageLogQuery keeps SQL builders and sqlmock on PostgreSQL-style
+// numbered placeholders while converting them at the MySQL execution boundary.
+// Legacy '?' fragments are accepted so callers can be migrated incrementally.
+func rebindUsageLogQuery(query string, mysql bool) string {
+	if mysql {
+		var b strings.Builder
+		for i := 0; i < len(query); i++ {
+			if query[i] == '\'' || query[i] == '"' || query[i] == '`' {
+				quote := query[i]
+				b.WriteByte(query[i])
+				for i++; i < len(query); i++ {
+					b.WriteByte(query[i])
+					if query[i] == quote {
+						if i+1 < len(query) && query[i+1] == quote {
+							b.WriteByte(query[i+1])
+							i++
+							continue
+						}
+						break
+					}
+				}
+				continue
+			}
+			if query[i] == '$' && i+1 < len(query) && query[i+1] >= '0' && query[i+1] <= '9' {
+				b.WriteByte('?')
+				i++
+				for i+1 < len(query) && query[i+1] >= '0' && query[i+1] <= '9' {
+					i++
+				}
+				continue
+			}
+			b.WriteByte(query[i])
+		}
+		return b.String()
+	}
+	return rebindQuestionPlaceholders(query)
+}
+
+func rebindQuestionPlaceholders(query string) string {
+	occupied := make(map[int]struct{})
+	for i := 0; i < len(query); i++ {
+		if isSQLQuote(query[i]) {
+			i = skipSQLQuoted(query, i)
+			continue
+		}
+		if query[i] != '$' || i+1 >= len(query) || query[i+1] < '0' || query[i+1] > '9' {
+			continue
+		}
+		value := 0
+		for i+1 < len(query) && query[i+1] >= '0' && query[i+1] <= '9' {
+			i++
+			value = value*10 + int(query[i]-'0')
+		}
+		occupied[value] = struct{}{}
+	}
+
+	var b strings.Builder
+	next := 1
+	for i := 0; i < len(query); i++ {
+		if isSQLQuote(query[i]) {
+			end := skipSQLQuoted(query, i)
+			b.WriteString(query[i : end+1])
+			i = end
+			continue
+		}
+		if query[i] == '?' {
+			for {
+				if _, exists := occupied[next]; !exists {
+					break
+				}
+				next++
+			}
+			b.WriteString(fmt.Sprintf("$%d", next))
+			occupied[next] = struct{}{}
+			next++
+			continue
+		}
+		b.WriteByte(query[i])
+	}
+	return b.String()
+}
+
+func isSQLQuote(ch byte) bool {
+	return ch == '\'' || ch == '"' || ch == '`'
+}
+
+func skipSQLQuoted(query string, start int) int {
+	quote := query[start]
+	for i := start + 1; i < len(query); i++ {
+		if query[i] != quote {
+			continue
+		}
+		if i+1 < len(query) && query[i+1] == quote {
+			i++
+			continue
+		}
+		return i
+	}
+	return len(query) - 1
 }
 
 func buildWhere(conditions []string) string {
@@ -231,25 +356,26 @@ func appendRequestTypeOrStreamQueryFilter(query string, args []any, requestType 
 }
 
 // buildRequestTypeFilterCondition 在 request_type 过滤时兼容 legacy 字段，避免历史数据漏查。
-func buildRequestTypeFilterCondition(_ int, requestType int16) (string, []any) {
-	return buildRequestTypeFilterConditionWithAlias(0, requestType, "")
+func buildRequestTypeFilterCondition(position int, requestType int16) (string, []any) {
+	return buildRequestTypeFilterConditionWithAlias(position, requestType, "")
 }
 
-func buildRequestTypeFilterConditionWithAlias(_ int, requestType int16, alias string) (string, []any) {
+func buildRequestTypeFilterConditionWithAlias(position int, requestType int16, alias string) (string, []any) {
 	normalized := service.RequestTypeFromInt16(requestType)
 	requestTypeArg := int16(normalized)
 	prefix := ""
 	if alias != "" {
 		prefix = alias + "."
 	}
+	placeholder := fmt.Sprintf("$%d", position)
 	switch normalized {
 	case service.RequestTypeSync:
-		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = %s OR (%srequest_type = %d AND %sstream = FALSE AND %sopenai_ws_mode = FALSE))", prefix, placeholder, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeStream:
-		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = %s OR (%srequest_type = %d AND %sstream = TRUE AND %sopenai_ws_mode = FALSE))", prefix, placeholder, prefix, int16(service.RequestTypeUnknown), prefix, prefix), []any{requestTypeArg}
 	case service.RequestTypeWSV2:
-		return fmt.Sprintf("(%srequest_type = ? OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, prefix, int16(service.RequestTypeUnknown), prefix), []any{requestTypeArg}
+		return fmt.Sprintf("(%srequest_type = %s OR (%srequest_type = %d AND %sopenai_ws_mode = TRUE))", prefix, placeholder, prefix, int16(service.RequestTypeUnknown), prefix), []any{requestTypeArg}
 	default:
-		return fmt.Sprintf("%srequest_type = ?", prefix), []any{requestTypeArg}
+		return fmt.Sprintf("%srequest_type = %s", prefix, placeholder), []any{requestTypeArg}
 	}
 }
