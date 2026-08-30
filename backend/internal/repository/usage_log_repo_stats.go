@@ -528,6 +528,11 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
 	today := timezone.Today()
 	args := append(inArgs, startTime, endTime, today)
+	if r.isMySQLDialect() {
+		// MySQL rebinding expands each repeated PostgreSQL placeholder to a
+		// separate positional '?', so repeat those arguments in occurrence order.
+		args = append(args, startTime, today)
+	}
 	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
@@ -605,6 +610,10 @@ func (r *usageLogRepository) GetBatchAPIKeyUsageStats(ctx context.Context, apiKe
 	`, startPos, endPos, todayPos, inClause, startPos, todayPos)
 	today := timezone.Today()
 	args := append(inArgs, startTime, endTime, today)
+	if r.isMySQLDialect() {
+		// Keep repeated placeholder arguments for the MySQL execution path.
+		args = append(args, startTime, today)
+	}
 	rows, err := r.sql.QueryContext(ctx, r.prepareUsageLogQuery(query), args...)
 	if err != nil {
 		return nil, err
