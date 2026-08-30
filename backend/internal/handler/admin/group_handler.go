@@ -135,8 +135,11 @@ type CreateGroupRequest struct {
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
+	DailyLimitResetPrice      optionalLimitField            `json:"daily_limit_reset_price"`
 	WeeklyLimitUSD            optionalLimitField            `json:"weekly_limit_usd"`
 	MonthlyLimitUSD           optionalLimitField            `json:"monthly_limit_usd"`
+	AllowDailyOverdraft       bool                          `json:"allow_daily_overdraft"`
+	AllowWeekendSkip          bool                          `json:"allow_weekend_skip"`
 	LongContextPricingEnabled bool                          `json:"long_context_pricing_enabled"`
 	ModelPricing              []service.ChannelModelPricing `json:"model_pricing"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
@@ -204,8 +207,11 @@ type UpdateGroupRequest struct {
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
 	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField             `json:"daily_limit_usd"`
+	DailyLimitResetPrice      optionalLimitField             `json:"daily_limit_reset_price"`
 	WeeklyLimitUSD            optionalLimitField             `json:"weekly_limit_usd"`
 	MonthlyLimitUSD           optionalLimitField             `json:"monthly_limit_usd"`
+	AllowDailyOverdraft       *bool                          `json:"allow_daily_overdraft"`
+	AllowWeekendSkip          *bool                          `json:"allow_weekend_skip"`
 	LongContextPricingEnabled *bool                          `json:"long_context_pricing_enabled"`
 	ModelPricing              *[]service.ChannelModelPricing `json:"model_pricing"`
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
@@ -542,8 +548,11 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
+		DailyLimitResetPrice:            req.DailyLimitResetPrice.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
+		AllowDailyOverdraft:             req.AllowDailyOverdraft,
+		AllowWeekendSkip:                req.AllowWeekendSkip,
 		LongContextPricingEnabled:       req.LongContextPricingEnabled,
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
@@ -671,8 +680,11 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
+		DailyLimitResetPrice:            req.DailyLimitResetPrice.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
 		MonthlyLimitUSD:                 req.MonthlyLimitUSD.ToServiceInput(),
+		AllowDailyOverdraft:             req.AllowDailyOverdraft,
+		AllowWeekendSkip:                req.AllowWeekendSkip,
 		LongContextPricingEnabled:       req.LongContextPricingEnabled,
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
