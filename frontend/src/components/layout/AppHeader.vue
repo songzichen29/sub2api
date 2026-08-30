@@ -41,17 +41,17 @@
         </router-link>
 
         <router-link
-          v-if="showMarketplaceEntry"
-          to="/available-channels"
+          v-if="showModelPlazaEntry"
+          to="/model-plaza"
           class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
           :class="
-              route.path === '/available-channels'
+              route.path === '/model-plaza'
               ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/25 dark:text-primary-300'
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white'
           "
         >
-          <Icon name="globe" size="sm" />
-          <span class="hidden sm:inline">{{ t('nav.availableChannels') }}</span>
+          <Icon name="grid" size="sm" />
+          <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
         </router-link>
 
         <!-- Docs Link -->
@@ -304,7 +304,7 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
-const showMarketplaceEntry = computed(() => !!user.value && isFeatureFlagEnabled(FeatureFlags.availableChannels))
+const showModelPlazaEntry = computed(() => !!user.value && isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
 const totalBalance = computed(() => availableBalance.value + frozenBalance.value)

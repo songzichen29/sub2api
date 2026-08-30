@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math"
 	"sort"
@@ -24,14 +25,7 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 	since := now.AddDate(0, 0, -days)
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	paidStatuses := []string{OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging}
-
-	orders, err := s.entClient.PaymentOrder.Query().
-		Where(
-			paymentorder.StatusIn(paidStatuses...),
-			paymentorder.PaidAtGTE(since),
-		).
-		All(ctx)
+	orders, err := s.queryPaidOrders(ctx, since, now)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +45,41 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 	st.TopUsers = buildTopUsers(orders)
 
 	return st, nil
+}
+
+// GetDashboardStatsRange returns payment dashboard statistics for an explicit
+// inclusive calendar range. The end argument is exclusive to keep date
+// boundaries unambiguous for callers in any timezone.
+func (s *PaymentService) GetDashboardStatsRange(ctx context.Context, start, endExclusive time.Time) (*DashboardStats, error) {
+	if !endExclusive.After(start) {
+		return nil, fmt.Errorf("payment dashboard range must have a positive duration")
+	}
+
+	orders, err := s.queryPaidOrders(ctx, start, endExclusive)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	st := &DashboardStats{}
+	computeBasicStats(st, orders, todayStart)
+	st.DailySeries = buildDailySeriesForRange(orders, start, endExclusive)
+	st.PaymentMethods = buildMethodDistribution(orders)
+	st.TopUsers = buildTopUsers(orders)
+	return st, nil
+}
+
+func (s *PaymentService) queryPaidOrders(ctx context.Context, start, endExclusive time.Time) ([]*dbent.PaymentOrder, error) {
+	paidStatuses := []string{OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging}
+	return s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.StatusIn(paidStatuses...),
+			paymentorder.PaidAtNotNil(),
+			paymentorder.PaidAtGTE(start),
+			paymentorder.PaidAtLT(endExclusive),
+		).
+		All(ctx)
 }
 
 func (s *PaymentService) GetDailyStatsRange(ctx context.Context, start, endExclusive time.Time) ([]DailyStats, error) {

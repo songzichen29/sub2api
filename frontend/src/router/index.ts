@@ -877,12 +877,6 @@ router.beforeEach(async (to, _from, next) => {
         }
       }
       const plazaSettings = appStore.cachedPublicSettings
-      // Available Channels is the authenticated canonical catalog. Keep old
-      // Model Plaza links working without rendering two different catalogs.
-      if (plazaSettings?.available_channels_enabled === true) {
-        next({ path: '/available-channels', query: to.query })
-        return
-      }
       // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
       if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
         next(
