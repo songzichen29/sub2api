@@ -519,7 +519,7 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 			COALESCE(SUM(CASE WHEN ul.created_at >= $%d AND ul.created_at < $%d THEN ul.actual_cost ELSE 0 END), 0) as total_cost,
 			COALESCE(SUM(CASE WHEN ul.created_at >= $%d THEN ul.actual_cost ELSE 0 END), 0) as today_cost
 		FROM usage_logs ul
-		LEFT JOIN groups g ON g.id = ul.group_id
+		LEFT JOIN `+quotedGroupsTable+` g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
 		WHERE ul.user_id IN (%s)
 		  AND ul.created_at >= LEAST($%d, $%d)
