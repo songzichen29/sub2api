@@ -30,6 +30,10 @@ export default {
         modeV1Hint: 'Default: runs scheduled upstream health checks for configured channel monitors (probe traffic).',
         hideThroughput: 'Hide throughput rates from users (RPM / TPM)',
         hideThroughputHint: 'When on, the user Channel Monitor page and user APIs omit RPM and TPM so fleet volume cannot be reverse-estimated from rates × window. Admins still see full metrics. Error rates, latency, and cache rates remain visible.'
+      ,
+        showQuota: 'Show channel usage/balance to users',
+        showQuotaHint:
+                    'When on, quota-mode channel monitors expose the linked account usage windows/balance on the user Channel Status page. Disabled by default; admins always see it.',
       },
       availableChannels: {
         title: 'Available Channels',
@@ -130,6 +134,13 @@ export default {
         adminRechargeRebate: 'Rebate Admin Deposits',
         adminRechargeRebateHint: 'When enabled, balance added through User Management > Deposit generates affiliate rebates. Setting a balance or withdrawing funds does not.',
       }
+    ,
+      pluginManagement: {
+                title: 'Plugin Management',
+                description: 'Controls whether the plugin management entry appears in the admin sidebar. This switch does not control plugin runtime state.',
+                enabled: 'Show Plugin Management',
+                enabledHint: 'Turning this off only hides the sidebar entry; loaded or running plugins are not stopped.',
+              },
     },
     emailTabDisabledTitle: 'Email Verification Not Enabled',
     emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
@@ -424,6 +435,12 @@ export default {
       description: 'Control API Key scheduling behavior',
       allowUngroupedKey: 'Allow Ungrouped Key Scheduling',
       allowUngroupedKeyHint: 'When disabled, API Keys not assigned to any group cannot make requests (403 Forbidden). Keep disabled to ensure all Keys belong to a specific group.'
+    ,
+      accountSchedulingThresholdsTitle: 'Platform Account Auto-Pause Thresholds',
+      accountSchedulingThresholdsDescription: 'When an account\'s current native usage window (OpenAI Codex/Anthropic session, or Grok request/token utilization) reaches this percent, Sub2API temporarily removes it from scheduling until the window resets. Use 100 to disable.',
+      accountSchedulingThresholdsGlobalHint: 'System-wide default for every account on that platform. Individual accounts can still override this in the account editor.',
+      accountSchedulingThresholdsDisabledHint: '100 disables platform auto-pause. Values 1–99 pause scheduling once utilization reaches that percent.',
+      accountSchedulingThresholdsRangeHint: 'Integer 1–100 (percent). OpenAI/Anthropic/Grok only.'
     },
     gatewayForwarding: {
       title: 'Request Forwarding',
@@ -498,6 +515,24 @@ export default {
       codexUaContainsPlaceholder: 'User-Agent contains markers, comma-separated (e.g. opencode/)',
       codexAddRow: 'Add entry',
       codexRemoveRow: 'Remove'
+    ,
+      grokDefaultTextModel: 'Default Grok text model',
+      grokDefaultTextModelHint: 'Used for empty model values and, only when the switch is enabled, requests from other client model namespaces. Custom Grok model IDs are accepted.',
+      grokCrossClientMap: 'Map other clients to Grok',
+      grokCrossClientMapHint: 'Disabled by default. When enabled, GPT, Codex, o-series, and Claude model IDs are routed to the default Grok text model above.',
+      grokDefaultBaseURLMode: 'Default Grok upstream',
+      grokDefaultBaseURLModeHint: 'Used only when a Grok account has no explicit base URL. Media and voice endpoints continue to use their official API hosts.',
+      grokBaseURLModeCLI: 'CLI chat proxy',
+      grokBaseURLModeAPI: 'Public API',
+      grokBaseURLModeUSEast1: 'Regional API (us-east-1)',
+      grokBaseURLModeUSWest2: 'Regional API (us-west-2)',
+      grokBaseURLModeEUWest1: 'Regional API (eu-west-1)',
+      openaiCodexClientVersion: 'Codex client version',
+      openaiCodexClientVersionPlaceholder: 'Leave empty to follow auto-sync',
+      openaiCodexClientVersionHint: 'The Codex client version this gateway declares upstream, shared by the User-Agent and the version header. Leave empty to use the auto-synced latest stable release; setting a value pins it and stops following auto-sync.',
+      openaiCodexVersionAutoSync: 'Auto-sync Codex version',
+      openaiCodexVersionAutoSyncHint: 'Fetches the latest stable client version from the official repository every 6 hours, so you never need to upgrade this service just to keep the version current. When disabled, only the version above or the built-in default is used.',
+      openaiCodexVersionSyncedValue: 'Currently synced: {version}',
     },
     webSearchEmulation: {
       title: 'Web Search Emulation',

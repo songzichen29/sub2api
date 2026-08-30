@@ -99,9 +99,6 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
-	if err := validateDefaultSubscriptionSettings(settings.DefaultSubscriptions); err != nil {
-		return nil, err
-	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -161,8 +158,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if settings.GoogleOAuthFrontendRedirectURL == "" {
 		settings.GoogleOAuthFrontendRedirectURL = defaultGoogleOAuthFrontend
 	}
-	settings.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings.OpenAIFreeImageBridgeURL)
-	settings.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
 
 	updates := make(map[string]string)
 
@@ -345,10 +340,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
 	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
-	updates[SettingKeyOpenAIFreeImageBridgeURL] = settings.OpenAIFreeImageBridgeURL
-	if settings.OpenAIFreeImageBridgeAuthKey != "" {
-		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = settings.OpenAIFreeImageBridgeAuthKey
-	}
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
@@ -376,10 +367,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
 	updates[SettingKeyAffiliateRechargeEnabled] = strconv.FormatBool(settings.AffiliateRechargeEnabled)
 	updates[SettingKeyAffiliateSubscriptionEnabled] = strconv.FormatBool(settings.AffiliateSubscriptionEnabled)
-	settings.AffiliateRechargeRebateRate = clampAffiliateRebateRate(settings.AffiliateRechargeRebateRate)
-	updates[SettingKeyAffiliateRechargeRebateRate] = strconv.FormatFloat(settings.AffiliateRechargeRebateRate, 'f', 8, 64)
-	settings.AffiliateSubscriptionRebateRate = clampAffiliateRebateRate(settings.AffiliateSubscriptionRebateRate)
-	updates[SettingKeyAffiliateSubscriptionRebateRate] = strconv.FormatFloat(settings.AffiliateSubscriptionRebateRate, 'f', 8, 64)
+	updates[SettingKeyAffiliateRechargeRebateRate] = strconv.FormatFloat(clampAffiliateRebateRate(settings.AffiliateRechargeRebateRate), 'f', 8, 64)
+	updates[SettingKeyAffiliateSubscriptionRebateRate] = strconv.FormatFloat(clampAffiliateRebateRate(settings.AffiliateSubscriptionRebateRate), 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
 		settings.AffiliateRebateFreezeHours = AffiliateRebateFreezeHoursDefault
 	}
@@ -432,6 +421,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
 	}
 	updates[SettingKeyChannelMonitorHideThroughput] = strconv.FormatBool(settings.ChannelMonitorHideThroughput)
+	updates[SettingKeyChannelMonitorShowQuota] = strconv.FormatBool(settings.ChannelMonitorShowQuota)
+
+	// Grok model mapping policy
+	if v := strings.TrimSpace(settings.GrokDefaultTextModel); v != "" {
+		updates[SettingKeyGrokDefaultTextModel] = v
+	} else {
+		updates[SettingKeyGrokDefaultTextModel] = "grok-4.6"
+	}
+	updates[SettingKeyGrokCrossClientModelMapEnabled] = strconv.FormatBool(settings.GrokCrossClientModelMapEnabled)
+	updates[SettingKeyGrokDefaultBaseURLMode] = normalizeGrokDefaultBaseURLMode(settings.GrokDefaultBaseURLMode)
 
 	// Available channels feature switch
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
@@ -440,6 +439,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)
 	updates[SettingKeyModelPlazaDescription] = settings.ModelPlazaDescription
+	updates[SettingKeyPluginManagementEnabled] = strconv.FormatBool(settings.PluginManagementEnabled)
 
 	// Affiliate (邀请返利) feature switch
 	updates[SettingKeyAffiliateEnabled] = strconv.FormatBool(settings.AffiliateEnabled)
@@ -462,6 +462,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
+	updates[SettingKeyOpenAIFreeImageBridgeURL] = strings.TrimSpace(settings.OpenAIFreeImageBridgeURL)
+	if strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey) != "" {
+		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
+	}
 
 	// Gateway forwarding behavior
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
@@ -557,7 +561,14 @@ func defaultAccountSchedulingThresholds() map[string]int {
 func validateAndNormalizeAccountSchedulingThresholds(input map[string]int) (map[string]int, error) {
 	normalized := defaultAccountSchedulingThresholds()
 	for platform, value := range input {
-		if !isAllowedSchedulingThresholdPlatform(platform) {
+		allowed := false
+		for _, item := range AllowedSchedulingThresholdPlatforms {
+			if item == platform {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
 			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_SCHEDULING_THRESHOLDS", fmt.Sprintf("unknown platform %q", platform))
 		}
 		if value < 1 || value > 100 {
@@ -638,9 +649,6 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 		settings.Google.Subscriptions,
 		settings.DingTalk.Subscriptions,
 	} {
-		if err := validateDefaultSubscriptionSettings(subscriptions); err != nil {
-			return nil, err
-		}
 		if err := s.validateDefaultSubscriptionGroups(ctx, subscriptions); err != nil {
 			return nil, err
 		}
@@ -773,6 +781,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 			expiresAt:  time.Now().Add(accountSchedulingThresholdsCacheTTL).UnixNano(),
 		})
 	} else {
+		// Partial/omitted payload: clear cache so the next hot-path read reloads from DB.
 		accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
 	}
 	if s.cfg != nil {
@@ -828,43 +837,4 @@ func (s *SettingService) validateDefaultSubscriptionGroups(ctx context.Context, 
 	}
 
 	return nil
-}
-
-func parsePositiveIntOverride(raw string) int {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return 0
-	}
-	return value
-}
-
-func parseOpenAIAdvancedSchedulerWeightOverrides(values map[string]string) map[string]float64 {
-	overrides := map[string]float64{}
-	for key, name := range map[string]string{
-		SettingKeyOpenAIAdvancedSchedulerWeightPriority:         "priority",
-		SettingKeyOpenAIAdvancedSchedulerWeightLoad:             "load",
-		SettingKeyOpenAIAdvancedSchedulerWeightQueue:            "queue",
-		SettingKeyOpenAIAdvancedSchedulerWeightErrorRate:        "error_rate",
-		SettingKeyOpenAIAdvancedSchedulerWeightTTFT:             "ttft",
-		SettingKeyOpenAIAdvancedSchedulerWeightReset:            "reset",
-		SettingKeyOpenAIAdvancedSchedulerWeightQuotaHeadroom:    "quota_headroom",
-		SettingKeyOpenAIAdvancedSchedulerWeightUpstreamCost:     "upstream_cost",
-		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse: "previous_response",
-		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:    "session_sticky",
-	} {
-		raw := strings.TrimSpace(values[key])
-		if raw == "" {
-			continue
-		}
-		value, err := strconv.ParseFloat(raw, 64)
-		if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-			continue
-		}
-		overrides[name] = value
-	}
-	return overrides
 }

@@ -33,7 +33,7 @@ func (ChannelMonitorDailyRollup) Fields() []ent.Field {
 			NotEmpty().
 			MaxLen(200),
 		field.Time("bucket_date").
-			SchemaType(map[string]string{dialect.MySQL: "date"}),
+			SchemaType(map[string]string{dialect.Postgres: "date"}),
 		field.Int("total_checks").Default(0),
 		field.Int("ok_count").Default(0),
 		field.Int("operational_count").Default(0),

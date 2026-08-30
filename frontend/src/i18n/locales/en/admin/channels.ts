@@ -77,6 +77,8 @@ export default {
         cacheReadPrice: 'cache read price',
         perRequestPrice: 'per-request price'
       }
+    ,
+      multiplierPositive: 'Interval #{index}: {field} must be greater than 0',
     },
     deleteConfirm: 'Are you sure you want to delete channel "{name}"? This cannot be undone.',
     columns: {
@@ -92,6 +94,8 @@ export default {
       token: 'Token',
       perRequest: 'Per Request',
       image: 'Image (Per Request)'
+    ,
+      video: 'Video (Per Second)'
     },
     form: {
       name: 'Name',
@@ -188,9 +192,38 @@ export default {
       noImportableAccountModels: 'No importable account models were found under the selected groups',
       importModelsSuccess: 'Imported {count} models into mapping and pricing',
       importModelsError: 'Failed to import account models'
+    ,
+      fastMultiplier: 'Fast Multiplier',
+      flexMultiplier: 'Flex Multiplier',
+      multiplierPlaceholder: 'Not set',
+      multiplierPositive: 'Fast/Flex multipliers must be greater than 0',
+      inputMultiplier: 'Input Mult.',
+      outputMultiplier: 'Output Mult.',
+      cacheWriteMultiplier: 'Cache Write Mult.',
+      cacheReadMultiplier: 'Cache Read Mult.',
+      timePricing: 'Time-based pricing (optional)',
+      timezone: 'Time zone',
+      timePricingDayScope: 'Effective days',
+      timePricingEveryDay: 'Every day (Monday-Sunday, including weekends)',
+      timePricingWeekdaysOnly: 'Weekdays only (Monday-Friday)',
+      addTimePeriod: 'Add period',
+      startTime: 'Start time',
+      endTime: 'End time',
+      multiplier: 'Multiplier',
+      removeTimePeriod: 'Remove period',
+      videoTiers: 'Video Resolution Tiers (Per Second)',
+      defaultVideoPrice: 'Default video price per second (fallback when no tier matches)',
     },
     noGroupsSelected: 'No group selected for {platform}. Select at least one group or disable this platform.',
     emptyModelsInPricing: '{platform} has pricing entries without models. Add models or remove those entries.'
+  ,
+    timePricingValidation: {
+            timezone: 'Select a valid IANA time zone',
+            format: 'Start and end times must use HH:mm:ss format',
+            range: 'Start time must be earlier than end time; split ranges across midnight',
+            overlap: 'Time periods must not overlap',
+            multiplier: 'Multiplier must be greater than 0 with at most two decimal places'
+          },
   },
   riskControl: {
     title: 'Risk Control',
@@ -481,6 +514,9 @@ export default {
     requestBodyUnavailable: 'No full request session was saved for this record; only the summary is shown.',
     requestBodyDownloadFailed: 'Failed to download request session',
     requestBodySize: 'Saved session {size}, messages {count}'
+  ,
+    proxy: 'Proxy Server',
+    proxyHint: 'Send moderation requests through the selected proxy (IP Management - Proxy Servers), useful when the egress IP is not supported by OpenAI. Defaults to direct connection.',
   },
   channelMonitor: {
     title: 'Channel Monitor',
@@ -550,6 +586,20 @@ export default {
       jitterSecondsHint: 'Each check fires at interval ± a random offset within this value; 0 means fixed interval. Interval minus jitter must be ≥ 15s',
       enabled: 'Enable monitor',
       kindRequired: 'Please select a provider'
+    ,
+      checkMode: 'Check Mode',
+      checkModeProbe: 'Probe',
+      checkModeProbeHint: 'Sends a lightweight LLM request to measure availability and latency',
+      checkModeQuota: 'Quota',
+      checkModeQuotaHint: 'Only queries the linked account usage windows / balance without probe requests',
+      checkModeQuotaProbe: 'Probe + Quota',
+      checkModeQuotaProbeHint: 'Probes the channel and attaches the quota snapshot to the primary model result',
+      linkedAccount: 'Linked Account',
+      linkedAccountPlaceholder: 'Select an account',
+      linkedAccountHint: 'Quota data comes from the selected account (reuses the account-side usage/balance queries)',
+      linkedAccountEmpty: 'No accounts on this platform yet. Add one in Account Management first',
+      linkedAccountMissing: 'The linked account no longer exists or is not accessible. Please re-select an account',
+      openAIQuotaProbeHint: 'Note: on the OpenAI platform the usage query may trigger a Codex probe request that consumes the account\'s own quota (at most once every 10 minutes)',
     },
     runResultTitle: 'Check Result',
     noMonitorsYet: 'No monitors yet',
@@ -615,6 +665,8 @@ export default {
         descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
       }
     }
+  ,
+    linkedAccountRequired: 'Please select a linked account',
   },
   subscriptions: {
     title: 'Subscription Management',
@@ -758,5 +810,8 @@ export default {
     resetQuotaUpperBoundDisabled: 'Upper-bound window cannot be reset (resetting would bypass the subscription cap).',
     resetQuotaPaidLocked: 'This is a paid subscription and cannot be reset.',
     resetQuotaNoLimits: 'The group has no usage limits configured, nothing to reset.'
+  ,
+    hoursMinutesRemaining: '{hours}h {minutes}m remaining',
+    minutesRemaining: '{minutes}m remaining',
   }
 }

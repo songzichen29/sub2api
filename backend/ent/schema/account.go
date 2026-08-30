@@ -58,7 +58,7 @@ func (Account) Fields() []ent.Field {
 		field.String("notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 
 		// platform: 所属平台，如 "claude", "gemini", "openai" 等
 		field.String("platform").
@@ -78,13 +78,13 @@ func (Account) Fields() []ent.Field {
 		// - cookie: {"session_key": "..."}
 		field.JSON("credentials", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// extra: 扩展数据，存储平台特定的额外信息
 		// 如 CRS 账户的 crs_account_id、组织信息等
 		field.JSON("extra", map[string]any{}).
 			Default(func() map[string]any { return map[string]any{} }).
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// proxy_id: 关联的代理配置 ID（可选）
 		// 用于需要通过特定代理访问 API 的场景
@@ -110,7 +110,7 @@ func (Account) Fields() []ent.Field {
 		// rate_multiplier: 账号计费倍率（>=0，允许 0 表示该账号计费为 0）
 		// 仅影响账号维度计费口径，不影响用户/API Key 扣费（分组倍率）
 		field.Float("rate_multiplier").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
 
 		// status: 账户状态，如 "active", "error", "disabled"
@@ -122,19 +122,19 @@ func (Account) Fields() []ent.Field {
 		field.String("error_message").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 
 		// last_used_at: 最后使用时间，用于统计和调度
 		field.Time("last_used_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		// expires_at: 账户过期时间（可为空）
 		field.Time("expires_at").
 			Optional().
 			Nillable().
 			Comment("Account expiration time (NULL means no expiration).").
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		// auto_pause_on_expired: 过期后自动暂停调度
 		field.Bool("auto_pause_on_expired").
 			Default(true).
@@ -153,65 +153,57 @@ func (Account) Fields() []ent.Field {
 		field.Time("rate_limited_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// rate_limit_reset_at: 速率限制预计解除的时间
 		// 调度器会在此时间之前避免使用该账户
 		field.Time("rate_limit_reset_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// overload_until: 过载状态解除时间
 		// 当收到 529 错误（API 过载）时设置
 		field.Time("overload_until").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// temp_unschedulable_until: 临时不可调度状态解除时间
 		// 当命中临时不可调度规则时设置，在此时间前调度器应跳过该账号
 		field.Time("temp_unschedulable_until").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// temp_unschedulable_reason: 临时不可调度原因，便于排障审计
 		field.String("temp_unschedulable_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 
 		// session_window_*: 会话窗口相关字段
 		// 用于管理某些需要会话时间窗口的 API（如 Claude Pro）
 		field.Time("session_window_start").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Time("session_window_end").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.String("session_window_status").
 			Optional().
 			Nillable().
 			MaxLen(20),
 
-		// tags: optional account labels stored as JSON in MySQL.
-		// Used by account filtering, bulk operations, and UI display.
-		// service.NormalizeAccountTags trims, deduplicates, sorts, and bounds the list before persistence.
-		// Migration: mysql/005_add_account_tags.sql; filtering uses JSON_CONTAINS instead of PostgreSQL GIN.
 		field.JSON("tags", []string{}).
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.MySQL: "json"}),
 
-		field.Int64("parent_account_id").
-			Optional().
-			Nillable().
+		field.Int64("parent_account_id").Optional().Nillable().
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
-		field.Enum("quota_dimension").
-			Values("global", "spark").
-			Default("global").
+		field.Enum("quota_dimension").Values("global", "spark").Default("global").
 			Comment("'global' (default) or 'spark' (shadow reads codex_bengalfox)."),
 	}
 }

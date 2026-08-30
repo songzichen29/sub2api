@@ -24,7 +24,7 @@ export async function list(
   page: number = 1,
   pageSize: number = 20,
   filters?: {
-    status?: 'active' | 'expired' | 'revoked' | 'quota_exhausted'
+    status?: 'active' | 'expired' | 'revoked' | 'suspended'
     user_id?: number
     group_id?: number
     platform?: string
@@ -95,9 +95,9 @@ export async function bulkAssign(
 }
 
 /**
- * Adjust subscription validity
+ * Extend subscription validity
  * @param id - Subscription ID
- * @param request - Either days delta, or explicit starts_at/expires_at time range
+ * @param request - Extension request with days
  * @returns Updated subscription
  */
 export async function extend(
@@ -122,6 +122,16 @@ export async function revoke(id: number): Promise<{ message: string }> {
 }
 
 /**
+ * Restore revoked subscription
+ * @param id - Subscription ID
+ * @returns Restored subscription
+ */
+export async function restore(id: number): Promise<UserSubscription> {
+  const { data } = await apiClient.post<UserSubscription>(`/admin/subscriptions/${id}/restore`)
+  return data
+}
+
+/**
  * Reset daily, weekly, and/or monthly usage quota for a subscription
  * @param id - Subscription ID
  * @param options - Which windows to reset
@@ -134,100 +144,6 @@ export async function resetQuota(
   const { data } = await apiClient.post<UserSubscription>(
     `/admin/subscriptions/${id}/reset-quota`,
     options
-  )
-  return data
-}
-
-export async function setWeekendSkip(
-  id: number,
-  enabled: boolean
-): Promise<UserSubscription> {
-  const { data } = await apiClient.put<UserSubscription>(
-    `/admin/subscriptions/${id}/weekend-skip`,
-    { enabled }
-  )
-  return data
-}
-
-export interface WeekendSkipPreview {
-  subscription_id: number
-  enabled: boolean
-  current_expires_at: string
-  preview_expires_at: string
-  delta_seconds: number
-  reason: string
-}
-
-export async function previewWeekendSkip(
-  id: number,
-  enabled: boolean
-): Promise<WeekendSkipPreview> {
-  const { data } = await apiClient.post<WeekendSkipPreview>(
-    `/admin/subscriptions/${id}/weekend-skip/preview`,
-    { enabled }
-  )
-  return data
-}
-
-export interface SubscriptionOrderUsageItem {
-  order_id: number
-  order_status: string
-  order_type: string
-  renewal_mode: string
-  user_email: string
-  plan_id?: number | null
-  paid_at: string
-  completed_at?: string | null
-  window_start: string
-  window_end: string
-  subscription_days: number
-  validity_unit?: string
-  quota_usd?: number | null
-  used_actual_cost_usd: number
-  used_base_cost_usd: number
-  allocated_used_usd: number
-  window_subscription_used_usd: number
-  window_balance_used_usd: number
-  window_total_used_usd: number
-  over_quota_usd?: number
-  remaining_usd?: number | null
-  request_count: number
-  balance_request_count?: number
-  input_tokens: number
-  output_tokens: number
-  first_usage_at?: string | null
-  last_usage_at?: string | null
-  exhausted_at?: string | null
-  window_kind: string
-  attribution: string
-}
-
-export interface SubscriptionOrderUsageResponse {
-  subscription_id: number
-  user_id: number
-  group_id: number
-  attribution: string
-  orders: SubscriptionOrderUsageItem[]
-  total_quota_usd?: number | null
-  total_used_actual_cost: number
-  total_allocated_used_usd: number
-  total_window_subscription_used_usd: number
-  total_window_balance_used_usd: number
-  total_over_quota_usd?: number
-  total_remaining_usd?: number | null
-  generated_at: string
-}
-
-export async function getOrderUsage(id: number): Promise<SubscriptionOrderUsageResponse> {
-  const { data } = await apiClient.get<SubscriptionOrderUsageResponse>(
-    `/admin/subscriptions/${id}/order-usage`
-  )
-  return data
-}
-
-export async function resetWeekendSkipUserChange(id: number): Promise<UserSubscription> {
-  const { data } = await apiClient.post<UserSubscription>(
-    `/admin/subscriptions/${id}/weekend-skip/reset-user-change`
   )
   return data
 }
@@ -282,11 +198,8 @@ export const subscriptionsAPI = {
   bulkAssign,
   extend,
   revoke,
+  restore,
   resetQuota,
-  getOrderUsage,
-  previewWeekendSkip,
-  setWeekendSkip,
-  resetWeekendSkipUserChange,
   listByGroup,
   listByUser
 }

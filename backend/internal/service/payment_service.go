@@ -227,21 +227,22 @@ type TopUsersByCurrency map[string][]TopUserStat
 // --- Service ---
 
 type PaymentService struct {
-	providerMu        sync.Mutex
-	providersLoaded   bool
-	entClient         *dbent.Client
-	registry          *payment.Registry
-	loadBalancer      payment.LoadBalancer
-	redeemService     *RedeemService
-	subscriptionSvc   *SubscriptionService
-	configService     *PaymentConfigService
-	userRepo          UserRepository
-	groupRepo         GroupRepository
-	userGroupRateRepo UserGroupRateRepository
-	resumeService     *PaymentResumeService
-	affiliateService  *AffiliateService
-	discountService   *DiscountService
-	couponService     *CouponService
+	providerMu               sync.Mutex
+	providersLoaded          bool
+	entClient                *dbent.Client
+	registry                 *payment.Registry
+	loadBalancer             payment.LoadBalancer
+	redeemService            *RedeemService
+	subscriptionSvc          *SubscriptionService
+	configService            *PaymentConfigService
+	userRepo                 UserRepository
+	groupRepo                GroupRepository
+	userGroupRateRepo        UserGroupRateRepository
+	resumeService            *PaymentResumeService
+	affiliateService         *AffiliateService
+	discountService          *DiscountService
+	couponService            *CouponService
+	notificationEmailService *NotificationEmailService
 }
 
 func (s *PaymentService) GetEntClient() *dbent.Client {
@@ -261,6 +262,10 @@ func (s *PaymentService) SetCouponService(couponService *CouponService) {
 
 func (s *PaymentService) SetDiscountService(discountService *DiscountService) {
 	s.discountService = discountService
+}
+
+func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
+	s.notificationEmailService = notificationEmailService
 }
 
 // --- Provider Registry ---

@@ -426,11 +426,6 @@ func (_u *PendingAuthSessionUpdate) check() error {
 			return &ValidationError{Name: "provider_subject", err: fmt.Errorf(`ent: validator failed for field "PendingAuthSession.provider_subject": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.CompletionCodeHash(); ok {
-		if err := pendingauthsession.CompletionCodeHashValidator(v); err != nil {
-			return &ValidationError{Name: "completion_code_hash", err: fmt.Errorf(`ent: validator failed for field "PendingAuthSession.completion_code_hash": %w`, err)}
-		}
-	}
 	return nil
 }
 
@@ -1003,11 +998,6 @@ func (_u *PendingAuthSessionUpdateOne) check() error {
 	if v, ok := _u.mutation.ProviderSubject(); ok {
 		if err := pendingauthsession.ProviderSubjectValidator(v); err != nil {
 			return &ValidationError{Name: "provider_subject", err: fmt.Errorf(`ent: validator failed for field "PendingAuthSession.provider_subject": %w`, err)}
-		}
-	}
-	if v, ok := _u.mutation.CompletionCodeHash(); ok {
-		if err := pendingauthsession.CompletionCodeHashValidator(v); err != nil {
-			return &ValidationError{Name: "completion_code_hash", err: fmt.Errorf(`ent: validator failed for field "PendingAuthSession.completion_code_hash": %w`, err)}
 		}
 	}
 	return nil

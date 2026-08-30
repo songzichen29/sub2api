@@ -58,14 +58,14 @@ func (ErrorPassthroughRule) Fields() []ent.Field {
 		// 例如：[422, 400] 表示匹配 422 或 400 错误码
 		field.JSON("error_codes", []int{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// keywords: 匹配的关键词列表（OR关系）
 		// 例如：["context limit", "model not supported"]
 		// 关键词匹配不区分大小写
 		field.JSON("keywords", []string{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// match_mode: 匹配模式
 		// - "any": 错误码匹配 OR 关键词匹配（任一条件满足即可）
@@ -79,7 +79,7 @@ func (ErrorPassthroughRule) Fields() []ent.Field {
 		// 空列表表示适用于所有平台
 		field.JSON("platforms", []string{}).
 			Optional().
-			SchemaType(map[string]string{dialect.MySQL: "json"}),
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 
 		// passthrough_code: 是否透传上游原始状态码
 		// true: 使用上游返回的状态码

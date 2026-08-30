@@ -157,8 +157,6 @@ type UpdateSettingsRequest struct {
 	SiteLogo                     string                `json:"site_logo"`
 	SiteSubtitle                 string                `json:"site_subtitle"`
 	APIBaseURL                   string                `json:"api_base_url"`
-	OpenAIFreeImageBridgeURL     *string               `json:"openai_free_image_bridge_url"`
-	OpenAIFreeImageBridgeAuthKey string                `json:"openai_free_image_bridge_auth_key"`
 	ContactInfo                  string                `json:"contact_info"`
 	DocURL                       string                `json:"doc_url"`
 	HomeContent                  string                `json:"home_content"`
@@ -170,6 +168,8 @@ type UpdateSettingsRequest struct {
 	TablePageSizeOptions         []int                 `json:"table_page_size_options"`
 	CustomMenuItems              *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints              *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	OpenAIFreeImageBridgeURL     *string               `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKey string                `json:"openai_free_image_bridge_auth_key"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
@@ -304,26 +304,22 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
-	PaymentEnabled                   *bool                             `json:"payment_enabled"`
-	PaymentMinAmount                 *float64                          `json:"payment_min_amount"`
-	PaymentMaxAmount                 *float64                          `json:"payment_max_amount"`
-	PaymentDailyLimit                *float64                          `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           *int                              `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          *int                              `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string                          `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           *bool                             `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier *float64                          `json:"payment_balance_recharge_multiplier"`
-	PaymentSubscriptionUSDToCNYRate  *float64                          `json:"payment_subscription_usd_to_cny_rate"`
-	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
-	PaymentQuickAmounts              []float64                         `json:"payment_quick_amounts"`
-	PaymentPaidUserRateEnabled       *bool                             `json:"payment_paid_user_rate_enabled"`
-	PaymentPaidUserRateRules         []service.PaymentPaidUserRateRule `json:"payment_paid_user_rate_rules"`
-	PaymentRechargeFeeRate           *float64                          `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string                           `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string                           `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string                           `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string                           `json:"payment_help_image_url"`
-	PaymentHelpText                  *string                           `json:"payment_help_text"`
+	PaymentEnabled                   *bool    `json:"payment_enabled"`
+	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
+	PaymentMaxAmount                 *float64 `json:"payment_max_amount"`
+	PaymentDailyLimit                *float64 `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin           *int     `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders          *int     `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
+	PaymentBalanceDisabled           *bool    `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate  *float64 `json:"payment_subscription_usd_to_cny_rate"`
+	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
+	PaymentHelpText                  *string  `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -342,6 +338,12 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
+	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
+
+	// Grok model mapping policy
+	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         *string `json:"grok_default_base_url_mode"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
@@ -350,6 +352,9 @@ type UpdateSettingsRequest struct {
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
 	ModelPlazaDescription *string `json:"model_plaza_description"`
+
+	// Plugin management menu visibility switch; plugin runtime is unaffected.
+	PluginManagementEnabled *bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
@@ -366,6 +371,9 @@ type UpdateSettingsRequest struct {
 
 	// 系统全局 platform quota 默认值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
 	DefaultPlatformQuotas map[string]*service.DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
+
+	// 各平台账号自动停调阈值（整体替换语义：nil = 不修改，non-nil = 整体覆盖）。
+	AccountSchedulingThresholds map[string]int `json:"account_scheduling_thresholds"`
 
 	// auth-source 层 platform quota 覆盖（override 语义：nil = 不修改，non-nil = 整体覆盖该 source 的 quota 配置）。
 	AuthSourceEmailPlatformQuotas    map[string]*service.DefaultPlatformQuotaSetting `json:"auth_source_default_email_platform_quotas"`
@@ -439,7 +447,7 @@ func buildSettingKeyByJSONName() map[string]string {
 	out := make(map[string]string, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-		if field.Type.Kind() == reflect.Ptr {
+		if field.Type.Kind() == reflect.Pointer {
 			continue
 		}
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
@@ -585,15 +593,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.AffiliateRechargeRebateRate != nil {
 		affiliateRechargeRebateRate = *req.AffiliateRechargeRebateRate
 	}
+	affiliateSubscriptionRebateRate := previousSettings.AffiliateSubscriptionRebateRate
+	if req.AffiliateSubscriptionRebateRate != nil {
+		affiliateSubscriptionRebateRate = *req.AffiliateSubscriptionRebateRate
+	}
 	if affiliateRechargeRebateRate < service.AffiliateRebateRateMin {
 		affiliateRechargeRebateRate = service.AffiliateRebateRateMin
 	}
 	if affiliateRechargeRebateRate > service.AffiliateRebateRateMax {
 		affiliateRechargeRebateRate = service.AffiliateRebateRateMax
-	}
-	affiliateSubscriptionRebateRate := previousSettings.AffiliateSubscriptionRebateRate
-	if req.AffiliateSubscriptionRebateRate != nil {
-		affiliateSubscriptionRebateRate = *req.AffiliateSubscriptionRebateRate
 	}
 	if affiliateSubscriptionRebateRate < service.AffiliateRebateRateMin {
 		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMin
@@ -656,8 +664,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.AuthSourceDefaultLinuxDoSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultLinuxDoSubscriptions)
 	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
 	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
-	req.AuthSourceDefaultGitHubSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGitHubSubscriptions)
-	req.AuthSourceDefaultGoogleSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGoogleSubscriptions)
 	req.AuthSourceDefaultDingTalkSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultDingTalkSubscriptions)
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
@@ -1533,7 +1539,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	settings := &service.SystemSettings{
 		// 系统全局 platform quota 默认值（整体替换语义）
-		DefaultPlatformQuotas: req.DefaultPlatformQuotas,
+		DefaultPlatformQuotas:       req.DefaultPlatformQuotas,
+		AccountSchedulingThresholds: req.AccountSchedulingThresholds,
 
 		RegistrationEnabled:                 req.RegistrationEnabled,
 		EmailVerifyEnabled:                  req.EmailVerifyEnabled,
@@ -1936,6 +1943,30 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorHideThroughput
 		}(),
+		ChannelMonitorShowQuota: func() bool {
+			if req.ChannelMonitorShowQuota != nil {
+				return *req.ChannelMonitorShowQuota
+			}
+			return previousSettings.ChannelMonitorShowQuota
+		}(),
+		GrokDefaultTextModel: func() string {
+			if req.GrokDefaultTextModel != nil {
+				return *req.GrokDefaultTextModel
+			}
+			return previousSettings.GrokDefaultTextModel
+		}(),
+		GrokCrossClientModelMapEnabled: func() bool {
+			if req.GrokCrossClientModelMapEnabled != nil {
+				return *req.GrokCrossClientModelMapEnabled
+			}
+			return previousSettings.GrokCrossClientModelMapEnabled
+		}(),
+		GrokDefaultBaseURLMode: func() string {
+			if req.GrokDefaultBaseURLMode != nil {
+				return strings.TrimSpace(*req.GrokDefaultBaseURLMode)
+			}
+			return previousSettings.GrokDefaultBaseURLMode
+		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
 				return *req.AvailableChannelsEnabled
@@ -1959,6 +1990,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ModelPlazaDescription
 			}
 			return previousSettings.ModelPlazaDescription
+		}(),
+		PluginManagementEnabled: func() bool {
+			if req.PluginManagementEnabled != nil {
+				return *req.PluginManagementEnabled
+			}
+			return previousSettings.PluginManagementEnabled
 		}(),
 		AffiliateEnabled: func() bool {
 			if req.AffiliateEnabled != nil {
@@ -2090,10 +2127,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			CancelRateLimitMode:           req.PaymentCancelRateLimitMode,
 			AlipayForceQRCode:             req.PaymentAlipayForceQRCode,
 			AlipayMobilePrecreateDeepLink: req.PaymentAlipayMobilePrecreateDeepLink,
-			DiscountRules:                 req.PaymentDiscountRules,
-			QuickAmounts:                  req.PaymentQuickAmounts,
-			PaidUserRateEnabled:           req.PaymentPaidUserRateEnabled,
-			PaidUserRateRules:             req.PaymentPaidUserRateRules,
 		}
 		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
 			response.ErrorFrom(c, err)
@@ -2383,18 +2416,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
+
+		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
+		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
+		GrokDefaultBaseURLMode:         updatedSettings.GrokDefaultBaseURLMode,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
-		ModelPlazaEnabled:     updatedSettings.ModelPlazaEnabled,
-		ModelPlazaRequireAuth: updatedSettings.ModelPlazaRequireAuth,
-		ModelPlazaDescription: updatedSettings.ModelPlazaDescription,
+		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
+		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
+		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
+		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
+		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
@@ -2431,8 +2471,6 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
 		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
 		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentSubscriptionUSDToCNYRate != nil ||
-		req.PaymentDiscountRules != nil || req.PaymentQuickAmounts != nil ||
-		req.PaymentPaidUserRateEnabled != nil || req.PaymentPaidUserRateRules != nil ||
 		req.PaymentRechargeFeeRate != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||

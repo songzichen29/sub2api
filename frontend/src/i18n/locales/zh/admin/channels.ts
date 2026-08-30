@@ -77,6 +77,8 @@ export default {
         cacheReadPrice: '缓存读取价格',
         perRequestPrice: '单次价格'
       }
+    ,
+      multiplierPositive: '区间 #{index}：{field}必须大于 0',
     },
     deleteConfirm: '确定要删除渠道「{name}」吗？此操作不可撤销。',
     columns: {
@@ -92,6 +94,8 @@ export default {
       token: 'Token',
       perRequest: '按次',
       image: '图片（按次）'
+    ,
+      video: '视频（按秒）'
     },
     form: {
       name: '名称',
@@ -188,9 +192,38 @@ export default {
       noImportableAccountModels: '所选分组下没有可导入的账号模型',
       importModelsSuccess: '已导入 {count} 个模型到映射和定价',
       importModelsError: '导入账号模型失败'
+    ,
+      fastMultiplier: 'Fast 倍率',
+      flexMultiplier: 'Flex 倍率',
+      multiplierPlaceholder: '未配置',
+      multiplierPositive: 'Fast/Flex 倍率必须大于 0',
+      inputMultiplier: '输入倍率',
+      outputMultiplier: '输出倍率',
+      cacheWriteMultiplier: '缓存写倍率',
+      cacheReadMultiplier: '缓存读倍率',
+      timePricing: '时间段定价（可选）',
+      timezone: '时区',
+      timePricingDayScope: '生效日',
+      timePricingEveryDay: '每日生效（周一至周日，含周末）',
+      timePricingWeekdaysOnly: '仅工作日生效（周一至周五）',
+      addTimePeriod: '添加时间段',
+      startTime: '开始时间',
+      endTime: '结束时间',
+      multiplier: '倍率',
+      removeTimePeriod: '删除时间段',
+      videoTiers: '视频分辨率层级（按秒）',
+      defaultVideoPrice: '默认视频每秒价格（未命中层级时使用）',
     },
     noGroupsSelected: '{platform} 平台未选择分组，请至少选择一个分组或禁用该平台',
     emptyModelsInPricing: '{platform} 平台下有定价条目未添加模型，请添加模型或删除该条目'
+  ,
+    timePricingValidation: {
+            timezone: '请选择有效的 IANA 时区',
+            format: '开始时间和结束时间必须使用 HH:mm:ss 格式',
+            range: '开始时间必须早于结束时间；跨午夜请拆分为两个时间段',
+            overlap: '时间段不能重叠',
+            multiplier: '倍率必须大于 0，且最多保留两位小数'
+          },
   },
   riskControl: {
     title: '风控中心',
@@ -481,6 +514,9 @@ export default {
     requestBodyUnavailable: '该记录没有保存可下载的完整请求会话，仅显示摘要。',
     requestBodyDownloadFailed: '下载请求会话失败',
     requestBodySize: '已保存会话 {size}，消息数 {count}'
+  ,
+    proxy: '代理服务器',
+    proxyHint: '审计请求经指定代理（IP管理-代理服务器）发出，适用于出口 IP 不受 OpenAI 支持的部署；默认直连。',
   },
   channelMonitor: {
     title: '渠道监控',
@@ -550,6 +586,20 @@ export default {
       jitterSecondsHint: '每次检测在间隔基础上正负随机偏移该秒数，0 表示固定间隔；需满足 间隔 - 抖动 ≥ 15 秒',
       enabled: '启用监控',
       kindRequired: '请选择供应商'
+    ,
+      checkMode: '检查方式',
+      checkModeProbe: '探活',
+      checkModeProbeHint: '向上游发送轻量 LLM 请求，检测可用性与延迟',
+      checkModeQuota: '配额',
+      checkModeQuotaHint: '只查询关联账号的用量滚动窗口/余额，不发送探活请求',
+      checkModeQuotaProbe: '探活 + 配额',
+      checkModeQuotaProbeHint: '探活的同时查询配额，用量快照附加在主模型结果上',
+      linkedAccount: '关联账号',
+      linkedAccountPlaceholder: '选择账号',
+      linkedAccountHint: '配额数据来自所选账号（复用账号管理侧的用量/余额查询）',
+      linkedAccountEmpty: '当前平台暂无账号，请先在账号管理中添加',
+      linkedAccountMissing: '关联账号已不存在或不可访问，请重新选择账号',
+      openAIQuotaProbeHint: '注意：OpenAI 平台的用量查询可能触发 Codex 探测请求，会消耗账号自身的额度（每 10 分钟最多触发一次）',
     },
     runResultTitle: '检测结果',
     noMonitorsYet: '暂无监控',
@@ -615,6 +665,8 @@ export default {
         descriptionPlaceholder: '可选：说明这个模板的用途和来源（抓包日期等）'
       }
     }
+  ,
+    linkedAccountRequired: '请选择关联账号',
   },
   subscriptions: {
     title: '订阅管理',
@@ -758,5 +810,8 @@ export default {
     resetQuotaUpperBoundDisabled: '上限窗口不可重置（重置将绕过订阅总额约束）',
     resetQuotaPaidLocked: '该订阅为付费订阅，不可重置',
     resetQuotaNoLimits: '该订阅所属分组未配置任何限额，无需重置'
+  ,
+    hoursMinutesRemaining: '剩余 {hours} 小时 {minutes} 分钟',
+    minutesRemaining: '剩余 {minutes} 分钟',
   }
 }

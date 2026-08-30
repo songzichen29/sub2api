@@ -43,7 +43,7 @@ func (RedeemCode) Fields() []ent.Field {
 			MaxLen(20).
 			Default(domain.RedeemTypeBalance),
 		field.Float("value").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
 		field.String("status").
 			MaxLen(20).
@@ -54,24 +54,24 @@ func (RedeemCode) Fields() []ent.Field {
 		field.Time("used_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.String("notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
+			SchemaType(map[string]string{dialect.Postgres: "text"}),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 		field.Int64("group_id").
 			Optional().
 			Nillable(),
 		field.Int("validity_days").
 			Default(30),
-		field.Time("expires_at").
-			Optional().
-			Nillable().
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 	}
 }
 
@@ -94,5 +94,6 @@ func (RedeemCode) Indexes() []ent.Index {
 		index.Fields("status"),
 		index.Fields("used_by"),
 		index.Fields("group_id"),
+		index.Fields("expires_at"),
 	}
 }

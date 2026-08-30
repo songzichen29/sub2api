@@ -460,11 +460,7 @@ func (s *UserSubscription) automaticWindowStartAt(previous *time.Time, period ti
 	if previous == nil {
 		return time.Time{}, false
 	}
-	anchor := *previous
-	legacyAnchor := startOfDay(s.StartsAt)
-	if legacyAnchor.Before(s.StartsAt) && anchor.Equal(legacyAnchor) {
-		anchor = s.StartsAt
-	}
+	anchor := s.windowResetAnchor(*previous)
 	next := anchor.Add(period)
 	if now.Before(next) || !next.Before(s.ExpiresAt) {
 		return time.Time{}, false
@@ -475,6 +471,14 @@ func (s *UserSubscription) automaticWindowStartAt(previous *time.Time, period ti
 		periods = lastPeriodBeforeExpiry
 	}
 	return anchor.Add(periods * period), true
+}
+
+func (s *UserSubscription) windowResetAnchor(previous time.Time) time.Time {
+	legacyAnchor := startOfDay(s.StartsAt)
+	if legacyAnchor.Before(s.StartsAt) && previous.Equal(legacyAnchor) {
+		return s.StartsAt
+	}
+	return previous
 }
 
 func (s *UserSubscription) DailyResetTime() *time.Time {
@@ -493,7 +497,7 @@ func (s *UserSubscription) WeeklyResetTime() *time.Time {
 	if s.WeeklyWindowStart == nil {
 		return nil
 	}
-	t := s.WeeklyWindowStart.Add(weeklyWindowDuration)
+	t := s.windowResetAnchor(*s.WeeklyWindowStart).Add(weeklyWindowDuration)
 	return &t
 }
 
@@ -501,7 +505,7 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	if s.MonthlyWindowStart == nil {
 		return nil
 	}
-	t := s.MonthlyWindowStart.Add(monthlyWindowDuration)
+	t := s.windowResetAnchor(*s.MonthlyWindowStart).Add(monthlyWindowDuration)
 	return &t
 }
 

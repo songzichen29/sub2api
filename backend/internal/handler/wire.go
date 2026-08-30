@@ -22,6 +22,8 @@ func ProvideAdminHandlers(
 	openaiOAuthHandler *admin.OpenAIOAuthHandler,
 	geminiOAuthHandler *admin.GeminiOAuthHandler,
 	antigravityOAuthHandler *admin.AntigravityOAuthHandler,
+	grokOAuthHandler *admin.GrokOAuthHandler,
+	cnProviderHandler *admin.CNProviderHandler,
 	proxyHandler *admin.ProxyHandler,
 	redeemHandler *admin.RedeemHandler,
 	promoHandler *admin.PromoHandler,
@@ -33,6 +35,7 @@ func ProvideAdminHandlers(
 	userAttributeHandler *admin.UserAttributeHandler,
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
+	pluginHandler *admin.PluginHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	channelHandler *admin.ChannelHandler,
@@ -41,10 +44,10 @@ func ProvideAdminHandlers(
 	contentModerationHandler *admin.ContentModerationHandler,
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
-	invoiceHandler *admin.InvoiceHandler,
 	affiliateHandler *admin.AffiliateHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	invoiceHandler *admin.InvoiceHandler,
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
@@ -62,6 +65,8 @@ func ProvideAdminHandlers(
 		OpenAIOAuth:            openaiOAuthHandler,
 		GeminiOAuth:            geminiOAuthHandler,
 		AntigravityOAuth:       antigravityOAuthHandler,
+		GrokOAuth:              grokOAuthHandler,
+		CNProvider:             cnProviderHandler,
 		Proxy:                  proxyHandler,
 		Redeem:                 redeemHandler,
 		Promo:                  promoHandler,
@@ -73,6 +78,7 @@ func ProvideAdminHandlers(
 		UserAttribute:          userAttributeHandler,
 		ErrorPassthrough:       errorPassthroughHandler,
 		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
+		Plugin:                 pluginHandler,
 		APIKey:                 apiKeyHandler,
 		ScheduledTest:          scheduledTestHandler,
 		Channel:                channelHandler,
@@ -81,10 +87,10 @@ func ProvideAdminHandlers(
 		ContentModeration:      contentModerationHandler,
 		PromptAudit:            promptAuditHandler,
 		Payment:                paymentHandler,
-		Invoice:                invoiceHandler,
 		Affiliate:              affiliateHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
+		Invoice:                invoiceHandler,
 	}
 }
 
@@ -93,7 +99,6 @@ func ProvideGatewayHandler(
 	openAIGatewayService *service.OpenAIGatewayService,
 	geminiCompatService *service.GeminiMessagesCompatService,
 	antigravityGatewayService *service.AntigravityGatewayService,
-	grokGatewayService *service.GrokGatewayService,
 	userService *service.UserService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
@@ -107,7 +112,7 @@ func ProvideGatewayHandler(
 	settingService *service.SettingService,
 	coordinator *securityaudit.Coordinator,
 ) *GatewayHandler {
-	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService, grokGatewayService,
+	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
 		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
@@ -116,6 +121,7 @@ func ProvideGatewayHandler(
 
 func ProvideOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
+	pluginManager *service.PluginManager,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -123,12 +129,15 @@ func ProvideOpenAIGatewayHandler(
 	errorPassthroughService *service.ErrorPassthroughService,
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
+	grokQuotaService *service.GrokQuotaService,
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
+	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.securityAuditCoordinator = coordinator
+	h.grokMediaEligibilityProber = grokQuotaService
 	return h
 }
 
@@ -164,68 +173,6 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 	return h
 }
 
-func ProvideAdminPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, couponService *service.CouponService) *admin.PaymentHandler {
-	return admin.NewPaymentHandler(paymentService, configService, couponService)
-}
-
-// ProvideAdminUserHandler wraps admin.NewUserHandler's variadic optional dependencies
-// so Wire can inject the concrete quota repository and billing cache explicitly.
-func ProvideAdminUserHandler(
-	adminService service.AdminService,
-	concurrencyService *service.ConcurrencyService,
-	userPlatformQuotaRepo service.UserPlatformQuotaRepository,
-	billingCache service.BillingCache,
-	totpService *service.TotpService,
-	userService *service.UserService,
-	settingService *service.SettingService,
-) *admin.UserHandler {
-	return admin.NewUserHandler(
-		adminService,
-		concurrencyService,
-		userPlatformQuotaRepo,
-		billingCache,
-		totpService,
-		userService,
-		settingService,
-	)
-}
-
-// ProvideAdminAccountHandler wraps admin.NewAccountHandler's variadic encryptor
-// so Wire can inject the concrete SecretEncryptor explicitly.
-func ProvideAdminAccountHandler(
-	adminService service.AdminService,
-	oauthService *service.OAuthService,
-	openaiOAuthService *service.OpenAIOAuthService,
-	geminiOAuthService *service.GeminiOAuthService,
-	antigravityOAuthService *service.AntigravityOAuthService,
-	rateLimitService *service.RateLimitService,
-	accountUsageService *service.AccountUsageService,
-	accountTestService *service.AccountTestService,
-	concurrencyService *service.ConcurrencyService,
-	crsSyncService *service.CRSSyncService,
-	sessionLimitCache service.SessionLimitCache,
-	rpmCache service.RPMCache,
-	tokenCacheInvalidator service.TokenCacheInvalidator,
-	secretEncryptor service.SecretEncryptor,
-) *admin.AccountHandler {
-	return admin.NewAccountHandler(
-		adminService,
-		oauthService,
-		openaiOAuthService,
-		geminiOAuthService,
-		antigravityOAuthService,
-		rateLimitService,
-		accountUsageService,
-		accountTestService,
-		concurrencyService,
-		crsSyncService,
-		sessionLimitCache,
-		rpmCache,
-		tokenCacheInvalidator,
-		secretEncryptor,
-	)
-}
-
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -244,16 +191,17 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	passkeyHandler *PasskeyHandler,
 	paymentHandler *PaymentHandler,
-	invoiceHandler *InvoiceHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
 	availableChannelHandler *AvailableChannelHandler,
 	modelPlazaHandler *ModelPlazaHandler,
 	modelMarketplaceHandler *ModelMarketplaceHandler,
-	accountImportHandler *AccountImportHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	accountImportHandler *AccountImportHandler,
+	invoiceHandler *InvoiceHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
+	_ *service.OpenAIQuotaAutoResetService,
 ) *Handlers {
 	return &Handlers{
 		Auth:             authHandler,
@@ -272,14 +220,14 @@ func ProvideHandlers(
 		Totp:             totpHandler,
 		Passkey:          passkeyHandler,
 		Payment:          paymentHandler,
-		Invoice:          invoiceHandler,
 		PaymentWebhook:   paymentWebhookHandler,
 		AvailableChannel: availableChannelHandler,
 		ModelPlaza:       modelPlazaHandler,
 		ModelMarketplace: modelMarketplaceHandler,
-		AccountImport:    accountImportHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		AccountImport:    accountImportHandler,
+		Invoice:          invoiceHandler,
 	}
 }
 
@@ -301,20 +249,20 @@ var ProviderSet = wire.NewSet(
 	NewPasskeyHandler,
 	ProvideSettingHandler,
 	NewPaymentHandler,
-	NewInvoiceHandler,
 	NewPaymentWebhookHandler,
 	NewAvailableChannelHandler,
 	NewModelPlazaHandler,
 	NewModelMarketplaceHandler,
-	NewAccountImportHandler,
 	NewAsyncImageHandler,
-	NewBatchImageHandler,
+	ProvideBatchImageHandler,
+	NewAccountImportHandler,
+	NewInvoiceHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
-	ProvideAdminUserHandler,
+	admin.NewUserHandler,
 	admin.NewGroupHandler,
-	ProvideAdminAccountHandler,
+	admin.ProvideAccountHandler,
 	admin.NewAnnouncementHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,
@@ -322,6 +270,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewOpenAIOAuthHandler,
 	admin.NewGeminiOAuthHandler,
 	admin.NewAntigravityOAuthHandler,
+	admin.NewGrokOAuthHandler,
+	admin.NewCNProviderHandler,
 	admin.NewProxyHandler,
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
@@ -333,17 +283,18 @@ var ProviderSet = wire.NewSet(
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,
 	admin.NewTLSFingerprintProfileHandler,
+	admin.NewPluginHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
-	ProvideAdminPaymentHandler,
-	admin.NewInvoiceHandler,
+	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	admin.NewInvoiceHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

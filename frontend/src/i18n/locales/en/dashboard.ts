@@ -167,12 +167,51 @@ export default {
         configTomlHint: 'Back up an existing config.toml before merging this model entry. Run grok inspect after saving to verify the effective configuration.',
         note: 'Save the file as ~/.grok/config.toml, then run grok inspect and select grok from /model.',
         noteWindows: 'Save the file as %USERPROFILE%\\.grok\\config.toml, then run grok inspect and select grok from /model.',
+
+        claudeDescription: 'Configure Claude Code to send Messages API traffic through your Sub2API Grok group.',
+        codexDescription: 'Configure Codex to send Responses API traffic through your Sub2API Grok group.',
+        codexConfigTomlHint:
+                  'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
+        claudeNote:
+                  'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
+        codexNote:
+                  'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
+        codexNoteWindows:
+                  'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
       },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.'
       }
+    ,
+      claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
+      deepseek: {
+              description: 'Configure Claude Code, Codex, or OpenCode through the current DeepSeek group.',
+              codexDescription: 'Configure Codex with API key authentication through the current DeepSeek group.',
+              codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+            },
+      composite: {
+              description: 'Configure supported clients through the current Composite routing group.',
+              codexDescription: 'Configure Codex with API key authentication and the complete model catalog for this Composite group.',
+              codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              codexNote: 'Export SUB2API_API_KEY before starting Codex. Model requests are routed by the selected catalog slug.',
+            },
+      routedCodex: {
+              description: 'Configure Codex with the complete model catalog for the current routed group.',
+              configTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+            },
+      codexModelCatalog: {
+              title: 'Codex model catalog',
+              description: 'Fetch with this API key, then save the catalog at the path referenced by config.toml.',
+              fetch: 'Fetch catalog',
+              retry: 'Retry',
+              download: 'Download catalog',
+              modelsCount: '{count} models ready to download',
+              errorDescription: 'The catalog could not be fetched with this API key.',
+            },
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -416,6 +455,8 @@ export default {
     modelQueryPlaceholder: 'Enter full model name',
     upstreamFirstEvent: 'Upstream first event',
     upstreamToFirstToken: 'First event→first token'
+  ,
+    requestedReasoningEffort: 'Requested reasoning effort',
   },
   monitorCommon: {
     status: {
@@ -430,6 +471,11 @@ export default {
       anthropic: 'Anthropic',
       gemini: 'Gemini',
       grok: 'Grok'
+    ,
+      antigravity: 'Antigravity',
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM',
+      deepseek: 'DeepSeek'
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',
@@ -449,6 +495,33 @@ export default {
     relativeMinutesAgo: '{n}m ago',
     relativeHoursAgo: '{n}h ago',
     relativeDaysAgo: '{n}d ago'
+  ,
+    checkMode: {
+          probe: 'Probe',
+          quota: 'Quota',
+          quota_probe: 'Probe + Quota'
+        },
+    quota: {
+          unavailable: 'Quota unavailable',
+          resetSoon: 'resetting',
+          windows: {
+            '5h': '5h',
+            '7d': '7d',
+            '7dSonnet': '7d Sonnet',
+            '7dFable': '7d Fable',
+            weekly: 'Weekly',
+            daily: 'Daily',
+            '30d': '30d',
+            total: 'Total'
+          },
+          labels: {
+            requests: 'Requests',
+            tokens: 'Tokens',
+            shared: 'Shared',
+            pro: 'Pro',
+            flash: 'Flash'
+          }
+        },
   },
   channelStatus: {
     title: 'Channel Status',
@@ -865,4 +938,64 @@ export default {
     apply: 'Apply',
     selectDateRange: 'Select date range'
   }
+,
+  modelPlaza: {
+      title: 'Model Plaza',
+      description: 'Browse available models and pricing by group',
+      loading: 'Loading...',
+      empty: 'No groups to display',
+      loadFailed: 'Failed to load model plaza',
+      noSearchResult: 'No matching models',
+      anonymousHint: 'Sign in to see your exclusive groups and personal rates',
+      filters: {
+        platformLabel: 'Platform',
+        groupLabel: 'Group',
+        rateLabel: 'Rate',
+        modelLabel: 'Model',
+        searchPlaceholder: 'Search models',
+        all: 'All'
+      },
+      badges: {
+        exclusive: 'Exclusive',
+        subscription: 'Subscription'
+      },
+      detail: {
+        noModels: 'No models configured for this group',
+        noPricing: 'Pricing not configured',
+        peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+        longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
+      },
+      table: {
+        model: 'Model',
+        input: 'Input',
+        output: 'Output',
+        cache: 'Cache',
+        cacheWrite: 'Write',
+        cacheRead: 'Read',
+        cacheWriteShort: 'W',
+        cacheReadShort: 'R',
+        tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
+        tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+        marginalBadge: 'excess-only tiers',
+        timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
+        timePricingRowHintWeekdays:
+          'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
+        timePricingRowHintPeak:
+          '; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}',
+        timePricingWeekdays: 'Weekdays',
+        timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
+        paidPrice: 'Your Price (Discounted)',
+        officialPrice: 'Official Price',
+        rate: 'Rate',
+        unitPerMillion: '$ / 1M tokens',
+        perUnitRequest: '/ request',
+        perUnitImage: '/ image',
+        perRequest: 'Per request',
+        perImage: 'Per image'
+      },
+      nav: {
+        login: 'Sign In',
+        backToDashboard: 'Back to Console'
+      }
+    },
 }

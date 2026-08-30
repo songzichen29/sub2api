@@ -23,12 +23,33 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify Go version
         run: |
-          go version | grep -q 'go1.26.6'
+          go version | grep -q 'go1.27.0'
       - name: Run govulncheck
         working-directory: backend
         run: |
+          set +e
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          govulncheck -json ./... > govulncheck.json 2>&1
+          status=$?
+          echo "govulncheck_exit_code=$status"
+          if [ "$status" -ne 0 ]; then
+            tail -80 govulncheck.json | while IFS= read -r line; do
+              line=${line//$'\r'/}
+              line=${line//%25/%2525}
+              line=${line//%0A/%250A}
+              line=${line//%0D/%250D}
+              echo "::error file=backend/go.mod,line=1::$line"
+            done
+          fi
+          exit "$status"
+      - name: Upload govulncheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: govulncheck-diagnostics
+          path: backend/govulncheck.json
+          if-no-files-found: ignore
+          retention-days: 7
 
   frontend-security:
     runs-on: ubuntu-latest

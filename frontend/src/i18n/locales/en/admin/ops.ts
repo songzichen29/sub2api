@@ -320,6 +320,8 @@ export default {
       requestTypeSync: 'Sync',
       requestTypeStream: 'Stream',
       requestTypeWs: 'WS'
+    ,
+      typeAccountAuth: 'Account Auth',
     },
     errorDetails: {
       upstreamErrors: 'Upstream Errors',
@@ -341,6 +343,8 @@ export default {
         upstream: 'Upstream',
         network: 'Network',
         internal: 'Internal'
+      ,
+        account_auth: 'Account Auth',
       },
       total: 'Total:',
       searchPlaceholder: 'Search request_id / client_request_id / message'
@@ -475,6 +479,17 @@ export default {
       responseHintSucceeded: 'Showing succeeded retry response_preview (#{id})',
       responseHintFallback: 'No succeeded retry found; showing stored error_body',
       suggestUpstreamResolved: '✓ Upstream error resolved by retry; no action needed'
+    ,
+      backToList: 'Back to List',
+      upstreamStatus: 'Upstream Status',
+      rootCause: 'Root Cause',
+      diagnosticPayloads: 'Diagnostic Payloads',
+      payloads: {
+                client: 'Client Response',
+                upstream_message: 'Upstream Message',
+                upstream_detail: 'Upstream Detail',
+                upstream_events: 'Upstream Events'
+              },
     },
     requestDetails: {
       title: 'Request Details',

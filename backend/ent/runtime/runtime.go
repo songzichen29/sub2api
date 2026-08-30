@@ -369,39 +369,11 @@ func init() {
 	// authidentityDescProviderKey is the schema descriptor for provider_key field.
 	authidentityDescProviderKey := authidentityFields[2].Descriptor()
 	// authidentity.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	authidentity.ProviderKeyValidator = func() func(string) error {
-		validators := authidentityDescProviderKey.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(provider_key string) error {
-			for _, fn := range fns {
-				if err := fn(provider_key); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	authidentity.ProviderKeyValidator = authidentityDescProviderKey.Validators[0].(func(string) error)
 	// authidentityDescProviderSubject is the schema descriptor for provider_subject field.
 	authidentityDescProviderSubject := authidentityFields[3].Descriptor()
 	// authidentity.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
-	authidentity.ProviderSubjectValidator = func() func(string) error {
-		validators := authidentityDescProviderSubject.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(provider_subject string) error {
-			for _, fn := range fns {
-				if err := fn(provider_subject); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	authidentity.ProviderSubjectValidator = authidentityDescProviderSubject.Validators[0].(func(string) error)
 	// authidentityDescMetadata is the schema descriptor for metadata field.
 	authidentityDescMetadata := authidentityFields[6].Descriptor()
 	// authidentity.DefaultMetadata holds the default value on creation for the metadata field.
@@ -443,21 +415,7 @@ func init() {
 	// authidentitychannelDescProviderKey is the schema descriptor for provider_key field.
 	authidentitychannelDescProviderKey := authidentitychannelFields[2].Descriptor()
 	// authidentitychannel.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	authidentitychannel.ProviderKeyValidator = func() func(string) error {
-		validators := authidentitychannelDescProviderKey.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(provider_key string) error {
-			for _, fn := range fns {
-				if err := fn(provider_key); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	authidentitychannel.ProviderKeyValidator = authidentitychannelDescProviderKey.Validators[0].(func(string) error)
 	// authidentitychannelDescChannel is the schema descriptor for channel field.
 	authidentitychannelDescChannel := authidentitychannelFields[3].Descriptor()
 	// authidentitychannel.ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
@@ -479,39 +437,11 @@ func init() {
 	// authidentitychannelDescChannelAppID is the schema descriptor for channel_app_id field.
 	authidentitychannelDescChannelAppID := authidentitychannelFields[4].Descriptor()
 	// authidentitychannel.ChannelAppIDValidator is a validator for the "channel_app_id" field. It is called by the builders before save.
-	authidentitychannel.ChannelAppIDValidator = func() func(string) error {
-		validators := authidentitychannelDescChannelAppID.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(channel_app_id string) error {
-			for _, fn := range fns {
-				if err := fn(channel_app_id); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	authidentitychannel.ChannelAppIDValidator = authidentitychannelDescChannelAppID.Validators[0].(func(string) error)
 	// authidentitychannelDescChannelSubject is the schema descriptor for channel_subject field.
 	authidentitychannelDescChannelSubject := authidentitychannelFields[5].Descriptor()
 	// authidentitychannel.ChannelSubjectValidator is a validator for the "channel_subject" field. It is called by the builders before save.
-	authidentitychannel.ChannelSubjectValidator = func() func(string) error {
-		validators := authidentitychannelDescChannelSubject.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(channel_subject string) error {
-			for _, fn := range fns {
-				if err := fn(channel_subject); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	authidentitychannel.ChannelSubjectValidator = authidentitychannelDescChannelSubject.Validators[0].(func(string) error)
 	// authidentitychannelDescMetadata is the schema descriptor for metadata field.
 	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
 	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
@@ -596,124 +526,88 @@ func init() {
 	batchimagejob.DefaultTaskName = batchimagejobDescTaskName.Default.(string)
 	// batchimagejob.TaskNameValidator is a validator for the "task_name" field. It is called by the builders before save.
 	batchimagejob.TaskNameValidator = batchimagejobDescTaskName.Validators[0].(func(string) error)
-	// batchimagejobDescParentBatchID is the schema descriptor for parent_batch_id field.
-	batchimagejobDescParentBatchID := batchimagejobFields[7].Descriptor()
-	// batchimagejob.ParentBatchIDValidator is a validator for the "parent_batch_id" field. It is called by the builders before save.
-	batchimagejob.ParentBatchIDValidator = batchimagejobDescParentBatchID.Validators[0].(func(string) error)
 	// batchimagejobDescStatus is the schema descriptor for status field.
-	batchimagejobDescStatus := batchimagejobFields[8].Descriptor()
+	batchimagejobDescStatus := batchimagejobFields[7].Descriptor()
 	// batchimagejob.DefaultStatus holds the default value on creation for the status field.
 	batchimagejob.DefaultStatus = batchimagejobDescStatus.Default.(string)
 	// batchimagejob.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	batchimagejob.StatusValidator = batchimagejobDescStatus.Validators[0].(func(string) error)
 	// batchimagejobDescProviderJobName is the schema descriptor for provider_job_name field.
-	batchimagejobDescProviderJobName := batchimagejobFields[9].Descriptor()
+	batchimagejobDescProviderJobName := batchimagejobFields[8].Descriptor()
 	// batchimagejob.ProviderJobNameValidator is a validator for the "provider_job_name" field. It is called by the builders before save.
 	batchimagejob.ProviderJobNameValidator = batchimagejobDescProviderJobName.Validators[0].(func(string) error)
 	// batchimagejobDescProviderInputRef is the schema descriptor for provider_input_ref field.
-	batchimagejobDescProviderInputRef := batchimagejobFields[10].Descriptor()
+	batchimagejobDescProviderInputRef := batchimagejobFields[9].Descriptor()
 	// batchimagejob.ProviderInputRefValidator is a validator for the "provider_input_ref" field. It is called by the builders before save.
 	batchimagejob.ProviderInputRefValidator = batchimagejobDescProviderInputRef.Validators[0].(func(string) error)
 	// batchimagejobDescProviderOutputRef is the schema descriptor for provider_output_ref field.
-	batchimagejobDescProviderOutputRef := batchimagejobFields[11].Descriptor()
+	batchimagejobDescProviderOutputRef := batchimagejobFields[10].Descriptor()
 	// batchimagejob.ProviderOutputRefValidator is a validator for the "provider_output_ref" field. It is called by the builders before save.
 	batchimagejob.ProviderOutputRefValidator = batchimagejobDescProviderOutputRef.Validators[0].(func(string) error)
 	// batchimagejobDescGcsInputURI is the schema descriptor for gcs_input_uri field.
-	batchimagejobDescGcsInputURI := batchimagejobFields[12].Descriptor()
+	batchimagejobDescGcsInputURI := batchimagejobFields[11].Descriptor()
 	// batchimagejob.GcsInputURIValidator is a validator for the "gcs_input_uri" field. It is called by the builders before save.
 	batchimagejob.GcsInputURIValidator = batchimagejobDescGcsInputURI.Validators[0].(func(string) error)
 	// batchimagejobDescGcsOutputURI is the schema descriptor for gcs_output_uri field.
-	batchimagejobDescGcsOutputURI := batchimagejobFields[13].Descriptor()
+	batchimagejobDescGcsOutputURI := batchimagejobFields[12].Descriptor()
 	// batchimagejob.GcsOutputURIValidator is a validator for the "gcs_output_uri" field. It is called by the builders before save.
 	batchimagejob.GcsOutputURIValidator = batchimagejobDescGcsOutputURI.Validators[0].(func(string) error)
 	// batchimagejobDescSuccessCount is the schema descriptor for success_count field.
-	batchimagejobDescSuccessCount := batchimagejobFields[15].Descriptor()
+	batchimagejobDescSuccessCount := batchimagejobFields[14].Descriptor()
 	// batchimagejob.DefaultSuccessCount holds the default value on creation for the success_count field.
 	batchimagejob.DefaultSuccessCount = batchimagejobDescSuccessCount.Default.(int)
 	// batchimagejobDescFailCount is the schema descriptor for fail_count field.
-	batchimagejobDescFailCount := batchimagejobFields[16].Descriptor()
+	batchimagejobDescFailCount := batchimagejobFields[15].Descriptor()
 	// batchimagejob.DefaultFailCount holds the default value on creation for the fail_count field.
 	batchimagejob.DefaultFailCount = batchimagejobDescFailCount.Default.(int)
 	// batchimagejobDescCancelledCount is the schema descriptor for cancelled_count field.
-	batchimagejobDescCancelledCount := batchimagejobFields[17].Descriptor()
+	batchimagejobDescCancelledCount := batchimagejobFields[16].Descriptor()
 	// batchimagejob.DefaultCancelledCount holds the default value on creation for the cancelled_count field.
 	batchimagejob.DefaultCancelledCount = batchimagejobDescCancelledCount.Default.(int)
 	// batchimagejobDescEstimatedCost is the schema descriptor for estimated_cost field.
-	batchimagejobDescEstimatedCost := batchimagejobFields[18].Descriptor()
+	batchimagejobDescEstimatedCost := batchimagejobFields[17].Descriptor()
 	// batchimagejob.DefaultEstimatedCost holds the default value on creation for the estimated_cost field.
 	batchimagejob.DefaultEstimatedCost = batchimagejobDescEstimatedCost.Default.(float64)
-	// batchimagejobDescBaseUnitPrice is the schema descriptor for base_unit_price field.
-	batchimagejobDescBaseUnitPrice := batchimagejobFields[21].Descriptor()
-	// batchimagejob.DefaultBaseUnitPrice holds the default value on creation for the base_unit_price field.
-	batchimagejob.DefaultBaseUnitPrice = batchimagejobDescBaseUnitPrice.Default.(float64)
-	// batchimagejobDescGroupRateMultiplier is the schema descriptor for group_rate_multiplier field.
-	batchimagejobDescGroupRateMultiplier := batchimagejobFields[22].Descriptor()
-	// batchimagejob.DefaultGroupRateMultiplier holds the default value on creation for the group_rate_multiplier field.
-	batchimagejob.DefaultGroupRateMultiplier = batchimagejobDescGroupRateMultiplier.Default.(float64)
-	// batchimagejobDescAccountRateMultiplier is the schema descriptor for account_rate_multiplier field.
-	batchimagejobDescAccountRateMultiplier := batchimagejobFields[23].Descriptor()
-	// batchimagejob.DefaultAccountRateMultiplier holds the default value on creation for the account_rate_multiplier field.
-	batchimagejob.DefaultAccountRateMultiplier = batchimagejobDescAccountRateMultiplier.Default.(float64)
-	// batchimagejobDescBatchDiscountMultiplier is the schema descriptor for batch_discount_multiplier field.
-	batchimagejobDescBatchDiscountMultiplier := batchimagejobFields[24].Descriptor()
-	// batchimagejob.DefaultBatchDiscountMultiplier holds the default value on creation for the batch_discount_multiplier field.
-	batchimagejob.DefaultBatchDiscountMultiplier = batchimagejobDescBatchDiscountMultiplier.Default.(float64)
-	// batchimagejobDescHoldMultiplier is the schema descriptor for hold_multiplier field.
-	batchimagejobDescHoldMultiplier := batchimagejobFields[25].Descriptor()
-	// batchimagejob.DefaultHoldMultiplier holds the default value on creation for the hold_multiplier field.
-	batchimagejob.DefaultHoldMultiplier = batchimagejobDescHoldMultiplier.Default.(float64)
-	// batchimagejobDescBillableUnitPrice is the schema descriptor for billable_unit_price field.
-	batchimagejobDescBillableUnitPrice := batchimagejobFields[26].Descriptor()
-	// batchimagejob.DefaultBillableUnitPrice holds the default value on creation for the billable_unit_price field.
-	batchimagejob.DefaultBillableUnitPrice = batchimagejobDescBillableUnitPrice.Default.(float64)
-	// batchimagejobDescHoldUnitPrice is the schema descriptor for hold_unit_price field.
-	batchimagejobDescHoldUnitPrice := batchimagejobFields[27].Descriptor()
-	// batchimagejob.DefaultHoldUnitPrice holds the default value on creation for the hold_unit_price field.
-	batchimagejob.DefaultHoldUnitPrice = batchimagejobDescHoldUnitPrice.Default.(float64)
-	// batchimagejobDescPricingSnapshotVersion is the schema descriptor for pricing_snapshot_version field.
-	batchimagejobDescPricingSnapshotVersion := batchimagejobFields[28].Descriptor()
-	// batchimagejob.DefaultPricingSnapshotVersion holds the default value on creation for the pricing_snapshot_version field.
-	batchimagejob.DefaultPricingSnapshotVersion = batchimagejobDescPricingSnapshotVersion.Default.(int)
 	// batchimagejobDescCurrency is the schema descriptor for currency field.
-	batchimagejobDescCurrency := batchimagejobFields[29].Descriptor()
+	batchimagejobDescCurrency := batchimagejobFields[20].Descriptor()
 	// batchimagejob.DefaultCurrency holds the default value on creation for the currency field.
 	batchimagejob.DefaultCurrency = batchimagejobDescCurrency.Default.(string)
 	// batchimagejob.CurrencyValidator is a validator for the "currency" field. It is called by the builders before save.
 	batchimagejob.CurrencyValidator = batchimagejobDescCurrency.Validators[0].(func(string) error)
 	// batchimagejobDescHoldID is the schema descriptor for hold_id field.
-	batchimagejobDescHoldID := batchimagejobFields[30].Descriptor()
+	batchimagejobDescHoldID := batchimagejobFields[21].Descriptor()
 	// batchimagejob.HoldIDValidator is a validator for the "hold_id" field. It is called by the builders before save.
 	batchimagejob.HoldIDValidator = batchimagejobDescHoldID.Validators[0].(func(string) error)
 	// batchimagejobDescIdempotencyKey is the schema descriptor for idempotency_key field.
-	batchimagejobDescIdempotencyKey := batchimagejobFields[31].Descriptor()
+	batchimagejobDescIdempotencyKey := batchimagejobFields[22].Descriptor()
 	// batchimagejob.IdempotencyKeyValidator is a validator for the "idempotency_key" field. It is called by the builders before save.
 	batchimagejob.IdempotencyKeyValidator = batchimagejobDescIdempotencyKey.Validators[0].(func(string) error)
 	// batchimagejobDescRequestHash is the schema descriptor for request_hash field.
-	batchimagejobDescRequestHash := batchimagejobFields[32].Descriptor()
+	batchimagejobDescRequestHash := batchimagejobFields[23].Descriptor()
 	// batchimagejob.RequestHashValidator is a validator for the "request_hash" field. It is called by the builders before save.
 	batchimagejob.RequestHashValidator = batchimagejobDescRequestHash.Validators[0].(func(string) error)
 	// batchimagejobDescManifestHash is the schema descriptor for manifest_hash field.
-	batchimagejobDescManifestHash := batchimagejobFields[33].Descriptor()
+	batchimagejobDescManifestHash := batchimagejobFields[24].Descriptor()
 	// batchimagejob.ManifestHashValidator is a validator for the "manifest_hash" field. It is called by the builders before save.
 	batchimagejob.ManifestHashValidator = batchimagejobDescManifestHash.Validators[0].(func(string) error)
 	// batchimagejobDescRetryCount is the schema descriptor for retry_count field.
-	batchimagejobDescRetryCount := batchimagejobFields[34].Descriptor()
+	batchimagejobDescRetryCount := batchimagejobFields[25].Descriptor()
 	// batchimagejob.DefaultRetryCount holds the default value on creation for the retry_count field.
 	batchimagejob.DefaultRetryCount = batchimagejobDescRetryCount.Default.(int)
 	// batchimagejobDescVersion is the schema descriptor for version field.
-	batchimagejobDescVersion := batchimagejobFields[35].Descriptor()
+	batchimagejobDescVersion := batchimagejobFields[26].Descriptor()
 	// batchimagejob.DefaultVersion holds the default value on creation for the version field.
 	batchimagejob.DefaultVersion = batchimagejobDescVersion.Default.(int)
 	// batchimagejobDescLastErrorCode is the schema descriptor for last_error_code field.
-	batchimagejobDescLastErrorCode := batchimagejobFields[41].Descriptor()
+	batchimagejobDescLastErrorCode := batchimagejobFields[32].Descriptor()
 	// batchimagejob.LastErrorCodeValidator is a validator for the "last_error_code" field. It is called by the builders before save.
 	batchimagejob.LastErrorCodeValidator = batchimagejobDescLastErrorCode.Validators[0].(func(string) error)
 	// batchimagejobDescCreatedAt is the schema descriptor for created_at field.
-	batchimagejobDescCreatedAt := batchimagejobFields[43].Descriptor()
+	batchimagejobDescCreatedAt := batchimagejobFields[34].Descriptor()
 	// batchimagejob.DefaultCreatedAt holds the default value on creation for the created_at field.
 	batchimagejob.DefaultCreatedAt = batchimagejobDescCreatedAt.Default.(func() time.Time)
 	// batchimagejobDescUpdatedAt is the schema descriptor for updated_at field.
-	batchimagejobDescUpdatedAt := batchimagejobFields[44].Descriptor()
+	batchimagejobDescUpdatedAt := batchimagejobFields[35].Descriptor()
 	// batchimagejob.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	batchimagejob.DefaultUpdatedAt = batchimagejobDescUpdatedAt.Default.(func() time.Time)
 	// batchimagejob.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -751,36 +645,28 @@ func init() {
 			return nil
 		}
 	}()
+	// channelmonitorDescCheckMode is the schema descriptor for check_mode field.
+	channelmonitorDescCheckMode := channelmonitorFields[2].Descriptor()
+	// channelmonitor.DefaultCheckMode holds the default value on creation for the check_mode field.
+	channelmonitor.DefaultCheckMode = channelmonitorDescCheckMode.Default.(string)
+	// channelmonitor.CheckModeValidator is a validator for the "check_mode" field. It is called by the builders before save.
+	channelmonitor.CheckModeValidator = channelmonitorDescCheckMode.Validators[0].(func(string) error)
 	// channelmonitorDescAPIMode is the schema descriptor for api_mode field.
-	channelmonitorDescAPIMode := channelmonitorFields[2].Descriptor()
+	channelmonitorDescAPIMode := channelmonitorFields[4].Descriptor()
 	// channelmonitor.DefaultAPIMode holds the default value on creation for the api_mode field.
 	channelmonitor.DefaultAPIMode = channelmonitorDescAPIMode.Default.(string)
 	// channelmonitor.APIModeValidator is a validator for the "api_mode" field. It is called by the builders before save.
 	channelmonitor.APIModeValidator = channelmonitorDescAPIMode.Validators[0].(func(string) error)
 	// channelmonitorDescEndpoint is the schema descriptor for endpoint field.
-	channelmonitorDescEndpoint := channelmonitorFields[3].Descriptor()
+	channelmonitorDescEndpoint := channelmonitorFields[5].Descriptor()
 	// channelmonitor.EndpointValidator is a validator for the "endpoint" field. It is called by the builders before save.
-	channelmonitor.EndpointValidator = func() func(string) error {
-		validators := channelmonitorDescEndpoint.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(endpoint string) error {
-			for _, fn := range fns {
-				if err := fn(endpoint); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	channelmonitor.EndpointValidator = channelmonitorDescEndpoint.Validators[0].(func(string) error)
 	// channelmonitorDescAPIKeyEncrypted is the schema descriptor for api_key_encrypted field.
-	channelmonitorDescAPIKeyEncrypted := channelmonitorFields[4].Descriptor()
+	channelmonitorDescAPIKeyEncrypted := channelmonitorFields[6].Descriptor()
 	// channelmonitor.APIKeyEncryptedValidator is a validator for the "api_key_encrypted" field. It is called by the builders before save.
 	channelmonitor.APIKeyEncryptedValidator = channelmonitorDescAPIKeyEncrypted.Validators[0].(func(string) error)
 	// channelmonitorDescPrimaryModel is the schema descriptor for primary_model field.
-	channelmonitorDescPrimaryModel := channelmonitorFields[5].Descriptor()
+	channelmonitorDescPrimaryModel := channelmonitorFields[7].Descriptor()
 	// channelmonitor.PrimaryModelValidator is a validator for the "primary_model" field. It is called by the builders before save.
 	channelmonitor.PrimaryModelValidator = func() func(string) error {
 		validators := channelmonitorDescPrimaryModel.Validators
@@ -798,35 +684,35 @@ func init() {
 		}
 	}()
 	// channelmonitorDescExtraModels is the schema descriptor for extra_models field.
-	channelmonitorDescExtraModels := channelmonitorFields[6].Descriptor()
+	channelmonitorDescExtraModels := channelmonitorFields[8].Descriptor()
 	// channelmonitor.DefaultExtraModels holds the default value on creation for the extra_models field.
 	channelmonitor.DefaultExtraModels = channelmonitorDescExtraModels.Default.([]string)
 	// channelmonitorDescGroupName is the schema descriptor for group_name field.
-	channelmonitorDescGroupName := channelmonitorFields[7].Descriptor()
+	channelmonitorDescGroupName := channelmonitorFields[9].Descriptor()
 	// channelmonitor.DefaultGroupName holds the default value on creation for the group_name field.
 	channelmonitor.DefaultGroupName = channelmonitorDescGroupName.Default.(string)
 	// channelmonitor.GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
 	channelmonitor.GroupNameValidator = channelmonitorDescGroupName.Validators[0].(func(string) error)
 	// channelmonitorDescEnabled is the schema descriptor for enabled field.
-	channelmonitorDescEnabled := channelmonitorFields[8].Descriptor()
+	channelmonitorDescEnabled := channelmonitorFields[10].Descriptor()
 	// channelmonitor.DefaultEnabled holds the default value on creation for the enabled field.
 	channelmonitor.DefaultEnabled = channelmonitorDescEnabled.Default.(bool)
 	// channelmonitorDescIntervalSeconds is the schema descriptor for interval_seconds field.
-	channelmonitorDescIntervalSeconds := channelmonitorFields[9].Descriptor()
+	channelmonitorDescIntervalSeconds := channelmonitorFields[11].Descriptor()
 	// channelmonitor.IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
 	channelmonitor.IntervalSecondsValidator = channelmonitorDescIntervalSeconds.Validators[0].(func(int) error)
 	// channelmonitorDescJitterSeconds is the schema descriptor for jitter_seconds field.
-	channelmonitorDescJitterSeconds := channelmonitorFields[10].Descriptor()
+	channelmonitorDescJitterSeconds := channelmonitorFields[12].Descriptor()
 	// channelmonitor.DefaultJitterSeconds holds the default value on creation for the jitter_seconds field.
 	channelmonitor.DefaultJitterSeconds = channelmonitorDescJitterSeconds.Default.(int)
 	// channelmonitor.JitterSecondsValidator is a validator for the "jitter_seconds" field. It is called by the builders before save.
 	channelmonitor.JitterSecondsValidator = channelmonitorDescJitterSeconds.Validators[0].(func(int) error)
 	// channelmonitorDescExtraHeaders is the schema descriptor for extra_headers field.
-	channelmonitorDescExtraHeaders := channelmonitorFields[14].Descriptor()
+	channelmonitorDescExtraHeaders := channelmonitorFields[16].Descriptor()
 	// channelmonitor.DefaultExtraHeaders holds the default value on creation for the extra_headers field.
 	channelmonitor.DefaultExtraHeaders = channelmonitorDescExtraHeaders.Default.(map[string]string)
 	// channelmonitorDescBodyOverrideMode is the schema descriptor for body_override_mode field.
-	channelmonitorDescBodyOverrideMode := channelmonitorFields[15].Descriptor()
+	channelmonitorDescBodyOverrideMode := channelmonitorFields[17].Descriptor()
 	// channelmonitor.DefaultBodyOverrideMode holds the default value on creation for the body_override_mode field.
 	channelmonitor.DefaultBodyOverrideMode = channelmonitorDescBodyOverrideMode.Default.(string)
 	// channelmonitor.BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
@@ -924,7 +810,7 @@ func init() {
 	// channelmonitorhistory.MessageValidator is a validator for the "message" field. It is called by the builders before save.
 	channelmonitorhistory.MessageValidator = channelmonitorhistoryDescMessage.Validators[0].(func(string) error)
 	// channelmonitorhistoryDescCheckedAt is the schema descriptor for checked_at field.
-	channelmonitorhistoryDescCheckedAt := channelmonitorhistoryFields[6].Descriptor()
+	channelmonitorhistoryDescCheckedAt := channelmonitorhistoryFields[7].Descriptor()
 	// channelmonitorhistory.DefaultCheckedAt holds the default value on creation for the checked_at field.
 	channelmonitorhistory.DefaultCheckedAt = channelmonitorhistoryDescCheckedAt.Default.(func() time.Time)
 	channelmonitorrequesttemplateMixin := schema.ChannelMonitorRequestTemplate{}.Mixin()
@@ -1863,39 +1749,11 @@ func init() {
 	// pendingauthsessionDescProviderKey is the schema descriptor for provider_key field.
 	pendingauthsessionDescProviderKey := pendingauthsessionFields[3].Descriptor()
 	// pendingauthsession.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
-	pendingauthsession.ProviderKeyValidator = func() func(string) error {
-		validators := pendingauthsessionDescProviderKey.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(provider_key string) error {
-			for _, fn := range fns {
-				if err := fn(provider_key); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	pendingauthsession.ProviderKeyValidator = pendingauthsessionDescProviderKey.Validators[0].(func(string) error)
 	// pendingauthsessionDescProviderSubject is the schema descriptor for provider_subject field.
 	pendingauthsessionDescProviderSubject := pendingauthsessionFields[4].Descriptor()
 	// pendingauthsession.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
-	pendingauthsession.ProviderSubjectValidator = func() func(string) error {
-		validators := pendingauthsessionDescProviderSubject.Validators
-		fns := [...]func(string) error{
-			validators[0].(func(string) error),
-			validators[1].(func(string) error),
-		}
-		return func(provider_subject string) error {
-			for _, fn := range fns {
-				if err := fn(provider_subject); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-	}()
+	pendingauthsession.ProviderSubjectValidator = pendingauthsessionDescProviderSubject.Validators[0].(func(string) error)
 	// pendingauthsessionDescRedirectTo is the schema descriptor for redirect_to field.
 	pendingauthsessionDescRedirectTo := pendingauthsessionFields[6].Descriptor()
 	// pendingauthsession.DefaultRedirectTo holds the default value on creation for the redirect_to field.
@@ -1924,8 +1782,6 @@ func init() {
 	pendingauthsessionDescCompletionCodeHash := pendingauthsessionFields[12].Descriptor()
 	// pendingauthsession.DefaultCompletionCodeHash holds the default value on creation for the completion_code_hash field.
 	pendingauthsession.DefaultCompletionCodeHash = pendingauthsessionDescCompletionCodeHash.Default.(string)
-	// pendingauthsession.CompletionCodeHashValidator is a validator for the "completion_code_hash" field. It is called by the builders before save.
-	pendingauthsession.CompletionCodeHashValidator = pendingauthsessionDescCompletionCodeHash.Validators[0].(func(string) error)
 	promocodeFields := schema.PromoCode{}.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.
@@ -2118,7 +1974,7 @@ func init() {
 	// redeemcode.DefaultCreatedAt holds the default value on creation for the created_at field.
 	redeemcode.DefaultCreatedAt = redeemcodeDescCreatedAt.Default.(func() time.Time)
 	// redeemcodeDescValidityDays is the schema descriptor for validity_days field.
-	redeemcodeDescValidityDays := redeemcodeFields[9].Descriptor()
+	redeemcodeDescValidityDays := redeemcodeFields[10].Descriptor()
 	// redeemcode.DefaultValidityDays holds the default value on creation for the validity_days field.
 	redeemcode.DefaultValidityDays = redeemcodeDescValidityDays.Default.(int)
 	securitysecretMixin := schema.SecuritySecret{}.Mixin()
@@ -2453,39 +2309,47 @@ func init() {
 	// usagelog.DefaultStream holds the default value on creation for the stream field.
 	usagelog.DefaultStream = usagelogDescStream.Default.(bool)
 	// usagelogDescUserAgent is the schema descriptor for user_agent field.
-	usagelogDescUserAgent := usagelogFields[35].Descriptor()
+	usagelogDescUserAgent := usagelogFields[34].Descriptor()
 	// usagelog.UserAgentValidator is a validator for the "user_agent" field. It is called by the builders before save.
 	usagelog.UserAgentValidator = usagelogDescUserAgent.Validators[0].(func(string) error)
 	// usagelogDescIPAddress is the schema descriptor for ip_address field.
-	usagelogDescIPAddress := usagelogFields[36].Descriptor()
+	usagelogDescIPAddress := usagelogFields[35].Descriptor()
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[37].Descriptor()
+	usagelogDescImageCount := usagelogFields[36].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[38].Descriptor()
+	usagelogDescImageSize := usagelogFields[37].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescImageInputSize is the schema descriptor for image_input_size field.
-	usagelogDescImageInputSize := usagelogFields[39].Descriptor()
+	usagelogDescImageInputSize := usagelogFields[38].Descriptor()
 	// usagelog.ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	usagelog.ImageInputSizeValidator = usagelogDescImageInputSize.Validators[0].(func(string) error)
 	// usagelogDescImageOutputSize is the schema descriptor for image_output_size field.
-	usagelogDescImageOutputSize := usagelogFields[40].Descriptor()
+	usagelogDescImageOutputSize := usagelogFields[39].Descriptor()
 	// usagelog.ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
 	usagelog.ImageOutputSizeValidator = usagelogDescImageOutputSize.Validators[0].(func(string) error)
 	// usagelogDescImageSizeSource is the schema descriptor for image_size_source field.
-	usagelogDescImageSizeSource := usagelogFields[41].Descriptor()
+	usagelogDescImageSizeSource := usagelogFields[40].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
+	// usagelogDescVideoCount is the schema descriptor for video_count field.
+	usagelogDescVideoCount := usagelogFields[42].Descriptor()
+	// usagelog.DefaultVideoCount holds the default value on creation for the video_count field.
+	usagelog.DefaultVideoCount = usagelogDescVideoCount.Default.(int)
+	// usagelogDescVideoResolution is the schema descriptor for video_resolution field.
+	usagelogDescVideoResolution := usagelogFields[43].Descriptor()
+	// usagelog.VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
+	usagelog.VideoResolutionValidator = usagelogDescVideoResolution.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[43].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[45].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[44].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[46].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()
@@ -2607,6 +2471,10 @@ func init() {
 	userDescRpmLimit := userFields[20].Descriptor()
 	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
+	// userDescRestrictPublicGroups is the schema descriptor for restrict_public_groups field.
+	userDescRestrictPublicGroups := userFields[21].Descriptor()
+	// user.DefaultRestrictPublicGroups holds the default value on creation for the restrict_public_groups field.
+	user.DefaultRestrictPublicGroups = userDescRestrictPublicGroups.Default.(bool)
 	userallowedgroupFields := schema.UserAllowedGroup{}.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.

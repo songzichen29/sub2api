@@ -36,7 +36,7 @@ func (SecuritySecret) Fields() []ent.Field {
 		field.String("value").
 			NotEmpty().
 			SchemaType(map[string]string{
-				dialect.MySQL: "longtext",
+				dialect.Postgres: "text",
 			}),
 	}
 }

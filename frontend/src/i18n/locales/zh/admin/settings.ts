@@ -30,6 +30,10 @@ export default {
         modeV1Hint: '默认模式：按配置的渠道监控项定时发起上游健康检查（产生探测流量）。',
         hideThroughput: '对用户隐藏吞吐速率（RPM / TPM）',
         hideThroughputHint: '开启后，用户端渠道监控页面与用户 API 不返回 RPM/TPM，避免用「速率 × 时间窗」反推集群规模。管理员仍可见完整指标；错误率、延迟、缓存率照常展示。'
+      ,
+        showQuota: '向用户展示渠道用量/余额',
+        showQuotaHint:
+                    '开启后，配额模式的渠道监控会在用户端渠道状态页展示关联账号的用量滚动窗口/余额。默认关闭；管理员始终可见。',
       },
       availableChannels: {
         title: '可用渠道',
@@ -130,6 +134,13 @@ export default {
         adminRechargeRebate: '管理员充值参与返利',
         adminRechargeRebateHint: '开启后，通过“用户管理 > 充值”增加的余额会产生邀请返利；设置余额和扣款不参与返利。',
       }
+    ,
+      pluginManagement: {
+                title: '插件管理',
+                description: '控制管理员侧边栏是否显示插件管理入口。此开关不控制插件运行状态。',
+                enabled: '显示插件管理菜单',
+                enabledHint: '关闭后仅隐藏侧边栏菜单；已加载或正在运行的插件不会因此停止。',
+              },
     },
     emailTabDisabledTitle: '邮箱验证未启用',
     emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',
@@ -424,6 +435,12 @@ export default {
       description: '控制 API Key 的调度行为',
       allowUngroupedKey: '允许未分组 Key 调度',
       allowUngroupedKeyHint: '关闭后，未分配到任何分组的 API Key 将无法发起请求（返回 403）。建议保持关闭以确保所有 Key 都归属明确的分组。'
+    ,
+      accountSchedulingThresholdsTitle: '平台账号自动停调阈值',
+      accountSchedulingThresholdsDescription: '当账号当前原生用量窗口（OpenAI Codex/Anthropic 会话，或 Grok 请求/Token 利用率）达到该百分比时，Sub2API 会临时将其移出调度，直到窗口重置。填 100 表示禁用。',
+      accountSchedulingThresholdsGlobalHint: '系统级默认值，作用于该平台全部账号。可在账号编辑页对单个账号覆盖。',
+      accountSchedulingThresholdsDisabledHint: '100 表示禁用该平台自动停调；1–99 表示达到该利用率后暂停调度。',
+      accountSchedulingThresholdsRangeHint: '整数 1–100（百分比）。仅 OpenAI / Anthropic / Grok。'
     },
     gatewayForwarding: {
       title: '请求转发行为',
@@ -498,6 +515,24 @@ export default {
       codexUaContainsPlaceholder: 'User-Agent 包含标记，逗号分隔（如 opencode/）',
       codexAddRow: '添加一条',
       codexRemoveRow: '删除'
+    ,
+      grokDefaultTextModel: '默认 Grok 文本模型',
+      grokDefaultTextModelHint: '用于空模型值；仅在右侧开关开启时也用于其他客户端模型命名空间。允许填写自定义 Grok 模型 ID。',
+      grokCrossClientMap: '映射其他客户端模型到 Grok',
+      grokCrossClientMapHint: '默认关闭。开启后，GPT、Codex、o 系列和 Claude 模型 ID 会路由到左侧默认 Grok 文本模型。',
+      grokDefaultBaseURLMode: '默认 Grok 上游',
+      grokDefaultBaseURLModeHint: '仅用于 Grok 账号未配置显式 base URL 的文本请求；媒体和语音仍使用官方 API 主机。',
+      grokBaseURLModeCLI: 'CLI 聊天代理',
+      grokBaseURLModeAPI: '公共 API',
+      grokBaseURLModeUSEast1: '区域 API（us-east-1）',
+      grokBaseURLModeUSWest2: '区域 API（us-west-2）',
+      grokBaseURLModeEUWest1: '区域 API（eu-west-1）',
+      openaiCodexClientVersion: 'Codex 客户端版本号',
+      openaiCodexClientVersionPlaceholder: '留空则跟随自动同步',
+      openaiCodexClientVersionHint: '网关对上游声明的 Codex 客户端版本号，User-Agent 与 version 头同源使用。留空表示使用自动同步到的官方最新稳定版；填写后固定为该版本，不再跟随同步。',
+      openaiCodexVersionAutoSync: '自动同步 Codex 版本号',
+      openaiCodexVersionAutoSyncHint: '每 6 小时从官方仓库获取最新稳定版客户端版本号，无需为了跟版本而升级本服务。关闭后仅使用上方手填版本或内置版本。',
+      openaiCodexVersionSyncedValue: '当前同步到：{version}',
     },
     webSearchEmulation: {
       title: 'Web Search 模拟',

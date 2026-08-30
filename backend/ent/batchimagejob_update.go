@@ -145,26 +145,6 @@ func (_u *BatchImageJobUpdate) SetNillableTaskName(v *string) *BatchImageJobUpda
 	return _u
 }
 
-// SetParentBatchID sets the "parent_batch_id" field.
-func (_u *BatchImageJobUpdate) SetParentBatchID(v string) *BatchImageJobUpdate {
-	_u.mutation.SetParentBatchID(v)
-	return _u
-}
-
-// SetNillableParentBatchID sets the "parent_batch_id" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableParentBatchID(v *string) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetParentBatchID(*v)
-	}
-	return _u
-}
-
-// ClearParentBatchID clears the value of the "parent_batch_id" field.
-func (_u *BatchImageJobUpdate) ClearParentBatchID() *BatchImageJobUpdate {
-	_u.mutation.ClearParentBatchID()
-	return _u
-}
-
 // SetStatus sets the "status" field.
 func (_u *BatchImageJobUpdate) SetStatus(v string) *BatchImageJobUpdate {
 	_u.mutation.SetStatus(v)
@@ -435,174 +415,6 @@ func (_u *BatchImageJobUpdate) AddActualCost(v float64) *BatchImageJobUpdate {
 // ClearActualCost clears the value of the "actual_cost" field.
 func (_u *BatchImageJobUpdate) ClearActualCost() *BatchImageJobUpdate {
 	_u.mutation.ClearActualCost()
-	return _u
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (_u *BatchImageJobUpdate) SetBaseUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetBaseUnitPrice()
-	_u.mutation.SetBaseUnitPrice(v)
-	return _u
-}
-
-// SetNillableBaseUnitPrice sets the "base_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableBaseUnitPrice(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetBaseUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddBaseUnitPrice adds value to the "base_unit_price" field.
-func (_u *BatchImageJobUpdate) AddBaseUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddBaseUnitPrice(v)
-	return _u
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (_u *BatchImageJobUpdate) SetGroupRateMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetGroupRateMultiplier()
-	_u.mutation.SetGroupRateMultiplier(v)
-	return _u
-}
-
-// SetNillableGroupRateMultiplier sets the "group_rate_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableGroupRateMultiplier(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetGroupRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddGroupRateMultiplier adds value to the "group_rate_multiplier" field.
-func (_u *BatchImageJobUpdate) AddGroupRateMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddGroupRateMultiplier(v)
-	return _u
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (_u *BatchImageJobUpdate) SetAccountRateMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetAccountRateMultiplier()
-	_u.mutation.SetAccountRateMultiplier(v)
-	return _u
-}
-
-// SetNillableAccountRateMultiplier sets the "account_rate_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableAccountRateMultiplier(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetAccountRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddAccountRateMultiplier adds value to the "account_rate_multiplier" field.
-func (_u *BatchImageJobUpdate) AddAccountRateMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddAccountRateMultiplier(v)
-	return _u
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (_u *BatchImageJobUpdate) SetBatchDiscountMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetBatchDiscountMultiplier()
-	_u.mutation.SetBatchDiscountMultiplier(v)
-	return _u
-}
-
-// SetNillableBatchDiscountMultiplier sets the "batch_discount_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableBatchDiscountMultiplier(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetBatchDiscountMultiplier(*v)
-	}
-	return _u
-}
-
-// AddBatchDiscountMultiplier adds value to the "batch_discount_multiplier" field.
-func (_u *BatchImageJobUpdate) AddBatchDiscountMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddBatchDiscountMultiplier(v)
-	return _u
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (_u *BatchImageJobUpdate) SetHoldMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetHoldMultiplier()
-	_u.mutation.SetHoldMultiplier(v)
-	return _u
-}
-
-// SetNillableHoldMultiplier sets the "hold_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableHoldMultiplier(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetHoldMultiplier(*v)
-	}
-	return _u
-}
-
-// AddHoldMultiplier adds value to the "hold_multiplier" field.
-func (_u *BatchImageJobUpdate) AddHoldMultiplier(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddHoldMultiplier(v)
-	return _u
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (_u *BatchImageJobUpdate) SetBillableUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetBillableUnitPrice()
-	_u.mutation.SetBillableUnitPrice(v)
-	return _u
-}
-
-// SetNillableBillableUnitPrice sets the "billable_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableBillableUnitPrice(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetBillableUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddBillableUnitPrice adds value to the "billable_unit_price" field.
-func (_u *BatchImageJobUpdate) AddBillableUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddBillableUnitPrice(v)
-	return _u
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (_u *BatchImageJobUpdate) SetHoldUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.ResetHoldUnitPrice()
-	_u.mutation.SetHoldUnitPrice(v)
-	return _u
-}
-
-// SetNillableHoldUnitPrice sets the "hold_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillableHoldUnitPrice(v *float64) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetHoldUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddHoldUnitPrice adds value to the "hold_unit_price" field.
-func (_u *BatchImageJobUpdate) AddHoldUnitPrice(v float64) *BatchImageJobUpdate {
-	_u.mutation.AddHoldUnitPrice(v)
-	return _u
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (_u *BatchImageJobUpdate) SetPricingSnapshotVersion(v int) *BatchImageJobUpdate {
-	_u.mutation.ResetPricingSnapshotVersion()
-	_u.mutation.SetPricingSnapshotVersion(v)
-	return _u
-}
-
-// SetNillablePricingSnapshotVersion sets the "pricing_snapshot_version" field if the given value is not nil.
-func (_u *BatchImageJobUpdate) SetNillablePricingSnapshotVersion(v *int) *BatchImageJobUpdate {
-	if v != nil {
-		_u.SetPricingSnapshotVersion(*v)
-	}
-	return _u
-}
-
-// AddPricingSnapshotVersion adds value to the "pricing_snapshot_version" field.
-func (_u *BatchImageJobUpdate) AddPricingSnapshotVersion(v int) *BatchImageJobUpdate {
-	_u.mutation.AddPricingSnapshotVersion(v)
 	return _u
 }
 
@@ -1026,11 +838,6 @@ func (_u *BatchImageJobUpdate) check() error {
 			return &ValidationError{Name: "task_name", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.task_name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ParentBatchID(); ok {
-		if err := batchimagejob.ParentBatchIDValidator(v); err != nil {
-			return &ValidationError{Name: "parent_batch_id", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.parent_batch_id": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := batchimagejob.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.status": %w`, err)}
@@ -1139,12 +946,6 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	if value, ok := _u.mutation.TaskName(); ok {
 		_spec.SetField(batchimagejob.FieldTaskName, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.ParentBatchID(); ok {
-		_spec.SetField(batchimagejob.FieldParentBatchID, field.TypeString, value)
-	}
-	if _u.mutation.ParentBatchIDCleared() {
-		_spec.ClearField(batchimagejob.FieldParentBatchID, field.TypeString)
-	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(batchimagejob.FieldStatus, field.TypeString, value)
 	}
@@ -1225,54 +1026,6 @@ func (_u *BatchImageJobUpdate) sqlSave(ctx context.Context) (_node int, err erro
 	}
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
-	}
-	if value, ok := _u.mutation.BaseUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBaseUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBaseUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldBaseUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.GroupRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldGroupRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedGroupRateMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldGroupRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldAccountRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedAccountRateMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldAccountRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BatchDiscountMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldBatchDiscountMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBatchDiscountMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldBatchDiscountMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.HoldMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldHoldMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedHoldMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldHoldMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BillableUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBillableUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBillableUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldBillableUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.HoldUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldHoldUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedHoldUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldHoldUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.PricingSnapshotVersion(); ok {
-		_spec.SetField(batchimagejob.FieldPricingSnapshotVersion, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedPricingSnapshotVersion(); ok {
-		_spec.AddField(batchimagejob.FieldPricingSnapshotVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)
@@ -1516,26 +1269,6 @@ func (_u *BatchImageJobUpdateOne) SetNillableTaskName(v *string) *BatchImageJobU
 	if v != nil {
 		_u.SetTaskName(*v)
 	}
-	return _u
-}
-
-// SetParentBatchID sets the "parent_batch_id" field.
-func (_u *BatchImageJobUpdateOne) SetParentBatchID(v string) *BatchImageJobUpdateOne {
-	_u.mutation.SetParentBatchID(v)
-	return _u
-}
-
-// SetNillableParentBatchID sets the "parent_batch_id" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableParentBatchID(v *string) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetParentBatchID(*v)
-	}
-	return _u
-}
-
-// ClearParentBatchID clears the value of the "parent_batch_id" field.
-func (_u *BatchImageJobUpdateOne) ClearParentBatchID() *BatchImageJobUpdateOne {
-	_u.mutation.ClearParentBatchID()
 	return _u
 }
 
@@ -1809,174 +1542,6 @@ func (_u *BatchImageJobUpdateOne) AddActualCost(v float64) *BatchImageJobUpdateO
 // ClearActualCost clears the value of the "actual_cost" field.
 func (_u *BatchImageJobUpdateOne) ClearActualCost() *BatchImageJobUpdateOne {
 	_u.mutation.ClearActualCost()
-	return _u
-}
-
-// SetBaseUnitPrice sets the "base_unit_price" field.
-func (_u *BatchImageJobUpdateOne) SetBaseUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetBaseUnitPrice()
-	_u.mutation.SetBaseUnitPrice(v)
-	return _u
-}
-
-// SetNillableBaseUnitPrice sets the "base_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableBaseUnitPrice(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetBaseUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddBaseUnitPrice adds value to the "base_unit_price" field.
-func (_u *BatchImageJobUpdateOne) AddBaseUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddBaseUnitPrice(v)
-	return _u
-}
-
-// SetGroupRateMultiplier sets the "group_rate_multiplier" field.
-func (_u *BatchImageJobUpdateOne) SetGroupRateMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetGroupRateMultiplier()
-	_u.mutation.SetGroupRateMultiplier(v)
-	return _u
-}
-
-// SetNillableGroupRateMultiplier sets the "group_rate_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableGroupRateMultiplier(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetGroupRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddGroupRateMultiplier adds value to the "group_rate_multiplier" field.
-func (_u *BatchImageJobUpdateOne) AddGroupRateMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddGroupRateMultiplier(v)
-	return _u
-}
-
-// SetAccountRateMultiplier sets the "account_rate_multiplier" field.
-func (_u *BatchImageJobUpdateOne) SetAccountRateMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetAccountRateMultiplier()
-	_u.mutation.SetAccountRateMultiplier(v)
-	return _u
-}
-
-// SetNillableAccountRateMultiplier sets the "account_rate_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableAccountRateMultiplier(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetAccountRateMultiplier(*v)
-	}
-	return _u
-}
-
-// AddAccountRateMultiplier adds value to the "account_rate_multiplier" field.
-func (_u *BatchImageJobUpdateOne) AddAccountRateMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddAccountRateMultiplier(v)
-	return _u
-}
-
-// SetBatchDiscountMultiplier sets the "batch_discount_multiplier" field.
-func (_u *BatchImageJobUpdateOne) SetBatchDiscountMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetBatchDiscountMultiplier()
-	_u.mutation.SetBatchDiscountMultiplier(v)
-	return _u
-}
-
-// SetNillableBatchDiscountMultiplier sets the "batch_discount_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableBatchDiscountMultiplier(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetBatchDiscountMultiplier(*v)
-	}
-	return _u
-}
-
-// AddBatchDiscountMultiplier adds value to the "batch_discount_multiplier" field.
-func (_u *BatchImageJobUpdateOne) AddBatchDiscountMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddBatchDiscountMultiplier(v)
-	return _u
-}
-
-// SetHoldMultiplier sets the "hold_multiplier" field.
-func (_u *BatchImageJobUpdateOne) SetHoldMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetHoldMultiplier()
-	_u.mutation.SetHoldMultiplier(v)
-	return _u
-}
-
-// SetNillableHoldMultiplier sets the "hold_multiplier" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableHoldMultiplier(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetHoldMultiplier(*v)
-	}
-	return _u
-}
-
-// AddHoldMultiplier adds value to the "hold_multiplier" field.
-func (_u *BatchImageJobUpdateOne) AddHoldMultiplier(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddHoldMultiplier(v)
-	return _u
-}
-
-// SetBillableUnitPrice sets the "billable_unit_price" field.
-func (_u *BatchImageJobUpdateOne) SetBillableUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetBillableUnitPrice()
-	_u.mutation.SetBillableUnitPrice(v)
-	return _u
-}
-
-// SetNillableBillableUnitPrice sets the "billable_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableBillableUnitPrice(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetBillableUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddBillableUnitPrice adds value to the "billable_unit_price" field.
-func (_u *BatchImageJobUpdateOne) AddBillableUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddBillableUnitPrice(v)
-	return _u
-}
-
-// SetHoldUnitPrice sets the "hold_unit_price" field.
-func (_u *BatchImageJobUpdateOne) SetHoldUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.ResetHoldUnitPrice()
-	_u.mutation.SetHoldUnitPrice(v)
-	return _u
-}
-
-// SetNillableHoldUnitPrice sets the "hold_unit_price" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillableHoldUnitPrice(v *float64) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetHoldUnitPrice(*v)
-	}
-	return _u
-}
-
-// AddHoldUnitPrice adds value to the "hold_unit_price" field.
-func (_u *BatchImageJobUpdateOne) AddHoldUnitPrice(v float64) *BatchImageJobUpdateOne {
-	_u.mutation.AddHoldUnitPrice(v)
-	return _u
-}
-
-// SetPricingSnapshotVersion sets the "pricing_snapshot_version" field.
-func (_u *BatchImageJobUpdateOne) SetPricingSnapshotVersion(v int) *BatchImageJobUpdateOne {
-	_u.mutation.ResetPricingSnapshotVersion()
-	_u.mutation.SetPricingSnapshotVersion(v)
-	return _u
-}
-
-// SetNillablePricingSnapshotVersion sets the "pricing_snapshot_version" field if the given value is not nil.
-func (_u *BatchImageJobUpdateOne) SetNillablePricingSnapshotVersion(v *int) *BatchImageJobUpdateOne {
-	if v != nil {
-		_u.SetPricingSnapshotVersion(*v)
-	}
-	return _u
-}
-
-// AddPricingSnapshotVersion adds value to the "pricing_snapshot_version" field.
-func (_u *BatchImageJobUpdateOne) AddPricingSnapshotVersion(v int) *BatchImageJobUpdateOne {
-	_u.mutation.AddPricingSnapshotVersion(v)
 	return _u
 }
 
@@ -2413,11 +1978,6 @@ func (_u *BatchImageJobUpdateOne) check() error {
 			return &ValidationError{Name: "task_name", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.task_name": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.ParentBatchID(); ok {
-		if err := batchimagejob.ParentBatchIDValidator(v); err != nil {
-			return &ValidationError{Name: "parent_batch_id", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.parent_batch_id": %w`, err)}
-		}
-	}
 	if v, ok := _u.mutation.Status(); ok {
 		if err := batchimagejob.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "BatchImageJob.status": %w`, err)}
@@ -2543,12 +2103,6 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	if value, ok := _u.mutation.TaskName(); ok {
 		_spec.SetField(batchimagejob.FieldTaskName, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.ParentBatchID(); ok {
-		_spec.SetField(batchimagejob.FieldParentBatchID, field.TypeString, value)
-	}
-	if _u.mutation.ParentBatchIDCleared() {
-		_spec.ClearField(batchimagejob.FieldParentBatchID, field.TypeString)
-	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(batchimagejob.FieldStatus, field.TypeString, value)
 	}
@@ -2629,54 +2183,6 @@ func (_u *BatchImageJobUpdateOne) sqlSave(ctx context.Context) (_node *BatchImag
 	}
 	if _u.mutation.ActualCostCleared() {
 		_spec.ClearField(batchimagejob.FieldActualCost, field.TypeFloat64)
-	}
-	if value, ok := _u.mutation.BaseUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBaseUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBaseUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldBaseUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.GroupRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldGroupRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedGroupRateMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldGroupRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldAccountRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedAccountRateMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldAccountRateMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BatchDiscountMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldBatchDiscountMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBatchDiscountMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldBatchDiscountMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.HoldMultiplier(); ok {
-		_spec.SetField(batchimagejob.FieldHoldMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedHoldMultiplier(); ok {
-		_spec.AddField(batchimagejob.FieldHoldMultiplier, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.BillableUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldBillableUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedBillableUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldBillableUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.HoldUnitPrice(); ok {
-		_spec.SetField(batchimagejob.FieldHoldUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedHoldUnitPrice(); ok {
-		_spec.AddField(batchimagejob.FieldHoldUnitPrice, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.PricingSnapshotVersion(); ok {
-		_spec.SetField(batchimagejob.FieldPricingSnapshotVersion, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedPricingSnapshotVersion(); ok {
-		_spec.AddField(batchimagejob.FieldPricingSnapshotVersion, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.Currency(); ok {
 		_spec.SetField(batchimagejob.FieldCurrency, field.TypeString, value)

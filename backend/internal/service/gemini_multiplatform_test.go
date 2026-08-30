@@ -85,16 +85,10 @@ func (m *mockAccountRepoForGemini) ListWithFilters(ctx context.Context, params p
 func (m *mockAccountRepoForGemini) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error) {
 	return nil, nil
 }
-func (m *mockAccountRepoForGemini) ListAllTags(ctx context.Context) ([]string, error) {
-	return nil, nil
-}
 func (m *mockAccountRepoForGemini) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	return nil, nil
 }
 func (m *mockAccountRepoForGemini) ListActive(ctx context.Context) ([]Account, error) {
-	return nil, nil
-}
-func (m *mockAccountRepoForGemini) ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error) {
 	return nil, nil
 }
 func (m *mockAccountRepoForGemini) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {
@@ -309,6 +303,27 @@ func (m *mockGatewayCacheForGemini) DeleteSessionAccountID(ctx context.Context, 
 	m.deletedSessions[sessionHash]++
 	delete(m.sessionBindings, sessionHash)
 	return nil
+}
+
+func (m *mockGatewayCacheForGemini) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForGemini) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (m *mockGatewayCacheForGemini) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (m *mockGatewayCacheForGemini) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockGatewayCacheForGemini) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForGemini) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
 }
 
 // TestGeminiMessagesCompatService_SelectAccountForModelWithExclusions_GeminiPlatform 测试 Gemini 单平台选择

@@ -429,6 +429,8 @@ export default {
     failedToLoadReadStatus: 'Failed to load read status',
     deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.',
     preview: 'Preview',
+
+    createFirstAnnouncement: 'No announcements yet. Create your first one.',
   },
   promo: {
     title: 'Promo Code Management',

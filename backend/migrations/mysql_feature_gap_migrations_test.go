@@ -262,6 +262,49 @@ func TestMySQLGroupVideoRateMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLGrokCompatibilityMigrationsExist(t *testing.T) {
+	tests := []struct {
+		name     string
+		required []string
+	}{
+		{"079_user_platform_quotas_cn_providers.sql", []string{"information_schema.check_constraints", "constraint_needs_update", "kimi", "zhipu", "deepseek"}},
+		{"083_channel_monitor_quota_mode.sql", []string{"provider_enum_type", "information_schema.columns", "check_mode", "account_id"}},
+		{"084_composite_routes_cn_providers.sql", []string{"information_schema.check_constraints", "constraint_needs_update", "target_platform"}},
+		{"088_enable_grok_media_generation_groups.sql", []string{"information_schema.columns", "allow_image_generation", "platform` = ''grok''"}},
+		{"089_group_video_model_prices.sql", []string{"information_schema.columns", "video_model_prices", "ADD COLUMN `video_model_prices` JSON NULL"}},
+		{"090_clear_non_grok_video_generation_config.sql", []string{"groups_video_price_backup_220", "video_model_prices", "NOT IN ('grok', 'composite')"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content, err := MySQLFS.ReadFile(tt.name)
+			require.NoError(t, err)
+			sql := string(content)
+			for _, fragment := range tt.required {
+				require.Contains(t, sql, fragment)
+			}
+			requireNotPostgresOnlySQL(t, sql)
+		})
+	}
+}
+
+func TestMySQLCheckConstraintMigrationsUsePortableTableLookup(t *testing.T) {
+	for _, name := range []string{
+		"079_user_platform_quotas_cn_providers.sql",
+		"084_composite_routes_cn_providers.sql",
+	} {
+		t.Run(name, func(t *testing.T) {
+			content, err := MySQLFS.ReadFile(name)
+			require.NoError(t, err)
+
+			sql := strings.ToLower(strings.Join(strings.Fields(string(content)), " "))
+			require.Contains(t, sql, "from information_schema.check_constraints as cc inner join information_schema.table_constraints as tc")
+			require.Contains(t, sql, "tc.table_name =")
+			require.NotContains(t, sql, "from information_schema.check_constraints where")
+		})
+	}
+}
+
 func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -285,6 +328,7 @@ func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 		{"068_allow_live_usage_request_type.sql", []string{"chk_usage_logs_request_type", "`request_type` >= 0", "`request_type` <= 5"}},
 		{"069_add_group_allow_live.sql", []string{"table_name = 'groups'", "column_name = 'allow_live'", "ADD COLUMN `allow_live` BOOLEAN NOT NULL DEFAULT FALSE"}},
 		{"070_add_users_email_alias_dedup_index.sql", []string{"email_dot_stripped", "GENERATED ALWAYS AS", "idx_users_email_dot_stripped"}},
+		{"092_add_usage_log_video_fields.sql", []string{"table_name = 'usage_logs'", "column_name = 'video_count'", "ADD COLUMN `video_count` INT NOT NULL DEFAULT 0", "column_name = 'video_resolution'", "ADD COLUMN `video_resolution` VARCHAR(10) NULL", "column_name = 'video_duration_seconds'", "ADD COLUMN `video_duration_seconds` INT NULL"}},
 	}
 
 	for _, tt := range tests {

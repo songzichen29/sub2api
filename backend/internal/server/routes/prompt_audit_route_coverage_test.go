@@ -41,6 +41,15 @@ func TestEveryGatewayPOSTRouteIsClassifiedForPromptAuditCoverage(t *testing.T) {
 		"/images/generations/async": {"image_task_handler.go"},
 		"/images/edits/async":       {"image_task_handler.go"},
 		"/images/batches":           {"batch_image_handler.go"},
+		"/videos":                   {"grok_media.go"},
+		"/videos/generations":       {"grok_media.go"},
+		"/videos/edits":             {"grok_media.go"},
+		"/videos/extensions":        {"grok_media.go"},
+		"/tts":                      {"grok_audio.go"},
+		"/stt":                      {"grok_audio.go"},
+		"/custom-voices":            {"grok_audio.go"},
+		"/web_search":               {"gateway_web_search.go"},
+		"/x_search":                 {"gateway_web_search.go"},
 		"/models/*modelAction":      {"gemini_v1beta_handler.go"},
 	}
 	excluded := map[string]string{

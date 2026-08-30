@@ -5,14 +5,22 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -23,9 +31,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -33,42 +43,66 @@ import (
 var sseDataPrefix = regexp.MustCompile(`^data:\s*`)
 
 const (
-	testClaudeAPIURL   = "https://api.anthropic.com/v1/messages?beta=true"
-	chatgptCodexAPIURL = "https://chatgpt.com/backend-api/codex/responses"
+	testClaudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
+	chatgptCodexAPIURL          = "https://chatgpt.com/backend-api/codex/responses"
+	defaultAntigravityTestModel = "claude-sonnet-4-6"
 )
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type            string `json:"type"`
-	Text            string `json:"text,omitempty"`
-	Model           string `json:"model,omitempty"`
-	Status          string `json:"status,omitempty"`
-	Code            string `json:"code,omitempty"`
-	ElapsedMs       int64  `json:"elapsed_ms,omitempty"`
-	ConnectMs       int64  `json:"connect_ms,omitempty"`
-	FirstResponseMs int64  `json:"first_response_ms,omitempty"`
-	ImageURL        string `json:"image_url,omitempty"`
-	MimeType        string `json:"mime_type,omitempty"`
-	Data            any    `json:"data,omitempty"`
-	Success         bool   `json:"success,omitempty"`
-	Error           string `json:"error,omitempty"`
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Status   string `json:"status,omitempty"`
+	Code     string `json:"code,omitempty"`
+	ImageURL string `json:"image_url,omitempty"`
+	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
+	AudioURL string `json:"audio_url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Data     any    `json:"data,omitempty"`
+	Success  bool   `json:"success,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
-const accountTestStartedAtContextKey = "account_test_started_at"
-const accountTestMetricsContextKey = "account_test_metrics"
-
-type accountTestMetrics struct {
-	startedAt         time.Time
-	connectMs         int64
-	connectRecorded   bool
-	firstResponseMs   int64
-	firstRespRecorded bool
+// AccountTestOptions carries optional media for admin connectivity tests.
+// ImageDataURL / AudioDataURL are full data URLs (data:<mime>;base64,...).
+type AccountTestOptions struct {
+	ImageDataURL string
+	AudioDataURL string
 }
+
+func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
+	if len(opts) == 0 {
+		return AccountTestOptions{}
+	}
+	return opts[0]
+}
+
+// maxAccountTestMediaBytes caps inbound data-URL payloads for admin tests (~8 MiB).
+const maxAccountTestMediaBytes = 8 << 20
 
 const (
 	defaultGeminiTextTestPrompt  = "hi"
 	defaultGeminiImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
 	defaultOpenAIImageTestPrompt = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultGrokImageTestPrompt   = "Generate a cute orange cat astronaut sticker on a clean pastel background."
+	defaultGrokVideoTestPrompt   = "A red ball bouncing once on a white floor, short simple motion."
+	defaultGrokSearchTestQuery   = "xAI Grok"
+	defaultGrokTTSTestText       = "Hello from Sub2API account connectivity test."
+
+	// Grok account-test modes (admin UI). Empty / default / text = Responses probe.
+	// image/video may also be inferred from model_id when mode is default.
+	AccountTestModeGrokText     = "text"
+	AccountTestModeGrokImage    = "image"
+	AccountTestModeGrokVideo    = "video"
+	AccountTestModeGrokSearch   = "search"
+	AccountTestModeGrokTTS      = "tts"
+	AccountTestModeGrokSTT      = "stt"
+	AccountTestModeGrokRealtime = "realtime"
+
+	defaultGrokRealtimeTestModel = "grok-voice-latest"
+	grokRealtimeProbeTimeout     = DefaultGrokRealtimeDialTimeout
 )
 
 // isOpenAIImageModel checks if the model is an OpenAI image generation model (e.g. gpt-image-2).
@@ -76,18 +110,64 @@ func isOpenAIImageModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "gpt-image-")
 }
 
+func isGrokVideoGenerationModel(model string) bool {
+	return isGrokVideoBillingModel(model) ||
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "grok-video")
+}
+
+func normalizeGrokAccountTestMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case AccountTestModeGrokText:
+		return AccountTestModeGrokText
+	case AccountTestModeGrokImage:
+		return AccountTestModeGrokImage
+	case AccountTestModeGrokVideo:
+		return AccountTestModeGrokVideo
+	case AccountTestModeGrokSearch:
+		return AccountTestModeGrokSearch
+	case AccountTestModeGrokTTS:
+		return AccountTestModeGrokTTS
+	case AccountTestModeGrokSTT:
+		return AccountTestModeGrokSTT
+	case AccountTestModeGrokRealtime:
+		return AccountTestModeGrokRealtime
+	default:
+		return AccountTestModeDefault
+	}
+}
+
 // AccountTestService handles account testing operations
 type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
+	grokTokenProvider         *GrokTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
-	grokGatewayService        *GrokGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
+	settingService            *SettingService
 	tlsFPProfileService       *TLSFingerprintProfileService
+	modelMetadataRegistryMu   sync.Mutex
+	modelMetadataRegistry     map[string]modelsDevProvider
+	modelMetadataRegistryAt   time.Time
+	pluginManager             *PluginManager
 	agentIdentityTaskMu       sync.Mutex
 	agentIdentityWS           agentIdentityWSConnectionInvalidator
+	// grokWSDialer is optional; realtime account tests use the default OpenAI-style
+	// WS dialer when nil (supports proxy + coder/websocket handshake).
+	grokWSDialer openAIWSClientDialer
+}
+
+func (s *AccountTestService) SetSettingService(settingService *SettingService) {
+	if s != nil {
+		s.settingService = settingService
+	}
+}
+
+func (s *AccountTestService) SetPluginManager(pluginManager *PluginManager) {
+	if s != nil {
+		s.pluginManager = pluginManager
+	}
 }
 
 // NewAccountTestService creates a new AccountTestService
@@ -95,8 +175,8 @@ func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
+	grokTokenProvider *GrokTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
-	grokGatewayService *GrokGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -105,8 +185,8 @@ func NewAccountTestService(
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
+		grokTokenProvider:         grokTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
-		grokGatewayService:        grokGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
 		tlsFPProfileService:       tlsFPProfileService,
@@ -190,11 +270,10 @@ func createTestPayload(modelID string) (map[string]any, error) {
 // All account types use full Claude Code client characteristics, only auth header differs
 // modelID is optional - if empty, defaults to claude.DefaultTestModel
 // mode is optional - "compact" routes OpenAI accounts to the /responses/compact probe path
-func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string) error {
+// opts is optional media (image/audio data URLs for real generation / STT).
+func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
-	startedAt := time.Now()
-	c.Set(accountTestStartedAtContextKey, startedAt)
-	c.Set(accountTestMetricsContextKey, &accountTestMetrics{startedAt: startedAt})
+	testOpts := firstAccountTestOptions(opts)
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -217,6 +296,19 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	// Route to platform-specific test method
+	if account.IsCNProvider() {
+		switch account.GetAPIProtocol() {
+		case APIProtocolAdaptive:
+			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+		case APIProtocolResponses:
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		case APIProtocolChatCompletions:
+			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
+		case APIProtocolAnthropic:
+			return s.testCNProviderAnthropicConnection(c, account, modelID)
+		}
+	}
+
 	if account.IsOpenAI() {
 		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
 	}
@@ -225,45 +317,36 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGeminiAccountConnection(c, account, modelID, prompt)
 	}
 
-	if account.Platform == PlatformAntigravity {
-		return s.routeAntigravityTest(c, account, modelID, prompt)
+	if account.Platform == PlatformGrok {
+		return s.testGrokAccountConnection(c, account, modelID, prompt, mode, testOpts)
 	}
 
-	if account.Platform == PlatformGrok {
-		return s.testGrokAccountConnection(c, account, modelID)
+	if account.Platform == PlatformAntigravity {
+		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
 }
 
-func getAccountTestMetrics(c *gin.Context) *accountTestMetrics {
-	if c == nil {
-		return nil
+func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = openai.DefaultTestModel
 	}
-	value, ok := c.Get(accountTestMetricsContextKey)
-	if !ok {
-		return nil
-	}
-	metrics, _ := value.(*accountTestMetrics)
-	return metrics
-}
+	testModelID = account.GetMappedModel(testModelID)
 
-func markAccountTestConnected(c *gin.Context) {
-	metrics := getAccountTestMetrics(c)
-	if metrics == nil || metrics.connectRecorded || metrics.startedAt.IsZero() {
-		return
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
 	}
-	metrics.connectMs = time.Since(metrics.startedAt).Milliseconds()
-	metrics.connectRecorded = true
-}
 
-func markAccountTestFirstResponse(c *gin.Context) {
-	metrics := getAccountTestMetrics(c)
-	if metrics == nil || metrics.firstRespRecorded || metrics.startedAt.IsZero() {
-		return
+	baseURL := account.GetOpenAIBaseURL()
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 	}
-	metrics.firstResponseMs = time.Since(metrics.startedAt).Milliseconds()
-	metrics.firstRespRecorded = true
+
+	return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -384,7 +467,6 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 		return s.sendErrorAndEnd(c, errMsg)
 	}
-	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processClaudeStream(c, resp.Body)
@@ -454,7 +536,6 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 		}
 		return s.sendErrorAndEnd(c, errMsg)
 	}
-	markAccountTestConnected(c)
 
 	return s.processClaudeStream(c, resp.Body)
 }
@@ -538,7 +619,6 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	if resp.StatusCode != http.StatusOK {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
-	markAccountTestConnected(c)
 
 	// Bedrock non-streaming response is standard Claude JSON, extract the text
 	var result struct {
@@ -623,7 +703,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		apiURL = chatgptCodexAPIURL
 	} else if credentialAccount.Type == "apikey" {
 		// API Key - use Platform API
-		authToken = credentialAccount.GetOpenAIApiKey()
+		authToken = credentialAccount.GetOpenAIProtocolAPIKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 		}
@@ -639,7 +719,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		if !openai_compat.ShouldUseResponsesAPI(account.Extra) {
 			return s.testOpenAIChatCompletionsConnection(c, account, testModelID, prompt, normalizedBaseURL, authToken)
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		apiURL = buildOpenAIResponsesURLForPlatform(credentialAccount.Platform, normalizedBaseURL)
 	} else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -696,11 +776,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		req.Host = "chatgpt.com"
 		req.Header.Set("accept", "text/event-stream")
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
-		req.Header.Set("Originator", openai.CodexDefaultOriginator)
+		canonical := resolveCodexOutboundIdentity("")
+		req.Header.Set("Originator", canonical.originator)
 		if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
 			req.Header.Set("User-Agent", customUA)
 		} else {
-			req.Header.Set("User-Agent", codexCLIUserAgent)
+			req.Header.Set("User-Agent", canonical.userAgent)
 		}
 		setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 		// 与真实转发一致：账号级自定义 UA 同样作为管理员显式配置传入，否则测试用的身份
@@ -717,7 +798,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
@@ -751,10 +832,1132 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
-	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processOpenAIStream(c, resp.Body)
+}
+
+// testGrokAccountConnection routes Grok admin connectivity tests by explicit mode first,
+// then by selected model family for media. Standalone modes (search/tts/stt) never share
+// the text Responses path; image/video never hit Responses either.
+//
+// Modes:
+//   - default/text → Responses (optional model)
+//   - image → /v1/images/generations (model optional; defaults to grok-imagine-image)
+//   - video → /v1/videos/generations (model optional; defaults to grok-imagine-video)
+//   - search → standalone web-search probe (gateway /v1/web_search semantics)
+//   - tts → HTTP /v1/tts
+//   - stt → HTTP /v1/stt (synthetic tiny wav probe)
+//   - realtime → WS /v1/realtime dial + optional first server event
+//
+// When mode is default, image/video can still be inferred from model_id for backward compat.
+func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID, prompt, mode string, opts AccountTestOptions) error {
+	ctx := c.Request.Context()
+
+	// Realtime is WebSocket-only and does not need HTTP upstream.
+	mode = normalizeGrokAccountTestMode(mode)
+	if mode != AccountTestModeGrokRealtime && s.httpUpstream == nil {
+		return s.sendErrorAndEnd(c, "HTTP upstream not configured")
+	}
+
+	authToken, err := s.grokTestAccessToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
+
+	// Explicit standalone / media modes always win over model id.
+	switch mode {
+	case AccountTestModeGrokSearch:
+		return s.testGrokWebSearch(c, ctx, account, authToken, prompt)
+	case AccountTestModeGrokTTS:
+		return s.testGrokTTS(c, ctx, account, authToken, prompt)
+	case AccountTestModeGrokSTT:
+		return s.testGrokSTT(c, ctx, account, authToken, opts.AudioDataURL)
+	case AccountTestModeGrokRealtime:
+		return s.testGrokRealtime(c, ctx, account, authToken, modelID)
+	case AccountTestModeGrokImage:
+		return s.testGrokImageGeneration(c, ctx, account, authToken, resolveGrokImageTestModel(account, modelID), resolveGrokImagePrompt(prompt), opts.ImageDataURL)
+	case AccountTestModeGrokVideo:
+		return s.testGrokVideoGeneration(c, ctx, account, authToken, resolveGrokVideoTestModel(account, modelID), resolveGrokVideoPrompt(prompt), opts)
+	case AccountTestModeGrokText:
+		// Force text Responses even if model_id looks like media.
+		testModelID := strings.TrimSpace(modelID)
+		if testModelID == "" {
+			testModelID = grokDefaultResponsesModel
+		}
+		if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
+			testModelID = mapped
+		}
+		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID)
+	}
+
+	// mode == default: infer from model family (legacy UI / API clients).
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = grokDefaultResponsesModel
+	}
+	if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
+		testModelID = mapped
+	}
+
+	switch {
+	case isGrokImageGenerationModel(testModelID):
+		return s.testGrokImageGeneration(c, ctx, account, authToken, testModelID, resolveGrokImagePrompt(prompt), opts.ImageDataURL)
+	case isGrokVideoGenerationModel(testModelID):
+		return s.testGrokVideoGeneration(c, ctx, account, authToken, testModelID, resolveGrokVideoPrompt(prompt), opts)
+	default:
+		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID)
+	}
+}
+
+func resolveGrokImagePrompt(prompt string) string {
+	if strings.TrimSpace(prompt) == "" {
+		return defaultGrokImageTestPrompt
+	}
+	return strings.TrimSpace(prompt)
+}
+
+func resolveGrokVideoPrompt(prompt string) string {
+	if strings.TrimSpace(prompt) == "" {
+		return defaultGrokVideoTestPrompt
+	}
+	return strings.TrimSpace(prompt)
+}
+
+func resolveGrokImageTestModel(account *Account, modelID string) string {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "grok-imagine-image"
+	}
+	if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
+		return mapped
+	}
+	return testModelID
+}
+
+func resolveGrokVideoTestModel(account *Account, modelID string) string {
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = "grok-imagine-video"
+	}
+	if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
+		return mapped
+	}
+	return testModelID
+}
+
+func (s *AccountTestService) grokTestAccessToken(ctx context.Context, account *Account) (string, error) {
+	switch account.Type {
+	case AccountTypeOAuth:
+		if s.grokTokenProvider == nil {
+			return "", fmt.Errorf("grok token provider not configured")
+		}
+		// Manual tests skip production scheduling eligibility so paused/rate-limited
+		// accounts can still be probed by admins (same as Codex/OpenAI tests).
+		token, err := s.grokTokenProvider.GetAccessTokenForManualTest(ctx, account)
+		if err != nil {
+			return "", fmt.Errorf("failed to get grok access token: %s", err.Error())
+		}
+		return token, nil
+	case AccountTypeAPIKey:
+		authToken := strings.TrimSpace(account.GetCredential("api_key"))
+		if authToken == "" {
+			return "", fmt.Errorf("grok api key is missing")
+		}
+		return authToken, nil
+	default:
+		return "", fmt.Errorf("unsupported grok account type: %s", account.Type)
+	}
+}
+
+func (s *AccountTestService) grokTestProxyURL(account *Account) string {
+	if account.ProxyID != nil && account.Proxy != nil {
+		return account.Proxy.URL()
+	}
+	return ""
+}
+
+func (s *AccountTestService) prepareGrokTestSSE(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+}
+
+func (s *AccountTestService) applyGrokTestRequestHeaders(req *http.Request, account *Account, authToken string, accept string) {
+	req.Header.Set("Content-Type", "application/json")
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	// Match gateway media/voice: CLI identity headers only on the CLI chat proxy.
+	// api.x.ai media (images/videos) rejects or mistreats OAuth when CLI headers
+	// are stamped on the official API host (e.g. ZDR upload_url false positives).
+	if account.IsGrokOAuth() && req.URL != nil && isGrokCLIProxyTarget(req.URL.String()) {
+		applyGrokCLIHeaders(req.Header)
+	}
+	account.ApplyHeaderOverrides(req.Header)
+}
+
+func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, account *Account, resp *http.Response) {
+	if resp == nil {
+		return
+	}
+	now := time.Now()
+	// Error bodies carry Grok's free-usage, billing, and content-policy
+	// classifications when quota headers are absent. Read only non-success
+	// responses here, then restore the body because the caller still needs it
+	// for the user-facing test result.
+	var responseBody []byte
+	if resp.StatusCode >= http.StatusBadRequest && resp.Body != nil {
+		responseBody, _ = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+	}
+	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
+	stampGrokQuotaSnapshotForPlan(account, snapshot, grokRequestedModelFromCtx(ctx))
+	if snapshot != nil && s.accountRepo != nil {
+		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+		if limited {
+			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
+		}
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			grokQuotaSnapshotExtraKey: snapshot,
+		})
+		if limited {
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
+			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+		}
+	} else if s.accountRepo != nil && isSuccessfulGrokRateLimitRecovery(account, &xai.QuotaSnapshot{StatusCode: resp.StatusCode}) {
+		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
+	}
+	if s.accountRepo == nil || len(responseBody) == 0 {
+		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			defer cancel()
+			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(30*time.Minute), "grok payment required")
+		}
+		return
+	}
+	if isGrokContentPolicyRejection(resp.StatusCode, responseBody) {
+		return
+	}
+	decision := classifyGrokUpstreamFailure(resp.StatusCode, responseBody, "")
+	if decision.Class == GrokFailureFreeUsage {
+		if resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now); limited && resetAt.After(now) {
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		} else {
+			stateCtx, cancel := openAIAccountStateContext(ctx)
+			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(grokFreeUsageProbeCooldown), "grok free usage exhausted")
+			cancel()
+		}
+		return
+	}
+	if decision.Class == GrokFailureBilling && (isGrokSpendingLimitError(responseBody) || strings.Contains(strings.ToLower(decision.Reason), "credit")) {
+		persistGrokRateLimit(ctx, s.accountRepo, account, grokSpendingLimitResetAt(account, now))
+		return
+	}
+	cooldown := time.Duration(0)
+	reason := ""
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		cooldown, reason = 10*time.Minute, "grok oauth token unauthorized"
+	case http.StatusPaymentRequired:
+		cooldown, reason = 30*time.Minute, "grok payment required"
+	case http.StatusForbidden:
+		cooldown, reason = 30*time.Minute, "grok entitlement or subscription tier denied"
+	default:
+		if resp.StatusCode >= 500 {
+			cooldown, reason = 2*time.Minute, "grok upstream temporary error"
+		}
+	}
+	if decision.Class == GrokFailureBilling && cooldown == 0 {
+		cooldown, reason = 30*time.Minute, "grok payment required"
+	}
+	if cooldown > 0 {
+		stateCtx, cancel := openAIAccountStateContext(ctx)
+		defer cancel()
+		until := now.Add(cooldown)
+		if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(until) {
+			until = *account.TempUnschedulableUntil
+		}
+		_ = s.accountRepo.SetTempUnschedulable(
+			stateCtx,
+			account.ID,
+			until,
+			reason,
+		)
+	}
+}
+
+func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx context.Context, account *Account, authToken, testModelID string) error {
+	apiURL, err := buildGrokResponsesURL(account, s.cfg, s.settingService)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
+	}
+
+	s.prepareGrokTestSSE(c)
+
+	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
+	}
+
+	if !agentIdentityTaskRecoveryWasTried(ctx) {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok request")
+	}
+	s.applyGrokTestRequestHeaders(req, account, authToken, "application/json, text/event-stream")
+
+	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, testModelID), account, resp)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	return s.processOpenAIStream(c, resp.Body)
+}
+
+func (s *AccountTestService) testGrokImageGeneration(c *gin.Context, ctx context.Context, account *Account, authToken, modelID, prompt, imageDataURL string) error {
+	// With a source image, prefer /images/edits; otherwise /images/generations.
+	endpoint := GrokMediaEndpointImagesGenerations
+	imageDataURL = strings.TrimSpace(imageDataURL)
+	hasSourceImage := imageDataURL != ""
+	if hasSourceImage {
+		endpoint = GrokMediaEndpointImagesEdits
+	}
+
+	// Align model aliases with gateway (e.g. grok-imagine → grok-imagine-image-quality).
+	modelID = NormalizeGrokMediaModelForEndpoint(endpoint, modelID, hasSourceImage)
+	if modelID == "" {
+		modelID = "grok-imagine-image-quality"
+	}
+
+	apiURL, err := buildGrokMediaURL(account, s.cfg, endpoint, "")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok media base URL: %s", err.Error()))
+	}
+
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	if endpoint == GrokMediaEndpointImagesEdits {
+		s.sendEvent(c, TestEvent{Type: "status", Text: "Calling Grok /v1/images/edits with uploaded source image..."})
+	} else {
+		s.sendEvent(c, TestEvent{Type: "status", Text: "Calling Grok /v1/images/generations..."})
+	}
+
+	// Zero-data-retention teams reject URL format; always request base64 for admin tests.
+	payload := map[string]any{
+		"model":           modelID,
+		"prompt":          prompt,
+		"n":               1,
+		"response_format": "b64_json",
+	}
+	if hasSourceImage {
+		normalized, err := normalizeAccountTestImageDataURL(imageDataURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+		// Match gateway prepareGrokMediaForwardBody shape: {url, type:image_url}.
+		payload["image"] = grokMediaImageObject(normalized)
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("source image ready (%d chars data URL)\n", len(normalized))})
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to marshal Grok image request")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok image request")
+	}
+	s.applyGrokTestRequestHeaders(req, account, authToken, "application/json")
+	req.ContentLength = int64(len(payloadBytes))
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payloadBytes)), nil
+	}
+
+	// One retry on transport EOF (proxies occasionally drop large edit payloads).
+	var resp *http.Response
+	var doErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "Retrying Grok image request after transport error..."})
+			req, err = http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+			if err != nil {
+				return s.sendErrorAndEnd(c, "Failed to create Grok image retry request")
+			}
+			s.applyGrokTestRequestHeaders(req, account, authToken, "application/json")
+			req.ContentLength = int64(len(payloadBytes))
+		}
+		resp, doErr = s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+		if doErr == nil {
+			break
+		}
+		if !isTransientGrokTransportError(doErr) || attempt == 1 {
+			return s.sendErrorAndEnd(c, formatGrokImageTransportError(doErr, hasSourceImage, len(payloadBytes)))
+		}
+	}
+	defer func() { _ = resp.Body.Close() }()
+	s.observeGrokTestResponse(ctx, account, resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Grok image response: %s", err.Error()))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, formatGrokImagesAPIError(resp.StatusCode, body, hasSourceImage))
+	}
+
+	var result struct {
+		Data []struct {
+			URL           string `json:"url"`
+			B64JSON       string `json:"b64_json"`
+			RevisedPrompt string `json:"revised_prompt"`
+			MimeType      string `json:"mime_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse Grok image response: %s", err.Error()))
+	}
+	if len(result.Data) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from Grok API")
+	}
+
+	for _, item := range result.Data {
+		if item.RevisedPrompt != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		}
+		mimeType := strings.TrimSpace(item.MimeType)
+		if mimeType == "" {
+			mimeType = "image/jpeg"
+		}
+		switch {
+		case strings.TrimSpace(item.B64JSON) != "":
+			s.sendEvent(c, TestEvent{
+				Type:     "image",
+				ImageURL: "data:" + mimeType + ";base64," + item.B64JSON,
+				MimeType: mimeType,
+			})
+		case strings.TrimSpace(item.URL) != "":
+			s.sendEvent(c, TestEvent{Type: "image", ImageURL: item.URL, MimeType: mimeType})
+		}
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) testGrokVideoGeneration(c *gin.Context, ctx context.Context, account *Account, authToken, modelID, prompt string, opts AccountTestOptions) error {
+	apiURL, err := buildGrokMediaURL(account, s.cfg, GrokMediaEndpointVideosGenerations, "")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok media base URL: %s", err.Error()))
+	}
+
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Calling Grok /v1/videos/generations..."})
+
+	payload := map[string]any{
+		"model":        modelID,
+		"prompt":       prompt,
+		"duration":     6,
+		"aspect_ratio": "16:9",
+		"resolution":   "480p",
+	}
+	if img := strings.TrimSpace(opts.ImageDataURL); img != "" {
+		normalized, err := normalizeAccountTestImageDataURL(img)
+		if err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+		// First-frame / image-to-video input (xAI image field).
+		payload["image"] = grokMediaImageObject(normalized)
+		s.sendEvent(c, TestEvent{Type: "content", Text: "using uploaded first-frame / reference image\n"})
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok video request")
+	}
+	s.applyGrokTestRequestHeaders(req, account, authToken, "application/json")
+
+	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	s.observeGrokTestResponse(ctx, account, resp)
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read Grok video response: %s", err.Error()))
+	}
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusCreated {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok videos API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	requestID := strings.TrimSpace(gjson.GetBytes(body, "request_id").String())
+	if requestID == "" {
+		requestID = strings.TrimSpace(gjson.GetBytes(body, "id").String())
+	}
+	if requestID == "" {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video create response missing request_id: %s", string(body)))
+	}
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("video request accepted: %s\n", requestID)})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Polling video status until done (max ~60s)..."})
+
+	statusURL, err := buildGrokMediaURL(account, s.cfg, GrokMediaEndpointVideoStatus, requestID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok video status URL: %s", err.Error()))
+	}
+
+	deadline := time.Now().Add(60 * time.Second)
+	for time.Now().Before(deadline) {
+		if ctx.Err() != nil {
+			return s.sendErrorAndEnd(c, "Grok video poll canceled")
+		}
+		statusReq, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to create Grok video status request")
+		}
+		s.applyGrokTestRequestHeaders(statusReq, account, authToken, "application/json")
+		statusResp, err := s.httpUpstream.Do(statusReq, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video status failed: %s", err.Error()))
+		}
+		statusBody, _ := io.ReadAll(statusResp.Body)
+		_ = statusResp.Body.Close()
+		if statusResp.StatusCode != http.StatusOK && statusResp.StatusCode != http.StatusAccepted {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video status returned %d: %s", statusResp.StatusCode, string(statusBody)))
+		}
+		st := strings.ToLower(strings.TrimSpace(gjson.GetBytes(statusBody, "status").String()))
+		progress := gjson.GetBytes(statusBody, "progress")
+		if progress.Exists() {
+			s.sendEvent(c, TestEvent{Type: "status", Text: fmt.Sprintf("status=%s progress=%v", st, progress.Value())})
+		} else {
+			s.sendEvent(c, TestEvent{Type: "status", Text: "status=" + st})
+		}
+		switch st {
+		case "done", "completed", "succeeded", "success":
+			return s.emitGrokVideoResult(c, ctx, account, authToken, requestID, statusBody)
+		case "failed", "error", "canceled", "cancelled":
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video failed: %s", string(statusBody)))
+		}
+		select {
+		case <-ctx.Done():
+			return s.sendErrorAndEnd(c, "Grok video poll canceled")
+		case <-time.After(3 * time.Second):
+		}
+	}
+	return s.sendErrorAndEnd(c, "Grok video still processing after 60s (request_id="+requestID+")")
+}
+
+// emitGrokVideoResult surfaces a playable video URL or downloads /content as data URL.
+func (s *AccountTestService) emitGrokVideoResult(c *gin.Context, ctx context.Context, account *Account, authToken, requestID string, statusBody []byte) error {
+	videoURL := firstNonEmpty(
+		strings.TrimSpace(gjson.GetBytes(statusBody, "video.url").String()),
+		strings.TrimSpace(gjson.GetBytes(statusBody, "url").String()),
+		strings.TrimSpace(gjson.GetBytes(statusBody, "video_url").String()),
+		strings.TrimSpace(gjson.GetBytes(statusBody, "download_url").String()),
+	)
+	if videoURL != "" && (strings.HasPrefix(videoURL, "http://") || strings.HasPrefix(videoURL, "https://") || strings.HasPrefix(videoURL, "data:")) {
+		s.sendEvent(c, TestEvent{Type: "content", Text: "video ready: " + videoURL + "\n"})
+		s.sendEvent(c, TestEvent{Type: "video", VideoURL: videoURL, MimeType: "video/mp4"})
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		return nil
+	}
+
+	// Fetch binary content via official /videos/{id}/content (Bearer-authenticated).
+	contentURL, err := buildGrokMediaURL(account, s.cfg, GrokMediaEndpointVideoContent, requestID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok video content URL: %s", err.Error()))
+	}
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Downloading video content for preview..."})
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, contentURL, nil)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok video content request")
+	}
+	s.applyGrokTestRequestHeaders(req, account, authToken, "video/*, application/octet-stream, */*")
+	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video content download failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB cap for admin preview
+	if resp.StatusCode != http.StatusOK {
+		// Fall back to status URL when binary content is unavailable.
+		if videoURL != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: "video completed; content download unavailable, reported url=" + videoURL + "\n"})
+			s.sendEvent(c, TestEvent{Type: "video", VideoURL: videoURL, MimeType: "video/mp4"})
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video content returned %d: %s", resp.StatusCode, truncateString(string(body), 300)))
+	}
+	ct := resp.Header.Get("Content-Type")
+	if ct == "" || strings.HasPrefix(ct, "application/octet-stream") {
+		ct = "video/mp4"
+	}
+	// Keep only type/subtype for data URL.
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	dataURL := "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body)
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("video content downloaded: content-type=%s bytes=%d\n", ct, len(body))})
+	s.sendEvent(c, TestEvent{Type: "video", VideoURL: dataURL, MimeType: ct})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) testGrokWebSearch(c *gin.Context, ctx context.Context, account *Account, authToken, query string) error {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		query = defaultGrokSearchTestQuery
+	}
+
+	// Account-test "web_search" mode mirrors the standalone gateway endpoint
+	// POST /v1/web_search (not a free-form chat with tools). Implementation still
+	// uses the same DoGrokNativeResponsesJSON helper as the gateway handler so
+	// results match production search.
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: "grok-web-search"})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Calling standalone web_search probe (same as gateway /v1/web_search)..."})
+
+	// Keep parity with handler.buildGrokWebSearchPrompt / include sources.
+	const maxResults = 5
+	prompt := fmt.Sprintf(
+		`Search the web for the user query below. Return ONLY valid JSON with this exact shape: {"results":[{"url":"https://...","title":"page title","snippet":"concise factual summary"}]}. Return at most %d unique results. Every URL must be an actual web_search source. Populate a non-empty title and snippet for every result. Do not wrap the JSON in markdown.
+
+User query:
+%s`, maxResults, query)
+	payload := map[string]any{
+		"model":   grokDefaultResponsesModel,
+		"input":   prompt,
+		"tools":   []map[string]any{{"type": "web_search"}},
+		"include": []string{"web_search_call.action.sources"},
+		"store":   false,
+		"stream":  false,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	apiURL, err := buildGrokResponsesURL(account, s.cfg, s.settingService)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create standalone web_search probe request")
+	}
+	s.applyGrokTestRequestHeaders(req, account, authToken, "application/json")
+
+	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("standalone web_search probe failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, grokDefaultResponsesModel), account, resp)
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("standalone web_search probe returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	// Normalize like gateway extractGrokWebSearchSources (URL-only sources are enough for connectivity).
+	sourceCount := 0
+	gjson.GetBytes(body, "output").ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").String() != "web_search_call" {
+			return true
+		}
+		sources := item.Get("action.sources")
+		if sources.IsArray() {
+			sourceCount += len(sources.Array())
+		}
+		return true
+	})
+	searchCount := countGrokNativeSearchCallsFromJSONBytes(body)
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("web_search ok: query=%q tool_calls=%d sources=%d\n", query, searchCount, sourceCount)})
+	// Optional: first structured result title if model returned JSON text.
+	gjson.GetBytes(body, "output").ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").String() != "message" {
+			return true
+		}
+		for _, part := range item.Get("content").Array() {
+			text := strings.TrimSpace(part.Get("text").String())
+			if text == "" {
+				continue
+			}
+			if len(text) > 300 {
+				text = text[:300] + "..."
+			}
+			s.sendEvent(c, TestEvent{Type: "content", Text: text + "\n"})
+			return false
+		}
+		return true
+	})
+	if searchCount == 0 && sourceCount == 0 {
+		return s.sendErrorAndEnd(c, "standalone web_search probe completed but no search sources/tool calls were observed")
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+func (s *AccountTestService) testGrokTTS(c *gin.Context, ctx context.Context, account *Account, authToken, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		text = defaultGrokTTSTestText
+	}
+	apiURL, err := buildGrokVoiceURL(account, s.cfg, "tts")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok TTS URL: %s", err.Error()))
+	}
+
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: "grok-voice-tts"})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Calling standalone /v1/tts..."})
+
+	// xAI requires `language`; optional voice_id. Prefer the shape that matches
+	// live gateway probes (text + language [+ voice_id]).
+	payloads := []map[string]any{
+		{"text": text, "language": "en", "voice_id": "Ara"},
+		{"text": text, "language": "en"},
+		{"text": text, "language": "English", "voice_id": "Ara"},
+	}
+	var lastBody string
+	var lastCode int
+	for _, payload := range payloads {
+		payloadBytes, _ := json.Marshal(payload)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Failed to create Grok TTS request")
+		}
+		s.applyGrokTestRequestHeaders(req, account, authToken, "audio/*, application/json, */*")
+		resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+		if err != nil {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok TTS failed: %s", err.Error()))
+		}
+		body, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		s.observeGrokTestResponse(ctx, account, resp)
+		lastCode = resp.StatusCode
+		lastBody = string(body)
+		if resp.StatusCode == http.StatusOK {
+			ct := resp.Header.Get("Content-Type")
+			if ct == "" {
+				ct = "audio/mpeg"
+			}
+			if i := strings.Index(ct, ";"); i >= 0 {
+				ct = strings.TrimSpace(ct[:i])
+			}
+			// Cap preview size so SSE stays manageable (~4 MiB audio).
+			if len(body) > 4<<20 {
+				body = body[:4<<20]
+			}
+			audioURL := "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(body)
+			s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("tts ok: content-type=%s bytes=%d\n", ct, len(body))})
+			s.sendEvent(c, TestEvent{Type: "audio", AudioURL: audioURL, MimeType: ct})
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
+		}
+		if resp.StatusCode < 400 || resp.StatusCode >= 500 {
+			break
+		}
+	}
+	return s.sendErrorAndEnd(c, fmt.Sprintf("Grok TTS returned %d: %s", lastCode, lastBody))
+}
+
+// testGrokSTT posts audio to /v1/stt. When audioDataURL is set, uses the
+// uploaded file; otherwise a tiny synthetic silent WAV for connectivity only.
+func (s *AccountTestService) testGrokSTT(c *gin.Context, ctx context.Context, account *Account, authToken, audioDataURL string) error {
+	apiURL, err := buildGrokVoiceURL(account, s.cfg, "stt")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok STT URL: %s", err.Error()))
+	}
+
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: "grok-voice-stt"})
+
+	var audioBytes []byte
+	filename := "probe.wav"
+	if audioDataURL = strings.TrimSpace(audioDataURL); audioDataURL != "" {
+		if err := validateAccountTestDataURL(audioDataURL, "audio/"); err != nil {
+			return s.sendErrorAndEnd(c, err.Error())
+		}
+		raw, mime, err := decodeAccountTestDataURL(audioDataURL)
+		if err != nil {
+			return s.sendErrorAndEnd(c, "Invalid audio data URL: "+err.Error())
+		}
+		audioBytes = raw
+		filename = sttFilenameForMIME(mime)
+		s.sendEvent(c, TestEvent{Type: "status", Text: "Calling standalone /v1/stt with uploaded audio..."})
+		s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("uploaded audio: mime=%s bytes=%d\n", mime, len(audioBytes))})
+	} else {
+		audioBytes = minimalSilentWAV()
+		s.sendEvent(c, TestEvent{Type: "status", Text: "Calling standalone /v1/stt with a synthetic silent WAV..."})
+	}
+
+	var bodyBuf bytes.Buffer
+	w := multipart.NewWriter(&bodyBuf)
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to build STT multipart body")
+	}
+	if _, err := part.Write(audioBytes); err != nil {
+		return s.sendErrorAndEnd(c, "Failed to write STT audio part")
+	}
+	_ = w.WriteField("model", "grok-stt")
+	_ = w.WriteField("language", "en")
+	if err := w.Close(); err != nil {
+		return s.sendErrorAndEnd(c, "Failed to finalize STT multipart body")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, &bodyBuf)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Grok STT request")
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(req.Header)
+	}
+	account.ApplyHeaderOverrides(req.Header)
+
+	resp, err := s.httpUpstream.Do(req, s.grokTestProxyURL(account), account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok STT failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	s.observeGrokTestResponse(ctx, account, resp)
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		// 4xx on synthetic audio still proves the STT endpoint is wired; report clearly.
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok STT returned %d: %s", resp.StatusCode, string(respBody)))
+	}
+	text := strings.TrimSpace(gjson.GetBytes(respBody, "text").String())
+	if text == "" {
+		text = strings.TrimSpace(string(respBody))
+		if len(text) > 200 {
+			text = text[:200] + "..."
+		}
+	}
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("stt ok: %s\n", text)})
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// testGrokRealtime dials the standalone xAI Voice Realtime WebSocket
+// (wss://api.x.ai/v1/realtime?model=...) to verify auth + endpoint reachability.
+// It does not run a full audio session — success is WS handshake, optionally
+// enriched with the first server event type when one arrives quickly.
+func (s *AccountTestService) testGrokRealtime(c *gin.Context, ctx context.Context, account *Account, authToken, modelID string) error {
+	model := strings.TrimSpace(modelID)
+	if model == "" {
+		model = defaultGrokRealtimeTestModel
+	}
+	if mapped := strings.TrimSpace(account.GetMappedModel(model)); mapped != "" {
+		model = mapped
+	}
+
+	base, err := buildGrokVoiceURL(account, s.cfg, "realtime")
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok Realtime URL: %s", err.Error()))
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok Realtime URL: %s", err.Error()))
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		u.Scheme = "wss"
+	case "http":
+		u.Scheme = "ws"
+	case "wss", "ws":
+		// already websocket
+	default:
+		return s.sendErrorAndEnd(c, "Invalid Grok Realtime URL scheme")
+	}
+	q := u.Query()
+	if q.Get("model") == "" {
+		q.Set("model", model)
+	}
+	u.RawQuery = q.Encode()
+	wsURL := u.String()
+
+	s.prepareGrokTestSSE(c)
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: model})
+	s.sendEvent(c, TestEvent{Type: "status", Text: "Dialing standalone wss /v1/realtime (connectivity probe)..."})
+	s.sendEvent(c, TestEvent{Type: "content", Text: fmt.Sprintf("realtime target: %s\n", redactGrokRealtimeURLForLog(wsURL))})
+
+	headers := http.Header{}
+	headers.Set("Authorization", "Bearer "+authToken)
+	if account.IsGrokOAuth() {
+		applyGrokCLIHeaders(headers)
+	}
+	account.ApplyHeaderOverrides(headers)
+
+	dialer := s.grokWSDialer
+	if dialer == nil {
+		dialer = newDefaultOpenAIWSClientDialer()
+	}
+
+	dialCtx, cancel := context.WithTimeout(ctx, grokRealtimeProbeTimeout)
+	defer cancel()
+
+	conn, status, _, dialErr := dialer.Dial(dialCtx, wsURL, headers, s.grokTestProxyURL(account))
+	if dialErr != nil {
+		detail := dialErr.Error()
+		var hs *openAIWSHandshakeError
+		if errors.As(dialErr, &hs) && len(hs.Body) > 0 {
+			body := strings.TrimSpace(string(hs.Body))
+			if len(body) > 300 {
+				body = body[:300] + "..."
+			}
+			detail = fmt.Sprintf("%s body=%s", detail, body)
+		}
+		if status > 0 {
+			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Realtime WS handshake failed (HTTP %d): %s", status, detail))
+		}
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Realtime WS dial failed: %s", detail))
+	}
+	defer func() { _ = conn.Close() }()
+
+	s.sendEvent(c, TestEvent{Type: "content", Text: "realtime ws handshake ok\n"})
+
+	// Best-effort: read one server event if it arrives quickly (session.created etc.).
+	// Handshake alone is enough for connectivity; missing first event is not a failure.
+	readCtx, readCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer readCancel()
+	if msg, readErr := conn.ReadMessage(readCtx); readErr == nil && len(msg) > 0 {
+		eventType := strings.TrimSpace(gjson.GetBytes(msg, "type").String())
+		if eventType == "" {
+			eventType = "unknown"
+		}
+		preview := strings.TrimSpace(string(msg))
+		if len(preview) > 240 {
+			preview = preview[:240] + "..."
+		}
+		s.sendEvent(c, TestEvent{
+			Type: "content",
+			Text: fmt.Sprintf("realtime first event: type=%s payload=%s\n", eventType, preview),
+		})
+	} else {
+		s.sendEvent(c, TestEvent{
+			Type: "content",
+			Text: "realtime handshake succeeded (no server event within 3s; still connectivity OK)\n",
+		})
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// validateAccountTestDataURL ensures data URLs are well-formed and size-bounded.
+func validateAccountTestDataURL(raw, requiredPrefix string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fmt.Errorf("media data URL is empty")
+	}
+	if !strings.HasPrefix(raw, "data:") {
+		return fmt.Errorf("media must be a data: URL (data:<mime>;base64,...)")
+	}
+	// Rough size check before decode (base64 expands ~4/3).
+	if len(raw) > maxAccountTestMediaBytes*2 {
+		return fmt.Errorf("media data URL exceeds size limit")
+	}
+	_, mime, err := decodeAccountTestDataURL(raw)
+	if err != nil {
+		return err
+	}
+	if requiredPrefix != "" && !strings.HasPrefix(strings.ToLower(mime), strings.ToLower(requiredPrefix)) {
+		return fmt.Errorf("expected media type prefix %q, got %q", requiredPrefix, mime)
+	}
+	return nil
+}
+
+// normalizeAccountTestImageDataURL validates an image data URL, enforces xAI
+// minimum dimensions (8x8), and rewrites to a clean data:image/<type>;base64,... form.
+func normalizeAccountTestImageDataURL(raw string) (string, error) {
+	if err := validateAccountTestDataURL(raw, "image/"); err != nil {
+		return "", err
+	}
+	data, mime, err := decodeAccountTestDataURL(raw)
+	if err != nil {
+		return "", err
+	}
+	// Soft cap decoded bytes (~4 MiB) for edit payloads to avoid upstream/proxy EOF.
+	const maxDecodedImage = 4 << 20
+	if len(data) > maxDecodedImage {
+		return "", fmt.Errorf(
+			"source image is too large (%d bytes decoded). Please use a smaller image (under ~4 MB) for admin edit tests",
+			len(data),
+		)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		// Keep raw data URL if decoder does not understand the codec (e.g. webp
+		// without golang.org/x/image/webp); still send upstream and let xAI validate.
+		return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+	}
+	if cfg.Width < 8 || cfg.Height < 8 {
+		return "", fmt.Errorf(
+			"source image is too small (%dx%d). xAI requires both width and height to be at least 8 pixels",
+			cfg.Width, cfg.Height,
+		)
+	}
+	// Prefer a stable mime from config when known.
+	if mime == "" || mime == "application/octet-stream" {
+		mime = "image/png"
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func isTransientGrokTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "unexpected eof") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "timeout awaiting response")
+}
+
+func formatGrokImageTransportError(err error, hasSourceImage bool, payloadBytes int) string {
+	base := fmt.Sprintf("Grok image request failed: %s", err.Error())
+	if !hasSourceImage {
+		return base
+	}
+	return base + fmt.Sprintf(
+		" (edit payload ~%d bytes). Tips: use a smaller source image (<4 MB / lower resolution), ensure the account proxy is stable, and retry. xAI /images/edits expects image as {\"url\":\"data:image/...;base64,...\",\"type\":\"image_url\"}.",
+		payloadBytes,
+	)
+}
+
+func formatGrokImagesAPIError(status int, body []byte, hasSourceImage bool) string {
+	msg := strings.TrimSpace(string(body))
+	if len(msg) > 800 {
+		msg = msg[:800] + "..."
+	}
+	prefix := fmt.Sprintf("Grok images API returned %d: %s", status, msg)
+	lower := strings.ToLower(msg)
+	if hasSourceImage && (strings.Contains(lower, "too small") || strings.Contains(lower, "at least 8")) {
+		return prefix + " — upload a source image with both width and height ≥ 8 px."
+	}
+	return prefix
+}
+
+func decodeAccountTestDataURL(raw string) (data []byte, mime string, err error) {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "data:") {
+		return nil, "", fmt.Errorf("not a data URL")
+	}
+	rest := strings.TrimPrefix(raw, "data:")
+	comma := strings.Index(rest, ",")
+	if comma < 0 {
+		return nil, "", fmt.Errorf("invalid data URL (missing comma)")
+	}
+	meta := rest[:comma]
+	payload := rest[comma+1:]
+	mime = "application/octet-stream"
+	if semi := strings.Index(meta, ";"); semi >= 0 {
+		if t := strings.TrimSpace(meta[:semi]); t != "" {
+			mime = t
+		}
+	} else if t := strings.TrimSpace(meta); t != "" {
+		mime = t
+	}
+	if !strings.Contains(strings.ToLower(meta), ";base64") {
+		return nil, "", fmt.Errorf("only base64 data URLs are supported")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		// Some browsers emit URL-safe base64 without padding.
+		decoded, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(payload, "="))
+		if err != nil {
+			return nil, "", fmt.Errorf("base64 decode failed: %w", err)
+		}
+	}
+	if len(decoded) == 0 {
+		return nil, "", fmt.Errorf("decoded media is empty")
+	}
+	if len(decoded) > maxAccountTestMediaBytes {
+		return nil, "", fmt.Errorf("media exceeds %d byte limit", maxAccountTestMediaBytes)
+	}
+	return decoded, mime, nil
+}
+
+func sttFilenameForMIME(mime string) string {
+	switch strings.ToLower(strings.TrimSpace(mime)) {
+	case "audio/mpeg", "audio/mp3":
+		return "upload.mp3"
+	case "audio/wav", "audio/x-wav", "audio/wave":
+		return "upload.wav"
+	case "audio/webm":
+		return "upload.webm"
+	case "audio/ogg", "audio/opus":
+		return "upload.ogg"
+	case "audio/mp4", "audio/m4a", "audio/x-m4a":
+		return "upload.m4a"
+	default:
+		return "upload.bin"
+	}
+}
+
+// redactGrokRealtimeURLForLog strips query secrets while keeping model for diagnostics.
+func redactGrokRealtimeURLForLog(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u == nil {
+		return raw
+	}
+	// Keep model query only.
+	model := u.Query().Get("model")
+	u.RawQuery = ""
+	if model != "" {
+		u.RawQuery = "model=" + url.QueryEscape(model)
+	}
+	// Never log bearer in fragment/userinfo.
+	u.User = nil
+	u.Fragment = ""
+	return u.String()
+}
+
+// minimalSilentWAV returns a valid tiny mono 8kHz 16-bit PCM WAV (~0.05s silence).
+func minimalSilentWAV() []byte {
+	// 400 samples * 2 bytes = 800 data bytes
+	const sampleRate = 8000
+	const numSamples = 400
+	dataSize := numSamples * 2
+	buf := make([]byte, 44+dataSize)
+	copy(buf[0:], []byte("RIFF"))
+	binary.LittleEndian.PutUint32(buf[4:], uint32(36+dataSize))
+	copy(buf[8:], []byte("WAVE"))
+	copy(buf[12:], []byte("fmt "))
+	binary.LittleEndian.PutUint32(buf[16:], 16) // PCM chunk size
+	binary.LittleEndian.PutUint16(buf[20:], 1)  // PCM
+	binary.LittleEndian.PutUint16(buf[22:], 1)  // mono
+	binary.LittleEndian.PutUint32(buf[24:], sampleRate)
+	binary.LittleEndian.PutUint32(buf[28:], sampleRate*2) // byte rate
+	binary.LittleEndian.PutUint16(buf[32:], 2)            // block align
+	binary.LittleEndian.PutUint16(buf[34:], 16)           // bits
+	copy(buf[36:], []byte("data"))
+	binary.LittleEndian.PutUint32(buf[40:], uint32(dataSize))
+	// samples already zero (silence)
+	return buf
 }
 
 // testOpenAIChatCompletionsConnection tests an OpenAI-compatible APIKey account
@@ -786,6 +1989,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Chat Completions request")
 	}
+	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
@@ -849,7 +2053,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		apiURL = chatgptCodexAPIURL
 	case account.Type == AccountTypeAPIKey:
-		authToken = account.GetOpenAIApiKey()
+		authToken = account.GetOpenAIProtocolAPIKey()
 		if authToken == "" {
 			return s.sendErrorAndEnd(c, "No API key available")
 		}
@@ -861,7 +2065,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 		}
-		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
+		apiURL = buildOpenAIResponsesURLForPlatform(account.Platform, normalizedBaseURL)
 	default:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 	}
@@ -905,6 +2109,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		req.Header.Set("Authorization", "Bearer "+authToken)
 	}
 	applyOpenAICodexProbeHeaders(req.Header)
+	if isOAuth {
+		enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
+	}
 	probeSessionID := compactProbeSessionID(account.ID)
 	req.Header.Set("Session_ID", probeSessionID)
 	req.Header.Set("Conversation_ID", probeSessionID)
@@ -928,7 +2135,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
 	if err != nil {
 		if s.accountRepo != nil {
 			updates := buildOpenAICompactProbeExtraUpdates(nil, nil, err, false, time.Now())
@@ -973,7 +2180,6 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
-	markAccountTestConnected(c)
 
 	if !compactionFound {
 		return s.sendErrorAndEnd(c, "Upstream returned 2xx without a compaction output item (native remote compaction v2 unsupported on this chain)")
@@ -1087,7 +2293,6 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
-	markAccountTestConnected(c)
 
 	// Process SSE stream
 	return s.processGeminiStream(c, resp.Body)
@@ -1110,11 +2315,7 @@ func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Accou
 func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, account *Account, modelID string) error {
 	ctx := c.Request.Context()
 
-	// 默认模型：Claude 使用 claude-sonnet-4-5，Gemini 使用 gemini-3-pro-preview
-	testModelID := modelID
-	if testModelID == "" {
-		testModelID = "claude-sonnet-4-5"
-	}
+	testModelID := antigravityConnectionTestModel(modelID)
 
 	if s.antigravityGatewayService == nil {
 		return s.sendErrorAndEnd(c, "Antigravity gateway service not configured")
@@ -1135,7 +2336,6 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
-	markAccountTestConnected(c)
 
 	// 发送响应内容
 	if result.Text != "" {
@@ -1146,208 +2346,11 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	return nil
 }
 
-// testGrokAccountConnection 测试 grok 平台账号连接（仅支持 type=upstream）。
-// 与 antigravity 同形：SSE 通信壳子 + 委托给 GrokGatewayService.TestConnection。
-func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *Account, modelID string) error {
-	ctx := c.Request.Context()
-
-	if s.grokGatewayService == nil {
-		return s.sendErrorAndEnd(c, "Grok gateway service not configured")
+func antigravityConnectionTestModel(modelID string) string {
+	if modelID == "" {
+		return defaultAntigravityTestModel
 	}
-
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = "grok-4-fast"
-	}
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	result, err := s.grokGatewayService.TestConnection(ctx, account, testModelID)
-	if err != nil {
-		return s.sendErrorAndEnd(c, err.Error())
-	}
-	markAccountTestConnected(c)
-
-	if result.Text != "" {
-		s.sendEvent(c, TestEvent{Type: "content", Text: result.Text})
-	}
-
-	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-	return nil
-}
-
-// ProbeUpstreamModelsByAccount 使用已保存账号的凭据探测上游可用模型。
-func (s *AccountTestService) ProbeUpstreamModelsByAccount(ctx context.Context, account *Account) ([]string, error) {
-	if account == nil {
-		return nil, errors.New("account is required")
-	}
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	switch account.Platform {
-	case PlatformOpenAI:
-		if baseURL == "" {
-			baseURL = "https://api.openai.com"
-		}
-		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
-	case PlatformGemini:
-		if baseURL == "" {
-			baseURL = geminicli.AIStudioBaseURL
-		}
-		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
-	case PlatformAnthropic:
-		if baseURL == "" {
-			baseURL = "https://api.anthropic.com"
-		}
-		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
-	case PlatformGrok:
-		return s.ProbeUpstreamModels(ctx, account.Platform, account.Type, baseURL, apiKey)
-	default:
-		return nil, fmt.Errorf("unsupported platform: %s", account.Platform)
-	}
-}
-
-// ProbeUpstreamModels 使用表单传入的 base_url + api_key 探测上游可用模型。
-func (s *AccountTestService) ProbeUpstreamModels(ctx context.Context, platform, accountType, baseURL, apiKey string) ([]string, error) {
-	platform = strings.TrimSpace(platform)
-	accountType = strings.TrimSpace(accountType)
-	baseURL = strings.TrimSpace(baseURL)
-	apiKey = strings.TrimSpace(apiKey)
-	if apiKey == "" {
-		return nil, errors.New("api_key is required")
-	}
-	if accountType != AccountTypeAPIKey && (platform != PlatformGrok || accountType != AccountTypeUpstream) {
-		return nil, fmt.Errorf("unsupported account type for model probing: %s", accountType)
-	}
-
-	switch platform {
-	case PlatformOpenAI, PlatformGrok:
-		return FetchOpenAICompatibleUpstreamModels(ctx, baseURL, apiKey)
-	case PlatformGemini:
-		return s.fetchGeminiAPIKeyModels(ctx, baseURL, apiKey)
-	case PlatformAnthropic:
-		return s.fetchAnthropicCompatibleModels(ctx, baseURL, apiKey)
-	default:
-		return nil, fmt.Errorf("unsupported platform: %s", platform)
-	}
-}
-
-func (s *AccountTestService) fetchGeminiAPIKeyModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	if baseURL == "" {
-		baseURL = geminicli.AIStudioBaseURL
-	}
-	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	fullURL := strings.TrimRight(normalizedBaseURL, "/") + "/v1beta/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create gemini list-models request: %w", err)
-	}
-	req.Header.Set("x-goog-api-key", apiKey)
-
-	resp, err := s.doModelProbeRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("list-models returned %d: %s", resp.StatusCode, string(body))
-	}
-	var parsed struct {
-		Models []struct {
-			Name string `json:"name"`
-		} `json:"models"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("parse gemini list-models response: %w", err)
-	}
-	ids := make([]string, 0, len(parsed.Models))
-	for _, m := range parsed.Models {
-		id := strings.TrimSpace(m.Name)
-		id = strings.TrimPrefix(id, "models/")
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
-}
-
-func (s *AccountTestService) fetchAnthropicCompatibleModels(ctx context.Context, baseURL, apiKey string) ([]string, error) {
-	if baseURL == "" {
-		baseURL = "https://api.anthropic.com"
-	}
-	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
-	if err != nil {
-		return nil, err
-	}
-	fullURL := strings.TrimRight(normalizedBaseURL, "/") + "/v1/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fullURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create anthropic list-models request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("x-api-key", apiKey)
-	req.Header.Set("anthropic-version", "2023-06-01")
-
-	resp, err := s.doModelProbeRequest(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("list-models returned %d: %s", resp.StatusCode, string(body))
-	}
-	ids, err := parseModelIDsFromDataResponse(body)
-	if err != nil {
-		return nil, err
-	}
-	return ids, nil
-}
-
-func (s *AccountTestService) doModelProbeRequest(req *http.Request) (*http.Response, error) {
-	if s.httpUpstream != nil {
-		return s.httpUpstream.Do(req, "", 0, 0)
-	}
-	client := &http.Client{Timeout: 15 * time.Second}
-	return client.Do(req)
-}
-
-func parseModelIDsFromDataResponse(body []byte) ([]string, error) {
-	var parsed struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("parse list-models response: %w", err)
-	}
-	ids := make([]string, 0, len(parsed.Data))
-	for _, m := range parsed.Data {
-		if id := strings.TrimSpace(m.ID); id != "" {
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
-}
-
-// ListGrokUpstreamModels 委托给 GrokGatewayService 拉 grok2api 网关上当前账号可用模型 ID 列表。
-// 包一层是为了避免 admin handler 再额外注入 *GrokGatewayService。
-func (s *AccountTestService) ListGrokUpstreamModels(ctx context.Context, account *Account) ([]string, error) {
-	if s.grokGatewayService == nil {
-		return nil, errors.New("grok gateway service not configured")
-	}
-	return s.grokGatewayService.ListUpstreamModels(ctx, account)
+	return modelID
 }
 
 // buildGeminiAPIKeyRequest builds request for Gemini API Key accounts
@@ -1661,17 +2664,13 @@ func createOpenAIChatCompletionsTestPayload(modelID string, prompt string) map[s
 // processClaudeStream processes the SSE stream from Claude API
 func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
-	hasContent := false
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				if hasContent {
-					s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-					return nil
-				}
-				return s.sendErrorAndEnd(c, "Claude stream ended without content")
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+				return nil
 			}
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 		}
@@ -1683,11 +2682,8 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
-			if hasContent {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
-			}
-			return s.sendErrorAndEnd(c, "Claude stream completed without content")
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		}
 
 		var data map[string]any
@@ -1701,18 +2697,12 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		case "content_block_delta":
 			if delta, ok := data["delta"].(map[string]any); ok {
 				if text, ok := delta["text"].(string); ok {
-					if text != "" {
-						hasContent = true
-						s.sendEvent(c, TestEvent{Type: "content", Text: text})
-					}
+					s.sendEvent(c, TestEvent{Type: "content", Text: text})
 				}
 			}
 		case "message_stop":
-			if hasContent {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
-				return nil
-			}
-			return s.sendErrorAndEnd(c, "Claude stream stopped without content")
+			s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+			return nil
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {
@@ -1935,7 +2925,6 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	if resp.StatusCode != http.StatusOK {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
-	markAccountTestConnected(c)
 
 	// Parse {"data": [{"b64_json": "...", "revised_prompt": "..."}]}
 	var result struct {
@@ -2004,10 +2993,8 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	var (
-		responsesBody []byte
-		err           error
-	)
+	var responsesBody []byte
+	var err error
 	if credentialAccount.IsOpenAIAgentIdentity() {
 		responsesBody, err = buildOpenAIAgentIdentityImageResponsesRequest(parsed)
 	} else {
@@ -2039,22 +3026,23 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
-	req.Header.Set("originator", openai.CodexDefaultOriginator)
+	canonical := resolveCodexOutboundIdentity("")
+	req.Header.Set("originator", canonical.originator)
 	if customUA := strings.TrimSpace(credentialAccount.GetOpenAIUserAgent()); customUA != "" {
 		req.Header.Set("User-Agent", customUA)
 	} else {
-		req.Header.Set("User-Agent", codexCLIUserAgent)
+		req.Header.Set("User-Agent", canonical.userAgent)
 	}
 	setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
-	// 与真实转发一致：originator 与最终 User-Agent 首段配套（原 opencode 与 Codex UA 错配会 404，issue #3901）。
-	enforceCodexIdentityHeaders(req.Header)
-	setOpenAIChatGPTAccountHeaders(req.Header, account)
+	// 与真实转发一致：账号级自定义 UA 同样作为管理员显式配置传入，否则测试用的身份
+	// 与该账号真实出站的身份不是同一个（issue #3901 的配对不变式由收口保证）。
+	enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, false)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
 	}
@@ -2072,7 +3060,6 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		}
 		return s.sendErrorAndEnd(c, message)
 	}
-	markAccountTestConnected(c)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -2105,23 +3092,10 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 }
 
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
-	if event.Type == "content" || event.Type == "image" {
-		markAccountTestFirstResponse(c)
-	}
-	if (event.Type == "test_complete" || event.Type == "error") && event.ElapsedMs == 0 {
-		if metrics := getAccountTestMetrics(c); metrics != nil {
-			if !metrics.startedAt.IsZero() {
-				event.ElapsedMs = time.Since(metrics.startedAt).Milliseconds()
-			}
-			if metrics.connectRecorded {
-				event.ConnectMs = metrics.connectMs
-			}
-			if metrics.firstRespRecorded {
-				event.FirstResponseMs = metrics.firstResponseMs
-			}
-		} else if startedAtValue, ok := c.Get(accountTestStartedAtContextKey); ok {
-			if startedAt, ok := startedAtValue.(time.Time); ok && !startedAt.IsZero() {
-				event.ElapsedMs = time.Since(startedAt).Milliseconds()
+	if event.Type == "test_complete" {
+		if suppress, ok := c.Get(accountTestSuppressCompletionContextKey); ok {
+			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
+				return
 			}
 		}
 	}

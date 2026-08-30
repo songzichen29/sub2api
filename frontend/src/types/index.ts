@@ -107,6 +107,9 @@ export interface AdminUser extends User {
   last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
+  // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
+  // 管理侧权限开关，普通用户接口不返回。
+  restrict_public_groups?: boolean
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
 }
@@ -158,12 +161,12 @@ export interface UserAffiliateDetail {
   aff_quota: number
   aff_frozen_quota: number
   aff_history_quota: number
-  recharge_enabled: boolean
-  subscription_enabled: boolean
-  /** 当前用户作为邀请人时，对充值订单实际生效的返利比例。0-100。 */
-  effective_recharge_rebate_rate_percent: number
-  /** 当前用户作为邀请人时，对订阅订单实际生效的返利比例。0-100。 */
-  effective_subscription_rebate_rate_percent: number
+  /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
+  effective_rebate_rate_percent: number
+  recharge_enabled?: boolean
+  subscription_enabled?: boolean
+  effective_recharge_rebate_rate_percent?: number
+  effective_subscription_rebate_rate_percent?: number
   invitees: AffiliateInvitee[]
 }
 
@@ -259,6 +262,10 @@ export interface PublicSettings {
   google_oauth_enabled: boolean
   backend_mode_enabled: boolean
   version: string
+  // 服务器全局时区（IANA 名称与当前 UTC 偏移），高峰时段等服务端本地时间窗口的展示标注用；
+  // 可选：注入的 __APP_CONFIG__ 旧缓存可能缺失
+  server_timezone?: string
+  server_utc_offset?: string
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
@@ -268,13 +275,14 @@ export interface PublicSettings {
   channel_monitor_default_interval_seconds: number
   /** When true, user monitor hides RPM/TPM so scale cannot be reverse-estimated. */
   channel_monitor_hide_throughput?: boolean
+  /** When true, user monitor shows account quota/balance snapshots (default off). */
+  channel_monitor_show_quota?: boolean
   available_channels_enabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
-  server_utc_offset?: string
+  plugin_management_enabled: boolean
+  service_quota_enabled: boolean
   affiliate_enabled: boolean
-  affiliate_recharge_enabled: boolean
-  affiliate_subscription_enabled: boolean
   allow_user_view_error_requests?: boolean
 }
 
@@ -527,7 +535,9 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'composite'
+export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'composite'
+
+export type VideoModelPrices = Record<string, Record<string, number>>
 
 export type SubscriptionType = 'standard' | 'subscription'
 
@@ -549,10 +559,6 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
-  peak_rate_enabled?: boolean
-  peak_start?: string
-  peak_end?: string
-  peak_rate_multiplier?: number
   rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   max_reasoning_effort?: string // OpenAI/Codex reasoning ceiling; empty means unlimited
   reasoning_effort_mappings?: ReasoningEffortMapping[]
@@ -560,11 +566,12 @@ export interface Group {
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
-  daily_limit_reset_price: number | null
-  allow_daily_overdraft: boolean
-  allow_weekend_skip: boolean
+  daily_limit_reset_price?: number | null
+  allow_daily_overdraft?: boolean
+  allow_weekend_skip?: boolean
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
+  long_context_pricing_enabled: boolean
   // 图片生成计费配置
   allow_image_generation: boolean
   allow_batch_image_generation: boolean
@@ -575,8 +582,25 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
-  /** Codex 网页搜索单次价格；null 表示使用默认价 0.01 USD。 */
+  video_rate_independent: boolean
+  video_rate_multiplier: number
+  video_price_480p: number | null
+  video_price_720p: number | null
+  video_price_1080p: number | null
+  // Optional model-family x resolution overrides for Grok video pricing.
+  video_model_prices?: VideoModelPrices
+  // Codex 网页搜索单次价格（USD/次）；null 表示使用默认价 0.01
   web_search_price_per_call: number | null
+  // Grok Voice 显式定价（分组级）
+  search_price_per_1k: number | null
+  audio_realtime_price_per_min: number | null
+  audio_tts_price_per_million_chars: number | null
+  audio_stt_price_per_hour: number | null
+  // 高峰时段倍率配置
+  peak_rate_enabled: boolean
+  peak_start: string
+  peak_end: string
+  peak_rate_multiplier: number
   // Claude Code 客户端限制
   claude_code_only: boolean
   fallback_group_id: number | null
@@ -594,6 +618,7 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
   profit_control_enabled: boolean
@@ -692,7 +717,7 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
-  status: 'active' | 'inactive' | 'disabled' | 'quota_exhausted' | 'expired'
+  status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
@@ -702,6 +727,7 @@ export interface ApiKey {
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
+  current_concurrency: number
   group?: Group
   rate_limit_5h: number
   rate_limit_1d: number
@@ -753,11 +779,10 @@ export interface CreateGroupRequest {
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
-  daily_limit_reset_price?: number | null
-  allow_daily_overdraft?: boolean
-  allow_weekend_skip?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -767,7 +792,17 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
+  video_price_480p?: number | null
+  video_price_720p?: number | null
+  video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -806,11 +841,10 @@ export interface UpdateGroupRequest {
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
-  daily_limit_reset_price?: number | null
-  allow_daily_overdraft?: boolean
-  allow_weekend_skip?: boolean
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null
+  long_context_pricing_enabled?: boolean
+  model_pricing?: import('@/api/admin/channels').ChannelModelPricing[]
   allow_image_generation?: boolean
   allow_batch_image_generation?: boolean
   image_rate_independent?: boolean
@@ -820,7 +854,17 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  video_rate_independent?: boolean
+  video_rate_multiplier?: number
+  video_price_480p?: number | null
+  video_price_720p?: number | null
+  video_price_1080p?: number | null
+  video_model_prices?: VideoModelPrices
   web_search_price_per_call?: number | null
+  search_price_per_1k?: number | null
+  audio_realtime_price_per_min?: number | null
+  audio_tts_price_per_million_chars?: number | null
+  audio_stt_price_per_hour?: number | null
   peak_rate_enabled?: boolean
   peak_start?: string
   peak_end?: string
@@ -851,7 +895,7 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok'
+export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek'
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -971,6 +1015,9 @@ export interface TempUnschedulableState {
   matched_keyword: string
   rule_index: number
   error_message: string
+  trigger_count?: number
+  trigger_threshold?: number
+  trigger_window_minutes?: number
 }
 
 export interface TempUnschedulableStatus {
@@ -1023,6 +1070,18 @@ export interface UpstreamBillingProbeResult {
   error?: string
 }
 
+export interface UpstreamBillingRateSnapshotItem {
+  account_id: number
+  snapshot?: UpstreamBillingProbeSnapshot | null
+}
+
+export interface UpstreamBillingRatesResponse {
+  items: UpstreamBillingRateSnapshotItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export type OllamaCloudUsageStatus = 'ok' | 'unauthorized' | 'failed'
 
 export interface OllamaCloudUsageWindow {
@@ -1073,6 +1132,14 @@ export interface OllamaCloudUsageSettings {
   debounce_minutes: number
 }
 
+export interface AccountUsageQueryConfig {
+  enabled: boolean
+  provider: 'newapi' | 'sub2api' | string
+  base_url?: string
+  access_token?: string
+  user_id?: string
+}
+
 export interface Account {
   id: number
   name: string
@@ -1087,10 +1154,27 @@ export interface Account {
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: (CodexUsageSnapshot & OpenAICompactState & OpenAIResponsesState & {
+  extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
-    usage_query?: AccountUsageQueryConfig
+    upstream_billing_probe_enabled?: boolean
+    upstream_billing_rate_sync_enabled?: boolean
+    upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    codex_reset_credit_snapshot?: {
+      available_count?: number
+      credits?: { expires_at?: string }[]
+    }
+    auto_reset_credit_enabled?: boolean
+    auto_reset_credit_5h_threshold?: number
+    auto_reset_credit_7d_threshold?: number
+    codex_auto_reset_credit_state?: {
+      status?: 'checking' | 'available' | 'resetting' | 'success' | 'no_credit' | 'failed'
+      trigger_window?: string
+      available_count?: number
+      checked_at?: string
+      last_result_at?: string
+      error_code?: string
+    }
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1184,14 +1268,10 @@ export interface Account {
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
 
-  // Account labels normalized by backend (lowercase, unique, sorted).
-  // Used by filtering, bulk operations, and UI display.
-  tags?: string[]
-
-  // Linked spark shadow account fields.
+  // 影子账号关系（spark 维度影子）
   parent_account_id?: number | null
   quota_dimension?: string
-  // Parent display fields populated by backend list endpoints.
+  // 影子账号回填的母账号信息（仅影子非空）
   parent_email?: string
   parent_plan_type?: string
   parent_privacy_mode?: string
@@ -1233,29 +1313,47 @@ export interface AntigravityModelQuota {
   reset_time: string  // 重置时间 ISO8601
 }
 
-// 第三方面板（newapi 等）用量查询配置
-// 仅 apikey 类型账号支持；access_token 在后端以密文形式存储，
-// GET 响应里以 "••••••••" 占位符返回。
-export interface AccountUsageQueryConfig {
-  enabled: boolean
-  provider: 'newapi' | 'sub2api' | string
-  // newapi 使用独立面板凭据；sub2api 复用账号 credentials，因此以下字段不存在。
-  base_url?: string
-  // 后端返回时是占位符；前端编辑表单未修改时原样回传
-  access_token?: string
-  user_id?: string
+export interface GrokQuotaWindow {
+  limit?: number | null
+  remaining?: number | null
+  reset_unix?: number | null
+  reset_at?: string | null
 }
 
-// 第三方面板返回的额度信息（已规整化为统一单位）
-export interface AccountThirdPartyQuotaInfo {
-  plan_name: string
-  remaining: number
-  used: number
-  total: number
-  unit: string
-  utilization: number  // 0~1
-  total_known?: boolean
-  updated_at?: number
+export interface GrokBillingProductUsage {
+  product: string
+  usage_percent?: number | null
+}
+
+export interface GrokBillingSummary {
+  period_type?: string
+  usage_percent?: number | null
+  period_start?: string
+  period_end?: string
+  product_usage?: GrokBillingProductUsage[]
+  monthly_limit_cents?: number | null
+  used_cents?: number | null
+  included_used_cents?: number | null
+  billing_period_start?: string
+  billing_period_end?: string
+  used_percent?: number | null
+  /** Absolute USD money from billing probes */
+  prepaid_balance?: number | null
+  monthly_limit?: number | null
+  monthly_used?: number | null
+  on_demand_cap?: number | null
+  on_demand_used?: number | null
+  top_up_method?: string
+  is_unified_billing_user?: boolean
+  plan?: string
+  status_code?: number
+  source?: string
+  fetched_at?: string
+  updated_at?: string
+  weekly_updated_at?: string
+  monthly_updated_at?: string
+  partial?: boolean
+  failed_windows?: string[]
 }
 
 export interface AccountUsageInfo {
@@ -1265,6 +1363,7 @@ export interface AccountUsageInfo {
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null
   seven_day_fable?: UsageProgress | null
+  thirty_day?: UsageProgress | null
   gemini_shared_daily?: UsageProgress | null
   gemini_pro_daily?: UsageProgress | null
   gemini_flash_daily?: UsageProgress | null
@@ -1272,8 +1371,22 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
-  // 第三方面板查询返回的额度信息（仅 apikey + 启用 usage_query 时）
-  third_party_quota?: AccountThirdPartyQuotaInfo | null
+  grok_request_quota?: GrokQuotaWindow | null
+  grok_token_quota?: GrokQuotaWindow | null
+  grok_retry_after_seconds?: number | null
+  grok_entitlement_status?: string
+  grok_quota_snapshot_state?: string
+  grok_last_quota_probe_at?: string
+  grok_last_headers_seen_at?: string
+  grok_last_status_code?: number
+  grok_free_token_limit?: number
+  grok_local_usage?: WindowStats | null
+  grok_local_usage_24h?: WindowStats | null
+  grok_local_usage_7d?: WindowStats | null
+  grok_local_usage_monthly?: WindowStats | null
+  grok_billing?: GrokBillingSummary | null
+  subscription_tier?: string
+  subscription_tier_raw?: string
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
@@ -1322,6 +1435,7 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
+export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
 export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings'
 
 export interface OpenAICompactState {
@@ -1331,8 +1445,6 @@ export interface OpenAICompactState {
   openai_compact_last_status?: number
   openai_compact_last_error?: string
 }
-
-export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
 
 export interface OpenAIResponsesState {
   openai_responses_mode?: OpenAIResponsesMode
@@ -1356,7 +1468,6 @@ export interface CreateAccountRequest {
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
-  tags?: string[] // 管理员维度标签，提交前需经 normalizeAccountTags 规范化
 }
 
 export interface UpdateAccountRequest {
@@ -1378,7 +1489,6 @@ export interface UpdateAccountRequest {
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
-  tags?: string[] // 管理员维度标签；undefined=不改，[]=清空
 }
 
 export interface CheckMixedChannelRequest {
@@ -1399,6 +1509,95 @@ export interface CheckMixedChannelResponse {
   error?: string
   message?: string
   details?: MixedChannelWarningDetails
+}
+
+export interface CreateProxyRequest {
+  name: string
+  protocol: ProxyProtocol
+  host: string
+  port: number
+  username?: string | null
+  password?: string | null
+  expires_at?: number | null   // unix 秒；null/0 = 永不过期
+  fallback_mode?: 'none' | 'proxy' | 'direct'
+  backup_proxy_id?: number | null
+  expiry_warn_days?: number
+}
+
+export interface UpdateProxyRequest {
+  name?: string
+  protocol?: ProxyProtocol
+  host?: string
+  port?: number
+  username?: string | null
+  password?: string | null
+  status?: 'active' | 'inactive'
+  expires_at?: number | null   // unix 秒；null/0 = 永不过期
+  fallback_mode?: 'none' | 'proxy' | 'direct'
+  backup_proxy_id?: number | null
+  expiry_warn_days?: number
+}
+
+export interface AdminDataPayload {
+  type?: string
+  version?: number
+  exported_at: string
+  proxies: AdminDataProxy[]
+  accounts: AdminDataAccount[]
+  // 导出时被排除的 spark 影子账号数量(影子不持凭据、其调度配置不在备份范围)。
+  skipped_shadows?: number
+}
+
+export interface AdminDataProxy {
+  proxy_key: string
+  name: string
+  protocol: ProxyProtocol
+  host: string
+  port: number
+  username?: string | null
+  password?: string | null
+  status: 'active' | 'inactive'
+}
+
+export interface AdminDataAccount {
+  name: string
+  notes?: string | null
+  platform: AccountPlatform
+  type: AccountType
+  credentials: Record<string, unknown>
+  extra?: Record<string, unknown>
+  proxy_key?: string | null
+  concurrency: number
+  priority: number
+  rate_multiplier?: number | null
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+}
+
+// AdminDataImportApply 是账号导入时由 admin 在弹窗里勾选并填值的应用块。
+export interface AdminDataImportApply {
+  tags?: string[]
+  group_ids?: number[]
+  proxy_id?: number
+  concurrency?: number
+  priority?: number
+  model_mapping?: Record<string, string>
+}
+
+export interface AdminDataImportError {
+  kind: 'proxy' | 'account'
+  name?: string
+  proxy_key?: string
+  message: string
+}
+
+export interface AdminDataImportResult {
+  proxy_created: number
+  proxy_reused: number
+  proxy_failed: number
+  account_created: number
+  account_failed: number
+  errors?: AdminDataImportError[]
 }
 
 export interface CodexSessionImportRequest {
@@ -1464,107 +1663,6 @@ export interface CodexSessionImportResult {
   errors?: CodexSessionImportMessage[]
 }
 
-export interface CreateProxyRequest {
-  name: string
-  protocol: ProxyProtocol
-  host: string
-  port: number
-  username?: string | null
-  password?: string | null
-  expires_at?: number | null   // unix 秒；null/0 = 永不过期
-  fallback_mode?: 'none' | 'proxy' | 'direct'
-  backup_proxy_id?: number | null
-  expiry_warn_days?: number
-}
-
-export interface UpdateProxyRequest {
-  name?: string
-  protocol?: ProxyProtocol
-  host?: string
-  port?: number
-  username?: string | null
-  password?: string | null
-  status?: 'active' | 'inactive'
-  expires_at?: number | null   // unix 秒；null/0 = 永不过期
-  fallback_mode?: 'none' | 'proxy' | 'direct'
-  backup_proxy_id?: number | null
-  expiry_warn_days?: number
-}
-
-export interface AdminDataPayload {
-  type?: string
-  version?: number
-  exported_at: string
-  proxies: AdminDataProxy[]
-  accounts: AdminDataAccount[]
-  // Number of spark shadow accounts skipped during export.
-  skipped_shadows?: number
-}
-
-export interface AdminDataProxy {
-  proxy_key: string
-  name: string
-  protocol: ProxyProtocol
-  host: string
-  port: number
-  username?: string | null
-  password?: string | null
-  status: 'active' | 'inactive'
-}
-
-export interface AdminDataAccount {
-  name: string
-  notes?: string | null
-  platform: AccountPlatform
-  type: AccountType
-  credentials: Record<string, unknown>
-  extra?: Record<string, unknown>
-  proxy_key?: string | null
-  concurrency: number
-  priority: number
-  rate_multiplier?: number | null
-  expires_at?: number | null
-  auto_pause_on_expired?: boolean
-  // 管理员标签（feature 2026-05-04-account-tags 引入）。导出时填、导入时透传。
-  tags?: string[]
-  // 分组 ID 列表（feature 2026-05-06-account-import-apply 引入）。导出/导入对称。
-  group_ids?: number[]
-}
-
-// AdminDataImportApply 是账号导入时由 admin 在弹窗里勾选并填值的"应用块"。
-//
-// 每个字段三态语义（feature 2026-05-06-account-import-apply）：
-//   - 字段缺省（payload 里没有这个 key）→ 未启用应用，保留文件原值
-//   - 字段值为空数组 / 空对象 / 0 → 启用应用且显式清空 / 清除
-//   - 字段值非空 → 启用应用且覆盖文件原值
-//
-// 前端 buildApplyPayload 必须严格跳过 enable=false 的字段（从 payload 整体省略，
-// 而不是发 null 或默认值）。
-export interface AdminDataImportApply {
-  tags?: string[]
-  group_ids?: number[]
-  proxy_id?: number
-  concurrency?: number
-  priority?: number
-  model_mapping?: Record<string, string>
-}
-
-export interface AdminDataImportError {
-  kind: 'proxy' | 'account'
-  name?: string
-  proxy_key?: string
-  message: string
-}
-
-export interface AdminDataImportResult {
-  proxy_created: number
-  proxy_reused: number
-  proxy_failed: number
-  account_created: number
-  account_failed: number
-  errors?: AdminDataImportError[]
-}
-
 // ==================== Usage & Redeem Types ====================
 
 export type RedeemCodeType = 'balance' | 'concurrency' | 'subscription' | 'invitation'
@@ -1601,12 +1699,13 @@ export interface UsageLog {
   total_cost: number
   actual_cost: number
   rate_multiplier: number
+  long_context_billing_applied: boolean
   billing_type: number
 
   request_type?: UsageRequestType
   stream: boolean
   openai_ws_mode?: boolean
-  duration_ms: number
+  duration_ms: number | null
   first_token_ms: number | null
   upstream_first_event_ms: number | null
 
@@ -1647,6 +1746,7 @@ export interface UsageLogAccountSummary {
 
 export interface AdminUsageLog extends UsageLog {
   upstream_model?: string | null
+  upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
   model_mapping_chain?: string | null
@@ -1659,9 +1759,6 @@ export interface AdminUsageLog extends UsageLog {
   // 渠道 ID 和计费等级（仅管理员可见）
   channel_id?: number | null
   billing_tier?: string | null
-
-  // 用户请求 IP（仅管理员可见）
-  ip_address?: string | null
 
   // 最小账号信息（仅管理员接口返回）
   account?: UsageLogAccountSummary
@@ -1798,8 +1895,8 @@ export interface UsageStatsResponse {
   total_input_tokens: number
   total_output_tokens: number
   total_cache_tokens: number
-  total_cache_creation_tokens: number
   total_cache_read_tokens: number
+  total_cache_creation_tokens: number
   total_tokens: number
   total_cost: number // 标准计费
   total_actual_cost: number // 实际扣除
@@ -1834,7 +1931,7 @@ export interface ModelStat {
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
-  account_cost: number // 账号成本
+  account_cost?: number // 账号成本（仅管理员接口返回）
 }
 
 export interface EndpointStat {
@@ -1852,7 +1949,7 @@ export interface GroupStat {
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
-  account_cost: number // 账号成本
+  account_cost?: number // 账号成本（仅管理员接口返回）
 }
 
 export interface UserBreakdownItem {
@@ -1918,6 +2015,7 @@ export interface UpdateUserRequest {
   rpm_limit?: number
   status?: 'active' | 'disabled'
   allowed_groups?: number[] | null
+  restrict_public_groups?: boolean
   // 用户专属分组倍率配置 (group_id -> rate_multiplier | null)
   // null 表示删除该分组的专属倍率
   group_rates?: Record<number, number | null>
@@ -1934,9 +2032,10 @@ export interface UserSubscription {
   id: number
   user_id: number
   group_id: number
+  status: 'active' | 'expired' | 'revoked' | 'suspended' | 'quota_exhausted'
   starts_at?: string | null
-  status: 'active' | 'expired' | 'revoked' | 'quota_exhausted'
   validity_unit?: string | null
+  validity_days?: number | null
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
@@ -1949,9 +2048,9 @@ export interface UserSubscription {
   weekend_skip_original_expires_at?: string | null
   weekend_skip_admin_updated_at?: string | null
   weekend_skip_admin_updated_by?: number | null
-  overdraft_limit_usd?: number
-  overdraft_used_usd?: number
-  overdraft_days?: number
+  overdraft_limit_usd?: number | null
+  overdraft_used_usd?: number | null
+  overdraft_days?: number | null
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
@@ -1959,11 +2058,6 @@ export interface UserSubscription {
   updated_at: string
   revoked_at?: string | null
   expires_at: string | null
-  /** 订阅来源：admin（管理员分配）/ redeem（兑换码）/ payment（付费购买，不可重置）。 */
-  source?: 'admin' | 'redeem' | 'payment'
-  /** 订阅来源为 payment 时，表示该订阅购买时对应的原始有效期天数。 */
-  validity_days?: number | null
-  /** 最近使用时间：服务端从 usage_logs 聚合 MAX(created_at) 填入；从未使用过的订阅返回 null。 */
   last_used_at?: string | null
   user?: User
   group?: Group
@@ -1989,12 +2083,6 @@ export interface SubscriptionProgress {
     percentage: number
     reset_in_seconds: number | null
   } | null
-  total?: {
-    used: number
-    limit: number | null
-    percentage: number
-    reset_in_seconds: number | null
-  } | null
   expires_at: string | null
   days_remaining: number | null
 }
@@ -2003,8 +2091,6 @@ export interface AssignSubscriptionRequest {
   user_id: number
   group_id: number
   validity_days?: number
-  starts_at?: string
-  expires_at?: string
 }
 
 export interface BulkAssignSubscriptionRequest {
@@ -2014,9 +2100,7 @@ export interface BulkAssignSubscriptionRequest {
 }
 
 export interface ExtendSubscriptionRequest {
-  days?: number
-  starts_at?: string
-  expires_at?: string
+  days: number
 }
 
 // ==================== Query Parameters ====================
@@ -2032,11 +2116,11 @@ export interface UserErrorRequest {
   message: string
   key_name: string
   key_deleted: boolean
-  group_name?: string
   client_ip?: string
-  user_agent?: string
+  group_name?: string
   request_type?: number
   stream?: boolean
+  user_agent?: string
 }
 
 export interface UserErrorRequestDetail extends UserErrorRequest {
@@ -2054,6 +2138,7 @@ export interface UserErrorListParams {
   status_code?: number
   category?: string
   api_key_id?: number
+  // 服务端排序,列白名单见后端 opsErrorLogsOrderBy(created_at/model/status_code)
   sort_by?: string
   sort_order?: 'asc' | 'desc'
 }

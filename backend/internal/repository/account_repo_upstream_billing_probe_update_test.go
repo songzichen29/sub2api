@@ -314,6 +314,50 @@ func TestBulkUpdateDisablingProbeRemovesSnapshot(t *testing.T) {
 	require.Equal(t, `{"upstream_billing_probe_enabled":false}`, string(payload))
 }
 
+func TestBulkUpdateMySQLReplacesModelMappingInsteadOfMergingOldModels(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	_, err := repo.bulkUpdateMySQL(context.Background(), []int64{27, 28}, service.AccountBulkUpdate{
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"model_mapping": map[string]any{
+				"gpt-5.4": "gpt-5.4",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, exec.execQueries)
+	query := normalizeSQLWhitespace(exec.execQueries[0])
+	require.Contains(t, query, "credentials = JSON_SET(JSON_MERGE_PATCH(")
+	require.Contains(t, query, "'$.model_mapping', CAST(? AS JSON))")
+	require.Len(t, exec.execArgs[0], 4)
+	mergedPayload, ok := exec.execArgs[0][0].([]byte)
+	require.True(t, ok)
+	require.JSONEq(t, `{"custom_error_codes_enabled":true}`, string(mergedPayload))
+	modelPayload, ok := exec.execArgs[0][1].([]byte)
+	require.True(t, ok)
+	require.JSONEq(t, `{"gpt-5.4":"gpt-5.4"}`, string(modelPayload))
+	require.Equal(t, int64(27), exec.execArgs[0][2])
+	require.Equal(t, int64(28), exec.execArgs[0][3])
+}
+
+func TestBulkUpdateMySQLKeepsMergeSemanticsWithoutModelMapping(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	_, err := repo.bulkUpdateMySQL(context.Background(), []int64{27}, service.AccountBulkUpdate{
+		Credentials: map[string]any{"custom_error_codes_enabled": true},
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, exec.execQueries)
+	query := normalizeSQLWhitespace(exec.execQueries[0])
+	require.Contains(t, query, "credentials = JSON_MERGE_PATCH(")
+	require.NotContains(t, query, "credentials = JSON_SET(")
+}
+
 func TestBulkUpdateProbeEligibilityMismatchRollsBack(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

@@ -18,6 +18,35 @@ var (
 const AccountListGroupUngrouped int64 = -1
 const AccountPrivacyModeUnsetFilter = "__unset__"
 
+// OAuthRefreshPageOptions describes one bounded, cursor-stable scan of OAuth
+// accounts. Candidate platforms are supplied by TokenRefreshService's refresher
+// registry so repository eligibility cannot drift from registered providers.
+type OAuthRefreshPageOptions struct {
+	Platforms            []string
+	AfterID              int64
+	Limit                int
+	ActiveOnly           bool
+	IncludeSetupToken    bool
+	RequireRefreshToken  bool
+	ExcludeRetryCooldown bool
+}
+
+// OAuthRefreshCandidatePage keeps cursor metadata from the raw SQL ID page.
+// Hydration may legitimately lose a concurrently deleted row, but callers can
+// still advance past the raw page without truncating or duplicating the scan.
+type OAuthRefreshCandidatePage struct {
+	Accounts    []Account
+	NextAfterID int64
+	HasMore     bool
+}
+
+// OAuthRefreshCandidatePager is intentionally narrower than AccountRepository.
+// Production refresh cycles fail closed when the repository does not implement
+// this bounded contract instead of silently falling back to an unpaged scan.
+type OAuthRefreshCandidatePager interface {
+	ListOAuthRefreshCandidatePage(ctx context.Context, options OAuthRefreshPageOptions) (*OAuthRefreshCandidatePage, error)
+}
+
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
@@ -39,13 +68,13 @@ type AccountRepository interface {
 
 	List(ctx context.Context, params pagination.PaginationParams) ([]Account, *pagination.PaginationResult, error)
 	ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, *pagination.PaginationResult, error)
+	// ListAllWithFilters 返回符合过滤条件的全部账号（不分页），用于账号列表页
+	// 计算 OpenAI 调度分数的过滤范围池。
 	ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]Account, error)
+	ListAllTags(ctx context.Context) ([]string, error)
 	ListByGroup(ctx context.Context, groupID int64) ([]Account, error)
 	ListActive(ctx context.Context) ([]Account, error)
-	ListOAuthRefreshCandidates(ctx context.Context) ([]Account, error)
 	ListByPlatform(ctx context.Context, platform string) ([]Account, error)
-	// ListAllTags 返回所有未删除账号 tags 字段去重排序后的并集，用于自动补全。
-	ListAllTags(ctx context.Context) ([]string, error)
 
 	UpdateLastUsed(ctx context.Context, id int64) error
 	BatchUpdateLastUsed(ctx context.Context, updates map[int64]time.Time) error
@@ -138,9 +167,10 @@ type AccountBulkUpdate struct {
 	Credentials    map[string]any
 	Extra          map[string]any
 	ProbeEnabled   *bool
-	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
-	// 已规范化（小写 / 去重 / 排序），调用方应先经 NormalizeAccountTags 处理。
-	Tags *[]string
+	Tags           *[]string
+	// EnsureCodexFingerprintSeed asks the repository to atomically preserve an
+	// existing valid Codex fingerprint seed or create one for eligible rows.
+	EnsureCodexFingerprintSeed bool
 }
 
 // CreateAccountRequest 创建账号请求
@@ -157,8 +187,6 @@ type CreateAccountRequest struct {
 	GroupIDs           []int64        `json:"group_ids"`
 	ExpiresAt          *time.Time     `json:"expires_at"`
 	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
-	// Tags 已规范化的标签数组；nil 视为空数组。
-	Tags []string `json:"tags"`
 }
 
 // UpdateAccountRequest 更新账号请求
@@ -174,8 +202,6 @@ type UpdateAccountRequest struct {
 	GroupIDs           *[]int64        `json:"group_ids"`
 	ExpiresAt          *time.Time      `json:"expires_at"`
 	AutoPauseOnExpired *bool           `json:"auto_pause_on_expired"`
-	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
-	Tags *[]string `json:"tags"`
 }
 
 // AccountService 账号管理服务
@@ -205,26 +231,19 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		}
 	}
 
-	// 规范化标签（trim/小写/去重/校验长度数量字符集）
-	tags, err := NormalizeAccountTags(req.Tags)
-	if err != nil {
-		return nil, err
-	}
-
 	// 创建账号
 	account := &Account{
 		Name:        req.Name,
 		Notes:       normalizeAccountNotes(req.Notes),
 		Platform:    req.Platform,
 		Type:        req.Type,
-		Credentials: req.Credentials,
-		Extra:       req.Extra,
+		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
+		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
-		Tags:        tags,
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
@@ -243,7 +262,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 			if err != nil {
 				return nil, err
 			}
-			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini) {
+			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini || g.Platform == PlatformGrok) {
 				return nil, fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", g.Name)
 			}
 		}
@@ -311,7 +330,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 
 	if req.Credentials != nil {
-		account.Credentials = *req.Credentials
+		account.Credentials = SanitizeStoredCredentials(account.Platform, *req.Credentials)
 	}
 
 	if req.Extra != nil {
@@ -322,7 +341,9 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		delete(extra, OllamaCloudUsageSessionExtraKey)
 		delete(extra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(extra, OllamaCloudUsageSnapshotExtraKey)
-		account.Extra = extra
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, extra)
+	} else {
+		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
 
 	if req.ProxyID != nil {
@@ -347,15 +368,6 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
 	}
 
-	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"
-	if req.Tags != nil {
-		tags, err := NormalizeAccountTags(*req.Tags)
-		if err != nil {
-			return nil, err
-		}
-		account.Tags = tags
-	}
-
 	// 先验证分组是否存在（在任何写操作之前）
 	if req.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *req.GroupIDs); err != nil {
@@ -375,7 +387,7 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 			if err != nil {
 				return nil, err
 			}
-			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini) {
+			if g.RequireOAuthOnly && (g.Platform == PlatformOpenAI || g.Platform == PlatformAntigravity || g.Platform == PlatformAnthropic || g.Platform == PlatformGemini || g.Platform == PlatformGrok) {
 				return nil, fmt.Errorf("分组 [%s] 仅允许 OAuth 账号，apikey 类型账号无法加入", g.Name)
 			}
 		}
@@ -500,6 +512,12 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 		return nil
 	case PlatformGemini:
 		// TODO: 测试Gemini API凭证
+		return nil
+	case PlatformGrok:
+		// Grok OAuth credentials are validated via token exchange/refresh and request-path probes.
+		return nil
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek:
+		// 国产 OpenAI 兼容供应商：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
 		return nil
 	default:
 		return fmt.Errorf("unsupported platform: %s", account.Platform)

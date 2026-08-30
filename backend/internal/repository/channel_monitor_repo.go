@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,7 +11,9 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -25,33 +28,6 @@ import (
 type channelMonitorRepository struct {
 	client *dbent.Client
 	db     *sql.DB
-}
-
-func buildMonitorInt64InClause(ids []int64) (string, []any) {
-	if len(ids) == 0 {
-		return "", nil
-	}
-	ph := make([]string, 0, len(ids))
-	args := make([]any, 0, len(ids))
-	for _, id := range ids {
-		ph = append(ph, "?")
-		args = append(args, id)
-	}
-	return strings.Join(ph, ","), args
-}
-
-func buildMonitorModelTargetsClause(ids []int64, primaryModels map[int64]string) (string, []any) {
-	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
-	if len(pairIDs) == 0 {
-		return "", nil
-	}
-	parts := make([]string, 0, len(pairIDs))
-	args := make([]any, 0, len(pairIDs)*2)
-	for i := range pairIDs {
-		parts = append(parts, "SELECT ? AS monitor_id, ? AS model")
-		args = append(args, pairIDs[i], pairModels[i])
-	}
-	return strings.Join(parts, " UNION ALL "), args
 }
 
 // NewChannelMonitorRepository 创建仓储实例。
@@ -77,9 +53,13 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetJitterSeconds(m.JitterSeconds).
 		SetCreatedBy(m.CreatedBy).
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
-		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
 	if m.TemplateID != nil {
 		builder = builder.SetTemplateID(*m.TemplateID)
+	}
+	if m.AccountID != nil {
+		builder = builder.SetAccountID(*m.AccountID)
 	}
 	if m.BodyOverride != nil {
 		builder = builder.SetBodyOverride(m.BodyOverride)
@@ -144,11 +124,17 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
 		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
-		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
 	if m.TemplateID != nil {
 		updater = updater.SetTemplateID(*m.TemplateID)
 	} else {
 		updater = updater.ClearTemplateID()
+	}
+	if m.AccountID != nil {
+		updater = updater.SetAccountID(*m.AccountID)
+	} else {
+		updater = updater.ClearAccountID()
 	}
 	if m.BodyOverride != nil {
 		updater = updater.SetBodyOverride(m.BodyOverride)
@@ -263,6 +249,9 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 		if row.PingLatencyMs != nil {
 			c = c.SetPingLatencyMs(*row.PingLatencyMs)
 		}
+		if row.Quota != nil {
+			c = c.SetQuota(row.Quota)
+		}
 		bulk = append(bulk, c)
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
@@ -302,6 +291,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 			PingLatencyMs: row.PingLatencyMs,
 			Message:       row.Message,
 			CheckedAt:     row.CheckedAt,
+			Quota:         row.Quota,
 		}
 		out = append(out, entry)
 	}
@@ -310,19 +300,15 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 
 // ---------- 用户视图聚合（原生 SQL） ----------
 
-// ListLatestPerModel 用窗口函数取每个 model 的最近一条记录。
+// ListLatestPerModel 用 DISTINCT ON 取每个 (monitor_id, model) 的最近一条记录。
+// 借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
 	const q = `
-		WITH ranked AS (
-			SELECT model, status, latency_ms, ping_latency_ms, checked_at,
-			       ROW_NUMBER() OVER (PARTITION BY model ORDER BY checked_at DESC) AS rn
-			FROM channel_monitor_histories
-			WHERE monitor_id = ?
-		)
-		SELECT model, status, latency_ms, ping_latency_ms, checked_at
-		FROM ranked
-		WHERE rn = 1
-		ORDER BY model
+		SELECT DISTINCT ON (model)
+		    model, status, latency_ms, ping_latency_ms, checked_at
+		FROM channel_monitor_histories
+		WHERE monitor_id = $1
+		ORDER BY model, checked_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID)
 	if err != nil {
@@ -354,6 +340,20 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 	*dst = &v
 }
 
+// scanMonitorQuota 把裸 SQL 读出的 JSONB quota 列解包为配额快照。
+// NULL（探活模式旧行）返回 nil；解析失败也返回 nil 并由调用方日志感知，
+// 不阻断列表渲染（与聚合层"失败仅日志"的原则一致）。
+func scanMonitorQuota(data []byte) *domain.MonitorQuotaSnapshot {
+	if len(data) == 0 {
+		return nil
+	}
+	snapshot := &domain.MonitorQuotaSnapshot{}
+	if err := json.Unmarshal(data, snapshot); err != nil {
+		return nil
+	}
+	return snapshot
+}
+
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
 // "可用" = status IN (operational, degraded)。
 //
@@ -366,14 +366,14 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 	}
 	const q = `
 		SELECT model,
-		       COUNT(*) AS total,
-		       SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END) AS ok,
+		       COUNT(*)                                                             AS total,
+		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
-		            THEN SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END) / COUNT(latency_ms)
-		            ELSE NULL END AS avg_latency_ms
+		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
+		            ELSE NULL END                                                   AS avg_latency_ms
 		FROM channel_monitor_histories
-		WHERE monitor_id = ?
-		  AND checked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+		WHERE monitor_id = $1
+		  AND checked_at >= NOW() - ($2::int || ' days')::interval
 		GROUP BY model
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID, windowDays)
@@ -418,25 +418,20 @@ func finalizeAvailabilityRow(row *service.ChannelMonitorAvailability, avgLatency
 }
 
 // ListLatestForMonitorIDs 一次性查询多个监控的"每个 (monitor_id, model) 最近一条"记录。
+// 利用 PG 的 DISTINCT ON 特性，借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
 func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*service.ChannelMonitorLatest, error) {
 	out := make(map[int64][]*service.ChannelMonitorLatest, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
-	inClause, inArgs := buildMonitorInt64InClause(ids)
-	q := fmt.Sprintf(`
-		WITH ranked AS (
-			SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at,
-			       ROW_NUMBER() OVER (PARTITION BY monitor_id, model ORDER BY checked_at DESC) AS rn
-			FROM channel_monitor_histories
-			WHERE monitor_id IN (%s)
-		)
-		SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
-		FROM ranked
-		WHERE rn = 1
-		ORDER BY monitor_id, model
-	`, inClause)
-	rows, err := r.db.QueryContext(ctx, q, inArgs...)
+	const q = `
+		SELECT DISTINCT ON (monitor_id, model)
+		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota
+		FROM channel_monitor_histories
+		WHERE monitor_id = ANY($1)
+		ORDER BY monitor_id, model, checked_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids))
 	if err != nil {
 		return nil, fmt.Errorf("query latest batch: %w", err)
 	}
@@ -446,11 +441,13 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		var monitorID int64
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var quota []byte
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt, &quota); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
+		l.Quota = scanMonitorQuota(quota)
 		out[monitorID] = append(out[monitorID], l)
 	}
 	if err := rows.Err(); err != nil {
@@ -461,7 +458,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 
 // ListRecentHistoryForMonitors 为多个 monitor 批量取各自"指定模型"最近 N 条历史（按 checked_at DESC，最新在前）。
 // primaryModels[monitorID] 指定该监控要过滤的模型名；monitor 不在 primaryModels 中的记录不返回。
-// 通过 CTE + UNION ALL 构造 (monitor_id, model) 白名单，
+// 通过 CTE + unnest(两个 int8/text 数组) 构造 (monitor_id, model) 白名单，
 // 再用 ROW_NUMBER() OVER (PARTITION BY monitor_id) 取各自前 N 条。
 //
 // 返回值：map[monitorID] -> []*ChannelMonitorHistoryEntry（不含 message，减少网络开销）。
@@ -473,16 +470,16 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 	perMonitorLimit int,
 ) (map[int64][]*service.ChannelMonitorHistoryEntry, error) {
 	out := make(map[int64][]*service.ChannelMonitorHistoryEntry, len(ids))
-	pairIDs, _ := buildMonitorModelPairs(ids, primaryModels)
+	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
 	if len(pairIDs) == 0 {
 		return out, nil
 	}
 	perMonitorLimit = clampTimelineLimit(perMonitorLimit)
 
-	targetsClause, targetArgs := buildMonitorModelTargetsClause(ids, primaryModels)
-	q := `
+	const q = `
 		WITH targets AS (
-		    ` + targetsClause + `
+		    SELECT unnest($1::bigint[]) AS monitor_id,
+		           unnest($2::text[])   AS model
 		),
 		ranked AS (
 		    SELECT h.monitor_id,
@@ -497,11 +494,10 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		)
 		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
 		FROM ranked
-		WHERE rn <= ?
+		WHERE rn <= $3
 		ORDER BY monitor_id, checked_at DESC
 	`
-	queryArgs := append(targetArgs, perMonitorLimit)
-	rows, err := r.db.QueryContext(ctx, q, queryArgs...)
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(pairIDs), pq.Array(pairModels), perMonitorLimit)
 	if err != nil {
 		return nil, fmt.Errorf("query recent history batch: %w", err)
 	}
@@ -525,7 +521,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 }
 
 // buildMonitorModelPairs 基于 ids 过滤出有效的 (monitor_id, model) 对，model 为空时跳过。
-// 保证两个切片长度一致且一一对应，供批量白名单构造复用。
+// 保证两个数组长度一致且一一对应，供 unnest 展开。
 func buildMonitorModelPairs(ids []int64, primaryModels map[int64]string) ([]int64, []string) {
 	if len(ids) == 0 || len(primaryModels) == 0 {
 		return nil, nil
@@ -571,22 +567,20 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 	if windowDays <= 0 {
 		windowDays = 7
 	}
-	inClause, inArgs := buildMonitorInt64InClause(ids)
-	q := fmt.Sprintf(`
+	const q = `
 		SELECT monitor_id,
 		       model,
-		       COUNT(*) AS total,
-		       SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END) AS ok,
+		       COUNT(*)                                                             AS total,
+		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
-		            THEN SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END) / COUNT(latency_ms)
-		            ELSE NULL END AS avg_latency_ms
+		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
+		            ELSE NULL END                                                   AS avg_latency_ms
 		FROM channel_monitor_histories
-		WHERE monitor_id IN (%s)
-		  AND checked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+		WHERE monitor_id = ANY($1)
+		  AND checked_at >= NOW() - ($2::int || ' days')::interval
 		GROUP BY monitor_id, model
-	`, inClause)
-	queryArgs := append(inArgs, windowDays)
-	rows, err := r.db.QueryContext(ctx, q, queryArgs...)
+	`
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), windowDays)
 	if err != nil {
 		return nil, fmt.Errorf("query availability batch: %w", err)
 	}
@@ -614,9 +608,9 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 
 // UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）的明细
 // 按 (monitor_id, model, bucket_date) 聚合写入 channel_monitor_daily_rollups。
-//   - 用 ON DUPLICATE KEY UPDATE 实现幂等回填，
+//   - 用 ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE 实现幂等回填，
 //     重复执行只会用最新统计覆盖；
-//   - targetDate 在 SQL 侧按 DATE(?) 归一到 UTC 日期，调用方不需要预处理。
+//   - $1::date 让 PG 自动把入参 truncate 到 UTC 日期，调用方不需要预处理 targetDate。
 func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error) {
 	const q = `
 		INSERT INTO channel_monitor_daily_rollups (
@@ -630,36 +624,36 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		SELECT
 		    monitor_id,
 		    model,
-		    DATE(?) AS bucket_date,
+		    $1::date AS bucket_date,
 		    COUNT(*)                                                         AS total_checks,
-		    SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END)     AS ok_count,
-		    SUM(CASE WHEN status = 'operational' THEN 1 ELSE 0 END)                   AS operational_count,
-		    SUM(CASE WHEN status = 'degraded' THEN 1 ELSE 0 END)                      AS degraded_count,
-		    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)                        AS failed_count,
-		    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END)                         AS error_count,
-		    COALESCE(SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END), 0)             AS sum_latency_ms,
+		    COUNT(*) FILTER (WHERE status IN ('operational','degraded'))     AS ok_count,
+		    COUNT(*) FILTER (WHERE status = 'operational')                   AS operational_count,
+		    COUNT(*) FILTER (WHERE status = 'degraded')                      AS degraded_count,
+		    COUNT(*) FILTER (WHERE status = 'failed')                        AS failed_count,
+		    COUNT(*) FILTER (WHERE status = 'error')                         AS error_count,
+		    COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0)             AS sum_latency_ms,
 		    COUNT(latency_ms)                                                AS count_latency,
-		    COALESCE(SUM(CASE WHEN ping_latency_ms IS NOT NULL THEN ping_latency_ms ELSE 0 END), 0)   AS sum_ping_latency_ms,
+		    COALESCE(SUM(ping_latency_ms) FILTER (WHERE ping_latency_ms IS NOT NULL), 0)   AS sum_ping_latency_ms,
 		    COUNT(ping_latency_ms)                                           AS count_ping_latency,
 		    NOW()
 		FROM channel_monitor_histories
-		WHERE checked_at >= DATE(?)
-		  AND checked_at < DATE_ADD(DATE(?), INTERVAL 1 DAY)
+		WHERE checked_at >= $1::date
+		  AND checked_at <  ($1::date + INTERVAL '1 day')
 		GROUP BY monitor_id, model
-		ON DUPLICATE KEY UPDATE
-		    total_checks        = VALUES(total_checks),
-		    ok_count            = VALUES(ok_count),
-		    operational_count   = VALUES(operational_count),
-		    degraded_count      = VALUES(degraded_count),
-		    failed_count        = VALUES(failed_count),
-		    error_count         = VALUES(error_count),
-		    sum_latency_ms      = VALUES(sum_latency_ms),
-		    count_latency       = VALUES(count_latency),
-		    sum_ping_latency_ms = VALUES(sum_ping_latency_ms),
-		    count_ping_latency  = VALUES(count_ping_latency),
+		ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE SET
+		    total_checks        = EXCLUDED.total_checks,
+		    ok_count            = EXCLUDED.ok_count,
+		    operational_count   = EXCLUDED.operational_count,
+		    degraded_count      = EXCLUDED.degraded_count,
+		    failed_count        = EXCLUDED.failed_count,
+		    error_count         = EXCLUDED.error_count,
+		    sum_latency_ms      = EXCLUDED.sum_latency_ms,
+		    count_latency       = EXCLUDED.count_latency,
+		    sum_ping_latency_ms = EXCLUDED.sum_ping_latency_ms,
+		    count_ping_latency  = EXCLUDED.count_ping_latency,
 		    computed_at         = NOW()
 	`
-	res, err := r.db.ExecContext(ctx, q, targetDate, targetDate, targetDate)
+	res, err := r.db.ExecContext(ctx, q, targetDate)
 	if err != nil {
 		return 0, fmt.Errorf("upsert daily rollups for %s: %w", targetDate.Format("2006-01-02"), err)
 	}
@@ -681,31 +675,31 @@ const channelMonitorPruneBatchSize = 5000
 
 // channelMonitorPruneHistorySQL 分批物理删明细表过期行。
 const channelMonitorPruneHistorySQL = `
-DELETE FROM channel_monitor_histories
-WHERE id IN (
-    SELECT id FROM (
-        SELECT id FROM channel_monitor_histories
-        WHERE checked_at < ?
-        ORDER BY id
-        LIMIT ?
-    ) AS batch
+WITH batch AS (
+    SELECT id FROM channel_monitor_histories
+    WHERE checked_at < $1
+    ORDER BY id
+    LIMIT $2
 )
+DELETE FROM channel_monitor_histories
+WHERE id IN (SELECT id FROM batch)
 `
 
-// channelMonitorPruneRollupSQL 分批物理删 rollup 表过期行。bucket_date 通过 DATE(?) 与 DATE 列比较。
+// channelMonitorPruneRollupSQL 分批物理删 rollup 表过期行。bucket_date 需要 ::date 转型
+// 保证与 DATE 列一致比较。
 const channelMonitorPruneRollupSQL = `
 WITH batch AS (
     SELECT id FROM channel_monitor_daily_rollups
-    WHERE bucket_date < DATE(?)
+    WHERE bucket_date < $1::date
     ORDER BY id
-    LIMIT ?
+    LIMIT $2
 )
 DELETE FROM channel_monitor_daily_rollups
 WHERE id IN (SELECT id FROM batch)
 `
 
 // deleteChannelMonitorBatched 循环执行分批 DELETE，直到影响行为 0。返回累计删除行数。
-// cutoff 由调用方按列类型传入（明细用 time.Time，对 rollup 用 DATE(?) 归一）。
+// cutoff 由调用方按列类型传入（明细用 time.Time 对 TIMESTAMPTZ，rollup 用 time.Time SQL 侧 ::date 转型）。
 func deleteChannelMonitorBatched(ctx context.Context, db *sql.DB, query string, cutoff time.Time) (int64, error) {
 	var total int64
 	for {
@@ -744,13 +738,13 @@ func (r *channelMonitorRepository) LoadAggregationWatermark(ctx context.Context)
 }
 
 // UpdateAggregationWatermark 更新 watermark（UPSERT 到 id=1）。
-// DATE(?) 让 MySQL 把入参 truncate 到 DATE，与 last_aggregated_date 列一致。
+// $1::date 让 PG 把入参 truncate 到 UTC 日期，与 last_aggregated_date 列的 DATE 类型一致。
 func (r *channelMonitorRepository) UpdateAggregationWatermark(ctx context.Context, date time.Time) error {
 	const q = `
 		INSERT INTO channel_monitor_aggregation_watermark (id, last_aggregated_date, updated_at)
-		VALUES (1, DATE(?), NOW())
-		ON DUPLICATE KEY UPDATE
-		    last_aggregated_date = VALUES(last_aggregated_date),
+		VALUES (1, $1::date, NOW())
+		ON CONFLICT (id) DO UPDATE SET
+		    last_aggregated_date = EXCLUDED.last_aggregated_date,
 		    updated_at           = NOW()
 	`
 	if _, err := r.db.ExecContext(ctx, q, date); err != nil {
@@ -795,11 +789,16 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		ExtraHeaders:         headers,
 		BodyOverrideMode:     row.BodyOverrideMode,
 		BodyOverride:         row.BodyOverride,
+		CheckMode:            defaultCheckModeRepo(row.CheckMode),
 		DuplicateOperationID: duplicateOperationID,
 	}
 	if row.TemplateID != nil {
 		id := *row.TemplateID
 		out.TemplateID = &id
+	}
+	if row.AccountID != nil {
+		id := *row.AccountID
+		out.AccountID = &id
 	}
 	return out
 }
@@ -843,6 +842,14 @@ func defaultAPIModeRepo(apiMode string) string {
 		return "chat_completions"
 	}
 	return apiMode
+}
+
+// defaultCheckModeRepo 空串归一为 probe（存量行有列默认值，这里兜底防御）。
+func defaultCheckModeRepo(checkMode string) string {
+	if checkMode == "" {
+		return "probe"
+	}
+	return checkMode
 }
 
 func emptySliceIfNil(in []string) []string {

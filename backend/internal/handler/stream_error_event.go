@@ -1,15 +1,43 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
+
+// responsesFailedError 对齐 OpenAI Responses 协议 error 子对象。
+type responsesFailedError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// responsesFailedBody 对齐 apicompat.makeResponsesCompletedEvent 输出的 response 子对象字段集。
+// Output 用空 slice（不是 nil）确保 marshal 为 `[]` 而非 `null`。
+// CreatedAt 不带 omitempty：严格客户端把它当必填字段，缺失会以
+// `missing field 'created_at'` 反序列化失败——那正是本文件要避免的"客户端读不懂终止事件"。
+type responsesFailedBody struct {
+	ID        string               `json:"id"`
+	Object    string               `json:"object"`
+	CreatedAt int64                `json:"created_at"`
+	Model     string               `json:"model,omitempty"`
+	Status    string               `json:"status"`
+	Output    []any                `json:"output"`
+	Error     responsesFailedError `json:"error"`
+}
+
+// responsesFailedEvent 是写入 SSE data 行的顶层结构。
+// 故意不带 sequence_number：spec 标记可选，且本函数被调用时无法可靠拿到 last seq。
+type responsesFailedEvent struct {
+	Type     string              `json:"type"`
+	Response responsesFailedBody `json:"response"`
+}
 
 // writeResponsesFailedSSE emits a `response.failed` SSE event in the OpenAI
 // Responses API protocol after the stream has already started.
@@ -33,27 +61,28 @@ func writeResponsesFailedSSE(c *gin.Context, errType, message string) bool {
 	if !ok {
 		return false
 	}
-	rid := synthesizeResponseID(c)
-	model := requestModel(c)
-	code := mapResponsesErrorCode(errType)
 
-	var b strings.Builder
-	b.Grow(256 + len(message) + len(model))
-	_, _ = b.WriteString(`{"type":"response.failed","response":{`)
-	_, _ = b.WriteString(`"id":`)
-	_, _ = b.WriteString(strconv.Quote(rid))
-	_, _ = b.WriteString(`,"object":"response"`)
-	if model != "" {
-		_, _ = b.WriteString(`,"model":`)
-		_, _ = b.WriteString(strconv.Quote(model))
+	payload, err := json.Marshal(responsesFailedEvent{
+		Type: "response.failed",
+		Response: responsesFailedBody{
+			ID:        synthesizeResponseID(c),
+			Object:    "response",
+			CreatedAt: time.Now().Unix(),
+			Model:     requestModel(c),
+			Status:    "failed",
+			Output:    []any{},
+			Error: responsesFailedError{
+				Code:    mapResponsesErrorCode(errType),
+				Message: message,
+			},
+		},
+	})
+	if err != nil {
+		_ = c.Error(err)
+		return true
 	}
-	_, _ = b.WriteString(`,"status":"failed","output":[],"error":{"code":`)
-	_, _ = b.WriteString(strconv.Quote(code))
-	_, _ = b.WriteString(`,"message":`)
-	_, _ = b.WriteString(strconv.Quote(message))
-	_, _ = b.WriteString(`}}}`)
 
-	if _, err := fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", b.String()); err != nil {
+	if _, err := fmt.Fprintf(c.Writer, "event: response.failed\ndata: %s\n\n", payload); err != nil {
 		_ = c.Error(err)
 		return true
 	}

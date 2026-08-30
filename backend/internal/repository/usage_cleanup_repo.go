@@ -416,6 +416,7 @@ func buildUsageCleanupWhere(filters service.UsageCleanupFilters) (string, []any)
 	}
 	if filters.RequestType != nil {
 		condition, conditionArgs := buildRequestTypeFilterCondition(1, *filters.RequestType)
+		condition = strings.ReplaceAll(condition, "$1", "?")
 		conditions = append(conditions, condition)
 		args = append(args, conditionArgs...)
 	} else if filters.Stream != nil {

@@ -31,8 +31,6 @@ type BatchImageJob struct {
 	Model string `json:"model,omitempty"`
 	// TaskName holds the value of the "task_name" field.
 	TaskName string `json:"task_name,omitempty"`
-	// ParentBatchID holds the value of the "parent_batch_id" field.
-	ParentBatchID *string `json:"parent_batch_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// ProviderJobName holds the value of the "provider_job_name" field.
@@ -59,22 +57,6 @@ type BatchImageJob struct {
 	HoldAmount *float64 `json:"hold_amount,omitempty"`
 	// ActualCost holds the value of the "actual_cost" field.
 	ActualCost *float64 `json:"actual_cost,omitempty"`
-	// BaseUnitPrice holds the value of the "base_unit_price" field.
-	BaseUnitPrice float64 `json:"base_unit_price,omitempty"`
-	// GroupRateMultiplier holds the value of the "group_rate_multiplier" field.
-	GroupRateMultiplier float64 `json:"group_rate_multiplier,omitempty"`
-	// AccountRateMultiplier holds the value of the "account_rate_multiplier" field.
-	AccountRateMultiplier float64 `json:"account_rate_multiplier,omitempty"`
-	// BatchDiscountMultiplier holds the value of the "batch_discount_multiplier" field.
-	BatchDiscountMultiplier float64 `json:"batch_discount_multiplier,omitempty"`
-	// HoldMultiplier holds the value of the "hold_multiplier" field.
-	HoldMultiplier float64 `json:"hold_multiplier,omitempty"`
-	// BillableUnitPrice holds the value of the "billable_unit_price" field.
-	BillableUnitPrice float64 `json:"billable_unit_price,omitempty"`
-	// HoldUnitPrice holds the value of the "hold_unit_price" field.
-	HoldUnitPrice float64 `json:"hold_unit_price,omitempty"`
-	// PricingSnapshotVersion holds the value of the "pricing_snapshot_version" field.
-	PricingSnapshotVersion int `json:"pricing_snapshot_version,omitempty"`
 	// Currency holds the value of the "currency" field.
 	Currency string `json:"currency,omitempty"`
 	// HoldID holds the value of the "hold_id" field.
@@ -123,11 +105,11 @@ func (*BatchImageJob) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case batchimagejob.FieldEstimatedCost, batchimagejob.FieldHoldAmount, batchimagejob.FieldActualCost, batchimagejob.FieldBaseUnitPrice, batchimagejob.FieldGroupRateMultiplier, batchimagejob.FieldAccountRateMultiplier, batchimagejob.FieldBatchDiscountMultiplier, batchimagejob.FieldHoldMultiplier, batchimagejob.FieldBillableUnitPrice, batchimagejob.FieldHoldUnitPrice:
+		case batchimagejob.FieldEstimatedCost, batchimagejob.FieldHoldAmount, batchimagejob.FieldActualCost:
 			values[i] = new(sql.NullFloat64)
-		case batchimagejob.FieldID, batchimagejob.FieldUserID, batchimagejob.FieldAPIKeyID, batchimagejob.FieldAccountID, batchimagejob.FieldItemCount, batchimagejob.FieldSuccessCount, batchimagejob.FieldFailCount, batchimagejob.FieldCancelledCount, batchimagejob.FieldPricingSnapshotVersion, batchimagejob.FieldRetryCount, batchimagejob.FieldVersion:
+		case batchimagejob.FieldID, batchimagejob.FieldUserID, batchimagejob.FieldAPIKeyID, batchimagejob.FieldAccountID, batchimagejob.FieldItemCount, batchimagejob.FieldSuccessCount, batchimagejob.FieldFailCount, batchimagejob.FieldCancelledCount, batchimagejob.FieldRetryCount, batchimagejob.FieldVersion:
 			values[i] = new(sql.NullInt64)
-		case batchimagejob.FieldBatchID, batchimagejob.FieldProvider, batchimagejob.FieldModel, batchimagejob.FieldTaskName, batchimagejob.FieldParentBatchID, batchimagejob.FieldStatus, batchimagejob.FieldProviderJobName, batchimagejob.FieldProviderInputRef, batchimagejob.FieldProviderOutputRef, batchimagejob.FieldGcsInputURI, batchimagejob.FieldGcsOutputURI, batchimagejob.FieldCurrency, batchimagejob.FieldHoldID, batchimagejob.FieldIdempotencyKey, batchimagejob.FieldRequestHash, batchimagejob.FieldManifestHash, batchimagejob.FieldLastErrorCode, batchimagejob.FieldLastErrorMessage:
+		case batchimagejob.FieldBatchID, batchimagejob.FieldProvider, batchimagejob.FieldModel, batchimagejob.FieldTaskName, batchimagejob.FieldStatus, batchimagejob.FieldProviderJobName, batchimagejob.FieldProviderInputRef, batchimagejob.FieldProviderOutputRef, batchimagejob.FieldGcsInputURI, batchimagejob.FieldGcsOutputURI, batchimagejob.FieldCurrency, batchimagejob.FieldHoldID, batchimagejob.FieldIdempotencyKey, batchimagejob.FieldRequestHash, batchimagejob.FieldManifestHash, batchimagejob.FieldLastErrorCode, batchimagejob.FieldLastErrorMessage:
 			values[i] = new(sql.NullString)
 		case batchimagejob.FieldOutputExpiresAt, batchimagejob.FieldInputDeletedAt, batchimagejob.FieldOutputDeletedAt, batchimagejob.FieldDownloadedAt, batchimagejob.FieldUserDeletedAt, batchimagejob.FieldCreatedAt, batchimagejob.FieldUpdatedAt, batchimagejob.FieldSubmittedAt, batchimagejob.FieldStartedAt, batchimagejob.FieldFinishedAt, batchimagejob.FieldSettledAt:
 			values[i] = new(sql.NullTime)
@@ -195,13 +177,6 @@ func (_m *BatchImageJob) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field task_name", values[i])
 			} else if value.Valid {
 				_m.TaskName = value.String
-			}
-		case batchimagejob.FieldParentBatchID:
-			if value, ok := values[i].(*sql.NullString); !ok {
-				return fmt.Errorf("unexpected type %T for field parent_batch_id", values[i])
-			} else if value.Valid {
-				_m.ParentBatchID = new(string)
-				*_m.ParentBatchID = value.String
 			}
 		case batchimagejob.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -287,54 +262,6 @@ func (_m *BatchImageJob) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.ActualCost = new(float64)
 				*_m.ActualCost = value.Float64
-			}
-		case batchimagejob.FieldBaseUnitPrice:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field base_unit_price", values[i])
-			} else if value.Valid {
-				_m.BaseUnitPrice = value.Float64
-			}
-		case batchimagejob.FieldGroupRateMultiplier:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field group_rate_multiplier", values[i])
-			} else if value.Valid {
-				_m.GroupRateMultiplier = value.Float64
-			}
-		case batchimagejob.FieldAccountRateMultiplier:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field account_rate_multiplier", values[i])
-			} else if value.Valid {
-				_m.AccountRateMultiplier = value.Float64
-			}
-		case batchimagejob.FieldBatchDiscountMultiplier:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field batch_discount_multiplier", values[i])
-			} else if value.Valid {
-				_m.BatchDiscountMultiplier = value.Float64
-			}
-		case batchimagejob.FieldHoldMultiplier:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field hold_multiplier", values[i])
-			} else if value.Valid {
-				_m.HoldMultiplier = value.Float64
-			}
-		case batchimagejob.FieldBillableUnitPrice:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field billable_unit_price", values[i])
-			} else if value.Valid {
-				_m.BillableUnitPrice = value.Float64
-			}
-		case batchimagejob.FieldHoldUnitPrice:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field hold_unit_price", values[i])
-			} else if value.Valid {
-				_m.HoldUnitPrice = value.Float64
-			}
-		case batchimagejob.FieldPricingSnapshotVersion:
-			if value, ok := values[i].(*sql.NullInt64); !ok {
-				return fmt.Errorf("unexpected type %T for field pricing_snapshot_version", values[i])
-			} else if value.Valid {
-				_m.PricingSnapshotVersion = int(value.Int64)
 			}
 		case batchimagejob.FieldCurrency:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -532,11 +459,6 @@ func (_m *BatchImageJob) String() string {
 	builder.WriteString("task_name=")
 	builder.WriteString(_m.TaskName)
 	builder.WriteString(", ")
-	if v := _m.ParentBatchID; v != nil {
-		builder.WriteString("parent_batch_id=")
-		builder.WriteString(*v)
-	}
-	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
 	builder.WriteString(", ")
@@ -589,30 +511,6 @@ func (_m *BatchImageJob) String() string {
 		builder.WriteString("actual_cost=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
-	builder.WriteString(", ")
-	builder.WriteString("base_unit_price=")
-	builder.WriteString(fmt.Sprintf("%v", _m.BaseUnitPrice))
-	builder.WriteString(", ")
-	builder.WriteString("group_rate_multiplier=")
-	builder.WriteString(fmt.Sprintf("%v", _m.GroupRateMultiplier))
-	builder.WriteString(", ")
-	builder.WriteString("account_rate_multiplier=")
-	builder.WriteString(fmt.Sprintf("%v", _m.AccountRateMultiplier))
-	builder.WriteString(", ")
-	builder.WriteString("batch_discount_multiplier=")
-	builder.WriteString(fmt.Sprintf("%v", _m.BatchDiscountMultiplier))
-	builder.WriteString(", ")
-	builder.WriteString("hold_multiplier=")
-	builder.WriteString(fmt.Sprintf("%v", _m.HoldMultiplier))
-	builder.WriteString(", ")
-	builder.WriteString("billable_unit_price=")
-	builder.WriteString(fmt.Sprintf("%v", _m.BillableUnitPrice))
-	builder.WriteString(", ")
-	builder.WriteString("hold_unit_price=")
-	builder.WriteString(fmt.Sprintf("%v", _m.HoldUnitPrice))
-	builder.WriteString(", ")
-	builder.WriteString("pricing_snapshot_version=")
-	builder.WriteString(fmt.Sprintf("%v", _m.PricingSnapshotVersion))
 	builder.WriteString(", ")
 	builder.WriteString("currency=")
 	builder.WriteString(_m.Currency)

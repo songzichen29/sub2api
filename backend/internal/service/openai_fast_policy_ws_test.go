@@ -134,19 +134,6 @@ func TestWSResponseCreate_FlexPassThrough(t *testing.T) {
 	require.Equal(t, "flex", gjson.GetBytes(updated, "service_tier").String(), "flex frames must reach upstream untouched under default policy")
 }
 
-func TestWSResponseCreate_OAuthStripsUnsupportedServiceTier(t *testing.T) {
-	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
-
-	for _, tier := range []string{"auto", "default", "scale"} {
-		frame := []byte(`{"type":"response.create","model":"gpt-5.5","service_tier":"` + tier + `"}`)
-		updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(context.Background(), account, "gpt-5.5", frame)
-		require.NoError(t, err)
-		require.Nil(t, blocked)
-		require.False(t, gjson.GetBytes(updated, "service_tier").Exists(), "oauth ws should strip %q before upstream", tier)
-	}
-}
-
 func TestWSResponseCreate_BlockReturnsTypedError(t *testing.T) {
 	settings := &OpenAIFastPolicySettings{
 		Rules: []OpenAIFastPolicyRule{{
@@ -359,6 +346,23 @@ func TestPolicyEnforcingFrameConn_FollowupFrameWithoutModelUsesCapturedModel(t *
 	require.NotContains(t, string(payload), `"service_tier"`,
 		"D5 regression: empty model on follow-up frame must fall back to capturedSessionModel; whitelist policy filters service_tier=priority for gpt-5.5")
 	require.Equal(t, "response.create", gjson.GetBytes(payload, "type").String())
+}
+
+func TestOpenAIWSPassthroughPolicyModelDoesNotApplyAccountMapping(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"public-model": "private-model"},
+		},
+		Extra: map[string]any{"openai_passthrough": true},
+	}
+
+	responseCreate := []byte(`{"type":"response.create","model":"public-model"}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelForFrame(account, responseCreate))
+
+	sessionUpdate := []byte(`{"type":"session.update","session":{"model":"public-model"}}`)
+	require.Equal(t, "public-model", openAIWSPassthroughPolicyModelFromSessionFrame(account, sessionUpdate))
 }
 
 // TestPolicyEnforcingFrameConn_WithoutCapturedFallbackPolicyMisses pins the

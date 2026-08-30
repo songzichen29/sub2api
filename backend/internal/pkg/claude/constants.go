@@ -79,7 +79,7 @@ const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
 // DefaultCacheControlTTL 是网关代理为自己生成的 cache_control 块默认使用的 ttl。
 // 真实 Claude Code CLI v2.1.197 当前使用 "1h"。
-const DefaultCacheControlTTL = "1h"
+const DefaultCacheControlTTL = "5m"
 
 // CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
 // 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。

@@ -577,9 +577,7 @@ type ContentModerationClearHashesResult struct {
 
 type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
-	UpdateLogAccount(ctx context.Context, requestID string, apiKeyID, accountID int64, accountName string) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
-	GetLogRequestBody(ctx context.Context, id int64) (*ContentModerationLogRequestBody, error)
 	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
 	// excludeCyberPolicy 为 true 时额外排除 cyber_policy 行）。
 	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error)
@@ -606,7 +604,13 @@ func (s *ContentModerationService) BindSelectedAccount(ctx context.Context, bind
 	if !binding.persisted || binding.requestID == "" || binding.apiKeyID <= 0 {
 		return
 	}
-	if err := s.repo.UpdateLogAccount(ctx, binding.requestID, binding.apiKeyID, accountID, binding.accountName); err != nil {
+	repo, ok := s.repo.(interface {
+		UpdateLogAccount(context.Context, string, int64, int64, string) error
+	})
+	if !ok {
+		return
+	}
+	if err := repo.UpdateLogAccount(ctx, binding.requestID, binding.apiKeyID, accountID, binding.accountName); err != nil {
 		slog.Warn("content_moderation.update_log_account_failed",
 			"request_id", binding.requestID,
 			"api_key_id", binding.apiKeyID,
@@ -1518,7 +1522,13 @@ func (s *ContentModerationService) GetLogRequestBody(ctx context.Context, id int
 	if s == nil || s.repo == nil {
 		return nil, infraerrors.InternalServer("CONTENT_MODERATION_REPOSITORY_UNAVAILABLE", "风控记录仓储不可用")
 	}
-	result, err := s.repo.GetLogRequestBody(ctx, id)
+	repo, ok := s.repo.(interface {
+		GetLogRequestBody(context.Context, int64) (*ContentModerationLogRequestBody, error)
+	})
+	if !ok {
+		return nil, infraerrors.NotFound("CONTENT_MODERATION_REQUEST_BODY_NOT_FOUND", "风控记录请求正文不存在")
+	}
+	result, err := repo.GetLogRequestBody(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -2151,7 +2161,39 @@ func parseAnthropicModerationResult(text string) (*moderationAPIResult, error) {
 	}, nil
 }
 
-func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, rawBody []byte, text string, latency *int, queueDelay *int, errText string) *ContentModerationLog {
+func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, cfg *ContentModerationConfig, action string, flagged bool, highestCategory string, highestScore float64, scores map[string]float64, args ...any) *ContentModerationLog {
+	var rawBody []byte
+	var text string
+	var latency, queueDelay *int
+	var errText string
+	if len(args) > 0 {
+		if body, ok := args[0].([]byte); ok || (args[0] == nil && len(args) >= 5) {
+			rawBody = body
+			if len(args) > 1 {
+				text, _ = args[1].(string)
+			}
+			if len(args) > 2 {
+				latency, _ = args[2].(*int)
+			}
+			if len(args) > 3 {
+				queueDelay, _ = args[3].(*int)
+			}
+			if len(args) > 4 {
+				errText, _ = args[4].(string)
+			}
+		} else {
+			text, _ = args[0].(string)
+			if len(args) > 1 {
+				latency, _ = args[1].(*int)
+			}
+			if len(args) > 2 {
+				queueDelay, _ = args[2].(*int)
+			}
+			if len(args) > 3 {
+				errText, _ = args[3].(string)
+			}
+		}
+	}
 	var userID *int64
 	if input.UserID > 0 {
 		userID = &input.UserID

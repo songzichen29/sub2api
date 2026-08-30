@@ -257,6 +257,10 @@ export default {
       gemini: 'Gemini',
       antigravity: 'Antigravity',
       grok: 'Grok'
+    ,
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM',
+      deepseek: 'DeepSeek',
     },
     types: {
       oauth: 'OAuth',
@@ -295,6 +299,9 @@ export default {
       creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
       overloadedUntil: '负载过重，重置时间：{time}',
       viewTempUnschedDetails: '查看临时不可调度详情'
+    ,
+      expired: '已过期',
+      tempUnschedulableUntil: '预计 {time} 恢复'
     },
     tempUnschedulable: {
       title: '临时不可调度',
@@ -338,6 +345,11 @@ export default {
         unavailableLabel: '503 维护',
         unavailableDesc: '服务不可用 - 暂停 30 分钟'
       }
+    ,
+      multipleErrorTrigger: '{minutes} 分钟内累计 {count} 次匹配错误，达到触发阈值（{threshold}）。',
+      multipleErrorTriggerNoWindow: '累计 {count} 次匹配错误，达到触发阈值（{threshold}）。',
+      multipleErrorCountInWindow: '{minutes} 分钟内累计发生 {count} 次匹配错误。',
+      multipleErrorCount: '本次不可调度由累计 {count} 次匹配错误触发。',
     },
     usageWindow: {
       statsTitle: '5小时窗口用量统计',
@@ -364,6 +376,13 @@ export default {
       grokLastStatus: '状态 {status}',
       grokLastProbe: '探测 {time}',
       grokLastHeadersSeen: '响应头 {time}',
+
+      grokUsed: '已用 $',
+      grokBalance: '余额 $',
+      grokPrepaid: '预付余额',
+      grokMonthlyLimit: '月度已用/上限（USD）',
+      grokOverage: '超额 onDemandUsed/onDemandCap',
+      grokOverageShort: '超额 $',
     },
     openaiQuotaReset: {
       count: '次数',
@@ -387,6 +406,15 @@ export default {
       refreshCachePersistFailed: '已显示实时次数，但到期明细获取失败，仍保留原有缓存明细。',
       confirmTitle: '确认重置周限',
       confirmMessage: '将消耗 1 次重置次数立即恢复当前窗口，剩余 {count} 次。此操作不可撤销，确定继续吗？'
+    ,
+      autoStatus: {
+                checking: '检测中',
+                available: '卡可用',
+                resetting: '自动重置中',
+                success: '自动重置成功',
+                noCredit: '无卡',
+                failed: '自动重置失败'
+              },
     },
     tier: {
       free: 'Free',
@@ -479,6 +507,11 @@ export default {
       rateSyncWarning: '已开启上游倍率同步的账号不能批量手工修改倍率，请先在账号编辑页关闭同步。',
       rateSyncConflict: '无法修改账号倍率：{count} 个目标账号已开启上游倍率同步。',
       mixedPlatformWarning: '所选账号跨越多个平台（{platforms}）。显示的模型映射预设为合并结果——请确保映射对每个平台都适用。'
+    ,
+      successWithInherited: '成功更新 {count} 个账号；其中 {inherited} 个影子账号仍跟随母账号。',
+      partialSuccessWithInherited: '部分更新成功：成功 {success} 个，失败 {failed} 个；其中 {inherited} 个影子账号仍跟随母账号。',
+      longContextShadowHint: '长上下文计费归母账号所有。选中的影子账号仍跟随母账号，筛选全量目标时同样如此。',
+      longContextParentRequired: '选中的账号全部是影子账号，请选择母账号修改长上下文计费。',
     },
     bulkDeleteTitle: '批量删除账号',
     bulkDeleteConfirm: '确定要删除选中的 {count} 个账号吗？此操作无法撤销。',
@@ -1107,6 +1140,17 @@ export default {
             '找不到所选代理。请选择可用代理后重试。'
         },
         oauthOnlyHint: '首版 Grok 支持仅包含 OAuth 订阅的 Responses API 文本/推理转发。'
+      ,
+        emailPasswordAuth: '邮箱密码登录',
+        emailPasswordDesc:
+                    '使用 Grok 网页邮箱与密码登录。服务端仅用密码换取临时 SSO 再转 Build OAuth；密码与 raw SSO 均不会写入账号凭据。',
+        emailPasswordInputLabel: '邮箱----密码',
+        emailPasswordPlaceholder: "user{'@'}example.com----your-password\n支持多个，每行一组",
+        emailPasswordHint: '格式：email----password（密码可含 -）。需要配置 YesCaptcha 密钥；建议搭配代理。',
+        pleaseEnterPassword: '请输入 email----password（每行一组）',
+        pleaseEnterSSOToken: '请输入 SSO Token',
+        failedToValidateSSO: '校验 Grok SSO 失败',
+        failedToAuthorizePassword: 'Grok 密码授权失败',
       },
     },
     gemini: {
@@ -1434,6 +1478,53 @@ export default {
     grok: {
       baseUrlHint: 'Grok OAuth 账号会转发到官方 xAI API Base URL。',
       apiKeyHint: 'Grok 订阅支持使用 OAuth refresh token；API Key 账号不在本次范围内。'
+    ,
+      testMode: '测试模式',
+      testModeHint:
+                '文本 / 图片 / 视频使用所选模型。网页搜索、TTS、STT、Realtime 走独立接口探测（不是对话里的 tools）。',
+      testModeText: '文本（Responses）',
+      testModeImage: '图片（/images/generations）',
+      testModeVideo: '视频（/videos/generations）',
+      testModeSearch: '网页搜索（/web_search）',
+      testModeTTS: '语音合成 TTS（/tts）',
+      testModeSTT: '语音识别 STT（/stt）',
+      testModeRealtime: '实时语音 Realtime（WS /realtime）',
+      textTestMode: '模式：文本（Responses）',
+      searchTestMode: '模式：网页搜索（/web_search）',
+      ttsTestMode: '模式：TTS（/tts）',
+      sttTestMode: '模式：STT（/stt）',
+      realtimeTestMode: '模式：Realtime（WS /realtime）',
+      searchQueryLabel: '搜索关键词',
+      searchQueryPlaceholder: '例如：xAI Grok',
+      searchQueryDefault: 'xAI Grok',
+      searchTestHint:
+                '独立网页搜索探测（与网关 /v1/web_search 语义一致），不是带 tools 的自由对话。',
+      ttsTextLabel: 'TTS 文本',
+      ttsTextPlaceholder: '例如：Hello from Sub2API connectivity test.',
+      ttsTextDefault: 'Hello from Sub2API account connectivity test.',
+      ttsTestHint: '独立调用 /v1/tts（language=en）；成功时显示音频字节数。',
+      sttTestHint: '独立调用 /v1/stt，使用合成静音 WAV；成功表示接口可达。',
+      realtimeTestHint:
+                '独立 WebSocket 拨号 /v1/realtime（model=grok-voice-latest）。握手成功即连通；若有首包服务端事件会一并显示。',
+      sendingSearchRequest: '正在发送独立 web_search 请求...',
+      sendingTTSRequest: '正在发送独立 /tts 请求...',
+      sendingSTTRequest: '正在发送独立 /stt 请求...',
+      sendingRealtimeRequest: '正在拨号独立 /realtime WebSocket...',
+      selectedTestMode: '测试模式：{mode}',
+      imageUploadLabel: '源图片（可选，图生图/编辑）',
+      videoFirstFrameLabel: '首帧 / 参考图（可选）',
+      imageUploadHint:
+                '建议 PNG/JPEG，宽高均 ≥ 8 像素，编辑建议小于约 4MB。上传源图会走 /images/edits（图生图）；不上传则走 /images/generations 文生图。',
+      videoFirstFrameHint:
+                '可选首帧/参考图用于图生视频。建议 PNG/JPEG，宽高均 ≥ 8 像素。',
+      audioUploadLabel: '音频文件（STT 可选）',
+      audioUploadHint: '上传真实音频做转写；不上传则用静音 WAV 仅测连通。',
+      mediaTooLarge: '文件过大（管理端测试上传上限约 6MB）。',
+      chooseImageFile: '选择图片',
+      chooseAudioFile: '选择音频',
+      uploadPreviewAlt: '上传预览',
+      fileReadFailed: '读取所选文件失败',
+      noResponseBody: '服务器未返回响应体'
     },
     grokCustomBaseUrl: {
       title: '自定义上游地址',
@@ -1450,5 +1541,82 @@ export default {
       title: '客户端工具缓存（可能改变自动工具选择）',
       hint: '仅对已识别为 Free 的 Grok OAuth 账号生效，默认会为 Codex、Trae 等客户端函数工具请求启用上游提示缓存；如不接受自动工具选择行为，可关闭此开关退出。'
     },
+
+    cnProviders: {
+            accountMode: {
+              title: '账号类型',
+              payg: '按量付费',
+              paygDesc: '消耗账户余额，按 Token 计费。余额不足自动冷却，充值后恢复。',
+              coding: 'Coding Plan',
+              codingDesc: '订阅制编程套餐，按 5 小时 / 每周滚动用量窗口限流。',
+            },
+            apiProtocol: {
+              title: 'API 协议',
+              adaptive: '自适应',
+              adaptiveDesc: '按入站协议优先使用供应商原生端点，仅在没有对应端点时转换。',
+              endpoints: '协议端点',
+              responsesFallbackDesc: '该供应商没有原生 Responses 端点，Responses 请求将转换为 Chat Completions。',
+              chatCompletions: 'Chat Completions',
+              chatCompletionsDesc: '标准 OpenAI 兼容端点，其他格式请求将被转换。',
+              anthropic: 'Anthropic',
+              anthropicDesc: '直通供应商原生 Anthropic 端点，零转换，适配 Claude Code。',
+              responses: 'Responses',
+              responsesDesc: '供应商原生 Responses 端点，适配 Codex。',
+            },
+            zhipuTeam: {
+              title: '团队版组织 / 项目 ID',
+              organization: '组织 ID（团队版可选）',
+              organizationPlaceholder: '团队版 Coding Plan 的组织 ID',
+              project: '项目 ID（团队版可选）',
+              projectPlaceholder: '团队版 Coding Plan 的项目 ID',
+              hint: '仅团队版 GLM Coding Plan 需要填写，填写后用量查询走团队版端点；个人版留空即可。获取方式点击左侧问号查看教程。',
+              help: {
+                title: '如何获取组织 / 项目 ID',
+                step1: '用团队版账号登录智谱开放平台（bigmodel.cn），进入「Coding Plan → 团队版 → 我的套餐」页面。',
+                step2: '按 F12 打开浏览器开发者工具，切换到「Network / 网络」标签，然后刷新页面。',
+                step3: '在 Network 的筛选框中输入 /api/biz/v1/organization，点击命中的请求（如 api_keys）。',
+                step4: '请求 URL 中 org- 开头的一段即组织 ID、proj_ 开头的一段即项目 ID（也可在 Request Headers 中查看 bigmodel-organization / bigmodel-project 的值），分别填入上方输入框。',
+                example: '示例：…/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → org-0610bE2D… 填「组织 ID」，proj_0798F20… 填「项目 ID」',
+              },
+            },
+            balance: '余额 --',
+            window5h: '5 小时窗口',
+            windowWeekly: '每周窗口',
+            probe: '查询',
+            probeTooltip: '请求供应商额度端点，查询 5 小时 / 每周滚动窗口用量',
+            balanceProbeTooltip: '请求供应商余额端点，查询账户余额',
+            balanceLow: '余额不足',
+            noBalanceEndpoint: '该平台暂无余额查询接口',
+            resetSoon: '即将重置',
+          },
+    accountSchedulingThresholdOverride: '账号自动停调阈值覆盖',
+    accountSchedulingThresholdOverrideHint:
+            '仅对当前账号覆盖平台级自动停调阈值；关闭后使用平台设置。',
+    accountSchedulingThresholdOverrideValue: '账号阈值百分比',
+    accountSchedulingThresholdOverrideDisabledHint:
+            '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
+    syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但能力元数据不完整，能力信息未更新。',
+    autoResetCredit: {
+            title: '自动使用重置卡',
+            hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',
+            threshold5h: '5h 自动用卡阈值(%)',
+            threshold7d: '7d 自动用卡阈值(%)',
+            thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
+            thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
+          },
+    errorPrefix: '错误：{message}',
+    imagePreviewAlt: '测试图片 {index}',
+    imageLightboxAlt: '图片预览',
+    videoPromptLabel: '视频提示词',
+    videoPromptPlaceholder: '例如：一只红球在白地板上弹跳一次，动作简短。',
+    videoPromptDefault: 'A red ball bouncing once on a white floor, short simple motion.',
+    videoTestHint:
+            '调用独立 /v1/videos/generations，轮询至完成后下载成品视频并在页面上预览。',
+    videoTestMode: '模式：视频生成测试',
+    sendingVideoRequest: '正在发送视频生成测试请求...',
+    audioPreview: '生成音频：',
+    audioReceived: '已收到第 {count} 段测试音频',
+    videoPreview: '生成视频：',
+    videoReceived: '已收到第 {count} 段测试视频',
   }
 }

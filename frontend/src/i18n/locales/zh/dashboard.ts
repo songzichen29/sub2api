@@ -167,12 +167,51 @@ export default {
         configTomlHint: '如已有 config.toml，请先备份再合并此模型配置。保存后运行 grok inspect 验证生效配置。',
         note: '保存为 ~/.grok/config.toml，然后运行 grok inspect，并在 /model 中选择 grok。',
         noteWindows: '保存为 %USERPROFILE%\\.grok\\config.toml，然后运行 grok inspect，并在 /model 中选择 grok。'
+      ,
+        claudeDescription: '配置 Claude Code，让 Messages API 请求通过当前 Sub2API Grok 分组发送。',
+        codexDescription: '配置 Codex，让 Responses API 请求通过当前 Sub2API Grok 分组发送。',
+        codexConfigTomlHint:
+                  'Codex 官方：wire_api 仅支持 "responses"；优先 env_key，勿与 experimental_bearer_token 混用；非 OpenAI 网关默认 supports_websockets = false（Sub2API 仍可接客户端 WS 并桥接到 HTTP/SSE）。合并前备份 ~/.codex/config.toml。',
+        claudeNote:
+                  '二选一：终端环境变量仅当前会话；~/.claude/settings.json 可持久化。请勿把含 API Key 的文件提交到仓库。',
+        codexNote:
+                  '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex（可用 mkdir -p ~/.codex）。优先 env_key，勿提交密钥。',
+        codexNoteWindows:
+                  '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。优先 env_key，勿提交密钥。'
       },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
       }
+    ,
+      claudeSettingsHint: '用户级持久配置。此文件包含 API 密钥，请勿提交到项目仓库。',
+      deepseek: {
+              description: '通过当前 DeepSeek 分组配置 Claude Code、Codex 或 OpenCode。',
+              codexDescription: '使用 API Key 配置 Codex，并通过当前 DeepSeek 分组发送请求。',
+              codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+            },
+      composite: {
+              description: '通过当前 Composite 路由分组配置受支持的客户端。',
+              codexDescription: '使用 API Key 和当前 Composite 分组的完整模型目录配置 Codex。',
+              codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              codexNote: '启动 Codex 前先导出 SUB2API_API_KEY；分组会根据目录中选中的模型路由请求。'
+            },
+      routedCodex: {
+              description: '使用当前路由分组的完整模型目录配置 Codex。',
+              configTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+            },
+      codexModelCatalog: {
+              title: 'Codex 模型目录',
+              description: '使用当前 API Key 获取目录，并保存到 config.toml 引用的路径。',
+              fetch: '获取目录',
+              retry: '重试',
+              download: '下载目录',
+              modelsCount: '已获取 {count} 个模型',
+              errorDescription: '无法使用当前 API Key 获取模型目录。'
+            },
     },
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -416,6 +455,8 @@ export default {
     modelQueryPlaceholder: '输入完整模型名',
     upstreamFirstEvent: '上游首包',
     upstreamToFirstToken: '首包→首字'
+  ,
+    requestedReasoningEffort: '请求推理强度',
   },
   monitorCommon: {
     status: {
@@ -430,6 +471,11 @@ export default {
       anthropic: 'Anthropic',
       gemini: 'Gemini',
       grok: 'Grok'
+    ,
+      antigravity: 'Antigravity',
+      kimi: 'Kimi',
+      zhipu: '智谱 GLM',
+      deepseek: 'DeepSeek'
     },
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',
@@ -449,6 +495,33 @@ export default {
     relativeMinutesAgo: '{n} 分钟前',
     relativeHoursAgo: '{n} 小时前',
     relativeDaysAgo: '{n} 天前'
+  ,
+    checkMode: {
+          probe: '探活',
+          quota: '配额',
+          quota_probe: '探活 + 配额'
+        },
+    quota: {
+          unavailable: '配额信息不可用',
+          resetSoon: '即将重置',
+          windows: {
+            '5h': '5 小时',
+            '7d': '7 天',
+            '7dSonnet': '7 天 Sonnet',
+            '7dFable': '7 天 Fable',
+            weekly: '周',
+            daily: '日',
+            '30d': '30 天',
+            total: '总量'
+          },
+          labels: {
+            requests: '请求',
+            tokens: 'Token',
+            shared: '共享',
+            pro: 'Pro',
+            flash: 'Flash'
+          }
+        },
   },
   channelStatus: {
     title: '渠道状态',
@@ -865,4 +938,63 @@ export default {
     apply: '应用',
     selectDateRange: '选择日期范围'
   }
+,
+  modelPlaza: {
+      title: '模型广场',
+      description: '按分组浏览可用模型与价格',
+      loading: '加载中...',
+      empty: '暂无可展示的分组',
+      loadFailed: '加载模型广场失败',
+      noSearchResult: '没有匹配的模型',
+      anonymousHint: '登录后可查看你的专属分组与专属倍率',
+      filters: {
+        platformLabel: '平台',
+        groupLabel: '分组',
+        rateLabel: '倍率',
+        modelLabel: '模型',
+        searchPlaceholder: '搜索模型名称',
+        all: '全部'
+      },
+      badges: {
+        exclusive: '专属分组',
+        subscription: '订阅'
+      },
+      detail: {
+        noModels: '该分组暂未配置模型',
+        noPricing: '未配置定价',
+        peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
+        longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
+      },
+      table: {
+        model: '模型',
+        input: '输入',
+        output: '输出',
+        cache: '缓存',
+        cacheWrite: '写入',
+        cacheRead: '读取',
+        cacheWriteShort: '写',
+        cacheReadShort: '读',
+        tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
+        tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
+        marginalBadge: '超出部分计价',
+        timePricingRowHint: '按 {timezone} 时间，在该时段内发起的请求按本行价格计费',
+        timePricingRowHintWeekdays:
+          '按 {timezone} 时间，仅工作日（周一至周五）在该时段内发起的请求按本行价格计费，周末全天按标准价',
+        timePricingRowHintPeak: '；本行价格未含高峰倍率，与高峰时段 {window} 重叠的部分实付再乘 ×{multiplier}',
+        timePricingWeekdays: '工作日',
+        timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
+        paidPrice: '实付价格(折后)',
+        officialPrice: '官方价格',
+        rate: '折扣倍率',
+        unitPerMillion: '$ / 1M token',
+        perUnitRequest: '/ 次',
+        perUnitImage: '/ 张',
+        perRequest: '按次计费',
+        perImage: '按图片计费'
+      },
+      nav: {
+        login: '登录',
+        backToDashboard: '回到后台'
+      }
+    },
 }

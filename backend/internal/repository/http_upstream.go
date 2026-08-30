@@ -2,10 +2,12 @@ package repository
 
 import (
 	"bufio"
+	"bytes"
 	"compress/flate"
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +23,7 @@ import (
 
 	"github.com/andybalholm/brotli"
 	"github.com/klauspost/compress/zstd"
+	"golang.org/x/mod/semver"
 	"golang.org/x/net/http2"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -28,9 +31,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
-	"golang.org/x/mod/semver"
 )
 
 // 默认配置常量
@@ -82,11 +85,13 @@ const (
 	openAIHTTP2PingTimeout     = 15 * time.Second
 
 	// The Grok CLI proxy rejects requests that do not identify a supported
-	// client version. Keep a known-good stable version in the binary while
-	// allowing operators to bump it without waiting for a Sub2API release.
-	grokCLIProxyHost       = "cli-chat-proxy.grok.com"
-	grokCLIStableVersion   = "0.2.93"
-	grokCLIVersionOverride = "XAI_GROK_CLI_VERSION"
+	// client version. Host/env/version pins live in package xai so service,
+	// billing, and transport layers advertise the same identity.
+	grokCLIProxyHost       = xai.CLIProxyHost
+	grokOfficialAPIHost    = "api.x.ai"
+	grokCLIStableVersion   = xai.CLIClientVersion // preferred pin (not the minimum floor)
+	grokCLIVersionOverride = xai.CLIVersionEnv
+	grokFallbackBodyLimit  = 64 << 10
 )
 
 const (
@@ -94,6 +99,7 @@ const (
 	upstreamProtocolModeOpenAIH1         = "openai_h1"
 	upstreamProtocolModeOpenAIH2         = "openai_h2"
 	upstreamProtocolModeOpenAIH1Fallback = "openai_h1_fallback"
+	upstreamProtocolModeGrok             = "grok"
 )
 
 var errUpstreamClientLimitReached = errors.New("upstream client cache limit reached")
@@ -207,7 +213,9 @@ func (s *httpUpstreamService) Do(req *http.Request, proxyURL string, accountID i
 	}
 
 	// 执行请求
-	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
+	client := httpClientForUpstreamRequest(entry.client, req)
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err := servertiming.Do(client, req)
 	if err != nil {
 		s.recordOpenAIHTTP2Failure(profile, entry.protocolMode, entry.proxyKey, err)
 		// 请求失败，立即减少计数
@@ -269,7 +277,9 @@ func (s *httpUpstreamService) DoWithTLS(req *http.Request, proxyURL string, acco
 		return nil, err
 	}
 
-	resp, err := servertiming.Do(httpClientForUpstreamRequest(entry.client, req), req)
+	client := httpClientForUpstreamRequest(entry.client, req)
+	client = httpClientWithGrokAccessDeniedFallback(client)
+	resp, err := servertiming.Do(client, req)
 	if err != nil {
 		atomic.AddInt64(&entry.inFlight, -1)
 		atomic.StoreInt64(&entry.lastUsed, time.Now().UnixNano())
@@ -298,10 +308,154 @@ func httpClientForUpstreamRequest(client *http.Client, req *http.Request) *http.
 	return &clone
 }
 
+// grokAccessDeniedFallbackTransport preserves the subscription CLI proxy as
+// the primary OAuth route, but retries a replayable request against api.x.ai
+// when the proxy returns its compatibility-specific 403 "Access denied".
+// Trial subscriptions can hit this boundary while the same OAuth credential
+// remains valid on the official API. Other entitlement failures stay on the
+// original response so account scheduling semantics do not change.
+type grokAccessDeniedFallbackTransport struct {
+	base http.RoundTripper
+}
+
+func httpClientWithGrokAccessDeniedFallback(client *http.Client) *http.Client {
+	if client == nil {
+		return nil
+	}
+	clone := *client
+	base := clone.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	clone.Transport = &grokAccessDeniedFallbackTransport{base: base}
+	return &clone
+}
+
+func (t *grokAccessDeniedFallbackTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := t.base.RoundTrip(req)
+	if err != nil || !isGrokCLIAccessDeniedFallbackCandidate(req, resp) {
+		return resp, err
+	}
+
+	body, ok := bufferSmallResponseBody(resp, grokFallbackBodyLimit)
+	if !ok || !isGrokCLICompatibilityAccessDenied(body) {
+		return resp, nil
+	}
+
+	fallbackReq, err := newGrokOfficialAPIFallbackRequest(req)
+	if err != nil {
+		return resp, nil
+	}
+	fallbackResp, fallbackErr := t.base.RoundTrip(fallbackReq)
+	if fallbackErr != nil {
+		slog.Debug("grok_cli_access_denied_api_fallback_failed", "path", req.URL.EscapedPath(), "error", fallbackErr)
+		return resp, nil
+	}
+	if fallbackResp.StatusCode < http.StatusOK || fallbackResp.StatusCode >= http.StatusMultipleChoices {
+		if fallbackResp.Body != nil {
+			_ = fallbackResp.Body.Close()
+		}
+		return resp, nil
+	}
+
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	slog.Warn("grok_cli_access_denied_api_fallback_succeeded", "method", req.Method, "path", req.URL.EscapedPath())
+	return fallbackResp, nil
+}
+
+func isGrokCLICompatibilityAccessDenied(body []byte) bool {
+	lower := bytes.ToLower(body)
+	if bytes.Contains(lower, []byte("access denied")) {
+		return true
+	}
+	var payload struct {
+		Code  string `json:"code"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || !strings.EqualFold(strings.TrimSpace(payload.Code), "permission_denied") {
+		return false
+	}
+	const chatEndpointDeniedPrefix = "access to the chat endpoint is denied. please ensure you're using the correct credentials. if you believe this is a mistake, please"
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(payload.Error)), chatEndpointDeniedPrefix)
+}
+
+func isGrokCLIAccessDeniedFallbackCandidate(req *http.Request, resp *http.Response) bool {
+	return req != nil && req.URL != nil && req.GetBody != nil && resp != nil &&
+		resp.StatusCode == http.StatusForbidden &&
+		strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) &&
+		strings.EqualFold(strings.TrimSpace(req.Header.Get("X-XAI-Token-Auth")), "xai-grok-cli") &&
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.Header.Get("Authorization"))), "bearer ")
+}
+
+func newGrokOfficialAPIFallbackRequest(req *http.Request) (*http.Request, error) {
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, err
+	}
+	fallbackReq := req.Clone(req.Context())
+	fallbackReq.Body = body
+	fallbackReq.URL = cloneURL(req.URL)
+	fallbackReq.URL.Scheme = "https"
+	fallbackReq.URL.Host = grokOfficialAPIHost
+	fallbackReq.Host = ""
+	fallbackReq.RequestURI = ""
+	fallbackReq.Header = req.Header.Clone()
+	for _, header := range []string{
+		"X-XAI-Token-Auth",
+		"X-Grok-Client-Version",
+		"X-Grok-Client-Surface",
+		"X-UserID",
+		"X-Email",
+		"User-Agent",
+	} {
+		fallbackReq.Header.Del(header)
+	}
+	return fallbackReq, nil
+}
+
+func cloneURL(value *url.URL) *url.URL {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
+}
+
+func bufferSmallResponseBody(resp *http.Response, limit int64) ([]byte, bool) {
+	if resp == nil || resp.Body == nil || limit <= 0 {
+		return nil, false
+	}
+	original := resp.Body
+	body, err := io.ReadAll(io.LimitReader(original, limit+1))
+	if err != nil || int64(len(body)) > limit {
+		resp.Body = &prefixedReadCloser{
+			Reader: io.MultiReader(bytes.NewReader(body), original),
+			Closer: original,
+		}
+		return nil, false
+	}
+	_ = original.Close()
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	return body, true
+}
+
+type prefixedReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
 // applyGrokCLIProxyHeaders applies the official Grok Build client identity at
 // the final shared transport boundary. Keying this behavior to the exact CLI
 // proxy host keeps direct api.x.ai traffic unchanged and automatically covers
 // Responses, Chat Completions, media, quota probes, and account tests.
+//
+// Operator overrides must be >= CLIClientVersion (the preferred pin). Package
+// xai.IsSupportedCLIVersion uses a lower floor (CLIStableVersion) for general
+// validation; transport is stricter so we never silently advertise an older pin
+// than the binary default.
 func applyGrokCLIProxyHeaders(req *http.Request) {
 	if req == nil || req.URL == nil || !strings.EqualFold(strings.TrimSpace(req.URL.Hostname()), grokCLIProxyHost) {
 		return
@@ -313,14 +467,15 @@ func applyGrokCLIProxyHeaders(req *http.Request) {
 	if !isSupportedGrokCLIVersion(version) {
 		version = grokCLIStableVersion
 	}
-	req.Header.Set("X-XAI-Token-Auth", "xai-grok-cli")
+	req.Header.Set("X-XAI-Token-Auth", xai.CLITokenAuth)
 	req.Header.Set("x-grok-client-version", version)
-	req.Header.Set("User-Agent", "xai-grok-workspace/"+version)
+	req.Header.Set("x-grok-client-identifier", xai.CLIClientIdentifier)
+	req.Header.Set("User-Agent", xai.CLIUserAgent(version))
 }
 
 func isSupportedGrokCLIVersion(version string) bool {
 	canonical := "v" + version
-	minimum := "v" + grokCLIStableVersion
+	minimum := "v" + xai.CLIClientVersion
 	return semver.IsValid(canonical) &&
 		semver.Canonical(canonical) == canonical &&
 		semver.Compare(canonical, minimum) >= 0
@@ -394,7 +549,7 @@ func (s *httpUpstreamService) getClientEntryWithTLS(proxyURL string, accountID i
 
 	// 创建带 TLS 指纹的 Transport
 	slog.Debug("tls_fingerprint_creating_new_client", "account_id", accountID, "cache_key", cacheKey, "proxy", proxyKey)
-	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile, upstreamProfile)
+	transport, err := buildUpstreamTransportWithTLSFingerprint(settings, parsedProxy, profile)
 	if err != nil {
 		s.mu.Unlock()
 		return nil, fmt.Errorf("build TLS fingerprint transport: %w", err)
@@ -745,12 +900,20 @@ func (s *httpUpstreamService) resolvePoolSettings(isolation string, accountConcu
 }
 
 func (s *httpUpstreamService) applyProfilePoolSettings(settings poolSettings, profile service.HTTPUpstreamProfile) poolSettings {
-	if profile != service.HTTPUpstreamProfileOpenAI {
-		return settings
-	}
-	settings.responseHeaderTimeout = 0
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
-		settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
+	switch profile {
+	case service.HTTPUpstreamProfileOpenAI:
+		settings.responseHeaderTimeout = 0
+		if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIResponseHeaderTimeout > 0 {
+			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.OpenAIResponseHeaderTimeout) * time.Second
+		}
+	case service.HTTPUpstreamProfileGrok:
+		// Grok can stall before its first byte under capacity pressure. Keep the
+		// generic 600s gateway timeout from turning one request into a 10-minute
+		// resource hold; streaming after headers is unaffected.
+		settings.responseHeaderTimeout = 120 * time.Second
+		if s != nil && s.cfg != nil {
+			settings.responseHeaderTimeout = time.Duration(s.cfg.Gateway.GrokResponseHeaderTimeout) * time.Second
+		}
 	}
 	return settings
 }
@@ -829,6 +992,9 @@ func (s *httpUpstreamService) resolveOpenAIHTTP2Settings() openAIHTTP2Settings {
 }
 
 func (s *httpUpstreamService) resolveProtocolMode(profile service.HTTPUpstreamProfile, proxyKey string, parsedProxy *url.URL) string {
+	if profile == service.HTTPUpstreamProfileGrok {
+		return upstreamProtocolModeGrok
+	}
 	if profile != service.HTTPUpstreamProfileOpenAI {
 		return upstreamProtocolModeDefault
 	}
@@ -1149,7 +1315,6 @@ func buildUpstreamTransport(settings poolSettings, proxyURL *url.URL, protocolMo
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		DisableCompression:    true,
 	}
 	switch protocolMode {
 	case upstreamProtocolModeOpenAIH2:
@@ -1198,68 +1363,56 @@ func enableOpenAIHTTP2KeepAlive(transport *http.Transport) (*http2.Transport, er
 //   - profile: TLS 指纹配置
 //
 // 返回:
-//   - http.RoundTripper: Anthropic 默认路径使用手写 HTTP/1.1（utls + 固定 header 顺序）；
-//     OpenAI profile 继续使用标准 http.Transport。
+//   - *http.Transport: 配置好的 Transport 实例
 //   - error: 配置错误
 //
 // 代理类型处理:
 //   - nil/空: 直连，使用 TLSFingerprintDialer
 //   - http/https: HTTP 代理，使用 HTTPProxyDialer（CONNECT 隧道 + utls 握手）
 //   - socks5: SOCKS5 代理，使用 SOCKS5ProxyDialer（SOCKS5 隧道 + utls 握手）
-func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile, upstreamProfile service.HTTPUpstreamProfile) (http.RoundTripper, error) {
-	if profile == nil {
-		profile = &tlsfingerprint.Profile{}
-	}
+func buildUpstreamTransportWithTLSFingerprint(settings poolSettings, proxyURL *url.URL, profile *tlsfingerprint.Profile) (*http.Transport, error) {
 	transport := &http.Transport{
 		MaxIdleConns:          settings.maxIdleConns,
 		MaxIdleConnsPerHost:   settings.maxIdleConnsPerHost,
 		MaxConnsPerHost:       settings.maxConnsPerHost,
 		IdleConnTimeout:       settings.idleConnTimeout,
 		ResponseHeaderTimeout: settings.responseHeaderTimeout,
-		DisableCompression:    true,
 		// 禁用默认的 TLS，我们使用自定义的 DialTLSContext
 		ForceAttemptHTTP2: false,
 	}
 
-	var dialTLS func(ctx context.Context, network, addr string) (net.Conn, error)
-
+	// 根据代理类型选择合适的 TLS 指纹 Dialer
 	if proxyURL == nil {
-		// 直连
+		// 直连：使用 TLSFingerprintDialer
 		slog.Debug("tls_fingerprint_transport_direct")
-		dialTLS = tlsfingerprint.NewDialer(profile, nil).DialTLSContext
-		transport.DialTLSContext = dialTLS
+		dialer := tlsfingerprint.NewDialer(profile, nil)
+		transport.DialTLSContext = dialer.DialTLSContext
 	} else {
 		scheme := strings.ToLower(proxyURL.Scheme)
 		switch scheme {
 		case "socks5", "socks5h":
+			// SOCKS5 代理：使用 SOCKS5ProxyDialer
 			slog.Debug("tls_fingerprint_transport_socks5", "proxy", proxyURL.Host)
-			dialTLS = tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL).DialTLSContext
-			transport.DialTLSContext = dialTLS
-		case "http":
-			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
-			dialTLS = tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL).DialTLSContext
-			transport.DialTLSContext = dialTLS
+			socks5Dialer := tlsfingerprint.NewSOCKS5ProxyDialer(profile, proxyURL)
+			transport.DialTLSContext = socks5Dialer.DialTLSContext
 		case "https":
-			// The custom CONNECT dialer does not establish TLS to the proxy itself.
-			// Keep the proxy boundary intact and fall back to the standard transport.
-			slog.Debug("tls_fingerprint_transport_https_proxy_fallback", "proxy", proxyURL.Host)
-			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
-				return nil, err
-			}
-			return transport, nil
+			// The fingerprint dialer emits a plaintext CONNECT preface and cannot
+			// establish TLS to an HTTPS proxy. Keep proxy routing via net/http.
+			return buildUpstreamTransport(settings, proxyURL, upstreamProtocolModeDefault)
+		case "http":
+			// HTTP/HTTPS 代理：使用 HTTPProxyDialer（CONNECT 隧道）
+			slog.Debug("tls_fingerprint_transport_http_connect", "proxy", proxyURL.Host)
+			httpDialer := tlsfingerprint.NewHTTPProxyDialer(profile, proxyURL)
+			transport.DialTLSContext = httpDialer.DialTLSContext
 		default:
-			// 未知代理类型，回退到普通代理配置（无 TLS 指纹/h2）
+			// 未知代理类型，回退到普通代理配置（无 TLS 指纹）
 			slog.Debug("tls_fingerprint_transport_unknown_scheme_fallback", "scheme", scheme)
 			if err := proxyutil.ConfigureTransportProxy(transport, proxyURL); err != nil {
 				return nil, err
 			}
-			return transport, nil
 		}
 	}
 
-	if upstreamProfile != service.HTTPUpstreamProfileOpenAI && dialTLS != nil {
-		return newOrderedH1RoundTripper(dialTLS, settings.responseHeaderTimeout, settings.idleConnTimeout, settings.maxIdleConnsPerHost), nil
-	}
 	return transport, nil
 }
 

@@ -578,6 +578,9 @@ export default {
       rpmLimit: '每分钟请求数 (RPM)',
       rpmLimitPlaceholder: '0 表示不限制',
       rpmLimitHint: '该用户每分钟最大请求数，0 = 不限制；仅在所用分组未设置 rpm_limit 时作为兜底生效'
+    ,
+      concurrencyPlaceholder: '0 表示不限制',
+      concurrencyHint: '该用户的最大并发请求数，0 = 不限制',
     },
     adjustBalance: '调整余额',
     adjustConcurrency: '调整并发数',
@@ -791,6 +794,11 @@ export default {
     subscriptionsTitle: '用户订阅',
     noSubscriptionsForUser: '该用户暂无订阅',
     failedToLoadSubscriptions: '加载用户订阅失败'
+  ,
+    concurrencyNonNegative: '并发数不能为负数，0 表示不限制',
+    restrictPublicGroups: '限制可访问的公开分组',
+    restrictPublicGroupsHint: '开启后，该用户仅能使用下方勾选的公开分组；关闭则可使用全部公开分组。',
+    publicGroupsRestricted: '公开分组（已限制）',
   },
   groups: {
     title: '分组管理',
@@ -899,6 +907,10 @@ export default {
       antigravity: 'Antigravity',
       grok: 'Grok',
       composite: 'Composite',
+
+      kimi: 'Kimi',
+      zhipu: 'Zhipu GLM',
+      deepseek: 'DeepSeek',
     },
     saving: '保存中...',
     noGroups: '暂无分组',
@@ -1136,6 +1148,9 @@ export default {
         '视频按秒计费：费用 = 每秒价格 × 时长（1-15 秒，未指定默认 8 秒）。默认叠加当前分组有效倍率；开启独立倍率后改用视频独立倍率。',
       finalPricePreview: '最终每秒价格预览',
       notConfigured: '未配置'
+    ,
+      modelOverridesTitle: '按模型覆盖视频价格',
+      modelOverridesDescription: '已填写的单元格会覆盖该模型族的平面分辨率价格。video-1.5 的 preview 与 legacy 别名共用同一模型族；留空则回退到平面分辨率价格。',
     },
     compositeRoutes: {
       action: '路由',
@@ -1195,5 +1210,39 @@ export default {
       unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
       enableAnyway: '仍然开启'
     },
+
+    explicitPricing: {
+            title: 'Grok 搜索与 Voice 定价',
+            description: '分组级 web_search（每千次）与 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+            searchPricePer1k: '搜索每千次价格（USD）',
+            pricePlaceholder: '可选'
+          },
+    modelPricing: {
+            title: '分组逐模型定价',
+            description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
+            longContext: '启用长上下文阶梯定价',
+            longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，账号显式开启时除外。',
+            add: '添加模型价格'
+          },
+    voicePricing: {
+            title: 'Grok Voice 定价',
+            description: '分组级 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
+            audioRealtimePerMin: 'Realtime 每分钟价格（USD）',
+            audioTtsPerMillionChars: 'TTS 每百万字符价格（USD）',
+            audioSttPerHour: 'STT 每小时价格（USD）',
+            pricePlaceholder: '可选'
+          },
+    profitControl: {
+            enable: '启用利润控制',
+            enabledHint: '调度时仅允许"账号倍率 ≤ 请求实际下游倍率 ×（1 − 最低毛利率 − 安全缓冲）"的账号进入候选池；账号倍率可手工维护或由探测同步，既有排序、粘性与熔断在合格账号间照常工作。图片/视频调度暂不参与。',
+            disabledHint: '关闭后调度不做利润过滤，账号倍率高于下游倍率的账号也会被选中，可能产生亏损请求。',
+            minMargin: '最低毛利率（%）',
+            minMarginHint: '百分比输入，如 30 表示 30%；后端按小数存储',
+            safetyBuffer: '安全缓冲（%）',
+            safetyBufferHint: '与最低毛利率相加后从下游倍率中扣除，默认 0',
+            marginRangeError: '最低毛利率应在 0 到 99.99 之间',
+            bufferRangeError: '安全缓冲应在 0 到 99.99 之间',
+            sumTooHigh: '最低毛利率与安全缓冲之和必须小于 100%，否则将排除全部账号'
+          },
   }
 }

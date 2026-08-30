@@ -46,21 +46,21 @@ func TestResolveImageBillingSize(t *testing.T) {
 		wantBreakdown map[string]int
 	}{
 		{
-			name:          "explicit input wins over output",
+			name:          "output wins over input",
 			inputSize:     "1024x1024",
 			outputSizes:   []string{"3840x2160"},
-			wantBilling:   "1K",
+			wantBilling:   "4K",
 			wantOutput:    "3840x2160",
-			wantSource:    ImageSizeSourceInput,
+			wantSource:    ImageSizeSourceOutput,
 			wantBreakdown: map[string]int{"4K": 1},
 		},
 		{
-			name:          "explicit 1k does not upgrade nonstandard output",
+			name:          "output tier wins over explicit input",
 			inputSize:     "1024x1024",
 			outputSizes:   []string{"1254x1254"},
-			wantBilling:   "1K",
+			wantBilling:   "2K",
 			wantOutput:    "1254x1254",
-			wantSource:    ImageSizeSourceInput,
+			wantSource:    ImageSizeSourceOutput,
 			wantBreakdown: map[string]int{"2K": 1},
 		},
 		{
@@ -103,12 +103,12 @@ func TestResolveImageBillingSize(t *testing.T) {
 			wantBreakdown: map[string]int{"4K": 1},
 		},
 		{
-			name:          "explicit input wins over mixed output",
+			name:          "mixed output chooses highest tier",
 			inputSize:     "1024x1024",
 			outputSizes:   []string{"1024x1024", "3840x2160", "1280x720"},
-			wantBilling:   "1K",
+			wantBilling:   "4K",
 			wantOutput:    "1024x1024",
-			wantSource:    ImageSizeSourceInput,
+			wantSource:    ImageSizeSourceOutput,
 			wantBreakdown: map[string]int{"1K": 1, "2K": 1, "4K": 1},
 		},
 		{

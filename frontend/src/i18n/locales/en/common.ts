@@ -115,6 +115,14 @@ export default {
     apply: 'Apply',
     required: 'required',
     login: 'Login'
+  ,
+    upload: 'Upload',
+    remove: 'Remove',
+    noFileSelected: 'No file selected',
+    selectedFile: 'Selected: {name}',
+    fileReadFailed: 'Failed to read file',
+    selectImageFile: 'Please select an image file',
+    fileTooLargeKb: 'File too large ({size} KB), max {max} KB',
   },
   adminCompliance: {
     title: 'Deployment and Operation Compliance Acknowledgment',
@@ -213,6 +221,8 @@ export default {
     keyUsage: 'Usage Query',
     modelMarketplace: 'Model Marketplace',
     paymentCoupons: 'Payment Coupons'
+  ,
+    plugins: 'Plugins',
   },
   stepUp: {
     title: 'Sensitive action verification',
@@ -220,50 +230,6 @@ export default {
     verifyFailed: 'Verification failed. Please try again.',
     notEnabled: 'Step-up verification is not enabled for this administrator.',
     adminApiKeyForbidden: 'This action cannot be performed with an admin API key. Use an authenticated administrator session.'
-  },
-  modelPlaza: {
-    title: 'Model Plaza',
-    description: 'Browse available models and their effective prices by platform and group.',
-    anonymousHint: 'Sign in to see models and prices available to your account.',
-    loadFailed: 'Failed to load the model plaza.',
-    empty: 'No models are currently available.',
-    noSearchResult: 'No models match your search.',
-    badges: {
-      exclusive: 'Exclusive',
-      subscription: 'Subscription'
-    },
-    detail: {
-      noModels: 'No models in this group.',
-      peakNote: 'Peak rate: {multiplier}x ({window})'
-    },
-    filters: {
-      all: 'All',
-      platformLabel: 'Platform',
-      groupLabel: 'Group',
-      rateLabel: 'Rate',
-      modelLabel: 'Model',
-      searchPlaceholder: 'Search model name...'
-    },
-    nav: {
-      backToDashboard: 'Back to dashboard',
-      login: 'Log in'
-    },
-    table: {
-      model: 'Model',
-      paidPrice: 'Your price',
-      officialPrice: 'Official price',
-      rate: 'Rate',
-      input: 'Input',
-      output: 'Output',
-      cache: 'Cache',
-      cacheWrite: 'Cache write',
-      cacheRead: 'Cache read',
-      unitPerMillion: '/ 1M tokens',
-      perRequest: 'Per request',
-      perImage: 'Per image',
-      perUnitRequest: 'request',
-      perUnitImage: 'image'
-    }
   },
   auth: {
     welcomeBack: 'Welcome Back',

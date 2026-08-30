@@ -434,6 +434,20 @@ func (h *SubscriptionHandler) Revoke(c *gin.Context) {
 	response.Success(c, gin.H{"message": "Subscription revoked successfully"})
 }
 
+func (h *SubscriptionHandler) Restore(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid subscription ID")
+		return
+	}
+	sub, err := h.subscriptionService.Restore(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+}
+
 // ListByGroup handles listing subscriptions for a specific group
 // GET /api/v1/admin/groups/:id/subscriptions
 func (h *SubscriptionHandler) ListByGroup(c *gin.Context) {

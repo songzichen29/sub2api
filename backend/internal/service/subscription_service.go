@@ -259,6 +259,13 @@ func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *Ass
 	return sub, nil
 }
 
+func (s *SubscriptionService) Restore(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	if s == nil || s.userSubRepo == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	return s.userSubRepo.Restore(ctx, subscriptionID, SubscriptionStatusActive)
+}
+
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
 // 如果用户已有同分组的订阅：
 //   - 未过期：从当前过期时间累加天数

@@ -262,49 +262,6 @@ func TestApplyOpenAIFastPolicyToBody_ForcePriorityRewritesKnownTier(t *testing.T
 	}
 }
 
-func TestApplyOpenAIFastPolicyToBody_ForcePriorityInjectsMissingTier(t *testing.T) {
-	settings := &OpenAIFastPolicySettings{
-		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier:    OpenAIFastTierAny,
-			Action:         OpenAIFastPolicyActionForcePriority,
-			Scope:          BetaPolicyScopeAll,
-			ModelWhitelist: []string{"gpt-5.6-sol", "gpt-5.6-terra"},
-			FallbackAction: BetaPolicyActionPass,
-		}},
-	}
-	svc := newOpenAIGatewayServiceWithSettings(t, settings)
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-
-	body := []byte(`{"model":"gpt-5.6-sol","input":"hi"}`)
-	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.6-sol", body)
-	require.NoError(t, err)
-	require.Equal(t, OpenAIFastTierPriority, gjson.GetBytes(updated, "service_tier").String())
-
-	body = []byte(`{"model":"gpt-4.1","input":"hi"}`)
-	updated, err = svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-4.1", body)
-	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
-}
-
-func TestApplyOpenAIFastPolicyToBody_PriorityRuleDoesNotInjectMissingTier(t *testing.T) {
-	settings := &OpenAIFastPolicySettings{
-		Rules: []OpenAIFastPolicyRule{{
-			ServiceTier:    OpenAIFastTierPriority,
-			Action:         OpenAIFastPolicyActionForcePriority,
-			Scope:          BetaPolicyScopeAll,
-			ModelWhitelist: []string{"gpt-5.6-sol"},
-			FallbackAction: BetaPolicyActionPass,
-		}},
-	}
-	svc := newOpenAIGatewayServiceWithSettings(t, settings)
-	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
-
-	body := []byte(`{"model":"gpt-5.6-sol","input":"hi"}`)
-	updated, err := svc.applyOpenAIFastPolicyToBody(context.Background(), account, "gpt-5.6-sol", body)
-	require.NoError(t, err)
-	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
-}
-
 // TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule 验证默认配置
 // 下客户端显式发送的 OpenAI 官方合法 tier 能透传到上游而不被静默剥离。
 func TestApplyOpenAIFastPolicyToBody_OfficialTiersBypassDefaultRule(t *testing.T) {

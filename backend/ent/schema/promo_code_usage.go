@@ -32,11 +32,11 @@ func (PromoCodeUsage) Fields() []ent.Field {
 		field.Int64("user_id").
 			Comment("使用用户ID"),
 		field.Float("bonus_amount").
-			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Comment("实际赠送金额"),
 		field.Time("used_at").
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}).
 			Comment("使用时间"),
 	}
 }

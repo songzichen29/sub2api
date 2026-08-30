@@ -49,7 +49,7 @@ func (SoftDeleteMixin) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{
-				dialect.MySQL: "datetime(6)",
+				dialect.Postgres: "timestamptz",
 			}),
 	}
 }

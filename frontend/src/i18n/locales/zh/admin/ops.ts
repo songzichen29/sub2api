@@ -320,6 +320,8 @@ export default {
       requestTypeSync: '同步',
       requestTypeStream: '流式',
       requestTypeWs: 'WS'
+    ,
+      typeAccountAuth: '账号认证',
     },
     errorDetails: {
       upstreamErrors: '上游错误',
@@ -341,6 +343,8 @@ export default {
         upstream: '上游',
         network: '网络',
         internal: '内部'
+      ,
+        account_auth: '账号认证',
       },
       total: '总计：',
       searchPlaceholder: '搜索 request_id / client_request_id / message'
@@ -475,6 +479,17 @@ export default {
       responseHintSucceeded: '展示重试成功的 response_preview（#{id}）',
       responseHintFallback: '没有成功的重试结果，展示存储的 error_body',
       suggestUpstreamResolved: '✓ 上游错误已通过重试解决，无需人工介入'
+    ,
+      backToList: '返回列表',
+      upstreamStatus: '上游状态码',
+      rootCause: '根因',
+      diagnosticPayloads: '诊断载荷',
+      payloads: {
+                client: '客户端响应',
+                upstream_message: '上游消息',
+                upstream_detail: '上游详情',
+                upstream_events: '上游事件'
+              },
     },
     requestDetails: {
       title: '请求明细',

@@ -37,13 +37,13 @@ func (Setting) Fields() []ent.Field {
 			Unique(),
 		field.String("value").
 			SchemaType(map[string]string{
-				dialect.MySQL: "longtext",
+				dialect.Postgres: "text",
 			}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
 			SchemaType(map[string]string{
-				dialect.MySQL: "datetime(6)",
+				dialect.Postgres: "timestamptz",
 			}),
 	}
 }

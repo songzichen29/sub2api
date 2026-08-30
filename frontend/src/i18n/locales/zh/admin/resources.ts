@@ -429,6 +429,8 @@ export default {
     failedToLoadReadStatus: '加载已读情况失败',
     deleteConfirm: '确定要删除该公告吗？此操作无法撤销。',
     preview: '预览',
+
+    createFirstAnnouncement: '还没有公告，创建您的第一条公告。',
   },
   promo: {
     title: '优惠码管理',

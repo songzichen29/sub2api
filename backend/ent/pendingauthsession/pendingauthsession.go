@@ -145,8 +145,6 @@ var (
 	DefaultBrowserSessionKey string
 	// DefaultCompletionCodeHash holds the default value on creation for the "completion_code_hash" field.
 	DefaultCompletionCodeHash string
-	// CompletionCodeHashValidator is a validator for the "completion_code_hash" field. It is called by the builders before save.
-	CompletionCodeHashValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the PendingAuthSession queries.
