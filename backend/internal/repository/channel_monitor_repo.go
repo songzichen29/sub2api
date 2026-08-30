@@ -13,7 +13,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
@@ -28,6 +27,33 @@ import (
 type channelMonitorRepository struct {
 	client *dbent.Client
 	db     *sql.DB
+}
+
+func buildMonitorInt64InClause(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	return strings.Join(placeholders, ","), args
+}
+
+func buildMonitorModelTargetsClause(ids []int64, primaryModels map[int64]string) (string, []any) {
+	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
+	if len(pairIDs) == 0 {
+		return "", nil
+	}
+	parts := make([]string, 0, len(pairIDs))
+	args := make([]any, 0, len(pairIDs)*2)
+	for i := range pairIDs {
+		parts = append(parts, "SELECT ? AS monitor_id, ? AS model")
+		args = append(args, pairIDs[i], pairModels[i])
+	}
+	return strings.Join(parts, " UNION ALL "), args
 }
 
 // NewChannelMonitorRepository 创建仓储实例。
@@ -300,15 +326,19 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 
 // ---------- 用户视图聚合（原生 SQL） ----------
 
-// ListLatestPerModel 用 DISTINCT ON 取每个 (monitor_id, model) 的最近一条记录。
-// 借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
+// ListLatestPerModel 用窗口函数取每个 model 的最近一条记录。
 func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monitorID int64) ([]*service.ChannelMonitorLatest, error) {
 	const q = `
-		SELECT DISTINCT ON (model)
-		    model, status, latency_ms, ping_latency_ms, checked_at
-		FROM channel_monitor_histories
-		WHERE monitor_id = $1
-		ORDER BY model, checked_at DESC
+		WITH ranked AS (
+			SELECT model, status, latency_ms, ping_latency_ms, checked_at,
+			       ROW_NUMBER() OVER (PARTITION BY model ORDER BY checked_at DESC) AS rn
+			FROM channel_monitor_histories
+			WHERE monitor_id = ?
+		)
+		SELECT model, status, latency_ms, ping_latency_ms, checked_at
+		FROM ranked
+		WHERE rn = 1
+		ORDER BY model
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID)
 	if err != nil {
@@ -366,14 +396,14 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 	}
 	const q = `
 		SELECT model,
-		       COUNT(*)                                                             AS total,
-		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       COUNT(*) AS total,
+		       SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END) AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
-		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
-		            ELSE NULL END                                                   AS avg_latency_ms
+		            THEN SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END) / COUNT(latency_ms)
+		            ELSE NULL END AS avg_latency_ms
 		FROM channel_monitor_histories
-		WHERE monitor_id = $1
-		  AND checked_at >= NOW() - ($2::int || ' days')::interval
+		WHERE monitor_id = ?
+		  AND checked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
 		GROUP BY model
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID, windowDays)
@@ -418,20 +448,25 @@ func finalizeAvailabilityRow(row *service.ChannelMonitorAvailability, avgLatency
 }
 
 // ListLatestForMonitorIDs 一次性查询多个监控的"每个 (monitor_id, model) 最近一条"记录。
-// 利用 PG 的 DISTINCT ON 特性，借助 (monitor_id, model, checked_at DESC) 索引可走 Index Scan。
 func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, ids []int64) (map[int64][]*service.ChannelMonitorLatest, error) {
 	out := make(map[int64][]*service.ChannelMonitorLatest, len(ids))
 	if len(ids) == 0 {
 		return out, nil
 	}
-	const q = `
-		SELECT DISTINCT ON (monitor_id, model)
-		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota
-		FROM channel_monitor_histories
-		WHERE monitor_id = ANY($1)
-		ORDER BY monitor_id, model, checked_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids))
+	inClause, inArgs := buildMonitorInt64InClause(ids)
+	q := fmt.Sprintf(`
+		WITH ranked AS (
+			SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota,
+			       ROW_NUMBER() OVER (PARTITION BY monitor_id, model ORDER BY checked_at DESC) AS rn
+			FROM channel_monitor_histories
+			WHERE monitor_id IN (%s)
+		)
+		SELECT monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota
+		FROM ranked
+		WHERE rn = 1
+		ORDER BY monitor_id, model
+	`, inClause)
+	rows, err := r.db.QueryContext(ctx, q, inArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query latest batch: %w", err)
 	}
@@ -458,7 +493,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 
 // ListRecentHistoryForMonitors 为多个 monitor 批量取各自"指定模型"最近 N 条历史（按 checked_at DESC，最新在前）。
 // primaryModels[monitorID] 指定该监控要过滤的模型名；monitor 不在 primaryModels 中的记录不返回。
-// 通过 CTE + unnest(两个 int8/text 数组) 构造 (monitor_id, model) 白名单，
+// 通过 CTE + UNION ALL 构造 (monitor_id, model) 白名单，
 // 再用 ROW_NUMBER() OVER (PARTITION BY monitor_id) 取各自前 N 条。
 //
 // 返回值：map[monitorID] -> []*ChannelMonitorHistoryEntry（不含 message，减少网络开销）。
@@ -476,10 +511,10 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 	}
 	perMonitorLimit = clampTimelineLimit(perMonitorLimit)
 
-	const q = `
+	targetsClause, targetArgs := buildMonitorModelTargetsClause(ids, primaryModels)
+	q := fmt.Sprintf(`
 		WITH targets AS (
-		    SELECT unnest($1::bigint[]) AS monitor_id,
-		           unnest($2::text[])   AS model
+		    %s
 		),
 		ranked AS (
 		    SELECT h.monitor_id,
@@ -494,10 +529,11 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		)
 		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
 		FROM ranked
-		WHERE rn <= $3
+		WHERE rn <= ?
 		ORDER BY monitor_id, checked_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, q, pq.Array(pairIDs), pq.Array(pairModels), perMonitorLimit)
+	`, targetsClause)
+	queryArgs := append(targetArgs, perMonitorLimit)
+	rows, err := r.db.QueryContext(ctx, q, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query recent history batch: %w", err)
 	}
@@ -521,7 +557,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 }
 
 // buildMonitorModelPairs 基于 ids 过滤出有效的 (monitor_id, model) 对，model 为空时跳过。
-// 保证两个数组长度一致且一一对应，供 unnest 展开。
+// 保证两个切片长度一致且一一对应，供批量白名单构造复用。
 func buildMonitorModelPairs(ids []int64, primaryModels map[int64]string) ([]int64, []string) {
 	if len(ids) == 0 || len(primaryModels) == 0 {
 		return nil, nil
@@ -567,20 +603,22 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 	if windowDays <= 0 {
 		windowDays = 7
 	}
-	const q = `
+	inClause, inArgs := buildMonitorInt64InClause(ids)
+	q := fmt.Sprintf(`
 		SELECT monitor_id,
 		       model,
-		       COUNT(*)                                                             AS total,
-		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       COUNT(*) AS total,
+		       SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END) AS ok,
 		       CASE WHEN COUNT(latency_ms) > 0
-		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
-		            ELSE NULL END                                                   AS avg_latency_ms
+		            THEN SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END) / COUNT(latency_ms)
+		            ELSE NULL END AS avg_latency_ms
 		FROM channel_monitor_histories
-		WHERE monitor_id = ANY($1)
-		  AND checked_at >= NOW() - ($2::int || ' days')::interval
+		WHERE monitor_id IN (%s)
+		  AND checked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
 		GROUP BY monitor_id, model
-	`
-	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), windowDays)
+	`, inClause)
+	queryArgs := append(inArgs, windowDays)
+	rows, err := r.db.QueryContext(ctx, q, queryArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("query availability batch: %w", err)
 	}
