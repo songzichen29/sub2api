@@ -145,11 +145,6 @@ func LastActiveAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldLastActiveAt, v))
 }
 
-// RestrictPublicGroups applies equality check predicate on the "restrict_public_groups" field. It's identical to RestrictPublicGroupsEQ.
-func RestrictPublicGroups(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldRestrictPublicGroups, v))
-}
-
 // BalanceNotifyEnabled applies equality check predicate on the "balance_notify_enabled" field. It's identical to BalanceNotifyEnabledEQ.
 func BalanceNotifyEnabled(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyEnabled, v))
@@ -178,6 +173,11 @@ func TotalRecharged(v float64) predicate.User {
 // RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
 func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
+}
+
+// RestrictPublicGroups applies equality check predicate on the "restrict_public_groups" field. It's identical to RestrictPublicGroupsEQ.
+func RestrictPublicGroups(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRestrictPublicGroups, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
@@ -1120,16 +1120,6 @@ func LastActiveAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldLastActiveAt))
 }
 
-// RestrictPublicGroupsEQ applies the EQ predicate on the "restrict_public_groups" field.
-func RestrictPublicGroupsEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldRestrictPublicGroups, v))
-}
-
-// RestrictPublicGroupsNEQ applies the NEQ predicate on the "restrict_public_groups" field.
-func RestrictPublicGroupsNEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldRestrictPublicGroups, v))
-}
-
 // BalanceNotifyEnabledEQ applies the EQ predicate on the "balance_notify_enabled" field.
 func BalanceNotifyEnabledEQ(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyEnabled, v))
@@ -1400,6 +1390,16 @@ func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
 }
 
+// RestrictPublicGroupsEQ applies the EQ predicate on the "restrict_public_groups" field.
+func RestrictPublicGroupsEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldRestrictPublicGroups, v))
+}
+
+// RestrictPublicGroupsNEQ applies the NEQ predicate on the "restrict_public_groups" field.
+func RestrictPublicGroupsNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldRestrictPublicGroups, v))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1607,6 +1607,29 @@ func HasPromoCodeUsagesWith(preds ...predicate.PromoCodeUsage) predicate.User {
 	})
 }
 
+// HasCouponUsages applies the HasEdge predicate on the "coupon_usages" edge.
+func HasCouponUsages() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CouponUsagesTable, CouponUsagesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCouponUsagesWith applies the HasEdge predicate on the "coupon_usages" edge with a given conditions (other predicates).
+func HasCouponUsagesWith(preds ...predicate.CouponUsage) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCouponUsagesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasPaymentOrders applies the HasEdge predicate on the "payment_orders" edge.
 func HasPaymentOrders() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1622,6 +1645,52 @@ func HasPaymentOrders() predicate.User {
 func HasPaymentOrdersWith(preds ...predicate.PaymentOrder) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newPaymentOrdersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasInvoiceHeaders applies the HasEdge predicate on the "invoice_headers" edge.
+func HasInvoiceHeaders() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, InvoiceHeadersTable, InvoiceHeadersColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasInvoiceHeadersWith applies the HasEdge predicate on the "invoice_headers" edge with a given conditions (other predicates).
+func HasInvoiceHeadersWith(preds ...predicate.InvoiceHeader) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newInvoiceHeadersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasInvoiceApplications applies the HasEdge predicate on the "invoice_applications" edge.
+func HasInvoiceApplications() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, InvoiceApplicationsTable, InvoiceApplicationsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasInvoiceApplicationsWith applies the HasEdge predicate on the "invoice_applications" edge with a given conditions (other predicates).
+func HasInvoiceApplicationsWith(preds ...predicate.InvoiceApplication) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newInvoiceApplicationsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

@@ -163,6 +163,10 @@ export interface UserAffiliateDetail {
   aff_history_quota: number
   /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
   effective_rebate_rate_percent: number
+  recharge_enabled?: boolean
+  subscription_enabled?: boolean
+  effective_recharge_rebate_rate_percent?: number
+  effective_subscription_rebate_rate_percent?: number
   invitees: AffiliateInvitee[]
 }
 
@@ -562,6 +566,9 @@ export interface Group {
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
+  daily_limit_reset_price?: number | null
+  allow_daily_overdraft?: boolean
+  allow_weekend_skip?: boolean
   weekly_limit_usd: number | null
   monthly_limit_usd: number | null
   long_context_pricing_enabled: boolean
@@ -752,7 +759,7 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
-  status?: 'active' | 'inactive'
+  status?: 'active' | 'inactive' | 'disabled'
   ip_whitelist?: string[]
   ip_blacklist?: string[]
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
@@ -1123,6 +1130,14 @@ export interface OllamaCloudUsageSettings {
   interval_minutes: number
   /** Trailing quiet period after the latest model request (minutes). */
   debounce_minutes: number
+}
+
+export interface AccountUsageQueryConfig {
+  enabled: boolean
+  provider: 'newapi' | 'sub2api' | string
+  base_url?: string
+  access_token?: string
+  user_id?: string
 }
 
 export interface Account {
@@ -1559,6 +1574,16 @@ export interface AdminDataAccount {
   auto_pause_on_expired?: boolean
 }
 
+// AdminDataImportApply 是账号导入时由 admin 在弹窗里勾选并填值的应用块。
+export interface AdminDataImportApply {
+  tags?: string[]
+  group_ids?: number[]
+  proxy_id?: number
+  concurrency?: number
+  priority?: number
+  model_mapping?: Record<string, string>
+}
+
 export interface AdminDataImportError {
   kind: 'proxy' | 'account'
   name?: string
@@ -1682,6 +1707,7 @@ export interface UsageLog {
   openai_ws_mode?: boolean
   duration_ms: number | null
   first_token_ms: number | null
+  upstream_first_event_ms: number | null
 
   // 图片生成字段
   image_count: number
@@ -2006,11 +2032,25 @@ export interface UserSubscription {
   id: number
   user_id: number
   group_id: number
-  status: 'active' | 'expired' | 'revoked' | 'suspended'
-  starts_at: string
+  status: 'active' | 'expired' | 'revoked' | 'suspended' | 'quota_exhausted'
+  starts_at?: string | null
+  validity_unit?: string | null
+  validity_days?: number | null
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  quota_limit_usd?: number | null
+  quota_used_usd?: number | null
+  quota_remaining_usd?: number | null
+  allow_daily_overdraft: boolean
+  skip_weekends: boolean
+  weekend_skip_user_changed_at?: string | null
+  weekend_skip_original_expires_at?: string | null
+  weekend_skip_admin_updated_at?: string | null
+  weekend_skip_admin_updated_by?: number | null
+  overdraft_limit_usd?: number | null
+  overdraft_used_usd?: number | null
+  overdraft_days?: number | null
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null
@@ -2018,6 +2058,7 @@ export interface UserSubscription {
   updated_at: string
   revoked_at?: string | null
   expires_at: string | null
+  last_used_at?: string | null
   user?: User
   group?: Group
 }

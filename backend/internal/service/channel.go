@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const featureKeyModelMappingNotes = "model_mapping_notes"
+
 // BillingMode 计费模式
 type BillingMode string
 
@@ -293,6 +295,48 @@ func (c *Channel) IsWebSearchEmulationEnabled(platform string) bool {
 	return ok && enabled
 }
 
+func (c *Channel) getPlatformModelMappingNotes(platform string) map[string]string {
+	if c == nil || c.FeaturesConfig == nil {
+		return nil
+	}
+	rawByPlatform, ok := c.FeaturesConfig[featureKeyModelMappingNotes].(map[string]any)
+	if !ok {
+		return nil
+	}
+	rawNotes, ok := rawByPlatform[platform].(map[string]any)
+	if !ok {
+		return nil
+	}
+	notes := make(map[string]string, len(rawNotes))
+	for pattern, raw := range rawNotes {
+		if note, ok := raw.(string); ok && strings.TrimSpace(note) != "" {
+			notes[pattern] = strings.TrimSpace(note)
+		}
+	}
+	return notes
+}
+
+func resolveModelMappingNote(notes map[string]string, model string) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	if exact := strings.TrimSpace(notes[model]); exact != "" {
+		return exact
+	}
+	modelLower := strings.ToLower(model)
+	bestPrefixLen := -1
+	bestNote := ""
+	for pattern, note := range notes {
+		prefix, wildcard := splitWildcardSuffix(pattern)
+		if !wildcard || !strings.HasPrefix(modelLower, strings.ToLower(prefix)) || len(prefix) <= bestPrefixLen {
+			continue
+		}
+		bestPrefixLen = len(prefix)
+		bestNote = strings.TrimSpace(note)
+	}
+	return bestNote
+}
+
 // IsBedrockCCCompatEnabled 返回该渠道是否启用了 Bedrock CC 兼容模式。
 // 一旦启用，该渠道下所有请求都会应用 CC 兼容转换，不区分账号 platform。
 func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
@@ -442,9 +486,10 @@ type ChannelUsageFields struct {
 
 // SupportedModel 渠道的一个支持模型条目（无通配符、可直接展示给用户）
 type SupportedModel struct {
-	Name     string               // 用户侧模型名
-	Platform string               // 所属平台
-	Pricing  *ChannelModelPricing // 定价详情（nil 表示未配置定价）
+	Name        string               // 用户侧模型名
+	Platform    string               // 所属平台
+	Pricing     *ChannelModelPricing // 定价详情（nil 表示未配置定价）
+	MappingNote string               // 渠道模型映射备注
 }
 
 // wildcardSuffix 是模型模式中的通配符后缀标记（仅支持尾部匹配）。
@@ -567,6 +612,10 @@ func (c *Channel) SupportedModels() []SupportedModel {
 	}
 	seen := make(map[dedupKey]struct{})
 	result := make([]SupportedModel, 0)
+	notesByPlatform := make(map[string]map[string]string, len(c.ModelMapping))
+	for platform := range c.ModelMapping {
+		notesByPlatform[platform] = c.getPlatformModelMappingNotes(platform)
+	}
 
 	// lookup 在 platform pricing index 中按精确名查定价，命中时返回定价大小写。
 	lookup := func(pidx *platformPricingIndex, name string) (display string, pricing *ChannelModelPricing) {
@@ -587,9 +636,8 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		}
 		seen[key] = struct{}{}
 		result = append(result, SupportedModel{
-			Name:     displayName,
-			Platform: platform,
-			Pricing:  pricing,
+			Name: displayName, Platform: platform, Pricing: pricing,
+			MappingNote: resolveModelMappingNote(notesByPlatform[platform], displayName),
 		})
 	}
 

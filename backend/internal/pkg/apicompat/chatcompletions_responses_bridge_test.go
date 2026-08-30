@@ -2,7 +2,6 @@ package apicompat
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -130,84 +129,78 @@ func TestResponsesToChatCompletionsRequest_InstructionsAndInputDeveloperRole(t *
 	assert.JSONEq(t, `"Hello"`, string(out.Messages[2].Content))
 }
 
-func TestResponsesToChatCompletionsRequest_InputFilePartPreserved(t *testing.T) {
+func TestResponsesToChatCompletionsRequest_TextFormatJsonObject(t *testing.T) {
 	req := &ResponsesRequest{
 		Model: "gpt-4o",
-		Input: json.RawMessage(`[{
-			"type":"message",
-			"role":"user",
-			"content":[
-				{"type":"input_text","text":"front"},
-				{"type":"input_file","filename":"demo.pdf","file_data":"JVBERi0xLjQK"},
-				{"type":"input_text","text":"tail"}
-			]
-		}]`),
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return JSON"}
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{"type":"json_object"}`),
+		},
 	}
 
 	out, err := ResponsesToChatCompletionsRequest(req)
 	require.NoError(t, err)
-	require.Len(t, out.Messages, 1)
-
-	var parts []ChatContentPart
-	require.NoError(t, json.Unmarshal(out.Messages[0].Content, &parts))
-	require.Len(t, parts, 3)
-	assert.Equal(t, "text", parts[0].Type)
-	assert.Equal(t, "front", parts[0].Text)
-	assert.Equal(t, "file", parts[1].Type)
-	require.NotNil(t, parts[1].File)
-	assert.Equal(t, "demo.pdf", parts[1].File.Filename)
-	assert.Equal(t, "JVBERi0xLjQK", parts[1].File.FileData)
-	assert.Equal(t, "text", parts[2].Type)
-	assert.Equal(t, "tail", parts[2].Text)
+	assert.JSONEq(t, `{"type":"json_object"}`, string(out.ResponseFormat))
 }
 
-func TestChatCompletionsResponseToResponses_NormalizesChatCompletionID(t *testing.T) {
-	resp := &ChatCompletionsResponse{
-		ID:     "chatcmpl_test",
-		Object: "chat.completion",
-		Created: 1710000001,
-		Model:  "grok-upstream",
-		Choices: []ChatChoice{{
-			Index:        0,
-			Message:      ChatMessage{Role: "assistant", Content: json.RawMessage(`"hello"`)},
-			FinishReason: "stop",
-		}},
+func TestResponsesToChatCompletionsRequest_TextFormatJsonSchema(t *testing.T) {
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Return structured JSON"}
+		]`),
+		Text: &ResponsesText{
+			Format: json.RawMessage(`{
+				"type":"json_schema",
+				"name":"answer",
+				"schema":{
+					"type":"object",
+					"properties":{"ok":{"type":"boolean"}},
+					"required":["ok"],
+					"additionalProperties":false
+				},
+				"strict":true
+			}`),
+		},
 	}
 
-	out := ChatCompletionsResponseToResponses(resp, "grok-client", nil, false, nil)
-
-	require.NotNil(t, out)
-	assert.True(t, strings.HasPrefix(out.ID, "resp_"), "responses id must be resp_*, got %q", out.ID)
-	assert.NotEqual(t, "chatcmpl_test", out.ID)
-	assert.Equal(t, int64(1710000001), out.CreatedAt)
-}
-
-func TestChatCompletionsChunkToResponsesEvents_KeepsGeneratedResponseIDForChatCompletionChunks(t *testing.T) {
-	state := NewChatCompletionsToResponsesStreamState("grok-client")
-	initialID := state.ResponseID
-	content := "hello"
-
-	events := ChatCompletionsChunkToResponsesEvents(&ChatCompletionsChunk{
-		ID:     "chatcmpl_stream",
-		Object: "chat.completion.chunk",
-		Model:  "grok-upstream",
-		Choices: []ChatChunkChoice{{
-			Index: 0,
-			Delta: ChatDelta{Content: &content},
-		}},
-	}, state)
-	events = append(events, FinalizeChatCompletionsResponsesStream(state)...)
-
-	require.True(t, strings.HasPrefix(state.ResponseID, "resp_"), "stream response id must be resp_*, got %q", state.ResponseID)
-	assert.Equal(t, initialID, state.ResponseID)
-	require.NotEmpty(t, events)
-	for _, event := range events {
-		if event.Response != nil {
-			assert.Equal(t, state.ResponseID, event.Response.ID)
-			assert.NotEqual(t, "chatcmpl_stream", event.Response.ID)
-			assert.NotZero(t, event.Response.CreatedAt)
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"type":"json_schema",
+		"json_schema":{
+			"name":"answer",
+			"schema":{
+				"type":"object",
+				"properties":{"ok":{"type":"boolean"}},
+				"required":["ok"],
+				"additionalProperties":false
+			},
+			"strict":true
 		}
+	}`, string(out.ResponseFormat))
+}
+
+func TestResponsesToChatCompletionsRequest_ParallelToolCalls(t *testing.T) {
+	parallel := false
+	req := &ResponsesRequest{
+		Model: "gpt-4o",
+		Input: json.RawMessage(`[
+			{"role":"user","content":"Use tools"}
+		]`),
+		ParallelToolCalls: &parallel,
 	}
+
+	out, err := ResponsesToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.NotNil(t, out.ParallelToolCalls)
+	assert.False(t, *out.ParallelToolCalls)
+
+	payload, err := json.Marshal(out)
+	require.NoError(t, err)
+	assert.Contains(t, string(payload), `"parallel_tool_calls":false`)
 }
 
 func chatMessageRoles(messages []ChatMessage) []string {

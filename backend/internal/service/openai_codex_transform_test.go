@@ -2047,10 +2047,9 @@ func TestFilterCodexInput_PreservesReasoningSummaryAndContent(t *testing.T) {
 }
 
 // TestFilterCodexInput_PreservesReasoningInMixedInput exercises contract 7:
-// encrypted reasoning items are stripped of their rs_* ids but kept, while bare
-// reasoning is only kept outside continuation mode; message / function_call /
-// function_call_output items flow through unchanged, with tool-call pairing
-// (call_id) intact.
+// reasoning items are stripped of their rs_* ids but kept (with
+// encrypted_content) while message / function_call / function_call_output
+// items flow through unchanged, with tool-call pairing (call_id) intact.
 func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 	build := func() []any {
 		return []any{
@@ -2077,16 +2076,8 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 		preserve := preserve
 		t.Run(fmt.Sprintf("preserveReferences=%v", preserve), func(t *testing.T) {
 			filtered := filterCodexInput(build(), preserve)
-			if preserve {
-				// Continuation requests preserve references/call ids; a bare rs_*
-				// reasoning item would still behave like an upstream lookup, so it
-				// is dropped while encrypted reasoning is kept.
-				require.Len(t, filtered, 4)
-			} else {
-				// Non-continuation requests keep bare reasoning as an id-less schema
-				// shell with summary backfilled.
-				require.Len(t, filtered, 5)
-			}
+			// Nothing is dropped: both reasoning items are now preserved.
+			require.Len(t, filtered, 5)
 
 			byType := make(map[string][]map[string]any)
 			for _, raw := range filtered {
@@ -2097,15 +2088,12 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 				// No surviving item may carry an rs_* id.
 				if id, ok := item["id"].(string); ok {
 					require.False(t, strings.HasPrefix(id, "rs_"),
-						"no bare item carrying an rs_* id should survive the filter")
+						"no item carrying an rs_* id should survive the filter")
 				}
 			}
 
-			expectedReasoning := 2
-			if preserve {
-				expectedReasoning = 1
-			}
-			require.Len(t, byType["reasoning"], expectedReasoning)
+			// Both reasoning items kept, ids stripped, summary present.
+			require.Len(t, byType["reasoning"], 2)
 			for _, r := range byType["reasoning"] {
 				_, hasID := r["id"]
 				require.False(t, hasID)
@@ -2122,42 +2110,5 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 			require.Len(t, byType["function_call_output"], 1)
 			require.Equal(t, "fc_1", byType["function_call_output"][0]["call_id"])
 		})
-	}
-}
-
-func TestFilterCodexInput_PreservesEncryptedReasoningItems(t *testing.T) {
-	validEC := "gAAAAAAAAAAACQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-P0BBQkNERUZHSA"
-	input := []any{
-		map[string]any{"type": "message", "id": "msg_0", "role": "user", "content": "hi"},
-		map[string]any{
-			"type":              "reasoning",
-			"id":                "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
-			"encrypted_content": validEC,
-			"summary":           []any{map[string]any{"type": "summary_text", "text": "keep reasoning"}},
-		},
-		map[string]any{
-			"type":              "reasoning",
-			"encrypted_content": "gAAA",
-			"summary":           []any{map[string]any{"type": "summary_text", "text": "drop invalid"}},
-		},
-		map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "{}"},
-	}
-
-	filtered := filterCodexInput(input, true)
-	require.Len(t, filtered, 3)
-
-	reasoning, ok := filtered[1].(map[string]any)
-	require.True(t, ok)
-	require.Equal(t, "reasoning", reasoning["type"])
-	require.Equal(t, validEC, reasoning["encrypted_content"])
-	_, hasID := reasoning["id"]
-	require.False(t, hasID)
-
-	for _, raw := range filtered {
-		item, ok := raw.(map[string]any)
-		require.True(t, ok)
-		if item["type"] == "reasoning" {
-			require.NotEqual(t, "gAAA", item["encrypted_content"])
-		}
 	}
 }

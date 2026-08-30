@@ -262,6 +262,32 @@ func TestMySQLGroupVideoRateMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLGrokCompatibilityMigrationsExist(t *testing.T) {
+	tests := []struct {
+		name     string
+		required []string
+	}{
+		{"079_user_platform_quotas_cn_providers.sql", []string{"information_schema.check_constraints", "constraint_needs_update", "kimi", "zhipu", "deepseek"}},
+		{"083_channel_monitor_quota_mode.sql", []string{"provider_enum_type", "information_schema.columns", "check_mode", "account_id"}},
+		{"084_composite_routes_cn_providers.sql", []string{"information_schema.check_constraints", "constraint_needs_update", "target_platform"}},
+		{"088_enable_grok_media_generation_groups.sql", []string{"information_schema.columns", "allow_image_generation", "platform` = ''grok''"}},
+		{"089_group_video_model_prices.sql", []string{"information_schema.columns", "video_model_prices", "ADD COLUMN `video_model_prices` JSON NULL"}},
+		{"090_clear_non_grok_video_generation_config.sql", []string{"groups_video_price_backup_220", "video_model_prices", "NOT IN ('grok', 'composite')"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content, err := MySQLFS.ReadFile(tt.name)
+			require.NoError(t, err)
+			sql := string(content)
+			for _, fragment := range tt.required {
+				require.Contains(t, sql, fragment)
+			}
+			requireNotPostgresOnlySQL(t, sql)
+		})
+	}
+}
+
 func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 	tests := []struct {
 		name     string

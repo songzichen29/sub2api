@@ -795,6 +795,8 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	proxyCache            AnthropicProxyCache
+	telemetryHook         *TelemetryHook
 }
 
 // NewGatewayService creates a new GatewayService
@@ -826,10 +828,27 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	compositeResolver *CompositeRouteResolver,
 	balanceNotifyService *BalanceNotifyService,
-	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	extras ...any,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
+	var userPlatformQuotaRepo UserPlatformQuotaRepository
+	var proxyCache AnthropicProxyCache
+	var telemetryService *TelemetryService
+	for _, extra := range extras {
+		switch value := extra.(type) {
+		case UserPlatformQuotaRepository:
+			userPlatformQuotaRepo = value
+		case AnthropicProxyCache:
+			proxyCache = value
+		case *TelemetryService:
+			telemetryService = value
+		}
+	}
+	var telemetryHook *TelemetryHook
+	if telemetryService != nil {
+		telemetryHook = NewTelemetryHook(telemetryService)
+	}
 
 	svc := &GatewayService{
 		accountRepo:           accountRepo,
@@ -864,6 +883,8 @@ func NewGatewayService(
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		proxyCache:            proxyCache,
+		telemetryHook:         telemetryHook,
 	}
 	if compositeResolver != nil {
 		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)

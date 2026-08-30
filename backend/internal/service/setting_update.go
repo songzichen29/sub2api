@@ -365,6 +365,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
 	settings.AffiliateRebateRate = clampAffiliateRebateRate(settings.AffiliateRebateRate)
 	updates[SettingKeyAffiliateRebateRate] = strconv.FormatFloat(settings.AffiliateRebateRate, 'f', 8, 64)
+	updates[SettingKeyAffiliateRechargeEnabled] = strconv.FormatBool(settings.AffiliateRechargeEnabled)
+	updates[SettingKeyAffiliateSubscriptionEnabled] = strconv.FormatBool(settings.AffiliateSubscriptionEnabled)
+	updates[SettingKeyAffiliateRechargeRebateRate] = strconv.FormatFloat(clampAffiliateRebateRate(settings.AffiliateRechargeRebateRate), 'f', 8, 64)
+	updates[SettingKeyAffiliateSubscriptionRebateRate] = strconv.FormatFloat(clampAffiliateRebateRate(settings.AffiliateSubscriptionRebateRate), 'f', 8, 64)
 	if settings.AffiliateRebateFreezeHours < 0 {
 		settings.AffiliateRebateFreezeHours = AffiliateRebateFreezeHoursDefault
 	}
@@ -458,6 +462,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Backend Mode
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
+	updates[SettingKeyOpenAIFreeImageBridgeURL] = strings.TrimSpace(settings.OpenAIFreeImageBridgeURL)
+	if strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey) != "" {
+		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
+	}
 
 	// Gateway forwarding behavior
 	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)

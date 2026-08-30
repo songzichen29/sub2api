@@ -44,6 +44,10 @@ type Tx struct {
 	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// CompositeModelRoute is the client for interacting with the CompositeModelRoute builders.
 	CompositeModelRoute *CompositeModelRouteClient
+	// Coupon is the client for interacting with the Coupon builders.
+	Coupon *CouponClient
+	// CouponUsage is the client for interacting with the CouponUsage builders.
+	CouponUsage *CouponUsageClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -52,6 +56,14 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
+	// InvoiceApplication is the client for interacting with the InvoiceApplication builders.
+	InvoiceApplication *InvoiceApplicationClient
+	// InvoiceApplicationOrder is the client for interacting with the InvoiceApplicationOrder builders.
+	InvoiceApplicationOrder *InvoiceApplicationOrderClient
+	// InvoiceHeader is the client for interacting with the InvoiceHeader builders.
+	InvoiceHeader *InvoiceHeaderClient
+	// InvoiceSetting is the client for interacting with the InvoiceSetting builders.
+	InvoiceSetting *InvoiceSettingClient
 	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
 	PaymentAuditLog *PaymentAuditLogClient
 	// PaymentOrder is the client for interacting with the PaymentOrder builders.
@@ -238,10 +250,16 @@ func (tx *Tx) init() {
 	tx.ChannelMonitorHistory = NewChannelMonitorHistoryClient(tx.config)
 	tx.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(tx.config)
 	tx.CompositeModelRoute = NewCompositeModelRouteClient(tx.config)
+	tx.Coupon = NewCouponClient(tx.config)
+	tx.CouponUsage = NewCouponUsageClient(tx.config)
 	tx.ErrorPassthroughRule = NewErrorPassthroughRuleClient(tx.config)
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
+	tx.InvoiceApplication = NewInvoiceApplicationClient(tx.config)
+	tx.InvoiceApplicationOrder = NewInvoiceApplicationOrderClient(tx.config)
+	tx.InvoiceHeader = NewInvoiceHeaderClient(tx.config)
+	tx.InvoiceSetting = NewInvoiceSettingClient(tx.config)
 	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
 	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
 	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)

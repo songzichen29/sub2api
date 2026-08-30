@@ -153,26 +153,32 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	SiteName                     string                `json:"site_name"`
+	SiteLogo                     string                `json:"site_logo"`
+	SiteSubtitle                 string                `json:"site_subtitle"`
+	APIBaseURL                   string                `json:"api_base_url"`
+	ContactInfo                  string                `json:"contact_info"`
+	DocURL                       string                `json:"doc_url"`
+	HomeContent                  string                `json:"home_content"`
+	CompactHomeEnabled           bool                  `json:"compact_home_enabled"`
+	HideCcsImportButton          bool                  `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled  *bool                 `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL      *string               `json:"purchase_subscription_url"`
+	TableDefaultPageSize         int                   `json:"table_default_page_size"`
+	TablePageSizeOptions         []int                 `json:"table_page_size_options"`
+	CustomMenuItems              *[]dto.CustomMenuItem `json:"custom_menu_items"`
+	CustomEndpoints              *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	OpenAIFreeImageBridgeURL     *string               `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKey string                `json:"openai_free_image_bridge_auth_key"`
 
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
 	AffiliateRebateRate                       *float64                          `json:"affiliate_rebate_rate"`
+	AffiliateRechargeEnabled                  *bool                             `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled              *bool                             `json:"affiliate_subscription_enabled"`
+	AffiliateRechargeRebateRate               *float64                          `json:"affiliate_recharge_rebate_rate"`
+	AffiliateSubscriptionRebateRate           *float64                          `json:"affiliate_subscription_rebate_rate"`
 	AffiliateRebateFreezeHours                *int                              `json:"affiliate_rebate_freeze_hours"`
 	AffiliateRebateDurationDays               *int                              `json:"affiliate_rebate_duration_days"`
 	AffiliateRebatePerInviteeCap              *float64                          `json:"affiliate_rebate_per_invitee_cap"`
@@ -532,6 +538,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.ForwardedClientIPHeaders != nil {
 		forwardedClientIPHeaders = append([]string(nil), (*req.ForwardedClientIPHeaders)...)
 	}
+	openAIFreeImageBridgeURL := previousSettings.OpenAIFreeImageBridgeURL
+	if req.OpenAIFreeImageBridgeURL != nil {
+		openAIFreeImageBridgeURL = strings.TrimSpace(*req.OpenAIFreeImageBridgeURL)
+	}
+	openAIFreeImageBridgeAuthKey := strings.TrimSpace(req.OpenAIFreeImageBridgeAuthKey)
+	if openAIFreeImageBridgeAuthKey == "" {
+		openAIFreeImageBridgeAuthKey = previousSettings.OpenAIFreeImageBridgeAuthKey
+	}
 
 	// 开启敏感操作 step-up 门控属自锁风险操作：仅允许本人已启用 TOTP 的管理员会话开启，
 	// 否则开启后操作者立即被挡在所有敏感操作之外。仅在 false→true 的开启瞬间校验，
@@ -566,6 +580,34 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if affiliateRebateRate > service.AffiliateRebateRateMax {
 		affiliateRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateRechargeEnabled := previousSettings.AffiliateRechargeEnabled
+	if req.AffiliateRechargeEnabled != nil {
+		affiliateRechargeEnabled = *req.AffiliateRechargeEnabled
+	}
+	affiliateSubscriptionEnabled := previousSettings.AffiliateSubscriptionEnabled
+	if req.AffiliateSubscriptionEnabled != nil {
+		affiliateSubscriptionEnabled = *req.AffiliateSubscriptionEnabled
+	}
+	affiliateRechargeRebateRate := previousSettings.AffiliateRechargeRebateRate
+	if req.AffiliateRechargeRebateRate != nil {
+		affiliateRechargeRebateRate = *req.AffiliateRechargeRebateRate
+	}
+	affiliateSubscriptionRebateRate := previousSettings.AffiliateSubscriptionRebateRate
+	if req.AffiliateSubscriptionRebateRate != nil {
+		affiliateSubscriptionRebateRate = *req.AffiliateSubscriptionRebateRate
+	}
+	if affiliateRechargeRebateRate < service.AffiliateRebateRateMin {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateRechargeRebateRate > service.AffiliateRebateRateMax {
+		affiliateRechargeRebateRate = service.AffiliateRebateRateMax
+	}
+	if affiliateSubscriptionRebateRate < service.AffiliateRebateRateMin {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateSubscriptionRebateRate > service.AffiliateRebateRateMax {
+		affiliateSubscriptionRebateRate = service.AffiliateRebateRateMax
 	}
 	affiliateRebateFreezeHours := previousSettings.AffiliateRebateFreezeHours
 	if req.AffiliateRebateFreezeHours != nil {
@@ -1406,6 +1448,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		defaultSubscriptions = append(defaultSubscriptions, service.DefaultSubscriptionSetting{
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
+			StartsAt:     sub.StartsAt,
+			ExpiresAt:    sub.ExpiresAt,
 		})
 	}
 
@@ -1616,6 +1660,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                               req.SiteLogo,
 		SiteSubtitle:                           req.SiteSubtitle,
 		APIBaseURL:                             req.APIBaseURL,
+		OpenAIFreeImageBridgeURL:               openAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKey:           openAIFreeImageBridgeAuthKey,
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
@@ -1630,6 +1676,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                     req.DefaultConcurrency,
 		DefaultBalance:                         req.DefaultBalance,
 		AffiliateRebateRate:                    affiliateRebateRate,
+		AffiliateRechargeEnabled:               affiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:           affiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:            affiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:        affiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
@@ -2107,6 +2157,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		updatedDefaultSubscriptions = append(updatedDefaultSubscriptions, dto.DefaultSubscriptionSetting{
 			GroupID:      sub.GroupID,
 			ValidityDays: sub.ValidityDays,
+			StartsAt:     sub.StartsAt,
+			ExpiresAt:    sub.ExpiresAt,
 		})
 	}
 
@@ -2238,6 +2290,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SiteLogo:                                               updatedSettings.SiteLogo,
 		SiteSubtitle:                                           updatedSettings.SiteSubtitle,
 		APIBaseURL:                                             updatedSettings.APIBaseURL,
+		OpenAIFreeImageBridgeURL:                               updatedSettings.OpenAIFreeImageBridgeURL,
+		OpenAIFreeImageBridgeAuthKeyConfigured:                 updatedSettings.OpenAIFreeImageBridgeAuthKeyConfigured,
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
@@ -2252,6 +2306,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                                         updatedSettings.DefaultBalance,
 		AffiliateRebateRate:                                    updatedSettings.AffiliateRebateRate,
+		AffiliateRechargeEnabled:                               updatedSettings.AffiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:                           updatedSettings.AffiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:                            updatedSettings.AffiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate:                        updatedSettings.AffiliateSubscriptionRebateRate,
 		AffiliateRebateFreezeHours:                             updatedSettings.AffiliateRebateFreezeHours,
 		AffiliateRebateDurationDays:                            updatedSettings.AffiliateRebateDurationDays,
 		AffiliateRebatePerInviteeCap:                           updatedSettings.AffiliateRebatePerInviteeCap,

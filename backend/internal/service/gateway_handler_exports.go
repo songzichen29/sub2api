@@ -22,38 +22,3 @@ func (s *GatewayService) PeekAvailableModelsSnapshot(groupID *int64, platform st
 func (s *OpenAIGatewayService) CheckChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
 	return s.checkChannelPricingRestriction(ctx, groupID, requestedModel)
 }
-
-// DiagnoseModelAvailabilityForPlatform implements ModelAvailabilityDiagnoser
-// for OpenAI-compatible gateway handlers.
-func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
-	ctx context.Context,
-	groupID *int64,
-	requestedModel string,
-	platform string,
-) ModelAvailabilityDiagnosis {
-	if s == nil {
-		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
-	}
-	requestedModel = strings.TrimSpace(requestedModel)
-	if requestedModel == "" {
-		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
-	}
-	platform = normalizeOpenAICompatiblePlatform(strings.TrimSpace(platform))
-	if platform == "" {
-		platform = PlatformOpenAI
-	}
-
-	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
-	if err != nil {
-		return ModelAvailabilityDiagnosis{HasAccountsInPool: true, HasModelSupport: true}
-	}
-	diag := ModelAvailabilityDiagnosis{}
-	for i := range accounts {
-		diag.HasAccountsInPool = true
-		if accounts[i].IsModelSupported(requestedModel) {
-			diag.HasModelSupport = true
-			return diag
-		}
-	}
-	return diag
-}

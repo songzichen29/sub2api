@@ -72,11 +72,11 @@ backend/internal/service/ratelimit_service_scheduling_threshold_test.go
 frontend/src/components/account/__tests__/CreateAccountModal.grok.spec.ts
 frontend/src/views/admin/__tests__/ChannelMonitorView.grok.spec.ts
 
-新增的 Grok/xAI 文件也全部删除。为保持共享 OpenAI/Codex 代码可编译，保留 backend/internal/pkg/xai/compat.go 中性兼容层；它不提供 Grok 路由、模型或配额。
+后续按用户要求恢复源作者的 Grok/xAI 完整实现，包括 OAuth、配额、媒体和 OpenAI bridge；不再使用生产侧的中性兼容层替代实现。
 
 ## 数据库改造记录
 
-生产 MySQL migration 原有编号到 078。本次新增：
+生产 MySQL migration 原有编号到 078。本次新增 079-090：
 
 | MySQL migration | 内容 |
 |---|---|
@@ -89,8 +89,11 @@ frontend/src/views/admin/__tests__/ChannelMonitorView.grok.spec.ts
 | 085_channel_pricing_multipliers.sql | Fast/Flex 和区间倍率 |
 | 086_plugins.sql | OAuth 出站插件安装与绑定表 |
 | 087_usage_reasoning_and_public_groups.sql | 请求 reasoning effort 与公共分组访问限制 |
+| 088_enable_grok_media_generation_groups.sql | 回填 Grok 分组图片生成能力 |
+| 089_group_video_model_prices.sql | 补齐分组按模型视频价格 JSON 字段 |
+| 090_clear_non_grok_video_generation_config.sql | 备份并清理非 Grok/Composite 视频价格 |
 
-源仓库重复的 PostgreSQL 编号 225、226、231 未直接复制。MySQL migration 使用 information_schema 检查保证重复启动安全。
+源仓库重复的 PostgreSQL 编号 225、226、231 未直接复制。MySQL migration 使用 information_schema 检查保证重复启动安全；079、083、084 的约束/枚举更新仅在定义缺失或不完整时执行。
 
 特别检查：
 
@@ -111,7 +114,7 @@ frontend/src/views/admin/__tests__/ChannelMonitorView.grok.spec.ts
 2. 发布使用 Release workflow：更新 backend/cmd/server/VERSION，构建前端、后端 Docker/多架构镜像和 GitHub Release。
 3. 发布 tag 必须与 VERSION 一致，生产环境使用 MySQL migration 集合。
 4. 发布后检查 Actions artifact、GHCR 镜像、release notes 和 migration 文件。
-5. 发布后再次对比生产基线到集成提交，确认没有 Grok/xAI 文件、冲突标记、丢失生产专用目录和配置。
+5. 发布后再次对比生产基线到集成提交，确认源作者 Grok/xAI 文件、MySQL migration、生产专用目录和配置均完整。
 
 ## 容易出现的问题
 
@@ -130,7 +133,8 @@ frontend/src/views/admin/__tests__/ChannelMonitorView.grok.spec.ts
 
 - 合并冲突标记：已清零。
 - 前端 pnpm install --frozen-lockfile：通过。
-- 前端 vue-tsc --noEmit：通过。
-- 关键前端 Vitest：136 tests 通过。
-- 本地 Go：宿主没有 Go；Docker golang:1.27.0 已尝试编译，曾发现缺失 go.sum 和 Grok 过滤后的共享引用，已补 go.sum 和中性兼容层。完整 Go 测试以 GitHub Actions 为准。
-- GitHub Actions：已运行但未通过。提交 8df9a5d7d 的 CI/Security Scan 失败；随后重做合并提交 a7bc9e073 的 CI/Security Scan 仍失败。前端和 shell job 曾通过，backend Go test、golangci-lint 或 govulncheck 未通过，因此尚未进入生产分支和发布阶段。
+- locale parity、page key coverage、消息编译：10 tests 通过。
+- Grok 相关前端 Vitest：25 tests 通过。
+- MySQL migration 静态/编码测试：通过；已新增 088-090 对应迁移。
+- 本地 Go：当前宿主 Go 1.26.2，仓库要求 Go 1.27.0；Go 1.27 全量构建需在 CI 或安装对应工具链后执行。
+- 完整前端 build、Go unit/integration、golangci-lint 和 govulncheck 仍需在发布前执行。

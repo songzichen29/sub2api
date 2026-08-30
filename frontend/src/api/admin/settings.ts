@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from "../client";
+import type { DiscountRule } from "@/types/payment";
 import type {
   CustomEndpoint,
   CustomMenuItem,
@@ -13,7 +14,44 @@ import type {
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
-  validity_days: number;
+  validity_days?: number;
+  starts_at?: string;
+  expires_at?: string;
+  mode?: "days" | "range";
+}
+
+export interface PaymentPaidUserRateRule {
+  group_id: number;
+  rate_multiplier: number;
+  assigned_users?: number;
+}
+
+export interface PaymentPaidUserRateBackfillStatus {
+  total_paid_users: number;
+  assigned_users: number;
+  rule_count: number;
+  status: string;
+  error?: string;
+  updated_at?: string;
+}
+
+export interface AccountImportApplyTemplate {
+  id: string;
+  name: string;
+  enableTags: boolean;
+  enableGroups: boolean;
+  enableProxy: boolean;
+  enableConcurrency: boolean;
+  enablePriority: boolean;
+  enableModelRestriction: boolean;
+  applyTags: string[];
+  applyGroupIds: number[];
+  applyProxyId: number | null;
+  applyConcurrency: number;
+  applyPriority: number;
+  modelRestrictionMode: 'whitelist' | 'mapping';
+  allowedModels: string[];
+  modelMappings: Array<{ from: string; to: string }>;
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
@@ -233,17 +271,41 @@ const WECHAT_CONNECT_MODE_ALIASES: Record<string, WeChatConnectMode> = {
 export function normalizeDefaultSubscriptionSettings(
   subscriptions: DefaultSubscriptionSetting[] | null | undefined,
 ): DefaultSubscriptionSetting[] {
-  if (!Array.isArray(subscriptions)) return [];
+  if (!Array.isArray(subscriptions)) return []
+  const normalized: DefaultSubscriptionSetting[] = []
+  for (const item of subscriptions) {
+    const groupID = Math.floor(Number(item.group_id))
+    if (groupID <= 0) continue
 
-  return subscriptions
-    .filter((item) => item.group_id > 0 && item.validity_days > 0)
-    .map((item) => ({
-      group_id: Math.floor(item.group_id),
-      validity_days: Math.min(
-        36500,
-        Math.max(1, Math.floor(item.validity_days)),
-      ),
-    }));
+    const startsAtRaw = String(item.starts_at || '').trim()
+    const expiresAtRaw = String(item.expires_at || '').trim()
+    if (startsAtRaw || expiresAtRaw) {
+      if (!startsAtRaw || !expiresAtRaw) continue
+      const startsAt = new Date(startsAtRaw)
+      const expiresAt = new Date(expiresAtRaw)
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        Number.isNaN(expiresAt.getTime()) ||
+        expiresAt.getTime() <= startsAt.getTime()
+      ) continue
+      normalized.push({
+        group_id: groupID,
+        starts_at: startsAt.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        mode: 'range',
+      })
+      continue
+    }
+
+    const validityDays = Math.floor(Number(item.validity_days))
+    if (validityDays <= 0) continue
+    normalized.push({
+      group_id: groupID,
+      validity_days: Math.min(36500, Math.max(1, validityDays)),
+      mode: 'days',
+    })
+  }
+  return normalized
 }
 
 export function buildAuthSourceDefaultsState(
@@ -412,13 +474,17 @@ export interface SystemSettings {
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
-  login_agreement_enabled: boolean;
-  login_agreement_mode: "modal" | "checkbox" | string;
-  login_agreement_updated_at: string;
-  login_agreement_documents: LoginAgreementDocument[];
+  login_agreement_enabled?: boolean;
+  login_agreement_mode?: "modal" | "checkbox" | string;
+  login_agreement_updated_at?: string;
+  login_agreement_documents?: LoginAgreementDocument[];
   // Default settings
   default_balance: number;
-  affiliate_rebate_rate: number;
+  affiliate_recharge_enabled: boolean;
+  affiliate_subscription_enabled: boolean;
+  affiliate_recharge_rebate_rate: number;
+  affiliate_subscription_rebate_rate: number;
+  affiliate_rebate_rate?: number;
   affiliate_rebate_freeze_hours: number;
   affiliate_rebate_duration_days: number;
   affiliate_rebate_per_invitee_cap: number;
@@ -520,22 +586,22 @@ export interface SystemSettings {
   linuxdo_connect_redirect_url: string;
 
   // DingTalk Connect OAuth settings
-  dingtalk_connect_enabled: boolean;
-  dingtalk_connect_client_id: string;
-  dingtalk_connect_client_secret_configured: boolean;
-  dingtalk_connect_redirect_url: string;
-  dingtalk_connect_corp_restriction_policy: string;
-  dingtalk_connect_internal_corp_id: string;
-  dingtalk_connect_bypass_registration: boolean;
-  dingtalk_connect_sync_corp_email: boolean;
-  dingtalk_connect_sync_display_name: boolean;
-  dingtalk_connect_sync_dept: boolean;
-  dingtalk_connect_sync_corp_email_attr_key: string;
-  dingtalk_connect_sync_display_name_attr_key: string;
-  dingtalk_connect_sync_dept_attr_key: string;
-  dingtalk_connect_sync_corp_email_attr_name: string;
-  dingtalk_connect_sync_display_name_attr_name: string;
-  dingtalk_connect_sync_dept_attr_name: string;
+  dingtalk_connect_enabled?: boolean;
+  dingtalk_connect_client_id?: string;
+  dingtalk_connect_client_secret_configured?: boolean;
+  dingtalk_connect_redirect_url?: string;
+  dingtalk_connect_corp_restriction_policy?: string;
+  dingtalk_connect_internal_corp_id?: string;
+  dingtalk_connect_bypass_registration?: boolean;
+  dingtalk_connect_sync_corp_email?: boolean;
+  dingtalk_connect_sync_display_name?: boolean;
+  dingtalk_connect_sync_dept?: boolean;
+  dingtalk_connect_sync_corp_email_attr_key?: string;
+  dingtalk_connect_sync_display_name_attr_key?: string;
+  dingtalk_connect_sync_dept_attr_key?: string;
+  dingtalk_connect_sync_corp_email_attr_name?: string;
+  dingtalk_connect_sync_display_name_attr_name?: string;
+  dingtalk_connect_sync_dept_attr_name?: string;
 
   // WeChat Connect OAuth settings
   wechat_connect_enabled: boolean;
@@ -578,16 +644,16 @@ export interface SystemSettings {
   oidc_connect_userinfo_email_path: string;
   oidc_connect_userinfo_id_path: string;
   oidc_connect_userinfo_username_path: string;
-  github_oauth_enabled: boolean;
-  github_oauth_client_id: string;
-  github_oauth_client_secret_configured: boolean;
-  github_oauth_redirect_url: string;
-  github_oauth_frontend_redirect_url: string;
-  google_oauth_enabled: boolean;
-  google_oauth_client_id: string;
-  google_oauth_client_secret_configured: boolean;
-  google_oauth_redirect_url: string;
-  google_oauth_frontend_redirect_url: string;
+  github_oauth_enabled?: boolean;
+  github_oauth_client_id?: string;
+  github_oauth_client_secret_configured?: boolean;
+  github_oauth_redirect_url?: string;
+  github_oauth_frontend_redirect_url?: string;
+  google_oauth_enabled?: boolean;
+  google_oauth_client_id?: string;
+  google_oauth_client_secret_configured?: boolean;
+  google_oauth_redirect_url?: string;
+  google_oauth_frontend_redirect_url?: string;
 
   // Model fallback configuration
   enable_model_fallback: boolean;
@@ -595,12 +661,12 @@ export interface SystemSettings {
   fallback_model_openai: string;
   fallback_model_gemini: string;
   fallback_model_antigravity: string;
-  grok_default_text_model: string;
-  grok_cross_client_model_map_enabled: boolean;
-  grok_default_base_url_mode: string;
+  grok_default_text_model?: string;
+  grok_cross_client_model_map_enabled?: boolean;
+  grok_default_base_url_mode?: string;
 
   // Per-platform account auto-pause thresholds (100 = disabled)
-  account_scheduling_thresholds: AccountSchedulingThresholdsMap;
+  account_scheduling_thresholds?: AccountSchedulingThresholdsMap;
 
   // Identity patch configuration (Claude -> Gemini)
   enable_identity_patch: boolean;
@@ -628,19 +694,30 @@ export interface SystemSettings {
   claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
+
+  // Payment configuration extensions
+  payment_discount_rules: DiscountRule[];
+  payment_quick_amounts: number[];
+  payment_paid_user_rate_enabled: boolean;
+  payment_paid_user_rate_rules: PaymentPaidUserRateRule[];
+  payment_paid_user_rate_backfill: PaymentPaidUserRateBackfillStatus;
+  standalone_account_import_enabled: boolean;
+  standalone_account_import_password_configured: boolean;
+  openai_free_image_bridge_url: string;
+  openai_free_image_bridge_auth_key_configured: boolean;
   enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
-  openai_codex_client_version: string;
-  openai_codex_client_version_synced: string;
-  openai_codex_version_auto_sync_enabled: boolean;
+  openai_codex_client_version?: string;
+  openai_codex_client_version_synced?: string;
+  openai_codex_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
-  min_codex_version: string;
-  max_codex_version: string;
-  codex_cli_only_blacklist: string;
-  codex_cli_only_whitelist: string;
-  codex_cli_only_allow_app_server_clients: boolean;
-  codex_cli_only_engine_fingerprint_signals: string;
+  min_codex_version?: string;
+  max_codex_version?: string;
+  codex_cli_only_blacklist?: string;
+  codex_cli_only_whitelist?: string;
+  codex_cli_only_allow_app_server_clients?: boolean;
+  codex_cli_only_engine_fingerprint_signals?: string;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -659,7 +736,7 @@ export interface SystemSettings {
   payment_enabled_types: string[];
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
-  payment_subscription_usd_to_cny_rate: number;
+  payment_subscription_usd_to_cny_rate?: number;
   payment_recharge_fee_rate: number;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
@@ -736,7 +813,7 @@ export interface SystemSettings {
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
   // Allow user view error requests
-  allow_user_view_error_requests: boolean;
+  allow_user_view_error_requests?: boolean;
 }
 
 export interface UpdateSettingsRequest {
@@ -758,6 +835,10 @@ export interface UpdateSettingsRequest {
   login_agreement_updated_at?: string;
   login_agreement_documents?: LoginAgreementDocument[];
   default_balance?: number;
+  affiliate_recharge_enabled?: boolean;
+  affiliate_subscription_enabled?: boolean;
+  affiliate_recharge_rebate_rate?: number;
+  affiliate_subscription_rebate_rate?: number;
   affiliate_rebate_rate?: number;
   affiliate_rebate_freeze_hours?: number;
   affiliate_rebate_duration_days?: number;
@@ -978,6 +1059,15 @@ export interface UpdateSettingsRequest {
   payment_product_name_suffix?: string;
   payment_help_image_url?: string;
   payment_help_text?: string;
+  payment_discount_rules?: DiscountRule[];
+  payment_quick_amounts?: number[];
+  payment_paid_user_rate_enabled?: boolean;
+  payment_paid_user_rate_rules?: PaymentPaidUserRateRule[];
+  payment_paid_user_rate_backfill?: PaymentPaidUserRateBackfillStatus;
+  standalone_account_import_enabled?: boolean;
+  standalone_account_import_password?: string;
+  openai_free_image_bridge_url?: string;
+  openai_free_image_bridge_auth_key?: string;
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
   payment_cancel_rate_limit_window?: number;
@@ -1060,6 +1150,23 @@ export async function updateSettings(
     settings,
   );
   return data;
+}
+
+export async function getAccountImportTemplates(): Promise<AccountImportApplyTemplate[]> {
+  const { data } = await apiClient.get<{ templates?: AccountImportApplyTemplate[] }>(
+    '/admin/settings/account-import-templates',
+  )
+  return Array.isArray(data?.templates) ? data.templates : []
+}
+
+export async function updateAccountImportTemplates(
+  templates: AccountImportApplyTemplate[],
+): Promise<AccountImportApplyTemplate[]> {
+  const { data } = await apiClient.put<{ templates?: AccountImportApplyTemplate[] }>(
+    '/admin/settings/account-import-templates',
+    { templates },
+  )
+  return Array.isArray(data?.templates) ? data.templates : []
 }
 
 /**
@@ -1555,6 +1662,8 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  getAccountImportTemplates,
+  updateAccountImportTemplates,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,

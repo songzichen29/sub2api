@@ -82,6 +82,7 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	ImageBalanceHold      *OpenAIImageBalanceHold
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -315,6 +316,12 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
+	}
+	if !p.IsSubscriptionBill && p.ImageBalanceHold != nil {
+		cmd.BalanceHoldID = p.ImageBalanceHold.ID
+		cmd.BalanceHoldAmount = p.ImageBalanceHold.Amount
+		cmd.BalanceHoldSettlementID = p.ImageBalanceHold.settlementRequestID()
+		cmd.BalanceHoldSettlementFingerprint = p.ImageBalanceHold.settlementFingerprint("capture")
 	}
 
 	if p.shouldDeductAPIKeyQuota() {

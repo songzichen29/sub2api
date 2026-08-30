@@ -4,7 +4,6 @@ package ent
 
 import (
 	"encoding/json"
-	"encoding/json/jsontext"
 	"fmt"
 	"strings"
 	"time"
@@ -52,10 +51,16 @@ type Group struct {
 	SubscriptionType string `json:"subscription_type,omitempty"`
 	// DailyLimitUsd holds the value of the "daily_limit_usd" field.
 	DailyLimitUsd *float64 `json:"daily_limit_usd,omitempty"`
+	// 用户自助重置订阅当日额度的支付金额（CNY）；NULL/<=0 表示关闭
+	DailyLimitResetPrice *float64 `json:"daily_limit_reset_price,omitempty"`
 	// WeeklyLimitUsd holds the value of the "weekly_limit_usd" field.
 	WeeklyLimitUsd *float64 `json:"weekly_limit_usd,omitempty"`
 	// MonthlyLimitUsd holds the value of the "monthly_limit_usd" field.
 	MonthlyLimitUsd *float64 `json:"monthly_limit_usd,omitempty"`
+	// Allow subscription daily quota overdraft into weekly/monthly period pool
+	AllowDailyOverdraft bool `json:"allow_daily_overdraft,omitempty"`
+	// Allow users to enable weekend skip for subscriptions in this group
+	AllowWeekendSkip bool `json:"allow_weekend_skip,omitempty"`
 	// DefaultValidityDays holds the value of the "default_validity_days" field.
 	DefaultValidityDays int `json:"default_validity_days,omitempty"`
 	// 是否允许该分组使用图片生成能力
@@ -86,22 +91,8 @@ type Group struct {
 	VideoPrice720p *float64 `json:"video_price_720p,omitempty"`
 	// VideoPrice1080p holds the value of the "video_price_1080p" field.
 	VideoPrice1080p *float64 `json:"video_price_1080p,omitempty"`
-	// 按模型族和分辨率覆盖视频每秒价格
-	VideoModelPrices map[string]map[string]float64 `json:"video_model_prices,omitempty"`
 	// Codex alpha/search 网页搜索单次价格（USD/次）；nil 表示使用默认价 0.01（官方 $10/1000 次）
 	WebSearchPricePerCall *float64 `json:"web_search_price_per_call,omitempty"`
-	// 搜索工具价格 per 1000 calls（web_search 等）
-	SearchPricePer1k *float64 `json:"search_price_per_1k,omitempty"`
-	// Voice realtime 每分钟价格（USD）
-	AudioRealtimePricePerMin *float64 `json:"audio_realtime_price_per_min,omitempty"`
-	// TTS 每百万字符价格（USD）
-	AudioTtsPricePerMillionChars *float64 `json:"audio_tts_price_per_million_chars,omitempty"`
-	// STT 每小时价格（USD）
-	AudioSttPricePerHour *float64 `json:"audio_stt_price_per_hour,omitempty"`
-	// 是否按上下文长度应用模型阶梯价格；默认开启以保持官方/渠道长上下文价
-	LongContextPricingEnabled bool `json:"long_context_pricing_enabled,omitempty"`
-	// 分组逐模型定价；优先级高于渠道和内置定价
-	ModelPricing jsontext.Value `json:"model_pricing,omitempty"`
 	// 是否仅允许 Claude Code 客户端
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
 	// 非 Claude Code 请求降级使用的分组 ID
@@ -250,11 +241,11 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowDailyOverdraft, group.FieldAllowWeekendSkip, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
-		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
+		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldDailyLimitResetPrice, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
 		case group.FieldID, group.FieldDefaultValidityDays, group.FieldFallbackGroupID, group.FieldFallbackGroupIDOnInvalidRequest, group.FieldSortOrder, group.FieldRpmLimit:
 			values[i] = new(sql.NullInt64)
@@ -383,6 +374,13 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.DailyLimitUsd = new(float64)
 				*_m.DailyLimitUsd = value.Float64
 			}
+		case group.FieldDailyLimitResetPrice:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field daily_limit_reset_price", values[i])
+			} else if value.Valid {
+				_m.DailyLimitResetPrice = new(float64)
+				*_m.DailyLimitResetPrice = value.Float64
+			}
 		case group.FieldWeeklyLimitUsd:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field weekly_limit_usd", values[i])
@@ -396,6 +394,18 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.MonthlyLimitUsd = new(float64)
 				*_m.MonthlyLimitUsd = value.Float64
+			}
+		case group.FieldAllowDailyOverdraft:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_daily_overdraft", values[i])
+			} else if value.Valid {
+				_m.AllowDailyOverdraft = value.Bool
+			}
+		case group.FieldAllowWeekendSkip:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field allow_weekend_skip", values[i])
+			} else if value.Valid {
+				_m.AllowWeekendSkip = value.Bool
 			}
 		case group.FieldDefaultValidityDays:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -493,62 +503,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 				_m.VideoPrice1080p = new(float64)
 				*_m.VideoPrice1080p = value.Float64
 			}
-		case group.FieldVideoModelPrices:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field video_model_prices", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.VideoModelPrices); err != nil {
-					return fmt.Errorf("unmarshal field video_model_prices: %w", err)
-				}
-			}
 		case group.FieldWebSearchPricePerCall:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field web_search_price_per_call", values[i])
 			} else if value.Valid {
 				_m.WebSearchPricePerCall = new(float64)
 				*_m.WebSearchPricePerCall = value.Float64
-			}
-		case group.FieldSearchPricePer1k:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field search_price_per_1k", values[i])
-			} else if value.Valid {
-				_m.SearchPricePer1k = new(float64)
-				*_m.SearchPricePer1k = value.Float64
-			}
-		case group.FieldAudioRealtimePricePerMin:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field audio_realtime_price_per_min", values[i])
-			} else if value.Valid {
-				_m.AudioRealtimePricePerMin = new(float64)
-				*_m.AudioRealtimePricePerMin = value.Float64
-			}
-		case group.FieldAudioTtsPricePerMillionChars:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field audio_tts_price_per_million_chars", values[i])
-			} else if value.Valid {
-				_m.AudioTtsPricePerMillionChars = new(float64)
-				*_m.AudioTtsPricePerMillionChars = value.Float64
-			}
-		case group.FieldAudioSttPricePerHour:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
-				return fmt.Errorf("unexpected type %T for field audio_stt_price_per_hour", values[i])
-			} else if value.Valid {
-				_m.AudioSttPricePerHour = new(float64)
-				*_m.AudioSttPricePerHour = value.Float64
-			}
-		case group.FieldLongContextPricingEnabled:
-			if value, ok := values[i].(*sql.NullBool); !ok {
-				return fmt.Errorf("unexpected type %T for field long_context_pricing_enabled", values[i])
-			} else if value.Valid {
-				_m.LongContextPricingEnabled = value.Bool
-			}
-		case group.FieldModelPricing:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field model_pricing", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.ModelPricing); err != nil {
-					return fmt.Errorf("unmarshal field model_pricing: %w", err)
-				}
 			}
 		case group.FieldClaudeCodeOnly:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -820,6 +780,11 @@ func (_m *Group) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	if v := _m.DailyLimitResetPrice; v != nil {
+		builder.WriteString("daily_limit_reset_price=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	if v := _m.WeeklyLimitUsd; v != nil {
 		builder.WriteString("weekly_limit_usd=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -829,6 +794,12 @@ func (_m *Group) String() string {
 		builder.WriteString("monthly_limit_usd=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
+	builder.WriteString(", ")
+	builder.WriteString("allow_daily_overdraft=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowDailyOverdraft))
+	builder.WriteString(", ")
+	builder.WriteString("allow_weekend_skip=")
+	builder.WriteString(fmt.Sprintf("%v", _m.AllowWeekendSkip))
 	builder.WriteString(", ")
 	builder.WriteString("default_validity_days=")
 	builder.WriteString(fmt.Sprintf("%v", _m.DefaultValidityDays))
@@ -887,39 +858,10 @@ func (_m *Group) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
-	builder.WriteString("video_model_prices=")
-	builder.WriteString(fmt.Sprintf("%v", _m.VideoModelPrices))
-	builder.WriteString(", ")
 	if v := _m.WebSearchPricePerCall; v != nil {
 		builder.WriteString("web_search_price_per_call=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
-	builder.WriteString(", ")
-	if v := _m.SearchPricePer1k; v != nil {
-		builder.WriteString("search_price_per_1k=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.AudioRealtimePricePerMin; v != nil {
-		builder.WriteString("audio_realtime_price_per_min=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.AudioTtsPricePerMillionChars; v != nil {
-		builder.WriteString("audio_tts_price_per_million_chars=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	if v := _m.AudioSttPricePerHour; v != nil {
-		builder.WriteString("audio_stt_price_per_hour=")
-		builder.WriteString(fmt.Sprintf("%v", *v))
-	}
-	builder.WriteString(", ")
-	builder.WriteString("long_context_pricing_enabled=")
-	builder.WriteString(fmt.Sprintf("%v", _m.LongContextPricingEnabled))
-	builder.WriteString(", ")
-	builder.WriteString("model_pricing=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ModelPricing))
 	builder.WriteString(", ")
 	builder.WriteString("claude_code_only=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ClaudeCodeOnly))

@@ -82,16 +82,48 @@ func NewAccountHandler(
 	openaiOAuthService *service.OpenAIOAuthService,
 	geminiOAuthService *service.GeminiOAuthService,
 	antigravityOAuthService *service.AntigravityOAuthService,
-	grokOAuthService service.GrokOAuthTokenService,
-	rateLimitService *service.RateLimitService,
-	accountUsageService *service.AccountUsageService,
-	accountTestService *service.AccountTestService,
-	concurrencyService *service.ConcurrencyService,
-	crsSyncService *service.CRSSyncService,
-	sessionLimitCache service.SessionLimitCache,
-	rpmCache service.RPMCache,
-	tokenCacheInvalidator service.TokenCacheInvalidator,
+	args ...any,
 ) *AccountHandler {
+	var grokOAuthService service.GrokOAuthTokenService
+	var rateLimitService *service.RateLimitService
+	var accountUsageService *service.AccountUsageService
+	var accountTestService *service.AccountTestService
+	var concurrencyService *service.ConcurrencyService
+	var crsSyncService *service.CRSSyncService
+	var sessionLimitCache service.SessionLimitCache
+	var rpmCache service.RPMCache
+	var tokenCacheInvalidator service.TokenCacheInvalidator
+	// The current constructor has a Grok service as the first optional argument;
+	// older callers omit it. Keep positional decoding for untyped nil test args.
+	offset := 0
+	if len(args) >= 9 {
+		grokOAuthService, _ = args[0].(service.GrokOAuthTokenService)
+		offset = 1
+	}
+	if len(args) >= offset+1 {
+		rateLimitService, _ = args[offset].(*service.RateLimitService)
+	}
+	if len(args) >= offset+2 {
+		accountUsageService, _ = args[offset+1].(*service.AccountUsageService)
+	}
+	if len(args) >= offset+3 {
+		accountTestService, _ = args[offset+2].(*service.AccountTestService)
+	}
+	if len(args) >= offset+4 {
+		concurrencyService, _ = args[offset+3].(*service.ConcurrencyService)
+	}
+	if len(args) >= offset+5 {
+		crsSyncService, _ = args[offset+4].(*service.CRSSyncService)
+	}
+	if len(args) >= offset+6 {
+		sessionLimitCache, _ = args[offset+5].(service.SessionLimitCache)
+	}
+	if len(args) >= offset+7 {
+		rpmCache, _ = args[offset+6].(service.RPMCache)
+	}
+	if len(args) >= offset+8 {
+		tokenCacheInvalidator, _ = args[offset+7].(service.TokenCacheInvalidator)
+	}
 	return &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
@@ -487,7 +519,7 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 	}
 	// 池只用于 OpenAI 分数计算（非 OpenAI 账号会在打分时被丢弃），
 	// 无论列表页平台过滤为何，查询一律限定 openai，避免无过滤时全表扫描。
-	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode, nil)
 	if err != nil {
 		slog.Warn("openai_scheduler_filter_score_pool_failed", "error", err)
 		return nil
@@ -504,8 +536,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	sortBy := c.DefaultQuery("sort_by", "name")
-	sortOrder := c.DefaultQuery("sort_order", "asc")
+	sortBy := c.DefaultQuery("sort_by", "last_used_at")
+	sortOrder := c.DefaultQuery("sort_order", "desc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
@@ -533,7 +565,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, nil)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -817,6 +849,38 @@ func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"has_risk": false})
+}
+
+func normalizeTagsForListFilter(raw []string) ([]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, len(raw))
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		tag := strings.ToLower(strings.TrimSpace(item))
+		if tag == "" {
+			continue
+		}
+		if _, exists := seen[tag]; exists {
+			continue
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
+	return out, nil
+}
+
+func (h *AccountHandler) ListTags(c *gin.Context) {
+	tags, err := h.adminService.ListAllAccountTags(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	response.Success(c, gin.H{"tags": tags})
 }
 
 // Create handles creating a new account
@@ -2969,7 +3033,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc", nil)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

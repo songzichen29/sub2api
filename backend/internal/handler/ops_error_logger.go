@@ -29,6 +29,7 @@ const (
 	opsModelKey                  = "ops_model"
 	opsStreamKey                 = "ops_stream"
 	opsAccountIDKey              = "ops_account_id"
+	opsAccountNameKey            = "ops_account_name"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 	opsDedicatedErrorRecordedKey = "ops_dedicated_error_recorded"
 
@@ -439,7 +440,7 @@ func opsErrorLogConfig() (workerCount int, queueSize int) {
 	return workerCount, queueSize
 }
 
-func setOpsRequestContext(c *gin.Context, model string, stream bool) {
+func setOpsRequestContext(c *gin.Context, model string, stream bool, _ ...any) {
 	if c == nil {
 		return
 	}
@@ -470,8 +471,14 @@ func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) 
 	}
 	service.ClearOpsUpstreamModel(c)
 	c.Set(opsAccountIDKey, accountID)
+	accountName := ""
+	if len(platform) > 1 {
+		accountName = strings.TrimSpace(platform[1])
+	}
+	c.Set(opsAccountNameKey, accountName)
+	ctx := context.Background()
 	if c.Request != nil {
-		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
+		ctx = context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
 		if len(platform) > 0 {
 			p := strings.TrimSpace(platform[0])
 			if p != "" {
@@ -479,6 +486,11 @@ func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) 
 			}
 		}
 		c.Request = c.Request.WithContext(ctx)
+	}
+	if value, exists := c.Get(contentModerationAccountBinderKey); exists {
+		if binder, ok := value.(contentModerationAccountBinder); ok && binder != nil {
+			binder(ctx, accountID, accountName)
+		}
 	}
 }
 

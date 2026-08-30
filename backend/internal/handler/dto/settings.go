@@ -263,22 +263,27 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string  `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
 
 	// Payment configuration
-	PaymentEnabled                   bool     `json:"payment_enabled"`
-	PaymentMinAmount                 float64  `json:"payment_min_amount"`
-	PaymentMaxAmount                 float64  `json:"payment_max_amount"`
-	PaymentDailyLimit                float64  `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           int      `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          int      `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           bool     `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
-	PaymentSubscriptionUSDToCNYRate  float64  `json:"payment_subscription_usd_to_cny_rate"`
-	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
-	PaymentHelpText                  string   `json:"payment_help_text"`
+	PaymentEnabled                   bool                              `json:"payment_enabled"`
+	PaymentMinAmount                 float64                           `json:"payment_min_amount"`
+	PaymentMaxAmount                 float64                           `json:"payment_max_amount"`
+	PaymentDailyLimit                float64                           `json:"payment_daily_limit"`
+	PaymentOrderTimeoutMin           int                               `json:"payment_order_timeout_minutes"`
+	PaymentMaxPendingOrders          int                               `json:"payment_max_pending_orders"`
+	PaymentEnabledTypes              []string                          `json:"payment_enabled_types"`
+	PaymentBalanceDisabled           bool                              `json:"payment_balance_disabled"`
+	PaymentBalanceRechargeMultiplier float64                           `json:"payment_balance_recharge_multiplier"`
+	PaymentSubscriptionUSDToCNYRate  float64                           `json:"payment_subscription_usd_to_cny_rate"`
+	PaymentRechargeFeeRate           float64                           `json:"payment_recharge_fee_rate"`
+	PaymentLoadBalanceStrat          string                            `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix         string                            `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix         string                            `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL              string                            `json:"payment_help_image_url"`
+	PaymentHelpText                  string                            `json:"payment_help_text"`
+	PaymentDiscountRules             []service.DiscountRule            `json:"payment_discount_rules"`
+	PaymentQuickAmounts              []float64                         `json:"payment_quick_amounts"`
+	PaymentPaidUserRateEnabled       bool                              `json:"payment_paid_user_rate_enabled"`
+	PaymentPaidUserRateRules         []PaymentPaidUserRateRule         `json:"payment_paid_user_rate_rules"`
+	PaymentPaidUserRateBackfill      PaymentPaidUserRateBackfillStatus `json:"payment_paid_user_rate_backfill"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -316,10 +321,16 @@ type SystemSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription   string `json:"model_plaza_description"`
-	PluginManagementEnabled bool   `json:"plugin_management_enabled"`
+	ModelPlazaEnabled                      bool    `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth                  bool    `json:"model_plaza_require_auth"`
+	ModelPlazaDescription                  string  `json:"model_plaza_description"`
+	PluginManagementEnabled                bool    `json:"plugin_management_enabled"`
+	OpenAIFreeImageBridgeURL               string  `json:"openai_free_image_bridge_url"`
+	OpenAIFreeImageBridgeAuthKeyConfigured bool    `json:"openai_free_image_bridge_auth_key_configured"`
+	AffiliateRechargeEnabled               bool    `json:"affiliate_recharge_enabled"`
+	AffiliateSubscriptionEnabled           bool    `json:"affiliate_subscription_enabled"`
+	AffiliateRechargeRebateRate            float64 `json:"affiliate_recharge_rebate_rate"`
+	AffiliateSubscriptionRebateRate        float64 `json:"affiliate_subscription_rebate_rate"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
@@ -345,8 +356,25 @@ type SystemSettings struct {
 }
 
 type DefaultSubscriptionSetting struct {
-	GroupID      int64 `json:"group_id"`
-	ValidityDays int   `json:"validity_days"`
+	GroupID      int64   `json:"group_id"`
+	ValidityDays int     `json:"validity_days,omitempty"`
+	StartsAt     *string `json:"starts_at,omitempty"`
+	ExpiresAt    *string `json:"expires_at,omitempty"`
+}
+
+type PaymentPaidUserRateRule struct {
+	GroupID        int64   `json:"group_id"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	AssignedUsers  int     `json:"assigned_users,omitempty"`
+}
+
+type PaymentPaidUserRateBackfillStatus struct {
+	TotalPaidUsers int    `json:"total_paid_users"`
+	AssignedUsers  int    `json:"assigned_users"`
+	RuleCount      int    `json:"rule_count"`
+	Status         string `json:"status"`
+	Error          string `json:"error,omitempty"`
+	UpdatedAt      string `json:"updated_at,omitempty"`
 }
 
 type PublicSettings struct {

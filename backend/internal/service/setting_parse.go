@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -126,6 +127,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyDefaultConcurrency:                        strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                            strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
 		SettingKeyAffiliateRebateRate:                       strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyAffiliateRechargeEnabled:                  strconv.FormatBool(AffiliateRechargeEnabledDefault),
+		SettingKeyAffiliateSubscriptionEnabled:              strconv.FormatBool(AffiliateSubscriptionEnabledDefault),
+		SettingKeyAffiliateRechargeRebateRate:               strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyAffiliateSubscriptionRebateRate:           strconv.FormatFloat(AffiliateRebateRateDefault, 'f', 8, 64),
+		SettingKeyOpenAIFreeImageBridgeURL:                  "",
+		SettingKeyOpenAIFreeImageBridgeAuthKey:              "",
 		SettingKeyAffiliateRebateFreezeHours:                strconv.Itoa(AffiliateRebateFreezeHoursDefault),
 		SettingKeyAffiliateRebateDurationDays:               strconv.Itoa(AffiliateRebateDurationDaysDefault),
 		SettingKeyAffiliateRebatePerInviteeCap:              strconv.FormatFloat(AffiliateRebatePerInviteeCapDefault, 'f', 2, 64),
@@ -398,6 +405,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.AffiliateRebateRate = AffiliateRebateRateDefault
 	}
+	result.AffiliateRechargeEnabled = !isFalseSettingValue(settings[SettingKeyAffiliateRechargeEnabled])
+	result.AffiliateSubscriptionEnabled = settings[SettingKeyAffiliateSubscriptionEnabled] == "true"
+	if rechargeRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateRechargeRebateRate], 64); err == nil {
+		result.AffiliateRechargeRebateRate = clampAffiliateRebateRate(rechargeRate)
+	} else {
+		result.AffiliateRechargeRebateRate = result.AffiliateRebateRate
+	}
+	if subscriptionRate, err := strconv.ParseFloat(settings[SettingKeyAffiliateSubscriptionRebateRate], 64); err == nil {
+		result.AffiliateSubscriptionRebateRate = clampAffiliateRebateRate(subscriptionRate)
+	} else {
+		result.AffiliateSubscriptionRebateRate = result.AffiliateRebateRate
+	}
+	result.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL])
+	result.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey])
+	result.OpenAIFreeImageBridgeAuthKeyConfigured = result.OpenAIFreeImageBridgeAuthKey != ""
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {
 			freezeHours = AffiliateRebateFreezeHoursMax
@@ -1163,7 +1185,28 @@ func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 
 	normalized := make([]DefaultSubscriptionSetting, 0, len(items))
 	for _, item := range items {
-		if item.GroupID <= 0 || item.ValidityDays <= 0 {
+		if item.GroupID <= 0 {
+			continue
+		}
+		startRaw, endRaw := "", ""
+		if item.StartsAt != nil {
+			startRaw = strings.TrimSpace(*item.StartsAt)
+		}
+		if item.ExpiresAt != nil {
+			endRaw = strings.TrimSpace(*item.ExpiresAt)
+		}
+		if startRaw != "" || endRaw != "" {
+			if startRaw == "" || endRaw == "" {
+				continue
+			}
+			startAt, startErr := time.Parse(time.RFC3339, startRaw)
+			endAt, endErr := time.Parse(time.RFC3339, endRaw)
+			if startErr != nil || endErr != nil || !endAt.After(startAt) {
+				continue
+			}
+			startValue, endValue := startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339)
+			item.StartsAt, item.ExpiresAt, item.ValidityDays = &startValue, &endValue, 0
+		} else if item.ValidityDays <= 0 {
 			continue
 		}
 		if item.ValidityDays > MaxValidityDays {

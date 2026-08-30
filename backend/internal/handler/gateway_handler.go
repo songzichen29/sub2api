@@ -37,6 +37,28 @@ const gatewayCompatibilityMetricsLogInterval = 1024
 
 var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
+func gatewayModelPrecheckError(err error) (status int, errType string, message string, ok bool) {
+	switch {
+	case errors.Is(err, service.ErrModelBlockedByGroup):
+		return http.StatusBadRequest, "model_not_allowed", extractTrailingErrorMessage(err), true
+	case errors.Is(err, service.ErrModelUnsupportedByGroupAccount):
+		return http.StatusBadRequest, "model_not_configured", extractTrailingErrorMessage(err), true
+	default:
+		return 0, "", "", false
+	}
+}
+
+func extractTrailingErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if idx := strings.Index(msg, ": "); idx >= 0 && idx+2 < len(msg) {
+		return msg[idx+2:]
+	}
+	return msg
+}
+
 // GatewayHandler handles API gateway requests
 type GatewayHandler struct {
 	gatewayService            *service.GatewayService
@@ -59,24 +81,101 @@ type GatewayHandler struct {
 	settingService            *service.SettingService
 }
 
+func (h *GatewayHandler) precheckModelAccess(ctx context.Context, groupID *int64, platform, requestedModel string) error {
+	if h == nil || h.gatewayService == nil {
+		return nil
+	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	if requestedModel == "" {
+		return nil
+	}
+	if h.gatewayService.CheckChannelPricingRestriction(ctx, groupID, requestedModel) {
+		return fmt.Errorf("%w: %s", service.ErrModelBlockedByGroup, service.ModelBlockedByGroupMessage(requestedModel))
+	}
+	snapshot, ok := h.gatewayService.PeekAvailableModelsSnapshot(groupID, platform)
+	if !ok || service.SnapshotSupportsRequestedModel(snapshot, platform, requestedModel) {
+		return nil
+	}
+	return fmt.Errorf("%w: %s", service.ErrModelUnsupportedByGroupAccount, service.ModelPrecheckUnavailableMessage(requestedModel))
+}
+
+func (h *GatewayHandler) FeaturesProxy(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	status, contentType, body, err := h.gatewayService.ProxyGrowthBookFeature(c.Request.Context(), apiKey.GroupID, c.Param("key"))
+	if err != nil {
+		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy feature request")
+		return
+	}
+	c.Data(status, contentType, body)
+}
+
+func (h *GatewayHandler) BootstrapProxy(c *gin.Context) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok {
+		h.errorResponse(c, http.StatusUnauthorized, "authentication_error", "Invalid API key")
+		return
+	}
+	status, contentType, body, err := h.gatewayService.ProxyBootstrap(c.Request.Context(), apiKey.GroupID)
+	if err != nil {
+		h.errorResponse(c, http.StatusBadGateway, "api_error", "Failed to proxy bootstrap request")
+		return
+	}
+	c.Data(status, contentType, body)
+}
+
 // NewGatewayHandler creates a new GatewayHandler
 func NewGatewayHandler(
 	gatewayService *service.GatewayService,
 	openAIGatewayService *service.OpenAIGatewayService,
-	geminiCompatService *service.GeminiMessagesCompatService,
-	antigravityGatewayService *service.AntigravityGatewayService,
-	userService *service.UserService,
-	concurrencyService *service.ConcurrencyService,
-	billingCacheService *service.BillingCacheService,
-	usageService *service.UsageService,
-	apiKeyService *service.APIKeyService,
-	usageRecordWorkerPool *service.UsageRecordWorkerPool,
-	errorPassthroughService *service.ErrorPassthroughService,
-	contentModerationService *service.ContentModerationService,
-	userMsgQueueService *service.UserMessageQueueService,
-	cfg *config.Config,
-	settingService *service.SettingService,
+	args ...any,
 ) *GatewayHandler {
+	var geminiCompatService *service.GeminiMessagesCompatService
+	var antigravityGatewayService *service.AntigravityGatewayService
+	var userService *service.UserService
+	var concurrencyService *service.ConcurrencyService
+	var billingCacheService *service.BillingCacheService
+	var usageService *service.UsageService
+	var apiKeyService *service.APIKeyService
+	var usageRecordWorkerPool *service.UsageRecordWorkerPool
+	var errorPassthroughService *service.ErrorPassthroughService
+	var contentModerationService *service.ContentModerationService
+	var userMsgQueueService *service.UserMessageQueueService
+	var cfg *config.Config
+	var settingService *service.SettingService
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case *service.GeminiMessagesCompatService:
+			geminiCompatService = value
+		case *service.AntigravityGatewayService:
+			antigravityGatewayService = value
+		case *service.UserService:
+			userService = value
+		case *service.ConcurrencyService:
+			concurrencyService = value
+		case *service.BillingCacheService:
+			billingCacheService = value
+		case *service.UsageService:
+			usageService = value
+		case *service.APIKeyService:
+			apiKeyService = value
+		case *service.UsageRecordWorkerPool:
+			usageRecordWorkerPool = value
+		case *service.ErrorPassthroughService:
+			errorPassthroughService = value
+		case *service.ContentModerationService:
+			contentModerationService = value
+		case *service.UserMessageQueueService:
+			userMsgQueueService = value
+		case *config.Config:
+			cfg = value
+		case *service.SettingService:
+			settingService = value
+		}
+	}
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
 	maxAccountSwitchesGemini := 3
@@ -1735,7 +1834,18 @@ func (h *GatewayHandler) usageQuotaLimited(c *gin.Context, ctx context.Context, 
 }
 
 // usageUnrestricted 处理 unrestricted 模式的响应（向后兼容）
-func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, usageData gin.H, dailyUsage any, modelStats any) {
+func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, apiKey *service.APIKey, subject middleware2.AuthSubject, args ...any) {
+	var usageData gin.H
+	var dailyUsage, modelStats any
+	if len(args) > 0 {
+		usageData, _ = args[0].(gin.H)
+	}
+	if len(args) > 1 {
+		dailyUsage = args[1]
+	}
+	if len(args) > 2 {
+		modelStats = args[2]
+	}
 	// 订阅模式
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() {
 		resp := gin.H{

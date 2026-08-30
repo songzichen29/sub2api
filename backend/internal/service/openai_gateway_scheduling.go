@@ -299,6 +299,40 @@ func NormalizeOpenAICompatiblePlatform(platform string) string {
 	}
 }
 
+func (s *OpenAIGatewayService) GetAvailableModels(ctx context.Context, groupID *int64) []string {
+	cacheKey := modelsListCacheKey(groupID, PlatformOpenAI)
+	if s.modelsListCache != nil {
+		if cached, found := s.modelsListCache.Get(cacheKey); found {
+			switch value := cached.(type) {
+			case availableModelsSnapshot:
+				return cloneStringSlice(value.Models)
+			case []string:
+				return cloneStringSlice(value)
+			}
+		}
+	}
+	accounts, err := s.listSchedulableAccounts(ctx, groupID, PlatformOpenAI)
+	if err != nil || len(accounts) == 0 {
+		return nil
+	}
+	openaiAccounts := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if accounts[i].IsOpenAI() {
+			openaiAccounts = append(openaiAccounts, accounts[i])
+		}
+	}
+	if len(openaiAccounts) == 0 {
+		return nil
+	}
+	snapshot := buildAvailableModelsSnapshot(openaiAccounts)
+	storeAvailableModelsSnapshot(s.modelsListCache, s.modelsListCacheTTL, groupID, PlatformOpenAI, snapshot)
+	return cloneStringSlice(snapshot.Models)
+}
+
+func (s *OpenAIGatewayService) PeekAvailableModelsSnapshot(groupID *int64) (availableModelsSnapshot, bool) {
+	return peekAvailableModelsSnapshot(s.modelsListCache, groupID, PlatformOpenAI)
+}
+
 // noAvailableOpenAISelectionError builds the standard "no account available" error
 // while preserving the legacy /responses/compact error when applicable.
 // details carries an optional machine-parseable exclusion summary (e.g.

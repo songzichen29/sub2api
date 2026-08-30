@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 )
@@ -104,15 +105,24 @@ type antigravityUsageCache struct {
 	timestamp time.Time
 }
 
+// thirdPartyUsageCache 缓存第三方面板查询结果，同时缓存可恢复错误。
+type thirdPartyUsageCache struct {
+	quota     *usage_provider.QuotaInfo
+	err       error
+	timestamp time.Time
+}
+
 const (
-	apiCacheTTL         = 3 * time.Minute
-	apiErrorCacheTTL    = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
-	antigravityErrorTTL = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
-	apiQueryMaxJitter   = 800 * time.Millisecond // 用量查询最大随机延迟
-	windowStatsCacheTTL = 1 * time.Minute
-	openAIProbeCacheTTL = 10 * time.Minute
-	grokProbeRetryTTL   = 1 * time.Minute
-	grokFreeQuotaWindow = 24 * time.Hour
+	apiCacheTTL             = 3 * time.Minute
+	apiErrorCacheTTL        = 1 * time.Minute        // 负缓存 TTL：429 等错误缓存 1 分钟
+	antigravityErrorTTL     = 1 * time.Minute        // Antigravity 错误缓存 TTL（可恢复错误）
+	apiQueryMaxJitter       = 800 * time.Millisecond // 用量查询最大随机延迟
+	windowStatsCacheTTL     = 1 * time.Minute
+	openAIProbeCacheTTL     = 10 * time.Minute
+	grokProbeRetryTTL       = 1 * time.Minute
+	grokFreeQuotaWindow     = 24 * time.Hour
+	thirdPartyCacheTTL      = 5 * time.Minute
+	thirdPartyErrorCacheTTL = 1 * time.Minute
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -120,8 +130,10 @@ type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
 	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
+	thirdPartyCache   sync.Map           // accountID -> *thirdPartyUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	thirdPartyFlight  singleflight.Group // 防止第三方面板查询并发击穿
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
 }
@@ -222,6 +234,9 @@ type UsageInfo struct {
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
+	// 第三方面板（如 newapi）查询返回的额度信息
+	ThirdPartyQuota *usage_provider.QuotaInfo `json:"third_party_quota,omitempty"`
+
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`
 
@@ -301,6 +316,8 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	thirdPartyFactory       func(usage_provider.ProviderType) (usage_provider.Provider, error)
+	secretEncryptor         SecretEncryptor
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
 }
@@ -318,7 +335,12 @@ func NewAccountUsageService(
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
+	secretEncryptors ...SecretEncryptor,
 ) *AccountUsageService {
+	var secretEncryptor SecretEncryptor
+	if len(secretEncryptors) > 0 {
+		secretEncryptor = secretEncryptors[0]
+	}
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
 		usageLogRepo:            usageLogRepo,
@@ -331,6 +353,8 @@ func NewAccountUsageService(
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
+		thirdPartyFactory:       usage_provider.New,
+		secretEncryptor:         secretEncryptor,
 	}
 }
 
@@ -356,6 +380,16 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	// passive snapshot that the account table loads on mount.
 	if account.IsSyntheticUITest() && account.IsAnthropicOAuthOrSetupToken() {
 		return s.getPassiveUsageForAccount(ctx, account)
+	}
+
+	if account.Type == AccountTypeAPIKey {
+		if cfg, ok := extractUsageQueryConfig(account); ok {
+			usage, fetchErr := s.getThirdPartyUsage(ctx, account, cfg, forceProbe)
+			if fetchErr == nil {
+				s.tryClearRecoverableAccountError(ctx, account)
+			}
+			return usage, fetchErr
+		}
 	}
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {

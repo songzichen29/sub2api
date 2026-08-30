@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
+	gocache "github.com/patrickmn/go-cache"
 	"go.uber.org/zap"
 )
 
@@ -481,6 +482,8 @@ type OpenAIGatewayService struct {
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
 	codexModelsManifestCache            codexModelsManifestCache
+	modelsListCache                     *gocache.Cache
+	modelsListCacheTTL                  time.Duration
 	openaiCompatSessionResponses        sync.Map
 	openaiCompatAnthropicDigestSessions sync.Map
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
@@ -497,24 +500,64 @@ func NewOpenAIGatewayService(
 	usageBillingRepo UsageBillingRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
-	userGroupRateRepo UserGroupRateRepository,
-	cache GatewayCache,
-	cfg *config.Config,
-	schedulerSnapshot *SchedulerSnapshotService,
-	concurrencyService *ConcurrencyService,
-	billingService *BillingService,
-	rateLimitService *RateLimitService,
-	billingCacheService *BillingCacheService,
-	httpUpstream HTTPUpstream,
-	deferredService *DeferredService,
-	openAITokenProvider *OpenAITokenProvider,
-	grokTokenProvider *GrokTokenProvider,
-	resolver *ModelPricingResolver,
-	channelService *ChannelService,
-	balanceNotifyService *BalanceNotifyService,
-	settingService *SettingService,
-	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	args ...any,
 ) *OpenAIGatewayService {
+	var userGroupRateRepo UserGroupRateRepository
+	var cache GatewayCache
+	var cfg *config.Config
+	var schedulerSnapshot *SchedulerSnapshotService
+	var concurrencyService *ConcurrencyService
+	var billingService *BillingService
+	var rateLimitService *RateLimitService
+	var billingCacheService *BillingCacheService
+	var httpUpstream HTTPUpstream
+	var deferredService *DeferredService
+	var openAITokenProvider *OpenAITokenProvider
+	var grokTokenProvider *GrokTokenProvider
+	var resolver *ModelPricingResolver
+	var channelService *ChannelService
+	var balanceNotifyService *BalanceNotifyService
+	var settingService *SettingService
+	var userPlatformQuotaRepo UserPlatformQuotaRepository
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case UserGroupRateRepository:
+			userGroupRateRepo = value
+		case GatewayCache:
+			cache = value
+		case *config.Config:
+			cfg = value
+		case *SchedulerSnapshotService:
+			schedulerSnapshot = value
+		case *ConcurrencyService:
+			concurrencyService = value
+		case *BillingService:
+			billingService = value
+		case *RateLimitService:
+			rateLimitService = value
+		case *BillingCacheService:
+			billingCacheService = value
+		case HTTPUpstream:
+			httpUpstream = value
+		case *DeferredService:
+			deferredService = value
+		case *OpenAITokenProvider:
+			openAITokenProvider = value
+		case *GrokTokenProvider:
+			grokTokenProvider = value
+		case *ModelPricingResolver:
+			resolver = value
+		case *ChannelService:
+			channelService = value
+		case *BalanceNotifyService:
+			balanceNotifyService = value
+		case *SettingService:
+			settingService = value
+		case UserPlatformQuotaRepository:
+			userPlatformQuotaRepo = value
+		}
+	}
+	modelsListTTL := resolveModelsListCacheTTL(cfg)
 	// enforceCodexIdentityHeaders 是 HTTP / 透传 / WS / 探针 等出站路径共用的纯函数收口点，
 	// 拿不到配置，故在此发布进程级开关快照。配置取反义，零值即「强制统一出口开启」。
 	if cfg != nil {
@@ -556,6 +599,8 @@ func NewOpenAIGatewayService(
 		liveAttestationCipher: newLiveAttestationCipher(cfg),
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
+		modelsListCacheTTL:    modelsListTTL,
 		openaiModelTransient:  newOpenAIAccountModelTransientState(openAIModelTransientDefaultMax),
 	}
 	if rateLimitService != nil {

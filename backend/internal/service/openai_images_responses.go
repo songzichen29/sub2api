@@ -444,6 +444,25 @@ func buildOpenAIImagesResponsesRequest(parsed *OpenAIImagesRequest, toolModel st
 	return req, nil
 }
 
+func buildOpenAIAgentIdentityImageResponsesRequest(parsed *OpenAIImagesRequest) ([]byte, error) {
+	if parsed == nil {
+		return nil, fmt.Errorf("parsed images request is required")
+	}
+	body, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	if err != nil {
+		return nil, err
+	}
+	body, err = sjson.SetBytes(body, "model", openAIImagesResponsesMainModel)
+	if err != nil {
+		return nil, fmt.Errorf("set Agent Identity image text model: %w", err)
+	}
+	body, err = sjson.SetBytes(body, "tool_choice", "auto")
+	if err != nil {
+		return nil, fmt.Errorf("set Agent Identity image tool_choice: %w", err)
+	}
+	return body, nil
+}
+
 func shouldPassOpenAIImagesN(model string, n int) bool {
 	if n <= 1 {
 		return false

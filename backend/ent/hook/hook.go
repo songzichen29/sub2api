@@ -189,6 +189,30 @@ func (f CompositeModelRouteFunc) Mutate(ctx context.Context, m ent.Mutation) (en
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CompositeModelRouteMutation", m)
 }
 
+// The CouponFunc type is an adapter to allow the use of ordinary
+// function as Coupon mutator.
+type CouponFunc func(context.Context, *ent.CouponMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CouponFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CouponMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CouponMutation", m)
+}
+
+// The CouponUsageFunc type is an adapter to allow the use of ordinary
+// function as CouponUsage mutator.
+type CouponUsageFunc func(context.Context, *ent.CouponUsageMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CouponUsageFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CouponUsageMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CouponUsageMutation", m)
+}
+
 // The ErrorPassthroughRuleFunc type is an adapter to allow the use of ordinary
 // function as ErrorPassthroughRule mutator.
 type ErrorPassthroughRuleFunc func(context.Context, *ent.ErrorPassthroughRuleMutation) (ent.Value, error)
@@ -235,6 +259,54 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
+}
+
+// The InvoiceApplicationFunc type is an adapter to allow the use of ordinary
+// function as InvoiceApplication mutator.
+type InvoiceApplicationFunc func(context.Context, *ent.InvoiceApplicationMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvoiceApplicationFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvoiceApplicationMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvoiceApplicationMutation", m)
+}
+
+// The InvoiceApplicationOrderFunc type is an adapter to allow the use of ordinary
+// function as InvoiceApplicationOrder mutator.
+type InvoiceApplicationOrderFunc func(context.Context, *ent.InvoiceApplicationOrderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvoiceApplicationOrderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvoiceApplicationOrderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvoiceApplicationOrderMutation", m)
+}
+
+// The InvoiceHeaderFunc type is an adapter to allow the use of ordinary
+// function as InvoiceHeader mutator.
+type InvoiceHeaderFunc func(context.Context, *ent.InvoiceHeaderMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvoiceHeaderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvoiceHeaderMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvoiceHeaderMutation", m)
+}
+
+// The InvoiceSettingFunc type is an adapter to allow the use of ordinary
+// function as InvoiceSetting mutator.
+type InvoiceSettingFunc func(context.Context, *ent.InvoiceSettingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f InvoiceSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.InvoiceSettingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.InvoiceSettingMutation", m)
 }
 
 // The PaymentAuditLogFunc type is an adapter to allow the use of ordinary

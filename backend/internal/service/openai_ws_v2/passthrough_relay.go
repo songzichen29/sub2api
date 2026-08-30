@@ -732,8 +732,7 @@ func observeUpstreamMessage(
 	}
 	now := nowFn()
 
-	isTokenEvent := isTokenEventMessage(message, eventType)
-	if state.firstTokenMs == nil && isTokenEvent {
+	if state.firstTokenMs == nil && isTokenEvent(eventType) {
 		ms := int(now.Sub(startAt).Milliseconds())
 		if ms >= 0 {
 			state.firstTokenMs = &ms
@@ -753,8 +752,8 @@ func observeUpstreamMessage(
 	}
 	var turnTiming *relayTurnTiming
 	if responseID != "" {
-		turnTiming := openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
-		if turnTiming != nil && turnTiming.firstTokenMs == nil && isTokenEvent {
+		turnTiming = openAIWSRelayGetOrInitTurnTiming(state, responseID, now)
+		if turnTiming != nil && turnTiming.firstTokenMs == nil && isTokenEvent(eventType) {
 			ms := int(now.Sub(turnTiming.startAt).Milliseconds())
 			if ms >= 0 {
 				turnTiming.firstTokenMs = &ms
@@ -1260,11 +1259,6 @@ func isTerminalEvent(eventType string) bool {
 	}
 }
 
-func isErrorEvent(eventType string) bool {
-	eventType = strings.TrimSpace(eventType)
-	return eventType == "error" || strings.HasSuffix(eventType, ".error")
-}
-
 func shouldParseUsage(eventType string) bool {
 	eventType = strings.TrimSpace(eventType)
 	if eventType == "error" || isTerminalEvent(eventType) {
@@ -1275,26 +1269,9 @@ func shouldParseUsage(eventType string) bool {
 
 func isTokenEvent(eventType string) bool {
 	eventType = strings.TrimSpace(eventType)
-	if eventType == "" || isPreambleEvent(eventType) || isTerminalEvent(eventType) || isErrorEvent(eventType) {
-		return false
-	}
-	// Keep the first-token metric broad: any non-preamble, non-terminal,
-	// non-error response progress/output event can start TTFT. This avoids
-	// under-counting future or non-text event families.
-	return strings.HasPrefix(eventType, "response.")
-}
-
-func isPreambleEvent(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	case "response.created", "response.in_progress":
-		return true
-	default:
-		return false
-	}
-}
-
-func isTokenEventMessage(message []byte, eventType string) bool {
-	return isTokenEvent(eventType)
+	return strings.HasSuffix(eventType, ".delta") ||
+		eventType == "response.output_text.done" ||
+		eventType == "response.function_call_arguments.done"
 }
 
 func minDuration(a, b time.Duration) time.Duration {

@@ -27,6 +27,15 @@ func newGatewayRoutesTestRouter(platform ...string) *gin.Engine {
 func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	attachGatewayRoutesForTestWithConfig(router, cfg, platform...)
+	return router
+}
+
+func attachGatewayRoutesForTest(router *gin.Engine) {
+	attachGatewayRoutesForTestWithConfig(router, &config.Config{})
+}
+
+func attachGatewayRoutesForTestWithConfig(router *gin.Engine, cfg *config.Config, platform ...string) {
 
 	groupPlatform := service.PlatformOpenAI
 	if len(platform) > 0 && platform[0] != "" {
@@ -55,7 +64,6 @@ func newGatewayRoutesTestRouterWithConfig(cfg *config.Config, platform ...string
 		cfg,
 	)
 
-	return router
 }
 
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {

@@ -2993,7 +2993,13 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}
 	applyOpenAIImagesDefaults(parsed)
 
-	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	var responsesBody []byte
+	var err error
+	if credentialAccount.IsOpenAIAgentIdentity() {
+		responsesBody, err = buildOpenAIAgentIdentityImageResponsesRequest(parsed)
+	} else {
+		responsesBody, err = buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
 	}

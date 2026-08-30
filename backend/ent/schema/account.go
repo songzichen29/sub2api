@@ -197,6 +197,10 @@ func (Account) Fields() []ent.Field {
 			Nillable().
 			MaxLen(20),
 
+		field.JSON("tags", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
+
 		field.Int64("parent_account_id").Optional().Nillable().
 			Comment("Parent account id for a linked spark shadow (NULL = normal)."),
 		field.Enum("quota_dimension").Values("global", "spark").Default("global").

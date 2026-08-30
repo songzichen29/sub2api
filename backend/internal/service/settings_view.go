@@ -217,10 +217,13 @@ type SystemSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription   string `json:"model_plaza_description"`
-	PluginManagementEnabled bool   `json:"plugin_management_enabled"`
+	ModelPlazaEnabled              bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth          bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription          string `json:"model_plaza_description"`
+	PluginManagementEnabled        bool   `json:"plugin_management_enabled"`
+	GrokDefaultTextModel           string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -393,9 +396,12 @@ type PublicSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled bool `json:"plugin_management_enabled"`
+	ModelPlazaEnabled              bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth          bool   `json:"model_plaza_require_auth"`
+	PluginManagementEnabled        bool   `json:"plugin_management_enabled"`
+	GrokDefaultTextModel           string `json:"grok_default_text_model"`
+	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
+	GrokDefaultBaseURLMode         string `json:"grok_default_base_url_mode"`
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled             bool `json:"affiliate_enabled"`

@@ -364,6 +364,20 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("instructions", defaultCodexSynthInstructions(reqModel))
 	}
 
+	normalizeStringInput := false
+	if account != nil {
+		normalizeStringInput, _ = account.Extra["use_responses_api"].(bool)
+	}
+	if normalizeStringInput && !account.IsPoolMode() && gjson.GetBytes(body, "input").Type == gjson.String {
+		decoded, decodeErr := ensureReqBody()
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if normalizeOpenAIResponsesStringInputToMessageArray(decoded) {
+			markDecodedModified()
+		}
+	}
+
 	isCompactRequest := compactPath
 	requestedModel := reqModel
 	billingModel, upstreamModel := resolveOpenAIForwardMappedModels(account, requestedModel, isCompactRequest)
@@ -492,19 +506,21 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		codexResult := codexTransformResult{}
 		if compatMessagesBridge {
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
-				IsCodexCLI:                          isCodexCLI,
-				IsCompact:                           isCompactRequest,
-				SkipDefaultInstructions:             true,
-				PreserveToolCallIDs:                 true,
-				OmitPromotedSystemMessagesFromInput: omitPromotedSystemMessages,
+				IsCodexCLI:                            isCodexCLI,
+				IsCompact:                             isCompactRequest,
+				SkipDefaultInstructions:               true,
+				PreserveToolCallIDs:                   true,
+				OmitPromotedSystemMessagesFromInput:   omitPromotedSystemMessages,
+				DropBareReasoningWithToolContinuation: true,
 			})
 			ensureCodexOAuthInstructionsField(decoded)
 			markDecodedModified()
 		} else {
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
-				IsCodexCLI:                          isCodexCLI,
-				IsCompact:                           isCompactRequest,
-				OmitPromotedSystemMessagesFromInput: omitPromotedSystemMessages,
+				IsCodexCLI:                            isCodexCLI,
+				IsCompact:                             isCompactRequest,
+				OmitPromotedSystemMessagesFromInput:   omitPromotedSystemMessages,
+				DropBareReasoningWithToolContinuation: true,
 			})
 		}
 		if codexResult.Error != nil {
@@ -611,6 +627,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 		}
 	}
+	if isCodexCLI && account.Type == AccountTypeAPIKey {
+		if gjson.GetBytes(body, "max_output_tokens").Exists() {
+			markPatchDelete("max_output_tokens")
+		}
+		if gjson.GetBytes(body, "max_completion_tokens").Exists() {
+			markPatchDelete("max_completion_tokens")
+		}
+	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
 		!account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
 		markPatchDelete("previous_response_id")
@@ -649,6 +673,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 			}
 		}
+	} else if s.shouldInjectOpenAIFastPriority(ctx, account, upstreamModel) {
+		markPatchSet("service_tier", OpenAIFastTierPriority)
 	}
 
 	if account.UsesOpenAICodexProtocol() {

@@ -33,6 +33,12 @@ type PaymentOrder struct {
 	PayAmount float64 `json:"pay_amount,omitempty"`
 	// FeeRate holds the value of the "fee_rate" field.
 	FeeRate float64 `json:"fee_rate,omitempty"`
+	// 满减折扣金额
+	DiscountAmount float64 `json:"discount_amount,omitempty"`
+	// 支付优惠券码
+	CouponCode string `json:"coupon_code,omitempty"`
+	// 优惠券抵扣金额
+	CouponDiscountAmount float64 `json:"coupon_discount_amount,omitempty"`
 	// RechargeCode holds the value of the "recharge_code" field.
 	RechargeCode string `json:"recharge_code,omitempty"`
 	// OutTradeNo holds the value of the "out_trade_no" field.
@@ -53,8 +59,16 @@ type PaymentOrder struct {
 	PlanID *int64 `json:"plan_id,omitempty"`
 	// SubscriptionGroupID holds the value of the "subscription_group_id" field.
 	SubscriptionGroupID *int64 `json:"subscription_group_id,omitempty"`
+	// SubscriptionID holds the value of the "subscription_id" field.
+	SubscriptionID *int64 `json:"subscription_id,omitempty"`
 	// SubscriptionDays holds the value of the "subscription_days" field.
 	SubscriptionDays *int `json:"subscription_days,omitempty"`
+	// Subscription quota snapshot frozen at order creation
+	SubscriptionQuotaUsd *float64 `json:"subscription_quota_usd,omitempty"`
+	// Original subscription plan validity unit at order creation
+	SubscriptionValidityUnit *string `json:"subscription_validity_unit,omitempty"`
+	// Fixed subscription plan end time frozen at order creation
+	SubscriptionPlanExpiresAt *time.Time `json:"subscription_plan_expires_at,omitempty"`
 	// ProviderInstanceID holds the value of the "provider_instance_id" field.
 	ProviderInstanceID *string `json:"provider_instance_id,omitempty"`
 	// ProviderKey holds the value of the "provider_key" field.
@@ -63,6 +77,10 @@ type PaymentOrder struct {
 	ProviderSnapshot map[string]interface{} `json:"provider_snapshot,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// InvoiceStatus holds the value of the "invoice_status" field.
+	InvoiceStatus string `json:"invoice_status,omitempty"`
+	// InvoiceApplicationID holds the value of the "invoice_application_id" field.
+	InvoiceApplicationID *int64 `json:"invoice_application_id,omitempty"`
 	// RefundAmount holds the value of the "refund_amount" field.
 	RefundAmount float64 `json:"refund_amount,omitempty"`
 	// RefundReason holds the value of the "refund_reason" field.
@@ -107,9 +125,13 @@ type PaymentOrder struct {
 type PaymentOrderEdges struct {
 	// User holds the value of the user edge.
 	User *User `json:"user,omitempty"`
+	// CouponUsages holds the value of the coupon_usages edge.
+	CouponUsages []*CouponUsage `json:"coupon_usages,omitempty"`
+	// InvoiceApplicationOrders holds the value of the invoice_application_orders edge.
+	InvoiceApplicationOrders []*InvoiceApplicationOrder `json:"invoice_application_orders,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [3]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -123,6 +145,24 @@ func (e PaymentOrderEdges) UserOrErr() (*User, error) {
 	return nil, &NotLoadedError{edge: "user"}
 }
 
+// CouponUsagesOrErr returns the CouponUsages value or an error if the edge
+// was not loaded in eager-loading.
+func (e PaymentOrderEdges) CouponUsagesOrErr() ([]*CouponUsage, error) {
+	if e.loadedTypes[1] {
+		return e.CouponUsages, nil
+	}
+	return nil, &NotLoadedError{edge: "coupon_usages"}
+}
+
+// InvoiceApplicationOrdersOrErr returns the InvoiceApplicationOrders value or an error if the edge
+// was not loaded in eager-loading.
+func (e PaymentOrderEdges) InvoiceApplicationOrdersOrErr() ([]*InvoiceApplicationOrder, error) {
+	if e.loadedTypes[2] {
+		return e.InvoiceApplicationOrders, nil
+	}
+	return nil, &NotLoadedError{edge: "invoice_application_orders"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -132,13 +172,13 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldDiscountAmount, paymentorder.FieldCouponDiscountAmount, paymentorder.FieldSubscriptionQuotaUsd, paymentorder.FieldRefundAmount:
 			values[i] = new(sql.NullFloat64)
-		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
+		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionID, paymentorder.FieldSubscriptionDays, paymentorder.FieldInvoiceApplicationID:
 			values[i] = new(sql.NullInt64)
-		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
+		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldCouponCode, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldSubscriptionValidityUnit, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldInvoiceStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
 			values[i] = new(sql.NullString)
-		case paymentorder.FieldRefundAt, paymentorder.FieldRefundRequestedAt, paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
+		case paymentorder.FieldSubscriptionPlanExpiresAt, paymentorder.FieldRefundAt, paymentorder.FieldRefundRequestedAt, paymentorder.FieldExpiresAt, paymentorder.FieldPaidAt, paymentorder.FieldCompletedAt, paymentorder.FieldFailedAt, paymentorder.FieldCreatedAt, paymentorder.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -203,6 +243,24 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field fee_rate", values[i])
 			} else if value.Valid {
 				_m.FeeRate = value.Float64
+			}
+		case paymentorder.FieldDiscountAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field discount_amount", values[i])
+			} else if value.Valid {
+				_m.DiscountAmount = value.Float64
+			}
+		case paymentorder.FieldCouponCode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field coupon_code", values[i])
+			} else if value.Valid {
+				_m.CouponCode = value.String
+			}
+		case paymentorder.FieldCouponDiscountAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field coupon_discount_amount", values[i])
+			} else if value.Valid {
+				_m.CouponDiscountAmount = value.Float64
 			}
 		case paymentorder.FieldRechargeCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -269,12 +327,40 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				_m.SubscriptionGroupID = new(int64)
 				*_m.SubscriptionGroupID = value.Int64
 			}
+		case paymentorder.FieldSubscriptionID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_id", values[i])
+			} else if value.Valid {
+				_m.SubscriptionID = new(int64)
+				*_m.SubscriptionID = value.Int64
+			}
 		case paymentorder.FieldSubscriptionDays:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field subscription_days", values[i])
 			} else if value.Valid {
 				_m.SubscriptionDays = new(int)
 				*_m.SubscriptionDays = int(value.Int64)
+			}
+		case paymentorder.FieldSubscriptionQuotaUsd:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_quota_usd", values[i])
+			} else if value.Valid {
+				_m.SubscriptionQuotaUsd = new(float64)
+				*_m.SubscriptionQuotaUsd = value.Float64
+			}
+		case paymentorder.FieldSubscriptionValidityUnit:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_validity_unit", values[i])
+			} else if value.Valid {
+				_m.SubscriptionValidityUnit = new(string)
+				*_m.SubscriptionValidityUnit = value.String
+			}
+		case paymentorder.FieldSubscriptionPlanExpiresAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field subscription_plan_expires_at", values[i])
+			} else if value.Valid {
+				_m.SubscriptionPlanExpiresAt = new(time.Time)
+				*_m.SubscriptionPlanExpiresAt = value.Time
 			}
 		case paymentorder.FieldProviderInstanceID:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -303,6 +389,19 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case paymentorder.FieldInvoiceStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field invoice_status", values[i])
+			} else if value.Valid {
+				_m.InvoiceStatus = value.String
+			}
+		case paymentorder.FieldInvoiceApplicationID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field invoice_application_id", values[i])
+			} else if value.Valid {
+				_m.InvoiceApplicationID = new(int64)
+				*_m.InvoiceApplicationID = value.Int64
 			}
 		case paymentorder.FieldRefundAmount:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
@@ -434,6 +533,16 @@ func (_m *PaymentOrder) QueryUser() *UserQuery {
 	return NewPaymentOrderClient(_m.config).QueryUser(_m)
 }
 
+// QueryCouponUsages queries the "coupon_usages" edge of the PaymentOrder entity.
+func (_m *PaymentOrder) QueryCouponUsages() *CouponUsageQuery {
+	return NewPaymentOrderClient(_m.config).QueryCouponUsages(_m)
+}
+
+// QueryInvoiceApplicationOrders queries the "invoice_application_orders" edge of the PaymentOrder entity.
+func (_m *PaymentOrder) QueryInvoiceApplicationOrders() *InvoiceApplicationOrderQuery {
+	return NewPaymentOrderClient(_m.config).QueryInvoiceApplicationOrders(_m)
+}
+
 // Update returns a builder for updating this PaymentOrder.
 // Note that you need to call PaymentOrder.Unwrap() before calling this method if this PaymentOrder
 // was returned from a transaction, and the transaction was committed or rolled back.
@@ -480,6 +589,15 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString("fee_rate=")
 	builder.WriteString(fmt.Sprintf("%v", _m.FeeRate))
 	builder.WriteString(", ")
+	builder.WriteString("discount_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.DiscountAmount))
+	builder.WriteString(", ")
+	builder.WriteString("coupon_code=")
+	builder.WriteString(_m.CouponCode)
+	builder.WriteString(", ")
+	builder.WriteString("coupon_discount_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.CouponDiscountAmount))
+	builder.WriteString(", ")
 	builder.WriteString("recharge_code=")
 	builder.WriteString(_m.RechargeCode)
 	builder.WriteString(", ")
@@ -520,9 +638,29 @@ func (_m *PaymentOrder) String() string {
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
+	if v := _m.SubscriptionID; v != nil {
+		builder.WriteString("subscription_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	if v := _m.SubscriptionDays; v != nil {
 		builder.WriteString("subscription_days=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.SubscriptionQuotaUsd; v != nil {
+		builder.WriteString("subscription_quota_usd=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.SubscriptionValidityUnit; v != nil {
+		builder.WriteString("subscription_validity_unit=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.SubscriptionPlanExpiresAt; v != nil {
+		builder.WriteString("subscription_plan_expires_at=")
+		builder.WriteString(v.Format(time.ANSIC))
 	}
 	builder.WriteString(", ")
 	if v := _m.ProviderInstanceID; v != nil {
@@ -540,6 +678,14 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("invoice_status=")
+	builder.WriteString(_m.InvoiceStatus)
+	builder.WriteString(", ")
+	if v := _m.InvoiceApplicationID; v != nil {
+		builder.WriteString("invoice_application_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("refund_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RefundAmount))

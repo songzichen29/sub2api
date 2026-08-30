@@ -24,13 +24,6 @@ func openAIMergeHelperString(v any) string {
 	return s
 }
 
-func stripCodexSparkImageGenerationToolFromRawPayload(payload []byte, model string) ([]byte, bool, error) {
-	if !isCodexSparkModel(model) {
-		return payload, false, nil
-	}
-	return stripOpenAIImageGenerationToolsFromRawPayload(payload)
-}
-
 func removeEmptyPreviousResponseIDFromRawPayload(payload []byte) ([]byte, bool, error) {
 	value := gjson.GetBytes(payload, "previous_response_id")
 	if !value.Exists() {

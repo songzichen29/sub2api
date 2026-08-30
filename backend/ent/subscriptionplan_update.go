@@ -174,6 +174,53 @@ func (_u *SubscriptionPlanUpdate) SetNillableValidityUnit(v *string) *Subscripti
 	return _u
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpdate {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpdate {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdate) ClearQuotaLimitUsd() *SubscriptionPlanUpdate {
+	_u.mutation.ClearQuotaLimitUsd()
+	return _u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (_u *SubscriptionPlanUpdate) SetExpiresAt(v time.Time) *SubscriptionPlanUpdate {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableExpiresAt(v *time.Time) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *SubscriptionPlanUpdate) ClearExpiresAt() *SubscriptionPlanUpdate {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
 // SetFeatures sets the "features" field.
 func (_u *SubscriptionPlanUpdate) SetFeatures(v string) *SubscriptionPlanUpdate {
 	_u.mutation.SetFeatures(v)
@@ -199,6 +246,33 @@ func (_u *SubscriptionPlanUpdate) SetNillableProductName(v *string) *Subscriptio
 	if v != nil {
 		_u.SetProductName(*v)
 	}
+	return _u
+}
+
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) SetMaxBuyCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.ResetMaxBuyCount()
+	_u.mutation.SetMaxBuyCount(v)
+	return _u
+}
+
+// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillableMaxBuyCount(v *int) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetMaxBuyCount(*v)
+	}
+	return _u
+}
+
+// AddMaxBuyCount adds value to the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) AddMaxBuyCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.AddMaxBuyCount(v)
+	return _u
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdate) ClearMaxBuyCount() *SubscriptionPlanUpdate {
+	_u.mutation.ClearMaxBuyCount()
 	return _u
 }
 
@@ -360,11 +434,35 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(subscriptionplan.FieldExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Features(); ok {
 		_spec.SetField(subscriptionplan.FieldFeatures, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MaxBuyCount(); ok {
+		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxBuyCount(); ok {
+		_spec.AddField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if _u.mutation.MaxBuyCountCleared() {
+		_spec.ClearField(subscriptionplan.FieldMaxBuyCount, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
@@ -544,6 +642,53 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableValidityUnit(v *string) *Subscri
 	return _u
 }
 
+// SetQuotaLimitUsd sets the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) SetQuotaLimitUsd(v float64) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetQuotaLimitUsd()
+	_u.mutation.SetQuotaLimitUsd(v)
+	return _u
+}
+
+// SetNillableQuotaLimitUsd sets the "quota_limit_usd" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableQuotaLimitUsd(v *float64) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetQuotaLimitUsd(*v)
+	}
+	return _u
+}
+
+// AddQuotaLimitUsd adds value to the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) AddQuotaLimitUsd(v float64) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddQuotaLimitUsd(v)
+	return _u
+}
+
+// ClearQuotaLimitUsd clears the value of the "quota_limit_usd" field.
+func (_u *SubscriptionPlanUpdateOne) ClearQuotaLimitUsd() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearQuotaLimitUsd()
+	return _u
+}
+
+// SetExpiresAt sets the "expires_at" field.
+func (_u *SubscriptionPlanUpdateOne) SetExpiresAt(v time.Time) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetExpiresAt(v)
+	return _u
+}
+
+// SetNillableExpiresAt sets the "expires_at" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableExpiresAt(v *time.Time) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetExpiresAt(*v)
+	}
+	return _u
+}
+
+// ClearExpiresAt clears the value of the "expires_at" field.
+func (_u *SubscriptionPlanUpdateOne) ClearExpiresAt() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
 // SetFeatures sets the "features" field.
 func (_u *SubscriptionPlanUpdateOne) SetFeatures(v string) *SubscriptionPlanUpdateOne {
 	_u.mutation.SetFeatures(v)
@@ -569,6 +714,33 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableProductName(v *string) *Subscrip
 	if v != nil {
 		_u.SetProductName(*v)
 	}
+	return _u
+}
+
+// SetMaxBuyCount sets the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) SetMaxBuyCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetMaxBuyCount()
+	_u.mutation.SetMaxBuyCount(v)
+	return _u
+}
+
+// SetNillableMaxBuyCount sets the "max_buy_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillableMaxBuyCount(v *int) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetMaxBuyCount(*v)
+	}
+	return _u
+}
+
+// AddMaxBuyCount adds value to the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) AddMaxBuyCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddMaxBuyCount(v)
+	return _u
+}
+
+// ClearMaxBuyCount clears the value of the "max_buy_count" field.
+func (_u *SubscriptionPlanUpdateOne) ClearMaxBuyCount() *SubscriptionPlanUpdateOne {
+	_u.mutation.ClearMaxBuyCount()
 	return _u
 }
 
@@ -760,11 +932,35 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	if value, ok := _u.mutation.ValidityUnit(); ok {
 		_spec.SetField(subscriptionplan.FieldValidityUnit, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.QuotaLimitUsd(); ok {
+		_spec.SetField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedQuotaLimitUsd(); ok {
+		_spec.AddField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64, value)
+	}
+	if _u.mutation.QuotaLimitUsdCleared() {
+		_spec.ClearField(subscriptionplan.FieldQuotaLimitUsd, field.TypeFloat64)
+	}
+	if value, ok := _u.mutation.ExpiresAt(); ok {
+		_spec.SetField(subscriptionplan.FieldExpiresAt, field.TypeTime, value)
+	}
+	if _u.mutation.ExpiresAtCleared() {
+		_spec.ClearField(subscriptionplan.FieldExpiresAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Features(); ok {
 		_spec.SetField(subscriptionplan.FieldFeatures, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.ProductName(); ok {
 		_spec.SetField(subscriptionplan.FieldProductName, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MaxBuyCount(); ok {
+		_spec.SetField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedMaxBuyCount(); ok {
+		_spec.AddField(subscriptionplan.FieldMaxBuyCount, field.TypeInt, value)
+	}
+	if _u.mutation.MaxBuyCountCleared() {
+		_spec.ClearField(subscriptionplan.FieldMaxBuyCount, field.TypeInt)
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)

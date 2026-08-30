@@ -1,8 +1,31 @@
-ALTER TABLE `channel_monitors`
-    MODIFY COLUMN `provider` ENUM('openai','anthropic','gemini','grok','antigravity','kimi','zhipu','deepseek') NOT NULL;
+SET @provider_enum_type = 'enum(''openai'',''anthropic'',''gemini'',''grok'',''antigravity'',''kimi'',''zhipu'',''deepseek'')';
+SET @provider_enum_matches = (
+    SELECT COUNT(1) FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'channel_monitors'
+      AND column_name = 'provider'
+      AND LOWER(column_type) = @provider_enum_type
+);
+SET @sql = IF(@provider_enum_matches = 0,
+    'ALTER TABLE `channel_monitors` MODIFY COLUMN `provider` ENUM(''openai'',''anthropic'',''gemini'',''grok'',''antigravity'',''kimi'',''zhipu'',''deepseek'') NOT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
-ALTER TABLE `channel_monitor_request_templates`
-    MODIFY COLUMN `provider` ENUM('openai','anthropic','gemini','grok','antigravity','kimi','zhipu','deepseek') NOT NULL;
+SET @provider_enum_matches = (
+    SELECT COUNT(1) FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'channel_monitor_request_templates'
+      AND column_name = 'provider'
+      AND LOWER(column_type) = @provider_enum_type
+);
+SET @sql = IF(@provider_enum_matches = 0,
+    'ALTER TABLE `channel_monitor_request_templates` MODIFY COLUMN `provider` ENUM(''openai'',''anthropic'',''gemini'',''grok'',''antigravity'',''kimi'',''zhipu'',''deepseek'') NOT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 SET @col_exists = (
     SELECT COUNT(1) FROM information_schema.columns

@@ -40,16 +40,28 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("user_notes").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 金额信息
 		field.Float("amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
 		field.Float("pay_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}),
 		field.Float("fee_rate").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)"}).
 			Default(0),
+		field.Float("discount_amount").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			Default(0).
+			Comment("满减折扣金额"),
+		field.String("coupon_code").
+			MaxLen(32).
+			Default("").
+			Comment("支付优惠券码"),
+		field.Float("coupon_discount_amount").
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
+			Default(0).
+			Comment("优惠券抵扣金额"),
 		field.String("recharge_code").
 			MaxLen(64),
 
@@ -64,15 +76,15 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("pay_url").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("qr_code").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("qr_code_img").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 订单类型 & 订阅关联
 		field.String("order_type").
@@ -84,9 +96,27 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int64("subscription_group_id").
 			Optional().
 			Nillable(),
+		field.Int64("subscription_id").
+			Optional().
+			Nillable(),
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		field.Float("subscription_quota_usd").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
+			Comment("Subscription quota snapshot frozen at order creation"),
+		field.String("subscription_validity_unit").
+			Optional().
+			Nillable().
+			MaxLen(10).
+			Comment("Original subscription plan validity unit at order creation"),
+		field.Time("subscription_plan_expires_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}).
+			Comment("Fixed subscription plan end time frozen at order creation"),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().
@@ -97,35 +127,41 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(30),
 		field.JSON("provider_snapshot", map[string]any{}).
 			Optional().
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
+			SchemaType(map[string]string{dialect.MySQL: "json"}),
 
 		// 状态
 		field.String("status").
 			MaxLen(30).
 			Default("PENDING"),
+		field.String("invoice_status").
+			MaxLen(20).
+			Default("UNAPPLIED"),
+		field.Int64("invoice_application_id").
+			Optional().
+			Nillable(),
 
 		// 退款信息
 		field.Float("refund_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,2)"}).
 			Default(0),
 		field.String("refund_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.Time("refund_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Bool("force_refund").
 			Default(false),
 		field.Time("refund_requested_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("refund_request_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 		field.String("refund_requested_by").
 			Optional().
 			Nillable().
@@ -133,23 +169,23 @@ func (PaymentOrder) Fields() []ent.Field {
 
 		// 时间节点
 		field.Time("expires_at").
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("paid_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("completed_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("failed_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.String("failed_reason").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 来源信息
 		field.String("client_ip").
@@ -159,17 +195,17 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.String("src_url").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "text"}),
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}),
 
 		// 时间戳
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("updated_at").
 			Default(time.Now).
 			UpdateDefault(time.Now).
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 	}
 }
 
@@ -180,6 +216,8 @@ func (PaymentOrder) Edges() []ent.Edge {
 			Field("user_id").
 			Unique().
 			Required(),
+		edge.To("coupon_usages", CouponUsage.Type),
+		edge.To("invoice_application_orders", InvoiceApplicationOrder.Type),
 	}
 }
 
@@ -195,5 +233,9 @@ func (PaymentOrder) Indexes() []ent.Index {
 		index.Fields("paid_at"),
 		index.Fields("payment_type", "paid_at"),
 		index.Fields("order_type"),
+		index.Fields("subscription_id"),
+		index.Fields("coupon_code"),
+		index.Fields("invoice_status"),
+		index.Fields("invoice_application_id"),
 	}
 }

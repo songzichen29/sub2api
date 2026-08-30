@@ -31,6 +31,8 @@ const (
 	FieldExpiresAt = "expires_at"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldValidityUnit holds the string denoting the validity_unit field in the database.
+	FieldValidityUnit = "validity_unit"
 	// FieldDailyWindowStart holds the string denoting the daily_window_start field in the database.
 	FieldDailyWindowStart = "daily_window_start"
 	// FieldWeeklyWindowStart holds the string denoting the weekly_window_start field in the database.
@@ -43,12 +45,30 @@ const (
 	FieldWeeklyUsageUsd = "weekly_usage_usd"
 	// FieldMonthlyUsageUsd holds the string denoting the monthly_usage_usd field in the database.
 	FieldMonthlyUsageUsd = "monthly_usage_usd"
+	// FieldQuotaLimitUsd holds the string denoting the quota_limit_usd field in the database.
+	FieldQuotaLimitUsd = "quota_limit_usd"
+	// FieldQuotaUsedUsd holds the string denoting the quota_used_usd field in the database.
+	FieldQuotaUsedUsd = "quota_used_usd"
+	// FieldAllowDailyOverdraft holds the string denoting the allow_daily_overdraft field in the database.
+	FieldAllowDailyOverdraft = "allow_daily_overdraft"
+	// FieldSkipWeekends holds the string denoting the skip_weekends field in the database.
+	FieldSkipWeekends = "skip_weekends"
+	// FieldWeekendSkipUserChangedAt holds the string denoting the weekend_skip_user_changed_at field in the database.
+	FieldWeekendSkipUserChangedAt = "weekend_skip_user_changed_at"
+	// FieldWeekendSkipOriginalExpiresAt holds the string denoting the weekend_skip_original_expires_at field in the database.
+	FieldWeekendSkipOriginalExpiresAt = "weekend_skip_original_expires_at"
+	// FieldWeekendSkipAdminUpdatedAt holds the string denoting the weekend_skip_admin_updated_at field in the database.
+	FieldWeekendSkipAdminUpdatedAt = "weekend_skip_admin_updated_at"
+	// FieldWeekendSkipAdminUpdatedBy holds the string denoting the weekend_skip_admin_updated_by field in the database.
+	FieldWeekendSkipAdminUpdatedBy = "weekend_skip_admin_updated_by"
 	// FieldAssignedBy holds the string denoting the assigned_by field in the database.
 	FieldAssignedBy = "assigned_by"
 	// FieldAssignedAt holds the string denoting the assigned_at field in the database.
 	FieldAssignedAt = "assigned_at"
 	// FieldNotes holds the string denoting the notes field in the database.
 	FieldNotes = "notes"
+	// FieldSource holds the string denoting the source field in the database.
+	FieldSource = "source"
 	// EdgeUser holds the string denoting the user edge name in mutations.
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
@@ -100,15 +120,25 @@ var Columns = []string{
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
+	FieldValidityUnit,
 	FieldDailyWindowStart,
 	FieldWeeklyWindowStart,
 	FieldMonthlyWindowStart,
 	FieldDailyUsageUsd,
 	FieldWeeklyUsageUsd,
 	FieldMonthlyUsageUsd,
+	FieldQuotaLimitUsd,
+	FieldQuotaUsedUsd,
+	FieldAllowDailyOverdraft,
+	FieldSkipWeekends,
+	FieldWeekendSkipUserChangedAt,
+	FieldWeekendSkipOriginalExpiresAt,
+	FieldWeekendSkipAdminUpdatedAt,
+	FieldWeekendSkipAdminUpdatedBy,
 	FieldAssignedBy,
 	FieldAssignedAt,
 	FieldNotes,
+	FieldSource,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -139,14 +169,28 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultValidityUnit holds the default value on creation for the "validity_unit" field.
+	DefaultValidityUnit string
+	// ValidityUnitValidator is a validator for the "validity_unit" field. It is called by the builders before save.
+	ValidityUnitValidator func(string) error
 	// DefaultDailyUsageUsd holds the default value on creation for the "daily_usage_usd" field.
 	DefaultDailyUsageUsd float64
 	// DefaultWeeklyUsageUsd holds the default value on creation for the "weekly_usage_usd" field.
 	DefaultWeeklyUsageUsd float64
 	// DefaultMonthlyUsageUsd holds the default value on creation for the "monthly_usage_usd" field.
 	DefaultMonthlyUsageUsd float64
+	// DefaultQuotaUsedUsd holds the default value on creation for the "quota_used_usd" field.
+	DefaultQuotaUsedUsd float64
+	// DefaultAllowDailyOverdraft holds the default value on creation for the "allow_daily_overdraft" field.
+	DefaultAllowDailyOverdraft bool
+	// DefaultSkipWeekends holds the default value on creation for the "skip_weekends" field.
+	DefaultSkipWeekends bool
 	// DefaultAssignedAt holds the default value on creation for the "assigned_at" field.
 	DefaultAssignedAt func() time.Time
+	// DefaultSource holds the default value on creation for the "source" field.
+	DefaultSource string
+	// SourceValidator is a validator for the "source" field. It is called by the builders before save.
+	SourceValidator func(string) error
 )
 
 // OrderOption defines the ordering options for the UserSubscription queries.
@@ -197,6 +241,11 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
 }
 
+// ByValidityUnit orders the results by the validity_unit field.
+func ByValidityUnit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldValidityUnit, opts...).ToFunc()
+}
+
 // ByDailyWindowStart orders the results by the daily_window_start field.
 func ByDailyWindowStart(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDailyWindowStart, opts...).ToFunc()
@@ -227,6 +276,46 @@ func ByMonthlyUsageUsd(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMonthlyUsageUsd, opts...).ToFunc()
 }
 
+// ByQuotaLimitUsd orders the results by the quota_limit_usd field.
+func ByQuotaLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaLimitUsd, opts...).ToFunc()
+}
+
+// ByQuotaUsedUsd orders the results by the quota_used_usd field.
+func ByQuotaUsedUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldQuotaUsedUsd, opts...).ToFunc()
+}
+
+// ByAllowDailyOverdraft orders the results by the allow_daily_overdraft field.
+func ByAllowDailyOverdraft(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowDailyOverdraft, opts...).ToFunc()
+}
+
+// BySkipWeekends orders the results by the skip_weekends field.
+func BySkipWeekends(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSkipWeekends, opts...).ToFunc()
+}
+
+// ByWeekendSkipUserChangedAt orders the results by the weekend_skip_user_changed_at field.
+func ByWeekendSkipUserChangedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipUserChangedAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipOriginalExpiresAt orders the results by the weekend_skip_original_expires_at field.
+func ByWeekendSkipOriginalExpiresAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipOriginalExpiresAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipAdminUpdatedAt orders the results by the weekend_skip_admin_updated_at field.
+func ByWeekendSkipAdminUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipAdminUpdatedAt, opts...).ToFunc()
+}
+
+// ByWeekendSkipAdminUpdatedBy orders the results by the weekend_skip_admin_updated_by field.
+func ByWeekendSkipAdminUpdatedBy(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldWeekendSkipAdminUpdatedBy, opts...).ToFunc()
+}
+
 // ByAssignedBy orders the results by the assigned_by field.
 func ByAssignedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAssignedBy, opts...).ToFunc()
@@ -240,6 +329,11 @@ func ByAssignedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByNotes orders the results by the notes field.
 func ByNotes(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldNotes, opts...).ToFunc()
+}
+
+// BySource orders the results by the source field.
+func BySource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSource, opts...).ToFunc()
 }
 
 // ByUserField orders the results by user field.

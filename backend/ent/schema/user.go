@@ -47,10 +47,10 @@ func (User) Fields() []ent.Field {
 			MaxLen(20).
 			Default(domain.RoleUser),
 		field.Float("balance").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
 			Default(0),
 		field.Float("frozen_balance").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)", dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
 		field.Int("concurrency").
 			Default(5),
@@ -64,12 +64,12 @@ func (User) Fields() []ent.Field {
 			Default(""),
 		// wechat field migrated to user_attribute_values (see migration 019)
 		field.String("notes").
-			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Default(""),
 
 		// TOTP 双因素认证字段
 		field.String("totp_secret_encrypted").
-			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Optional().
 			Nillable(),
 		field.Bool("totp_enabled").
@@ -90,16 +90,11 @@ func (User) Fields() []ent.Field {
 		field.Time("last_login_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 		field.Time("last_active_at").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
-
-		// 公开分组访问限制：为 false 时用户可绑定任意非专属分组（默认行为），
-		// 为 true 时仅可绑定 user_allowed_groups 中列出的公开分组。
-		field.Bool("restrict_public_groups").
-			Default(false),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),
 
 		// 余额不足通知
 		field.Bool("balance_notify_enabled").
@@ -107,19 +102,21 @@ func (User) Fields() []ent.Field {
 		field.String("balance_notify_threshold_type").
 			Default("fixed"), // "fixed" | "percentage"
 		field.Float("balance_notify_threshold").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
 			Optional().
 			Nillable(),
 		field.String("balance_notify_extra_emails").
-			SchemaType(map[string]string{dialect.Postgres: "text"}).
+			SchemaType(map[string]string{dialect.MySQL: "longtext"}).
 			Default("[]"),
 		field.Float("total_recharged").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,8)"}).
 			Default(0),
 
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
+		field.Bool("restrict_public_groups").
+			Default(false),
 	}
 }
 
@@ -135,7 +132,10 @@ func (User) Edges() []ent.Edge {
 		edge.To("usage_logs", UsageLog.Type),
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
+		edge.To("coupon_usages", CouponUsage.Type),
 		edge.To("payment_orders", PaymentOrder.Type),
+		edge.To("invoice_headers", InvoiceHeader.Type),
+		edge.To("invoice_applications", InvoiceApplication.Type),
 		edge.To("auth_identities", AuthIdentity.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("pending_auth_sessions", PendingAuthSession.Type),

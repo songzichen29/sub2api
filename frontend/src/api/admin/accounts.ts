@@ -15,7 +15,6 @@ import type {
   AccountUsageStatsResponse,
   TempUnschedulableStatus,
   AdminDataPayload,
-  AdminDataImportApply,
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
@@ -46,7 +45,6 @@ export async function list(
     group?: string
     search?: string
     privacy_mode?: string
-    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -62,7 +60,6 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
-    paramsSerializer: { indexes: null },
     signal: options?.signal
   })
   return data
@@ -123,7 +120,6 @@ export async function listWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
-    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -145,7 +141,6 @@ export async function listWithEtag(
       page_size: pageSize,
       ...filters
     },
-    paramsSerializer: { indexes: null },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
@@ -358,6 +353,24 @@ export async function getUsage(id: number, source?: 'passive' | 'active', force?
   if (force) params.force = 'true'
   const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
     params: Object.keys(params).length > 0 ? params : undefined
+  })
+  return data
+}
+
+export async function listTags(): Promise<string[]> {
+  const { data } = await apiClient.get<{ tags?: string[] }>('/admin/accounts/tags')
+  return Array.isArray(data.tags) ? data.tags : []
+}
+
+export interface BatchAccountUsageResponse {
+  usage: Record<string, AccountUsageInfo>
+  errors: Record<string, string>
+}
+
+export async function getBatchUsage(accountIds: number[], force?: boolean): Promise<BatchAccountUsageResponse> {
+  const { data } = await apiClient.post<BatchAccountUsageResponse>('/admin/accounts/usage/batch', {
+    account_ids: accountIds,
+    force: force === true
   })
   return data
 }
@@ -622,31 +635,6 @@ export async function syncUpstreamModelsPreview(params: SyncUpstreamPreviewParam
   return data
 }
 
-/**
- * Probe upstream models with credentials from the create/edit form.
- */
-export async function probeUpstreamModels(params: SyncUpstreamPreviewParams): Promise<string[]> {
-  const { data } = await apiClient.post<string[]>('/admin/accounts/probe-models', params)
-  return data
-}
-
-/**
- * 使用已保存账号的凭据探测上游模型列表（编辑场景，api_key 脱敏留空时由后端用已存凭据探测）。
- * 对应后端 POST /admin/accounts/:id/probe-models。
- */
-export async function probeAccountUpstreamModels(id: number): Promise<string[]> {
-  const { data } = await apiClient.post<string[]>(`/admin/accounts/${id}/probe-models`)
-  return data
-}
-
-/**
- * List all account tags for autocomplete/filtering.
- */
-export async function listTags(): Promise<string[]> {
-  const { data } = await apiClient.get<{ tags?: string[] }>('/admin/accounts/tags')
-  return Array.isArray(data.tags) ? data.tags : []
-}
-
 export interface CRSPreviewAccount {
   crs_account_id: string
   kind: string
@@ -744,21 +732,11 @@ export async function exportData(options?: {
 export async function importData(payload: {
   data: AdminDataPayload
   skip_default_group_bind?: boolean
-  // 导入应用块（feature 2026-05-06-account-import-apply）：admin 在弹窗里勾选并
-  // 填值的字段。后端按指针非 nil 判定是否应用，所以前端必须严格跳过未勾选的字段
-  // （从 payload 整体省略，不要发 null 或默认值）。
-  apply?: AdminDataImportApply
 }): Promise<AdminDataImportResult> {
-  const body: Record<string, unknown> = {
+  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', {
     data: payload.data,
     skip_default_group_bind: payload.skip_default_group_bind
-  }
-  // 仅在 apply 非 undefined 时把它放进 body；这样不勾选任何字段时
-  // POST body 里完全不出现 apply 键，等价旧版本行为。
-  if (payload.apply !== undefined) {
-    body.apply = payload.apply
-  }
-  const { data } = await apiClient.post<AdminDataImportResult>('/admin/accounts/data', body)
+  })
   return data
 }
 
@@ -1089,6 +1067,8 @@ export const accountsAPI = {
   getStats,
   clearError,
   getUsage,
+  getBatchUsage,
+  listTags,
   getTodayStats,
   getBatchTodayStats,
   clearRateLimit,
@@ -1100,9 +1080,6 @@ export const accountsAPI = {
   getAvailableModels,
   syncUpstreamModels,
   syncUpstreamModelsPreview,
-  probeUpstreamModels,
-  probeAccountUpstreamModels,
-  listTags,
   generateAuthUrl,
   exchangeCode,
   refreshOpenAIToken,

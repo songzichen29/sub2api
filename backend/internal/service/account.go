@@ -65,6 +65,7 @@ type Account struct {
 	AccountGroups []AccountGroup
 	GroupIDs      []int64
 	Groups        []*Group
+	Tags          []string
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string
@@ -991,6 +992,35 @@ func (a *Account) GetExtraString(key string) string {
 		}
 	}
 	return ""
+}
+
+func (a *Account) ExtraBool(key string) (bool, bool) {
+	if a == nil || a.Extra == nil {
+		return false, false
+	}
+	v, ok := a.Extra[key]
+	if !ok {
+		return false, false
+	}
+	if b, ok := v.(bool); ok {
+		return b, true
+	}
+	if s, ok := v.(string); ok {
+		switch strings.ToLower(strings.TrimSpace(s)) {
+		case "true", "1", "yes", "on":
+			return true, true
+		case "false", "0", "no", "off":
+			return false, true
+		}
+	}
+	return false, false
+}
+
+func (a *Account) IsGrowthBookProxyEnabled() bool {
+	if b, ok := a.ExtraBool("enable_growthbook_proxy"); ok {
+		return b
+	}
+	return true
 }
 
 func (a *Account) GetClaudeUserID() string {

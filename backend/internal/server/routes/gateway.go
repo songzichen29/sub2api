@@ -181,6 +181,15 @@ func RegisterGatewayRoutes(
 		}
 	}
 
+	// Claude Code auxiliary endpoints are authenticated through the same
+	// Anthropic account pool as /v1/messages.
+	anthropicAux := r.Group("/api")
+	for _, mw := range []gin.HandlerFunc{bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic} {
+		anthropicAux.Use(mw)
+	}
+	anthropicAux.GET("/features/:key", h.Gateway.FeaturesProxy)
+	anthropicAux.GET("/claude_cli/bootstrap", h.Gateway.BootstrapProxy)
+
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
 	gateway.Use(bodyLimit)

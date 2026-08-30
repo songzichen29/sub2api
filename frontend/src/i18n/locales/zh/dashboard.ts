@@ -29,7 +29,7 @@ export default {
       monthly: '月（近30天）',
       resetsAt: '{time} 重置',
       noLimit: '不限制',
-      disabled: '已禁用',
+      disabled: '已禁用'
     },
     tokenUsageTrend: 'Token 使用趋势',
     noDataAvailable: '暂无数据',
@@ -58,13 +58,9 @@ export default {
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值'
   },
-
-  // Groups (shared)
   groups: {
     subscription: '订阅'
   },
-
-  // API Keys
   keys: {
     title: 'API 密钥',
     description: '管理您的 API 密钥和访问令牌',
@@ -75,7 +71,7 @@ export default {
       copied: '已复制',
       copiedHint: '已复制到剪贴板',
       clickToCopy: '点击可复制此端点',
-      speedTest: '测速',
+      speedTest: '测速'
     },
     allGroups: '全部分组',
     allStatus: '全部状态',
@@ -133,10 +129,8 @@ export default {
       copy: '复制',
       copied: '已复制',
       note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
-      claudeSettingsHint: '用户级持久配置。此文件包含 API 密钥，请勿提交到项目仓库。',
       noGroupTitle: '请先分配分组',
-      noGroupDescription:
-        '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
+      noGroupDescription: '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         authModeTitle: 'Codex 认证模式',
@@ -146,8 +140,7 @@ export default {
         authModeApiKeyRestartNotice: '保存此配置后，必须完全退出并重启 Codex Desktop 或 CLI，然后新建 task，让客户端重新构建工具注册表。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
-        noteWindows:
-          '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
+        noteWindows: '按 Win+R，输入 %userprofile%\\.codex 打开配置目录。如目录不存在，请先手动创建。'
       },
       cliTabs: {
         claudeCode: 'Claude Code',
@@ -161,68 +154,64 @@ export default {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        claudeNote:
-          '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
-        geminiNote:
-          '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
+        claudeNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+        geminiNote: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },
       gemini: {
-        description:
-          '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
+        description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行，以配置 Gemini CLI 访问。',
         modelComment: '如果你有 Gemini 3 权限可以填：gemini-3-pro-preview',
         note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },
       grok: {
-        description:
-          '配置 Grok CLI、Claude Code、Codex 或 OpenCode，让请求通过当前 Sub2API Grok 分组发送。文本模型走 Responses；图片/视频使用 Imagine 模型 ID 与媒体端点。',
+        description: '配置 Grok Build 或 OpenCode，让 Responses API 请求通过当前 Sub2API Grok 分组发送。',
+        configTomlHint: '如已有 config.toml，请先备份再合并此模型配置。保存后运行 grok inspect 验证生效配置。',
+        note: '保存为 ~/.grok/config.toml，然后运行 grok inspect，并在 /model 中选择 grok。',
+        noteWindows: '保存为 %USERPROFILE%\\.grok\\config.toml，然后运行 grok inspect，并在 /model 中选择 grok。'
+      ,
         claudeDescription: '配置 Claude Code，让 Messages API 请求通过当前 Sub2API Grok 分组发送。',
         codexDescription: '配置 Codex，让 Responses API 请求通过当前 Sub2API Grok 分组发送。',
-        configTomlHint:
-          '官方路径：~/.grok/config.toml（或 $GROK_HOME）。请填写 [endpoints]（models_base_url / models_list_url / xai_api_base_url / cli_chat_proxy_base_url）、[auth] preferred_method=api_key、[models]、[session]、[features] 图片/视频覆盖。优先 env_key，勿硬编码 api_key；文本模型必须 api_backend=responses。合并前备份，保存后运行 grok inspect。',
         codexConfigTomlHint:
-          'Codex 官方：wire_api 仅支持 "responses"；优先 env_key，勿与 experimental_bearer_token 混用；非 OpenAI 网关默认 supports_websockets = false（Sub2API 仍可接客户端 WS 并桥接到 HTTP/SSE）。合并前备份 ~/.codex/config.toml。',
-        note:
-          '导出 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将完整 config.toml（endpoints/auth/models/session/features）保存为 ~/.grok/config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
-        noteWindows:
-          '设置 GROK_MODELS_BASE_URL 与 XAI_API_KEY，将完整 config.toml 保存为 %USERPROFILE%\\.grok\\config.toml，运行 grok inspect，再用 /model 选择 grok-4.5（编程场景可用 grok-build-0.1）。',
+                  'Codex 官方：wire_api 仅支持 "responses"；优先 env_key，勿与 experimental_bearer_token 混用；非 OpenAI 网关默认 supports_websockets = false（Sub2API 仍可接客户端 WS 并桥接到 HTTP/SSE）。合并前备份 ~/.codex/config.toml。',
         claudeNote:
-          '二选一：终端环境变量仅当前会话；~/.claude/settings.json 可持久化。请勿把含 API Key 的文件提交到仓库。',
+                  '二选一：终端环境变量仅当前会话；~/.claude/settings.json 可持久化。请勿把含 API Key 的文件提交到仓库。',
         codexNote:
-          '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex（可用 mkdir -p ~/.codex）。优先 env_key，勿提交密钥。',
+                  '导出 SUB2API_API_KEY，将 config.toml 保存到 ~/.codex（可用 mkdir -p ~/.codex）。优先 env_key，勿提交密钥。',
         codexNoteWindows:
-          '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。优先 env_key，勿提交密钥。'
-      },
-      deepseek: {
-        description: '通过当前 DeepSeek 分组配置 Claude Code、Codex 或 OpenCode。',
-        codexDescription: '使用 API Key 配置 Codex，并通过当前 DeepSeek 分组发送请求。',
-        codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
-        codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
-      },
-      composite: {
-        description: '通过当前 Composite 路由分组配置受支持的客户端。',
-        codexDescription: '使用 API Key 和当前 Composite 分组的完整模型目录配置 Codex。',
-        codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
-        codexNote: '启动 Codex 前先导出 SUB2API_API_KEY；分组会根据目录中选中的模型路由请求。'
-      },
-      routedCodex: {
-        description: '使用当前路由分组的完整模型目录配置 Codex。',
-        configTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
-        note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
-      },
-      codexModelCatalog: {
-        title: 'Codex 模型目录',
-        description: '使用当前 API Key 获取目录，并保存到 config.toml 引用的路径。',
-        fetch: '获取目录',
-        retry: '重试',
-        download: '下载目录',
-        modelsCount: '已获取 {count} 个模型',
-        errorDescription: '无法使用当前 API Key 获取模型目录。'
+                  '设置 $env:SUB2API_API_KEY，将 config.toml 保存到 %USERPROFILE%\\.codex。优先 env_key，勿提交密钥。'
       },
       opencode: {
         title: 'OpenCode 配置示例',
         subtitle: 'opencode.json',
         hint: '配置文件路径：~/.config/opencode/opencode.json（或 opencode.jsonc），不存在需手动创建。可使用默认 provider（openai/anthropic/google）或自定义 provider_id。API Key 支持直接配置或通过客户端 /connect 命令配置。示例仅供参考，模型与选项可按需调整。'
       }
+    ,
+      claudeSettingsHint: '用户级持久配置。此文件包含 API 密钥，请勿提交到项目仓库。',
+      deepseek: {
+              description: '通过当前 DeepSeek 分组配置 Claude Code、Codex 或 OpenCode。',
+              codexDescription: '使用 API Key 配置 Codex，并通过当前 DeepSeek 分组发送请求。',
+              codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+            },
+      composite: {
+              description: '通过当前 Composite 路由分组配置受支持的客户端。',
+              codexDescription: '使用 API Key 和当前 Composite 分组的完整模型目录配置 Codex。',
+              codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              codexNote: '启动 Codex 前先导出 SUB2API_API_KEY；分组会根据目录中选中的模型路由请求。'
+            },
+      routedCodex: {
+              description: '使用当前路由分组的完整模型目录配置 Codex。',
+              configTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+              note: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+            },
+      codexModelCatalog: {
+              title: 'Codex 模型目录',
+              description: '使用当前 API Key 获取目录，并保存到 config.toml 引用的路径。',
+              fetch: '获取目录',
+              retry: '重试',
+              download: '下载目录',
+              modelsCount: '已获取 {count} 个模型',
+              errorDescription: '无法使用当前 API Key 获取模型目录。'
+            },
     },
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -238,8 +227,7 @@ export default {
     ipBlacklistPlaceholder: '1.2.3.4\n5.6.0.0/16',
     ipBlacklistHint: '每行一个 IP 或 CIDR，这些 IP 将被禁止使用此密钥',
     ipRestrictionEnabled: '已配置 IP 限制',
-    ccSwitchNotInstalled:
-      'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
+    ccSwitchNotInstalled: 'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
       description: '请选择您要导入到 CC-Switch 的客户端类型：',
@@ -248,7 +236,6 @@ export default {
       geminiCli: 'Gemini CLI',
       geminiCliDesc: '导入为 Gemini CLI 配置'
     },
-    // 配额和有效期
     quotaLimit: '额度限制',
     quotaAmount: '额度金额 (USD)',
     quotaAmountPlaceholder: '输入 USD 额度限制',
@@ -287,11 +274,10 @@ export default {
       active: '活跃',
       inactive: '已停用',
       quota_exhausted: '额度耗尽',
-      expired: '已过期'
+      expired: '已过期',
+      disabled: '已禁用'
     }
   },
-
-  // Usage
   usage: {
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
@@ -340,7 +326,6 @@ export default {
 	  modelVariant: '疑似版本变体',
 	  modelMismatch: '模型不一致',
     reasoningEffort: '推理强度',
-    requestedReasoningEffort: '请求推理强度',
     endpoint: '端点',
     endpointDistribution: '端点分布',
     inbound: '入站',
@@ -426,30 +411,53 @@ export default {
       detailOrg: '运营商',
       detailTimezone: '时区',
       detailAccuracy: '定位精度',
-      detailCoordinates: '坐标',
+      detailCoordinates: '坐标'
     },
-    tabs: { usage: '用量明细', errors: '错误请求', ranking: '用户排行' },
+    tabs: {
+      usage: '用量明细',
+      errors: '错误请求',
+      ranking: '用户排行'
+    },
     errors: {
-      time: '时间', model: '模型', endpoint: '端点', status: '状态码',
-      category: '分类', platform: '平台', message: '错误信息',
-      keyName: 'Key 名称', keyDeleted: '已删除', allKeys: '全部 Key',
-      modelPlaceholder: '搜索模型', allCategories: '全部分类', allStatuses: '全部状态码',
-      empty: '暂无错误请求', failedToLoad: '加载错误请求失败',
+      time: '时间',
+      model: '模型',
+      endpoint: '端点',
+      status: '状态码',
+      category: '分类',
+      platform: '平台',
+      message: '错误信息',
+      keyName: 'Key 名称',
+      keyDeleted: '已删除',
+      allKeys: '全部 Key',
+      modelPlaceholder: '搜索模型',
+      allCategories: '全部分类',
+      allStatuses: '全部状态码',
+      empty: '暂无错误请求',
+      failedToLoad: '加载错误请求失败',
       categories: {
-        auth: '认证失败', rate_limit: '限流', quota: '余额/订阅',
-        invalid_request: '参数错误', service_unavailable: '服务暂时不可用',
-        upstream: '上游错误', internal: '平台错误', other: '其他', cyber: '安全策略',
+        auth: '认证失败',
+        rate_limit: '限流',
+        quota: '余额/订阅',
+        invalid_request: '参数错误',
+        service_unavailable: '服务暂时不可用',
+        upstream: '上游错误',
+        internal: '平台错误',
+        other: '其他',
+        cyber: '安全策略'
       },
       detail: {
         title: '错误请求详情',
         responseBody: '上游响应内容',
         upstreamStatus: '上游状态码',
-        loadFailed: '加载详情失败，请稍后重试',
-      },
+        loadFailed: '加载详情失败，请稍后重试'
+      }
     },
+    modelQueryPlaceholder: '输入完整模型名',
+    upstreamFirstEvent: '上游首包',
+    upstreamToFirstToken: '首包→首字'
+  ,
+    requestedReasoningEffort: '请求推理强度',
   },
-
-  // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
     status: {
       operational: '正常',
@@ -462,39 +470,12 @@ export default {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
-      grok: 'Grok',
+      grok: 'Grok'
+    ,
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: '智谱 GLM',
       deepseek: 'DeepSeek'
-    },
-    // 检查模式（监控条目的工作方式）
-    checkMode: {
-      probe: '探活',
-      quota: '配额',
-      quota_probe: '探活 + 配额'
-    },
-    // 配额快照展示（MonitorQuotaView，管理端与用户端共用）
-    quota: {
-      unavailable: '配额信息不可用',
-      resetSoon: '即将重置',
-      windows: {
-        '5h': '5 小时',
-        '7d': '7 天',
-        '7dSonnet': '7 天 Sonnet',
-        '7dFable': '7 天 Fable',
-        weekly: '周',
-        daily: '日',
-        '30d': '30 天',
-        total: '总量'
-      },
-      labels: {
-        requests: '请求',
-        tokens: 'Token',
-        shared: '共享',
-        pro: 'Pro',
-        flash: 'Flash'
-      }
     },
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',
@@ -514,9 +495,34 @@ export default {
     relativeMinutesAgo: '{n} 分钟前',
     relativeHoursAgo: '{n} 小时前',
     relativeDaysAgo: '{n} 天前'
+  ,
+    checkMode: {
+          probe: '探活',
+          quota: '配额',
+          quota_probe: '探活 + 配额'
+        },
+    quota: {
+          unavailable: '配额信息不可用',
+          resetSoon: '即将重置',
+          windows: {
+            '5h': '5 小时',
+            '7d': '7 天',
+            '7dSonnet': '7 天 Sonnet',
+            '7dFable': '7 天 Fable',
+            weekly: '周',
+            daily: '日',
+            '30d': '30 天',
+            total: '总量'
+          },
+          labels: {
+            requests: '请求',
+            tokens: 'Token',
+            shared: '共享',
+            pro: 'Pro',
+            flash: 'Flash'
+          }
+        },
   },
-
-  // Channel Status (user-facing read-only view)
   channelStatus: {
     title: '渠道状态',
     description: '查看渠道可用性、延迟和近期状态',
@@ -558,8 +564,6 @@ export default {
       description: '管理员尚未配置可监控的渠道。'
     }
   },
-
-  // Available Channels (user-facing)
   availableChannels: {
     title: '可用渠道',
     description: '查看您可访问的渠道与其支持的模型、定价',
@@ -596,67 +600,6 @@ export default {
       unitPerRequest: '/ 次'
     }
   },
-
-  // Model Plaza (public group/model pricing showcase)
-  modelPlaza: {
-    title: '模型广场',
-    description: '按分组浏览可用模型与价格',
-    loading: '加载中...',
-    empty: '暂无可展示的分组',
-    loadFailed: '加载模型广场失败',
-    noSearchResult: '没有匹配的模型',
-    anonymousHint: '登录后可查看你的专属分组与专属倍率',
-    filters: {
-      platformLabel: '平台',
-      groupLabel: '分组',
-      rateLabel: '倍率',
-      modelLabel: '模型',
-      searchPlaceholder: '搜索模型名称',
-      all: '全部'
-    },
-    badges: {
-      exclusive: '专属分组',
-      subscription: '订阅'
-    },
-    detail: {
-      noModels: '该分组暂未配置模型',
-      noPricing: '未配置定价',
-      peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
-      longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
-    },
-    table: {
-      model: '模型',
-      input: '输入',
-      output: '输出',
-      cache: '缓存',
-      cacheWrite: '写入',
-      cacheRead: '读取',
-      cacheWriteShort: '写',
-      cacheReadShort: '读',
-      tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
-      tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
-      marginalBadge: '超出部分计价',
-      timePricingRowHint: '按 {timezone} 时间，在该时段内发起的请求按本行价格计费',
-      timePricingRowHintWeekdays:
-        '按 {timezone} 时间，仅工作日（周一至周五）在该时段内发起的请求按本行价格计费，周末全天按标准价',
-      timePricingRowHintPeak: '；本行价格未含高峰倍率，与高峰时段 {window} 重叠的部分实付再乘 ×{multiplier}',
-      timePricingWeekdays: '工作日',
-      timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
-      paidPrice: '实付价格(折后)',
-      officialPrice: '官方价格',
-      rate: '折扣倍率',
-      unitPerMillion: '$ / 1M token',
-      perUnitRequest: '/ 次',
-      perUnitImage: '/ 张',
-      perRequest: '按次计费',
-      perImage: '按图片计费'
-    },
-    nav: {
-      login: '登录',
-      backToDashboard: '回到后台'
-    }
-  },
-
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',
@@ -675,7 +618,11 @@ export default {
       availableQuota: '可转返利额度',
       frozenQuota: '冻结中',
       frozenQuotaHint: '新产生的返利正在冻结期中',
-      totalQuota: '历史返利额度'
+      totalQuota: '历史返利额度',
+      rechargeRebateRate: '充值返利比例',
+      rechargeRebateRateHint: '被邀请用户充值余额时你可获得的返利比例',
+      subscriptionRebateRate: '订阅返利比例',
+      subscriptionRebateRateHint: '被邀请用户购买订阅时你可获得的返利比例'
     },
     transfer: {
       title: '返利额度转余额',
@@ -700,11 +647,12 @@ export default {
       line1: '将邀请码或邀请链接分享给新用户。',
       line2: '被邀请用户充值后，你可获得 {rate} 的返利额度。',
       line3: '返利额度可随时转入账户余额。',
-      line4: '新产生的返利需要经过冻结期后才能提现。'
+      line4: '新产生的返利需要经过冻结期后才能提现。',
+      line2Both: '被邀请用户充值余额后，你可获得 {rechargeRate} 的返利额度；购买订阅后，你可获得 {subscriptionRate} 的返利额度。',
+      line2Recharge: '被邀请用户充值余额后，你可获得 {rechargeRate} 的返利额度。',
+      line2Subscription: '被邀请用户购买订阅后，你可获得 {subscriptionRate} 的返利额度。'
     }
   },
-
-  // Redeem
   redeem: {
     title: '兑换码',
     description: '输入兑换码以充值余额或增加并发数',
@@ -746,8 +694,6 @@ export default {
     subscriptionRefreshFailed: '兑换成功，但订阅状态刷新失败。',
     pleaseEnterCode: '请输入兑换码'
   },
-
-  // Profile
   profile: {
     title: '个人设置',
     description: '管理您的账户信息和设置',
@@ -788,7 +734,6 @@ export default {
     passwordTooShort: '密码至少需要 8 个字符',
     passwordChangeSuccess: '密码修改成功',
     passwordChangeFailed: '密码修改失败',
-    // TOTP 2FA
     totp: {
       title: '双因素认证 (2FA)',
       description: '使用 Google Authenticator 等应用增强账户安全',
@@ -818,7 +763,6 @@ export default {
       loginTitle: '双因素认证',
       loginHint: '请输入您认证器应用显示的 6 位验证码',
       loginFailed: '验证失败，请重试',
-      // New translations for email verification
       verifyEmailFirst: '请先验证您的邮箱',
       verifyPasswordFirst: '请先验证您的身份',
       emailCode: '邮箱验证码',
@@ -882,7 +826,7 @@ export default {
       emailDuplicate: '该邮箱已存在',
       maxEmailsReached: '已达到通知邮箱数量上限',
       unverified: '未验证',
-      verified: '已验证',
+      verified: '已验证'
     },
     avatar: {
       title: '资料头像',
@@ -897,7 +841,7 @@ export default {
       compressTooLarge: '无法将图片压缩到 20KB 以内，请换一张更小的图片',
       compressFailed: '压缩所选图片失败',
       readFailed: '读取所选图片失败',
-      emptyDeleteHint: '当前没有可删除的头像',
+      emptyDeleteHint: '当前没有可删除的头像'
     },
     authBindings: {
       title: '登录方式绑定',
@@ -920,39 +864,34 @@ export default {
       boundCount: '已关联 {count} 条记录',
       status: {
         bound: '已绑定',
-        notBound: '未绑定',
+        notBound: '未绑定'
       },
       providers: {
         email: '邮箱',
         linuxdo: 'LinuxDo',
         dingtalk: '钉钉',
         oidc: '{providerName}',
-        wechat: '微信',
+        wechat: '微信'
       },
       notes: {
         emailManagedFromProfile: '主邮箱在资料表单中管理',
         canUnbind: '你可以解绑这个登录方式。',
-        bindAnotherBeforeUnbind: '请先绑定其他登录方式，再解除当前绑定。',
+        bindAnotherBeforeUnbind: '请先绑定其他登录方式，再解除当前绑定。'
       },
       source: {
         avatar: '头像当前来自 {providerName}',
-        username: '昵称当前来自 {providerName}',
-      },
-    }
+        username: '昵称当前来自 {providerName}'
+      }
+    },
+    userId: '用户 ID'
   },
-
-  // Empty States
   empty: {
     noData: '暂无数据'
   },
-
-  // Table
   table: {
     expandActions: '展开更多操作',
     collapseActions: '收起操作'
   },
-
-  // Pagination
   pagination: {
     showing: '显示',
     to: '至',
@@ -968,8 +907,6 @@ export default {
     jumpPlaceholder: '页码',
     jumpAction: '跳转'
   },
-
-  // Errors
   errors: {
     somethingWentWrong: '出错了',
     pageNotFound: '页面未找到',
@@ -978,10 +915,12 @@ export default {
     serverError: '服务器错误',
     networkError: '网络错误',
     timeout: '请求超时',
-    tryAgain: '请重试'
+    tryAgain: '请重试',
+    gateway: {
+      modelNotAllowed: '当前分组未开放该模型',
+      modelNotConfigured: '当前分组下没有配置支持该模型的账号'
+    }
   },
-
-  // Dates
   dates: {
     today: '今天',
     yesterday: '昨天',
@@ -998,7 +937,64 @@ export default {
     endDate: '结束日期',
     apply: '应用',
     selectDateRange: '选择日期范围'
-  },
-
-  // Admin
+  }
+,
+  modelPlaza: {
+      title: '模型广场',
+      description: '按分组浏览可用模型与价格',
+      loading: '加载中...',
+      empty: '暂无可展示的分组',
+      loadFailed: '加载模型广场失败',
+      noSearchResult: '没有匹配的模型',
+      anonymousHint: '登录后可查看你的专属分组与专属倍率',
+      filters: {
+        platformLabel: '平台',
+        groupLabel: '分组',
+        rateLabel: '倍率',
+        modelLabel: '模型',
+        searchPlaceholder: '搜索模型名称',
+        all: '全部'
+      },
+      badges: {
+        exclusive: '专属分组',
+        subscription: '订阅'
+      },
+      detail: {
+        noModels: '该分组暂未配置模型',
+        noPricing: '未配置定价',
+        peakNote: '高峰时段 {window} 计费倍率 ×{multiplier}',
+        longContextDisabledNote: '该分组未启用长上下文阶梯计费，超阈值请求仍按基础档计费，官方阶梯仅供参考'
+      },
+      table: {
+        model: '模型',
+        input: '输入',
+        output: '输出',
+        cache: '缓存',
+        cacheWrite: '写入',
+        cacheRead: '读取',
+        cacheWriteShort: '写',
+        cacheReadShort: '读',
+        tierHint: '按单次请求的总上下文（输入 + 缓存写入 + 缓存读取）所在档位对整单计价',
+        tierHintMarginal: '仅超过阈值的部分按该档计价，输出不加价',
+        marginalBadge: '超出部分计价',
+        timePricingRowHint: '按 {timezone} 时间，在该时段内发起的请求按本行价格计费',
+        timePricingRowHintWeekdays:
+          '按 {timezone} 时间，仅工作日（周一至周五）在该时段内发起的请求按本行价格计费，周末全天按标准价',
+        timePricingRowHintPeak: '；本行价格未含高峰倍率，与高峰时段 {window} 重叠的部分实付再乘 ×{multiplier}',
+        timePricingWeekdays: '工作日',
+        timePricingRateHint: '生效倍率 {rate} × 时段倍率 {multiplier}',
+        paidPrice: '实付价格(折后)',
+        officialPrice: '官方价格',
+        rate: '折扣倍率',
+        unitPerMillion: '$ / 1M token',
+        perUnitRequest: '/ 次',
+        perUnitImage: '/ 张',
+        perRequest: '按次计费',
+        perImage: '按图片计费'
+      },
+      nav: {
+        login: '登录',
+        backToDashboard: '回到后台'
+      }
+    },
 }

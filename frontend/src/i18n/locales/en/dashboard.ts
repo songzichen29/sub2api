@@ -1,7 +1,7 @@
 export default {
   dashboard: {
     title: 'Dashboard',
-    welcomeMessage: "Welcome back! Here's an overview of your account.",
+    welcomeMessage: 'Welcome back! Here\'s an overview of your account.',
     balance: 'Balance',
     apiKeys: 'API Keys',
     todayRequests: 'Today Requests',
@@ -29,7 +29,7 @@ export default {
       monthly: 'Monthly (30-day rolling)',
       resetsAt: 'Resets {time}',
       noLimit: 'unlimited',
-      disabled: 'Disabled',
+      disabled: 'Disabled'
     },
     tokenUsageTrend: 'Token Usage Trend',
     noDataAvailable: 'No data available',
@@ -58,13 +58,9 @@ export default {
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code'
   },
-
-  // Groups (shared)
   groups: {
     subscription: 'Sub'
   },
-
-  // API Keys
   keys: {
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
@@ -75,7 +71,7 @@ export default {
       copied: 'Copied',
       copiedHint: 'Copied to clipboard',
       clickToCopy: 'Click to copy this endpoint',
-      speedTest: 'Speed Test',
+      speedTest: 'Speed Test'
     },
     allGroups: 'All Groups',
     allStatus: 'All Status',
@@ -129,12 +125,10 @@ export default {
     useKey: 'Use Key',
     useKeyModal: {
       title: 'Use API Key',
-      description:
-        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+      description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
       copy: 'Copy',
       copied: 'Copied',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
-      claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
@@ -146,7 +140,7 @@ export default {
         authModeApiKeyRestartNotice: 'After saving this configuration, completely quit and restart Codex Desktop or CLI, then create a new task so the client can rebuild its tool registry.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
-        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
+        noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.'
       },
       cliTabs: {
         claudeCode: 'Claude Code',
@@ -161,64 +155,63 @@ export default {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
-        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.'
       },
       gemini: {
         description: 'Add the following environment variables to your terminal profile or run directly in terminal to configure Gemini CLI access.',
         modelComment: 'If you have Gemini 3 access, you can use: gemini-3-pro-preview',
-        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.'
       },
       grok: {
-        description:
-          'Configure Grok CLI, Claude Code, Codex, or OpenCode to send requests through your Sub2API Grok group. Text models use Responses; image/video use Imagine model IDs on media endpoints.',
+        description: 'Configure Grok Build or OpenCode to send Responses API traffic through your Sub2API Grok group.',
+        configTomlHint: 'Back up an existing config.toml before merging this model entry. Run grok inspect after saving to verify the effective configuration.',
+        note: 'Save the file as ~/.grok/config.toml, then run grok inspect and select grok from /model.',
+        noteWindows: 'Save the file as %USERPROFILE%\\.grok\\config.toml, then run grok inspect and select grok from /model.',
+
         claudeDescription: 'Configure Claude Code to send Messages API traffic through your Sub2API Grok group.',
         codexDescription: 'Configure Codex to send Responses API traffic through your Sub2API Grok group.',
-        configTomlHint:
-          'Official path: ~/.grok/config.toml (or $GROK_HOME). Fill [endpoints] (models_base_url / models_list_url / xai_api_base_url / cli_chat_proxy_base_url), [auth] preferred_method=api_key, [models], [session], and [features] image/video overrides. Prefer env_key over api_key; every text model needs api_backend=responses. Back up before merge, then run grok inspect.',
         codexConfigTomlHint:
-          'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
-        note:
-          'Export GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml (endpoints/auth/models/session/features) as ~/.grok/config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
-        noteWindows:
-          'Set GROK_MODELS_BASE_URL and XAI_API_KEY, save the full config.toml as %USERPROFILE%\\.grok\\config.toml, run grok inspect, then /model grok-4.5 (or grok-build-0.1 for coding).',
+                  'Official Codex: wire_api = "responses" only; prefer env_key over experimental_bearer_token; supports_websockets = false for non-OpenAI gateways (Sub2API can still accept client WS and bridge to HTTP/SSE). Back up ~/.codex/config.toml before merge.',
         claudeNote:
-          'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
+                  'Choose one method: terminal env for this session, or ~/.claude/settings.json for persistence. Do not commit files that contain your API key.',
         codexNote:
-          'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
+                  'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
         codexNoteWindows:
-          'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
-      },
-      deepseek: {
-        description: 'Configure Claude Code, Codex, or OpenCode through the current DeepSeek group.',
-        codexDescription: 'Configure Codex with API key authentication through the current DeepSeek group.',
-        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
-        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
-      },
-      composite: {
-        description: 'Configure supported clients through the current Composite routing group.',
-        codexDescription: 'Configure Codex with API key authentication and the complete model catalog for this Composite group.',
-        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
-        codexNote: 'Export SUB2API_API_KEY before starting Codex. Model requests are routed by the selected catalog slug.',
-      },
-      routedCodex: {
-        description: 'Configure Codex with the complete model catalog for the current routed group.',
-        configTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
-        note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
-      },
-      codexModelCatalog: {
-        title: 'Codex model catalog',
-        description: 'Fetch with this API key, then save the catalog at the path referenced by config.toml.',
-        fetch: 'Fetch catalog',
-        retry: 'Retry',
-        download: 'Download catalog',
-        modelsCount: '{count} models ready to download',
-        errorDescription: 'The catalog could not be fetched with this API key.',
+                  'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
       },
       opencode: {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
-        hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
-      },
+        hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.'
+      }
+    ,
+      claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
+      deepseek: {
+              description: 'Configure Claude Code, Codex, or OpenCode through the current DeepSeek group.',
+              codexDescription: 'Configure Codex with API key authentication through the current DeepSeek group.',
+              codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+            },
+      composite: {
+              description: 'Configure supported clients through the current Composite routing group.',
+              codexDescription: 'Configure Codex with API key authentication and the complete model catalog for this Composite group.',
+              codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              codexNote: 'Export SUB2API_API_KEY before starting Codex. Model requests are routed by the selected catalog slug.',
+            },
+      routedCodex: {
+              description: 'Configure Codex with the complete model catalog for the current routed group.',
+              configTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+              note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+            },
+      codexModelCatalog: {
+              title: 'Codex model catalog',
+              description: 'Fetch with this API key, then save the catalog at the path referenced by config.toml.',
+              fetch: 'Fetch catalog',
+              retry: 'Retry',
+              download: 'Download catalog',
+              modelsCount: '{count} models ready to download',
+              errorDescription: 'The catalog could not be fetched with this API key.',
+            },
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -241,9 +234,8 @@ export default {
       claudeCode: 'Claude Code',
       claudeCodeDesc: 'Import as Claude Code configuration',
       geminiCli: 'Gemini CLI',
-      geminiCliDesc: 'Import as Gemini CLI configuration',
+      geminiCliDesc: 'Import as Gemini CLI configuration'
     },
-    // Quota and expiration
     quotaLimit: 'Quota Limit',
     quotaAmount: 'Quota Amount (USD)',
     quotaAmountPlaceholder: 'Enter quota limit in USD',
@@ -283,10 +275,9 @@ export default {
       inactive: 'Inactive',
       quota_exhausted: 'Quota Exhausted',
       expired: 'Expired',
-    },
+      disabled: 'Disabled'
+    }
   },
-
-  // Usage
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
@@ -335,7 +326,6 @@ export default {
 	  modelVariant: 'Possible version variant',
 	  modelMismatch: 'Different model',
     reasoningEffort: 'Reasoning Effort',
-    requestedReasoningEffort: 'Requested reasoning effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     inbound: 'Inbound',
@@ -421,30 +411,53 @@ export default {
       detailOrg: 'ISP',
       detailTimezone: 'Timezone',
       detailAccuracy: 'Accuracy',
-      detailCoordinates: 'Coordinates',
+      detailCoordinates: 'Coordinates'
     },
-    tabs: { usage: 'Usage', errors: 'Error Requests', ranking: 'User Ranking' },
+    tabs: {
+      usage: 'Usage',
+      errors: 'Error Requests',
+      ranking: 'User Ranking'
+    },
     errors: {
-      time: 'Time', model: 'Model', endpoint: 'Endpoint', status: 'Status',
-      category: 'Category', platform: 'Platform', message: 'Message',
-      keyName: 'Key Name', keyDeleted: 'Deleted', allKeys: 'All keys',
-      modelPlaceholder: 'Search model', allCategories: 'All categories', allStatuses: 'All status codes',
-      empty: 'No error requests', failedToLoad: 'Failed to load error requests',
+      time: 'Time',
+      model: 'Model',
+      endpoint: 'Endpoint',
+      status: 'Status',
+      category: 'Category',
+      platform: 'Platform',
+      message: 'Message',
+      keyName: 'Key Name',
+      keyDeleted: 'Deleted',
+      allKeys: 'All keys',
+      modelPlaceholder: 'Search model',
+      allCategories: 'All categories',
+      allStatuses: 'All status codes',
+      empty: 'No error requests',
+      failedToLoad: 'Failed to load error requests',
       categories: {
-        auth: 'Auth failed', rate_limit: 'Rate limited', quota: 'Balance/Subscription',
-        invalid_request: 'Invalid request', service_unavailable: 'Service unavailable',
-        upstream: 'Upstream error', internal: 'Platform error', other: 'Other', cyber: 'Cyber policy',
+        auth: 'Auth failed',
+        rate_limit: 'Rate limited',
+        quota: 'Balance/Subscription',
+        invalid_request: 'Invalid request',
+        service_unavailable: 'Service unavailable',
+        upstream: 'Upstream error',
+        internal: 'Platform error',
+        other: 'Other',
+        cyber: 'Cyber policy'
       },
       detail: {
         title: 'Error Request Detail',
         responseBody: 'Response Body',
         upstreamStatus: 'Upstream Status',
-        loadFailed: 'Failed to load detail, please try again',
-      },
+        loadFailed: 'Failed to load detail, please try again'
+      }
     },
+    modelQueryPlaceholder: 'Enter full model name',
+    upstreamFirstEvent: 'Upstream first event',
+    upstreamToFirstToken: 'First event→first token'
+  ,
+    requestedReasoningEffort: 'Requested reasoning effort',
   },
-
-  // Shared keys for channel monitor (admin + user views)
   monitorCommon: {
     status: {
       operational: 'Operational',
@@ -457,39 +470,12 @@ export default {
       openai: 'OpenAI',
       anthropic: 'Anthropic',
       gemini: 'Gemini',
-      grok: 'Grok',
+      grok: 'Grok'
+    ,
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek'
-    },
-    // Check modes (how a monitor performs its checks)
-    checkMode: {
-      probe: 'Probe',
-      quota: 'Quota',
-      quota_probe: 'Probe + Quota'
-    },
-    // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
-    quota: {
-      unavailable: 'Quota unavailable',
-      resetSoon: 'resetting',
-      windows: {
-        '5h': '5h',
-        '7d': '7d',
-        '7dSonnet': '7d Sonnet',
-        '7dFable': '7d Fable',
-        weekly: 'Weekly',
-        daily: 'Daily',
-        '30d': '30d',
-        total: 'Total'
-      },
-      labels: {
-        requests: 'Requests',
-        tokens: 'Tokens',
-        shared: 'Shared',
-        pro: 'Pro',
-        flash: 'Flash'
-      }
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',
@@ -509,9 +495,34 @@ export default {
     relativeMinutesAgo: '{n}m ago',
     relativeHoursAgo: '{n}h ago',
     relativeDaysAgo: '{n}d ago'
+  ,
+    checkMode: {
+          probe: 'Probe',
+          quota: 'Quota',
+          quota_probe: 'Probe + Quota'
+        },
+    quota: {
+          unavailable: 'Quota unavailable',
+          resetSoon: 'resetting',
+          windows: {
+            '5h': '5h',
+            '7d': '7d',
+            '7dSonnet': '7d Sonnet',
+            '7dFable': '7d Fable',
+            weekly: 'Weekly',
+            daily: 'Daily',
+            '30d': '30d',
+            total: 'Total'
+          },
+          labels: {
+            requests: 'Requests',
+            tokens: 'Tokens',
+            shared: 'Shared',
+            pro: 'Pro',
+            flash: 'Flash'
+          }
+        },
   },
-
-  // Channel Status (user-facing read-only view)
   channelStatus: {
     title: 'Channel Status',
     description: 'Inspect channel availability, latency and recent status',
@@ -553,8 +564,6 @@ export default {
       description: 'No monitored channels have been configured yet.'
     }
   },
-
-  // Available Channels (user-facing)
   availableChannels: {
     title: 'Available Channels',
     description: 'Channels you can access, along with their supported models and pricing',
@@ -591,68 +600,6 @@ export default {
       unitPerRequest: '/ request'
     }
   },
-
-  // Model Plaza (public group/model pricing showcase)
-  modelPlaza: {
-    title: 'Model Plaza',
-    description: 'Browse available models and pricing by group',
-    loading: 'Loading...',
-    empty: 'No groups to display',
-    loadFailed: 'Failed to load model plaza',
-    noSearchResult: 'No matching models',
-    anonymousHint: 'Sign in to see your exclusive groups and personal rates',
-    filters: {
-      platformLabel: 'Platform',
-      groupLabel: 'Group',
-      rateLabel: 'Rate',
-      modelLabel: 'Model',
-      searchPlaceholder: 'Search models',
-      all: 'All'
-    },
-    badges: {
-      exclusive: 'Exclusive',
-      subscription: 'Subscription'
-    },
-    detail: {
-      noModels: 'No models configured for this group',
-      noPricing: 'Pricing not configured',
-      peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
-      longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
-    },
-    table: {
-      model: 'Model',
-      input: 'Input',
-      output: 'Output',
-      cache: 'Cache',
-      cacheWrite: 'Write',
-      cacheRead: 'Read',
-      cacheWriteShort: 'W',
-      cacheReadShort: 'R',
-      tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
-      tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
-      marginalBadge: 'excess-only tiers',
-      timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
-      timePricingRowHintWeekdays:
-        'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
-      timePricingRowHintPeak:
-        '; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}',
-      timePricingWeekdays: 'Weekdays',
-      timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
-      paidPrice: 'Your Price (Discounted)',
-      officialPrice: 'Official Price',
-      rate: 'Rate',
-      unitPerMillion: '$ / 1M tokens',
-      perUnitRequest: '/ request',
-      perUnitImage: '/ image',
-      perRequest: 'Per request',
-      perImage: 'Per image'
-    },
-    nav: {
-      login: 'Sign In',
-      backToDashboard: 'Back to Console'
-    }
-  },
-
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
@@ -671,7 +618,11 @@ export default {
       availableQuota: 'Available Rebate Quota',
       frozenQuota: 'Frozen',
       frozenQuotaHint: 'Recently earned rebates pending release',
-      totalQuota: 'Historical Rebate Quota'
+      totalQuota: 'Historical Rebate Quota',
+      rechargeRebateRate: 'Recharge Rebate Rate',
+      rechargeRebateRateHint: 'What you earn when an invitee recharges balance',
+      subscriptionRebateRate: 'Subscription Rebate Rate',
+      subscriptionRebateRateHint: 'What you earn when an invitee purchases a subscription'
     },
     transfer: {
       title: 'Transfer Rebate Quota',
@@ -696,11 +647,12 @@ export default {
       line1: 'Share your affiliate code or invite link with new users.',
       line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
       line3: 'Transfer rebate quota to balance at any time.',
-      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
+      line4: 'Newly earned rebates may have a waiting period before they can be transferred.',
+      line2Both: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota; when they buy subscriptions, you receive {subscriptionRate}.',
+      line2Recharge: 'When invitees recharge balance, you receive {rechargeRate} as rebate quota.',
+      line2Subscription: 'When invitees buy subscriptions, you receive {subscriptionRate} as rebate quota.'
     }
   },
-
-  // Redeem
   redeem: {
     title: 'Redeem Code',
     description: 'Enter your redeem code to add balance or increase concurrency',
@@ -742,8 +694,6 @@ export default {
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
   },
-
-  // Profile
   profile: {
     title: 'Profile Settings',
     description: 'Manage your account information and settings',
@@ -784,7 +734,6 @@ export default {
     passwordTooShort: 'Password must be at least 8 characters long',
     passwordChangeSuccess: 'Password changed successfully',
     passwordChangeFailed: 'Failed to change password',
-    // TOTP 2FA
     totp: {
       title: 'Two-Factor Authentication (2FA)',
       description: 'Enhance account security with Google Authenticator or similar apps',
@@ -799,7 +748,7 @@ export default {
       setupTitle: 'Set Up Two-Factor Authentication',
       setupStep1: 'Scan the QR code below with your authenticator app',
       setupStep2: 'Enter the 6-digit code from your app',
-      manualEntry: "Can't scan? Enter the key manually:",
+      manualEntry: 'Can\'t scan? Enter the key manually:',
       enterCode: 'Enter 6-digit code',
       verify: 'Verify',
       setupFailed: 'Failed to get setup information',
@@ -814,7 +763,6 @@ export default {
       loginTitle: 'Two-Factor Authentication',
       loginHint: 'Enter the 6-digit code from your authenticator app',
       loginFailed: 'Verification failed, please try again',
-      // New translations for email verification
       verifyEmailFirst: 'Please verify your email first',
       verifyPasswordFirst: 'Please verify your identity first',
       emailCode: 'Email Verification Code',
@@ -878,7 +826,7 @@ export default {
       emailDuplicate: 'This email already exists',
       maxEmailsReached: 'Maximum number of notification emails reached',
       unverified: 'Unverified',
-      verified: 'Verified',
+      verified: 'Verified'
     },
     avatar: {
       title: 'Profile Avatar',
@@ -893,7 +841,7 @@ export default {
       compressTooLarge: 'Unable to compress this image below 20KB. Try a smaller image.',
       compressFailed: 'Failed to compress the selected image.',
       readFailed: 'Failed to read the selected image.',
-      emptyDeleteHint: 'Avatar is already empty',
+      emptyDeleteHint: 'Avatar is already empty'
     },
     authBindings: {
       title: 'Connected Sign-In Methods',
@@ -916,39 +864,34 @@ export default {
       boundCount: '{count} linked records',
       status: {
         bound: 'Bound',
-        notBound: 'Not bound',
+        notBound: 'Not bound'
       },
       providers: {
         email: 'Email',
         linuxdo: 'LinuxDo',
         dingtalk: 'DingTalk',
         oidc: '{providerName}',
-        wechat: 'WeChat',
+        wechat: 'WeChat'
       },
       notes: {
         emailManagedFromProfile: 'Primary email is managed in the profile form',
         canUnbind: 'You can unbind this sign-in method',
-        bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding',
+        bindAnotherBeforeUnbind: 'Bind another sign-in method before unbinding'
       },
       source: {
         avatar: 'Avatar is currently synced from {providerName}',
-        username: 'Nickname is currently synced from {providerName}',
-      },
-    }
+        username: 'Nickname is currently synced from {providerName}'
+      }
+    },
+    userId: 'User ID'
   },
-
-  // Empty States
   empty: {
     noData: 'No data found'
   },
-
-  // Table
   table: {
     expandActions: 'Expand More Actions',
     collapseActions: 'Collapse Actions'
   },
-
-  // Pagination
   pagination: {
     showing: 'Showing',
     to: 'to',
@@ -964,8 +907,6 @@ export default {
     jumpPlaceholder: 'Page',
     jumpAction: 'Go'
   },
-
-  // Errors
   errors: {
     somethingWentWrong: 'Something went wrong',
     pageNotFound: 'Page not found',
@@ -974,10 +915,12 @@ export default {
     serverError: 'Server error',
     networkError: 'Network error',
     timeout: 'Request timeout',
-    tryAgain: 'Please try again'
+    tryAgain: 'Please try again',
+    gateway: {
+      modelNotAllowed: 'This model is not enabled for the current group',
+      modelNotConfigured: 'No account in the current group is configured to support this model'
+    }
   },
-
-  // Dates
   dates: {
     today: 'Today',
     yesterday: 'Yesterday',
@@ -994,7 +937,65 @@ export default {
     endDate: 'End Date',
     apply: 'Apply',
     selectDateRange: 'Select date range'
-  },
-
-  // Admin
+  }
+,
+  modelPlaza: {
+      title: 'Model Plaza',
+      description: 'Browse available models and pricing by group',
+      loading: 'Loading...',
+      empty: 'No groups to display',
+      loadFailed: 'Failed to load model plaza',
+      noSearchResult: 'No matching models',
+      anonymousHint: 'Sign in to see your exclusive groups and personal rates',
+      filters: {
+        platformLabel: 'Platform',
+        groupLabel: 'Group',
+        rateLabel: 'Rate',
+        modelLabel: 'Model',
+        searchPlaceholder: 'Search models',
+        all: 'All'
+      },
+      badges: {
+        exclusive: 'Exclusive',
+        subscription: 'Subscription'
+      },
+      detail: {
+        noModels: 'No models configured for this group',
+        noPricing: 'Pricing not configured',
+        peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+        longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
+      },
+      table: {
+        model: 'Model',
+        input: 'Input',
+        output: 'Output',
+        cache: 'Cache',
+        cacheWrite: 'Write',
+        cacheRead: 'Read',
+        cacheWriteShort: 'W',
+        cacheReadShort: 'R',
+        tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
+        tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+        marginalBadge: 'excess-only tiers',
+        timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
+        timePricingRowHintWeekdays:
+          'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
+        timePricingRowHintPeak:
+          '; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}',
+        timePricingWeekdays: 'Weekdays',
+        timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
+        paidPrice: 'Your Price (Discounted)',
+        officialPrice: 'Official Price',
+        rate: 'Rate',
+        unitPerMillion: '$ / 1M tokens',
+        perUnitRequest: '/ request',
+        perUnitImage: '/ image',
+        perRequest: 'Per request',
+        perImage: 'Per image'
+      },
+      nav: {
+        login: 'Sign In',
+        backToDashboard: 'Back to Console'
+      }
+    },
 }

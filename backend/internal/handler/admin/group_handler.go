@@ -24,6 +24,8 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+	gatewayService       *service.GatewayService
+	openAIGatewayService *service.OpenAIGatewayService
 }
 
 // GetLiveCapability 返回当前服务端是否具备生成 Live attestation 的运行环境。
@@ -86,12 +88,42 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
-	return &GroupHandler{
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService, services ...any) *GroupHandler {
+	h := &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
 	}
+	if len(services) > 0 {
+		h.gatewayService, _ = services[0].(*service.GatewayService)
+	}
+	if len(services) > 1 {
+		h.openAIGatewayService, _ = services[1].(*service.OpenAIGatewayService)
+	}
+	return h
+}
+
+func (h *GroupHandler) GetAvailableModels(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+	group, err := h.adminService.GetGroup(c.Request.Context(), groupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	var models []string
+	if group.Platform == service.PlatformOpenAI && h.openAIGatewayService != nil {
+		models = h.openAIGatewayService.GetAvailableModels(c.Request.Context(), &groupID)
+	} else if h.gatewayService != nil {
+		models = h.gatewayService.GetAvailableModels(c.Request.Context(), &groupID, group.Platform)
+	}
+	if models == nil {
+		models = []string{}
+	}
+	response.Success(c, models)
 }
 
 // CreateGroupRequest represents create group request

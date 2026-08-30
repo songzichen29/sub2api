@@ -390,6 +390,10 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	return false
 }
 
+func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool {
+	return isOpenAIWSTokenEvent(eventType)
+}
+
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {
 	if len(message) == 0 {
 		return message

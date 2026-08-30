@@ -27,8 +27,8 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 
 		{name: "response.created", eventType: "response.created", want: false},
 		{name: "response.in_progress", eventType: "response.in_progress", want: false},
-		{name: "response.output_item.added", eventType: "response.output_item.added", want: true},
-		{name: "response.output_item.done", eventType: "response.output_item.done", want: true},
+		{name: "response.output_item.added", eventType: "response.output_item.added", want: false},
+		{name: "response.output_item.done", eventType: "response.output_item.done", want: false},
 
 		{name: "terminal_response.completed", eventType: "response.completed", want: false},
 		{name: "terminal_response.done", eventType: "response.done", want: false},
@@ -47,8 +47,7 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", want: true},
 
 		{name: "unrelated_event_error", eventType: "error", want: false},
-		{name: "future_response_progress_event", eventType: "response.reasoning_summary_part.added", want: true},
-		{name: "non_response_event", eventType: "session.created", want: false},
+		{name: "unknown_event_without_match", eventType: "response.reasoning_summary_part.added", want: false},
 	}
 
 	for _, tc := range cases {
@@ -204,36 +203,6 @@ func TestIsOpenAIWSTokenEvent_DisjointWithTerminal(t *testing.T) {
 		t.Run(ev, func(t *testing.T) {
 			require.True(t, isOpenAIWSTerminalEvent(ev), "expected terminal event %q to be classified as terminal", ev)
 			require.False(t, isOpenAIWSTokenEvent(ev), "terminal event %q must NOT be classified as token event (issue #2651)", ev)
-		})
-	}
-}
-
-func TestIsOpenAIWSTokenEventMessage_UsesForkLikeEventTypeSemantics(t *testing.T) {
-	cases := []struct {
-		name      string
-		eventType string
-		message   []byte
-		want      bool
-	}{
-		{name: "text_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"hi"}`), want: true},
-		{name: "function_call_arguments_delta", eventType: "response.function_call_arguments.delta", message: []byte(`{"type":"response.function_call_arguments.delta","delta":"{}"}`), want: true},
-		{name: "reasoning_summary_delta", eventType: "response.reasoning_summary_text.delta", message: []byte(`{"type":"response.reasoning_summary_text.delta","delta":"think"}`), want: true},
-		{name: "unknown_delta", eventType: "response.custom.delta", message: []byte(`{"type":"response.custom.delta","delta":"x"}`), want: true},
-		{name: "empty_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":""}`), want: true},
-		{name: "whitespace_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta","delta":"   "}`), want: true},
-		{name: "missing_delta", eventType: "response.output_text.delta", message: []byte(`{"type":"response.output_text.delta"}`), want: true},
-		{name: "output_text_done", eventType: "response.output_text.done", message: []byte(`{"type":"response.output_text.done","text":"hi"}`), want: true},
-		{name: "response_output", eventType: "response.output", message: []byte(`{"type":"response.output"}`), want: true},
-		{name: "preamble_with_delta", eventType: "response.created", message: []byte(`{"type":"response.created","delta":"x"}`), want: false},
-		{name: "terminal_with_delta", eventType: "response.completed", message: []byte(`{"type":"response.completed","delta":"x"}`), want: false},
-		{name: "lifecycle_with_delta", eventType: "response.output_item.added", message: []byte(`{"type":"response.output_item.added","delta":"x"}`), want: true},
-		{name: "error_with_delta", eventType: "error", message: []byte(`{"type":"error","delta":"x"}`), want: false},
-	}
-
-	for _, tc := range cases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, isOpenAIWSTokenEventMessage(tc.message, tc.eventType))
 		})
 	}
 }

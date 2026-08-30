@@ -1,9 +1,13 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // isGrokContentPolicyRejection identifies request-scoped safety refusals from
@@ -112,8 +116,9 @@ func isGrokAccountAccessCode(value string) bool {
 		"subscription_required",
 		"entitlement_required",
 		"not_entitled",
-		"plan_required",
-		"permission_denied":
+		"plan_required":
+		// permission-denied is omitted: xAI reuses it for both entitlement
+		// refusals and request-scoped safety blocks, so the message decides.
 		return true
 	default:
 		return false
@@ -169,6 +174,7 @@ func grokContentPolicyMessage(value string) bool {
 		"prompt violates policy",
 		"input violates content policy",
 		"input violates policy",
+		"violates usage guidelines",
 	} {
 		if strings.Contains(lower, phrase) {
 			return true
@@ -184,4 +190,119 @@ func grokContentPolicyClientMessage(responseBody []byte) string {
 		return "Request blocked by upstream content policy"
 	}
 	return message
+}
+
+// shouldFailoverGrokUpstreamError is the body-aware counterpart of the
+// status-only failover helper. Grok content refusals must stay on the current
+// account and be returned to the caller instead of consuming the account pool.
+// Free-usage / empty-output / billing bodies also failover even when the HTTP
+// status alone would not (e.g. 400 with free-usage-exhausted).
+func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, responseBody []byte) bool {
+	if isGrokContentPolicyRejection(statusCode, responseBody) {
+		return false
+	}
+	// A 422 emitted by xAI's ModelInput decoder is account/runtime compatibility,
+	// not quota exhaustion. Another account may run a different upstream build,
+	// so fail over without applying an account cooldown.
+	if isGrokDecoderCompatibilityError(statusCode, responseBody) {
+		return true
+	}
+	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
+	switch decision.Class {
+	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity, GrokFailureCompatibility:
+		return decision.ShouldFailover
+	}
+	return s.shouldFailoverUpstreamError(statusCode)
+}
+
+func isGrokDecoderCompatibilityError(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusUnprocessableEntity || len(responseBody) == 0 {
+		return false
+	}
+	for _, candidate := range grokStructuredErrorMessageCandidates(responseBody) {
+		message := strings.ToLower(candidate)
+		decoderSignal := strings.Contains(message, "untagged enum") ||
+			strings.Contains(message, "decode") ||
+			strings.Contains(message, "deserialize") ||
+			strings.Contains(message, "deserializ") ||
+			strings.Contains(message, "decoder")
+		inputSignal := strings.Contains(message, "modelinput") ||
+			strings.Contains(message, "model input") ||
+			strings.Contains(message, "input[") ||
+			strings.Contains(message, "input.")
+		messageContentSignal := (strings.Contains(message, "messages[") ||
+			strings.Contains(message, "messages.")) &&
+			strings.Contains(message, "content") &&
+			strings.Contains(message, "did not match any variant")
+		if decoderSignal && (inputSignal || messageContentSignal) {
+			return true
+		}
+	}
+	return false
+}
+
+func grokStructuredErrorMessageCandidates(body []byte) []string {
+	candidates := make([]string, 0, 6)
+	appendCandidate := func(result gjson.Result) {
+		if !result.Exists() {
+			return
+		}
+		value := strings.TrimSpace(result.String())
+		if value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	appendCandidate(gjson.GetBytes(body, "error.message"))
+	appendCandidate(gjson.GetBytes(body, "error.error"))
+	errorNode := gjson.GetBytes(body, "error")
+	if errorNode.Type == gjson.String {
+		appendCandidate(errorNode)
+	}
+	appendCandidate(gjson.GetBytes(body, "message"))
+	appendCandidate(gjson.GetBytes(body, "detail"))
+	if !json.Valid(body) {
+		if plaintext := strings.TrimSpace(string(body)); plaintext != "" {
+			candidates = append(candidates, plaintext)
+		}
+	}
+	return candidates
+}
+
+// applyGrokForbiddenPolicy applies an administrator's existing temporary
+// unschedulable rules to a non-content 403. It reports true only when a rule
+// matched; unmatched responses retain the legacy entitlement cooldown.
+func (s *OpenAIGatewayService) applyGrokForbiddenPolicy(ctx context.Context, account *Account, responseBody []byte) bool {
+	if account == nil || !account.IsTempUnschedulableEnabled() {
+		return false
+	}
+
+	matches := matchTempUnschedulableRules(account, http.StatusForbidden, responseBody)
+	if len(matches) == 0 {
+		return false
+	}
+
+	match := matches[0]
+	// Reuse the central policy implementation when it has a repository. This
+	// preserves the existing reason/cache format and avoids duplicating writes.
+	if s != nil && s.rateLimitService != nil && s.rateLimitService.accountRepo != nil {
+		stateCtx, cancel := openAIAccountStateContext(ctx)
+		handled := s.rateLimitService.tryTempUnschedulable(
+			stateCtx,
+			account,
+			http.StatusForbidden,
+			responseBody,
+		)
+		cancel()
+		if handled {
+			return true
+		}
+	}
+
+	// A partially constructed service (for example a unit-test gateway) still
+	// honors the configured duration instead of silently falling back to 30m.
+	cooldown := time.Duration(match.rule.DurationMinutes) * time.Minute
+	if cooldown > 0 {
+		s.tempUnscheduleGrok(ctx, account, cooldown, "grok configured forbidden rule")
+	}
+	return true
 }

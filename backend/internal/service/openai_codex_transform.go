@@ -81,11 +81,12 @@ type codexTransformResult struct {
 }
 
 type codexOAuthTransformOptions struct {
-	IsCodexCLI                          bool
-	IsCompact                           bool
-	SkipDefaultInstructions             bool
-	PreserveToolCallIDs                 bool
-	OmitPromotedSystemMessagesFromInput bool
+	IsCodexCLI                            bool
+	IsCompact                             bool
+	SkipDefaultInstructions               bool
+	PreserveToolCallIDs                   bool
+	OmitPromotedSystemMessagesFromInput   bool
+	DropBareReasoningWithToolContinuation bool
 }
 
 const (
@@ -317,8 +318,9 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 			result.Modified = true
 		}
 		input = filterCodexInputWithOptions(input, codexInputFilterOptions{
-			PreserveReferences: needsToolContinuation,
-			PreserveCallIDs:    opts.PreserveToolCallIDs,
+			PreserveReferences:                    needsToolContinuation,
+			PreserveCallIDs:                       opts.PreserveToolCallIDs,
+			DropBareReasoningWithToolContinuation: opts.DropBareReasoningWithToolContinuation,
 		})
 		reqBody["input"] = input
 		result.Modified = true
@@ -341,6 +343,28 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	return result
+}
+
+// normalizeOpenAIResponsesStringInputToMessageArray converts the shorthand
+// Responses input string into the message-item form required by Codex-style
+// upstreams. It returns true when the request map was changed.
+func normalizeOpenAIResponsesStringInputToMessageArray(reqBody map[string]any) bool {
+	inputStr, ok := reqBody["input"].(string)
+	if !ok {
+		return false
+	}
+	if strings.TrimSpace(inputStr) == "" {
+		reqBody["input"] = []any{}
+		return true
+	}
+	reqBody["input"] = []any{
+		map[string]any{
+			"type":    "message",
+			"role":    "user",
+			"content": inputStr,
+		},
+	}
+	return true
 }
 
 func normalizeCodexToolChoice(reqBody map[string]any) bool {
@@ -1498,8 +1522,9 @@ func isInstructionsEmpty(reqBody map[string]any) bool {
 }
 
 type codexInputFilterOptions struct {
-	PreserveReferences bool
-	PreserveCallIDs    bool
+	PreserveReferences                    bool
+	PreserveCallIDs                       bool
+	DropBareReasoningWithToolContinuation bool
 }
 
 // filterCodexInput 按需过滤 item_reference 与 id。
@@ -1611,6 +1636,11 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		// below (id stripped when !PreserveReferences, encrypted_content
 		// preserved either way), which is safe and needs no special-casing.
 		if typ == "reasoning" {
+			if opts.DropBareReasoningWithToolContinuation && opts.PreserveReferences {
+				if _, hasEncryptedContent := m["encrypted_content"]; !hasEncryptedContent {
+					continue
+				}
+			}
 			newItem := make(map[string]any, len(m))
 			for key, value := range m {
 				if key == "id" || key == "call_id" {

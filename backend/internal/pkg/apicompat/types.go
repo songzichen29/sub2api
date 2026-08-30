@@ -103,11 +103,15 @@ func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// AnthropicImageSource describes the source data for an image content block.
+// AnthropicImageSource describes the source data for image/document content
+// blocks. Images use base64 sources; documents can also reference a file_id or
+// URL depending on upstream support.
 type AnthropicImageSource struct {
 	Type      string `json:"type"` // "base64"
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
+	FileID    string `json:"file_id,omitempty"`
+	URL       string `json:"url,omitempty"`
 }
 
 // AnthropicTool describes a tool available to the model.
@@ -314,9 +318,12 @@ type ResponsesContentPart struct {
 	ImageURL string `json:"image_url,omitempty"` // data URI for input_image
 
 	// input_file fields.
+	FileID   string `json:"file_id,omitempty"`
 	Filename string `json:"filename,omitempty"`
 	FileData string `json:"file_data,omitempty"` // data URI
-	FileID   string `json:"file_id,omitempty"`
+	FileURL  string `json:"file_url,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Detail   string `json:"detail,omitempty"`
 }
 
 // ResponsesTool describes a tool in the Responses API.

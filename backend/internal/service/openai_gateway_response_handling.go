@@ -44,7 +44,23 @@ type openaiNonStreamingResult struct {
 	searchCount      int
 }
 
-func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
+func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, args ...any) (*openaiStreamingResult, error) {
+	originalModel, mappedModel := "", ""
+	if len(args) > 0 {
+		if _, legacy := args[0].(time.Time); legacy {
+			if len(args) > 1 {
+				originalModel, _ = args[1].(string)
+			}
+			if len(args) > 2 {
+				mappedModel, _ = args[2].(string)
+			}
+		} else {
+			originalModel, _ = args[0].(string)
+			if len(args) > 1 {
+				mappedModel, _ = args[1].(string)
+			}
+		}
+	}
 	return s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, mappedModel, "")
 }
 

@@ -38,7 +38,8 @@ type OpenAIRecordUsageInput struct {
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
 	PricingAt time.Time
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
-	CyberBlocked bool
+	CyberBlocked     bool
+	ImageBalanceHold *OpenAIImageBalanceHold
 	ChannelUsageFields
 }
 
