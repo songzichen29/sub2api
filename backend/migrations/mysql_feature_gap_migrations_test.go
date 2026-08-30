@@ -328,6 +328,7 @@ func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 		{"068_allow_live_usage_request_type.sql", []string{"chk_usage_logs_request_type", "`request_type` >= 0", "`request_type` <= 5"}},
 		{"069_add_group_allow_live.sql", []string{"table_name = 'groups'", "column_name = 'allow_live'", "ADD COLUMN `allow_live` BOOLEAN NOT NULL DEFAULT FALSE"}},
 		{"070_add_users_email_alias_dedup_index.sql", []string{"email_dot_stripped", "GENERATED ALWAYS AS", "idx_users_email_dot_stripped"}},
+		{"092_add_usage_log_video_fields.sql", []string{"table_name = 'usage_logs'", "column_name = 'video_count'", "ADD COLUMN `video_count` INT NOT NULL DEFAULT 0", "column_name = 'video_resolution'", "ADD COLUMN `video_resolution` VARCHAR(10) NULL", "column_name = 'video_duration_seconds'", "ADD COLUMN `video_duration_seconds` INT NULL"}},
 	}
 
 	for _, tt := range tests {
