@@ -2256,13 +2256,43 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	}
 
 	client := clientFromContext(ctx, r.client)
-	result, err := client.ExecContext(
-		ctx,
-		`UPDATE accounts SET extra = JSON_SET(COALESCE(extra, JSON_OBJECT()), ?, CAST(? AS JSON)), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL`,
-		"$.model_rate_limits."+scope,
-		string(raw),
-		id,
-	)
+	dbDialect := accountRepositoryDialect(r)
+	var result sql.Result
+	if dbDialect == dialect.MySQL {
+		// JSON path members cannot contain dots, dashes, or other model-name
+		// punctuation when written as $.model_rate_limits.<scope>. Merge the
+		// nested object with JSON_OBJECT so the scope is always treated as a key.
+		result, err = client.ExecContext(
+			ctx,
+			`UPDATE accounts
+			 SET extra = JSON_MERGE_PATCH(
+				 COALESCE(extra, JSON_OBJECT()),
+				 JSON_OBJECT(
+					 'model_rate_limits',
+					 JSON_MERGE_PATCH(
+						 COALESCE(JSON_EXTRACT(COALESCE(extra, JSON_OBJECT()), '$.model_rate_limits'), JSON_OBJECT()),
+						 JSON_OBJECT(?, CAST(? AS JSON))
+					 )
+				 )
+			 ), updated_at = NOW(6)
+			 WHERE id = ? AND deleted_at IS NULL`,
+			scope,
+			string(raw),
+			id,
+		)
+	} else {
+		// PostgreSQL accepts the model name as a text[] path element, so no
+		// string interpolation is needed there either.
+		result, err = client.ExecContext(
+			ctx,
+			`UPDATE accounts
+			 SET extra = jsonb_set(COALESCE(extra, '{}'::jsonb), ARRAY['model_rate_limits', $2]::text[], $1::jsonb, true), updated_at = NOW()
+			 WHERE id = $3 AND deleted_at IS NULL`,
+			string(raw),
+			scope,
+			id,
+		)
+	}
 	if err != nil {
 		return err
 	}
