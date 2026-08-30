@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,28 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
 )
+
+// prepareUsageQueryExtra encrypts a newly supplied newapi token and restores
+// the existing ciphertext when an edit submits the masked token. Sub2API
+// mode intentionally carries no independent token and needs no lookup.
+func (h *AccountHandler) prepareUsageQueryExtra(ctx context.Context, accountID int64, extra map[string]any) error {
+	if extra == nil {
+		return nil
+	}
+	prevExtra := map[string]any(nil)
+	if accountID > 0 {
+		if _, ok := extra["usage_query"]; ok {
+			account, err := h.adminService.GetAccount(ctx, accountID)
+			if err != nil {
+				return err
+			}
+			if account != nil {
+				prevExtra = account.Extra
+			}
+		}
+	}
+	return encryptUsageQueryToken(extra, prevExtra, h.secretEncryptor)
+}
 
 // errUsageQueryAccessTokenRequired 用户首次开启用量查询但未填 access_token 时返回。
 var errUsageQueryAccessTokenRequired = errors.New("usage_query.access_token is required")

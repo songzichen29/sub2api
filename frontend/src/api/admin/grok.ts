@@ -59,6 +59,7 @@ export interface GrokSSOToOAuthRequest {
   sso_tokens: string[]
   name?: string
   notes?: string | null
+  tags?: string[]
   proxy_id?: number | null
   group_ids?: number[]
   credentials?: Record<string, unknown>

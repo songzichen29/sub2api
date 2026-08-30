@@ -321,6 +321,7 @@ type GrokSSOToOAuthRequest struct {
 	SSOToken           string         `json:"sso_token"`
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes"`
+	Tags               []string       `json:"tags"`
 	ProxyID            *int64         `json:"proxy_id"`
 	GroupIDs           []int64        `json:"group_ids"`
 	Credentials        map[string]any `json:"credentials"`
@@ -432,6 +433,7 @@ func (h *GrokOAuthHandler) createAccountFromSSOToken(ctx context.Context, req Gr
 	account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 		Name:               name,
 		Notes:              req.Notes,
+		Tags:               req.Tags,
 		Platform:           service.PlatformGrok,
 		Type:               service.AccountTypeOAuth,
 		Credentials:        credentials,

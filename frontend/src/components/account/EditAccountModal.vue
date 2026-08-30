@@ -26,6 +26,17 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
+        <AccountTagsInput
+          v-model="form.tags"
+          :suggestions="tagSuggestions"
+          :placeholder="t('admin.accounts.tags.placeholder')"
+          @update:model-value="tagsTouched = true"
+        />
+        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
+      </div>
+
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -625,6 +636,44 @@
       </div>
 
       <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <div
+        v-if="account.type === 'apikey'"
+        class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageQuery.hint') }}</p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+          <input v-model="usageQueryEnabled" type="checkbox" data-testid="usage-query-enabled" class="h-4 w-4 rounded border-gray-300" />
+          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
+        </label>
+        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
+            <select v-model="usageQueryProvider" data-testid="usage-query-provider" class="input">
+              <option value="newapi">newapi</option>
+              <option value="sub2api">{{ t('admin.accounts.usageQuery.sub2apiOption') }}</option>
+            </select>
+          </div>
+          <template v-if="usageQueryProvider === 'newapi'">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+              <input v-model="usageQueryBaseUrl" type="text" class="input" placeholder="https://newapi.example.com" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+              <input v-model="usageQueryAccessToken" type="password" class="input font-mono" autocomplete="new-password" :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')" />
+              <p class="input-hint">{{ t('admin.accounts.usageQuery.editTokenHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+              <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+            </div>
+          </template>
+        </div>
+      </div>
+
       <div
         v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2889,6 +2938,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
@@ -2917,6 +2967,11 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  buildUsageQueryConfig,
+  normalizeUsageQueryProvider,
+  type AccountUsageQueryProvider
+} from '@/utils/accountUsageQuery'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -3586,8 +3641,23 @@ const form = reactive({
   rate_multiplier: 1,
   status: 'active' as 'active' | 'inactive' | 'error',
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  tags: [] as string[]
 })
+
+const tagSuggestions = ref<string[]>([])
+void (typeof adminAPI.accounts.listTags === 'function'
+  ? adminAPI.accounts.listTags()
+  : Promise.resolve([] as string[]))
+  .then((tags) => { tagSuggestions.value = tags })
+  .catch(() => { tagSuggestions.value = [] })
+
+const usageQueryEnabled = ref(false)
+const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
+const usageQueryBaseUrl = ref('')
+const usageQueryAccessToken = ref('')
+const usageQueryUserId = ref('')
+const tagsTouched = ref(false)
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   upstreamBillingRateSyncEnabled.value = enabled
@@ -3697,6 +3767,25 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     : 'active'
   form.group_ids = newAccount.group_ids || []
   form.expires_at = newAccount.expires_at ?? null
+  tagsTouched.value = false
+  form.tags = Array.isArray(newAccount.tags) ? [...newAccount.tags] : []
+
+  const usageQuery = (newAccount.extra as Record<string, unknown> | undefined)?.usage_query as
+    | { enabled?: boolean; provider?: string; base_url?: string; access_token?: string; user_id?: string }
+    | undefined
+  if (usageQuery && typeof usageQuery === 'object') {
+    usageQueryEnabled.value = usageQuery.enabled === true
+    usageQueryProvider.value = normalizeUsageQueryProvider(usageQuery.provider)
+    usageQueryBaseUrl.value = String(usageQuery.base_url || '')
+    usageQueryAccessToken.value = String(usageQuery.access_token || '')
+    usageQueryUserId.value = String(usageQuery.user_id || '')
+  } else {
+    usageQueryEnabled.value = false
+    usageQueryProvider.value = 'newapi'
+    usageQueryBaseUrl.value = ''
+    usageQueryAccessToken.value = ''
+    usageQueryUserId.value = ''
+  }
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
@@ -4637,6 +4726,12 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  // Older/cached account responses may not carry tags. Avoid turning that
+  // missing field into an accidental "clear all" update unless the admin
+  // explicitly edits the tag control.
+  if (!Array.isArray(props.account.tags) && !tagsTouched.value) {
+    delete updatePayload.tags
+  }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
@@ -5324,6 +5419,27 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      if (props.account.type === 'apikey') {
+        if (usageQueryEnabled.value) {
+          const usageQuery = buildUsageQueryConfig(usageQueryProvider.value, {
+            baseUrl: usageQueryBaseUrl.value,
+            accessToken: usageQueryAccessToken.value,
+            userId: usageQueryUserId.value
+          })
+          if (!usageQuery) {
+            appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+            return
+          }
+          newExtra.usage_query = usageQuery
+        } else {
+          const previous = (props.account.extra as Record<string, unknown> | undefined)?.usage_query
+          if (previous && typeof previous === 'object') {
+            newExtra.usage_query = { ...(previous as Record<string, unknown>), enabled: false }
+          } else {
+            delete newExtra.usage_query
+          }
+        }
+      }
       updatePayload.extra = newExtra
     }
 

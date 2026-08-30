@@ -61,6 +61,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	secretEncryptor         service.SecretEncryptor
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
@@ -96,7 +97,16 @@ func NewAccountHandler(
 	// The current constructor has a Grok service as the first optional argument;
 	// older callers omit it. Keep positional decoding for untyped nil test args.
 	offset := 0
-	if len(args) >= 9 {
+	currentLayout := len(args) >= 10
+	if !currentLayout && len(args) > 0 {
+		_, currentLayout = args[0].(service.GrokOAuthTokenService)
+	}
+	// A current-layout focused test may intentionally pass a nil Grok service;
+	// the account-test slot then remains the only reliable type marker.
+	if !currentLayout && len(args) > 3 {
+		_, currentLayout = args[3].(*service.AccountTestService)
+	}
+	if currentLayout {
 		grokOAuthService, _ = args[0].(service.GrokOAuthTokenService)
 		offset = 1
 	}
@@ -124,6 +134,10 @@ func NewAccountHandler(
 	if len(args) >= offset+8 {
 		tokenCacheInvalidator, _ = args[offset+7].(service.TokenCacheInvalidator)
 	}
+	var secretEncryptor service.SecretEncryptor
+	if len(args) >= offset+9 {
+		secretEncryptor, _ = args[offset+8].(service.SecretEncryptor)
+	}
 	return &AccountHandler{
 		adminService:            adminService,
 		oauthService:            oauthService,
@@ -139,6 +153,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		secretEncryptor:         secretEncryptor,
 	}
 }
 
@@ -146,6 +161,7 @@ func NewAccountHandler(
 type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
+	Tags                    []string       `json:"tags"`
 	Platform                string         `json:"platform" binding:"required"`
 	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
@@ -167,6 +183,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
+	Tags                    *[]string      `json:"tags"`
 	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
@@ -199,6 +216,7 @@ type BulkUpdateAccountsRequest struct {
 	GroupIDs                *[]int64                  `json:"group_ids"`
 	Credentials             map[string]any            `json:"credentials"`
 	Extra                   map[string]any            `json:"extra"`
+	Tags                    *[]string                 `json:"tags"`
 	ProbeEnabled            *bool                     `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
@@ -513,13 +531,14 @@ func (h *AccountHandler) listAccountSchedulerScoreFilterPool(
 	platform, accountType, status, search string,
 	groupID int64,
 	privacyMode string,
+	tags []string,
 ) []service.Account {
 	if h.adminService == nil || (platform != "" && platform != service.PlatformOpenAI) {
 		return nil
 	}
 	// 池只用于 OpenAI 分数计算（非 OpenAI 账号会在打分时被丢弃），
 	// 无论列表页平台过滤为何，查询一律限定 openai，避免无过滤时全表扫描。
-	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode, nil)
+	accounts, err := h.adminService.ListAccountsForSchedulerScoreFilter(ctx, service.PlatformOpenAI, accountType, status, search, groupID, privacyMode, tags)
 	if err != nil {
 		slog.Warn("openai_scheduler_filter_score_pool_failed", "error", err)
 		return nil
@@ -536,6 +555,11 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
+	tags, tagsErr := normalizeTagsForListFilter(c.QueryArray("tags"))
+	if tagsErr != nil {
+		response.ErrorFrom(c, tagsErr)
+		return
+	}
 	sortBy := c.DefaultQuery("sort_by", "last_used_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 	// 标准化和验证 search 参数
@@ -565,7 +589,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, nil)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder, tags)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -602,7 +626,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 	if includeSchedulerScore && pageHasOpenAIAccounts {
-		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode)
+		schedulerFilterPool := h.listAccountSchedulerScoreFilterPool(c.Request.Context(), platform, accountType, status, search, groupID, privacyMode, tags)
 		schedulerScores, schedulerGroupScores = h.buildOpenAIAccountSchedulerScores(c.Request.Context(), accounts, schedulerFilterPool)
 	}
 
@@ -715,7 +739,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 
 	h.enrichShadowParents(c.Request.Context(), result)
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, privacyMode, tags, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -732,7 +756,8 @@ func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search string,
+	platform, accountType, status, search, privacyMode string,
+	tags []string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -743,6 +768,8 @@ func buildAccountsListETag(
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
 		Search      string                   `json:"search"`
+		PrivacyMode string                   `json:"privacy_mode"`
+		Tags        []string                 `json:"tags"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 	}{
@@ -753,6 +780,8 @@ func buildAccountsListETag(
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
+		PrivacyMode: privacyMode,
+		Tags:        tags,
 		Lite:        lite,
 		Items:       items,
 	}
@@ -858,15 +887,17 @@ func normalizeTagsForListFilter(raw []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(raw))
 	out := make([]string, 0, len(raw))
 	for _, item := range raw {
-		tag := strings.ToLower(strings.TrimSpace(item))
-		if tag == "" {
-			continue
+		for _, part := range strings.Split(item, ",") {
+			tag := strings.ToLower(strings.TrimSpace(part))
+			if tag == "" {
+				continue
+			}
+			if _, exists := seen[tag]; exists {
+				continue
+			}
+			seen[tag] = struct{}{}
+			out = append(out, tag)
 		}
-		if _, exists := seen[tag]; exists {
-			continue
-		}
-		seen[tag] = struct{}{}
-		out = append(out, tag)
 	}
 	return out, nil
 }
@@ -901,6 +932,10 @@ func (h *AccountHandler) Create(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if err := h.prepareUsageQueryExtra(c.Request.Context(), 0, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -913,6 +948,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  req.Name,
 			Notes:                 req.Notes,
+			Tags:                  req.Tags,
 			Platform:              req.Platform,
 			Type:                  req.Type,
 			Credentials:           req.Credentials,
@@ -1034,6 +1070,10 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
+	if err := h.prepareUsageQueryExtra(c.Request.Context(), accountID, req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
@@ -1041,6 +1081,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
 		Name:                  req.Name,
 		Notes:                 req.Notes,
+		Tags:                  req.Tags,
 		Type:                  req.Type,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
@@ -1967,6 +2008,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 				Name:                  item.Name,
 				Notes:                 item.Notes,
+				Tags:                  item.Tags,
 				Platform:              item.Platform,
 				Type:                  item.Type,
 				Credentials:           item.Credentials,
@@ -2170,6 +2212,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		req.GroupIDs != nil ||
 		len(req.Credentials) > 0 ||
 		len(req.Extra) > 0 ||
+		req.Tags != nil ||
 		req.ProbeEnabled != nil
 
 	if !hasUpdates {
@@ -2191,6 +2234,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		GroupIDs:              req.GroupIDs,
 		Credentials:           req.Credentials,
 		Extra:                 req.Extra,
+		Tags:                  req.Tags,
 		ProbeEnabled:          req.ProbeEnabled,
 		SkipMixedChannelCheck: skipCheck,
 	})
@@ -2722,8 +2766,78 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 
 	// Handle Antigravity accounts: return Claude + Gemini models
 	if account.Platform == service.PlatformAntigravity {
-		// 直接复用 antigravity.DefaultModels()，与 /v1/models 端点保持同步
-		response.Success(c, antigravity.DefaultModels())
+		defaultModels := antigravity.DefaultModels()
+		// API-key Antigravity accounts can expose a provider-specific live model
+		// list. Prefer it when available so the admin picker does not advertise
+		// stale defaults; explicit local mapping remains the fallback.
+		if account.Type == service.AccountTypeAPIKey && h.accountTestService != nil {
+			if liveModels, liveErr := h.accountTestService.FetchUpstreamSupportedModels(c.Request.Context(), account); liveErr == nil && len(liveModels) > 0 {
+				defaultByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
+				for _, model := range defaultModels {
+					defaultByID[model.ID] = model
+				}
+				sort.Strings(liveModels)
+				models := make([]antigravity.ClaudeModel, 0, len(liveModels))
+				for _, modelID := range liveModels {
+					if model, ok := defaultByID[modelID]; ok {
+						models = append(models, model)
+					} else {
+						models = append(models, antigravity.ClaudeModel{ID: modelID, Type: "model", DisplayName: modelID})
+					}
+				}
+				response.Success(c, models)
+				return
+			}
+		}
+		rawMapping, hasRawMapping := account.Credentials["model_mapping"]
+		hasExplicitMapping := false
+		if hasRawMapping {
+			switch mapping := rawMapping.(type) {
+			case map[string]any:
+				hasExplicitMapping = len(mapping) > 0
+			case map[string]string:
+				hasExplicitMapping = len(mapping) > 0
+			}
+		}
+		if !hasExplicitMapping {
+			// 直接复用默认列表，与 /v1/models 端点保持同步。
+			response.Success(c, defaultModels)
+			return
+		}
+
+		requestedModels := make([]string, 0)
+		switch mapping := rawMapping.(type) {
+		case map[string]any:
+			for modelID := range mapping {
+				requestedModels = append(requestedModels, modelID)
+			}
+		case map[string]string:
+			for modelID := range mapping {
+				requestedModels = append(requestedModels, modelID)
+			}
+		}
+		if len(requestedModels) == 0 {
+			response.Success(c, defaultModels)
+			return
+		}
+		defaultByID := make(map[string]antigravity.ClaudeModel, len(defaultModels))
+		for _, model := range defaultModels {
+			defaultByID[model.ID] = model
+		}
+		sort.Strings(requestedModels)
+		models := make([]antigravity.ClaudeModel, 0, len(requestedModels))
+		for _, requestedModel := range requestedModels {
+			if defaultModel, found := defaultByID[requestedModel]; found {
+				models = append(models, defaultModel)
+				continue
+			}
+			models = append(models, antigravity.ClaudeModel{
+				ID:          requestedModel,
+				Type:        "model",
+				DisplayName: requestedModel,
+			})
+		}
+		response.Success(c, models)
 		return
 	}
 

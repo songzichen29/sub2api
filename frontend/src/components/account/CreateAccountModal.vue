@@ -67,6 +67,16 @@
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
 
+      <div>
+        <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
+        <AccountTagsInput
+          v-model="form.tags"
+          :suggestions="tagSuggestions"
+          :placeholder="t('admin.accounts.tags.placeholder')"
+        />
+        <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
+      </div>
+
       <!-- Platform Selection - Segmented Control Style -->
       <div>
         <label class="input-label">{{ t('admin.accounts.platform') }}</label>
@@ -1333,6 +1343,40 @@
             :placeholder="apiKeyValuePlaceholder"
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
+        </div>
+
+        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
+          <div>
+            <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageQuery.hint') }}</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <input v-model="usageQueryEnabled" type="checkbox" data-testid="usage-query-enabled" class="h-4 w-4 rounded border-gray-300" />
+            <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
+          </label>
+          <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
+              <select v-model="usageQueryProvider" data-testid="usage-query-provider" class="input">
+                <option value="newapi">newapi</option>
+                <option value="sub2api">{{ t('admin.accounts.usageQuery.sub2apiOption') }}</option>
+              </select>
+            </div>
+            <template v-if="usageQueryProvider === 'newapi'">
+              <div>
+                <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
+                <input v-model="usageQueryBaseUrl" type="text" class="input" placeholder="https://newapi.example.com" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
+                <input v-model="usageQueryAccessToken" type="password" class="input font-mono" autocomplete="new-password" :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
+                <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
+              </div>
+            </template>
+          </div>
         </div>
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
@@ -3800,6 +3844,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
+import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -3822,6 +3867,10 @@ import {
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import {
+  buildUsageQueryConfig,
+  type AccountUsageQueryProvider
+} from '@/utils/accountUsageQuery'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -4516,8 +4565,21 @@ const form = reactive({
   priority: 1,
   rate_multiplier: 1,
   group_ids: [] as number[],
-  expires_at: null as number | null
+  expires_at: null as number | null,
+  tags: [] as string[]
 })
+
+const tagSuggestions = ref<string[]>([])
+void (typeof adminAPI.accounts.listTags === 'function'
+  ? adminAPI.accounts.listTags()
+  : Promise.resolve([] as string[]))
+  .then((tags) => { tagSuggestions.value = tags })
+  .catch(() => { tagSuggestions.value = [] })
+const usageQueryEnabled = ref(false)
+const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
+const usageQueryBaseUrl = ref('')
+const usageQueryAccessToken = ref('')
+const usageQueryUserId = ref('')
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -4993,6 +5055,11 @@ const withAntigravityConfirmFlag = (payload: CreateAccountRequest): CreateAccoun
   return cloned
 }
 
+const withFormTags = <T extends CreateAccountRequest>(payload: T): T => ({
+  ...payload,
+  tags: form.tags.length > 0 ? [...form.tags] : undefined
+})
+
 const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<void>): Promise<boolean> => {
   if (!needsMixedChannelCheck(form.platform)) {
     return true
@@ -5026,7 +5093,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(withFormTags(payload)))
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5089,6 +5156,12 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
+  form.tags = []
+  usageQueryEnabled.value = false
+  usageQueryProvider.value = 'newapi'
+  usageQueryBaseUrl.value = ''
+  usageQueryAccessToken.value = ''
+  usageQueryUserId.value = ''
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
@@ -5729,6 +5802,18 @@ const createAccountAndFinish = async (
     }
     // Quota notify config
     writeQuotaNotifyToExtra(quotaExtra, 'create')
+    if (type === 'apikey' && usageQueryEnabled.value) {
+      const usageQuery = buildUsageQueryConfig(usageQueryProvider.value, {
+        baseUrl: usageQueryBaseUrl.value,
+        accessToken: usageQueryAccessToken.value,
+        userId: usageQueryUserId.value
+      })
+      if (!usageQuery) {
+        appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
+        return
+      }
+      quotaExtra.usage_query = usageQuery
+    }
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }
@@ -5758,6 +5843,7 @@ const createAccountAndFinish = async (
   await doCreateAccount({
     name: form.name,
     notes: form.notes,
+    tags: form.tags.length > 0 ? [...form.tags] : undefined,
     platform,
     type,
     credentials,
@@ -5825,6 +5911,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
         await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,
+          tags: form.tags.length > 0 ? [...form.tags] : undefined,
           platform: 'grok',
           type: 'oauth',
           credentials,
@@ -5895,6 +5982,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       sso_tokens: ssoTokens,
       name: form.name || undefined,
       notes: form.notes || undefined,
+      tags: form.tags.length > 0 ? [...form.tags] : undefined,
       proxy_id: form.proxy_id,
       group_ids: form.group_ids,
       credentials,
@@ -6002,6 +6090,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
         await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,
+          tags: form.tags.length > 0 ? [...form.tags] : undefined,
           platform: 'grok',
           type: 'oauth',
           credentials,
@@ -6101,6 +6190,7 @@ const handleOpenAIExchange = async (authCode: string) => {
       await adminAPI.accounts.create({
         name: form.name,
         notes: form.notes,
+        tags: form.tags.length > 0 ? [...form.tags] : undefined,
         platform: 'openai',
         type: 'oauth',
         credentials,
@@ -6210,6 +6300,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
+      tags: form.tags.length > 0 ? [...form.tags] : undefined,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
@@ -6288,6 +6379,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       access_token: trimmed,
       name: form.name,
       notes: form.notes || null,
+      tags: form.tags.length > 0 ? [...form.tags] : undefined,
       proxy_id: form.proxy_id,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
@@ -6382,6 +6474,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
           await adminAPI.accounts.create({
             name: accountName,
             notes: form.notes,
+            tags: form.tags.length > 0 ? [...form.tags] : undefined,
             platform: 'openai',
             type: 'oauth',
             credentials,
@@ -6478,7 +6571,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
 
         // Note: Antigravity doesn't have buildExtraInfo, so we pass empty extra or rely on credentials
-        const createPayload = withAntigravityConfirmFlag({
+        const createPayload = withAntigravityConfirmFlag(withFormTags({
           name: accountName,
           notes: form.notes,
           platform: 'antigravity',
@@ -6493,7 +6586,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           group_ids: form.group_ids,
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
-        })
+        }))
         await adminAPI.accounts.create(createPayload)
         successCount++
       } catch (error: any) {
@@ -6862,6 +6955,7 @@ const handleCookieAuth = async (sessionKey: string) => {
         await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,
+          tags: form.tags.length > 0 ? [...form.tags] : undefined,
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,

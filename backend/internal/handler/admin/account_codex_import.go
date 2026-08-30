@@ -26,6 +26,7 @@ type CodexSessionImportRequest struct {
 	Contents                []string       `json:"contents"`
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
+	Tags                    *[]string      `json:"tags"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ProxyID                 *int64         `json:"proxy_id"`
 	Concurrency             *int           `json:"concurrency"`
@@ -279,6 +280,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 			updateInput := &service.UpdateAccountInput{
 				Credentials:        mergedCredentials,
 				Extra:              mergedExtra,
+				Tags:               req.Tags,
 				Concurrency:        req.Concurrency,
 				Priority:           req.Priority,
 				RateMultiplier:     req.RateMultiplier,
@@ -331,6 +333,7 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 		account, createErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  accountName,
 			Notes:                 req.Notes,
+			Tags:                  cloneOptionalTags(req.Tags),
 			Platform:              service.PlatformOpenAI,
 			Type:                  service.AccountTypeOAuth,
 			Credentials:           credentials,
@@ -378,6 +381,13 @@ func (h *AccountHandler) importCodexSessions(ctx context.Context, req CodexSessi
 	}
 
 	return result, nil
+}
+
+func cloneOptionalTags(tags *[]string) []string {
+	if tags == nil {
+		return nil
+	}
+	return append([]string(nil), (*tags)...)
 }
 
 func parseCodexSessionImportEntries(req CodexSessionImportRequest) ([]codexImportEntry, error) {

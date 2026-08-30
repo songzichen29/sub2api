@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" v-if="showUsageWindows">
+  <div ref="rootRef" v-if="showUsageWindows && !showThirdPartyUsage">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="

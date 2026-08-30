@@ -7,6 +7,7 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
+            :available-tags="availableTags"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -255,6 +256,16 @@
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
+          <template #cell-tags="{ row }">
+            <div v-if="Array.isArray(row.tags) && row.tags.length > 0" class="flex max-w-[16rem] flex-wrap gap-1">
+              <span
+                v-for="tag in row.tags"
+                :key="tag"
+                class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-700 dark:bg-dark-600 dark:text-gray-300"
+              >{{ tag }}</span>
+            </div>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
+          </template>
           <template #cell-platform_type="{ row }">
             <div class="flex min-w-0 flex-col gap-1">
               <div class="flex flex-wrap items-center gap-1">
@@ -321,7 +332,7 @@
               :batched-usage="usageBatchByAccountId[String(row.id)] ?? null"
               :batched-usage-error="usageBatchErrorByAccountId[String(row.id)] ?? null"
               :batched-usage-loading="usageBatchLoadingByAccountId[String(row.id)] === true"
-              :request-batched-usage="isDesktopViewport ? queueBatchedUsage : null"
+              :request-batched-usage="isDesktopViewport && accountSupportsBatchUsage(row) ? queueBatchedUsage : null"
               @account-updated="handleAccountUpdated"
               @usage-loaded="handleAccountUsageLoaded(row.id, $event)"
             />
@@ -540,6 +551,7 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const availableTags = ref<string[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -558,6 +570,7 @@ type AccountBulkEditTarget =
         group?: string
         search?: string
         privacy_mode?: string
+        tags?: string[]
         sort_by?: string
         sort_order?: AccountSortOrder
       }
@@ -1077,6 +1090,7 @@ const {
     type: '',
     status: '',
     privacy_mode: '',
+    tags: [] as string[],
     group: '',
     search: '',
     include_scheduler_score: shouldIncludeSchedulerScore() ? '1' : '0',
@@ -1183,6 +1197,7 @@ const buildUpstreamBillingRateFilters = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    tags: Array.isArray(rawParams.tags) ? rawParams.tags : [],
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -1804,6 +1819,7 @@ const allColumns = computed(() => {
     { key: 'last_used_at', label: t('admin.accounts.columns.lastUsed'), sortable: true },
     { key: 'created_at', label: t('admin.accounts.columns.createdAt'), sortable: true },
     { key: 'expires_at', label: t('admin.accounts.columns.expiresAt'), sortable: true },
+    { key: 'tags', label: t('admin.accounts.columns.tags'), sortable: false },
     { key: 'notes', label: t('admin.accounts.columns.notes'), sortable: false },
     { key: 'actions', label: t('admin.accounts.columns.actions'), sortable: false }
   )
@@ -2077,6 +2093,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    tags: Array.isArray(rawParams.tags) ? rawParams.tags : [],
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -2153,6 +2170,7 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
+  tags: Array.isArray(params.tags) ? params.tags : [],
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -2198,6 +2216,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
   }
   const search = String(filters.search || '').trim().toLowerCase()
   if (search && !account.name.toLowerCase().includes(search)) return false
+  if (Array.isArray(filters.tags) && filters.tags.length > 0) {
+    const accountTags = account.tags ?? []
+    if (!filters.tags.some((tag: string) => accountTags.includes(tag))) return false
+  }
   return true
 }
 const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Account => ({
@@ -2545,9 +2567,13 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  const [proxiesResult, groupsResult] = await Promise.allSettled([
+  const listTagsPromise = typeof adminAPI.accounts.listTags === 'function'
+    ? adminAPI.accounts.listTags()
+    : Promise.resolve([] as string[])
+  const [proxiesResult, groupsResult, tagsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
-    adminAPI.groups.getAll()
+    adminAPI.groups.getAll(),
+    listTagsPromise
   ])
   if (proxiesResult.status === 'fulfilled') {
     proxies.value = proxiesResult.value
@@ -2558,6 +2584,11 @@ onMounted(async () => {
     groups.value = groupsResult.value
   } else {
     console.error('Failed to load groups:', groupsResult.reason)
+  }
+  if (tagsResult.status === 'fulfilled') {
+    availableTags.value = tagsResult.value
+  } else {
+    console.error('Failed to load account tags:', tagsResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)

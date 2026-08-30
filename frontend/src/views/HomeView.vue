@@ -41,7 +41,16 @@
             <Icon name="book" size="md" />
           </a>
           <router-link
-            v-if="showModelPlazaEntry"
+            v-if="showMarketplaceEntry"
+            to="/model-marketplace"
+            class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('nav.modelMarketplace')"
+          >
+            <Icon name="globe" size="md" />
+            <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+          </router-link>
+          <router-link
+            v-else-if="showModelPlazaEntry"
             to="/model-plaza"
             class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
             :title="t('nav.modelPlaza')"
@@ -151,7 +160,16 @@
 
           <!-- Model Plaza Link -->
           <router-link
-            v-if="showModelPlazaEntry"
+            v-if="showMarketplaceEntry"
+            to="/model-marketplace"
+            class="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('nav.modelMarketplace')"
+          >
+            <Icon name="globe" size="md" />
+            <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+          </router-link>
+          <router-link
+            v-else-if="showModelPlazaEntry"
             to="/model-plaza"
             class="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
             :title="t('nav.modelPlaza')"
@@ -524,6 +542,7 @@ const homeContent = computed(() => appStore.cachedPublicSettings?.home_content |
 const hasHomeContent = computed(() => homeContent.value.trim().length > 0)
 const compactHomeEnabled = computed(() => appStore.cachedPublicSettings?.compact_home_enabled === true)
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+const availableChannelsEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.availableChannels))
 
 // Check if homeContent is a URL (for iframe display)
 const isHomeContentUrl = computed(() => {
@@ -543,7 +562,10 @@ const modelPlazaRequiresAuth = computed(
   () => appStore.cachedPublicSettings?.model_plaza_require_auth === true,
 )
 const showModelPlazaEntry = computed(
-  () => modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value),
+  () => !availableChannelsEnabled.value && modelPlazaEnabled.value && (isAuthenticated.value || !modelPlazaRequiresAuth.value),
+)
+const showMarketplaceEntry = computed(
+  () => availableChannelsEnabled.value && isAuthenticated.value,
 )
 const isAdmin = computed(() => authStore.isAdmin)
 const dashboardPath = computed(() => isAdmin.value ? '/admin/dashboard' : '/dashboard')

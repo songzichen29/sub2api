@@ -698,8 +698,8 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
-// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
+// 条目顺序：密钥 → 用量 → 渠道状态 → 订阅/支付 → 兑换/资料。
+// 模型/渠道目录统一指向 Model Marketplace，/available-channels 仅保留兼容跳转。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -709,7 +709,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/model-marketplace', label: t('nav.modelMarketplace'), icon: GlobeIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -737,8 +737,8 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
-// Admins access 可用渠道 from this section just like regular users — there is no
-// separate admin entry, since the page is purely a user-facing view.
+// Admins access user-facing status and subscription pages from this section;
+// the marketplace remains a header entry so it does not duplicate admin nav.
 const personalNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(false)))
 
 // Custom menu items filtered by visibility

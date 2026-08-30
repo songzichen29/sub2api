@@ -280,12 +280,23 @@
           >
             <!-- Groups -->
             <div>
-              <label class="input-label text-xs">
-                {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
-                <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
-                  ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }) }})
-                </span>
-              </label>
+              <div class="mb-1 flex items-center justify-between gap-3">
+                <label class="input-label mb-0 text-xs">
+                  {{ t('admin.channels.form.groups', 'Associated Groups') }} <span class="text-red-500">*</span>
+                  <span v-if="section.group_ids.length > 0" class="ml-1 font-normal text-gray-400">
+                    ({{ t('admin.channels.form.selectedCount', { count: section.group_ids.length }) }})
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  class="rounded-md border border-primary-200 px-2 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-800 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                  :disabled="importingModelsByPlatform[section.platform] || section.group_ids.length === 0"
+                  @click="importSectionModelsFromAccounts(sIdx)"
+                >
+                  <span v-if="importingModelsByPlatform[section.platform]">{{ t('common.loading') }}</span>
+                  <span v-else>{{ t('admin.channels.form.importModelsFromAccounts') }}</span>
+                </button>
+              </div>
               <div class="max-h-40 overflow-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-900">
                 <div v-if="groupsLoading" class="py-2 text-center text-xs text-gray-500">
                   {{ t('common.loading', 'Loading...') }}
@@ -387,32 +398,41 @@
                 <div
                   v-for="(_, srcModel) in section.model_mapping"
                   :key="srcModel"
-                  class="flex items-center gap-2"
+                  class="space-y-2"
                 >
+                  <div class="flex items-center gap-2">
+                    <input
+                      :value="srcModel"
+                      type="text"
+                      class="input flex-1 text-xs"
+                      :class="platformTextClass(section.platform)"
+                      :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
+                      @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                    />
+                    <span class="text-gray-400 text-xs">→</span>
+                    <input
+                      :value="section.model_mapping[srcModel]"
+                      type="text"
+                      class="input flex-1 text-xs"
+                      :class="platformTextClass(section.platform)"
+                      :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
+                      @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
+                    />
+                    <button
+                      type="button"
+                      @click="removeMappingEntry(sIdx, srcModel)"
+                      class="rounded p-0.5 text-gray-400 hover:text-red-500"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
                   <input
-                    :value="srcModel"
+                    v-model="section.model_mapping_notes[srcModel]"
                     type="text"
-                    class="input flex-1 text-xs"
+                    class="input text-xs"
                     :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
-                    @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
+                    :placeholder="t('admin.channels.form.mappingNotePlaceholder', 'Optional note for this mapping')"
                   />
-                  <span class="text-gray-400 text-xs">→</span>
-                  <input
-                    :value="section.model_mapping[srcModel]"
-                    type="text"
-                    class="input flex-1 text-xs"
-                    :class="platformTextClass(section.platform)"
-                    :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
-                    @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
-                  />
-                  <button
-                    type="button"
-                    @click="removeMappingEntry(sIdx, srcModel)"
-                    class="rounded p-0.5 text-gray-400 hover:text-red-500"
-                  >
-                    <Icon name="trash" size="sm" />
-                  </button>
                 </div>
               </div>
             </div>
@@ -632,10 +652,10 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule, ModelDefaultPricing } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { apiIntervalsToForm, apiTimePricingToForm, createDefaultTimePricingForm, findModelConflict, formIntervalsToAPI, formTimePricingToAPI, isValidPositiveMultiplier, mTokToPerToken, perTokenToMTok, validateIntervals, validateTimePricing } from '@/components/admin/channel/types'
-import type { AdminGroup, GroupPlatform } from '@/types'
+import type { AdminGroup, GroupPlatform, Account } from '@/types'
 import type { Column } from '@/components/common/types'
 import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -683,6 +703,7 @@ interface PlatformSection {
   collapsed: boolean
   group_ids: number[]
   model_mapping: Record<string, string>
+  model_mapping_notes: Record<string, string>
   model_pricing: PricingFormEntry[]
   web_search_emulation: boolean
   codex_image_generation_bridge: boolean
@@ -748,6 +769,8 @@ const groupsLoading = ref(false)
 
 // All channels for group-conflict detection (independent of current page)
 const allChannelsForConflict = ref<Channel[]>([])
+const importingModelsByPlatform = ref<Partial<Record<GroupPlatform, boolean>>>({})
+const defaultPricingCache = ref<Record<string, ModelDefaultPricing>>({})
 
 // Form data
 const form = reactive({
@@ -783,6 +806,7 @@ function addPlatformSection(platform: GroupPlatform) {
     collapsed: false,
     group_ids: [],
     model_mapping: {},
+    model_mapping_notes: {},
     model_pricing: [],
     web_search_emulation: false,
     codex_image_generation_bridge: false,
@@ -914,6 +938,94 @@ async function syncLatestModels(sectionIdx: number) {
   }
 }
 
+function extractAccountModels(accounts: Account[]): string[] {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const account of accounts) {
+    const mapping = account.credentials?.model_mapping as Record<string, unknown> | undefined
+    if (!mapping || typeof mapping !== 'object') continue
+    for (const key of Object.keys(mapping)) {
+      const model = key.trim()
+      if (!model || seen.has(model)) continue
+      seen.add(model)
+      ordered.push(model)
+    }
+  }
+  return ordered.sort((a, b) => a.localeCompare(b))
+}
+
+async function getCachedDefaultPricing(model: string): Promise<ModelDefaultPricing> {
+  const cached = defaultPricingCache.value[model]
+  if (cached) return cached
+  const pricing = await adminAPI.channels.getModelDefaultPricing(model)
+  defaultPricingCache.value[model] = pricing
+  return pricing
+}
+
+function applyDefaultPricingToEntry(entry: PricingFormEntry, pricing: ModelDefaultPricing) {
+  if (!pricing.found) return
+  if (entry.input_price == null || entry.input_price === '') entry.input_price = perTokenToMTok(pricing.input_price)
+  if (entry.output_price == null || entry.output_price === '') entry.output_price = perTokenToMTok(pricing.output_price)
+  if (entry.cache_write_price == null || entry.cache_write_price === '') entry.cache_write_price = perTokenToMTok(pricing.cache_write_price)
+  if (entry.cache_read_price == null || entry.cache_read_price === '') entry.cache_read_price = perTokenToMTok(pricing.cache_read_price)
+  if (entry.image_input_price == null || entry.image_input_price === '') entry.image_input_price = perTokenToMTok(pricing.image_input_price)
+  if (entry.image_output_price == null || entry.image_output_price === '') entry.image_output_price = perTokenToMTok(pricing.image_output_price)
+}
+
+async function importSectionModelsFromAccounts(sectionIdx: number) {
+  const section = form.platforms[sectionIdx]
+  if (!section || section.group_ids.length === 0) {
+    appStore.showInfo(t('admin.channels.form.selectGroupsBeforeImport', '请先选择分组再导入模型'))
+    return
+  }
+  importingModelsByPlatform.value[section.platform] = true
+  try {
+    const accountMap = new Map<number, Account>()
+    for (const groupId of section.group_ids) {
+      const response = await adminAPI.accounts.list(1, 1000, {
+        platform: section.platform,
+        group: String(groupId),
+      })
+      for (const account of response.items) accountMap.set(account.id, account)
+    }
+    const models = extractAccountModels([...accountMap.values()])
+    if (models.length === 0) {
+      appStore.showInfo(t('admin.channels.form.noImportableAccountModels', '所选分组下没有可导入的账号模型'))
+      return
+    }
+
+    for (const model of models) {
+      if (!(model in section.model_mapping)) section.model_mapping[model] = model
+    }
+    const existingModels = new Set(section.model_pricing.flatMap((entry) => entry.models))
+    const newModels = models.filter((model) => !existingModels.has(model))
+    await Promise.all(newModels.map(async (model) => {
+      const entry: PricingFormEntry = {
+        models: [model],
+        billing_mode: 'token',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        fast_multiplier: null,
+        flex_multiplier: null,
+        image_input_price: null,
+        image_output_price: null,
+        per_request_price: null,
+        intervals: [],
+        time_pricing: createDefaultTimePricingForm(),
+      }
+      applyDefaultPricingToEntry(entry, await getCachedDefaultPricing(model))
+      section.model_pricing.push(entry)
+    }))
+    appStore.showSuccess(t('admin.channels.form.importModelsSuccess', { count: models.length }, `已导入 ${models.length} 个模型到映射和定价`))
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.form.importModelsError', '导入账号模型失败')))
+  } finally {
+    importingModelsByPlatform.value[section.platform] = false
+  }
+}
+
 function updatePricingEntry(sectionIdx: number, idx: number, updated: PricingFormEntry) {
   form.platforms[sectionIdx].model_pricing.splice(idx, 1, updated)
 }
@@ -936,16 +1048,21 @@ function addMappingEntry(sectionIdx: number) {
 
 function removeMappingEntry(sectionIdx: number, key: string) {
   delete form.platforms[sectionIdx].model_mapping[key]
+  delete form.platforms[sectionIdx].model_mapping_notes[key]
 }
 
 function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
   newKey = newKey.trim()
   if (!newKey || newKey === oldKey) return
   const mapping = form.platforms[sectionIdx].model_mapping
+  const notes = form.platforms[sectionIdx].model_mapping_notes
   if (newKey in mapping) return
   const value = mapping[oldKey]
+  const note = notes[oldKey]
   delete mapping[oldKey]
   mapping[newKey] = value
+  delete notes[oldKey]
+  if (note) notes[newKey] = note
 }
 
 // ── Account Stats Pricing helpers ──
@@ -1100,6 +1217,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
   const group_ids: number[] = []
   const model_pricing: ChannelModelPricing[] = []
   const model_mapping: Record<string, Record<string, string>> = {}
+  const modelMappingNotes: Record<string, Record<string, string>> = {}
   // Preserve existing features_config fields not managed by the form
   const featuresConfig: Record<string, unknown> = editingChannel.value?.features_config
     ? { ...editingChannel.value.features_config }
@@ -1112,6 +1230,14 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     // Model mapping per platform
     if (Object.keys(section.model_mapping).length > 0) {
       model_mapping[section.platform] = { ...section.model_mapping }
+    }
+    const notes = Object.fromEntries(
+      Object.entries(section.model_mapping_notes)
+        .map(([key, value]) => [key, value.trim()] as const)
+        .filter(([, value]) => value !== ''),
+    )
+    if (Object.keys(notes).length > 0) {
+      modelMappingNotes[section.platform] = notes
     }
 
     // Model pricing with platform tag
@@ -1177,6 +1303,12 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     featuresConfig.bedrock_cc_compat = bedrockCCCompat
   } else {
     delete featuresConfig.bedrock_cc_compat
+  }
+
+  if (Object.keys(modelMappingNotes).length > 0) {
+    featuresConfig.model_mapping_notes = modelMappingNotes
+  } else {
+    delete featuresConfig.model_mapping_notes
   }
 
   return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
@@ -1249,6 +1381,11 @@ function apiToForm(channel: Channel): PlatformSection[] {
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping },
+      model_mapping_notes: Object.fromEntries(
+        Object.entries(
+          ((channel.features_config?.model_mapping_notes as Record<string, unknown> | undefined)?.[platform] as Record<string, unknown> | undefined) || {},
+        ).filter(([, value]) => typeof value === 'string') as [string, string][],
+      ),
       model_pricing: pricing,
       web_search_emulation: webSearchEnabled,
       codex_image_generation_bridge: codexImageGenerationBridgeEnabled,

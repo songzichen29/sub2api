@@ -1695,7 +1695,9 @@ const enableTags = ref(false)
 const tags = ref<string[]>([])
 // 账号标签字典：批量编辑 AccountTagsInput 的 autocomplete 候选；失败兜底为空数组。
 const tagSuggestions = ref<string[]>([])
-adminAPI.accounts.listTags()
+void (typeof adminAPI.accounts.listTags === 'function'
+  ? adminAPI.accounts.listTags()
+  : Promise.resolve([] as string[]))
   .then(list => { tagSuggestions.value = list })
   .catch(() => { tagSuggestions.value = [] })
 

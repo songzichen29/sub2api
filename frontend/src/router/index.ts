@@ -870,6 +870,12 @@ router.beforeEach(async (to, _from, next) => {
         }
       }
       const plazaSettings = appStore.cachedPublicSettings
+      // Available Channels and Model Plaza now share one canonical page. Keep
+      // old Model Plaza links working without rendering two different catalogs.
+      if (plazaSettings?.available_channels_enabled === true) {
+        next({ path: '/model-marketplace', query: to.query })
+        return
+      }
       // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
       if (appStore.publicSettingsLoaded && plazaSettings?.model_plaza_enabled === false) {
         next(
@@ -911,6 +917,27 @@ router.beforeEach(async (to, _from, next) => {
       query: { redirect: to.fullPath } // Save intended destination
     })
     return
+  }
+
+  // The marketplace is the canonical replacement for the legacy available-
+  // channels page. Respect its feature flag even when a user enters the URL
+  // directly instead of using the header link.
+  if (to.path === '/model-marketplace') {
+    if (!appStore.publicSettingsLoaded) {
+      try {
+        await appStore.fetchPublicSettings()
+      } catch (error) {
+        console.warn('Failed to load public settings for marketplace route', error)
+      }
+    }
+    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.available_channels_enabled !== true) {
+      if (appStore.cachedPublicSettings?.model_plaza_enabled === true) {
+        next({ path: '/model-plaza', query: { embedded: '1' } })
+      } else {
+        next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
+      }
+      return
+    }
   }
 
   // Check admin requirement

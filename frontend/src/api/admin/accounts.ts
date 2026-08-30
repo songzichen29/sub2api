@@ -28,6 +28,18 @@ import type {
   OllamaCloudUsageState
 } from '@/types'
 
+function repeatedParamsSerializer(values: Record<string, unknown>): string {
+  const search = new URLSearchParams()
+  for (const [key, rawValue] of Object.entries(values)) {
+    if (rawValue == null || rawValue === '') continue
+    const valuesForKey = Array.isArray(rawValue) ? rawValue : [rawValue]
+    for (const value of valuesForKey) {
+      if (value != null && value !== '') search.append(key, String(value))
+    }
+  }
+  return search.toString()
+}
+
 /**
  * List all accounts with pagination
  * @param page - Page number (default: 1)
@@ -45,6 +57,7 @@ export async function list(
     group?: string
     search?: string
     privacy_mode?: string
+    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -60,6 +73,7 @@ export async function list(
       page_size: pageSize,
       ...filters
     },
+    paramsSerializer: { serialize: repeatedParamsSerializer },
     signal: options?.signal
   })
   return data
@@ -87,6 +101,7 @@ export async function getUpstreamBillingRatesWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    tags?: string[]
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },
@@ -100,6 +115,7 @@ export async function getUpstreamBillingRatesWithEtag(
 
   const response = await apiClient.get<UpstreamBillingRatesResponse>('/admin/accounts/upstream-billing-rates', {
     params: { page, page_size: pageSize, ...filters },
+    paramsSerializer: { serialize: repeatedParamsSerializer },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
@@ -120,6 +136,7 @@ export async function listWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    tags?: string[]
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -141,6 +158,7 @@ export async function listWithEtag(
       page_size: pageSize,
       ...filters
     },
+    paramsSerializer: { serialize: repeatedParamsSerializer },
     headers,
     signal: options?.signal,
     validateStatus: (status) => (status >= 200 && status < 300) || status === 304
@@ -703,6 +721,7 @@ export async function exportData(options?: {
     group?: string
     privacy_mode?: string
     search?: string
+    tags?: string[]
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   }
@@ -712,13 +731,14 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
+    const { platform, type, status, group, privacy_mode, search, tags, sort_by, sort_order } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
     if (group) params.group = group
     if (privacy_mode) params.privacy_mode = privacy_mode
     if (search) params.search = search
+    if (tags && tags.length > 0) params.tags = tags.join(',')
     if (sort_by) params.sort_by = sort_by
     if (sort_order) params.sort_order = sort_order
   }

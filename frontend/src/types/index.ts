@@ -1155,6 +1155,8 @@ export interface Account {
   id: number
   name: string
   notes?: string | null
+  /** 管理员维度标签；后端始终返回数组，旧数据兜底为空数组。 */
+  tags?: string[]
   platform: AccountPlatform
   type: AccountType
   // 后端响应里 credentials 已脱敏：access_token / refresh_token / id_token /
@@ -1467,6 +1469,7 @@ export interface OpenAIResponsesState {
 export interface CreateAccountRequest {
   name: string
   notes?: string | null
+  tags?: string[]
   platform: AccountPlatform
   type: AccountType
   credentials: Record<string, unknown>
@@ -1486,6 +1489,7 @@ export interface CreateAccountRequest {
 export interface UpdateAccountRequest {
   name?: string
   notes?: string | null
+  tags?: string[]
   type?: AccountType
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
@@ -1618,6 +1622,7 @@ export interface CodexSessionImportRequest {
   contents?: string[]
   name?: string
   notes?: string | null
+  tags?: string[]
   group_ids?: number[]
   proxy_id?: number | null
   concurrency?: number
@@ -1637,6 +1642,7 @@ export interface OpenAICodexPATCreateRequest {
   access_token: string
   name?: string
   notes?: string | null
+  tags?: string[]
   group_ids?: number[]
   proxy_id?: number | null
   concurrency?: number

@@ -173,6 +173,7 @@ type OpenAICodexPATCreateRequest struct {
 	AccessToken             string         `json:"access_token" binding:"required"`
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
+	Tags                    []string       `json:"tags"`
 	GroupIDs                []int64        `json:"group_ids"`
 	ProxyID                 *int64         `json:"proxy_id"`
 	Concurrency             *int           `json:"concurrency"`
@@ -432,6 +433,7 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 	account, err := h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
 		Name:                  buildOpenAICodexPATAccountName(req.Name, tokenInfo),
 		Notes:                 req.Notes,
+		Tags:                  req.Tags,
 		Platform:              service.PlatformOpenAI,
 		Type:                  service.AccountTypeOAuth,
 		Credentials:           credentials,

@@ -299,6 +299,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	input := &CreateAccountInput{
 		Name:                  duplicateAccountName(source.Name),
 		Notes:                 cloneAccountValuePointer(source.Notes),
+		Tags:                  append([]string(nil), source.Tags...),
 		Platform:              source.Platform,
 		Type:                  source.Type,
 		Credentials:           credentials,
@@ -426,6 +427,14 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Priority:    input.Priority,
 		Status:      StatusActive,
 		Schedulable: true,
+		Tags:        nil,
+	}
+	if input.Tags != nil {
+		normalizedTags, err := NormalizeAccountTags(input.Tags)
+		if err != nil {
+			return nil, err
+		}
+		account.Tags = normalizedTags
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -618,6 +627,13 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if input.Notes != nil {
 		account.Notes = normalizeAccountNotes(input.Notes)
+	}
+	if input.Tags != nil {
+		normalizedTags, tagErr := NormalizeAccountTags(*input.Tags)
+		if tagErr != nil {
+			return nil, tagErr
+		}
+		account.Tags = normalizedTags
 	}
 	if account.IsCredentialShadow() && input.Credentials != nil {
 		account.Credentials = sanitizeSparkShadowCredentials(input.Credentials)
@@ -1060,6 +1076,13 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		Extra:                      input.Extra,
 		ProbeEnabled:               input.ProbeEnabled,
 		EnsureCodexFingerprintSeed: ShouldEnsureCodexFingerprintSeedForExtraUpdates(input.Extra),
+	}
+	if input.Tags != nil {
+		normalizedTags, tagErr := NormalizeAccountTags(*input.Tags)
+		if tagErr != nil {
+			return nil, tagErr
+		}
+		repoUpdates.Tags = &normalizedTags
 	}
 	if input.ProbeEnabled != nil {
 		if repoUpdates.Extra == nil {

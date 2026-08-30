@@ -177,6 +177,7 @@ type AccountBulkUpdate struct {
 type CreateAccountRequest struct {
 	Name               string         `json:"name"`
 	Notes              *string        `json:"notes"`
+	Tags               []string       `json:"tags"`
 	Platform           string         `json:"platform"`
 	Type               string         `json:"type"`
 	Credentials        map[string]any `json:"credentials"`
@@ -193,6 +194,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name               *string         `json:"name"`
 	Notes              *string         `json:"notes"`
+	Tags               *[]string       `json:"tags"`
 	Credentials        *map[string]any `json:"credentials"`
 	Extra              *map[string]any `json:"extra"`
 	ProxyID            *int64          `json:"proxy_id"`
@@ -244,6 +246,14 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Priority:    req.Priority,
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
+		Tags:        nil,
+	}
+	if req.Tags != nil {
+		normalizedTags, err := NormalizeAccountTags(req.Tags)
+		if err != nil {
+			return nil, err
+		}
+		account.Tags = normalizedTags
 	}
 	if req.AutoPauseOnExpired != nil {
 		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
@@ -327,6 +337,13 @@ func (s *AccountService) Update(ctx context.Context, id int64, req UpdateAccount
 	}
 	if req.Notes != nil {
 		account.Notes = normalizeAccountNotes(req.Notes)
+	}
+	if req.Tags != nil {
+		normalizedTags, tagErr := NormalizeAccountTags(*req.Tags)
+		if tagErr != nil {
+			return nil, tagErr
+		}
+		account.Tags = normalizedTags
 	}
 
 	if req.Credentials != nil {
