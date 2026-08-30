@@ -508,6 +508,9 @@ type ModelPlazaRuntime struct {
 // settings store. Fail-closed: on error returns Enabled=false, matching the
 // opt-in default (unknown ↔ disabled).
 func (s *SettingService) GetModelPlazaRuntime(ctx context.Context) ModelPlazaRuntime {
+	if s == nil || s.settingRepo == nil {
+		return ModelPlazaRuntime{Enabled: false}
+	}
 	vals, err := s.settingRepo.GetMultiple(ctx, []string{
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,

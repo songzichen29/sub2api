@@ -2,6 +2,7 @@ package handler
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -106,25 +107,30 @@ type modelPlazaResponse struct {
 // Get 返回模型广场数据。
 // GET /api/v1/model-plaza
 func (h *ModelPlazaHandler) Get(c *gin.Context) {
-	if h.settingService == nil {
-		response.NotFound(c, "Model plaza is not enabled")
+	if h == nil || h.settingService == nil {
+		writeModelPlazaError(c, http.StatusNotFound, "MODEL_PLAZA_DISABLED", "Model plaza is not enabled")
 		return
 	}
 	rt := h.settingService.GetModelPlazaRuntime(c.Request.Context())
 	if !rt.Enabled {
-		response.NotFound(c, "Model plaza is not enabled")
+		writeModelPlazaError(c, http.StatusNotFound, "MODEL_PLAZA_DISABLED", "Model plaza is not enabled")
 		return
 	}
 
 	subject, authed := middleware.GetAuthSubjectFromContext(c)
 	if rt.RequireAuth && !authed {
-		response.Unauthorized(c, "Authentication required")
+		writeModelPlazaError(c, http.StatusUnauthorized, "MODEL_PLAZA_AUTH_REQUIRED", "Authentication required")
+		return
+	}
+	if h.plazaService == nil {
+		writeModelPlazaError(c, http.StatusInternalServerError, "MODEL_PLAZA_UNAVAILABLE", "Model plaza service is unavailable")
 		return
 	}
 
 	groups, err := h.plazaService.ListGroups(c.Request.Context())
 	if err != nil {
-		response.ErrorFrom(c, err)
+		slog.Error("model_plaza_list_groups_failed", "error", err)
+		writeModelPlazaError(c, http.StatusInternalServerError, "MODEL_PLAZA_QUERY_FAILED", "Failed to load model plaza data")
 		return
 	}
 
@@ -133,10 +139,15 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 	var restrictPublicGroups bool
 	var userRates map[int64]float64
 	if authed {
+		if h.apiKeyService == nil {
+			writeModelPlazaError(c, http.StatusInternalServerError, "MODEL_PLAZA_AUTH_SERVICE_UNAVAILABLE", "Model plaza authentication service is unavailable")
+			return
+		}
 		allowedGroups, restrictPublicGroups, err = h.apiKeyService.GetUserGroupVisibility(c.Request.Context(), subject.UserID)
 		if err != nil {
 			// 可见性数据拿不到时不能静默降级成匿名视图（会错漏专属分组），直接报错。
-			response.ErrorFrom(c, err)
+			slog.Error("model_plaza_user_visibility_failed", "error", err, "user_id", subject.UserID)
+			writeModelPlazaError(c, http.StatusInternalServerError, "MODEL_PLAZA_VISIBILITY_QUERY_FAILED", "Failed to load model plaza visibility")
 			return
 		}
 		userRates, err = h.apiKeyService.GetUserGroupRates(c.Request.Context(), subject.UserID)
@@ -157,6 +168,10 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 		Description: rt.Description,
 		Groups:      out,
 	})
+}
+
+func writeModelPlazaError(c *gin.Context, status int, reason, message string) {
+	response.ErrorWithDetails(c, status, message, reason, nil)
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。

@@ -42,6 +42,45 @@ func NewPaymentHandler(paymentService *service.PaymentService, configService *se
 // GetDashboard returns payment dashboard statistics.
 // GET /api/v1/admin/payment/dashboard
 func (h *PaymentHandler) GetDashboard(c *gin.Context) {
+	startRaw := firstNonEmptyQuery(c.Query("start"), c.Query("start_date"))
+	endRaw := firstNonEmptyQuery(c.Query("end"), c.Query("end_date"))
+	if (startRaw == "") != (endRaw == "") {
+		response.BadRequest(c, "start and end are required together")
+		return
+	}
+
+	if startRaw != "" {
+		const maxRangeDays = 370
+		userTZ := c.Query("timezone")
+		start, err := timezone.ParseInUserLocation("2006-01-02", startRaw, userTZ)
+		if err != nil {
+			response.BadRequest(c, "invalid start date")
+			return
+		}
+		end, err := timezone.ParseInUserLocation("2006-01-02", endRaw, userTZ)
+		if err != nil {
+			response.BadRequest(c, "invalid end date")
+			return
+		}
+		start = timezone.StartOfDayInUserLocation(start, userTZ)
+		endExclusive := timezone.StartOfDayInUserLocation(end, userTZ).AddDate(0, 0, 1)
+		if !endExclusive.After(start) {
+			response.BadRequest(c, "end date must be greater than or equal to start date")
+			return
+		}
+		if endExclusive.Sub(start) > maxRangeDays*24*time.Hour {
+			response.BadRequest(c, "date range is too large")
+			return
+		}
+		stats, err := h.paymentService.GetDashboardStatsRange(c.Request.Context(), start, endExclusive)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, stats)
+		return
+	}
+
 	days := 30
 	if d := c.Query("days"); d != "" {
 		if v, err := strconv.Atoi(d); err == nil && v > 0 {
@@ -54,6 +93,15 @@ func (h *PaymentHandler) GetDashboard(c *gin.Context) {
 		return
 	}
 	response.Success(c, stats)
+}
+
+func firstNonEmptyQuery(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // GetDailyStats returns payment daily statistics for an explicit date range.
