@@ -42,16 +42,16 @@
 
         <router-link
           v-if="showMarketplaceEntry"
-          to="/model-marketplace"
+          to="/available-channels"
           class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors"
           :class="
-            route.path === '/model-marketplace'
+              route.path === '/available-channels'
               ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/25 dark:text-primary-300'
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white'
           "
         >
           <Icon name="globe" size="sm" />
-          <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+          <span class="hidden sm:inline">{{ t('nav.availableChannels') }}</span>
         </router-link>
 
         <!-- Docs Link -->
@@ -66,15 +66,6 @@
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
         </a>
 
-        <!-- Model Plaza Entry -->
-        <router-link
-          v-if="user && modelPlazaEnabled && !showMarketplaceEntry"
-          :to="{ path: '/model-plaza', query: { embedded: '1' } }"
-          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white sm:flex"
-        >
-          <Icon name="grid" size="sm" />
-          <span class="hidden sm:inline">{{ t('nav.modelPlaza') }}</span>
-        </router-link>
 
         <!-- Language Switcher -->
         <LocaleSwitcher />
@@ -312,7 +303,6 @@ const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
-const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const showMarketplaceEntry = computed(() => !!user.value && isFeatureFlagEnabled(FeatureFlags.availableChannels))
 const availableBalance = computed(() => Number(user.value?.balance || 0))

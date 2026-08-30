@@ -42,12 +42,12 @@
           </a>
           <router-link
             v-if="showMarketplaceEntry"
-            to="/model-marketplace"
+            to="/available-channels"
             class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('nav.modelMarketplace')"
+            :title="t('nav.availableChannels')"
           >
             <Icon name="globe" size="md" />
-            <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+            <span class="hidden sm:inline">{{ t('nav.availableChannels') }}</span>
           </router-link>
           <router-link
             v-else-if="showModelPlazaEntry"
@@ -161,12 +161,12 @@
           <!-- Model Plaza Link -->
           <router-link
             v-if="showMarketplaceEntry"
-            to="/model-marketplace"
+            to="/available-channels"
             class="inline-flex items-center gap-1.5 rounded-lg p-2 text-sm text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
-            :title="t('nav.modelMarketplace')"
+            :title="t('nav.availableChannels')"
           >
             <Icon name="globe" size="md" />
-            <span class="hidden sm:inline">{{ t('nav.modelMarketplace') }}</span>
+            <span class="hidden sm:inline">{{ t('nav.availableChannels') }}</span>
           </router-link>
           <router-link
             v-else-if="showModelPlazaEntry"

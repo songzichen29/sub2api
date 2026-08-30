@@ -379,13 +379,13 @@ const (
 	channelMonitorIntervalMin      = 15
 	channelMonitorIntervalMax      = 3600
 	channelMonitorIntervalFallback = 60
-	defaultChannelMonitorMode      = ChannelMonitorModeV1
+	defaultChannelMonitorMode      = ChannelMonitorModeV2
 )
 
-// normalizeChannelMonitorMode accepts only v1/v2; empty/invalid → v1 (safe default).
+// normalizeChannelMonitorMode accepts only v1/v2; empty/invalid → v2 (current default).
 func normalizeChannelMonitorMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case ChannelMonitorModeV1, "":
+	case ChannelMonitorModeV1:
 		return ChannelMonitorModeV1
 	case ChannelMonitorModeV2:
 		return ChannelMonitorModeV2
@@ -443,7 +443,7 @@ func (r ChannelMonitorRuntime) PassiveAggregationAllowed() bool {
 }
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
-// the settings store. Fail-open: on error returns Enabled=true, Mode=v1, default interval.
+// the settings store. Fail-open: on error returns Enabled=true, Mode=v2, default interval.
 func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime {
 	if s == nil || s.settingRepo == nil {
 		return ChannelMonitorRuntime{

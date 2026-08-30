@@ -1674,8 +1674,9 @@ const formatKeyUserCost = computed(() => {
 
 const formatThirdPartyAmount = (value: number | null | undefined): string => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
-  if (Math.abs(value) >= 10000) return formatCompactNumber(value)
-  return value.toFixed(2)
+  const normalized = Math.max(value, 0)
+  if (normalized >= 10000) return formatCompactNumber(normalized)
+  return normalized.toFixed(2)
 }
 
 onMounted(() => {

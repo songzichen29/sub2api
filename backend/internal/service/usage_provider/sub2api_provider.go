@@ -117,20 +117,25 @@ func (p *sub2APIProvider) Fetch(ctx context.Context, cfg Config) (*QuotaInfo, er
 		if err := validateSub2APIAmount("quota.used", parsed.Quota.Used); err != nil {
 			return nil, err
 		}
-		if err := validateSub2APIAmount("quota.remaining", parsed.Quota.Remaining); err != nil {
+		quotaRemaining := parsed.Quota.Remaining
+		if quotaRemaining < 0 {
+			// Sub2API uses a negative sentinel for an exhausted balance.
+			quotaRemaining = 0
+		}
+		if err := validateSub2APIAmount("quota.remaining", quotaRemaining); err != nil {
 			return nil, err
 		}
 
 		total := parsed.Quota.Limit
 		if total <= 0 {
-			total = parsed.Quota.Used + parsed.Quota.Remaining
+			total = parsed.Quota.Used + quotaRemaining
 		}
 		utilization := quotaUtilization(parsed.Quota.Used, total)
 		unit := firstNonEmpty(parsed.Quota.Unit, parsed.Unit, "USD")
 		planName := firstNonEmpty(parsed.PlanName, "API Key 额度")
 		return &QuotaInfo{
 			PlanName:    planName,
-			Remaining:   parsed.Quota.Remaining,
+			Remaining:   quotaRemaining,
 			Used:        parsed.Quota.Used,
 			Total:       total,
 			Unit:        unit,
@@ -147,13 +152,19 @@ func (p *sub2APIProvider) Fetch(ctx context.Context, cfg Config) (*QuotaInfo, er
 	if remaining == nil {
 		return nil, fmt.Errorf("sub2api response does not contain balance or quota information")
 	}
-	if err := validateSub2APIAmount("remaining", *remaining); err != nil {
+	remainingValue := *remaining
+	if remainingValue < 0 {
+		// A negative wallet balance is an exhausted quota sentinel. Clamp it
+		// so the account panel can display a stable zero balance.
+		remainingValue = 0
+	}
+	if err := validateSub2APIAmount("remaining", remainingValue); err != nil {
 		return nil, err
 	}
 
 	return &QuotaInfo{
 		PlanName:   firstNonEmpty(parsed.PlanName, "钱包余额"),
-		Remaining:  *remaining,
+		Remaining:  remainingValue,
 		Unit:       firstNonEmpty(parsed.Unit, "USD"),
 		TotalKnown: false,
 		UpdatedAt:  now,

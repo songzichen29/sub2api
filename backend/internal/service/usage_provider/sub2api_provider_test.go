@@ -78,6 +78,31 @@ func TestSub2APIProviderFetchKeyQuota(t *testing.T) {
 	}
 }
 
+func TestSub2APIProviderClampsNegativeRemainingToZero(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"isValid":   true,
+			"planName":  "已用尽",
+			"remaining": -1,
+			"unit":      "USD",
+		})
+	}))
+	defer srv.Close()
+
+	provider := NewSub2APIProviderWithClient(testHTTPClient())
+	got, err := provider.Fetch(context.Background(), Config{
+		Provider:    ProviderSub2API,
+		BaseURL:     srv.URL,
+		AccessToken: "sk-sub2",
+	})
+	if err != nil {
+		t.Fatalf("Fetch() error = %v", err)
+	}
+	if got.Remaining != 0 {
+		t.Fatalf("remaining = %v, want 0", got.Remaining)
+	}
+}
+
 func TestSub2APIProviderRejectsInvalidKeyResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{

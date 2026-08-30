@@ -699,7 +699,7 @@ const flagBatchImageAccess = () => canUseBatchImage.value
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
 // 条目顺序：密钥 → 用量 → 渠道状态 → 订阅/支付 → 兑换/资料。
-// 模型/渠道目录统一指向 Model Marketplace，/available-channels 仅保留兼容跳转。
+// 用户侧目录统一使用“可用渠道”入口；模型广场是旧兼容页面，不放入用户菜单。
 function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
@@ -709,7 +709,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/model-marketplace', label: t('nav.modelMarketplace'), icon: GlobeIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: GlobeIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },

@@ -20,6 +20,18 @@ func (p *countingUsageProvider) Fetch(context.Context, usage_provider.Config) (*
 	return &usage_provider.QuotaInfo{Remaining: float64(p.calls), Unit: "USD"}, nil
 }
 
+type zeroQuotaAccountRepoStub struct {
+	AccountRepository
+	setSchedulableCalls int
+	lastSchedulable     bool
+}
+
+func (s *zeroQuotaAccountRepoStub) SetSchedulable(_ context.Context, _ int64, schedulable bool) error {
+	s.setSchedulableCalls++
+	s.lastSchedulable = schedulable
+	return nil
+}
+
 func TestResolveProviderConfigSub2APIUsesAccountCredentials(t *testing.T) {
 	svc := &AccountUsageService{}
 	account := &Account{Credentials: map[string]any{
@@ -73,4 +85,47 @@ func TestThirdPartyUsageForceBypassesCache(t *testing.T) {
 	if provider.calls != 2 {
 		t.Fatalf("provider calls = %d, want 2", provider.calls)
 	}
+}
+
+func TestThirdPartyUsageDisablesSchedulingWhenBalanceIsZero(t *testing.T) {
+	repo := &zeroQuotaAccountRepoStub{}
+	svc := &AccountUsageService{
+		accountRepo: repo,
+		cache:       NewUsageCache(),
+		thirdPartyFactory: func(usage_provider.ProviderType) (usage_provider.Provider, error) {
+			return zeroQuotaProvider{}, nil
+		},
+	}
+	account := &Account{
+		ID:          7,
+		Schedulable: true,
+		Credentials: map[string]any{"base_url": "https://sub2.example/v1", "api_key": "key"},
+	}
+
+	usage, err := svc.getThirdPartyUsage(context.Background(), account, usageQueryConfig{Provider: usage_provider.ProviderSub2API}, false)
+	if err != nil || usage == nil || usage.ThirdPartyQuota == nil || usage.ThirdPartyQuota.Remaining != 0 {
+		t.Fatalf("zero quota usage = %#v, err=%v", usage, err)
+	}
+	if repo.setSchedulableCalls != 1 || repo.lastSchedulable {
+		t.Fatalf("SetSchedulable calls = %d, last=%t; want one false update", repo.setSchedulableCalls, repo.lastSchedulable)
+	}
+	if account.Schedulable {
+		t.Fatal("account should be marked unschedulable after zero quota")
+	}
+
+	_, err = svc.getThirdPartyUsage(context.Background(), account, usageQueryConfig{Provider: usage_provider.ProviderSub2API}, false)
+	if err != nil {
+		t.Fatalf("cached zero quota error = %v", err)
+	}
+	if repo.setSchedulableCalls != 1 {
+		t.Fatalf("cached zero quota repeated scheduling update: %d calls", repo.setSchedulableCalls)
+	}
+}
+
+type zeroQuotaProvider struct{}
+
+func (zeroQuotaProvider) Type() usage_provider.ProviderType { return usage_provider.ProviderSub2API }
+
+func (zeroQuotaProvider) Fetch(context.Context, usage_provider.Config) (*usage_provider.QuotaInfo, error) {
+	return &usage_provider.QuotaInfo{Remaining: 0, Unit: "USD"}, nil
 }

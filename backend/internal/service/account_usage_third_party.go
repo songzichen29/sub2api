@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -119,6 +121,7 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 				return buildThirdPartyUsageInfo(nil, entry.err), nil
 			}
 			if entry.quota != nil && age < thirdPartyCacheTTL {
+				s.disableSchedulingForZeroThirdPartyQuota(ctx, account, entry.quota)
 				return buildThirdPartyUsageInfo(entry.quota, nil), nil
 			}
 		}
@@ -181,7 +184,27 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 		return buildThirdPartyUsageInfo(nil, fetchErr), nil
 	}
 	quota, _ := result.(*usage_provider.QuotaInfo)
+	s.disableSchedulingForZeroThirdPartyQuota(ctx, account, quota)
 	return buildThirdPartyUsageInfo(quota, nil), nil
+}
+
+// disableSchedulingForZeroThirdPartyQuota applies fail-closed scheduling for
+// a valid third-party quota response with no remaining balance. Errors and
+// unknown results do not change scheduling state.
+func (s *AccountUsageService) disableSchedulingForZeroThirdPartyQuota(ctx context.Context, account *Account, quota *usage_provider.QuotaInfo) {
+	if s == nil || s.accountRepo == nil || account == nil || quota == nil ||
+		math.IsNaN(quota.Remaining) || math.IsInf(quota.Remaining, 0) || quota.Remaining > 0 {
+		return
+	}
+	if !account.Schedulable {
+		return
+	}
+	if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+		slog.Warn("disable_account_scheduling_zero_third_party_quota_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	account.Schedulable = false
+	slog.Warn("account_scheduling_disabled_zero_third_party_quota", "account_id", account.ID, "unit", quota.Unit)
 }
 
 // buildThirdPartyUsageInfo 把 Provider 结果包装成 UsageInfo。

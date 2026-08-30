@@ -260,7 +260,14 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/available-channels',
-    redirect: '/model-marketplace'
+    name: 'AvailableChannels',
+    component: () => import('@/views/user/AvailableChannelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Available Channels',
+      titleKey: 'nav.availableChannels'
+    }
   },
   {
     path: '/profile',
@@ -870,10 +877,10 @@ router.beforeEach(async (to, _from, next) => {
         }
       }
       const plazaSettings = appStore.cachedPublicSettings
-      // Available Channels and Model Plaza now share one canonical page. Keep
-      // old Model Plaza links working without rendering two different catalogs.
+      // Available Channels is the authenticated canonical catalog. Keep old
+      // Model Plaza links working without rendering two different catalogs.
       if (plazaSettings?.available_channels_enabled === true) {
-        next({ path: '/model-marketplace', query: to.query })
+        next({ path: '/available-channels', query: to.query })
         return
       }
       // 仅在设置成功加载且明确为 false 时拦截(瞬时加载失败视为未知,由后端 404 兜底)
@@ -919,10 +926,9 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // The marketplace is the canonical replacement for the legacy available-
-  // channels page. Respect its feature flag even when a user enters the URL
-  // directly instead of using the header link.
-  if (to.path === '/model-marketplace') {
+  // Respect the available-channels feature flag even when a user enters either
+  // catalog URL directly instead of using the menu link.
+  if (to.path === '/available-channels' || to.path === '/model-marketplace') {
     if (!appStore.publicSettingsLoaded) {
       try {
         await appStore.fetchPublicSettings()
@@ -930,12 +936,17 @@ router.beforeEach(async (to, _from, next) => {
         console.warn('Failed to load public settings for marketplace route', error)
       }
     }
-    if (appStore.publicSettingsLoaded && appStore.cachedPublicSettings?.available_channels_enabled !== true) {
+    const availableChannelsEnabled = appStore.cachedPublicSettings?.available_channels_enabled === true
+    if (appStore.publicSettingsLoaded && !availableChannelsEnabled) {
       if (appStore.cachedPublicSettings?.model_plaza_enabled === true) {
         next({ path: '/model-plaza', query: { embedded: '1' } })
       } else {
         next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
       }
+      return
+    }
+    if (availableChannelsEnabled && to.path === '/model-marketplace') {
+      next({ path: '/available-channels', query: to.query })
       return
     }
   }
