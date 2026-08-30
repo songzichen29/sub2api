@@ -43,7 +43,7 @@ func buildMonitorInt64InClause(ids []int64) (string, []any) {
 }
 
 func buildMonitorModelTargetsClause(ids []int64, primaryModels map[int64]string) (string, []any) {
-	pairIDs, pairModels := buildMonitorModelPairs(ids, primaryModels)
+	pairIDs, _ := buildMonitorModelPairs(ids, primaryModels)
 	if len(pairIDs) == 0 {
 		return "", nil
 	}
