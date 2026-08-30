@@ -288,6 +288,23 @@ func TestMySQLGrokCompatibilityMigrationsExist(t *testing.T) {
 	}
 }
 
+func TestMySQLCheckConstraintMigrationsUsePortableTableLookup(t *testing.T) {
+	for _, name := range []string{
+		"079_user_platform_quotas_cn_providers.sql",
+		"084_composite_routes_cn_providers.sql",
+	} {
+		t.Run(name, func(t *testing.T) {
+			content, err := MySQLFS.ReadFile(name)
+			require.NoError(t, err)
+
+			sql := strings.ToLower(strings.Join(strings.Fields(string(content)), " "))
+			require.Contains(t, sql, "from information_schema.check_constraints as cc inner join information_schema.table_constraints as tc")
+			require.Contains(t, sql, "tc.table_name =")
+			require.NotContains(t, sql, "from information_schema.check_constraints where")
+		})
+	}
+}
+
 func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 	tests := []struct {
 		name     string

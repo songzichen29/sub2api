@@ -1,8 +1,13 @@
 SET @constraint_clause = (
-    SELECT LOWER(check_clause) FROM information_schema.check_constraints
-    WHERE constraint_schema = DATABASE()
-      AND table_name = 'user_platform_quotas'
-      AND constraint_name = 'user_platform_quotas_platform_check'
+    SELECT LOWER(cc.check_clause)
+    FROM information_schema.check_constraints AS cc
+    INNER JOIN information_schema.table_constraints AS tc
+        ON tc.constraint_schema = cc.constraint_schema
+       AND tc.constraint_name = cc.constraint_name
+    WHERE cc.constraint_schema = DATABASE()
+      AND tc.table_name = 'user_platform_quotas'
+      AND cc.constraint_name = 'user_platform_quotas_platform_check'
+      AND tc.constraint_type = 'CHECK'
     LIMIT 1
 );
 SET @constraint_needs_update = IF(

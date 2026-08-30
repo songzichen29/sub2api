@@ -1,8 +1,13 @@
 SET @constraint_clause = (
-    SELECT LOWER(check_clause) FROM information_schema.check_constraints
-    WHERE constraint_schema = DATABASE()
-      AND table_name = 'composite_model_routes'
-      AND constraint_name = 'chk_composite_model_routes_target_platform'
+    SELECT LOWER(cc.check_clause)
+    FROM information_schema.check_constraints AS cc
+    INNER JOIN information_schema.table_constraints AS tc
+        ON tc.constraint_schema = cc.constraint_schema
+       AND tc.constraint_name = cc.constraint_name
+    WHERE cc.constraint_schema = DATABASE()
+      AND tc.table_name = 'composite_model_routes'
+      AND cc.constraint_name = 'chk_composite_model_routes_target_platform'
+      AND tc.constraint_type = 'CHECK'
     LIMIT 1
 );
 SET @constraint_needs_update = IF(
