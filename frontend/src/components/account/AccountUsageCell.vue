@@ -562,8 +562,64 @@
 
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else>
+    <!-- Third-party panel usage (for example newapi-backed API keys). -->
+    <template v-if="showThirdPartyUsage">
+      <div v-if="loading" class="space-y-1">
+        <div class="h-2 w-full animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+        <div class="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+      </div>
+      <div
+        v-else-if="usageInfo?.error"
+        class="max-w-[200px] truncate text-xs text-amber-600 dark:text-amber-400"
+        :title="usageInfo.error"
+      >
+        {{ usageInfo.error }}
+      </div>
+      <div v-else-if="usageInfo?.third_party_quota" class="flex items-center gap-2">
+        <div class="min-w-0 flex-1 space-y-1">
+          <div v-if="thirdPartyTotalKnown" class="flex items-center gap-2">
+            <div class="relative h-2 flex-1 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/80">
+              <div
+                class="h-full rounded-full transition-all duration-300"
+                :class="thirdPartyBarClass"
+                :style="{ width: thirdPartyBarWidth }"
+              ></div>
+            </div>
+            <span class="shrink-0 text-[11px] font-semibold tabular-nums" :class="thirdPartyTextClass">
+              {{ thirdPartyDisplayPercent }}
+            </span>
+          </div>
+          <div class="text-[11px] tabular-nums">
+            <span :class="['font-semibold', thirdPartyAmountClass]">
+              ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
+            </span>
+            <span v-if="thirdPartyTotalKnown" class="text-gray-400 dark:text-gray-500">
+              / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+          :title="t('admin.accounts.usageWindow.activeQuery')"
+          :aria-label="t('admin.accounts.usageWindow.activeQuery')"
+          :disabled="activeQueryLoading"
+          @click="loadActiveUsage"
+        >
+          <svg class="h-3 w-3" :class="{ 'animate-spin': activeQueryLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
     <!-- Gemini API Key accounts: show quota info -->
-    <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <div v-else-if="account.platform === 'gemini'">
+      <AccountQuotaInfo :account="account" />
+      <div v-if="showUsageQueryPlaceholder" class="mt-1 text-[11px] italic text-gray-400 dark:text-gray-500">
+        {{ t('admin.accounts.usageQuery.notEnabledHint') }}
+      </div>
+    </div>
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
       <OllamaCloudUsageCell
@@ -573,7 +629,7 @@
       />
       <!-- Today stats row (requests, tokens, cost, user_cost) -->
       <div
-        v-if="todayStats"
+        v-if="todayStats && !(showUsageQueryPlaceholder && isZeroTodayStats)"
         class="mb-0.5 flex items-center"
       >
         <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
@@ -629,7 +685,15 @@
 
       <!-- No data at all -->
       <div
-        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !account.ollama_cloud_usage?.eligible"
+        v-if="showUsageQueryPlaceholder"
+        class="text-[11px] italic text-gray-400 dark:text-gray-500"
+      >
+        {{ t('admin.accounts.usageQuery.notEnabledHint') }}
+      </div>
+
+      <!-- No data at all -->
+      <div
+        v-if="!todayStats && !todayStatsLoading && !hasApiKeyQuota && !showUsageQueryPlaceholder && !account.ollama_cloud_usage?.eligible"
         class="text-xs text-gray-400"
       >-</div>
     </div>
@@ -725,9 +789,64 @@ const showUsageWindows = computed(() => {
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
 })
 
+// API key accounts can opt into a provider-specific quota panel via extra.usage_query.
+const showThirdPartyUsage = computed(() => {
+  return props.account.type === 'apikey' && !!props.account.extra?.usage_query?.enabled
+})
+
+const showUsageQueryPlaceholder = computed(() => {
+  return props.account.type === 'apikey' &&
+    props.account.extra?.usage_query != null &&
+    !showThirdPartyUsage.value
+})
+
+const isZeroTodayStats = computed(() => {
+  const stats = props.todayStats
+  if (!stats) return true
+  return (stats.requests ?? 0) === 0 &&
+    (stats.tokens ?? 0) === 0 &&
+    (stats.cost ?? 0) === 0 &&
+    (stats.user_cost ?? 0) === 0
+})
+
+const thirdPartyPercentRaw = computed(() => {
+  const utilization = usageInfo.value?.third_party_quota?.utilization
+  return typeof utilization === 'number' && Number.isFinite(utilization)
+    ? utilization * 100
+    : 0
+})
+
+const thirdPartyTotalKnown = computed(() => usageInfo.value?.third_party_quota?.total_known !== false)
+const thirdPartyBarWidth = computed(() => `${Math.max(0, Math.min(thirdPartyPercentRaw.value, 100))}%`)
+const thirdPartyDisplayPercent = computed(() => {
+  const percent = Math.round(thirdPartyPercentRaw.value)
+  return percent > 999 ? '>999%' : `${Math.max(0, percent)}%`
+})
+const thirdPartyBarClass = computed(() => {
+  const percent = thirdPartyPercentRaw.value
+  if (percent >= 100) return 'bg-red-500'
+  if (percent >= 80) return 'bg-amber-500'
+  if (percent >= 50) return 'bg-yellow-400'
+  return 'bg-emerald-500'
+})
+const thirdPartyTextClass = computed(() => {
+  const percent = thirdPartyPercentRaw.value
+  if (percent >= 100) return 'text-red-600 dark:text-red-400'
+  if (percent >= 80) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-600 dark:text-gray-300'
+})
+const thirdPartyAmountClass = computed(() => {
+  const remaining = usageInfo.value?.third_party_quota?.remaining
+  if (typeof remaining === 'number' && remaining <= 0) return 'text-red-600 dark:text-red-400'
+  return thirdPartyPercentRaw.value >= 80
+    ? 'text-amber-600 dark:text-amber-400'
+    : 'text-gray-800 dark:text-gray-100'
+})
+
 const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'anthropic') {
-    return props.account.type === 'oauth' || props.account.type === 'setup-token'
+    if (props.account.type === 'oauth' || props.account.type === 'setup-token') return true
+    return showThirdPartyUsage.value
   }
   if (props.account.platform === 'gemini') {
     return true
@@ -739,8 +858,10 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   }
   if (props.account.platform === 'openai') {
-    return props.account.type === 'oauth'
+    if (props.account.type === 'oauth') return true
+    return showThirdPartyUsage.value
   }
+  if (showThirdPartyUsage.value) return true
   return false
 })
 
@@ -1550,6 +1671,12 @@ const formatKeyUserCost = computed(() => {
   if (!props.todayStats || props.todayStats.user_cost == null) return '0.00'
   return props.todayStats.user_cost.toFixed(2)
 })
+
+const formatThirdPartyAmount = (value: number | null | undefined): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  if (Math.abs(value) >= 10000) return formatCompactNumber(value)
+  return value.toFixed(2)
+}
 
 onMounted(() => {
   if (typeof window !== 'undefined') {

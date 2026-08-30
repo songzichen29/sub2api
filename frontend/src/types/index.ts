@@ -1140,6 +1140,17 @@ export interface AccountUsageQueryConfig {
   user_id?: string
 }
 
+export interface AccountThirdPartyQuotaInfo {
+  plan_name: string
+  remaining: number
+  used: number
+  total: number
+  unit: string
+  utilization: number
+  total_known?: boolean
+  updated_at?: number
+}
+
 export interface Account {
   id: number
   name: string
@@ -1156,6 +1167,7 @@ export interface Account {
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
+    usage_query?: AccountUsageQueryConfig
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
@@ -1371,6 +1383,7 @@ export interface AccountUsageInfo {
   gemini_pro_minute?: UsageProgress | null
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
+  third_party_quota?: AccountThirdPartyQuotaInfo | null
   grok_request_quota?: GrokQuotaWindow | null
   grok_token_quota?: GrokQuotaWindow | null
   grok_retry_after_seconds?: number | null
@@ -2042,6 +2055,7 @@ export interface UserSubscription {
   quota_limit_usd?: number | null
   quota_used_usd?: number | null
   quota_remaining_usd?: number | null
+  source?: string
   allow_daily_overdraft: boolean
   skip_weekends: boolean
   weekend_skip_user_changed_at?: string | null
@@ -2091,6 +2105,8 @@ export interface AssignSubscriptionRequest {
   user_id: number
   group_id: number
   validity_days?: number
+  starts_at?: string
+  expires_at?: string
 }
 
 export interface BulkAssignSubscriptionRequest {
@@ -2100,7 +2116,9 @@ export interface BulkAssignSubscriptionRequest {
 }
 
 export interface ExtendSubscriptionRequest {
-  days: number
+  days?: number
+  starts_at?: string
+  expires_at?: string
 }
 
 // ==================== Query Parameters ====================
