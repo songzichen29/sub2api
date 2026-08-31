@@ -609,6 +609,31 @@ const persistTemplates = async () => {
   templates.value = await props.templatesSaver(templates.value)
 }
 
+const persistSelectedTemplateSnapshot = async () => {
+  if (!props.templatesSaver || !selectedTemplateId.value) return
+  const index = templates.value.findIndex((item) => item.id === selectedTemplateId.value)
+  if (index < 0) return
+
+  const previousTemplates = templates.value
+  const selected = previousTemplates[index]
+  templates.value = previousTemplates.map((item, itemIndex) =>
+    itemIndex === index
+      ? {
+          id: selected.id,
+          name: selected.name,
+          ...buildTemplateSnapshot()
+        }
+      : item
+  )
+
+  try {
+    await persistTemplates()
+  } catch (error) {
+    templates.value = previousTemplates
+    throw error
+  }
+}
+
 
 const handleTemplateSelect = (value: string | number | boolean | null) => {
   selectedTemplateId.value = typeof value === 'string' ? value : ''
@@ -805,6 +830,7 @@ const handleImport = async () => {
     const dataPayload = mergeDataPayloads(payloads)
 
     const apply = buildApplyPayload()
+    await persistSelectedTemplateSnapshot()
 
     const res = await props.importer({
       data: dataPayload,

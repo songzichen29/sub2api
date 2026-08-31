@@ -481,6 +481,55 @@ describe('ImportDataModal', () => {
     expect(arg.apply).toEqual({ group_ids: [5, 7] })
   })
 
+  it('修改已选模板后再次导入会先更新模板内容', async () => {
+    getTemplatesMock.mockResolvedValue([
+      makeTemplate({
+        id: 'tpl-concurrency',
+        name: '并发模板',
+        enableConcurrency: true,
+        applyConcurrency: 2
+      })
+    ])
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'tpl-concurrency')
+    await wrapper.find('input#import-apply-concurrency').setValue(8)
+    await attachJsonFile(wrapper, sampleData)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(updateTemplatesMock).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 'tpl-concurrency',
+        name: '并发模板',
+        enableConcurrency: true,
+        applyConcurrency: 8
+      })
+    ])
+    expect(importDataMock).toHaveBeenCalledWith(
+      expect.objectContaining({ apply: { concurrency: 8 } })
+    )
+    expect(updateTemplatesMock.mock.invocationCallOrder[0]).toBeLessThan(
+      importDataMock.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('已选模板更新失败时不会继续导入账号', async () => {
+    getTemplatesMock.mockResolvedValue([makeTemplate()])
+    updateTemplatesMock.mockRejectedValue(new Error('template save failed'))
+    const wrapper = mountModal()
+    await flushPromises()
+
+    await wrapper.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'tpl-default')
+    await attachJsonFile(wrapper, sampleData)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(importDataMock).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalledWith('template save failed')
+  })
+
   it('勾选 model restriction 白名单模式后 payload.apply.model_mapping 为 key=value 形式', async () => {
     const wrapper = mountModal()
 
