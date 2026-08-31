@@ -28,6 +28,10 @@ const (
 	channelMonitorV2RetentionRollup12h   = 45 * 24 * time.Hour // 43200
 	channelMonitorV2RetentionRollup1d    = 90 * 24 * time.Hour // 86400
 	channelMonitorV2RetentionMax         = channelMonitorV2RetentionRollup1d
+	// Retention runs in the same transaction as the current aggregation window.
+	// Keep every delete bounded so a deployment with a large expired backlog can
+	// still commit fresh facts and advance its watermark within the worker timeout.
+	channelMonitorV2RetentionDeleteBatch = 1000
 )
 
 // channelMonitorV2MaxRetention is the longest stored window (1d rollup). Used to
@@ -70,6 +74,20 @@ var channelMonitorV2RetentionRules = []channelMonitorV2RetentionRule{
 	{table: "channel_monitor_v2_latency_histograms_rollup", retention: channelMonitorV2RetentionRollup1d, bucketSeconds: 86400},
 }
 
+var channelMonitorV2FactTables = []string{
+	"channel_monitor_v2_latency_histograms_1m",
+	"channel_monitor_v2_error_metrics_1m",
+	"channel_monitor_v2_user_metrics_1m",
+	"channel_monitor_v2_metrics_1m",
+}
+
+func channelMonitorV2RetentionDeleteSQL(rule channelMonitorV2RetentionRule) string {
+	if rule.bucketSeconds == 0 {
+		return fmt.Sprintf(`DELETE FROM %s WHERE bucket_start < ? LIMIT %d`, rule.table, channelMonitorV2RetentionDeleteBatch)
+	}
+	return fmt.Sprintf(`DELETE FROM %s WHERE bucket_seconds = ? AND bucket_start < ? LIMIT %d`, rule.table, channelMonitorV2RetentionDeleteBatch)
+}
+
 func (r *channelMonitorV2Repository) pruneChannelMonitorV2Retention(ctx context.Context, tx *sql.Tx, now time.Time) error {
 	// During historical bootstrap, retain all 1m facts until the cursor reaches
 	// the oldest rollup boundary. Otherwise adjacent chunks would rebuild the
@@ -82,12 +100,9 @@ func (r *channelMonitorV2Repository) pruneChannelMonitorV2Retention(ctx context.
 		cutoff := channelMonitorV2RetentionCutoff(now, rule.retention)
 		var err error
 		if rule.bucketSeconds == 0 {
-			_, err = tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE bucket_start < ?`, rule.table), cutoff)
+			_, err = tx.ExecContext(ctx, channelMonitorV2RetentionDeleteSQL(rule), cutoff)
 		} else {
-			_, err = tx.ExecContext(ctx,
-				fmt.Sprintf(`DELETE FROM %s WHERE bucket_seconds = ? AND bucket_start < ?`, rule.table),
-				rule.bucketSeconds, cutoff,
-			)
+			_, err = tx.ExecContext(ctx, channelMonitorV2RetentionDeleteSQL(rule), rule.bucketSeconds, cutoff)
 		}
 		if err != nil {
 			return fmt.Errorf("prune %s (bucket_seconds=%d): %w", rule.table, rule.bucketSeconds, err)
@@ -118,17 +133,10 @@ func (r *channelMonitorV2Repository) RecomputeRange(ctx context.Context, start, 
 		}
 	}()
 
-	// Idempotent window rewrite: drop existing facts/rollups in [start,end) then re-insert.
-	for _, table := range []string{
-		"channel_monitor_v2_latency_histograms_rollup",
-		"channel_monitor_v2_error_metrics_rollup",
-		"channel_monitor_v2_user_metrics_rollup",
-		"channel_monitor_v2_metrics_rollup",
-		"channel_monitor_v2_latency_histograms_1m",
-		"channel_monitor_v2_error_metrics_1m",
-		"channel_monitor_v2_user_metrics_1m",
-		"channel_monitor_v2_metrics_1m",
-	} {
+	// Idempotent fact rewrite for [start,end). Fixed rollups are deleted below
+	// using their bucket_seconds plus aligned bounds; deleting them here as well
+	// scans all tiers by bucket_start and creates avoidable lock pressure.
+	for _, table := range channelMonitorV2FactTables {
 		if _, err = tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE bucket_start >= ? AND bucket_start < ?", table), start, end); err != nil {
 			return err
 		}

@@ -130,6 +130,26 @@ func TestChannelMonitorV2AggregationUsesMySQLDialect(t *testing.T) {
 	require.Contains(t, channelMonitorV2ErrorMetricsInsertSQL, "ON DUPLICATE KEY UPDATE")
 }
 
+func TestChannelMonitorV2RetentionDeletesAreBounded(t *testing.T) {
+	require.Positive(t, channelMonitorV2RetentionDeleteBatch)
+
+	factDelete := channelMonitorV2RetentionDeleteSQL(channelMonitorV2RetentionRule{table: "channel_monitor_v2_metrics_1m"})
+	rollupDelete := channelMonitorV2RetentionDeleteSQL(channelMonitorV2RetentionRule{table: "channel_monitor_v2_metrics_rollup", bucketSeconds: 300})
+
+	require.Contains(t, factDelete, "LIMIT 1000")
+	require.NotContains(t, factDelete, "bucket_seconds")
+	require.Contains(t, rollupDelete, "bucket_seconds = ?")
+	require.Contains(t, rollupDelete, "LIMIT 1000")
+}
+
+func TestChannelMonitorV2InitialRewriteOnlyDeletesMinuteFacts(t *testing.T) {
+	require.NotEmpty(t, channelMonitorV2FactTables)
+	for _, table := range channelMonitorV2FactTables {
+		require.HasSuffix(t, table, "_1m")
+		require.NotContains(t, table, "rollup")
+	}
+}
+
 func TestChannelMonitorV2ErrorAggregationResolvesCompositePlatform(t *testing.T) {
 	query := strings.ToLower(channelMonitorV2ErrorAggregationSQL)
 	// Composite groups are a routing layer: error facts must resolve the concrete
