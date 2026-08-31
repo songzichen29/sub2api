@@ -217,4 +217,30 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it('renders timing metrics from the completion event', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse([
+        'data: {"type":"test_start","model":"gemini-2.0-flash"}\n',
+        'data: {"type":"content","text":"ok"}\n',
+        'data: {"type":"test_complete","success":true,"elapsed_ms":1500,"connect_ms":120,"first_response_ms":340}\n'
+      ])
+    ) as any
+
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const startButton = wrapper.findAll('button').find((button) =>
+      button.text().includes('admin.accounts.startTest')
+    )
+    expect(startButton).toBeTruthy()
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('(1.50 s)')
+    expect(wrapper.text()).toContain('admin.accounts.testConnectElapsed: 120 ms')
+    expect(wrapper.text()).toContain('admin.accounts.testFirstResponseElapsed: 340 ms')
+    expect(wrapper.text()).toContain('admin.accounts.testElapsed: 1.50 s')
+  })
 })
