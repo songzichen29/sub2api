@@ -50,12 +50,15 @@ const (
 
 // TestEvent represents a SSE event for account testing
 type TestEvent struct {
-	Type     string `json:"type"`
-	Text     string `json:"text,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Code     string `json:"code,omitempty"`
-	ImageURL string `json:"image_url,omitempty"`
+	Type            string `json:"type"`
+	Text            string `json:"text,omitempty"`
+	Model           string `json:"model,omitempty"`
+	Status          string `json:"status,omitempty"`
+	Code            string `json:"code,omitempty"`
+	ElapsedMs       int64  `json:"elapsed_ms,omitempty"`
+	ConnectMs       int64  `json:"connect_ms,omitempty"`
+	FirstResponseMs int64  `json:"first_response_ms,omitempty"`
+	ImageURL        string `json:"image_url,omitempty"`
 	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
 	AudioURL string `json:"audio_url,omitempty"`
 	VideoURL string `json:"video_url,omitempty"`
@@ -63,6 +66,17 @@ type TestEvent struct {
 	Data     any    `json:"data,omitempty"`
 	Success  bool   `json:"success,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+const accountTestMetricsContextKey = "account_test_metrics"
+
+type accountTestMetrics struct {
+	mu                    sync.Mutex
+	startedAt             time.Time
+	connectMs             int64
+	connectRecorded       bool
+	firstResponseMs       int64
+	firstResponseRecorded bool
 }
 
 // AccountTestOptions carries optional media for admin connectivity tests.
@@ -274,6 +288,7 @@ func createTestPayload(modelID string) (map[string]any, error) {
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
+	c.Set(accountTestMetricsContextKey, &accountTestMetrics{startedAt: time.Now()})
 
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
@@ -326,6 +341,72 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+func getAccountTestMetrics(c *gin.Context) *accountTestMetrics {
+	if c == nil {
+		return nil
+	}
+	value, ok := c.Get(accountTestMetricsContextKey)
+	if !ok {
+		return nil
+	}
+	metrics, _ := value.(*accountTestMetrics)
+	return metrics
+}
+
+func accountTestElapsedMs(startedAt time.Time) int64 {
+	elapsedMs := time.Since(startedAt).Milliseconds()
+	if elapsedMs < 1 {
+		return 1
+	}
+	return elapsedMs
+}
+
+func markAccountTestConnected(c *gin.Context) {
+	metrics := getAccountTestMetrics(c)
+	if metrics == nil {
+		return
+	}
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	if metrics.connectRecorded || metrics.startedAt.IsZero() {
+		return
+	}
+	metrics.connectMs = accountTestElapsedMs(metrics.startedAt)
+	metrics.connectRecorded = true
+}
+
+func markAccountTestFirstResponse(c *gin.Context) {
+	metrics := getAccountTestMetrics(c)
+	if metrics == nil {
+		return
+	}
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	if metrics.firstResponseRecorded || metrics.startedAt.IsZero() {
+		return
+	}
+	metrics.firstResponseMs = accountTestElapsedMs(metrics.startedAt)
+	metrics.firstResponseRecorded = true
+}
+
+func populateAccountTestTiming(c *gin.Context, event *TestEvent) {
+	metrics := getAccountTestMetrics(c)
+	if metrics == nil || event == nil {
+		return
+	}
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	if event.ElapsedMs == 0 && !metrics.startedAt.IsZero() {
+		event.ElapsedMs = accountTestElapsedMs(metrics.startedAt)
+	}
+	if event.ConnectMs == 0 && metrics.connectRecorded {
+		event.ConnectMs = metrics.connectMs
+	}
+	if event.FirstResponseMs == 0 && metrics.firstResponseRecorded {
+		event.FirstResponseMs = metrics.firstResponseMs
+	}
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
@@ -454,6 +535,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
@@ -526,6 +608,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
@@ -612,6 +695,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
@@ -802,6 +886,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	if isOAuth && s.accountRepo != nil {
@@ -1119,6 +1204,7 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, testModelID), account, resp)
@@ -1211,6 +1297,7 @@ func (s *AccountTestService) testGrokImageGeneration(c *gin.Context, ctx context
 			return s.sendErrorAndEnd(c, formatGrokImageTransportError(doErr, hasSourceImage, len(payloadBytes)))
 		}
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 	s.observeGrokTestResponse(ctx, account, resp)
 
@@ -1298,6 +1385,7 @@ func (s *AccountTestService) testGrokVideoGeneration(c *gin.Context, ctx context
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok video request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 	s.observeGrokTestResponse(ctx, account, resp)
 
@@ -1468,6 +1556,7 @@ User query:
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("standalone web_search probe failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, grokDefaultResponsesModel), account, resp)
 
@@ -1549,6 +1638,7 @@ func (s *AccountTestService) testGrokTTS(c *gin.Context, ctx context.Context, ac
 		if err != nil {
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Grok TTS failed: %s", err.Error()))
 		}
+		markAccountTestConnected(c)
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		s.observeGrokTestResponse(ctx, account, resp)
@@ -1640,6 +1730,7 @@ func (s *AccountTestService) testGrokSTT(c *gin.Context, ctx context.Context, ac
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok STT failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 	s.observeGrokTestResponse(ctx, account, resp)
 	respBody, _ := io.ReadAll(resp.Body)
@@ -1733,6 +1824,7 @@ func (s *AccountTestService) testGrokRealtime(c *gin.Context, ctx context.Contex
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Realtime WS dial failed: %s", detail))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = conn.Close() }()
 
 	s.sendEvent(c, TestEvent{Type: "content", Text: "realtime ws handshake ok\n"})
@@ -2006,6 +2098,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
@@ -2144,6 +2237,7 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -2287,6 +2381,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
@@ -2336,6 +2431,7 @@ func (s *AccountTestService) testAntigravityAccountConnection(c *gin.Context, ac
 	if err != nil {
 		return s.sendErrorAndEnd(c, err.Error())
 	}
+	markAccountTestConnected(c)
 
 	// 发送响应内容
 	if result.Text != "" {
@@ -2915,6 +3011,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
@@ -3046,6 +3143,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
 	}
+	markAccountTestConnected(c)
 	defer func() {
 		if resp != nil && resp.Body != nil {
 			_ = resp.Body.Close()
@@ -3098,6 +3196,12 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 				return
 			}
 		}
+	}
+	if event.Type == "content" || event.Type == "image" || event.Type == "audio" || event.Type == "video" {
+		markAccountTestFirstResponse(c)
+	}
+	if event.Type == "test_complete" || event.Type == "error" {
+		populateAccountTestTiming(c, &event)
 	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {

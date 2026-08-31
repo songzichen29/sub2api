@@ -8,13 +8,15 @@ const {
   listWithEtag,
   getBatchTodayStats,
   getAllProxies,
-  getAllGroups
+  getAllGroups,
+  listTags
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroups: vi.fn(),
+  listTags: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -23,6 +25,7 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      listTags,
       getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 }),
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -88,6 +91,12 @@ const HelpTooltipStub = {
   template: '<span data-test="usage-windows-hint">{{ content }}</span>'
 }
 
+const ImportDataModalStub = {
+  name: 'ImportDataModal',
+  props: ['proxies', 'groups', 'availableTags'],
+  template: '<div data-test="import-data-modal"></div>'
+}
+
 function mountView() {
   return mount(AccountsView, {
     global: {
@@ -107,7 +116,7 @@ function mountView() {
         },
         AccountBulkActionsBar: true,
         AccountActionMenu: true,
-        ImportDataModal: true,
+        ImportDataModal: ImportDataModalStub,
         ReAuthAccountModal: true,
         AccountTestModal: true,
         AccountStatsModal: true,
@@ -140,6 +149,7 @@ describe('admin AccountsView usage windows hint', () => {
     getBatchTodayStats.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
+    listTags.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -156,6 +166,7 @@ describe('admin AccountsView usage windows hint', () => {
     getBatchTodayStats.mockResolvedValue({ stats: {} })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
+    listTags.mockResolvedValue([])
   })
 
   it('keeps groups available when loading proxies fails', async () => {
@@ -166,6 +177,23 @@ describe('admin AccountsView usage windows hint', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-filters"]').attributes('data-group-count')).toBe('1')
+  })
+
+  it('passes account helper data to the import template form', async () => {
+    const proxies = [{ id: 3, name: 'proxy-3' }]
+    const groups = [{ id: 7, name: 'production' }]
+    const tags = ['priority']
+    getAllProxies.mockResolvedValue(proxies)
+    getAllGroups.mockResolvedValue(groups)
+    listTags.mockResolvedValue(tags)
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const importModal = wrapper.getComponent(ImportDataModalStub)
+    expect(importModal.props('proxies')).toEqual(proxies)
+    expect(importModal.props('groups')).toEqual(groups)
+    expect(importModal.props('availableTags')).toEqual(tags)
   })
 
   it('renders an explanatory tooltip next to the usage windows column header', async () => {
