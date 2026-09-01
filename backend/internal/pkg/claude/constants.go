@@ -29,7 +29,7 @@ const (
 	BetaContextManagement  = "context-management-2025-06-27"
 	BetaExtendedCacheTTL   = "extended-cache-ttl-2025-04-11"
 
-	// v2.1.197 binary / 真实 telemetry 中确认的 beta 令牌（参考用，按需加入 mimicry）
+	// v2.1.197 binary / ?? telemetry ???? beta ??????????? mimicry?
 	BetaContextHint           = "context-hint-2026-04-09"
 	BetaMidConversationSystem = "mid-conversation-system-2026-04-07"
 	BetaConversationSystem    = BetaMidConversationSystem // backward-compatible alias
@@ -40,10 +40,15 @@ const (
 	BetaTokenCount            = BetaThinkingTokenCount // backward-compatible alias
 	BetaUserProfiles          = "user-profiles-2026-03-24"
 	BetaSideFallback          = "side-fallback-2026-06-01"
-	BetaFallbackCredit        = "fallback-credit-2026-06-01"
 	BetaCodeExecution         = "code-execution-2025-08-25"
 	BetaAdvisorTool           = "advisor-tool-2026-03-01"
 	BetaAfkMode               = "afk-mode-2026-01-31"
+
+	// server-side refusal fallback beta ????beta Messages API ????
+	// ??? sanitize ??????strip-or-keep???????? beta ????
+	BetaServerSideFallback   = "server-side-fallback-2026-07-01"
+	BetaFallbackCredit       = "fallback-credit-2026-07-01"
+	BetaFallbackCreditLegacy = "fallback-credit-2026-06-01"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。

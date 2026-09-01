@@ -5,7 +5,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/ent"
@@ -16,7 +22,100 @@ import (
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/go-sql-driver/mysql"
+	"github.com/lib/pq"
 )
+
+const (
+	maxDatabaseInitializationRetries = 8
+	databaseInitializationRetryBase  = time.Second
+	databaseInitializationRetryMax   = 30 * time.Second
+)
+
+// initializeDatabaseWithRetry retries only errors that indicate the database
+// is temporarily unavailable during startup. Permanent authentication,
+// configuration, migration, and data errors fail immediately.
+func initializeDatabaseWithRetry(ctx context.Context, initialize func(context.Context) error) error {
+	return initializeDatabaseWithRetryWithWait(ctx, initialize, waitForDatabaseInitializationRetry)
+}
+
+func initializeDatabaseWithRetryWithWait(
+	ctx context.Context,
+	initialize func(context.Context) error,
+	wait func(context.Context, time.Duration) error,
+) error {
+	for attempt := 1; ; attempt++ {
+		if err := initialize(ctx); err == nil {
+			return nil
+		} else {
+			if !isTransientDatabaseInitializationError(err) || attempt > maxDatabaseInitializationRetries {
+				return err
+			}
+
+			delay := databaseInitializationRetryBase * time.Duration(1<<(attempt-1))
+			if delay > databaseInitializationRetryMax {
+				delay = databaseInitializationRetryMax
+			}
+			slog.Warn("database initialization temporarily unavailable; retrying",
+				"retry", attempt,
+				"max_retries", maxDatabaseInitializationRetries,
+				"retry_in", delay,
+				"error", err,
+			)
+			if err := wait(ctx, delay); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+func waitForDatabaseInitializationRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func isTransientDatabaseInitializationError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		code := string(pqErr.Code)
+		return code == "57P03" || strings.HasPrefix(code, "08")
+	}
+
+	var mysqlErr *mysql.MySQLError
+	if errors.As(err, &mysqlErr) {
+		switch mysqlErr.Number {
+		case 1040, // ER_CON_COUNT_ERROR: too many connections
+			1053, // ER_SERVER_SHUTDOWN
+			1205, // ER_LOCK_WAIT_TIMEOUT
+			1213, // ER_LOCK_DEADLOCK
+			2002, // CR_CONNECTION_ERROR / local connection failure
+			2003, // CR_CONN_HOST_ERROR
+			2006, // CR_SERVER_GONE_ERROR
+			2013: // CR_SERVER_LOST
+			return true
+		default:
+			return false
+		}
+	}
+
+	if errors.Is(err, driver.ErrBadConn) ||
+		errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
 
 // InitEnt 初始化 Ent ORM 客户端并返回客户端实例和底层的 *sql.DB。
 //
@@ -70,7 +169,9 @@ func InitEnt(cfg *config.Config) (*ent.Client, *sql.DB, error) {
 	// 这种方式比 Ent 的自动迁移更可控，支持复杂的迁移场景。
 	migrationCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	if err := applyMigrationsFS(migrationCtx, drv.DB(), migrations.MySQLFS); err != nil {
+	if err := initializeDatabaseWithRetry(migrationCtx, func(ctx context.Context) error {
+		return applyMigrationsFS(ctx, drv.DB(), migrations.MySQLFS)
+	}); err != nil {
 		_ = drv.Close() // 迁移失败时关闭驱动，避免资源泄露
 		return nil, nil, err
 	}

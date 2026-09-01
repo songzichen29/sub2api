@@ -68,6 +68,61 @@ func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyWhenEnabling(t *testing
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyOnMySQL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.MySQL, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*JSON_SET.*LOWER\(UUID\(\)\).*WHERE id = \? AND deleted_at IS NULL`).
+		WithArgs(`{"codex_fingerprint_mode":"device"}`, int64(27)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(27), nil, nil, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+
+	err = repo.UpdateExtra(context.Background(), 27, map[string]any{
+		"codex_fingerprint_mode": "device",
+		"codex_fingerprint_seed": "22222222-2222-4222-8222-222222222222",
+	})
+
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestBulkUpdateEnsuresCodexFingerprintSeedOnMySQL(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.MySQL, db)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	mock.ExpectBegin()
+	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*JSON_SET.*LOWER\(UUID\(\)\).*WHERE id IN \(\?,\?\)`).
+		WithArgs(sqlmock.AnyArg(), int64(27), int64(28)).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	repo := newAccountRepositoryWithSQL(client, db, nil)
+	rows, err := repo.BulkUpdate(context.Background(), []int64{27, 28}, service.AccountBulkUpdate{
+		Extra: map[string]any{
+			"codex_fingerprint_mode": "session",
+			"codex_fingerprint_seed": "22222222-2222-4222-8222-222222222222",
+		},
+		EnsureCodexFingerprintSeed: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(2), rows)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBulkUpdateCodexFingerprintSeedRollsBackWhenUpdateFails(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

@@ -102,6 +102,15 @@ func ensureCodexFingerprintSeedSQL(extraExpr string) string {
 		"ELSE " + extraExpr + " END"
 }
 
+func ensureCodexFingerprintSeedMySQL(extraExpr string) string {
+	seed := "JSON_UNQUOTE(JSON_EXTRACT(extra, '$.codex_fingerprint_seed'))"
+	valid := "(" + seed + " REGEXP '" + codexFingerprintSeedCanonicalPattern + "' AND " + seed + " <> '" + codexFingerprintNilSeed + "')"
+	return "CASE WHEN platform = 'openai' AND type = 'oauth' THEN " +
+		"JSON_SET(" + extraExpr + ", '$.codex_fingerprint_seed', " +
+		"CASE WHEN " + valid + " THEN " + seed + " ELSE LOWER(UUID()) END) " +
+		"ELSE " + extraExpr + " END"
+}
+
 func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]any {
 	if extra == nil {
 		return nil
@@ -842,8 +851,8 @@ func lockAndMergeAccountProbeExtraPostgres(ctx context.Context, client *dbent.Cl
 			AND credentials = $4::jsonb
 			AND proxy_id IS NOT DISTINCT FROM $5,
 			COALESCE(
-				platform IN ('openai', 'anthropic')
-				AND $2 IN ('openai', 'anthropic')
+				platform IN (`+ollamaCloudUsagePlatformsSQL+`)
+				AND $2 IN (`+ollamaCloudUsagePlatformsSQL+`)
 				AND type = 'apikey'
 				AND $3 = 'apikey'
 				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key'
@@ -1089,7 +1098,10 @@ func (r *accountRepository) updateCredentialsPostgres(ctx context.Context, id in
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
-				WHEN platform IN ('openai', 'anthropic')
+				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
+				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
+				WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
+
 					AND type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
 					AND (
@@ -2611,11 +2623,16 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	dbDialect := accountRepositoryDialect(r)
-	extraExpression := "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON))"
-	query := "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = ? AND deleted_at IS NULL"
+	ensureFingerprintSeed := service.ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates)
+	var extraExpression string
+	var query string
 	if dbDialect == dialect.MySQL {
+		extraExpression = "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON))"
 		if clearProbeSnapshot {
 			extraExpression = "JSON_REMOVE(" + extraExpression + ", '$.upstream_billing_probe')"
+		}
+		if ensureFingerprintSeed {
+			extraExpression = ensureCodexFingerprintSeedMySQL(extraExpression)
 		}
 		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW(6) WHERE id = ? AND deleted_at IS NULL"
 	} else {
@@ -2623,10 +2640,10 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		if clearProbeSnapshot {
 			extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
 		}
+		if ensureFingerprintSeed {
+			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
+		}
 		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
-	}
-	if service.ShouldEnsureCodexFingerprintSeedForExtraUpdates(updates) {
-		extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
 	}
 	result, err := client.ExecContext(
 		ctx,
@@ -3013,7 +3030,7 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"
 			}
 		}
-		eligibleAccount := "platform IN ('openai', 'anthropic') AND type = 'apikey'"
+		eligibleAccount := "platform IN (" + ollamaCloudUsagePlatformsSQL + ") AND type = 'apikey'"
 		groupIdentityChanged := ""
 		if len(ollamaGroupIdentityChanges) > 0 {
 			groupIdentityChanged = "(" + eligibleAccount + " AND (" + joinClauses(ollamaGroupIdentityChanges, " OR ") + "))"
@@ -3124,6 +3141,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 	if len(ids) == 0 {
 		return 0, nil
 	}
+	updates.Extra = stripCodexFingerprintSeedFromExtraUpdate(updates.Extra)
 
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
@@ -3214,7 +3232,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		}
 		setClauses = append(setClauses, "credentials = "+credentialExpression)
 	}
-	if len(updates.Extra) > 0 || updates.ProbeEnabled != nil {
+	if len(updates.Extra) > 0 || updates.ProbeEnabled != nil || updates.EnsureCodexFingerprintSeed {
 		extraUpdates := copyJSONMap(updates.Extra)
 		if extraUpdates == nil {
 			extraUpdates = make(map[string]any, 1)
@@ -3229,6 +3247,9 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		extraExpression := "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST($" + itoa(idx) + " AS JSON))"
 		if upstreamBillingProbeExplicitlyDisabled(extraUpdates) || upstreamBillingProbeSnapshotClearRequested(extraUpdates) {
 			extraExpression = "JSON_REMOVE(" + extraExpression + ", '$.upstream_billing_probe')"
+		}
+		if updates.EnsureCodexFingerprintSeed {
+			extraExpression = ensureCodexFingerprintSeedMySQL(extraExpression)
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
 		args = append(args, payload)
@@ -3865,41 +3886,45 @@ func (r *accountRepository) IncrementQuotaUsed(ctx context.Context, id int64, am
 	return nil
 }
 
-// ResetQuotaUsed 重置账号所有维度的配额用量为 0
-// 保留固定重置模式的配置字段（quota_daily_reset_mode 等），仅清零用量和窗口起始时间
-func (r *accountRepository) ResetQuotaUsed(ctx context.Context, id int64) error {
-	var extraRaw sql.NullString
-	if err := scanSingleRow(ctx, r.sql, "SELECT extra FROM accounts WHERE id = ? AND deleted_at IS NULL", []any{id}, &extraRaw); err != nil {
-		if err == sql.ErrNoRows {
-			return service.ErrAccountNotFound
-		}
-		return err
+// ResetQuotaUsedAndClearRateLimitCooldown resets all quota dimensions and the
+// account-level cooldown in one statement. Other scheduler blocking state is preserved.
+func (r *accountRepository) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
+	var result sql.Result
+	var err error
+	if accountRepositoryDialect(r) == dialect.MySQL {
+		result, err = r.sql.ExecContext(ctx,
+			`UPDATE accounts SET extra = JSON_REMOVE(
+				JSON_SET(COALESCE(extra, JSON_OBJECT()), '$.quota_used', 0, '$.quota_daily_used', 0, '$.quota_weekly_used', 0),
+				'$.quota_daily_start', '$.quota_weekly_start', '$.quota_daily_reset_at', '$.quota_weekly_reset_at'
+			),
+			rate_limited_at = NULL, rate_limit_reset_at = NULL, updated_at = NOW()
+			WHERE id = ? AND deleted_at IS NULL`,
+			id)
+	} else {
+		result, err = r.sql.ExecContext(ctx,
+			`UPDATE accounts SET extra = (
+				COALESCE(extra, '{}'::jsonb)
+				|| '{"quota_used": 0, "quota_daily_used": 0, "quota_weekly_used": 0}'::jsonb
+			) - 'quota_daily_start' - 'quota_weekly_start' - 'quota_daily_reset_at' - 'quota_weekly_reset_at',
+			rate_limited_at = NULL, rate_limit_reset_at = NULL, updated_at = NOW()
+			WHERE id = $1 AND deleted_at IS NULL`,
+			id)
 	}
-	extra := make(map[string]any)
-	if extraRaw.Valid && strings.TrimSpace(extraRaw.String) != "" {
-		if err := json.Unmarshal([]byte(extraRaw.String), &extra); err != nil {
-			return err
-		}
-	}
-	extra["quota_used"] = 0
-	extra["quota_daily_used"] = 0
-	extra["quota_weekly_used"] = 0
-	delete(extra, "quota_daily_start")
-	delete(extra, "quota_weekly_start")
-	delete(extra, "quota_daily_reset_at")
-	delete(extra, "quota_weekly_reset_at")
-	payload, err := json.Marshal(extra)
 	if err != nil {
 		return err
 	}
-	_, err = r.sql.ExecContext(ctx, "UPDATE accounts SET extra = CAST(? AS JSON), updated_at = NOW() WHERE id = ? AND deleted_at IS NULL", string(payload), id)
+	affected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
-	// 重置配额后触发调度快照刷新，使账号重新参与调度
+	if affected == 0 {
+		return service.ErrAccountNotFound
+	}
+	// ???????????????????????
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue quota reset failed: account=%d err=%v", id, err)
 	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
 }
 

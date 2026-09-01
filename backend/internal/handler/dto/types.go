@@ -513,13 +513,16 @@ type UsageLog struct {
 	RateMultiplier            float64 `json:"rate_multiplier"`
 	LongContextBillingApplied bool    `json:"long_context_billing_applied"`
 
-	BillingType          int8   `json:"billing_type"`
-	RequestType          string `json:"request_type"`
-	Stream               bool   `json:"stream"`
-	OpenAIWSMode         bool   `json:"openai_ws_mode"`
-	DurationMs           *int   `json:"duration_ms"`
-	FirstTokenMs         *int   `json:"first_token_ms"`
-	UpstreamFirstEventMs *int   `json:"upstream_first_event_ms"`
+	BillingType  int8   `json:"billing_type"`
+	RequestType  string `json:"request_type"`
+	Stream       bool   `json:"stream"`
+	OpenAIWSMode bool   `json:"openai_ws_mode"`
+	// NativeCompactionV2 is true only for requests positively identified at
+	// runtime as the native OpenAI remote compaction v2 wire.
+	NativeCompactionV2   bool `json:"native_compaction_v2"`
+	DurationMs           *int `json:"duration_ms"`
+	FirstTokenMs         *int `json:"first_token_ms"`
+	UpstreamFirstEventMs *int `json:"upstream_first_event_ms"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`

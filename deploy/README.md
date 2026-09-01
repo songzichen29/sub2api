@@ -146,6 +146,12 @@ When using Docker Compose with `AUTO_SETUP=true`:
    docker compose logs sub2api | grep "admin password"
    ```
 
+### Startup and Database Recovery
+
+Sub2API applies database migrations during application startup. The application retries transient database startup and connection errors with bounded exponential backoff, then starts automatically when the database becomes ready. Authentication errors, migration checksum mismatches, SQL errors, and other permanent configuration or data errors fail immediately.
+
+For systemd deployments, keep `Restart=always` and `RestartSec` configured in `sub2api.service`; the application retry covers transient database startup, while systemd remains the supervisor for permanent process exits. For Kubernetes, use a database readiness probe and retain the Sub2API startup retry behavior; configure the application liveness probe separately so a database recovery period is not treated as a permanent process failure.
+
 ### Database Migration Notes (MySQL)
 
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).

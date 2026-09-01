@@ -48,6 +48,17 @@
                 t(getOAuthKey('refreshTokenAuth'))
               }}</span>
             </label>
+            <label v-if="showSsoOption" class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="inputMethod"
+                type="radio"
+                value="sso_cookie"
+                class="text-blue-600 focus:ring-blue-500"
+              />
+              <span class="text-sm text-blue-900 dark:text-blue-200">{{
+                t(getOAuthKey('ssoCookieAuth'))
+              }}</span>
+            </label>
             <label v-if="showMobileRefreshTokenOption" class="flex cursor-pointer items-center gap-2">
               <input
                 v-model="inputMethod"
@@ -180,6 +191,48 @@
         </div>
 
         <!-- Codex JSON / AT 批量输入 -->
+        <!-- SSO Cookie Input (Grok Web -> Grok Build) -->
+        <div v-if="inputMethod === 'sso_cookie'" class="space-y-4">
+          <div
+            class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
+          >
+            <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
+              {{ t(getOAuthKey('ssoCookieDesc')) }}
+            </p>
+            <div class="mb-4">
+              <label class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                <Icon name="key" size="sm" class="text-blue-500" />
+                {{ t(getOAuthKey('ssoCookieLabel')) }}
+                <span v-if="parsedSSOCount > 1" class="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                  {{ t('admin.accounts.oauth.keysCount', { count: parsedSSOCount }) }}
+                </span>
+              </label>
+              <textarea
+                v-model="ssoCookieInput"
+                rows="5"
+                class="input w-full resize-y font-mono text-sm"
+                :placeholder="t(getOAuthKey('ssoCookiePlaceholder'))"
+                spellcheck="false"
+              ></textarea>
+              <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                {{ t(getOAuthKey('ssoCookieHint')) }}
+              </p>
+            </div>
+            <div v-if="error" class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30">
+              <p class="whitespace-pre-line text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+            </div>
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              :disabled="loading || !ssoCookieInput.trim()"
+              @click="handleImportSSO"
+            >
+              <Icon name="sparkles" size="sm" class="mr-2" />
+              {{ loading ? t(getOAuthKey('convertingSSO')) : t(getOAuthKey('convertSSOAndCreate')) }}
+            </button>
+          </div>
+        </div>
+
         <div v-if="inputMethod === 'codex_session' || inputMethod === 'agent_identity'" class="space-y-4">
           <div
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
@@ -647,7 +700,10 @@ interface Props {
   allowMultiple?: boolean
   methodLabel?: string
   showCookieOption?: boolean // Whether to show cookie auto-auth option
-  showRefreshTokenOption?: boolean // Whether to show refresh token input option (OpenAI only)
+  showRefreshTokenOption?: boolean // Whether to show refresh token input option
+  showSsoOption?: boolean // Whether to show Grok SSO cookie input
+  showEmailPasswordOption?: boolean // Reserved for Grok password auth; reauth keeps it disabled
+  initialInputMethod?: AuthInputMethod
   showMobileRefreshTokenOption?: boolean // Whether to show mobile refresh token option (OpenAI only)
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
@@ -667,6 +723,9 @@ const props = withDefaults(defineProps<Props>(), {
   methodLabel: 'Authorization Method',
   showCookieOption: true,
   showRefreshTokenOption: false,
+  showSsoOption: false,
+  showEmailPasswordOption: false,
+  initialInputMethod: 'manual',
   showMobileRefreshTokenOption: false,
   showSessionTokenOption: false,
   showAccessTokenOption: false,
@@ -680,6 +739,7 @@ const emit = defineEmits<{
   'exchange-code': [code: string]
   'cookie-auth': [sessionKey: string]
   'validate-refresh-token': [refreshToken: string]
+  'import-sso': [content: string]
   'validate-mobile-refresh-token': [refreshToken: string]
   'validate-session-token': [sessionToken: string]
   'import-access-token': [accessToken: string]
@@ -718,11 +778,12 @@ const oauthImportantNotice = computed(() => {
 })
 
 // Local state
-const inputMethod = ref<AuthInputMethod>(props.showCookieOption ? 'manual' : 'manual')
+const inputMethod = ref<AuthInputMethod>(props.initialInputMethod)
 const isAgentIdentityInput = computed(() => inputMethod.value === 'agent_identity')
 const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
+const ssoCookieInput = ref('')
 const sessionTokenInput = ref('')
 const codexSessionInput = ref('')
 const showHelpDialog = ref(false)
@@ -730,7 +791,7 @@ const oauthState = ref('')
 const projectId = ref('')
 
 // Computed: show method selection when either cookie or refresh token option is enabled
-const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption)
+const showMethodSelection = computed(() => props.showCookieOption || props.showRefreshTokenOption || props.showSsoOption || props.showMobileRefreshTokenOption || props.showSessionTokenOption || props.showAccessTokenOption || props.showCodexSessionImportOption)
 
 // Clipboard
 const { copied, copyToClipboard } = useClipboard()
@@ -751,6 +812,13 @@ const parsedRefreshTokenCount = computed(() => {
     .filter((rt) => rt).length
 })
 
+const parsedSSOCount = computed(() =>
+  ssoCookieInput.value
+    .split('\n')
+    .map((item) => item.trim())
+    .filter(Boolean).length
+)
+
 const parsedCodexSessionCount = computed(() => {
   const trimmed = codexSessionInput.value.trim()
   if (!trimmed) return 0
@@ -762,6 +830,10 @@ const parsedCodexSessionCount = computed(() => {
 })
 
 // Watchers
+watch(() => props.initialInputMethod, (newVal) => {
+  inputMethod.value = newVal
+})
+
 watch(inputMethod, (newVal) => {
   emit('update:inputMethod', newVal)
 })
@@ -769,7 +841,7 @@ watch(inputMethod, (newVal) => {
 // Auto-extract code from callback URL (OpenAI/Gemini/Antigravity)
 // e.g., http://localhost:8085/callback?code=xxx...&state=...
 watch(authCodeInput, (newVal) => {
-  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity') return
+  if (props.platform !== 'openai' && props.platform !== 'gemini' && props.platform !== 'antigravity' && props.platform !== 'grok') return
 
   const trimmed = newVal.trim()
   // Check if it looks like a URL with code parameter
@@ -779,7 +851,7 @@ watch(authCodeInput, (newVal) => {
       const url = new URL(trimmed)
       const code = url.searchParams.get('code')
       const stateParam = url.searchParams.get('state')
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateParam) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateParam) {
         oauthState.value = stateParam
       }
       if (code && code !== trimmed) {
@@ -790,7 +862,7 @@ watch(authCodeInput, (newVal) => {
       // If URL parsing fails, try regex extraction
       const match = trimmed.match(/[?&]code=([^&]+)/)
       const stateMatch = trimmed.match(/[?&]state=([^&]+)/)
-      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity') && stateMatch && stateMatch[1]) {
+      if ((props.platform === 'openai' || props.platform === 'gemini' || props.platform === 'antigravity' || props.platform === 'grok') && stateMatch && stateMatch[1]) {
         oauthState.value = stateMatch[1]
       }
       if (match && match[1] && match[1] !== trimmed) {
@@ -832,6 +904,12 @@ const handleValidateRefreshToken = () => {
   }
 }
 
+const handleImportSSO = () => {
+  if (ssoCookieInput.value.trim()) {
+    emit('import-sso', ssoCookieInput.value.trim())
+  }
+}
+
 const handleImportCodexSession = () => {
   if (codexSessionInput.value.trim()) {
     emit('import-codex-session', codexSessionInput.value.trim())
@@ -845,6 +923,7 @@ defineExpose({
   projectId,
   sessionKey: sessionKeyInput,
   refreshToken: refreshTokenInput,
+  ssoCookie: ssoCookieInput,
   sessionToken: sessionTokenInput,
   codexSession: codexSessionInput,
   inputMethod,
@@ -854,9 +933,10 @@ defineExpose({
     projectId.value = ''
     sessionKeyInput.value = ''
     refreshTokenInput.value = ''
+    ssoCookieInput.value = ''
     sessionTokenInput.value = ''
     codexSessionInput.value = ''
-    inputMethod.value = 'manual'
+    inputMethod.value = props.initialInputMethod
     showHelpDialog.value = false
   }
 })
