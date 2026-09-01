@@ -307,26 +307,56 @@
                 </div>
               </div>
 
-              <!-- Overdraft / total pool usage -->
-              <div v-if="getOverdraftLimit(row)" class="usage-row">
+              <!-- Overdraft total pool / Weekly Usage -->
+              <div v-if="getOverdraftLimit(row) || row.group?.weekly_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
-                  <span class="usage-label">{{ t('admin.subscriptions.overdraftTotal') }}</span>
+                  <span class="usage-label">
+                    {{
+                      getOverdraftLimit(row)
+                        ? t('admin.subscriptions.overdraftTotal')
+                        : t('admin.subscriptions.weekly')
+                    }}
+                  </span>
                   <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
                     <div
                       class="h-1.5 rounded-full transition-all"
-                      :class="getProgressClass(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))"
+                      :class="
+                        getProgressClass(
+                          getOverdraftDisplayUsed(row) ?? row.weekly_usage_usd,
+                          getOverdraftLimit(row) || row.group?.weekly_limit_usd || null
+                        )
+                      "
                       :style="{
-                        width: getProgressWidth(getOverdraftDisplayUsed(row) ?? 0, getOverdraftLimit(row))
+                        width: getProgressWidth(
+                          getOverdraftDisplayUsed(row) ?? row.weekly_usage_usd,
+                          getOverdraftLimit(row) || row.group?.weekly_limit_usd || null
+                        )
                       }"
                     ></div>
                   </div>
                   <span class="usage-amount">
-                    ${{ ((getOverdraftDisplayUsed(row) ?? 0) || 0).toFixed(2) }}
+                    ${{ ((getOverdraftDisplayUsed(row) ?? row.weekly_usage_usd) || 0).toFixed(2) }}
                     <span class="text-gray-400">/</span>
-                    ${{ getOverdraftLimit(row)?.toFixed(2) }}
+                    ${{ (getOverdraftLimit(row) || row.group!.weekly_limit_usd!).toFixed(2) }}
                   </span>
                 </div>
-                <div v-if="row.allow_daily_overdraft" class="reset-info">
+                <div v-if="!getOverdraftLimit(row) && row.weekly_window_start" class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatResetTime(row.weekly_window_start, 'weekly') }}</span>
+                </div>
+                <div v-if="row.allow_daily_overdraft && getOverdraftLimit(row)" class="reset-info">
                   <svg
                     class="h-3 w-3"
                     fill="none"
@@ -366,6 +396,51 @@
                     {{ t('admin.subscriptions.overdraftRemaining') }}:
                     ${{ getOverdraftRemaining(row).toFixed(2) }}
                   </span>
+                </div>
+              </div>
+
+              <!-- Monthly Usage -->
+              <div
+                v-if="!getOverdraftLimit(row) && row.group?.monthly_limit_usd"
+                class="usage-row"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="usage-label">{{ t('admin.subscriptions.monthly') }}</span>
+                  <div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-dark-600">
+                    <div
+                      class="h-1.5 rounded-full transition-all"
+                      :class="
+                        getProgressClass(row.monthly_usage_usd, row.group.monthly_limit_usd)
+                      "
+                      :style="{
+                        width: getProgressWidth(
+                          row.monthly_usage_usd,
+                          row.group.monthly_limit_usd
+                        )
+                      }"
+                    ></div>
+                  </div>
+                  <span class="usage-amount">
+                    ${{ (row.monthly_usage_usd ?? 0).toFixed(2) }}
+                    <span class="text-gray-400">/</span>
+                    ${{ row.group.monthly_limit_usd.toFixed(2) }}
+                  </span>
+                </div>
+                <div v-if="row.monthly_window_start" class="reset-info">
+                  <svg
+                    class="h-3 w-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{{ formatResetTime(row.monthly_window_start, 'monthly') }}</span>
                 </div>
               </div>
 
