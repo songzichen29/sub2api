@@ -3,8 +3,38 @@ import { describe, expect, it } from "vitest";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  normalizePlatformQuotasMap,
+  type AuthSourceDefaultsState,
+  type AuthSourceDefaultsValue,
+  type AuthSourceType,
   type UpdateSettingsRequest,
 } from "@/api/admin/settings";
+
+const allNullQuotas = normalizePlatformQuotasMap();
+
+function completeAuthSourceDefaults(
+  overrides: Partial<Record<AuthSourceType, Partial<AuthSourceDefaultsValue>>>,
+): AuthSourceDefaultsState {
+  const value = (source: AuthSourceType): AuthSourceDefaultsValue => ({
+    balance: 0,
+    concurrency: 5,
+    subscriptions: [],
+    grant_on_signup: false,
+    grant_on_first_bind: false,
+    platform_quotas: {},
+    ...overrides[source],
+  });
+
+  return {
+    email: value("email"),
+    linuxdo: value("linuxdo"),
+    oidc: value("oidc"),
+    wechat: value("wechat"),
+    github: value("github"),
+    google: value("google"),
+    dingtalk: value("dingtalk"),
+  };
+}
 
 describe("admin settings auth source defaults helpers", () => {
   it("builds auth source defaults state from flat settings fields", () => {
@@ -28,16 +58,18 @@ describe("admin settings auth source defaults helpers", () => {
     expect(state.email).toEqual({
       balance: 9.5,
       concurrency: 3,
-      subscriptions: [{ group_id: 1, validity_days: 30 }],
+      subscriptions: [{ group_id: 1, validity_days: 30, mode: "days" }],
       grant_on_signup: false,
       grant_on_first_bind: true,
+      platform_quotas: allNullQuotas,
     });
     expect(state.linuxdo).toEqual({
       balance: 6,
       concurrency: 8,
-      subscriptions: [{ group_id: 2, validity_days: 60 }],
+      subscriptions: [{ group_id: 2, validity_days: 60, mode: "days" }],
       grant_on_signup: true,
       grant_on_first_bind: false,
+      platform_quotas: allNullQuotas,
     });
     expect(state.oidc).toEqual({
       balance: 0,
@@ -45,6 +77,7 @@ describe("admin settings auth source defaults helpers", () => {
       subscriptions: [],
       grant_on_signup: false,
       grant_on_first_bind: false,
+      platform_quotas: allNullQuotas,
     });
     expect(state.wechat).toEqual({
       balance: 0,
@@ -52,6 +85,7 @@ describe("admin settings auth source defaults helpers", () => {
       subscriptions: [],
       grant_on_signup: false,
       grant_on_first_bind: false,
+      platform_quotas: allNullQuotas,
     });
   });
 
@@ -69,7 +103,7 @@ describe("admin settings auth source defaults helpers", () => {
       site_name: "Sub2API",
     };
 
-    appendAuthSourceDefaultsToUpdateRequest(payload, {
+    appendAuthSourceDefaultsToUpdateRequest(payload, completeAuthSourceDefaults({
       email: {
         balance: 1.25,
         concurrency: 2,
@@ -98,7 +132,7 @@ describe("admin settings auth source defaults helpers", () => {
         grant_on_signup: false,
         grant_on_first_bind: false,
       },
-    });
+    }));
 
     expect(payload).toMatchObject({
       site_name: "Sub2API",
@@ -132,7 +166,7 @@ describe("admin settings auth source defaults helpers", () => {
   it("keeps explicit time range subscriptions when appending payload", () => {
     const payload: UpdateSettingsRequest = {};
 
-    appendAuthSourceDefaultsToUpdateRequest(payload, {
+    appendAuthSourceDefaultsToUpdateRequest(payload, completeAuthSourceDefaults({
       email: {
         balance: 0,
         concurrency: 5,
@@ -168,13 +202,14 @@ describe("admin settings auth source defaults helpers", () => {
         grant_on_signup: false,
         grant_on_first_bind: false,
       },
-    });
+    }));
 
     expect(payload.auth_source_default_email_subscriptions).toEqual([
       {
         group_id: 10,
         starts_at: "2030-01-01T00:00:00.000Z",
         expires_at: "2030-02-01T00:00:00.000Z",
+        mode: "range",
       },
     ]);
   });

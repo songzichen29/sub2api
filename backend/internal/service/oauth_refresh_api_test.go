@@ -104,7 +104,7 @@ func (c *refreshAPICacheStub) ReleaseRefreshLock(context.Context, string) error 
 // ========== RefreshIfNeeded tests ==========
 
 func TestRefreshIfNeeded_Success(t *testing.T) {
-	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
+	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{
@@ -132,6 +132,7 @@ func TestRefreshIfNeeded_UpdateCredentialsPreservesRateLimitState(t *testing.T) 
 		ID:               11,
 		Platform:         PlatformGemini,
 		Type:             AccountTypeOAuth,
+		Status:           StatusActive,
 		RateLimitResetAt: &resetAt,
 	}
 	repo := &refreshAPIAccountRepo{account: account}
@@ -168,7 +169,7 @@ func TestRefreshIfNeeded_LockHeld(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_LockErrorDegrades(t *testing.T) {
-	account := &Account{ID: 3, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	account := &Account{ID: 3, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := &refreshAPICacheStub{lockErr: errors.New("redis down")} // lock error
 	executor := &refreshAPIExecutorStub{
@@ -187,7 +188,7 @@ func TestRefreshIfNeeded_LockErrorDegrades(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_NoCacheNoLock(t *testing.T) {
-	account := &Account{ID: 4, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	account := &Account{ID: 4, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	executor := &refreshAPIExecutorStub{
 		needsRefresh: true,
@@ -203,7 +204,7 @@ func TestRefreshIfNeeded_NoCacheNoLock(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_AlreadyRefreshed(t *testing.T) {
-	account := &Account{ID: 5, Platform: PlatformAnthropic}
+	account := &Account{ID: 5, Platform: PlatformAnthropic, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{needsRefresh: false} // already refreshed
@@ -220,7 +221,7 @@ func TestRefreshIfNeeded_AlreadyRefreshed(t *testing.T) {
 }
 
 func TestRefreshIfNeeded_RefreshError(t *testing.T) {
-	account := &Account{ID: 6, Platform: PlatformAnthropic}
+	account := &Account{ID: 6, Platform: PlatformAnthropic, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{
@@ -232,14 +233,15 @@ func TestRefreshIfNeeded_RefreshError(t *testing.T) {
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.Error(t, err)
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.Equal(t, account.ID, result.Account.ID)
 	require.Contains(t, err.Error(), "invalid_grant")
 	require.Equal(t, 0, repo.updateCalls)   // no DB update on refresh error
 	require.Equal(t, 1, cache.releaseCalls) // lock still released via defer
 }
 
 func TestRefreshIfNeeded_DBUpdateError(t *testing.T) {
-	account := &Account{ID: 7, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	account := &Account{ID: 7, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{
 		account:   account,
 		updateErr: errors.New("db connection lost"),
@@ -255,7 +257,7 @@ func TestRefreshIfNeeded_DBUpdateError(t *testing.T) {
 
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.Contains(t, err.Error(), "DB update failed")
+	require.ErrorIs(t, err, errOAuthRefreshCredentialPersist)
 	require.Equal(t, 1, repo.updateCalls) // attempted
 }
 
@@ -274,13 +276,14 @@ func TestRefreshIfNeeded_DBRereadFails(t *testing.T) {
 	api := NewOAuthRefreshAPI(repo, cache)
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
-	require.NoError(t, err)
-	require.True(t, result.Refreshed)
-	require.Equal(t, 1, executor.refreshCalls) // still refreshes using passed-in account
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.ErrorAs(t, err, new(*oauthRefreshStateUnavailableError))
+	require.Zero(t, executor.refreshCalls)
 }
 
 func TestRefreshIfNeeded_NilCredentials(t *testing.T) {
-	account := &Account{ID: 9, Platform: PlatformGemini, Type: AccountTypeOAuth}
+	account := &Account{ID: 9, Platform: PlatformGemini, Type: AccountTypeOAuth, Status: StatusActive}
 	repo := &refreshAPIAccountRepo{account: account}
 	cache := &refreshAPICacheStub{lockResult: true}
 	executor := &refreshAPIExecutorStub{
@@ -413,6 +416,7 @@ func TestRefreshIfNeeded_InvalidGrantRaceRecovered(t *testing.T) {
 		ID:          10,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "old-rt", "access_token": "old-at"},
 	}
 	// After race, DB has new refresh token from another worker
@@ -420,6 +424,7 @@ func TestRefreshIfNeeded_InvalidGrantRaceRecovered(t *testing.T) {
 		ID:          10,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "new-rt", "access_token": "new-at"},
 	}
 	repo := &refreshAPIAccountRepoWithRace{
@@ -449,6 +454,7 @@ func TestRefreshIfNeeded_InvalidGrantGenuine(t *testing.T) {
 		ID:          11,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "revoked-rt", "access_token": "old-at"},
 	}
 	repo := &refreshAPIAccountRepoWithRace{
@@ -465,7 +471,8 @@ func TestRefreshIfNeeded_InvalidGrantGenuine(t *testing.T) {
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.Error(t, err, "genuine invalid_grant should propagate error")
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.Equal(t, account.ID, result.Account.ID)
 	require.Contains(t, err.Error(), "invalid_grant")
 }
 
@@ -474,6 +481,7 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 		ID:          12,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "old-rt"},
 	}
 	repo := &refreshAPIAccountRepoWithRace{
@@ -490,7 +498,8 @@ func TestRefreshIfNeeded_InvalidGrantDBRereadFailsOnRecovery(t *testing.T) {
 	result, err := api.RefreshIfNeeded(context.Background(), account, executor, 3*time.Minute)
 
 	require.Error(t, err, "should propagate error when recovery DB re-read fails")
-	require.Nil(t, result)
+	require.NotNil(t, result)
+	require.Equal(t, account.ID, result.Account.ID)
 }
 
 func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
@@ -500,6 +509,7 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 		ID:          20,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "new-rt", "access_token": "new-at"},
 	}
 	callCount := 0
@@ -507,6 +517,7 @@ func TestRefreshIfNeeded_LocalMutexSerializesConcurrent(t *testing.T) {
 		ID:          20,
 		Platform:    PlatformAnthropic,
 		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
 		Credentials: map[string]any{"refresh_token": "old-rt"},
 	}}
 

@@ -114,7 +114,8 @@ func TestGrokTokenProviderRefreshesExpiredTokenOnRequestPath(t *testing.T) {
 	token, err := provider.GetAccessToken(context.Background(), account)
 	require.NoError(t, err)
 	require.Equal(t, "new-access-token", token)
-	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.Equal(t, 1, repo.conditionalSuccessCalls)
+	require.Zero(t, repo.updateCredentialsCalls)
 	require.Equal(t, "new-access-token", repo.accountsByID[54].GetGrokAccessToken())
 	require.Equal(t, "refresh-token", repo.accountsByID[54].GetGrokRefreshToken())
 	require.Equal(t, xai.DefaultCLIBaseURL, repo.accountsByID[54].GetGrokBaseURL())
@@ -360,7 +361,8 @@ func TestGrokTokenProviderManualTestRefreshesExpiredTokenWhileUnschedulable(t *t
 	token, err := provider.GetAccessTokenForManualTest(context.Background(), account)
 	require.NoError(t, err)
 	require.Equal(t, "manual-test-refreshed-token", token)
-	require.Equal(t, 1, repo.updateCredentialsCalls)
+	require.Equal(t, 1, repo.conditionalSuccessCalls)
+	require.Zero(t, repo.updateCredentialsCalls)
 }
 
 func TestGrokTokenProviderManualTestFallsBackToValidTokenOnRefreshFailure(t *testing.T) {

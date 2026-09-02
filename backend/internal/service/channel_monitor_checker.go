@@ -292,11 +292,12 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err != nil {
 		return "", "", 0, err
 	}
-	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
+	baseHeaders := adapter.buildHeaders(apiKey)
+	baseHeaders["User-Agent"] = ChannelMonitorUserAgent
+	headers := mergeHeaders(baseHeaders, opts)
 	// Mark the request so the gateway can persist it as a channel-monitor usage
 	// row without mixing it into normal account latency statistics.
 	headers[ChannelMonitorRequestHeader] = "1"
-	headers["User-Agent"] = ChannelMonitorUserAgent
 	full := joinURL(endpoint, adapter.buildPath(model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
@@ -390,6 +391,11 @@ func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string 
 	for k, v := range opts.ExtraHeaders {
 		if IsForbiddenHeaderName(k) {
 			continue
+		}
+		for baseKey := range out {
+			if strings.EqualFold(baseKey, k) {
+				delete(out, baseKey)
+			}
 		}
 		out[k] = v
 	}

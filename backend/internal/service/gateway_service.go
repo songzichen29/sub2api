@@ -568,11 +568,20 @@ func shouldClearStickySession(account *Account, requestedModel string) bool {
 	return false
 }
 
+type AccountWaitCandidate struct {
+	Account        *Account
+	MaxConcurrency int
+}
+
 type AccountWaitPlan struct {
 	AccountID      int64
 	MaxConcurrency int
 	Timeout        time.Duration
 	MaxWaiting     int
+	// Candidates is populated for movable load-balance waits. Hard affinity
+	// paths (for example previous_response_id) leave it empty and continue to
+	// wait only on AccountID.
+	Candidates []AccountWaitCandidate
 }
 
 type AccountSelectionResult struct {

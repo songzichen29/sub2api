@@ -946,6 +946,7 @@ func TestOpenAITokenProvider_NonRetryableRefreshErrorSetsError(t *testing.T) {
 		ID:       211,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 		Credentials: map[string]any{
 			"access_token":  "stale-token",
 			"refresh_token": "reused-refresh-token",

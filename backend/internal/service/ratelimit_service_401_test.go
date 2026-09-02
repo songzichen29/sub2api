@@ -129,7 +129,7 @@ func TestRateLimitService_HandleUpstreamError_OAuth401SetsTempUnschedulable(t *t
 		require.True(t, shouldDisable)
 		require.Equal(t, 1, repo.setErrorCalls)
 		require.Equal(t, 0, repo.tempCalls)
-		require.Empty(t, invalidator.accounts)
+		require.Len(t, invalidator.accounts, 1)
 	})
 }
 

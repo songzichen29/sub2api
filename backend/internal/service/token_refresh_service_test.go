@@ -14,15 +14,24 @@ import (
 
 type tokenRefreshAccountRepo struct {
 	mockAccountRepoForGemini
-	updateCalls            int
-	fullUpdateCalls        int
-	updateCredentialsCalls int
-	setErrorCalls          int
-	clearTempCalls         int
-	setTempUnschedCalls    int
-	lastAccount            *Account
-	lastErrorMsg           string
-	updateErr              error
+	updateCalls             int
+	fullUpdateCalls         int
+	updateCredentialsCalls  int
+	setErrorCalls           int
+	clearTempCalls          int
+	setTempUnschedCalls     int
+	updateExtraCalls        int
+	lastAccount             *Account
+	lastErrorMsg            string
+	lastErrorMessage        string
+	lastTempUnschedReason   string
+	lastExtraUpdates        map[string]any
+	beforeConditionalState  func()
+	setErrorErr             error
+	setTempUnschedErr       error
+	conditionalSuccessErr   error
+	conditionalSuccessCalls int
+	updateErr               error
 }
 
 func (r *tokenRefreshAccountRepo) Update(ctx context.Context, account *Account) error {
@@ -53,7 +62,8 @@ func (r *tokenRefreshAccountRepo) UpdateCredentials(ctx context.Context, id int6
 func (r *tokenRefreshAccountRepo) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
 	r.lastErrorMsg = errorMsg
-	return nil
+	r.lastErrorMessage = errorMsg
+	return r.setErrorErr
 }
 
 func (r *tokenRefreshAccountRepo) ClearTempUnschedulable(ctx context.Context, id int64) error {
@@ -63,7 +73,93 @@ func (r *tokenRefreshAccountRepo) ClearTempUnschedulable(ctx context.Context, id
 
 func (r *tokenRefreshAccountRepo) SetTempUnschedulable(ctx context.Context, id int64, until time.Time, reason string) error {
 	r.setTempUnschedCalls++
+	r.lastTempUnschedReason = reason
+	return r.setTempUnschedErr
+}
+
+func (r *tokenRefreshAccountRepo) runBeforeConditionalState() {
+	if r.beforeConditionalState == nil {
+		return
+	}
+	hook := r.beforeConditionalState
+	r.beforeConditionalState = nil
+	hook()
+}
+
+func grokCredentialSnapshotMatchesAccount(account *Account, snapshot GrokCredentialMutationSnapshot) bool {
+	return account != nil && account.IsGrokOAuth() && account.IsSchedulable() &&
+		grokCredentialMutationSnapshot(account).CredentialsJSON == snapshot.CredentialsJSON &&
+		grokCredentialProxyIDsEqual(account.ProxyID, snapshot.ProxyID)
+}
+
+func (r *tokenRefreshAccountRepo) SetGrokCredentialErrorIfMatch(_ context.Context, id int64, expected GrokCredentialMutationSnapshot, errorMsg string) (bool, error) {
+	r.runBeforeConditionalState()
+	account := r.accountsByID[id]
+	if !grokCredentialSnapshotMatchesAccount(account, expected) ||
+		(errorMsg == string(GrokCredentialReasonProxyInvalid) && account.Proxy != nil) {
+		return false, nil
+	}
+	r.setErrorCalls++
+	if r.setErrorErr != nil {
+		return false, r.setErrorErr
+	}
+	r.lastErrorMsg = errorMsg
+	r.lastErrorMessage = errorMsg
+	account.Status = StatusError
+	account.Schedulable = false
+	account.ErrorMessage = errorMsg
+	return true, nil
+}
+
+func (r *tokenRefreshAccountRepo) SetGrokCredentialTempUnschedulableIfMatch(_ context.Context, id int64, expected GrokCredentialMutationSnapshot, until time.Time, reason string) (bool, error) {
+	r.runBeforeConditionalState()
+	account := r.accountsByID[id]
+	if !grokCredentialSnapshotMatchesAccount(account, expected) {
+		return false, nil
+	}
+	r.setTempUnschedCalls++
+	r.lastTempUnschedReason = reason
+	if r.setTempUnschedErr != nil {
+		return false, r.setTempUnschedErr
+	}
+	account.TempUnschedulableUntil = &until
+	account.TempUnschedulableReason = reason
+	return true, nil
+}
+
+func (r *tokenRefreshAccountRepo) UpdateExtra(_ context.Context, id int64, updates map[string]any) error {
+	r.updateExtraCalls++
+	r.lastExtraUpdates = shallowCopyMap(updates)
+	if account := r.accountsByID[id]; account != nil {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any, len(updates))
+		}
+		for key, value := range updates {
+			account.Extra[key] = value
+		}
+	}
 	return nil
+}
+
+func (r *tokenRefreshAccountRepo) UpdateGrokOAuthCredentialsIfUnchanged(
+	_ context.Context,
+	id int64,
+	expectedCredentials map[string]any,
+	expectedProxyID *int64,
+	credentials map[string]any,
+) (bool, error) {
+	r.conditionalSuccessCalls++
+	if r.conditionalSuccessErr != nil {
+		return false, r.conditionalSuccessErr
+	}
+	account := r.accountsByID[id]
+	if account == nil || !grokCredentialProxyIDsEqual(account.ProxyID, expectedProxyID) ||
+		grokCredentialMutationSnapshot(account).CredentialsJSON != grokCredentialMutationSnapshot(&Account{Credentials: expectedCredentials}).CredentialsJSON {
+		return false, nil
+	}
+	account.Credentials = shallowCopyMap(credentials)
+	r.lastAccount = account
+	return true, nil
 }
 
 type tokenCacheInvalidatorStub struct {
@@ -423,7 +519,7 @@ func TestTokenRefreshService_RefreshWithRetry_AntigravityNonRetryableError(t *te
 	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
 	require.Error(t, err)
 	require.Equal(t, 0, repo.updateCalls)
-	require.Equal(t, 0, invalidator.calls)
+	require.Equal(t, 1, invalidator.calls)
 	require.Equal(t, 1, repo.setErrorCalls) // 不可重试错误应设置错误状态
 }
 
@@ -663,6 +759,7 @@ func TestPathA_Success(t *testing.T) {
 		ID:       100,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{}
 	repo.accountsByID = map[int64]*Account{account.ID: account}
@@ -684,6 +781,7 @@ func TestPathA_LockHeld(t *testing.T) {
 		ID:       101,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{}
 	invalidator := &tokenCacheInvalidatorStub{}
@@ -704,6 +802,7 @@ func TestPathA_AlreadyRefreshed(t *testing.T) {
 		ID:       102,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{}
 	repo.accountsByID = map[int64]*Account{account.ID: account}
@@ -743,6 +842,7 @@ func TestPathA_NonRetryableError(t *testing.T) {
 		ID:       103,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{}
 	repo.accountsByID = map[int64]*Account{account.ID: account}
@@ -759,7 +859,7 @@ func TestPathA_NonRetryableError(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 1, repo.setErrorCalls) // 应标记 error 状态
 	require.Equal(t, 0, repo.updateCalls)   // 不应更新 credentials
-	require.Equal(t, 0, invalidator.calls)  // 不应触发缓存失效
+	require.Equal(t, 1, invalidator.calls)  // 撤销类错误必须失效旧缓存
 }
 
 // TestPathA_RetryableErrorExhausted 统一 API 路径可重试错误耗尽 → 不标记 error
@@ -768,6 +868,7 @@ func TestPathA_RetryableErrorExhausted(t *testing.T) {
 		ID:       104,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{}
 	repo.accountsByID = map[int64]*Account{account.ID: account}
@@ -801,6 +902,7 @@ func TestPathA_DBUpdateFailed(t *testing.T) {
 		ID:       105,
 		Platform: PlatformGemini,
 		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
 	}
 	repo := &tokenRefreshAccountRepo{updateErr: errors.New("db connection lost")}
 	repo.accountsByID = map[int64]*Account{account.ID: account}
@@ -811,7 +913,7 @@ func TestPathA_DBUpdateFailed(t *testing.T) {
 
 	err := service.refreshWithRetry(context.Background(), account, refresher, refresher, time.Hour)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "DB update failed")
+	require.ErrorIs(t, err, errOAuthRefreshCredentialPersist)
 	require.Equal(t, 1, repo.updateCalls)  // DB 更新被尝试
 	require.Equal(t, 0, invalidator.calls) // DB 失败时不应触发缓存失效
 }

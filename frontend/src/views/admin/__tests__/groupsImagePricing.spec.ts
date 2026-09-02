@@ -24,9 +24,9 @@ describe("groups image pricing platform support", () => {
     );
   });
 
-  it("keeps Grok image placeholders on the generic image card", () => {
-    expect(getImagePricePlaceholder("grok", "image_price_1k")).toBe("0.134");
-    expect(getImagePricePlaceholder("grok", "image_price_2k")).toBe("0.201");
+  it("uses Grok-specific image placeholders", () => {
+    expect(getImagePricePlaceholder("grok", "image_price_1k")).toBe("0.02");
+    expect(getImagePricePlaceholder("grok", "image_price_2k")).toBe("0.02");
   });
 
   it("keeps non-Grok image placeholders on the generic image card", () => {

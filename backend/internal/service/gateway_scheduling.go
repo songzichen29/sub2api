@@ -1490,10 +1490,32 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 }
 
 func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	var account *Account
+	var err error
 	if s.schedulerSnapshot != nil {
-		return s.schedulerSnapshot.GetAccount(ctx, accountID)
+		account, err = s.schedulerSnapshot.GetAccount(ctx, accountID)
+	} else {
+		account, err = s.accountRepo.GetByID(ctx, accountID)
 	}
-	return s.accountRepo.GetByID(ctx, accountID)
+	if err != nil || account == nil {
+		return account, err
+	}
+	if s.isAccountBlockedBySchedulingThreshold(ctx, account) {
+		return nil, nil
+	}
+	if account.IsGrok() {
+		if gated := s.filterGrokFreeQuotaAccountsForGateway(ctx, []Account{*account}); len(gated) == 0 {
+			return nil, nil
+		}
+	}
+	return account, nil
+}
+
+func (s *GatewayService) isAccountBlockedBySchedulingThreshold(ctx context.Context, account *Account) bool {
+	if s.rateLimitService == nil || account == nil {
+		return false
+	}
+	return s.rateLimitService.ApplyAccountSchedulingThreshold(ctx, account)
 }
 
 func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
@@ -1681,6 +1703,31 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 
 // shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。
 // 防止并发请求读取同一快照时，确定性排序导致所有请求命中相同账号。
+// shuffleOpenAILegacyLoadPeers randomizes accounts with the same priority and
+// observed load. LastUsedAt is deliberately ignored inside the peer group:
+// it is persisted after request completion and is too stale to serialize a
+// burst safely without creating a deterministic hotspot.
+func shuffleOpenAILegacyLoadPeers(accounts []accountWithLoad) {
+	if len(accounts) <= 1 {
+		return
+	}
+	for i := 0; i < len(accounts); {
+		j := i + 1
+		for j < len(accounts) &&
+			accounts[j].account.Priority == accounts[i].account.Priority &&
+			accounts[j].loadInfo.LoadRate == accounts[i].loadInfo.LoadRate &&
+			((accounts[j].account.LastUsedAt == nil) == (accounts[i].account.LastUsedAt == nil)) {
+			j++
+		}
+		if j-i > 1 {
+			mathrand.Shuffle(j-i, func(a, b int) {
+				accounts[i+a], accounts[i+b] = accounts[i+b], accounts[i+a]
+			})
+		}
+		i = j
+	}
+}
+
 func shuffleWithinSortGroups(accounts []accountWithLoad) {
 	if len(accounts) <= 1 {
 		return

@@ -280,7 +280,7 @@ const requestTypeOptions = ref<SelectOption[]>([
   { value: 'cyber', label: t('usage.cyber') }
 ])
 
-const compactionOptions = ref<SelectOption[]>([
+const compactionOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('usage.allCompactionTypes') },
   { value: true, label: t('usage.compactionOnly') }
 ])

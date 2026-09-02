@@ -306,12 +306,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		RETURNING id, created_at
 	`
 	if r.isMySQLDialect() {
-		mysqlQuery := query
-		if conflictPos := strings.Index(mysqlQuery, "\n\t\tON CONFLICT"); conflictPos >= 0 {
-			mysqlQuery = mysqlQuery[:conflictPos] + "\n"
-		}
-		mysqlQuery = strings.Replace(mysqlQuery, "INSERT INTO usage_logs", "INSERT IGNORE INTO usage_logs", 1)
-		mysqlQuery = rebindUsageLogQuery(mysqlQuery, true)
+		mysqlQuery := buildMySQLUsageLogInsertQuery(query)
 		result, err := sqlq.ExecContext(ctx, mysqlQuery, prepared.args...)
 		if err != nil {
 			return false, err
@@ -350,6 +345,14 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 	}
 	log.RateMultiplier = prepared.rateMultiplier
 	return true, nil
+}
+
+func buildMySQLUsageLogInsertQuery(query string) string {
+	if conflictPos := strings.Index(query, "\n\t\tON CONFLICT"); conflictPos >= 0 {
+		query = query[:conflictPos] + "\n"
+	}
+	query = strings.Replace(query, "INSERT INTO usage_logs", "INSERT IGNORE INTO usage_logs", 1)
+	return rebindUsageLogQuery(query, true)
 }
 
 func (r *usageLogRepository) createBatched(ctx context.Context, log *service.UsageLog) (bool, error) {

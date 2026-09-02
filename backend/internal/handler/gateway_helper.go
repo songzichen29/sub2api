@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"net/http"
@@ -440,6 +441,102 @@ func (h *ConcurrencyHelper) waitForSlotWithPingTimeout(c *gin.Context, slotType 
 
 			if result.Acquired {
 				return result.ReleaseFunc, nil
+			}
+			backoff = nextBackoff(backoff)
+			timer.Reset(backoff)
+		}
+	}
+}
+
+// AcquireAnyAccountSlotWithWaitTimeout waits until any candidate account has
+// capacity. It preserves the same streaming heartbeat and cancellation
+// behavior as the single-account wait path, but avoids head-of-line blocking
+// on one slow account.
+func (h *ConcurrencyHelper) AcquireAnyAccountSlotWithWaitTimeout(
+	c *gin.Context,
+	candidates []service.AccountWaitCandidate,
+	timeout time.Duration,
+	isStream bool,
+	streamStarted *bool,
+) (*service.Account, func(), error) {
+	if h == nil || h.concurrencyService == nil || len(candidates) == 0 {
+		return nil, nil, errors.New("account wait candidate pool is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+
+	tryAcquire := func() (*service.Account, func(), error) {
+		start := 0
+		if len(candidates) > 1 {
+			start = rand.IntN(len(candidates))
+		}
+		for offset := 0; offset < len(candidates); offset++ {
+			candidate := candidates[(start+offset)%len(candidates)]
+			if candidate.Account == nil || candidate.Account.ID <= 0 {
+				continue
+			}
+			release, acquired, err := h.TryAcquireAccountSlot(ctx, candidate.Account.ID, candidate.MaxConcurrency)
+			if err != nil {
+				return nil, nil, err
+			}
+			if acquired {
+				return candidate.Account, release, nil
+			}
+		}
+		return nil, nil, nil
+	}
+
+	if account, release, err := tryAcquire(); err != nil || account != nil {
+		return account, release, err
+	}
+
+	needPing := isStream && h.pingFormat != ""
+	var flusher http.Flusher
+	if needPing {
+		var ok bool
+		flusher, ok = c.Writer.(http.Flusher)
+		if !ok {
+			return nil, nil, fmt.Errorf("streaming not supported")
+		}
+	}
+	var pingCh <-chan time.Time
+	if needPing {
+		pingTicker := time.NewTicker(h.pingInterval)
+		defer pingTicker.Stop()
+		pingCh = pingTicker.C
+	}
+
+	backoff := initialBackoff
+	timer := time.NewTimer(backoff)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			if parentErr := c.Request.Context().Err(); parentErr != nil {
+				return nil, nil, parentErr
+			}
+			return nil, nil, &ConcurrencyError{SlotType: "account", IsTimeout: true}
+		case <-pingCh:
+			if !*streamStarted {
+				c.Header("Content-Type", "text/event-stream")
+				c.Header("Cache-Control", "no-cache")
+				c.Header("Connection", "keep-alive")
+				c.Header("X-Accel-Buffering", "no")
+				*streamStarted = true
+			}
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
+				return nil, nil, err
+			}
+			recordGatewayStreamHeartbeat(c, written)
+			flusher.Flush()
+		case <-timer.C:
+			account, release, err := tryAcquire()
+			if err != nil {
+				return nil, nil, err
+			}
+			if account != nil {
+				return account, release, nil
 			}
 			backoff = nextBackoff(backoff)
 			timer.Reset(backoff)

@@ -362,9 +362,11 @@ func TestAPIContracts(t *testing.T) {
 						"status": "active",
 						"subscription_type": "standard",
 						"daily_limit_usd": null,
+						"daily_limit_reset_price": null,
 						"weekly_limit_usd": null,
 						"monthly_limit_usd": null,
-						"long_context_pricing_enabled": false,
+						"allow_daily_overdraft": false,
+						"allow_weekend_skip": false,
 						"image_price_1k": null,
 						"image_price_2k": null,
 						"image_price_4k": null,
@@ -372,18 +374,12 @@ func TestAPIContracts(t *testing.T) {
 						"video_price_720p": null,
 						"video_price_1080p": null,
 						"web_search_price_per_call": null,
-						"search_price_per_1k": null,
-						"audio_tts_price_per_million_chars": null,
-						"audio_stt_price_per_hour": null,
-						"audio_realtime_price_per_min": null,
 						"allow_image_generation": false,
 						"allow_batch_image_generation": false,
 						"batch_image_discount_multiplier": 0,
 						"batch_image_hold_multiplier": 0,
 						"image_rate_independent": false,
 						"image_rate_multiplier": 0,
-						"video_rate_independent": false,
-						"video_rate_multiplier": 0,
 						"claude_code_only": false,
 						"allow_messages_dispatch": false,
 						"allow_live": false,
@@ -444,6 +440,9 @@ func TestAPIContracts(t *testing.T) {
 						"daily_usage_usd": 1.23,
 						"weekly_usage_usd": 2.34,
 						"monthly_usage_usd": 3.45,
+						"allow_daily_overdraft": false,
+						"skip_weekends": false,
+						"source": "",
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -575,7 +574,7 @@ func TestAPIContracts(t *testing.T) {
 				})
 			},
 			method:     http.MethodGet,
-			path:       "/api/v1/usage?page=1&page_size=10",
+			path:       "/api/v1/usage?page=1&page_size=10&start_date=2025-01-01&end_date=2025-01-02",
 			wantStatus: http.StatusOK,
 			wantJSON: `{
 				"code": 0,
@@ -612,6 +611,7 @@ func TestAPIContracts(t *testing.T) {
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
+							"upstream_first_event_ms": null,
 							"image_count": 0,
 							"image_size": null,
 							"image_input_size": null,
@@ -875,6 +875,10 @@ func TestAPIContracts(t *testing.T) {
 					"affiliate_rebate_duration_days": 0,
 					"affiliate_rebate_per_invitee_cap": 0,
 					"affiliate_admin_recharge_enabled": false,
+					"affiliate_recharge_enabled": true,
+					"affiliate_recharge_rebate_rate": 20,
+					"affiliate_subscription_enabled": false,
+					"affiliate_subscription_rebate_rate": 20,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -887,9 +891,9 @@ func TestAPIContracts(t *testing.T) {
 						"invitation_code_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
-					"grok_default_text_model": "grok-4.6",
-					"grok_default_base_url_mode": "cli",
-					"grok_cross_client_model_map_enabled": true,
+					"grok_default_text_model": "",
+					"grok_default_base_url_mode": "",
+					"grok_cross_client_model_map_enabled": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -920,6 +924,8 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_source": "official_wxpay",
 					"payment_visible_method_alipay_enabled": true,
 					"payment_visible_method_wxpay_enabled": false,
+					"openai_free_image_bridge_url": "",
+					"openai_free_image_bridge_auth_key_configured": false,
 					"openai_low_upstream_rate_priority_enabled": true,
 					"openai_oauth_scheduling_rate_multiplier": 0.05,
 					"openai_ttft_mode": "semantic",
@@ -961,8 +967,13 @@ func TestAPIContracts(t *testing.T) {
 					"payment_min_amount": 0,
 					"payment_max_amount": 0,
 					"payment_daily_limit": 0,
+					"payment_discount_rules": null,
 					"payment_order_timeout_minutes": 0,
 					"payment_max_pending_orders": 0,
+					"payment_paid_user_rate_enabled": false,
+					"payment_paid_user_rate_rules": [],
+					"payment_paid_user_rate_backfill": {"total_paid_users":0,"assigned_users":0,"rule_count":0,"status":""},
+					"payment_quick_amounts": null,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
 					"payment_subscription_usd_to_cny_rate": 0,
@@ -988,7 +999,7 @@ func TestAPIContracts(t *testing.T) {
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
 					"channel_monitor_enabled": true,
-					"channel_monitor_mode": "v1",
+					"channel_monitor_mode": "v2",
 					"channel_monitor_hide_throughput": true,
 					"channel_monitor_show_quota": false,
 					"channel_monitor_default_interval_seconds": 60,
@@ -1172,9 +1183,9 @@ func TestAPIContracts(t *testing.T) {
 					"doc_url": "",
 					"home_content": "",
 					"hide_ccs_import_button": false,
-					"grok_default_text_model": "grok-4.6",
-					"grok_default_base_url_mode": "cli",
-					"grok_cross_client_model_map_enabled": true,
+					"grok_default_text_model": "",
+					"grok_default_base_url_mode": "",
+					"grok_cross_client_model_map_enabled": false,
 					"purchase_subscription_enabled": false,
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
@@ -1196,6 +1207,10 @@ func TestAPIContracts(t *testing.T) {
 					"affiliate_rebate_duration_days": 0,
 					"affiliate_rebate_per_invitee_cap": 0,
 					"affiliate_admin_recharge_enabled": false,
+					"affiliate_recharge_enabled": true,
+					"affiliate_recharge_rebate_rate": 20,
+					"affiliate_subscription_enabled": false,
+					"affiliate_subscription_rebate_rate": 20,
 					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
@@ -1235,6 +1250,8 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_wxpay_source": "",
 					"payment_visible_method_alipay_enabled": false,
 					"payment_visible_method_wxpay_enabled": false,
+					"openai_free_image_bridge_url": "",
+					"openai_free_image_bridge_auth_key_configured": false,
 					"openai_low_upstream_rate_priority_enabled": false,
 					"openai_oauth_scheduling_rate_multiplier": 1,
 					"openai_ttft_mode": "semantic",
@@ -1274,8 +1291,13 @@ func TestAPIContracts(t *testing.T) {
 					"payment_min_amount": 0,
 					"payment_max_amount": 0,
 					"payment_daily_limit": 0,
+					"payment_discount_rules": null,
 					"payment_order_timeout_minutes": 0,
 					"payment_max_pending_orders": 0,
+					"payment_paid_user_rate_enabled": false,
+					"payment_paid_user_rate_rules": [],
+					"payment_paid_user_rate_backfill": {"total_paid_users":0,"assigned_users":0,"rule_count":0,"status":""},
+					"payment_quick_amounts": null,
 					"payment_enabled_types": null,
 					"payment_balance_disabled": false,
 					"payment_balance_recharge_multiplier": 0,
@@ -1301,7 +1323,7 @@ func TestAPIContracts(t *testing.T) {
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
 					"channel_monitor_enabled": true,
-					"channel_monitor_mode": "v1",
+					"channel_monitor_mode": "v2",
 					"channel_monitor_hide_throughput": true,
 					"channel_monitor_show_quota": false,
 					"channel_monitor_default_interval_seconds": 60,
@@ -1469,7 +1491,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 
-	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil, nil)
+	redeemService := service.NewRedeemService(redeemRepo, userRepo, subscriptionService, nil, nil, nil, nil)
 	redeemHandler := handler.NewRedeemHandler(redeemService)
 
 	settingRepo := newStubSettingRepo()
@@ -1901,8 +1923,12 @@ func (s *stubAccountRepo) ListAllWithFilters(context.Context, string, string, st
 	return nil, nil
 }
 
-func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string, tags []string) ([]service.Account, *pagination.PaginationResult, error) {
 	return nil, nil, errors.New("not implemented")
+}
+
+func (s *stubAccountRepo) ListAllTags(ctx context.Context) ([]string, error) {
+	return nil, nil
 }
 
 func (s *stubAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -2273,10 +2299,13 @@ func (stubUserSubscriptionRepo) UpdateStatus(ctx context.Context, subscriptionID
 func (stubUserSubscriptionRepo) UpdateNotes(ctx context.Context, subscriptionID int64, notes string) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error {
+func (stubUserSubscriptionRepo) UpdateDailyOverdraft(ctx context.Context, subscriptionID int64, enabled bool) error {
 	return errors.New("not implemented")
 }
-func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, periodicStart time.Time) error {
+func (stubUserSubscriptionRepo) ActivateWindows(ctx context.Context, id int64, dailyStart, weeklyStart, monthlyStart time.Time) error {
+	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) ResetUsageWindows(ctx context.Context, id int64, resetDaily, resetWeekly, resetMonthly bool, dailyStart, weeklyStart, monthlyStart time.Time) error {
 	return errors.New("not implemented")
 }
 func (stubUserSubscriptionRepo) ResetDailyUsage(ctx context.Context, id int64, expectedWindowStart *time.Time, newWindowStart time.Time) error {
@@ -2290,6 +2319,9 @@ func (stubUserSubscriptionRepo) ResetMonthlyUsage(ctx context.Context, id int64,
 }
 func (stubUserSubscriptionRepo) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	return errors.New("not implemented")
+}
+func (stubUserSubscriptionRepo) GetLatestUsedAtBySubscriptionIDs(ctx context.Context, subscriptionIDs []int64) (map[int64]*time.Time, error) {
+	return map[int64]*time.Time{}, nil
 }
 func (stubUserSubscriptionRepo) BatchUpdateExpiredStatus(ctx context.Context) (int64, error) {
 	return 0, errors.New("not implemented")

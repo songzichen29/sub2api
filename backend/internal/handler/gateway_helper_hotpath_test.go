@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
 
 type helperConcurrencyCacheStub struct {
@@ -490,6 +491,99 @@ func TestAcquireAccountSlotWithWaitTimeout_ImmediateAttemptBeforeBackoff(t *test
 	require.ErrorAs(t, err, &cErr)
 	require.True(t, cErr.IsTimeout)
 	require.GreaterOrEqual(t, cache.accountAcquireCalls, 1)
+}
+
+type poolWaitConcurrencyCacheStub struct {
+	service.ConcurrencyCache
+	mu                 sync.Mutex
+	calls              map[int64]int
+	immediateAccountID int64
+	releasedAccountID  int64
+}
+
+func (s *poolWaitConcurrencyCacheStub) AcquireAccountSlot(_ context.Context, accountID int64, _ int, _ string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.calls == nil {
+		s.calls = make(map[int64]int)
+	}
+	s.calls[accountID]++
+	if s.immediateAccountID > 0 {
+		return accountID == s.immediateAccountID, nil
+	}
+	return accountID == 402 && s.calls[accountID] >= 2, nil
+}
+
+func (s *poolWaitConcurrencyCacheStub) ReleaseAccountSlot(_ context.Context, accountID int64, _ string) error {
+	s.mu.Lock()
+	s.releasedAccountID = accountID
+	s.mu.Unlock()
+	return nil
+}
+
+func TestAcquireAnyAccountSlotWithWaitTimeoutUsesFirstAvailableCandidate(t *testing.T) {
+	cache := &poolWaitConcurrencyCacheStub{}
+	concurrency := service.NewConcurrencyService(cache)
+	helper := NewConcurrencyHelper(concurrency, SSEPingFormatNone, 5*time.Millisecond)
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/responses")
+	streamStarted := false
+	account401 := &service.Account{ID: 401, Concurrency: 1}
+	account402 := &service.Account{ID: 402, Concurrency: 1}
+
+	account, release, err := helper.AcquireAnyAccountSlotWithWaitTimeout(
+		c,
+		[]service.AccountWaitCandidate{
+			{Account: account401, MaxConcurrency: 1},
+			{Account: account402, MaxConcurrency: 1},
+		},
+		time.Second,
+		false,
+		&streamStarted,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	require.Equal(t, int64(402), account.ID)
+	require.NotNil(t, release)
+	release()
+}
+
+func TestAcquireResponsesAccountSlotReturnsActualMovableCandidate(t *testing.T) {
+	cache := &poolWaitConcurrencyCacheStub{immediateAccountID: 402}
+	h := &OpenAIGatewayHandler{
+		gatewayService:    &service.OpenAIGatewayService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, 0),
+	}
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/responses")
+	streamStarted := false
+	account401 := &service.Account{ID: 401, Concurrency: 1}
+	account402 := &service.Account{ID: 402, Concurrency: 1}
+	selection := &service.AccountSelectionResult{
+		Account: account401,
+		WaitPlan: &service.AccountWaitPlan{
+			AccountID:      account401.ID,
+			MaxConcurrency: account401.Concurrency,
+			Timeout:        time.Second,
+			MaxWaiting:     2,
+			Candidates: []service.AccountWaitCandidate{
+				{Account: account401, MaxConcurrency: account401.Concurrency},
+				{Account: account402, MaxConcurrency: account402.Concurrency},
+			},
+		},
+	}
+
+	account, release, result := h.acquireResponsesAccountSlot(c, nil, "", selection, false, &streamStarted, zap.NewNop())
+
+	require.Equal(t, openAISlotAcquireOK, result)
+	require.NotNil(t, account)
+	require.Equal(t, int64(402), account.ID)
+	require.Equal(t, int64(402), selection.Account.ID)
+	require.NotNil(t, release)
+	release()
+	cache.mu.Lock()
+	releasedAccountID := cache.releasedAccountID
+	cache.mu.Unlock()
+	require.Equal(t, int64(402), releasedAccountID)
 }
 
 type helperConcurrencyCacheStubWithError struct {

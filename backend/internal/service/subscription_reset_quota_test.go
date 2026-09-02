@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,8 +46,6 @@ func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64
 	r.resetDailyCalled = resetDaily
 	r.resetWeeklyCalled = resetWeekly
 	r.resetMonthlyCalled = resetMonthly
-	r.dailyStart = dailyStart
-	r.periodicStart = periodicStart
 	if resetDaily && r.resetDailyErr != nil {
 		return r.resetDailyErr
 	}
@@ -162,8 +161,10 @@ func TestAdminResetQuota_ResetBoth(t *testing.T) {
 	require.True(t, stub.resetWeeklyCalled, "应调用 ResetWeeklyUsage")
 	require.False(t, stub.resetMonthlyCalled, "不应调用 ResetMonthlyUsage")
 	// 手动重置后日窗口锚定当天 0 点（保持 0 点刷新节奏），周窗口锚定重置时刻。
-	require.Equal(t, timezone.StartOfDay(resetAt), stub.dailyStart)
-	require.Equal(t, resetAt, stub.periodicStart)
+	require.NotNil(t, stub.lastResetDailyStart)
+	require.NotNil(t, stub.lastResetWeeklyStart)
+	require.Equal(t, timezone.StartOfDay(resetAt), *stub.lastResetDailyStart)
+	require.Equal(t, resetAt, *stub.lastResetWeeklyStart)
 	require.Equal(t, timezone.StartOfDay(resetAt), *result.DailyWindowStart)
 	require.Equal(t, resetAt, *result.WeeklyWindowStart)
 }
@@ -352,7 +353,7 @@ func TestAdminResetQuota_ReturnsRefreshedSub(t *testing.T) {
 	require.True(t, stub.resetDailyCalled)
 }
 
-func TestCheckAndActivateWindow_UsesSubscriptionAnchoredRollingWindows(t *testing.T) {
+func TestCheckAndActivateWindow_UsesNaturalDailyAndActivationPeriodWindows(t *testing.T) {
 	startsAt := time.Now().Add(-50 * time.Hour)
 	sub := newAdminSub(100)
 	sub.StartsAt = startsAt
@@ -369,9 +370,10 @@ func TestCheckAndActivateWindow_UsesSubscriptionAnchoredRollingWindows(t *testin
 	require.NotNil(t, stub.activateWeeklyStart)
 	require.NotNil(t, stub.activateMonthlyStart)
 
-	expectedDaily := startsAt.Add(48 * time.Hour)
-	expectedWeekly := startsAt
-	expectedMonthly := startsAt
+	now := svc.now()
+	expectedDaily := timezone.StartOfDay(now)
+	expectedWeekly := now
+	expectedMonthly := now
 	require.WithinDuration(t, expectedDaily, *stub.activateDailyStart, 2*time.Second)
 	require.WithinDuration(t, expectedWeekly, *stub.activateWeeklyStart, 2*time.Second)
 	require.WithinDuration(t, expectedMonthly, *stub.activateMonthlyStart, 2*time.Second)
@@ -441,7 +443,7 @@ func TestFulfillPaidDailyQuotaReset_IgnoresLatestGroupResetSwitch(t *testing.T) 
 	require.Equal(t, 0.0, result.DailyUsageUSD)
 }
 
-func TestAdminResetQuota_UsesAnchoredDailyWindow(t *testing.T) {
+func TestAdminResetQuota_UsesNaturalDailyWindow(t *testing.T) {
 	startsAt := time.Now().Add(-(8*24 + 6) * time.Hour)
 	sub := newAdminSub(102)
 	weekly := 210.0
@@ -458,7 +460,7 @@ func TestAdminResetQuota_UsesAnchoredDailyWindow(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, stub.lastResetDailyStart)
-	require.WithinDuration(t, sub.CurrentDailyWindowStart(time.Now()), *stub.lastResetDailyStart, 2*time.Second)
+	require.WithinDuration(t, timezone.StartOfDay(svc.now()), *stub.lastResetDailyStart, 2*time.Second)
 }
 
 func TestCheckAndResetWindows_DailyOverdraftSkipsPeriodUsageResets(t *testing.T) {

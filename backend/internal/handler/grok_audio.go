@@ -77,14 +77,20 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		account := candidate.Account
 		var streamStarted bool
 		var slotStatus openAISlotAcquireResult
-		release, slotStatus = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
+		var finalAccount *service.Account
+		finalAccount, release, slotStatus = h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", candidate, false, &streamStarted, reqLog)
 		if slotStatus != openAISlotAcquireOK {
 			if slotStatus == openAISlotAcquireFailed {
 				return
 			}
-			failed[account.ID] = struct{}{}
+			if finalAccount != nil {
+				failed[finalAccount.ID] = struct{}{}
+			} else {
+				failed[account.ID] = struct{}{}
+			}
 			continue
 		}
+		account = finalAccount
 		var credErr error
 		token, _, credErr = h.gatewayService.GetRequestCredential(c.Request.Context(), c, account)
 		if credErr != nil {
@@ -247,9 +253,13 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 		}
 		account := selection.Account
 		var started bool
-		release, status := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog)
+		finalAccount, release, status := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog)
 		if status == openAISlotAcquireProfitVetoed {
-			failed[account.ID] = struct{}{}
+			if finalAccount != nil {
+				failed[finalAccount.ID] = struct{}{}
+			} else {
+				failed[account.ID] = struct{}{}
+			}
 			continue
 		}
 		if status != openAISlotAcquireOK {
@@ -261,6 +271,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			failed[account.ID] = struct{}{}
 			continue
 		}
+		account = finalAccount
 		result, forwardErr := func() (*service.OpenAIForwardResult, error) {
 			defer release()
 			return h.gatewayService.ForwardGrokVoice(c.Request.Context(), c, account, endpoint, body, contentType)

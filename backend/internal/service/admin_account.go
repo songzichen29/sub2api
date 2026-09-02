@@ -506,6 +506,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			}
 		}
 	}
+	if err := s.validateGroupIDsExist(ctx, groupIDs); err != nil {
+		return nil, err
+	}
 
 	// 检查混合渠道风险（除非用户已确认）
 	if len(groupIDs) > 0 && !input.SkipMixedChannelCheck {

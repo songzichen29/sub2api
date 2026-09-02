@@ -11,31 +11,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// userPlatformQuotaRepoStub is a stub implementation of UserPlatformQuotaRepository for tests.
-type userPlatformQuotaRepoStub struct {
+// emailOAuthUserPlatformQuotaRepoStub records the initial quota snapshot for
+// the email OAuth auto-registration path.
+type emailOAuthUserPlatformQuotaRepoStub struct {
 	bulkInsertCalls [][]UserPlatformQuotaRecord
 }
 
-func (r *userPlatformQuotaRepoStub) GetByUserPlatform(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaRecord, error) {
+func (r *emailOAuthUserPlatformQuotaRepoStub) GetByUserPlatform(ctx context.Context, userID int64, platform string) (*UserPlatformQuotaRecord, error) {
 	return nil, nil
 }
-func (r *userPlatformQuotaRepoStub) BulkInsertInitial(ctx context.Context, records []UserPlatformQuotaRecord) error {
+func (r *emailOAuthUserPlatformQuotaRepoStub) BulkInsertInitial(ctx context.Context, records []UserPlatformQuotaRecord) error {
 	r.bulkInsertCalls = append(r.bulkInsertCalls, records)
 	return nil
 }
-func (r *userPlatformQuotaRepoStub) IncrementUsageWithReset(ctx context.Context, userID int64, platform string, cost float64, now time.Time) error {
+func (r *emailOAuthUserPlatformQuotaRepoStub) IncrementUsageWithReset(ctx context.Context, userID int64, platform string, cost float64, now time.Time) error {
 	return nil
 }
-func (r *userPlatformQuotaRepoStub) ListByUser(ctx context.Context, userID int64) ([]UserPlatformQuotaRecord, error) {
+func (r *emailOAuthUserPlatformQuotaRepoStub) ListByUser(ctx context.Context, userID int64) ([]UserPlatformQuotaRecord, error) {
 	return nil, nil
 }
-func (r *userPlatformQuotaRepoStub) UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error {
+func (r *emailOAuthUserPlatformQuotaRepoStub) UpsertForUser(ctx context.Context, userID int64, records []UserPlatformQuotaRecord) error {
 	return nil
 }
-func (r *userPlatformQuotaRepoStub) BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
+func (r *emailOAuthUserPlatformQuotaRepoStub) BatchSnapshotUsage(ctx context.Context, snapshots []UserPlatformQuotaSnapshot, now time.Time) error {
 	return nil
 }
-func (r *userPlatformQuotaRepoStub) ResetExpiredWindow(ctx context.Context, userID int64, platform string, window string, newStart time.Time) error {
+func (r *emailOAuthUserPlatformQuotaRepoStub) ResetExpiredWindow(ctx context.Context, userID int64, platform string, window string, newStart time.Time) error {
 	return nil
 }
 
@@ -78,7 +79,7 @@ func newEmailOAuthAutoAuthService(
 
 func TestEmailOAuthAuto_SnapshotsPlatformQuotaDefaults(t *testing.T) {
 	userRepo := &userRepoStub{nextID: 88}
-	quotaRepo := &userPlatformQuotaRepoStub{}
+	quotaRepo := &emailOAuthUserPlatformQuotaRepoStub{}
 
 	svc := newEmailOAuthAutoAuthService(
 		userRepo,

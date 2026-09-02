@@ -791,6 +791,55 @@ func deriveOpenAISelectionSeed(req OpenAIAccountScheduleRequest) uint64 {
 	return seed
 }
 
+func sameOpenAIAccountCandidateRank(left, right openAIAccountCandidateScore) bool {
+	if left.score != right.score || left.priority != right.priority {
+		return false
+	}
+	if left.loadInfo == nil || right.loadInfo == nil {
+		return left.loadInfo == right.loadInfo
+	}
+	return left.loadInfo.LoadRate == right.loadInfo.LoadRate &&
+		left.loadInfo.WaitingCount == right.loadInfo.WaitingCount
+}
+
+func selectFairTopKOpenAICandidates(
+	candidates []openAIAccountCandidateScore,
+	topK int,
+	req OpenAIAccountScheduleRequest,
+) []openAIAccountCandidateScore {
+	if len(candidates) == 0 {
+		return nil
+	}
+	if topK <= 0 {
+		topK = 1
+	}
+	ranked := append([]openAIAccountCandidateScore(nil), candidates...)
+	sort.Slice(ranked, func(i, j int) bool {
+		return isOpenAIAccountCandidateBetter(ranked[i], ranked[j])
+	})
+	if topK >= len(ranked) {
+		return ranked
+	}
+
+	cutoff := ranked[topK-1]
+	tieStart := topK - 1
+	for tieStart > 0 && sameOpenAIAccountCandidateRank(ranked[tieStart-1], cutoff) {
+		tieStart--
+	}
+	tieEnd := topK
+	for tieEnd < len(ranked) && sameOpenAIAccountCandidateRank(ranked[tieEnd], cutoff) {
+		tieEnd++
+	}
+	if tieEnd-tieStart <= topK-tieStart {
+		return ranked[:topK]
+	}
+
+	selected := append([]openAIAccountCandidateScore(nil), ranked[:tieStart]...)
+	tieOrder := buildOpenAIWeightedSelectionOrder(ranked[tieStart:tieEnd], req)
+	selected = append(selected, tieOrder[:topK-tieStart]...)
+	return selected
+}
+
 func buildOpenAIWeightedSelectionOrder(
 	candidates []openAIAccountCandidateScore,
 	req OpenAIAccountScheduleRequest,
@@ -1053,27 +1102,29 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		if groupTopK > len(pool) {
 			groupTopK = len(pool)
 		}
-		ranked := selectTopKOpenAICandidates(pool, groupTopK)
-		var primary []openAIAccountCandidateScore
+		// Preserve deterministic ranking for meaningfully different candidates,
+		// but sample fairly across the rank-equivalent tie group that crosses the
+		// Top-K boundary. This prevents account-ID starvation without allowing a
+		// clearly worse candidate to displace the best account when Top-K is small.
+		ranked := selectFairTopKOpenAICandidates(pool, groupTopK, req)
+		primary := buildOpenAIWeightedSelectionOrder(ranked, req)
 		if req.StickyWeighted {
 			for _, stickyID := range []int64{req.StickyPreviousAccountID, req.StickyAccountID} {
 				if stickyID <= 0 {
 					continue
 				}
-				for i, candidate := range ranked {
+				for i, candidate := range primary {
 					if candidate.account != nil && candidate.account.ID == stickyID {
-						primary = append([]openAIAccountCandidateScore{candidate}, ranked[:i]...)
-						primary = append(primary, ranked[i+1:]...)
+						sticky := candidate
+						copy(primary[1:i+1], primary[:i])
+						primary[0] = sticky
 						break
 					}
 				}
-				if len(primary) > 0 {
+				if primary[0].account != nil && primary[0].account.ID == stickyID {
 					break
 				}
 			}
-		}
-		if len(primary) == 0 {
-			primary = buildOpenAIWeightedSelectionOrder(ranked, req)
 		}
 		if !plan.includeOverflowFallback || groupTopK >= len(pool) {
 			return primary
@@ -1478,7 +1529,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	loadMap := map[int64]*AccountLoadInfo{}
 	if s.service.concurrencyService != nil {
-		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
+		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatchFresh(ctx, loadReq); loadErr == nil {
 			loadMap = batchLoad
 		}
 	}
@@ -1683,6 +1734,11 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 	if budget != nil && budget.limited {
 		passes = 4
 	}
+	validatedCandidates := make([]AccountWaitCandidate, 0, len(attempt.selectionOrder))
+	validatedIDs := make(map[int64]struct{}, len(attempt.selectionOrder))
+	var selected *Account
+
+scanCandidates:
 	for pass := 0; pass < passes; pass++ {
 		wantAttempted := pass == 1 || pass == 3
 		wantKnownFull := pass >= 2
@@ -1702,7 +1758,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				continue
 			}
 			if !s.consumeOpenAISelectionDBRecheck(budget) {
-				return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))
+				break scanCandidates
 			}
 			fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.GroupID, req.Platform, req.RequestedModel, false, req.RequiredCapability)
 			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(ctx, fresh, req) {
@@ -1712,16 +1768,30 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 				compactBlocked = true
 				continue
 			}
-			return attachSelectionProfitGate(ctx, &AccountSelectionResult{
-				Account: fresh,
-				WaitPlan: &AccountWaitPlan{
-					AccountID:      fresh.ID,
-					MaxConcurrency: fresh.Concurrency,
-					Timeout:        cfg.FallbackWaitTimeout,
-					MaxWaiting:     cfg.FallbackMaxWaiting,
-				},
-			}), candidateCount, topK, loadSkew, nil
+			if _, exists := validatedIDs[fresh.ID]; exists {
+				continue
+			}
+			validatedIDs[fresh.ID] = struct{}{}
+			validatedCandidates = append(validatedCandidates, AccountWaitCandidate{
+				Account:        fresh,
+				MaxConcurrency: fresh.Concurrency,
+			})
+			if selected == nil {
+				selected = fresh
+			}
 		}
+	}
+	if selected != nil {
+		return attachSelectionProfitGate(ctx, &AccountSelectionResult{
+			Account: selected,
+			WaitPlan: &AccountWaitPlan{
+				AccountID:      selected.ID,
+				MaxConcurrency: selected.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+				Candidates:     validatedCandidates,
+			},
+		}), candidateCount, topK, loadSkew, nil
 	}
 
 	return nil, candidateCount, topK, loadSkew, noAvailableOpenAISelectionError(req.RequestedModel, compactBlocked, filterStats.summary("selection_order_exhausted"))

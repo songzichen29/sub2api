@@ -298,14 +298,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				continue
 			}
 		}
-		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
-		setOpsSelectedAccount(c, account.ID, account.Platform)
+		if boundLookupAccountID > 0 && selection.WaitPlan != nil {
+			// Video lookup is hard-bound to the account that created the request.
+			selection.WaitPlan.Candidates = nil
+		}
 
-		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
+		finalAccount, accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, false, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 媒体路径已显式豁免利润门（suppress 标记），此分支仅防御性兜底，
 			// 同样受否决上限约束。
-			if !recordOpenAIProfitVeto(failedAccountIDs, account.ID, &profitVetoCount) {
+			if finalAccount == nil || !recordOpenAIProfitVeto(failedAccountIDs, finalAccount.ID, &profitVetoCount) {
 				h.handleOpenAIProfitVetoExhausted(c, streamStarted, reqLog, profitVetoCount)
 				return
 			}
@@ -314,6 +316,38 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		if slotResult != openAISlotAcquireOK {
 			return
 		}
+		account = finalAccount
+		if endpoint.IsGenerationRequest() {
+			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
+			if !eligible {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+					accountReleaseFunc = nil
+				}
+				mediaEligibilityRejected = true
+				failedAccountIDs[account.ID] = struct{}{}
+				reqLog.Warn("grok_media.account_eligibility_rejected_after_wait",
+					zap.Int64("account_id", account.ID),
+					zap.String("reason", eligibilityReason),
+					zap.Bool("probe_failed", eligibilityErr != nil),
+				)
+				if switchCount >= maxAccountSwitches {
+					markOpsRoutingCapacityLimited(c)
+					h.errorResponse(c, http.StatusServiceUnavailable, "grok_media_no_eligible_account", "No eligible Grok media accounts")
+					return
+				}
+				switchCount++
+				continue
+			}
+		}
+		previousSessionHash := sessionHash
+		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
+		if sessionHash != previousSessionHash {
+			if err := h.gatewayService.BindStickySessionAfterProfitAdmission(requestCtx, apiKey.GroupID, sessionHash, account.ID); err != nil {
+				reqLog.Warn("grok_media.bind_pool_session_after_account_slot_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			}
+		}
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()

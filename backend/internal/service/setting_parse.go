@@ -1193,37 +1193,56 @@ func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 
 	normalized := make([]DefaultSubscriptionSetting, 0, len(items))
 	for _, item := range items {
-		if item.GroupID <= 0 {
-			continue
+		normalizedItem, ok := normalizeDefaultSubscriptionSetting(item)
+		if ok {
+			normalized = append(normalized, normalizedItem)
 		}
-		startRaw, endRaw := "", ""
-		if item.StartsAt != nil {
-			startRaw = strings.TrimSpace(*item.StartsAt)
-		}
-		if item.ExpiresAt != nil {
-			endRaw = strings.TrimSpace(*item.ExpiresAt)
-		}
-		if startRaw != "" || endRaw != "" {
-			if startRaw == "" || endRaw == "" {
-				continue
-			}
-			startAt, startErr := time.Parse(time.RFC3339, startRaw)
-			endAt, endErr := time.Parse(time.RFC3339, endRaw)
-			if startErr != nil || endErr != nil || !endAt.After(startAt) {
-				continue
-			}
-			startValue, endValue := startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339)
-			item.StartsAt, item.ExpiresAt, item.ValidityDays = &startValue, &endValue, 0
-		} else if item.ValidityDays <= 0 {
-			continue
-		}
-		if item.ValidityDays > MaxValidityDays {
-			item.ValidityDays = MaxValidityDays
-		}
-		normalized = append(normalized, item)
 	}
 
 	return normalized
+}
+
+func validateDefaultSubscriptionSettings(items []DefaultSubscriptionSetting) error {
+	for _, item := range items {
+		if _, ok := normalizeDefaultSubscriptionSetting(item); !ok {
+			return ErrDefaultSubSettingInvalid.WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(item.GroupID, 10),
+			})
+		}
+	}
+	return nil
+}
+
+func normalizeDefaultSubscriptionSetting(item DefaultSubscriptionSetting) (DefaultSubscriptionSetting, bool) {
+	if item.GroupID <= 0 {
+		return DefaultSubscriptionSetting{}, false
+	}
+	startRaw, endRaw := "", ""
+	if item.StartsAt != nil {
+		startRaw = strings.TrimSpace(*item.StartsAt)
+	}
+	if item.ExpiresAt != nil {
+		endRaw = strings.TrimSpace(*item.ExpiresAt)
+	}
+	if startRaw != "" || endRaw != "" {
+		if startRaw == "" || endRaw == "" {
+			return DefaultSubscriptionSetting{}, false
+		}
+		startAt, startErr := time.Parse(time.RFC3339, startRaw)
+		endAt, endErr := time.Parse(time.RFC3339, endRaw)
+		if startErr != nil || endErr != nil || !endAt.After(startAt) {
+			return DefaultSubscriptionSetting{}, false
+		}
+		startValue, endValue := startAt.UTC().Format(time.RFC3339), endAt.UTC().Format(time.RFC3339)
+		return DefaultSubscriptionSetting{GroupID: item.GroupID, StartsAt: &startValue, ExpiresAt: &endValue}, true
+	}
+	if item.ValidityDays <= 0 {
+		return DefaultSubscriptionSetting{}, false
+	}
+	if item.ValidityDays > MaxValidityDays {
+		item.ValidityDays = MaxValidityDays
+	}
+	return DefaultSubscriptionSetting{GroupID: item.GroupID, ValidityDays: item.ValidityDays}, true
 }
 
 func parseProviderDefaultGrantSettings(settings map[string]string, keys authSourceDefaultKeySet) ProviderDefaultGrantSettings {

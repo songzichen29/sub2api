@@ -1476,6 +1476,10 @@ type GatewaySchedulingConfig struct {
 	// 过期槽位清理周期（0 表示禁用）
 	SlotCleanupInterval time.Duration `mapstructure:"slot_cleanup_interval"`
 
+	// OpenAI OAuth quota precheck skips accounts whose fresh Codex usage
+	// percentage reaches this threshold. Zero disables the precheck.
+	OpenAIOAuthQuotaThreshold float64 `mapstructure:"openai_oauth_quota_threshold"`
+
 	// 受控回源配置
 	DbFallbackEnabled bool `mapstructure:"db_fallback_enabled"`
 	// 受控回源超时（秒），0 表示不额外收紧超时
@@ -2493,6 +2497,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
 	viper.SetDefault("gateway.scheduling.prefer_soonest_reset", false)
+	viper.SetDefault("gateway.scheduling.openai_oauth_quota_threshold", 0.0)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)

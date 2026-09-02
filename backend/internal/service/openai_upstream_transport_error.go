@@ -18,6 +18,30 @@ import (
 // unscheduled after a durable transport failure (matches tokenRefreshTempUnschedDuration).
 const openAITransportErrorTempUnschedDuration = 10 * time.Minute
 
+var openAITransportNetworkBackoffSteps = [...]time.Duration{
+	5 * time.Second,
+	10 * time.Second,
+	15 * time.Second,
+}
+
+const openAITransportNetworkBackoffResetAfter = 30 * time.Second
+
+type openAITransportBackoffState struct {
+	failures    int
+	lastFailure time.Time
+}
+
+type openAITransportErrorClass struct {
+	Persistent   bool
+	ShortBackoff bool
+}
+
+var openAIShortBackoffTimeoutMarkers = []string{
+	"i/o timeout",
+	"client.timeout exceeded",
+	"context deadline exceeded",
+}
+
 // openAITransportFailoverBody is the OpenAI-format error body attached to the
 // failover error for a transport-level failure. Kept identical to the legacy
 // inline 502 body so the client-visible payload is unchanged if failover is
@@ -91,6 +115,78 @@ func classifyUpstreamTransportError(err error) upstreamTransportErrorClass {
 	return upstreamTransportErrorClass{}
 }
 
+func classifyOpenAITransportError(err error) openAITransportErrorClass {
+	base := classifyUpstreamTransportError(err)
+	if err == nil {
+		return openAITransportErrorClass{}
+	}
+
+	if errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) {
+		return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return openAITransportErrorClass{ShortBackoff: true}
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return openAITransportErrorClass{ShortBackoff: true}
+	}
+
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{"connection refused", "no route to host", "network is unreachable", "no such host"} {
+		if strings.Contains(msg, marker) {
+			return openAITransportErrorClass{Persistent: true, ShortBackoff: true}
+		}
+	}
+	for _, marker := range openAIShortBackoffTimeoutMarkers {
+		if strings.Contains(msg, marker) {
+			return openAITransportErrorClass{ShortBackoff: true}
+		}
+	}
+	return openAITransportErrorClass{Persistent: base.Persistent}
+}
+
+func (s *OpenAIGatewayService) nextOpenAITransportNetworkBackoff(accountID int64, now time.Time) time.Duration {
+	if s == nil || accountID <= 0 {
+		return openAITransportNetworkBackoffSteps[0]
+	}
+
+	s.openaiTransportBackoffMu.Lock()
+	defer s.openaiTransportBackoffMu.Unlock()
+
+	if s.openaiTransportBackoffByAccount == nil {
+		s.openaiTransportBackoffByAccount = make(map[int64]openAITransportBackoffState)
+	}
+	state := s.openaiTransportBackoffByAccount[accountID]
+	if state.lastFailure.IsZero() || now.Sub(state.lastFailure) > openAITransportNetworkBackoffResetAfter {
+		state.failures = 0
+	}
+	state.failures++
+	state.lastFailure = now
+	s.openaiTransportBackoffByAccount[accountID] = state
+
+	step := state.failures - 1
+	if step >= len(openAITransportNetworkBackoffSteps) {
+		step = len(openAITransportNetworkBackoffSteps) - 1
+	}
+	return openAITransportNetworkBackoffSteps[step]
+}
+
+func (s *OpenAIGatewayService) resetOpenAITransportNetworkBackoff(accountID int64) {
+	if s == nil || accountID <= 0 {
+		return
+	}
+	s.openaiTransportBackoffMu.Lock()
+	delete(s.openaiTransportBackoffByAccount, accountID)
+	s.openaiTransportBackoffMu.Unlock()
+}
+
 // handleOpenAIUpstreamTransportError handles a transport-level upstream failure
 // (Do/DoWithTLS returned a non-HTTP error: proxy/DNS/TCP/TLS). It:
 //  1. records the failure in Ops error logs (status 0, kind=request_error);
@@ -135,8 +231,13 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 		return err
 	}
 
-	if classifyUpstreamTransportError(err).Persistent {
-		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr)
+	errClass := classifyOpenAITransportError(err)
+	if errClass.ShortBackoff {
+		backoff := s.nextOpenAITransportNetworkBackoff(account.ID, time.Now())
+		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr, backoff)
+	} else if errClass.Persistent {
+		s.resetOpenAITransportNetworkBackoff(account.ID)
+		s.tempUnscheduleOpenAITransportError(ctx, account, safeErr, openAITransportErrorTempUnschedDuration)
 	}
 
 	return &UpstreamFailoverError{
@@ -156,11 +257,14 @@ func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Co
 //     accountRepo is nil (in-memory only; no persistence).
 //   - "openai.account_temp_unscheduled_transport_failed" — DB write attempted
 //     but returned an error.
-func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Context, account *Account, safeErr string) {
+func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Context, account *Account, safeErr string, duration time.Duration) {
 	if s == nil || account == nil {
 		return
 	}
-	until := time.Now().Add(openAITransportErrorTempUnschedDuration)
+	if duration <= 0 {
+		duration = openAITransportErrorTempUnschedDuration
+	}
+	until := time.Now().Add(duration)
 	reason := "upstream transport error (proxy/network): " + safeErr
 
 	// Immediate in-memory block (honoured by the scheduler at selection time),
@@ -176,6 +280,7 @@ func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Co
 			zap.String("account_name", account.Name),
 			zap.String("platform", account.Platform),
 			zap.Time("until", until),
+			zap.Duration("cooldown", duration),
 			zap.String("reason", reason),
 		)
 		return
@@ -199,6 +304,7 @@ func (s *OpenAIGatewayService) tempUnscheduleOpenAITransportError(ctx context.Co
 		zap.String("account_name", account.Name),
 		zap.String("platform", account.Platform),
 		zap.Time("until", until),
+		zap.Duration("cooldown", duration),
 		zap.String("reason", reason),
 	)
 }

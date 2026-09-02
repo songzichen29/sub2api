@@ -408,7 +408,8 @@ func TestOpenAIGatewayService_ClientSessionHeaderPriority(t *testing.T) {
 	body := []byte(`{"prompt_cache_key":"body-session"}`)
 	for _, header := range headers {
 		require.Equal(t, header.value, svc.ExtractSessionID(c, body), header.name)
-		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String(header.value)), svc.GenerateExplicitSessionHash(c, body), header.name)
+		scopedSeed := scopeOpenAIStickySessionSeed(c, header.value)
+		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String(scopedSeed)), svc.GenerateExplicitSessionHash(c, body), header.name)
 		if header.name != grokConversationIDHeader {
 			require.Equal(t, header.value, explicitOpenAISessionID(c, body), header.name)
 		}

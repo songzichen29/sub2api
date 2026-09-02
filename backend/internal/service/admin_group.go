@@ -321,6 +321,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
 	dailyLimit := normalizeLimit(input.DailyLimitUSD)
+	dailyLimitResetPrice := normalizePositivePrice(input.DailyLimitResetPrice)
 	weeklyLimit := normalizeLimit(input.WeeklyLimitUSD)
 	monthlyLimit := normalizeLimit(input.MonthlyLimitUSD)
 	allowDailyOverdraft := input.AllowDailyOverdraft
@@ -328,6 +329,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if subscriptionType != SubscriptionTypeSubscription {
 		allowDailyOverdraft = false
 		allowWeekendSkip = false
+		dailyLimitResetPrice = nil
 	}
 	if allowDailyOverdraft && (dailyLimit == nil || *dailyLimit <= 0) {
 		return nil, errors.New("allow_daily_overdraft requires a positive daily_limit_usd")
@@ -470,6 +472,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
 		DailyLimitUSD:                   dailyLimit,
+		DailyLimitResetPrice:            dailyLimitResetPrice,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
 		AllowDailyOverdraft:             allowDailyOverdraft,
@@ -572,6 +575,13 @@ func normalizeLimit(limit *float64) *float64 {
 // normalizePrice 将负数转换为 nil（表示使用默认价格），0 保留（表示免费）
 func normalizePrice(price *float64) *float64 {
 	if price == nil || *price < 0 {
+		return nil
+	}
+	return price
+}
+
+func normalizePositivePrice(price *float64) *float64 {
+	if price == nil || *price <= 0 {
 		return nil
 	}
 	return price
@@ -710,6 +720,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if group.SubscriptionType != SubscriptionTypeSubscription {
 		group.AllowDailyOverdraft = false
 		group.AllowWeekendSkip = false
+		group.DailyLimitResetPrice = nil
+	} else if input.DailyLimitResetPrice != nil {
+		group.DailyLimitResetPrice = normalizePositivePrice(input.DailyLimitResetPrice)
 	}
 	if group.AllowDailyOverdraft && !group.HasDailyLimit() {
 		return nil, errors.New("allow_daily_overdraft requires a positive daily_limit_usd")

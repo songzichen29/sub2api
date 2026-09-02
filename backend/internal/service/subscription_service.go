@@ -108,6 +108,13 @@ func NewSubscriptionService(groupRepo GroupRepository, userSubRepo UserSubscript
 	return svc
 }
 
+func (s *SubscriptionService) currentTime() time.Time {
+	if s != nil && s.now != nil {
+		return s.now()
+	}
+	return time.Now()
+}
+
 func (s *SubscriptionService) initMaintenanceQueue(cfg *config.Config) {
 	if cfg == nil {
 		return
@@ -299,10 +306,7 @@ func (s *SubscriptionService) AssignOrExtendSubscription(ctx context.Context, in
 
 	// 已有订阅，执行续期（在事务中完成所有更新）
 	if existingSub != nil {
-		now := time.Now()
-		if s.now != nil {
-			now = s.now()
-		}
+		now := s.currentTime()
 		if input.StartsAt != nil || input.ExpiresAt != nil {
 			startsAt, expiresAt, err := resolveAssignTimeRange(input, now)
 			if err != nil {
@@ -626,10 +630,7 @@ func (s *SubscriptionService) updateExistingSubscriptionTerm(
 			return nil
 		}
 
-		now := time.Now()
-		if s.now != nil {
-			now = s.now()
-		}
+		now := s.currentTime()
 		isExpired := !existingSub.ExpiresAt.After(now)
 		if assignmentSemantics {
 			isExpired = existingSub.Status == SubscriptionStatusExpired ||
@@ -1671,7 +1672,7 @@ func startOfDay(t time.Time) time.Time {
 
 // CheckAndActivateWindow 检查并激活窗口（首次使用时）
 func (s *SubscriptionService) CheckAndActivateWindow(ctx context.Context, sub *UserSubscription) error {
-	return s.checkAndActivateWindowAt(ctx, sub, s.now())
+	return s.checkAndActivateWindowAt(ctx, sub, s.currentTime())
 }
 
 func (s *SubscriptionService) checkAndActivateWindowAt(ctx context.Context, sub *UserSubscription, now time.Time) error {
@@ -1719,7 +1720,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 		return nil, ErrInvalidResetTarget
 	}
 
-	now := s.now()
+	now := s.currentTime()
 	dailyStart := timezone.StartOfDay(now)
 	weeklyStart := now
 	monthlyStart := now
@@ -1882,7 +1883,7 @@ func validateResetTargets(group *Group, resetDaily, resetWeekly, resetMonthly bo
 
 // CheckAndResetWindows 检查并重置过期的窗口
 func (s *SubscriptionService) CheckAndResetWindows(ctx context.Context, sub *UserSubscription) error {
-	now := s.now()
+	now := s.currentTime()
 	needsInvalidateCache := false
 
 	// 日窗口按配置时区的自然日零点重置。
@@ -1934,7 +1935,7 @@ func (s *SubscriptionService) MarkQuotaExhausted(ctx context.Context, sub *UserS
 	if s == nil || sub == nil || sub.ID <= 0 || sub.Status == SubscriptionStatusQuotaExhausted {
 		return
 	}
-	now := s.now()
+	now := s.currentTime()
 	if sub.Status != SubscriptionStatusActive || !sub.ExpiresAt.After(now) || now.Before(sub.StartsAt) {
 		return
 	}
@@ -1980,7 +1981,7 @@ func (s *SubscriptionService) ValidateAndCheckLimits(ctx context.Context, sub *U
 }
 
 func (s *SubscriptionService) validateAndCheckLimits(ctx context.Context, sub *UserSubscription, group *Group, allowDBRecheck bool) (needsMaintenance bool, err error) {
-	now := time.Now()
+	now := s.currentTime()
 
 	// 1. 验证订阅状态
 	if sub.Status == SubscriptionStatusExpired {

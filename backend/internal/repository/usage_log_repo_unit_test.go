@@ -39,7 +39,7 @@ func usageLogInsertColumns(t *testing.T, query string) []string {
 	start := strings.Index(query, prefix)
 	require.NotEqual(t, -1, start)
 	columnsStart := start + len(prefix)
-	columnsEnd := strings.Index(query[columnsStart:], ") VALUES")
+	columnsEnd := strings.Index(query[columnsStart:], ")")
 	require.NotEqual(t, -1, columnsEnd)
 	columns := strings.Split(query[columnsStart:columnsStart+columnsEnd], ",")
 	for index := range columns {
@@ -80,25 +80,17 @@ func TestSafeDateFormat(t *testing.T) {
 	}
 }
 
-func TestBuildUsageLogBatchInsertQuery_UsesOnDuplicateKeyUpdate(t *testing.T) {
-	log := &service.UsageLog{
-		UserID:       1,
-		APIKeyID:     2,
-		AccountID:    3,
-		RequestID:    "req-batch-no-update",
-		Model:        "gpt-5",
-		InputTokens:  10,
-		OutputTokens: 5,
-		TotalCost:    1.2,
-		ActualCost:   1.2,
-		CreatedAt:    time.Now().UTC(),
-	}
-	prepared := prepareUsageLogInsert(log)
+func TestBuildMySQLUsageLogInsertQuery_UsesInsertIgnore(t *testing.T) {
+	query := buildMySQLUsageLogInsertQuery(`
+		INSERT INTO usage_logs (request_id, api_key_id) VALUES ($1, $2)
+		ON CONFLICT (request_id, api_key_id) DO NOTHING
+		RETURNING id, created_at
+	`)
 
-	query := buildUsageLogMultiInsertQuery([]usageLogInsertPrepared{prepared})
-
-	require.Contains(t, query, "ON DUPLICATE KEY UPDATE id = id")
+	require.Contains(t, query, "INSERT IGNORE INTO usage_logs")
+	require.Equal(t, 2, strings.Count(query, "?"))
 	require.NotContains(t, strings.ToUpper(query), "ON CONFLICT")
+	require.NotContains(t, strings.ToUpper(query), "RETURNING")
 }
 
 func TestUsageLogSQLShapeMatchesPreparedArguments(t *testing.T) {
@@ -114,17 +106,17 @@ func TestUsageLogSQLShapeMatchesPreparedArguments(t *testing.T) {
 
 	t.Run("single insert", func(t *testing.T) {
 		recorder := &usageLogSQLRecorder{}
-		_, err := execUsageLogInsert(context.Background(), recorder, prepared)
+		err := execUsageLogInsertNoResult(context.Background(), recorder, prepared)
 		require.NoError(t, err)
 		require.Len(t, usageLogInsertColumns(t, recorder.query), len(prepared.args))
-		require.Equal(t, len(prepared.args), strings.Count(recorder.query, "?"))
+		require.Equal(t, len(prepared.args), strings.Count(recorder.query, "$"))
 		require.Len(t, recorder.args, len(prepared.args))
 	})
 
 	t.Run("multi insert", func(t *testing.T) {
 		query, args := buildUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared, prepared})
 		require.Len(t, usageLogInsertColumns(t, query), len(prepared.args))
-		require.Equal(t, len(prepared.args)*2, strings.Count(query, "?"))
+		require.Equal(t, len(prepared.args)*2, strings.Count(query, "$"))
 		require.Len(t, args, len(prepared.args)*2)
 	})
 

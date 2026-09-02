@@ -129,6 +129,29 @@ func grokPreviousResponseSessionSeed(body []byte) string {
 	return "grok-prev-resp:" + id
 }
 
+// scopeOpenAIStickySessionSeed isolates local account affinity by API key.
+// The raw session ID / prompt_cache_key forwarded upstream is intentionally
+// unchanged; this scope affects only Sub2API's session -> account binding.
+func scopeOpenAIStickySessionSeed(c *gin.Context, seed string) string {
+	seed = strings.TrimSpace(seed)
+	if seed == "" || c == nil {
+		return seed
+	}
+	value, exists := c.Get("api_key")
+	if !exists {
+		return seed
+	}
+	apiKey, ok := value.(*APIKey)
+	if !ok || apiKey == nil || apiKey.ID <= 0 {
+		return seed
+	}
+	groupID := int64(0)
+	if apiKey.GroupID != nil {
+		groupID = *apiKey.GroupID
+	}
+	return fmt.Sprintf("openai-affinity:v2:group=%d:key=%d:%s", groupID, apiKey.ID, seed)
+}
+
 // GenerateExplicitSessionHash generates a sticky-session hash only from explicit
 // client session signals. It intentionally skips content-derived fallback and is
 // used by stateless endpoints such as /v1/images.
@@ -138,6 +161,7 @@ func (s *OpenAIGatewayService) GenerateExplicitSessionHash(c *gin.Context, body 
 		return ""
 	}
 
+	sessionID = scopeOpenAIStickySessionSeed(c, sessionID)
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
@@ -176,6 +200,7 @@ func (s *OpenAIGatewayService) GenerateSessionHash(c *gin.Context, body []byte) 
 	if isGrokRequestContext(c) {
 		sessionID = grokStickyAffinitySeed(sessionID, body)
 	}
+	sessionID = scopeOpenAIStickySessionSeed(c, sessionID)
 
 	currentHash, legacyHash := deriveOpenAISessionHashes(sessionID)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
@@ -213,6 +238,7 @@ func (s *OpenAIGatewayService) GenerateSessionHashWithFallback(c *gin.Context, b
 		return ""
 	}
 
+	seed = scopeOpenAIStickySessionSeed(c, seed)
 	currentHash, legacyHash := deriveOpenAISessionHashes(seed)
 	attachOpenAILegacySessionHashToGin(c, legacyHash)
 	return currentHash
@@ -1135,6 +1161,22 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 	}
 }
 
+func openAIAccountWaitCandidates(accounts []*Account) []AccountWaitCandidate {
+	result := make([]AccountWaitCandidate, 0, len(accounts))
+	seen := make(map[int64]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account == nil || account.ID <= 0 {
+			continue
+		}
+		if _, exists := seen[account.ID]; exists {
+			continue
+		}
+		seen[account.ID] = struct{}{}
+		result = append(result, AccountWaitCandidate{Account: account, MaxConcurrency: account.Concurrency})
+	}
+	return result
+}
+
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
@@ -1385,7 +1427,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
 			}
 		})
-		shuffleWithinSortGroups(available)
+		shuffleOpenAILegacyLoadPeers(available)
 		if rateOrder.enabled {
 			sort.SliceStable(available, func(i, j int) bool {
 				return rateOrder.compare(available[i].account, available[j].account) < 0
@@ -1438,7 +1480,10 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, true, nil
 	}
 
-	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
+	// Scheduling must observe slots acquired by immediately preceding requests.
+	// The generic 200ms batch cache is useful for dashboards, but on the hot
+	// selection path it can herd an entire burst onto the same stale winner.
+	loadMap, err := s.concurrencyService.GetAccountsLoadBatchFresh(ctx, accountLoads)
 	if err != nil {
 		ordered := append([]*Account(nil), candidates...)
 		sortAccountsByPriorityAndLastUsed(ordered, false)
@@ -1500,6 +1545,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact {
 		candidates = prioritizeOpenAICompactAccounts(candidates)
 	}
+	validatedWaitAccounts := make([]*Account, 0, len(candidates))
 	for _, acc := range candidates {
 		fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, acc, platform, requestedModel, false, requiredCapability)
 		if fresh == nil {
@@ -1512,11 +1558,16 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 			continue
 		}
-		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
-			AccountID:      fresh.ID,
-			MaxConcurrency: fresh.Concurrency,
+		validatedWaitAccounts = append(validatedWaitAccounts, fresh)
+	}
+	if len(validatedWaitAccounts) > 0 {
+		selected := validatedWaitAccounts[0]
+		return s.newSelectionResult(ctx, selected, false, nil, &AccountWaitPlan{
+			AccountID:      selected.ID,
+			MaxConcurrency: selected.Concurrency,
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
+			Candidates:     openAIAccountWaitCandidates(validatedWaitAccounts),
 		})
 	}
 
@@ -1603,6 +1654,9 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, fresh) {
 		return nil
 	}
+	if s.isOAuthQuotaNearLimit(fresh) {
+		return nil
+	}
 	if s.isOpenAIProxyStreamQuarantined(ctx, fresh) {
 		return nil
 	}
@@ -1649,6 +1703,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 		if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 			return nil
 		}
+		if s.isOAuthQuotaNearLimit(account) {
+			return nil
+		}
 		if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 			return nil
 		}
@@ -1680,10 +1737,35 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, latest) {
 		return nil
 	}
+	if s.isOAuthQuotaNearLimit(latest) {
+		return nil
+	}
 	if s.isOpenAIProxyStreamQuarantined(ctx, latest) {
 		return nil
 	}
 	return latest
+}
+
+// isOAuthQuotaNearLimit skips OpenAI OAuth accounts whose fresh Codex usage
+// snapshot has reached the configured scheduling threshold.
+func (s *OpenAIGatewayService) isOAuthQuotaNearLimit(account *Account) bool {
+	if s == nil || account == nil || !account.IsOpenAIOAuth() {
+		return false
+	}
+	threshold := s.schedulingConfig().OpenAIOAuthQuotaThreshold
+	if threshold <= 0 {
+		return false
+	}
+
+	if updatedAt := account.getExtraString("codex_usage_updated_at"); updatedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, updatedAt); err == nil && time.Since(parsed) > 5*time.Minute {
+			return false
+		}
+	}
+
+	secondary := account.getExtraFloat64("codex_secondary_used_percent")
+	primary := account.getExtraFloat64("codex_primary_used_percent")
+	return secondary >= threshold || primary >= threshold
 }
 
 func (s *OpenAIGatewayService) openAIAccountMatchesSchedulingGroup(account *Account, groupID *int64) bool {
