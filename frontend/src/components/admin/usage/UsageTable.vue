@@ -224,7 +224,7 @@
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
               <span class="font-semibold text-green-600 dark:text-green-400">
-                ${{ row.actual_cost?.toFixed(6) || '0.000000' }}<span data-testid="rate-multiplier-marker">×{{ formatBillingMultiplier(row) }}</span>
+                ${{ row.actual_cost?.toFixed(6) || '0.000000' }}<span v-if="shouldShowInlineBillingMultiplier(row)" data-testid="rate-multiplier-marker">×{{ formatBillingMultiplier(row) }}</span>
               </span>
               <span
                 v-if="row.long_context_billing_applied && appliedRateMultiplier(row) == null"
@@ -615,6 +615,11 @@ function formatBillingMultiplier(row: { rate_multiplier?: number | null }): stri
   const value = row.rate_multiplier
   if (typeof value !== 'number' || !Number.isFinite(value)) return '1'
   return Number(value.toPrecision(6)).toString()
+}
+
+function shouldShowInlineBillingMultiplier(row: { rate_multiplier?: number | null }): boolean {
+  const value = row.rate_multiplier
+  return typeof value === 'number' && Number.isFinite(value) && value > 1
 }
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */

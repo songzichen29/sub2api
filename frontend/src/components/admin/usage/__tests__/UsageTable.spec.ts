@@ -238,10 +238,38 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(2)
+    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="rate-multiplier-marker"]').text()).toBe('×2')
     expect(wrapper.text()).toContain('$0.400000×2')
     expect(wrapper.text()).toContain('Billing rate x2')
+    expect(wrapper.text()).toContain('Billing rate x1')
+  })
+
+  it('does not append discounted multipliers to the bold amount line', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-rate-0-4',
+          rate_multiplier: 0.4,
+          long_context_billing_applied: false,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.find('[data-testid="rate-multiplier-marker"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('$0.400000')
+    expect(wrapper.text()).toContain('Billing rate x0.4')
   })
 
   it('marks only usage rows that actually applied long-context billing', () => {
