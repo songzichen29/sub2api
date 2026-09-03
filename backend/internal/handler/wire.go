@@ -231,6 +231,11 @@ func ProvideHandlers(
 	}
 }
 
+// ProvideAdminPaymentHandler creates the admin payment handler with coupon support.
+func ProvideAdminPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, couponService *service.CouponService) *admin.PaymentHandler {
+	return admin.NewPaymentHandler(paymentService, configService, couponService)
+}
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
@@ -290,7 +295,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewContentModerationHandler,
-	admin.NewPaymentHandler,
+	ProvideAdminPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
