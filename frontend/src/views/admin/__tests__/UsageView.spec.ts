@@ -511,6 +511,9 @@ describe('admin UsageView request ID column visibility', () => {
     expect(usageTable.props('columns')).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ key: 'request_id' })]),
     )
+    expect(usageTable.props('columns')).toEqual(
+      expect.arrayContaining([expect.objectContaining({ key: 'pricing_tier', label: 'usage.pricingTier' })]),
+    )
 
     await wrapper.get('button[title="admin.users.columnSettings"]').trigger('click')
     const requestIdToggle = wrapper.findAll('button').find((button) => button.text() === 'Request ID')

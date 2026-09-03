@@ -89,6 +89,7 @@ const DataTableStub = {
         <slot name="cell-model" :row="row" :value="row.model" />
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
+        <slot name="cell-pricing_tier" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
@@ -138,6 +139,73 @@ describe('admin UsageTable tooltip', () => {
       height: 20,
       toJSON: () => ({}),
     } as DOMRect)
+  })
+
+  it('shows the captured pricing tier and effective input/output prices', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-long-tier',
+          billing_mode: 'token',
+          billing_tier: 'long_context',
+          input_tokens: 2000,
+          output_tokens: 100,
+          input_cost: 0.01,
+          output_cost: 0.003,
+          image_count: 0,
+        }],
+        loading: false,
+        columns: [{ key: 'pricing_tier', label: 'Pricing Tier' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('long_context')
+    expect(text).toContain('$5 / $30/M')
+    expect(text).toContain('usage.contextTokens')
+  })
+
+  it('shows the applied billing multiplier next to the cost', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-rate-2',
+            rate_multiplier: 2,
+            long_context_billing_applied: false,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-rate-1',
+            rate_multiplier: 1,
+            long_context_billing_applied: false,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="rate-multiplier-marker"]').text()).toBe('×2')
   })
 
   it('marks only usage rows that actually applied long-context billing', () => {

@@ -197,6 +197,7 @@ type CostBreakdown struct {
 	TotalCost                 float64
 	ActualCost                float64 // 应用倍率后的实际费用
 	BillingMode               string  // 计费模式（"token"/"per_request"/"image"），由 CalculateCostUnified 填充
+	BillingTier               string  // 请求发生时实际命中的定价档位快照
 	LongContextBillingApplied bool
 }
 
@@ -1277,6 +1278,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 		// 选择最低档；未命中时自然回退到渠道基础价。
 		pricingContext = 1
 	}
+	matchedInterval := FindMatchingInterval(resolved.Intervals, pricingContext)
 	pricing := input.Resolver.GetIntervalPricing(resolved, pricingContext)
 	if pricing == nil {
 		return nil, fmt.Errorf("no pricing available for model: %s: %w", input.Model, ErrModelPricingUnavailable)
@@ -1291,6 +1293,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
 	// 自定义定价保持运营者语义，不叠加。PricingAt 为零值时回退当前时刻。
 	// 先克隆再乘，避免污染共享 fallbackPrices 指针。
+	deepSeekPeakApplied := false
 	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
 		pricingAt := input.PricingAt
 		if pricingAt.IsZero() {
@@ -1302,6 +1305,7 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 			cloned.OutputPricePerToken *= mult
 			cloned.CacheReadPricePerToken *= mult
 			pricing = &cloned
+			deepSeekPeakApplied = true
 		}
 	}
 
@@ -1309,8 +1313,45 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	applyLongCtx := len(resolved.Intervals) == 0 && contextTierPricingEnabled
 
 	breakdown := s.computeTokenBreakdown(pricing, input.Tokens, input.RateMultiplier, input.ServiceTier, applyLongCtx)
+	breakdown.BillingTier = resolvedTokenBillingTier(resolved.Intervals, matchedInterval, breakdown.LongContextBillingApplied, deepSeekPeakApplied)
 	applyCostBreakdownMultiplier(breakdown, resolvedChannelTimeMultiplier(resolved, input.PricingAt))
 	return breakdown, nil
+}
+
+func normalizeBillingTierLabel(label string) string {
+	label = strings.TrimSpace(label)
+	runes := []rune(label)
+	if len(runes) > 50 {
+		label = string(runes[:50])
+	}
+	return label
+}
+
+func resolvedTokenBillingTier(intervals []PricingInterval, matched *PricingInterval, longContextApplied, peakApplied bool) string {
+	if matched != nil {
+		if label := normalizeBillingTierLabel(matched.TierLabel); label != "" {
+			return label
+		}
+		if matched.MinTokens <= 0 {
+			return "standard"
+		}
+		if len(intervals) <= 2 {
+			return "long_context"
+		}
+		for i := range intervals {
+			if &intervals[i] == matched {
+				return fmt.Sprintf("context_tier_%d", i+1)
+			}
+		}
+		return "long_context"
+	}
+	if longContextApplied {
+		return "long_context"
+	}
+	if peakApplied {
+		return "peak"
+	}
+	return "standard"
 }
 
 // computeTokenBreakdown 是 token 计费的核心逻辑，由 calculateTokenCost 和 calculateCostInternal 共用。
@@ -1498,9 +1539,18 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	totalCost := unitPrice * units
 	actualCost := totalCost * input.RateMultiplier
 
+	billingTier := normalizeBillingTierLabel(input.SizeTier)
+	if billingTier == "" {
+		totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
+		if interval := FindMatchingInterval(resolved.RequestTiers, totalContext); interval != nil {
+			billingTier = normalizeBillingTierLabel(interval.TierLabel)
+		}
+	}
+
 	return &CostBreakdown{
-		TotalCost:  totalCost,
-		ActualCost: actualCost,
+		TotalCost:   totalCost,
+		ActualCost:  actualCost,
+		BillingTier: billingTier,
 	}, nil
 }
 
@@ -1546,7 +1596,9 @@ func (s *BillingService) calculateCostInternalWithPolicy(
 		return nil, err
 	}
 
-	return s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, longContextBillingEnabled), nil
+	breakdown := s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, longContextBillingEnabled)
+	breakdown.BillingTier = resolvedTokenBillingTier(nil, nil, breakdown.LongContextBillingApplied, false)
+	return breakdown, nil
 }
 
 // applyModelSpecificPricingPolicy 对目录数据做模型特定修正：DeepSeek 官方价

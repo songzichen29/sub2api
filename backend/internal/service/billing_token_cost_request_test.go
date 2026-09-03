@@ -105,6 +105,42 @@ func TestCalculateTokenCostForRequest_ChannelIntervalsOverrideCatalogLadder(t *t
 	require.False(t, got.LongContextBillingApplied)
 }
 
+func TestCalculateTokenCostForRequest_CapturesChannelIntervalTier(t *testing.T) {
+	maxStandard := 200000
+	bs, resolver := newTokenCostTestEnv(t, PlatformAnthropic, []ChannelModelPricing{{
+		Platform:    PlatformAnthropic,
+		Models:      []string{"claude-sonnet-4"},
+		BillingMode: BillingModeToken,
+		Intervals: []PricingInterval{
+			{MinTokens: 0, MaxTokens: &maxStandard, TierLabel: "standard", InputPrice: testPtrFloat64(5e-6), OutputPrice: testPtrFloat64(30e-6)},
+			{MinTokens: maxStandard, TierLabel: "long_context", InputPrice: testPtrFloat64(10e-6), OutputPrice: testPtrFloat64(45e-6)},
+		},
+	}}, nil)
+	group := &Group{ID: 100, Platform: PlatformAnthropic, LongContextPricingEnabled: true}
+	gid := group.ID
+	resolved := resolver.Resolve(context.Background(), PricingInput{Model: "claude-sonnet-4", GroupID: &gid, Group: group})
+
+	standard, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Ctx: context.Background(), Model: "claude-sonnet-4", Group: group,
+		Tokens: UsageTokens{InputTokens: 100000, OutputTokens: 1000}, RateMultiplier: 1,
+		Resolver: resolver, Resolved: resolved,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "standard", standard.BillingTier)
+	require.InDelta(t, 100000*5e-6, standard.InputCost, 1e-9)
+	require.InDelta(t, 1000*30e-6, standard.OutputCost, 1e-9)
+
+	longContext, err := bs.CalculateTokenCostForRequest(TokenCostRequest{
+		Ctx: context.Background(), Model: "claude-sonnet-4", Group: group,
+		Tokens: UsageTokens{InputTokens: 200001, OutputTokens: 1000}, RateMultiplier: 1,
+		Resolver: resolver, Resolved: resolved,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "long_context", longContext.BillingTier)
+	require.InDelta(t, 200001*10e-6, longContext.InputCost, 1e-9)
+	require.InDelta(t, 1000*45e-6, longContext.OutputCost, 1e-9)
+}
+
 // 目录阶梯跟随分组长上下文开关；开启时为整单换档（输入 ×2、输出 ×1.5）。
 func TestCalculateTokenCostForRequest_CatalogLadderFollowsGroupToggle(t *testing.T) {
 	bs, resolver := newTokenCostTestEnv(t, PlatformGemini, nil, geminiLadderCatalogStub(t))
@@ -205,6 +241,7 @@ func TestCalculateTokenCostForRequest_BuiltInPricingUsesUnifiedPath(t *testing.T
 	// 目录阶梯：超 272K 整单输入 ×2
 	require.InDelta(t, 300000*2.5e-6*2, got.InputCost, 1e-9)
 	require.True(t, got.LongContextBillingApplied)
+	require.Equal(t, "long_context", got.BillingTier)
 }
 
 func TestCalculateTokenCostForRequest_NoResolverFallsBackToCatalog(t *testing.T) {

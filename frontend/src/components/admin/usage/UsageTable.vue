@@ -205,13 +205,35 @@
           </div>
         </template>
 
+        <template #cell-pricing_tier="{ row }">
+          <div v-if="pricingTierLabel(row) !== '-'" class="min-w-[190px] text-xs">
+            <div class="whitespace-nowrap text-gray-700 dark:text-gray-200">
+              <span class="font-mono font-semibold">{{ pricingTierLabel(row) }}</span>
+              <span v-if="pricingTierPricePair(row)" class="text-gray-500 dark:text-gray-400">
+                · {{ pricingTierPricePair(row) }}
+              </span>
+            </div>
+            <div v-if="pricingContextTokens(row) > 0" class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+              {{ t('usage.contextTokens', { count: pricingContextTokens(row).toLocaleString() }) }}
+            </div>
+          </div>
+          <span v-else class="text-gray-400">-</span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
               <span
+                v-if="appliedRateMultiplier(row) != null"
+                data-testid="rate-multiplier-marker"
+                :title="t('usage.appliedRateMultiplier', { value: formatAppliedRateMultiplier(row) })"
+                class="inline-flex items-center rounded bg-gray-100 px-1 py-px text-[10px] font-semibold leading-tight text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-gray-500/15 dark:text-gray-300 dark:ring-gray-500/30"
+              >×{{ formatAppliedRateMultiplier(row) }}</span>
+              <span
                 v-if="row.long_context_billing_applied"
                 data-testid="long-context-billing-marker"
+                :title="t('usage.longContextPricingApplied')"
                 class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
               >x2</span>
               <!-- Cost Detail Tooltip -->
@@ -483,7 +505,7 @@
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.rate') }}</span>
-            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier || 1) }}x</span>
+            <span class="font-semibold text-blue-400">{{ formatMultiplier(tooltipData?.rate_multiplier ?? 1) }}x</span>
           </div>
           <div class="flex items-center justify-between gap-6">
             <span class="text-gray-400">{{ t('usage.original') }}</span>
@@ -523,7 +545,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
-import { formatTokenPricePerMillion } from '@/utils/usagePricing'
+import { calculateTokenPricePerMillion, formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
 import {
@@ -555,6 +577,43 @@ import {
   textInputTokens,
   hasImageInputCost,
 } from '@/utils/imageUsage'
+
+function pricingTierLabel(row: AdminUsageLog): string {
+  const captured = row.billing_tier?.trim()
+  if (captured) return captured
+  return row.long_context_billing_applied ? 'long_context' : '-'
+}
+
+function pricingContextTokens(row: AdminUsageLog): number {
+  return Math.max(0, row.input_tokens || 0) +
+    Math.max(0, row.cache_creation_tokens || 0) +
+    Math.max(0, row.cache_read_tokens || 0)
+}
+
+function compactPricePerMillion(cost: number | null | undefined, tokens: number | null | undefined): string {
+  const price = calculateTokenPricePerMillion(cost, tokens)
+  if (price == null) return '-'
+  return `$${Number(price.toPrecision(6)).toString()}`
+}
+
+function pricingTierPricePair(row: AdminUsageLog): string {
+  if (row.billing_mode && row.billing_mode !== BILLING_MODE_TOKEN) return ''
+  const input = compactPricePerMillion(row.input_cost, textInputTokens(row))
+  const output = compactPricePerMillion(row.output_cost, textOutputTokens(row))
+  if (input === '-' && output === '-') return ''
+  return `${input} / ${output}/M`
+}
+
+function appliedRateMultiplier(row: { rate_multiplier?: number | null }): number | null {
+  const value = row.rate_multiplier
+  if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value - 1) < 1e-9) return null
+  return value
+}
+
+function formatAppliedRateMultiplier(row: { rate_multiplier?: number | null }): string {
+  const value = appliedRateMultiplier(row)
+  return value == null ? '' : Number(value.toPrecision(6)).toString()
+}
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {
