@@ -94,6 +94,28 @@ func TestRequestTypeStringPtrNil(t *testing.T) {
 	require.Nil(t, requestTypeStringPtr(nil))
 }
 
+func TestUsageLogFromService_IncludesBillingTierForUserAndAdmin(t *testing.T) {
+	t.Parallel()
+
+	tier := "long_context"
+	log := &service.UsageLog{
+		RequestID:   "req_billing_tier",
+		Model:       "gpt-5.4",
+		BillingTier: &tier,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.NotNil(t, userDTO.BillingTier)
+	require.Equal(t, tier, *userDTO.BillingTier)
+	require.NotNil(t, adminDTO.BillingTier)
+	require.Equal(t, tier, *adminDTO.BillingTier)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(userJSON), `"billing_tier":"long_context"`)
+}
+
 func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	t.Parallel()
 
