@@ -476,6 +476,8 @@ export default {
       selectCurrentPage: '本页全选',
       clear: '清除选择',
       edit: '批量编辑账号',
+      editFilteredResults: '编辑当前筛选结果',
+      selectAccount: '选择账号 {name}',
       delete: '批量删除',
       enableScheduling: '批量启用调度',
       disableScheduling: '批量停止调度',

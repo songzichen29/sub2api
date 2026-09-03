@@ -358,6 +358,8 @@ export default {
       selectCurrentPage: 'Select this page',
       clear: 'Clear selection',
       edit: 'Bulk Edit',
+      editFilteredResults: 'Edit filtered results',
+      selectAccount: 'Select account {name}',
       delete: 'Bulk Delete',
       enableScheduling: 'Enable Scheduling',
       disableScheduling: 'Disable Scheduling',

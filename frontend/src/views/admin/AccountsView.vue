@@ -181,6 +181,7 @@
           :total-results="pagination.total"
           :selecting-all="selectingAllResults"
           :all-results-selected="allResultsSelected"
+          :busy-action="bulkAction"
           @delete="handleBulkDelete"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
@@ -211,14 +212,25 @@
           <template #header-select>
             <input
               type="checkbox"
-              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              class="h-4 w-4 cursor-pointer rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
               :checked="allVisibleSelected"
+              :indeterminate="visibleSelectionIndeterminate"
+              :disabled="Boolean(bulkAction)"
+              :aria-label="t('admin.accounts.bulkActions.selectCurrentPage')"
+              :title="t('admin.accounts.bulkActions.selectCurrentPage')"
               @click.stop
               @change="toggleSelectAllVisible($event)"
             />
           </template>
           <template #cell-select="{ row }">
-            <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            <input
+              type="checkbox"
+              :checked="isSelected(row.id)"
+              :disabled="Boolean(bulkAction)"
+              :aria-label="t('admin.accounts.bulkActions.selectAccount', { name: row.name })"
+              @change="toggleSel(row.id)"
+              class="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50"
+            />
           </template>
           <template #cell-id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
@@ -1126,6 +1138,7 @@ const {
 })
 
 const selectingAllResults = ref(false)
+const bulkAction = ref<string | null>(null)
 const selectedAllResultIDs = ref<Set<number> | null>(null)
 const selectionRequestVersion = ref(0)
 const allResultsSelected = computed(() => {
@@ -1133,6 +1146,9 @@ const allResultsSelected = computed(() => {
   if (!snapshot || snapshot.size === 0 || snapshot.size !== selectedSet.value.size) return false
   return Array.from(snapshot).every(id => selectedSet.value.has(id))
 })
+const visibleSelectionIndeterminate = computed(() => (
+  !allVisibleSelected.value && accounts.value.some(account => isSelected(account.id))
+))
 
 const clearSelection = () => {
   selectionRequestVersion.value++
@@ -1901,59 +1917,85 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
+const runBulkAction = async (action: string, task: () => Promise<void>) => {
+  if (bulkAction.value) return
+  bulkAction.value = action
+  try {
+    await task()
+  } finally {
+    if (bulkAction.value === action) bulkAction.value = null
+  }
+}
+
 const handleBulkDelete = async () => {
   const accountIds = [...selIds.value]
   if (!confirm(t('admin.accounts.bulkActions.confirmDelete', { count: accountIds.length }))) return
-  try {
-    const result = await adminAPI.accounts.batchDelete(accountIds)
-    if (result.failed > 0) {
-      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
-        success: result.success,
-        failed: result.failed
-      }))
-      setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
-    } else {
-      appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
-      clearSelection()
+
+  await runBulkAction('delete', async () => {
+    try {
+      const result = await adminAPI.accounts.batchDelete(accountIds)
+      if (result.failed > 0) {
+        appStore.showError(t('admin.accounts.bulkActions.partialSuccess', {
+          success: result.success,
+          failed: result.failed
+        }))
+        setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
+      } else {
+        appStore.showSuccess(t('admin.accounts.bulkActions.deleteSuccess', { count: result.success }))
+        clearSelection()
+      }
+      await reload()
+    } catch (error) {
+      console.error('Failed to bulk delete accounts:', error)
+      appStore.showError(String(error))
     }
-    await reload()
-  } catch (error) {
-    console.error('Failed to bulk delete accounts:', error)
-    appStore.showError(String(error))
-  }
+  })
 }
+
 const handleBulkResetStatus = async () => {
+  const accountIds = [...selIds.value]
   if (!confirm(t('common.confirm'))) return
-  try {
-    const result = await adminAPI.accounts.batchClearError(selIds.value)
-    if (result.failed > 0) {
-      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
-    } else {
-      appStore.showSuccess(t('admin.accounts.bulkActions.resetStatusSuccess', { count: result.success }))
-      clearSelection()
+
+  await runBulkAction('reset-status', async () => {
+    try {
+      const result = await adminAPI.accounts.batchClearError(accountIds)
+      if (result.failed > 0) {
+        appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+        setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
+      } else {
+        appStore.showSuccess(t('admin.accounts.bulkActions.resetStatusSuccess', { count: result.success }))
+        clearSelection()
+      }
+      await reload()
+    } catch (error) {
+      console.error('Failed to bulk reset status:', error)
+      appStore.showError(String(error))
     }
-    reload()
-  } catch (error) {
-    console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
-  }
+  })
 }
+
 const handleBulkRefreshToken = async () => {
+  const accountIds = [...selIds.value]
   if (!confirm(t('common.confirm'))) return
-  try {
-    const result = await adminAPI.accounts.batchRefresh(selIds.value)
-    if (result.failed > 0) {
-      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
-    } else {
-      appStore.showSuccess(t('admin.accounts.bulkActions.refreshTokenSuccess', { count: result.success }))
-      clearSelection()
+
+  await runBulkAction('refresh-token', async () => {
+    try {
+      const result = await adminAPI.accounts.batchRefresh(accountIds)
+      if (result.failed > 0) {
+        appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+        setSelectedIds(result.failed_ids?.length ? result.failed_ids : accountIds)
+      } else {
+        appStore.showSuccess(t('admin.accounts.bulkActions.refreshTokenSuccess', { count: result.success }))
+        clearSelection()
+      }
+      await reload()
+    } catch (error) {
+      console.error('Failed to bulk refresh token:', error)
+      appStore.showError(String(error))
     }
-    reload()
-  } catch (error) {
-    console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
-  }
+  })
 }
+
 const handleBulkProbeUpstreamBilling = async () => {
   const accountIDs = [...selIds.value]
   if (accountIDs.length === 0) {
@@ -1964,29 +2006,37 @@ const handleBulkProbeUpstreamBilling = async () => {
     appStore.showError(t('admin.accounts.upstreamBilling.batchLimit'))
     return
   }
-  accountIDs.forEach(id => probingUpstreamBilling.add(id))
-  try {
-    const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
-    let patched = false
-    results.forEach(result => {
-      if (result.snapshot) {
-        patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
-        patched = true
+
+  await runBulkAction('probe-upstream-billing', async () => {
+    accountIDs.forEach(id => probingUpstreamBilling.add(id))
+    try {
+      const results = await adminAPI.accounts.probeUpstreamBillingBatch(accountIDs)
+      let patched = false
+      results.forEach(result => {
+        if (result.snapshot) {
+          patchUpstreamBillingSnapshot(result.account_id, result.snapshot)
+          patched = true
+        }
+      })
+      if (patched) await refreshAccountsAfterUpstreamBillingProbe()
+      const failedResults = results.filter(result => result.error)
+      if (failedResults.length > 0) {
+        appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', {
+          success: results.length - failedResults.length,
+          failed: failedResults.length
+        }))
+        setSelectedIds(failedResults.map(result => result.account_id))
+      } else {
+        appStore.showSuccess(t('admin.accounts.upstreamBilling.batchCompleted', { count: results.length }))
+        clearSelection()
       }
-    })
-    if (patched) await refreshAccountsAfterUpstreamBillingProbe()
-    const failed = results.filter(result => result.error).length
-    if (failed > 0) {
-      appStore.showError(t('admin.accounts.upstreamBilling.batchPartial', { success: results.length - failed, failed }))
-    } else {
-      appStore.showSuccess(t('admin.accounts.upstreamBilling.batchCompleted', { count: results.length }))
+    } catch (error) {
+      console.error('Failed to probe upstream billing in batch:', error)
+      appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
+    } finally {
+      accountIDs.forEach(id => probingUpstreamBilling.delete(id))
     }
-  } catch (error) {
-    console.error('Failed to probe upstream billing in batch:', error)
-    appStore.showError(extractApiErrorMessage(error, t('admin.accounts.upstreamBilling.probeFailed')))
-  } finally {
-    accountIDs.forEach(id => probingUpstreamBilling.delete(id))
-  }
+  })
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
@@ -2055,40 +2105,44 @@ const normalizeBulkSchedulableResult = (
 }
 const handleBulkToggleSchedulable = async (schedulable: boolean) => {
   const accountIds = [...selIds.value]
-  try {
-    const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
-    const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
-    if (!hasIds && !hasCounts) {
-      appStore.showError(t('admin.accounts.bulkSchedulableResultUnknown'))
-      setSelectedIds(accountIds)
-      load().catch((error) => {
-        console.error('Failed to refresh accounts:', error)
-      })
-      return
+  const action = schedulable ? 'enable-scheduling' : 'disable-scheduling'
+
+  await runBulkAction(action, async () => {
+    try {
+      const result = await adminAPI.accounts.bulkUpdate(accountIds, { schedulable })
+      const { successIds, failedIds, successCount, failedCount, hasIds, hasCounts } = normalizeBulkSchedulableResult(result, accountIds)
+      if (!hasIds && !hasCounts) {
+        appStore.showError(t('admin.accounts.bulkSchedulableResultUnknown'))
+        setSelectedIds(accountIds)
+        load().catch((error) => {
+          console.error('Failed to refresh accounts:', error)
+        })
+        return
+      }
+      if (successIds.length > 0) {
+        updateSchedulableInList(successIds, schedulable)
+      }
+      if (successCount > 0 && failedCount === 0) {
+        const message = schedulable
+          ? t('admin.accounts.bulkSchedulableEnabled', { count: successCount })
+          : t('admin.accounts.bulkSchedulableDisabled', { count: successCount })
+        appStore.showSuccess(message)
+      }
+      if (failedCount > 0) {
+        const message = hasCounts || hasIds
+          ? t('admin.accounts.bulkSchedulablePartial', { success: successCount, failed: failedCount })
+          : t('admin.accounts.bulkSchedulableResultUnknown')
+        appStore.showError(message)
+        setSelectedIds(failedIds.length > 0 ? failedIds : accountIds)
+      } else {
+        if (hasIds) clearSelection()
+        else setSelectedIds(accountIds)
+      }
+    } catch (error) {
+      console.error('Failed to bulk toggle schedulable:', error)
+      appStore.showError(t('common.error'))
     }
-    if (successIds.length > 0) {
-      updateSchedulableInList(successIds, schedulable)
-    }
-    if (successCount > 0 && failedCount === 0) {
-      const message = schedulable
-        ? t('admin.accounts.bulkSchedulableEnabled', { count: successCount })
-        : t('admin.accounts.bulkSchedulableDisabled', { count: successCount })
-      appStore.showSuccess(message)
-    }
-    if (failedCount > 0) {
-      const message = hasCounts || hasIds
-        ? t('admin.accounts.bulkSchedulablePartial', { success: successCount, failed: failedCount })
-        : t('admin.accounts.bulkSchedulableResultUnknown')
-      appStore.showError(message)
-      setSelectedIds(failedIds.length > 0 ? failedIds : accountIds)
-    } else {
-      if (hasIds) clearSelection()
-      else setSelectedIds(accountIds)
-    }
-  } catch (error) {
-    console.error('Failed to bulk toggle schedulable:', error)
-    appStore.showError(t('common.error'))
-  }
+  })
 }
 const buildBulkEditFilterSnapshot = () => {
   const rawParams = toRaw(params) as Record<string, unknown>
@@ -2149,17 +2203,24 @@ const openBulkEditSelected = () => {
 }
 
 const openBulkEditFiltered = async () => {
-  const filters = buildBulkEditFilterSnapshot()
-  const preview = await adminAPI.accounts.list(1, 100, filters)
-  const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
-  bulkEditTarget.value = {
-    mode: 'filtered',
-    filters,
-    previewCount: preview.total,
-    selectedPlatforms,
-    selectedTypes
-  }
-  showBulkEdit.value = true
+  await runBulkAction('edit-filtered', async () => {
+    try {
+      const filters = buildBulkEditFilterSnapshot()
+      const preview = await adminAPI.accounts.list(1, 100, filters)
+      const { selectedPlatforms, selectedTypes } = collectSelectionMetadata(preview.items)
+      bulkEditTarget.value = {
+        mode: 'filtered',
+        filters,
+        previewCount: preview.total,
+        selectedPlatforms,
+        selectedTypes
+      }
+      showBulkEdit.value = true
+    } catch (error) {
+      console.error('Failed to prepare filtered account bulk edit:', error)
+      appStore.showError(extractApiErrorMessage(error, t('common.error')))
+    }
+  })
 }
 
 const handleBulkUpdated = () => {

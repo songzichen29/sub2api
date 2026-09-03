@@ -1410,6 +1410,7 @@
           <GroupSelector
             v-model="groupIds"
             :groups="groups"
+            selection-actions
             aria-labelledby="bulk-edit-groups-label"
           />
         </div>
