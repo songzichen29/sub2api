@@ -37,6 +37,9 @@ const messages: Record<string, string> = {
   'usage.original': 'Original',
   'usage.userBilled': 'User billed',
   'usage.accountBilled': 'Account billed',
+  'usage.currentBillingMultiplier': 'Billing rate',
+  'usage.outputTps': 'Output rate',
+  'usage.outputTpsHint': 'Output tokens divided by generation time',
   'usage.imageUnit': ' images',
   'usage.imageCount': 'Image count',
   'usage.imageBillingSize': 'Billing size',
@@ -92,6 +95,7 @@ const DataTableStub = {
         <slot name="cell-pricing_tier" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
+        <slot name="cell-latency" :row="row" />
         <slot name="cell-request_id" :row="row" />
       </div>
     </div>
@@ -174,6 +178,36 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('usage.contextTokens')
   })
 
+  it('shows output TPS using generation time after the first token', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          ...baseImageRow,
+          request_id: 'req-tps',
+          billing_mode: 'token',
+          input_tokens: 100,
+          output_tokens: 100,
+          image_count: 0,
+          first_token_ms: 1000,
+          duration_ms: 5000,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Output rate')
+    expect(wrapper.text()).toContain('25.00 tok/s')
+  })
+
   it('shows the applied billing multiplier next to the cost', () => {
     const wrapper = mount(UsageTable, {
       props: {
@@ -204,8 +238,10 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(1)
+    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(2)
     expect(wrapper.get('[data-testid="rate-multiplier-marker"]').text()).toBe('×2')
+    expect(wrapper.text()).toContain('$0.400000×2')
+    expect(wrapper.text()).toContain('Billing rate x2')
   })
 
   it('marks only usage rows that actually applied long-context billing', () => {

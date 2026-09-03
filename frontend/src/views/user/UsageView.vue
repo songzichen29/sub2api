@@ -630,6 +630,21 @@ const escapeCSVValue = (value: unknown): string => {
   return str
 }
 
+const outputTokensPerSecond = (log: Pick<UsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): number | null => {
+  const outputTokens = Math.max(0, (log.output_tokens || 0) - (log.image_output_tokens || 0))
+  const durationMs = log.duration_ms
+  if (outputTokens <= 0 || typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return null
+  const firstTokenMs = log.first_token_ms
+  const generationMs = typeof firstTokenMs === 'number' && Number.isFinite(firstTokenMs) && firstTokenMs >= 0 && firstTokenMs < durationMs
+    ? durationMs - firstTokenMs
+    : durationMs
+  return generationMs > 0 ? outputTokens / (generationMs / 1000) : null
+}
+const formatOutputTokensPerSecond = (log: Pick<UsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): string => {
+  const value = outputTokensPerSecond(log)
+  return value == null ? '-' : value.toFixed(2)
+}
+
 const exportToCSV = async () => {
   if (pagination.total === 0) {
     appStore.showWarning(t('usage.noDataToExport'))
@@ -668,6 +683,7 @@ const exportToCSV = async () => {
       'Original Cost',
       'First Token (ms)',
       'Duration (ms)',
+      'Output TPS (tok/s)',
     ]
     const rows = allLogs.map((log) => [
       log.created_at,
@@ -688,6 +704,7 @@ const exportToCSV = async () => {
       log.total_cost.toFixed(8),
       log.first_token_ms ?? '',
       log.duration_ms ?? '',
+      formatOutputTokensPerSecond(log),
     ].map(escapeCSVValue))
     const csvContent = [
       headers.map(escapeCSVValue).join(','),

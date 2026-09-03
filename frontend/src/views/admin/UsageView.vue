@@ -558,6 +558,21 @@ const handleIpGeoBatchFailed = () => {
 }
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }
+const outputTokensPerSecond = (log: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): number | null => {
+  const outputTokens = Math.max(0, (log.output_tokens || 0) - (log.image_output_tokens || 0))
+  const durationMs = log.duration_ms
+  if (outputTokens <= 0 || typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return null
+  const firstTokenMs = log.first_token_ms
+  const generationMs = typeof firstTokenMs === 'number' && Number.isFinite(firstTokenMs) && firstTokenMs >= 0 && firstTokenMs < durationMs
+    ? durationMs - firstTokenMs
+    : durationMs
+  return generationMs > 0 ? outputTokens / (generationMs / 1000) : null
+}
+const formatOutputTokensPerSecond = (log: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): string => {
+  const value = outputTokensPerSecond(log)
+  return value == null ? '-' : value.toFixed(2)
+}
+
 const firstTokenGapMs = (row: Pick<AdminUsageLog, 'first_token_ms' | 'upstream_first_event_ms'>): number | null => {
   if (row.first_token_ms == null || row.upstream_first_event_ms == null) return null
   return Math.max(0, row.first_token_ms - row.upstream_first_event_ms)
@@ -608,7 +623,7 @@ const exportToExcel = async () => {
         log.rate_multiplier?.toPrecision(4) || '1.00', (log.account_rate_multiplier ?? 1).toPrecision(4),
         log.total_cost?.toFixed(6) || '0.000000', log.actual_cost?.toFixed(6) || '0.000000',
         ((log.account_stats_cost ?? log.total_cost) * (log.account_rate_multiplier ?? 1)).toFixed(6), log.first_token_ms ?? '', log.upstream_first_event_ms ?? '', firstTokenGapMs(log) ?? '', log.duration_ms,
-        log.request_id || '', log.user_agent || '', log.ip_address || ''
+        formatOutputTokensPerSecond(log), log.request_id || '', log.user_agent || '', log.ip_address || ''
       ])
       if (rows.length) {
         XLSX.utils.sheet_add_aoa(ws, rows, { origin: -1 })

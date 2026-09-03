@@ -223,15 +223,11 @@
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
-              <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
+              <span class="font-semibold text-green-600 dark:text-green-400">
+                ${{ row.actual_cost?.toFixed(6) || '0.000000' }}<span data-testid="rate-multiplier-marker">×{{ formatBillingMultiplier(row) }}</span>
+              </span>
               <span
-                v-if="appliedRateMultiplier(row) != null"
-                data-testid="rate-multiplier-marker"
-                :title="t('usage.appliedRateMultiplier', { value: formatAppliedRateMultiplier(row) })"
-                class="inline-flex items-center rounded bg-gray-100 px-1 py-px text-[10px] font-semibold leading-tight text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-gray-500/15 dark:text-gray-300 dark:ring-gray-500/30"
-              >×{{ formatAppliedRateMultiplier(row) }}</span>
-              <span
-                v-if="row.long_context_billing_applied"
+                v-if="row.long_context_billing_applied && appliedRateMultiplier(row) == null"
                 data-testid="long-context-billing-marker"
                 :title="t('usage.longContextPricingApplied')"
                 class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
@@ -249,6 +245,9 @@
             </div>
             <div v-if="showAccountBilling && row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
               A ${{ accountBilled(row).toFixed(6) }}
+            </div>
+            <div class="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+              {{ t('usage.currentBillingMultiplier') }} x{{ formatBillingMultiplier(row) }}
             </div>
           </div>
         </template>
@@ -273,6 +272,8 @@
               <span v-if="firstTokenGapMs(row) != null" class="font-medium tabular-nums text-amber-600 dark:text-amber-400">{{ formatDuration(firstTokenGapMs(row)) }}</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
+              <span v-if="outputTokensPerSecond(row) != null" class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
+              <span v-if="outputTokensPerSecond(row) != null" class="font-medium tabular-nums text-violet-600 dark:text-violet-400" :title="t('usage.outputTpsHint')">{{ formatOutputTokensPerSecond(row) }} tok/s</span>
             </div>
           </div>
         </template>
@@ -610,9 +611,10 @@ function appliedRateMultiplier(row: { rate_multiplier?: number | null }): number
   return value
 }
 
-function formatAppliedRateMultiplier(row: { rate_multiplier?: number | null }): string {
-  const value = appliedRateMultiplier(row)
-  return value == null ? '' : Number(value.toPrecision(6)).toString()
+function formatBillingMultiplier(row: { rate_multiplier?: number | null }): string {
+  const value = row.rate_multiplier
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '1'
+  return Number(value.toPrecision(6)).toString()
 }
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
@@ -773,6 +775,24 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+function outputTokensPerSecond(row: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): number | null {
+  const outputTokens = textOutputTokens(row)
+  const durationMs = row.duration_ms
+  if (outputTokens <= 0 || typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return null
+
+  const firstTokenMs = row.first_token_ms
+  const generationMs = typeof firstTokenMs === 'number' && Number.isFinite(firstTokenMs) && firstTokenMs >= 0 && firstTokenMs < durationMs
+    ? durationMs - firstTokenMs
+    : durationMs
+  if (generationMs <= 0) return null
+  return outputTokens / (generationMs / 1000)
+}
+
+function formatOutputTokensPerSecond(row: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): string {
+  const tps = outputTokensPerSecond(row)
+  return tps == null ? '-' : tps.toFixed(2)
 }
 
 const firstTokenGapMs = (row: Pick<AdminUsageLog, 'first_token_ms' | 'upstream_first_event_ms'>): number | null => {
