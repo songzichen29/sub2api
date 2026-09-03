@@ -60,3 +60,8 @@ describe('AppSidebar default logo', () => {
     expect(componentSource).not.toContain("siteLogo || '/logo.png'")
   })
 })
+describe('AppSidebar payment coupons navigation', () => {
+  it('keeps the payment coupon management route in the admin order menu', () => {
+    expect(componentSource).toContain("{ path: '/admin/orders/coupons', label: t('nav.paymentCoupons'), icon: TicketIcon }")
+  })
+})
