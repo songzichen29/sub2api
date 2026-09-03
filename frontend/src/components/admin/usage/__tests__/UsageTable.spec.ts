@@ -238,9 +238,9 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.findAll('[data-testid="rate-multiplier-marker"]')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="rate-multiplier-marker"]').text()).toBe('×2')
-    expect(wrapper.text()).toContain('$0.400000×2')
+    expect(wrapper.find('[data-testid="rate-multiplier-marker"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('$0.400000')
+    expect(wrapper.text()).not.toContain('$0.400000×2')
     expect(wrapper.text()).toContain('Billing rate x2')
     expect(wrapper.text()).toContain('Billing rate x1')
   })
