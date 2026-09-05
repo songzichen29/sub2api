@@ -271,6 +271,8 @@ func newOpenAISilentRefusalFailoverError(c *gin.Context, account *Account, upstr
 
 	setOpsUpstreamError(c, http.StatusBadGateway, openAISilentRefusalUpstreamMessage, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           platform,
 		AccountID:          accountID,
 		AccountName:        accountName,
@@ -308,6 +310,8 @@ func newOpenAIResponsesEmptyCompletedFailoverError(c *gin.Context, account *Acco
 
 	setOpsUpstreamError(c, http.StatusBadGateway, openAIResponsesEmptyCompletedMessage, "")
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           platform,
 		AccountID:          accountID,
 		AccountName:        accountName,

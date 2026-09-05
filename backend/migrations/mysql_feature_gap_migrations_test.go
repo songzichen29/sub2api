@@ -344,6 +344,30 @@ func TestMySQLUpstreamFeatureMigrationsExist(t *testing.T) {
 	}
 }
 
+func TestMySQLV021FeatureMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("095_upstream_v0_2_1_schema.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	for _, fragment := range []string{
+		"`force_openai_fast` BOOLEAN NOT NULL DEFAULT FALSE",
+		"`free_openai_fast` BOOLEAN NOT NULL DEFAULT FALSE",
+		"`max_reasoning_effort_over_limit` VARCHAR(20) NOT NULL DEFAULT ''downgrade''",
+		"`codex_models_manifest_config` JSON NOT NULL DEFAULT (JSON_OBJECT())",
+		"`upstream_request_id` VARCHAR(128) NULL",
+		"`channel_model_pricing` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
+		"`channel_pricing_intervals` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
+		"`channel_account_stats_model_pricing` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
+		"`channel_account_stats_pricing_intervals` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
+		"`max_reasoning_effort_multiplier` DECIMAL(10,4) NULL",
+		"chk_channel_model_pricing_max_reasoning_effort_multiplier_positive",
+		"idx_usage_logs_upstream_request_id",
+	} {
+		require.Contains(t, sql, fragment)
+	}
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

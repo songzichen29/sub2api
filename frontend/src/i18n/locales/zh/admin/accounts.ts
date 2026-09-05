@@ -585,6 +585,8 @@ export default {
     openai: {
       baseUrlHint: '留空使用官方 OpenAI API',
       apiKeyHint: '您的 OpenAI API Key',
+      imagesUrlToB64Json: '生图结果 URL 转 base64',
+      imagesUrlToB64JsonDesc: '仅对 OpenAI API Key 的 Images 非流式响应生效。上游返回的图片缺少 b64_json 但带 url 时，网关下载该 url 并以 base64 回填 b64_json（url 保留），兼容按官方接口实现的客户端；下载失败则原样返回。',
       longContextBilling: '长上下文计费',
       longContextBillingDesc: '开启后，长上下文请求会按上游长上下文计费/统计路径处理，而不是普通文本计费。',
       oauthPassthrough: '自动透传（仅替换认证）',
@@ -1598,7 +1600,16 @@ export default {
     accountSchedulingThresholdOverrideValue: '账号阈值百分比',
     accountSchedulingThresholdOverrideDisabledHint:
             '1-100，达到该用量百分比后临时不可调度；100 表示禁用当前账号自动停调。',
-    syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但能力元数据不完整，能力信息未更新。',
+    syncUpstreamModelsMetadataIncomplete: '模型 ID 已同步，但未能更新任何能力元数据。',
+    syncUpstreamModelsMetadataPartial: '已更新部分模型的能力元数据；其余模型能力仍不完整。',
+    upstreamRequestIdHeader: '上游ID',
+    upstreamRequestIdHeaderPlaceholder: '留空不记录',
+    upstreamRequestIdHeaderHelp: {
+            intro: '填写直接上游在响应头中声明请求标识的头名，记录到用量明细的“上游ID”列；留空则不记录。',
+            examplesTitle: '常见取值',
+            sub2apiNote: '对应对方用量明细的请求ID列',
+            official: '{platform} 官方 API'
+          },
     autoResetCredit: {
             title: '自动使用重置卡',
             hint: '仅在实际用量达到阈值时使用最早到期的可用卡；默认关闭。无卡或失败时账号保持暂停。',

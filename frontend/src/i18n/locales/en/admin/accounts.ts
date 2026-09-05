@@ -498,6 +498,8 @@ export default {
     openai: {
       baseUrlHint: 'Leave default for official OpenAI API',
       apiKeyHint: 'Your OpenAI API Key',
+      imagesUrlToB64Json: 'Image result URL to base64',
+      imagesUrlToB64JsonDesc: 'Only applies to non-streaming Images responses of OpenAI API Key accounts. When an upstream image item has a url but no b64_json, the gateway downloads the url and fills b64_json with its base64 content (url is kept) for clients built on the official API; the response is returned unchanged if the download fails.',
       longContextBilling: 'Long-context billing',
       longContextBillingDesc: 'When enabled, long-context requests use the upstream long-context pricing/accounting path instead of normal text pricing.',
       oauthPassthrough: 'Auto passthrough (auth only)',
@@ -1601,7 +1603,17 @@ export default {
     accountSchedulingThresholdOverrideDisabledHint:
             'Use 1-100. The account becomes temporarily unschedulable after reaching this usage percent; 100 disables it for this account.',
     syncUpstreamModelsMetadataIncomplete:
-            'Model IDs were synced, but capability metadata is incomplete and was not updated.',
+            'Model IDs were synced, but no capability metadata could be updated.',
+    syncUpstreamModelsMetadataPartial:
+            'Some model capabilities were updated; remaining models are still incomplete.',
+    upstreamRequestIdHeader: 'Upstream ID',
+    upstreamRequestIdHeaderPlaceholder: 'Leave empty to record nothing',
+    upstreamRequestIdHeaderHelp: {
+            intro: 'Name of the response header in which the direct upstream declares its request ID. The value is recorded in the "Upstream ID" column of the usage log; leave empty to record nothing.',
+            examplesTitle: 'Common values',
+            sub2apiNote: 'Matches the request ID column of its usage log',
+            official: '{platform} official API'
+          },
     autoResetCredit: {
             title: 'Automatically use reset credits',
             hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',

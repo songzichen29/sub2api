@@ -54,7 +54,16 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 		mapped     string
 		effortJSON string
 		wantEffort string
+		maxPolicy  string
 	}{
+		{
+			name:       "policy caps converted effort",
+			model:      "gpt-5.6-luna",
+			mapped:     "gpt-5.6-luna",
+			effortJSON: `,"output_config":{"effort":"max"}`,
+			wantEffort: "medium",
+			maxPolicy:  "medium",
+		},
 		{
 			name:       "GPT56 max",
 			model:      "luna",
@@ -103,7 +112,11 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			account.Credentials["model_mapping"] = map[string]any{tt.model: tt.mapped}
 
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
-			result, err := svc.ForwardAsAnthropic(context.Background(), c, account, []byte(body), "", "")
+			ctx := context.Background()
+			if tt.maxPolicy != "" {
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, nil, "")
+			}
+			result, err := svc.ForwardAsAnthropic(ctx, c, account, []byte(body), "", "")
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, tt.mapped, gjson.GetBytes(upstream.lastBody, "model").String())
@@ -451,7 +464,7 @@ func TestForwardAsAnthropic_ResponsesSupportedAccountStillUsesResponsesEndpoint(
 		openai_compat.ExtraKeyResponsesSupported: true,
 	}
 
-	ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "medium", nil)
+	ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "medium", nil, "")
 	result, err := svc.ForwardAsAnthropic(ctx, c, account, body, "", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
