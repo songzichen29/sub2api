@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -948,6 +949,27 @@ func (r *userRepository) DeductBalance(ctx context.Context, id int64, amount flo
 		return service.ErrUserNotFound
 	}
 	return nil
+}
+
+// DeductAvailableBalance atomically deducts min(amount, max(balance, 0)).
+// Refunds must never make an existing deficit more negative or race with a
+// concurrent balance update. The shared row-locking path keeps this portable
+// across MySQL and PostgreSQL.
+func (r *userRepository) DeductAvailableBalance(ctx context.Context, id int64, amount float64) (float64, error) {
+	if amount < 0 {
+		return 0, fmt.Errorf("deduction amount must be nonnegative")
+	}
+
+	change, err := r.updateBalanceAtomically(ctx, id, func(current float64) (float64, error) {
+		if current <= 0 || amount == 0 {
+			return current, nil
+		}
+		return current - math.Min(amount, current), nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return change.Old - change.New, nil
 }
 
 // AdjustBalance 原子地把 delta 累加到余额上，结果为负时不执行更新。
