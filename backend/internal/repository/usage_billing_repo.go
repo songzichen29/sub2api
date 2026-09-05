@@ -746,12 +746,12 @@ func incrementUsageBillingAPIKeyQuota(ctx context.Context, tx *sql.Tx, apiKeyID 
 		UPDATE api_keys
 		SET quota_used = quota_used + ?,
 			status = CASE
-				WHEN quota > 0 AND status = ? AND quota_used < quota AND quota_used + ? >= quota THEN ?
+				WHEN ? > 0 AND status = ? AND ? < ? AND ? + ? >= ? THEN ?
 				ELSE status
 			END,
 			updated_at = NOW()
 		WHERE id = ? AND deleted_at IS NULL
-	`, amount, service.StatusAPIKeyActive, amount, service.StatusAPIKeyQuotaExhausted, apiKeyID)
+	`, amount, quota, service.StatusAPIKeyActive, quotaUsed, quota, quotaUsed, amount, quota, service.StatusAPIKeyQuotaExhausted, apiKeyID)
 	if err != nil {
 		return false, err
 	}

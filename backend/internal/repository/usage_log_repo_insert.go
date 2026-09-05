@@ -180,10 +180,6 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 		_, err := r.createSingle(ctx, tx.Client(), log)
 		return err
 	}
-	if r.isMySQLDialect() {
-		_, err := r.createSingle(ctx, r.sql, log)
-		return err
-	}
 	if r.db == nil {
 		_, err := r.createSingle(ctx, r.sql, log)
 		return err
@@ -646,6 +642,20 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if r.isMySQLDialect() {
+		for _, group := range groupOrder {
+			singleErr := execUsageLogInsertNoResult(ctx, db, group.prepared, true)
+			if singleErr != nil {
+				logger.LegacyPrintf("repository.usage_log", "best-effort MySQL insert failed: %v", singleErr)
+			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
+				r.bestEffortRecent.SetDefault(group.key, struct{}{})
+			}
+			for _, req := range group.reqs {
+				sendUsageLogBestEffortResult(req.resultCh, singleErr)
+			}
+		}
+		return
+	}
 
 	query, args := buildUsageLogBestEffortInsertQuery(preparedList)
 	if _, err := db.ExecContext(ctx, query, args...); err != nil {
@@ -1213,8 +1223,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 	return query.String(), args
 }
 
-func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) error {
-	_, err := sqlq.ExecContext(ctx, `
+func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared, mysqlOpt ...bool) error {
+	query := `
 		INSERT INTO usage_logs (
 			user_id,
 			api_key_id,
@@ -1287,7 +1297,11 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
-	`, prepared.args...)
+	`
+	if len(mysqlOpt) > 0 && mysqlOpt[0] {
+		query = buildMySQLUsageLogInsertQuery(query)
+	}
+	_, err := sqlq.ExecContext(ctx, query, prepared.args...)
 	return err
 }
 

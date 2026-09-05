@@ -813,19 +813,24 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 		service.StatusExpired, proxyID); err != nil {
 		return nil, err
 	}
+	dbDialect := dialect.MySQL
+	if r.client != nil && r.client.Driver() != nil {
+		dbDialect = r.client.Driver().Dialect()
+	}
 	if !change {
-		dbDialect := dialect.MySQL
-		if r.client != nil && r.client.Driver() != nil {
-			dbDialect = r.client.Driver().Dialect()
-		}
 		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, dbDialect, proxyID)
 		if err != nil {
 			return nil, err
 		}
-		if err := enqueueProxyProbeAccountChanges(ctx, exec, accountIDs); err != nil {
-			return nil, err
-		}
-		return nil, nil
+		return accountIDs, nil
+	}
+
+	// Clear snapshots while the accounts still point at the expired proxy. The
+	// returned ids are merged with rerouted accounts below so the scheduler gets
+	// one notification for every account whose routing state changed.
+	probeAccountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, dbDialect, proxyID)
+	if err != nil {
+		return nil, err
 	}
 
 	// MySQL 无 UPDATE ... RETURNING：先 SELECT 命中账号 ID，再 UPDATE，最后返回真实命中列表。
@@ -875,13 +880,12 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	if len(accountIDs) == 0 {
-		return nil, nil
+	if len(accountIDs) > 0 {
+		if _, err := exec.ExecContext(ctx, updateSQL, updateArgs...); err != nil {
+			return nil, err
+		}
 	}
-	if _, err := exec.ExecContext(ctx, updateSQL, updateArgs...); err != nil {
-		return nil, err
-	}
-	return accountIDs, nil
+	return sortedUniqueAccountIDs(append(probeAccountIDs, accountIDs...)), nil
 }
 
 // CountExpired 返回已过期（status=expired）的代理数量。

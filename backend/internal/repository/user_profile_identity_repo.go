@@ -223,18 +223,38 @@ func lockRepositoryScopedKeys(ctx context.Context, client *dbent.Client, exec sq
 	if len(normalized) == 0 || client == nil || exec == nil || client.Driver().Dialect() != dialect.MySQL {
 		return localRelease, nil
 	}
+	// MySQL named locks belong to the physical connection. Pin *sql.DB-based
+	// callers to one connection so GET_LOCK and RELEASE_LOCK cannot land on
+	// different pool connections and leave a lock behind.
+	lockExec := exec
+	var pinnedConn *sql.Conn
+	if db, ok := exec.(*sql.DB); ok {
+		var err error
+		pinnedConn, err = db.Conn(ctx)
+		if err != nil {
+			localRelease()
+			return nil, err
+		}
+		lockExec = pinnedConn
+	}
+	releaseAcquired := func(acquiredLocks []string) {
+		for i := len(acquiredLocks) - 1; i >= 0; i-- {
+			releaseRows, releaseErr := lockExec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
+			if releaseErr == nil {
+				_ = releaseRows.Close()
+			}
+		}
+	}
 
 	acquiredLocks := make([]string, 0, len(normalized))
 
 	for _, key := range normalized {
 		lockName := repositoryNamedLockKey(key)
-		rows, err := exec.QueryContext(ctx, "SELECT GET_LOCK(?, 0)", lockName)
+		rows, err := lockExec.QueryContext(ctx, "SELECT GET_LOCK(?, 0)", lockName)
 		if err != nil {
-			for i := len(acquiredLocks) - 1; i >= 0; i-- {
-				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
-				if releaseErr == nil {
-					_ = releaseRows.Close()
-				}
+			releaseAcquired(acquiredLocks)
+			if pinnedConn != nil {
+				_ = pinnedConn.Close()
 			}
 			localRelease()
 			return nil, err
@@ -242,33 +262,27 @@ func lockRepositoryScopedKeys(ctx context.Context, client *dbent.Client, exec sq
 		var acquired sql.NullInt64
 		if !rows.Next() {
 			_ = rows.Close()
-			for i := len(acquiredLocks) - 1; i >= 0; i-- {
-				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
-				if releaseErr == nil {
-					_ = releaseRows.Close()
-				}
+			releaseAcquired(acquiredLocks)
+			if pinnedConn != nil {
+				_ = pinnedConn.Close()
 			}
 			localRelease()
 			return nil, fmt.Errorf("acquire repository scoped lock: no rows")
 		}
 		if err := rows.Scan(&acquired); err != nil {
 			_ = rows.Close()
-			for i := len(acquiredLocks) - 1; i >= 0; i-- {
-				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
-				if releaseErr == nil {
-					_ = releaseRows.Close()
-				}
+			releaseAcquired(acquiredLocks)
+			if pinnedConn != nil {
+				_ = pinnedConn.Close()
 			}
 			localRelease()
 			return nil, err
 		}
 		_ = rows.Close()
 		if !acquired.Valid || acquired.Int64 != 1 {
-			for i := len(acquiredLocks) - 1; i >= 0; i-- {
-				releaseRows, releaseErr := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
-				if releaseErr == nil {
-					_ = releaseRows.Close()
-				}
+			releaseAcquired(acquiredLocks)
+			if pinnedConn != nil {
+				_ = pinnedConn.Close()
 			}
 			localRelease()
 			return nil, fmt.Errorf("acquire repository scoped lock: lock busy")
@@ -277,11 +291,9 @@ func lockRepositoryScopedKeys(ctx context.Context, client *dbent.Client, exec sq
 	}
 
 	return func() {
-		for i := len(acquiredLocks) - 1; i >= 0; i-- {
-			releaseRows, err := exec.QueryContext(context.Background(), "SELECT RELEASE_LOCK(?)", acquiredLocks[i])
-			if err == nil {
-				_ = releaseRows.Close()
-			}
+		releaseAcquired(acquiredLocks)
+		if pinnedConn != nil {
+			_ = pinnedConn.Close()
 		}
 		localRelease()
 	}, nil
