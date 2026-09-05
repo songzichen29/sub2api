@@ -38,8 +38,8 @@ SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_s
 SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_model_pricing` ADD COLUMN `max_reasoning_effort_multiplier` DECIMAL(10,4) NULL', 'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SET @constraint_exists = (SELECT COUNT(1) FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = 'channel_model_pricing' AND constraint_name = 'chk_channel_model_pricing_max_reasoning_effort_multiplier_positive');
-SET @sql = IF(@constraint_exists = 0, 'ALTER TABLE `channel_model_pricing` ADD CONSTRAINT `chk_channel_model_pricing_max_reasoning_effort_multiplier_positive` CHECK (`max_reasoning_effort_multiplier` IS NULL OR `max_reasoning_effort_multiplier` > 0)', 'SELECT 1');
+SET @constraint_exists = (SELECT COUNT(1) FROM information_schema.table_constraints WHERE constraint_schema = DATABASE() AND table_name = 'channel_model_pricing' AND constraint_name = 'chk_cmp_reason_max_mult_pos');
+SET @sql = IF(@constraint_exists = 0, 'ALTER TABLE `channel_model_pricing` ADD CONSTRAINT `chk_cmp_reason_max_mult_pos` CHECK (`max_reasoning_effort_multiplier` IS NULL OR `max_reasoning_effort_multiplier` > 0)', 'SELECT 1');
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 SET @idx_exists = (SELECT COUNT(1) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'usage_logs' AND index_name = 'idx_usage_logs_upstream_request_id');

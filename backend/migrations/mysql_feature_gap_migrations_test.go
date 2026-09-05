@@ -349,6 +349,8 @@ func TestMySQLV021FeatureMigrationExists(t *testing.T) {
 	require.NoError(t, err)
 
 	sql := string(content)
+	const maxReasoningEffortMultiplierConstraint = "chk_cmp_reason_max_mult_pos"
+	require.LessOrEqual(t, len(maxReasoningEffortMultiplierConstraint), 64, "MySQL constraint identifiers must be at most 64 characters")
 	for _, fragment := range []string{
 		"`force_openai_fast` BOOLEAN NOT NULL DEFAULT FALSE",
 		"`free_openai_fast` BOOLEAN NOT NULL DEFAULT FALSE",
@@ -360,11 +362,12 @@ func TestMySQLV021FeatureMigrationExists(t *testing.T) {
 		"`channel_account_stats_model_pricing` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
 		"`channel_account_stats_pricing_intervals` ADD COLUMN `cache_write_1h_price` DECIMAL(20,12) NULL",
 		"`max_reasoning_effort_multiplier` DECIMAL(10,4) NULL",
-		"chk_channel_model_pricing_max_reasoning_effort_multiplier_positive",
+		maxReasoningEffortMultiplierConstraint,
 		"idx_usage_logs_upstream_request_id",
 	} {
 		require.Contains(t, sql, fragment)
 	}
+	require.NotContains(t, sql, "chk_channel_model_pricing_max_reasoning_effort_multiplier_positive")
 	requireNotPostgresOnlySQL(t, sql)
 }
 
