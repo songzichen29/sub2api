@@ -92,7 +92,7 @@ func (s *ProxyExpirySuite) TestSweep_EnqueuesChangedAccountIDsWithoutFullRebuild
 	err = scanSingleRow(s.ctx, s.tx, `
 		SELECT payload
 		FROM scheduler_outbox
-		WHERE event_type=$1
+		WHERE event_type=?
 		ORDER BY id DESC
 		LIMIT 1`, []any{service.SchedulerOutboxEventAccountBulkChanged}, &payloadRaw)
 	s.Require().NoError(err)
@@ -107,7 +107,7 @@ func (s *ProxyExpirySuite) TestSweep_EnqueuesChangedAccountIDsWithoutFullRebuild
 	err = scanSingleRow(s.ctx, s.tx, `
 		SELECT COUNT(*)
 		FROM scheduler_outbox
-		WHERE event_type=$1`, []any{service.SchedulerOutboxEventFullRebuild}, &fullRebuildCount)
+		WHERE event_type=?`, []any{service.SchedulerOutboxEventFullRebuild}, &fullRebuildCount)
 	s.Require().NoError(err)
 	s.Require().Zero(fullRebuildCount)
 }

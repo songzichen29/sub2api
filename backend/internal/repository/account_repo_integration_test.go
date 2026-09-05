@@ -924,7 +924,7 @@ func (s *AccountRepoSuite) TestResetQuotaUsedAndClearRateLimitCooldownPreservesO
 	s.Require().NoError(scanSingleRow(s.ctx, s.repo.sql, `
 		SELECT EXISTS (
 			SELECT 1 FROM scheduler_outbox
-			WHERE event_type = $1 AND account_id = $2 AND dedup_key IS NOT NULL
+			WHERE event_type = ? AND account_id = ? AND dedup_key IS NOT NULL
 		)`, []any{service.SchedulerOutboxEventAccountChanged, account.ID}, &pendingEventExists))
 	s.Require().True(pendingEventExists)
 	s.Require().Len(cacheRecorder.setAccounts, 1)

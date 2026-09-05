@@ -502,7 +502,7 @@ func (r *accountRepository) listDueUpstreamBillingProbeAccountsMySQL(ctx context
 		WHERE deleted_at IS NULL
 			AND status = 'active'
 			AND type = 'apikey'
-			AND JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled') = TRUE
+			AND JSON_UNQUOTE(JSON_EXTRACT(extra, '$.upstream_billing_probe_enabled')) = 'true'
 	`)
 	if err != nil {
 		return nil, err
@@ -536,6 +536,9 @@ func (r *accountRepository) listDueUpstreamBillingProbeAccountsMySQL(ctx context
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
 		return nil, err
 	}
 
@@ -1179,8 +1182,8 @@ func (r *accountRepository) updateCredentialsMySQL(ctx context.Context, id int64
 		SET
 			credentials = CAST(? AS JSON),
 			extra = CASE
-				WHEN platform IN ('openai', 'anthropic')
-					AND type = 'apikey'
+					WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
+						AND type = 'apikey'
 					AND NOT (credentials <=> CAST(? AS JSON))
 					AND (
 						NOT (JSON_EXTRACT(credentials, '$.api_key') <=> JSON_EXTRACT(CAST(? AS JSON), '$.api_key'))
@@ -1190,16 +1193,12 @@ func (r *accountRepository) updateCredentialsMySQL(ctx context.Context, id int64
 						)
 					)
 				THEN JSON_REMOVE(
-					CASE
-						WHEN platform = 'openai' THEN JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe')
-						ELSE COALESCE(extra, JSON_OBJECT())
-					END,
+					JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe'),
 					'$.ollama_cloud_usage_session',
 					'$.ollama_cloud_usage_auto_refresh',
 					'$.ollama_cloud_usage_snapshot'
 				)
-				WHEN platform = 'openai'
-					AND type = 'apikey'
+				WHEN type = 'apikey'
 					AND NOT (credentials <=> CAST(? AS JSON))
 				THEN JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe')
 				ELSE extra

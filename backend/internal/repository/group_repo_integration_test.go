@@ -90,18 +90,16 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	s.Require().NoError(s.repo.Create(s.ctx, source))
 
 	insertAccount := func(name, accountType string, deleted bool) int64 {
-		var id int64
 		deletedAt := any(nil)
 		if deleted {
 			deletedAt = "2026-07-16T00:00:00Z"
 		}
-		s.Require().NoError(scanSingleRow(
-			s.ctx,
-			s.tx,
-			"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, $4) RETURNING id",
-			[]any{name, service.PlatformOpenAI, accountType, deletedAt},
-			&id,
-		))
+		res, err := s.tx.ExecContext(s.ctx,
+			"INSERT INTO accounts (name, platform, type, deleted_at) VALUES (?, ?, ?, ?)",
+			name, service.PlatformOpenAI, accountType, deletedAt)
+		s.Require().NoError(err)
+		id, err := res.LastInsertId()
+		s.Require().NoError(err)
 		return id
 	}
 	oauthID := insertAccount("duplicate-oauth", service.AccountTypeOAuth, false)
@@ -113,7 +111,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	}{{oauthID, 37}, {apiKeyID, 8}, {deletedID, 3}} {
 		_, err := s.tx.ExecContext(
 			s.ctx,
-			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, $3, NOW())",
+			"INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES (?, ?, ?, NOW())",
 			binding.accountID,
 			source.ID,
 			binding.priority,
@@ -135,7 +133,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 
 	rows, err := s.tx.QueryContext(
 		s.ctx,
-		"SELECT account_id, priority FROM account_groups WHERE group_id = $1 ORDER BY account_id",
+		"SELECT account_id, priority FROM account_groups WHERE group_id = ? ORDER BY account_id",
 		duplicate.ID,
 	)
 	s.Require().NoError(err)
@@ -156,7 +154,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	s.Require().NoError(scanSingleRow(
 		s.ctx,
 		s.tx,
-		"SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = $1",
+		"SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = ?",
 		[]any{duplicate.ID},
 		&outboxCount,
 	))

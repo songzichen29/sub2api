@@ -38,36 +38,26 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 		Save(ctx)
 	require.NoError(t, err)
 
-	functionName := fmt.Sprintf("fail_group_duplicate_outbox_%d", suffix)
 	triggerName := fmt.Sprintf("fail_group_duplicate_outbox_trigger_%d", suffix)
 	_, err = integrationDB.ExecContext(ctx, fmt.Sprintf(`
-		CREATE FUNCTION %s() RETURNS trigger LANGUAGE plpgsql AS $$
+		CREATE TRIGGER %s BEFORE INSERT ON scheduler_outbox FOR EACH ROW
 		BEGIN
 			IF NEW.group_id IS NOT NULL AND EXISTS (
 				SELECT 1 FROM groups
 				WHERE id = NEW.group_id AND duplicate_operation_id = '%s'
 			) THEN
-				RAISE EXCEPTION 'forced duplicate outbox failure';
+				SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced duplicate outbox failure';
 			END IF;
-			RETURN NEW;
-		END;
-		$$`, functionName, operationID))
-	require.NoError(t, err)
-	_, err = integrationDB.ExecContext(ctx, fmt.Sprintf(
-		"CREATE TRIGGER %s BEFORE INSERT ON scheduler_outbox FOR EACH ROW EXECUTE FUNCTION %s()",
-		triggerName,
-		functionName,
-	))
+		END`, triggerName, operationID))
 	require.NoError(t, err)
 
 	duplicateName := fmt.Sprintf("duplicate-rollback-copy-%d", suffix)
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), fmt.Sprintf("DROP TRIGGER IF EXISTS %s ON scheduler_outbox", triggerName))
-		_, _ = integrationDB.ExecContext(context.Background(), fmt.Sprintf("DROP FUNCTION IF EXISTS %s()", functionName))
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE group_id = $1", source.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE account_id = $1", account.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", account.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE name IN ($1, $2)", source.Name, duplicateName)
+		_, _ = integrationDB.ExecContext(context.Background(), fmt.Sprintf("DROP TRIGGER IF EXISTS %s", triggerName))
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE group_id = ?", source.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE account_id = ?", account.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = ?", account.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE name IN (?, ?)", source.Name, duplicateName)
 	})
 
 	duplicate := &service.Group{
@@ -82,9 +72,9 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 	require.ErrorContains(t, err, "forced duplicate outbox failure")
 
 	var groupCount, bindingCount, outboxCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM groups WHERE name = $1", duplicateName).Scan(&groupCount))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", duplicate.ID).Scan(&bindingCount))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = $1", duplicate.ID).Scan(&outboxCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM groups WHERE name = ?", duplicateName).Scan(&groupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE group_id = ?", duplicate.ID).Scan(&bindingCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = ?", duplicate.ID).Scan(&outboxCount))
 	require.Zero(t, groupCount)
 	require.Zero(t, bindingCount)
 	require.Zero(t, outboxCount)

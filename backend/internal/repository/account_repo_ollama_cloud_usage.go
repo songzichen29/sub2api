@@ -31,11 +31,11 @@ const (
 	AND ` + ollamaCloudBaseURLMatchSQLPrefix + `credentials ->> 'base_url'` + ollamaCloudBaseURLMatchSQLSuffix + `
 	AND jsonb_typeof(credentials -> 'api_key') = 'string'
 `
-	ollamaCloudBaseURLRegexMySQL       = `^https://(www\.)?ollama\.com(:443)?(/v1)?$`
+	ollamaCloudBaseURLRegexMySQL       = `^[hH][tT][tT][pP][sS]://([wW][wW][wW]\.)?[oO][lL][lL][aA][mM][aA]\.[cC][oO][mM](:443)?(/v1)?$`
 	ollamaCloudBaseURLMatchMySQLPrefix = "REGEXP_LIKE(TRIM("
-	ollamaCloudBaseURLMatchMySQLSuffix = "), '" + ollamaCloudBaseURLRegexMySQL + "', 'i')"
+	ollamaCloudBaseURLMatchMySQLSuffix = "), '" + ollamaCloudBaseURLRegexMySQL + "')"
 	ollamaCloudUsageEligibleMySQL      = `
-	platform IN ('openai', 'anthropic')
+	platform IN (` + ollamaCloudUsagePlatformsSQL + `)
 	AND type = 'apikey'
 	AND ` + ollamaCloudBaseURLMatchMySQLPrefix + `JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.base_url'))` + ollamaCloudBaseURLMatchMySQLSuffix + `
 	AND JSON_TYPE(JSON_EXTRACT(credentials, '$.api_key')) = 'STRING'
@@ -770,6 +770,9 @@ func (r *accountRepository) listDueOllamaCloudUsageAccountsMySQL(
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
 	ids := make([]int64, len(selected))
 	for i := range selected {
 		ids[i] = selected[i].id
@@ -801,7 +804,7 @@ func ollamaCloudUsageEligibleMySQLForAlias(alias string) string {
 	if prefix != "" {
 		prefix += "."
 	}
-	return prefix + `platform IN ('openai', 'anthropic')
+	return prefix + `platform IN (` + ollamaCloudUsagePlatformsSQL + `)
 		AND ` + prefix + `type = 'apikey'
 		AND ` + ollamaCloudBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT("+prefix+"credentials, '$.base_url'))") + `
 		AND JSON_TYPE(JSON_EXTRACT(` + prefix + `credentials, '$.api_key')) = 'STRING'`

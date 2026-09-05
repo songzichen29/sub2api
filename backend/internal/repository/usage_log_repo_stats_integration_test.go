@@ -60,8 +60,6 @@ func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
 	require.Len(t, trend, 1)
 	require.Equal(t, int64(1), trend[0].Requests)
 
-	_, err = tx.ExecContext(ctx, "SET LOCAL enable_seqscan = off")
-	require.NoError(t, err)
 	assertPlanUsesIndex := func(query, indexName string, args ...any) {
 		rows, queryErr := tx.QueryContext(ctx, query, args...)
 		require.NoError(t, queryErr)
@@ -76,7 +74,7 @@ func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
 		require.Contains(t, strings.Join(planLines, "\n"), indexName)
 	}
 	assertPlanUsesIndex(`
-EXPLAIN (COSTS OFF)
+EXPLAIN
 SELECT id
 FROM usage_logs
 WHERE upstream_model_mismatch IS TRUE
@@ -84,20 +82,20 @@ ORDER BY created_at DESC, id DESC
 LIMIT 100
 `, usageLogsUpstreamModelMismatchIndex)
 	assertPlanUsesIndex(`
-EXPLAIN (COSTS OFF)
+EXPLAIN
 SELECT id
 FROM usage_logs
-WHERE COALESCE(NULLIF(TRIM(requested_model), ''), model) = $1
-  AND created_at >= $2 AND created_at < $3
+WHERE COALESCE(NULLIF(TRIM(requested_model), ''), model) = ?
+  AND created_at >= ? AND created_at < ?
 ORDER BY created_at DESC, id DESC
 LIMIT 100
 `, usageLogsEffectiveRequestedModelIndex, "gpt-5.5", start, end)
 	assertPlanUsesIndex(`
-EXPLAIN (COSTS OFF)
+EXPLAIN
 SELECT id
 FROM usage_logs
-WHERE COALESCE(NULLIF(TRIM(upstream_model), ''), model) = $1
-  AND created_at >= $2 AND created_at < $3
+WHERE COALESCE(NULLIF(TRIM(upstream_model), ''), model) = ?
+  AND created_at >= ? AND created_at < ?
 ORDER BY created_at DESC, id DESC
 LIMIT 100
 `, usageLogsEffectiveUpstreamModelIndex, "gpt-5.5", start, end)

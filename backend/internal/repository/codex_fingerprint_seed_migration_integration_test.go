@@ -4,12 +4,12 @@ package repository
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	dbmigrations "github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/google/uuid"
-	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,60 +21,45 @@ func requireCanonicalUUIDString(t *testing.T, value string) {
 	require.Equal(t, parsed.String(), value)
 }
 
-func TestMigration225BackfillsOnlyEnabledOpenAIOAuthMissingOrMalformedSeeds(t *testing.T) {
+func TestMySQLMigration080BackfillsEnabledOpenAIOAuthMissingSeeds(t *testing.T) {
 	tx := testTx(t)
 	ctx := context.Background()
-	migrationSQL, err := dbmigrations.FS.ReadFile("225_backfill_codex_fingerprint_seed.sql")
+	migrationSQL, err := dbmigrations.MySQLFS.ReadFile("080_codex_fingerprint_seed.sql")
 	require.NoError(t, err)
 
-	var missingID, blankID, malformedID, validID, offID, apiKeyID int64
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-missing', 'openai', 'oauth', '{"codex_fingerprint_mode":"session"}'::jsonb)
-RETURNING id
-`).Scan(&missingID))
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-blank', 'openai', 'oauth', '{"codex_fingerprint_mode":"device","codex_fingerprint_seed":""}'::jsonb)
-RETURNING id
-`).Scan(&blankID))
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-malformed', 'openai', 'oauth', '{"codex_fingerprint_mode":"full","codex_fingerprint_seed":"BAD"}'::jsonb)
-RETURNING id
-`).Scan(&malformedID))
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-valid', 'openai', 'oauth', '{"codex_fingerprint_mode":"session","codex_fingerprint_seed":"11111111-1111-4111-8111-111111111111"}'::jsonb)
-RETURNING id
-`).Scan(&validID))
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-off', 'openai', 'oauth', '{"codex_fingerprint_mode":"off"}'::jsonb)
-RETURNING id
-`).Scan(&offID))
-	require.NoError(t, tx.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ('migration-225-apikey', 'openai', 'apikey', '{"codex_fingerprint_mode":"session"}'::jsonb)
-RETURNING id
-`).Scan(&apiKeyID))
+	insert := func(name, accountType, extra string) int64 {
+		t.Helper()
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO accounts (name, platform, type, extra)
+			VALUES (?, 'openai', ?, ?)
+		`, name, accountType, extra)
+		require.NoError(t, err)
+		id, err := result.LastInsertId()
+		require.NoError(t, err)
+		return id
+	}
+	missingID := insert("migration-080-missing", service.AccountTypeOAuth, `{"codex_fingerprint_mode":"session"}`)
+	blankID := insert("migration-080-blank", service.AccountTypeOAuth, `{"codex_fingerprint_mode":"device","codex_fingerprint_seed":""}`)
+	validID := insert("migration-080-valid", service.AccountTypeOAuth, `{"codex_fingerprint_mode":"session","codex_fingerprint_seed":"11111111-1111-4111-8111-111111111111"}`)
+	offID := insert("migration-080-off", service.AccountTypeOAuth, `{"codex_fingerprint_mode":"off"}`)
+	apiKeyID := insert("migration-080-apikey", service.AccountTypeAPIKey, `{"codex_fingerprint_mode":"session"}`)
 
 	_, err = tx.ExecContext(ctx, string(migrationSQL))
 	require.NoError(t, err)
 
 	seedsAfterFirst := map[int64]string{}
-	for _, id := range []int64{missingID, blankID, malformedID, validID} {
+	for _, id := range []int64{missingID, blankID, validID} {
 		var seed string
-		require.NoError(t, tx.QueryRowContext(ctx, `SELECT extra->>'codex_fingerprint_seed' FROM accounts WHERE id = $1`, id).Scan(&seed))
+		require.NoError(t, tx.QueryRowContext(ctx, `SELECT JSON_UNQUOTE(JSON_EXTRACT(extra, '$.codex_fingerprint_seed')) FROM accounts WHERE id = ?`, id).Scan(&seed))
 		requireCanonicalUUIDString(t, seed)
 		seedsAfterFirst[id] = seed
 	}
 	require.Equal(t, "11111111-1111-4111-8111-111111111111", seedsAfterFirst[validID])
 
 	for _, id := range []int64{offID, apiKeyID} {
-		var hasSeed bool
-		require.NoError(t, tx.QueryRowContext(ctx, `SELECT extra ? 'codex_fingerprint_seed' FROM accounts WHERE id = $1`, id).Scan(&hasSeed))
-		require.False(t, hasSeed)
+		var seed string
+		require.NoError(t, tx.QueryRowContext(ctx, `SELECT COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra, '$.codex_fingerprint_seed')), '') FROM accounts WHERE id = ?`, id).Scan(&seed))
+		require.Empty(t, seed)
 	}
 
 	_, err = tx.ExecContext(ctx, string(migrationSQL))
@@ -82,7 +67,7 @@ RETURNING id
 
 	for id, want := range seedsAfterFirst {
 		var got string
-		require.NoError(t, tx.QueryRowContext(ctx, `SELECT extra->>'codex_fingerprint_seed' FROM accounts WHERE id = $1`, id).Scan(&got))
+		require.NoError(t, tx.QueryRowContext(ctx, `SELECT JSON_UNQUOTE(JSON_EXTRACT(extra, '$.codex_fingerprint_seed')) FROM accounts WHERE id = ?`, id).Scan(&got))
 		require.Equal(t, want, got)
 	}
 }
@@ -105,16 +90,23 @@ func TestBulkUpdateGeneratesDistinctStableCodexFingerprintSeedsPerEligibleRow(t 
 	ids := make([]int64, 0, len(fixtures))
 	for _, f := range fixtures {
 		var id int64
-		require.NoError(t, integrationDB.QueryRowContext(ctx, `
-INSERT INTO accounts (name, platform, type, extra)
-VALUES ($1, 'openai', $2, $3::jsonb)
-RETURNING id
-`, f.name, f.accountType, f.extra).Scan(&id))
+		result, err := integrationDB.ExecContext(ctx, `
+			INSERT INTO accounts (name, platform, type, extra)
+			VALUES (?, 'openai', ?, ?)
+		`, f.name, f.accountType, f.extra)
+		require.NoError(t, err)
+		id, err = result.LastInsertId()
+		require.NoError(t, err)
 		ids = append(ids, id)
 	}
 	t.Cleanup(func() {
-		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM scheduler_outbox WHERE account_id = ANY($1)`, pq.Array(ids))
-		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM accounts WHERE id = ANY($1)`, pq.Array(ids))
+		placeholders := strings.TrimRight(strings.Repeat("?,", len(ids)), ",")
+		args := make([]any, len(ids))
+		for i, id := range ids {
+			args[i] = id
+		}
+		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM scheduler_outbox WHERE account_id IN (`+placeholders+`)`, args...)
+		_, _ = integrationDB.ExecContext(context.Background(), `DELETE FROM accounts WHERE id IN (`+placeholders+`)`, args...)
 	})
 
 	repo := newAccountRepositoryWithSQL(testEntClient(t), integrationDB, nil)
@@ -131,7 +123,7 @@ RETURNING id
 	readSeed := func(id int64) string {
 		t.Helper()
 		var seed string
-		require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT COALESCE(extra->>'codex_fingerprint_seed', '') FROM accounts WHERE id = $1`, id).Scan(&seed))
+		require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT COALESCE(JSON_UNQUOTE(JSON_EXTRACT(extra, '$.codex_fingerprint_seed')), '') FROM accounts WHERE id = ?`, id).Scan(&seed))
 		return seed
 	}
 	firstSeeds := []string{readSeed(ids[0]), readSeed(ids[1]), readSeed(ids[2]), readSeed(ids[3])}

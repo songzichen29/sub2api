@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 	"time"
@@ -19,7 +20,8 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 	now := time.Date(2026, time.July, 14, 12, 0, 0, 0, time.UTC)
 	_, err := tx.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()),
+			'$.upstream_billing_probe_enabled', '$.upstream_billing_probe')
 	`)
 	require.NoError(t, err)
 
@@ -30,11 +32,12 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 			"upstream_billing_probe_enabled": true,
 			"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 		}`, nextProbeAt)
-		err := scanSingleRow(ctx, tx, `
+		result, err := tx.ExecContext(ctx, `
 			INSERT INTO accounts (name, platform, type, status, extra)
-			VALUES ($1, 'openai', $2, 'active', $3::jsonb)
-			RETURNING id
-		`, []any{name, service.AccountTypeAPIKey, extra}, &id)
+			VALUES (?, 'openai', ?, 'active', ?)
+		`, name, service.AccountTypeAPIKey, extra)
+		require.NoError(t, err)
+		id, err = result.LastInsertId()
 		require.NoError(t, err)
 		return id
 	}
@@ -50,18 +53,21 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 	require.Equal(t, dueID, accounts[1].ID)
 }
 
-func insertUpstreamBillingProbeAccount(ctx context.Context, t *testing.T, tx sqlQueryer, name, nextProbeAt string) int64 {
+func insertUpstreamBillingProbeAccount(ctx context.Context, t *testing.T, tx interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, name, nextProbeAt string) int64 {
 	t.Helper()
 	var id int64
 	extra := fmt.Sprintf(`{
 		"upstream_billing_probe_enabled": true,
 		"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 	}`, nextProbeAt)
-	err := scanSingleRow(ctx, tx, `
+	result, err := tx.ExecContext(ctx, `
 		INSERT INTO accounts (name, platform, type, status, extra)
-		VALUES ($1, 'openai', $2, 'active', $3::jsonb)
-		RETURNING id
-	`, []any{name, service.AccountTypeAPIKey, extra}, &id)
+		VALUES (?, 'openai', ?, 'active', ?)
+	`, name, service.AccountTypeAPIKey, extra)
+	require.NoError(t, err)
+	id, err = result.LastInsertId()
 	require.NoError(t, err)
 	return id
 }
@@ -85,7 +91,8 @@ func TestListDueUpstreamBillingProbeAccountsParsesNanosecondTimestamps(t *testin
 	now := time.Date(2026, time.July, 25, 17, 30, 0, 0, time.UTC)
 	_, err := tx.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()),
+			'$.upstream_billing_probe_enabled', '$.upstream_billing_probe')
 	`)
 	require.NoError(t, err)
 
@@ -124,7 +131,8 @@ func TestListDueUpstreamBillingProbeAccountsSelectsEarliestDueAcrossIDs(t *testi
 	now := time.Date(2026, time.July, 25, 17, 30, 0, 0, time.UTC)
 	_, err := tx.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()),
+			'$.upstream_billing_probe_enabled', '$.upstream_billing_probe')
 	`)
 	require.NoError(t, err)
 
@@ -163,7 +171,8 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 	now := time.Date(2026, time.July, 26, 3, 0, 0, 0, time.UTC)
 	_, err := tx.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = extra - 'upstream_billing_probe_enabled' - 'upstream_billing_probe'
+		SET extra = JSON_REMOVE(COALESCE(extra, JSON_OBJECT()),
+			'$.upstream_billing_probe_enabled', '$.upstream_billing_probe')
 	`)
 	require.NoError(t, err)
 
@@ -174,11 +183,12 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 			"upstream_billing_probe_enabled": true,
 			"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 		}`, nextProbeAt)
-		err := scanSingleRow(ctx, tx, `
+		result, err := tx.ExecContext(ctx, `
 			INSERT INTO accounts (name, platform, type, status, extra)
-			VALUES ($1, $2, $3, 'active', $4::jsonb)
-			RETURNING id
-		`, []any{name, platform, accountType, extra}, &id)
+			VALUES (?, ?, ?, 'active', ?)
+		`, name, platform, accountType, extra)
+		require.NoError(t, err)
+		id, err = result.LastInsertId()
 		require.NoError(t, err)
 		return id
 	}
@@ -189,12 +199,10 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 	// OAuth 账号即便误持有启用标记也不得入选。
 	_ = insert("probe-grok-oauth-excluded", "grok", service.AccountTypeOAuth, "2026-07-26T02:59:00Z")
 	// 未启用探测的 API-key 账号不入选。
-	var disabledID int64
-	err = scanSingleRow(ctx, tx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO accounts (name, platform, type, status, extra)
-		VALUES ('probe-grok-disabled', 'grok', $1, 'active', '{}'::jsonb)
-		RETURNING id
-	`, []any{service.AccountTypeAPIKey}, &disabledID)
+		VALUES ('probe-grok-disabled', 'grok', ?, 'active', '{}')
+	`, service.AccountTypeAPIKey)
 	require.NoError(t, err)
 
 	accounts, err := repo.ListDueUpstreamBillingProbeAccounts(ctx, now, 20)

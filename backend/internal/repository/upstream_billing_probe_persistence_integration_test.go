@@ -402,9 +402,9 @@ func TestProxyIdentityUpdateInvalidatesProbeAndRejectsInFlightSnapshot(t *testin
 			require.ErrorIs(t, err, service.ErrUpstreamBillingProbeIdentityChanged)
 
 			rows, err := tx.QueryContext(ctx, `
-				SELECT COUNT(*), COALESCE(MAX(payload::text), '')
+				SELECT COUNT(*), COALESCE(MAX(CAST(payload AS CHAR)), '')
 				FROM scheduler_outbox
-				WHERE event_type = $1
+				WHERE event_type = ?
 			`, service.SchedulerOutboxEventAccountBulkChanged)
 			require.NoError(t, err)
 			require.True(t, rows.Next())
@@ -532,7 +532,7 @@ func latestBulkAccountOutboxPayload(t *testing.T, ctx context.Context, tx sqlQue
 	require.NoError(t, scanSingleRow(ctx, tx, `
 		SELECT payload
 		FROM scheduler_outbox
-		WHERE event_type = $1
+		WHERE event_type = ?
 		ORDER BY id DESC
 		LIMIT 1
 	`, []any{service.SchedulerOutboxEventAccountBulkChanged}, &payloadJSON))

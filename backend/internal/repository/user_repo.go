@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
@@ -1404,13 +1405,19 @@ func userEmailDomainPredicate(domain string) predicate.User {
 	subdomainPattern := "%@%." + escapedDomain
 	return predicate.User(func(s *entsql.Selector) {
 		s.Where(entsql.P(func(b *entsql.Builder) {
-			b.WriteString("(RTRIM(LOWER(TRIM(").
+			trimmedEmail := "RTRIM(LOWER(TRIM("
+			trimSuffix := ")), '.')"
+			if s.Dialect() == dialect.MySQL {
+				trimmedEmail = "TRIM(TRAILING '.' FROM LOWER(TRIM("
+				trimSuffix = ")))"
+			}
+			b.WriteString("(").WriteString(trimmedEmail).
 				Ident(s.C(dbuser.FieldEmail)).
-				WriteString(")), '.') LIKE ").
+				WriteString(trimSuffix).WriteString(" LIKE ").
 				Arg(exactPattern).
-				WriteString(` ESCAPE '!' OR RTRIM(LOWER(TRIM(`).
+				WriteString(` ESCAPE '!' OR `).WriteString(trimmedEmail).
 				Ident(s.C(dbuser.FieldEmail)).
-				WriteString(")), '.') LIKE ").
+				WriteString(trimSuffix).WriteString(" LIKE ").
 				Arg(subdomainPattern).
 				WriteString(` ESCAPE '!'`).
 				WriteString(")")
