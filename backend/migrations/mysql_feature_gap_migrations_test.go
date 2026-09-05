@@ -371,6 +371,16 @@ func TestMySQLV021FeatureMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLChannelMonitorV2MigrationAvoidsUnsupportedColumnIfNotExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("076_channel_monitor_v2.sql")
+	require.NoError(t, err)
+
+	sql := strings.ToLower(string(content))
+	require.NotContains(t, sql, "add column if not exists")
+	require.Contains(t, sql, "from information_schema.columns")
+	require.Contains(t, sql, "prepare stmt from @sql")
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

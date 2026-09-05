@@ -162,27 +162,35 @@ CREATE TABLE IF NOT EXISTS `channel_monitor_v2_watermarks` (
 INSERT IGNORE INTO `channel_monitor_v2_watermarks` (`id`) VALUES (1);
 
 CREATE TABLE IF NOT EXISTS `channel_monitor_v2_metrics_rollup` LIKE `channel_monitor_v2_metrics_1m`;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_rollup' AND column_name = 'bucket_seconds');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_monitor_v2_metrics_rollup` ADD COLUMN `bucket_seconds` INT NOT NULL AFTER `bucket_start`', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE `channel_monitor_v2_metrics_rollup`
     DROP PRIMARY KEY,
-    ADD COLUMN IF NOT EXISTS `bucket_seconds` INT NOT NULL AFTER `bucket_start`,
     ADD PRIMARY KEY (`bucket_seconds`, `bucket_start`, `platform`, `group_id`, `model`);
 
 CREATE TABLE IF NOT EXISTS `channel_monitor_v2_user_metrics_rollup` LIKE `channel_monitor_v2_user_metrics_1m`;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_user_metrics_rollup' AND column_name = 'bucket_seconds');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_monitor_v2_user_metrics_rollup` ADD COLUMN `bucket_seconds` INT NOT NULL AFTER `bucket_start`', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE `channel_monitor_v2_user_metrics_rollup`
     DROP PRIMARY KEY,
-    ADD COLUMN IF NOT EXISTS `bucket_seconds` INT NOT NULL AFTER `bucket_start`,
     ADD PRIMARY KEY (`bucket_seconds`, `bucket_start`, `platform`, `group_id`, `model`, `user_id`);
 
 CREATE TABLE IF NOT EXISTS `channel_monitor_v2_error_metrics_rollup` LIKE `channel_monitor_v2_error_metrics_1m`;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_error_metrics_rollup' AND column_name = 'bucket_seconds');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_monitor_v2_error_metrics_rollup` ADD COLUMN `bucket_seconds` INT NOT NULL AFTER `bucket_start`', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE `channel_monitor_v2_error_metrics_rollup`
     DROP PRIMARY KEY,
-    ADD COLUMN IF NOT EXISTS `bucket_seconds` INT NOT NULL AFTER `bucket_start`,
     ADD PRIMARY KEY (`bucket_seconds`, `bucket_start`, `platform`, `group_id`, `model`, `error_category`, `taxonomy_version`);
 
 CREATE TABLE IF NOT EXISTS `channel_monitor_v2_latency_histograms_rollup` LIKE `channel_monitor_v2_latency_histograms_1m`;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_latency_histograms_rollup' AND column_name = 'bucket_seconds');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE `channel_monitor_v2_latency_histograms_rollup` ADD COLUMN `bucket_seconds` INT NOT NULL AFTER `bucket_start`', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 ALTER TABLE `channel_monitor_v2_latency_histograms_rollup`
     DROP PRIMARY KEY,
-    ADD COLUMN IF NOT EXISTS `bucket_seconds` INT NOT NULL AFTER `bucket_start`,
     ADD PRIMARY KEY (`bucket_seconds`, `bucket_start`, `platform`, `group_id`, `model`, `user_id`, `metric`, `upper_bound_ms`);
 
 INSERT IGNORE INTO `settings` (`key`, `value`) VALUES ('channel_monitor_mode', 'v1');

@@ -96,6 +96,7 @@ func TestIsMigrationChecksumCompatible_AdditionalCases(t *testing.T) {
 
 func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigrations(t *testing.T) {
 	for _, name := range []string{
+		"076_channel_monitor_v2.sql",
 		"109_auth_identity_compat_backfill.sql",
 		"110_pending_auth_and_provider_default_grants.sql",
 		"112_add_payment_order_provider_key_snapshot.sql",

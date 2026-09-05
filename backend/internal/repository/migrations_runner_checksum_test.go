@@ -101,6 +101,15 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		require.True(t, ok)
 	})
 
+	t.Run("076历史checksum可兼容修复后的MySQL迁移", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"076_channel_monitor_v2.sql",
+			"8b9b37935c1e378ca4a8f7461487d391c2995bcec0898a70e5601932c0e5e93e",
+			"988d13f8dfea063b4246f6b24027f24de329b819cd90ece29be33deb01515678",
+		)
+		require.True(t, ok)
+	})
+
 	t.Run("非白名单迁移不兼容", func(t *testing.T) {
 		ok := isMigrationChecksumCompatible(
 			"001_init.sql",
