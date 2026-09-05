@@ -262,7 +262,7 @@ type AdminPaymentOrderResult struct {
 	UpdatedAt           time.Time  `json:"updated_at"`
 }
 
-func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*AdminPaymentOrderResult {
+func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*AdminPaymentOrderResult { //nolint:unused // retained for callers in downstream builds
 	out := make([]*AdminPaymentOrderResult, 0, len(orders))
 	for _, order := range orders {
 		if item := sanitizeAdminPaymentOrderForResponse(order); item != nil {

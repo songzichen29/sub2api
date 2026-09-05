@@ -30,10 +30,10 @@ func TestMySQLMigration050DefaultsOpenAILongContextBilling(t *testing.T) {
 		return id
 	}
 
-	ordinaryID := insert("mysql-migration-050-ordinary", `{}`, nil, nil)
-	parentID := insert("mysql-migration-050-parent", `{"openai_long_context_billing_enabled": false}`, nil, nil)
+	ordinaryID := insert("mysql-migration-050-ordinary", `{}`, nil, "global")
+	parentID := insert("mysql-migration-050-parent", `{"openai_long_context_billing_enabled": false}`, nil, "global")
 	shadowID := insert("mysql-migration-050-shadow", `{}`, parentID, "spark")
-	malformedID := insert("mysql-migration-050-malformed", `{"openai_long_context_billing_enabled": "false"}`, nil, nil)
+	malformedID := insert("mysql-migration-050-malformed", `{"openai_long_context_billing_enabled": "false"}`, nil, "global")
 
 	_, err = tx.ExecContext(ctx, string(migrationSQL))
 	require.NoError(t, err)

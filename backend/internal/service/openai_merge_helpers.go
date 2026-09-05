@@ -9,22 +9,22 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-func openAIRequestBodyHasImageGenerationTool(body []byte) bool {
+func openAIRequestBodyHasImageGenerationTool(body []byte) bool { //nolint:unused // retained for Responses merge variants
 	return openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools"))
 }
 
-func decodeOpenAIRequestMapUseNumber(body []byte, dst *map[string]any) error {
+func decodeOpenAIRequestMapUseNumber(body []byte, dst *map[string]any) error { //nolint:unused // retained for Responses merge variants
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	return dec.Decode(dst)
 }
 
-func openAIMergeHelperString(v any) string {
+func openAIMergeHelperString(v any) string { //nolint:unused // retained for Responses merge variants
 	s, _ := v.(string)
 	return s
 }
 
-func removeEmptyPreviousResponseIDFromRawPayload(payload []byte) ([]byte, bool, error) {
+func removeEmptyPreviousResponseIDFromRawPayload(payload []byte) ([]byte, bool, error) { //nolint:unused // retained for Responses merge variants
 	value := gjson.GetBytes(payload, "previous_response_id")
 	if !value.Exists() {
 		return payload, false, nil

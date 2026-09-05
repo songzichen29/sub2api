@@ -18,10 +18,10 @@ import (
 // growthBookClientKey is the GrowthBook client key real Claude Code uses for
 // external (non-Anthropic) users. Source: claude-code constants/keys.ts
 // (getGrowthBookClientKey, USER_TYPE !== 'ant' branch).
-const growthBookClientKey = "sdk-zAZezfDKGoZuXXKe"
+const growthBookClientKey = "sdk-zAZezfDKGoZuXXKe" //nolint:unused // retained for OAuth mimic deployments
 
 // growthBookEvalURL is the remoteEval endpoint CC POSTs to (apiHost + /api/eval/{clientKey}).
-const growthBookEvalURL = "https://api.anthropic.com/api/eval/" + growthBookClientKey
+const growthBookEvalURL = "https://api.anthropic.com/api/eval/" + growthBookClientKey //nolint:unused // retained for OAuth mimic deployments
 
 const claudeBootstrapURL = "https://api.anthropic.com/api/claude_cli/bootstrap"
 
@@ -88,7 +88,7 @@ func (s *GatewayService) proxyAnthropicOAuthGET(ctx context.Context, groupID *in
 	if err != nil {
 		return 0, "", nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, "", nil, err
@@ -109,7 +109,7 @@ func (s *GatewayService) proxyAnthropicOAuthGET(ctx context.Context, groupID *in
 // "zero-experiment-participation" state (a detection signal vs real CC, which
 // fetches experiments at startup and logs exposures). Fire-and-forget; safe to
 // call on every OAuth mimic request (the Redis marker dedupes within TTL).
-func (s *GatewayService) ensureGrowthBookExperiments(ctx context.Context, account *Account, token, deviceID, sessionID string) {
+func (s *GatewayService) ensureGrowthBookExperiments(ctx context.Context, account *Account, token, deviceID, sessionID string) { //nolint:unused // retained for OAuth mimic deployments
 	if s.proxyCache == nil || account == nil || token == "" || deviceID == "" {
 		return
 	}
@@ -141,7 +141,7 @@ func (s *GatewayService) ensureGrowthBookExperiments(ctx context.Context, accoun
 
 // fetchGrowthBookEval POSTs the remoteEval request (attributes body, OAuth
 // bearer, uTLS+h2 upstream) and parses experiment assignments from the response.
-func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Account, token, deviceID, sessionID string) ([]growthbookExposure, error) {
+func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Account, token, deviceID, sessionID string) ([]growthbookExposure, error) { //nolint:unused // retained for OAuth mimic deployments
 	attributes := map[string]any{
 		"id":        deviceID,
 		"deviceID":  deviceID,
@@ -171,7 +171,7 @@ func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Accou
 	if err != nil {
 		return nil, fmt.Errorf("growthbook eval: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("growthbook eval status %d", resp.StatusCode)
 	}
@@ -186,7 +186,7 @@ func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Accou
 // response. Mirrors claude-code processRemoteEvalPayload: features with
 // source=="experiment", an experiment.key, and an experimentResult.variationId.
 // Robust to missing fields (returns only well-formed exposures).
-func parseGrowthBookExperiments(body []byte) []growthbookExposure {
+func parseGrowthBookExperiments(body []byte) []growthbookExposure { //nolint:unused // retained for OAuth mimic deployments
 	var out []growthbookExposure
 	features := gjson.GetBytes(body, "features")
 	if !features.IsObject() {

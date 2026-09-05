@@ -228,12 +228,12 @@ func rebindUsageLogQuery(query string, mysql bool) string {
 		for i := 0; i < len(query); i++ {
 			if query[i] == '\'' || query[i] == '"' || query[i] == '`' {
 				quote := query[i]
-				b.WriteByte(query[i])
+				_ = b.WriteByte(query[i])
 				for i++; i < len(query); i++ {
-					b.WriteByte(query[i])
+					_ = b.WriteByte(query[i])
 					if query[i] == quote {
 						if i+1 < len(query) && query[i+1] == quote {
-							b.WriteByte(query[i+1])
+							_ = b.WriteByte(query[i+1])
 							i++
 							continue
 						}
@@ -243,14 +243,14 @@ func rebindUsageLogQuery(query string, mysql bool) string {
 				continue
 			}
 			if query[i] == '$' && i+1 < len(query) && query[i+1] >= '0' && query[i+1] <= '9' {
-				b.WriteByte('?')
+				_ = b.WriteByte('?')
 				i++
 				for i+1 < len(query) && query[i+1] >= '0' && query[i+1] <= '9' {
 					i++
 				}
 				continue
 			}
-			b.WriteByte(query[i])
+			_ = b.WriteByte(query[i])
 		}
 		return b.String()
 	}
@@ -280,7 +280,7 @@ func rebindQuestionPlaceholders(query string) string {
 	for i := 0; i < len(query); i++ {
 		if isSQLQuote(query[i]) {
 			end := skipSQLQuoted(query, i)
-			b.WriteString(query[i : end+1])
+			_, _ = b.WriteString(query[i : end+1])
 			i = end
 			continue
 		}
@@ -291,12 +291,12 @@ func rebindQuestionPlaceholders(query string) string {
 				}
 				next++
 			}
-			b.WriteString(fmt.Sprintf("$%d", next))
+			_, _ = fmt.Fprintf(&b, "$%d", next)
 			occupied[next] = struct{}{}
 			next++
 			continue
 		}
-		b.WriteByte(query[i])
+		_ = b.WriteByte(query[i])
 	}
 	return b.String()
 }

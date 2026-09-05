@@ -475,7 +475,7 @@ func (s *InvoiceService) UpdateApplication(ctx context.Context, applicationID, a
 	case InvoiceApplicationStatusInvoiced:
 		update.ClearRejectionReason().SetInvoiceNumber(input.InvoiceNumber).SetInvoicedAt(now)
 	}
-	application, err = update.Save(ctx)
+	_, err = update.Save(ctx)
 	if err != nil {
 		return InvoiceApplicationView{}, fmt.Errorf("update invoice application: %w", err)
 	}

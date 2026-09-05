@@ -390,7 +390,7 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	return false
 }
 
-func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool {
+func isOpenAIWSTokenEventMessage(message []byte, eventType string) bool { //nolint:unused // retained for alternate WS event decoders
 	return isOpenAIWSTokenEvent(eventType)
 }
 

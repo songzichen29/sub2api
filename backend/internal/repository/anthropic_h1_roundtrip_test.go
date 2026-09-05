@@ -105,7 +105,7 @@ func TestOrderedH1RoundTripperDoesNotReuseConnectionUntilStreamingBodyClosed(t *
 	require.NoError(t, err)
 	firstResp, err := rt.RoundTrip(firstReq)
 	require.NoError(t, err)
-	defer firstResp.Body.Close()
+	defer func() { _ = firstResp.Body.Close() }()
 
 	// The first response body is still checked out, so a concurrent request must
 	// use a different connection instead of reusing the streaming connection.
@@ -183,7 +183,7 @@ func roundTripBody(t *testing.T, rt *orderedH1RoundTripper, url string) string {
 	require.NoError(t, err)
 	resp, err := rt.RoundTrip(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
@@ -212,7 +212,7 @@ func startRawH1TestServer(t *testing.T, handle func(connID int64, conn net.Conn,
 			}
 			connID := connCount.Add(1)
 			go func() {
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				br := bufio.NewReader(conn)
 				for {
 					req, err := http.ReadRequest(br)

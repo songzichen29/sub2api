@@ -259,7 +259,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 	// conn does not see those buffered bytes, so drain br and prepend them to
 	// the handshake conn — otherwise the TLS handshake reads an incomplete
 	// ServerHello and fails intermittently.
-	var handshakeConn net.Conn = conn
+	handshakeConn := conn
 	if n := br.Buffered(); n > 0 {
 		buffered, _ := br.Peek(n)
 		head := make([]byte, n)

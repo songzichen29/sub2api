@@ -352,7 +352,7 @@ func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string
 	}
 	var rows strings.Builder
 	_, _ = rows.WriteString(`<h3>同平台账号汇总</h3>`)
-	_, _ = rows.WriteString(fmt.Sprintf(
+	_, _ = fmt.Fprintf(&rows,
 		`<ul>
 <li>总账号数: <b>%d</b></li>
 <li>可用账号: <b>%d</b></li>
@@ -369,14 +369,14 @@ func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string
 		summary.TempUnschedulable,
 		summary.Overloaded,
 		summary.UnavailableOther,
-	))
+	)
 	if len(availableRows) == 0 {
 		_, _ = rows.WriteString(`<p><b>剩余可用账号</b>: 无</p>`)
 		return rows.String()
 	}
 	_, _ = rows.WriteString(`<h3>剩余可用账号与使用情况</h3><table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;"><tr><th>ID</th><th>账号</th><th>状态</th><th>说明</th><th>近5h使用</th><th>近7d使用</th></tr>`)
 	for _, item := range availableRows {
-		_, _ = rows.WriteString(fmt.Sprintf(
+		_, _ = fmt.Fprintf(&rows,
 			`<tr><td>%d</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>`,
 			item.AccountID,
 			html.EscapeString(strings.TrimSpace(item.AccountName)),
@@ -384,7 +384,7 @@ func buildOpenAIOAuthSnapshotHTML(snapshots []openAIOAuthAccountSnapshot) string
 			html.EscapeString(strings.TrimSpace(item.Detail)),
 			html.EscapeString(strings.TrimSpace(item.Usage5h)),
 			html.EscapeString(strings.TrimSpace(item.Usage7d)),
-		))
+		)
 	}
 	_, _ = rows.WriteString(`</table>`)
 	return rows.String()

@@ -50,7 +50,7 @@ func (h *TelemetryHook) OnAPIQuery(accountID int64, deviceID, sessionID, model, 
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"stream": true,
 		},
 		Timestamp: time.Now(),
@@ -74,7 +74,7 @@ func (h *TelemetryHook) OnAPIResponse(accountID int64, deviceID, sessionID, mode
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"duration_ms":  durationMs,
 			"status_code":  statusCode,
 			"input_tokens": tokenCount,
@@ -100,7 +100,7 @@ func (h *TelemetryHook) OnToolUse(accountID int64, deviceID, sessionID, model, a
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"tool_name": toolName,
 		},
 		Timestamp: time.Now(),
@@ -133,7 +133,7 @@ func RecordAPIEnd(h *TelemetryHook, accountID int64, deviceID, sessionID, model,
 }
 
 // statusCodeFromResp extracts the HTTP status code safely.
-func statusCodeFromResp(resp *http.Response, err error) int {
+func statusCodeFromResp(resp *http.Response, err error) int { //nolint:unused // retained for alternate telemetry transports
 	if resp != nil {
 		return resp.StatusCode
 	}

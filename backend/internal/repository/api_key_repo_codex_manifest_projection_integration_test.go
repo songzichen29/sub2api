@@ -39,7 +39,7 @@ func TestGetByKeyForAuthCarriesGroupCodexModelsManifestConfig(t *testing.T) {
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = ?", user.ID)
 		require.NoError(t, err)
-		_, err = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id = ?", group.ID)
+		_, err = integrationDB.ExecContext(ctx, "DELETE FROM `groups` WHERE id = ?", group.ID)
 		require.NoError(t, err)
 	})
 

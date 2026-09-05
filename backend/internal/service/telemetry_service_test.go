@@ -21,7 +21,7 @@ func TestTelemetryBuildPayloadMatchesClaudeCodeSampleShape(t *testing.T) {
 		SessionID:   "ca6a940b-53f1-4ce4-8b6f-a6dd15e3be7f",
 		Model:       "claude-opus-4-6",
 		AccountUUID: "acct_123",
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"stream": true,
 		},
 		Timestamp: time.Date(2026, 6, 30, 15, 51, 15, 582*1e6, time.UTC),
@@ -84,7 +84,7 @@ func TestTelemetryBuildPayloadMatchesClaudeCodeSampleShape(t *testing.T) {
 
 	additionalJSON, err := base64.StdEncoding.DecodeString(additionalB64)
 	require.NoError(t, err)
-	var additional map[string]interface{}
+	var additional map[string]any
 	require.NoError(t, json.Unmarshal(additionalJSON, &additional))
 	require.NotContains(t, additional, "renderer_mode")
 	require.Equal(t, true, additional["stream"])
@@ -121,7 +121,7 @@ func TestTelemetryBuildPayloadOAuthAuthAndOrganization(t *testing.T) {
 		DeviceID:  "device-7",
 		SessionID: "session-7",
 		Model:     "claude-sonnet-4-5 [1m]",
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"duration_ms":   123.4,
 			"status_code":   200,
 			"input_tokens":  321,
@@ -139,7 +139,7 @@ func TestTelemetryBuildPayloadOAuthAuthAndOrganization(t *testing.T) {
 
 	additionalJSON, err := base64.StdEncoding.DecodeString(data.AdditionalMetadata)
 	require.NoError(t, err)
-	var additional map[string]interface{}
+	var additional map[string]any
 	require.NoError(t, json.Unmarshal(additionalJSON, &additional))
 	require.Equal(t, float64(321), additional["input_tokens"])
 	require.NotContains(t, additional, "renderer_mode")
@@ -149,14 +149,14 @@ func TestTelemetryRendererModeOnlyForUIEvents(t *testing.T) {
 	svc := NewTelemetryService(TelemetryConfig{Enabled: true})
 	ev := svc.buildPayload(TelemetryEvent{
 		EventName: "tengu_status_line_render",
-		Extra:     map[string]interface{}{"foo": "bar"},
+		Extra:     map[string]any{"foo": "bar"},
 	})
 
 	var data telemetryPayload
 	require.NoError(t, json.Unmarshal(ev.EventData, &data))
 	additionalJSON, err := base64.StdEncoding.DecodeString(data.AdditionalMetadata)
 	require.NoError(t, err)
-	var additional map[string]interface{}
+	var additional map[string]any
 	require.NoError(t, json.Unmarshal(additionalJSON, &additional))
 	require.Equal(t, "fullscreen", additional["renderer_mode"])
 }

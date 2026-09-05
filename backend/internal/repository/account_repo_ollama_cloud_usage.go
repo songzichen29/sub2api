@@ -57,7 +57,7 @@ func accountRepositoryDialect(r *accountRepository) string {
 	return dialect.Postgres
 }
 
-func sameOllamaCloudUsageGroupIdentity(left, right *service.Account) bool {
+func sameOllamaCloudUsageGroupIdentity(left, right *service.Account) bool { //nolint:unused // retained for service-level identity checks
 	if !service.IsOllamaCloudUsageAccount(left) || !service.IsOllamaCloudUsageAccount(right) {
 		return false
 	}

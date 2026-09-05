@@ -95,7 +95,7 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 			deletedAt = "2026-07-16T00:00:00Z"
 		}
 		res, err := s.tx.ExecContext(s.ctx,
-			"INSERT INTO accounts (name, platform, type, deleted_at) VALUES (?, ?, ?, ?)",
+			"INSERT INTO accounts (name, platform, type, credentials, extra, tags, created_at, updated_at, deleted_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW(6), NOW(6), ?)",
 			name, service.PlatformOpenAI, accountType, deletedAt)
 		s.Require().NoError(err)
 		id, err := res.LastInsertId()

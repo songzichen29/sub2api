@@ -1009,7 +1009,7 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	existingIDs := make([]int64, 0, len(groupIDs))
 	existingIDSet := make(map[int64]struct{}, len(groupIDs))

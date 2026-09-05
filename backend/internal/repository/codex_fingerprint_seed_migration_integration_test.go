@@ -30,8 +30,8 @@ func TestMySQLMigration080BackfillsEnabledOpenAIOAuthMissingSeeds(t *testing.T) 
 	insert := func(name, accountType, extra string) int64 {
 		t.Helper()
 		result, err := tx.ExecContext(ctx, `
-			INSERT INTO accounts (name, platform, type, extra)
-			VALUES (?, 'openai', ?, ?)
+			INSERT INTO accounts (name, platform, type, credentials, extra, created_at, updated_at)
+			VALUES (?, 'openai', ?, '{}', ?, NOW(6), NOW(6))
 		`, name, accountType, extra)
 		require.NoError(t, err)
 		id, err := result.LastInsertId()
@@ -91,8 +91,8 @@ func TestBulkUpdateGeneratesDistinctStableCodexFingerprintSeedsPerEligibleRow(t 
 	for _, f := range fixtures {
 		var id int64
 		result, err := integrationDB.ExecContext(ctx, `
-			INSERT INTO accounts (name, platform, type, extra)
-			VALUES (?, 'openai', ?, ?)
+			INSERT INTO accounts (name, platform, type, credentials, extra, created_at, updated_at)
+			VALUES (?, 'openai', ?, '{}', ?, NOW(6), NOW(6))
 		`, f.name, f.accountType, f.extra)
 		require.NoError(t, err)
 		id, err = result.LastInsertId()

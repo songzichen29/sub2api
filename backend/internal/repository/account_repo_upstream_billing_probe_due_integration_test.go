@@ -33,8 +33,8 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 			"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 		}`, nextProbeAt)
 		result, err := tx.ExecContext(ctx, `
-			INSERT INTO accounts (name, platform, type, status, extra)
-			VALUES (?, 'openai', ?, 'active', ?)
+			INSERT INTO accounts (name, platform, type, status, credentials, extra, created_at, updated_at)
+			VALUES (?, 'openai', ?, 'active', '{}', ?, NOW(6), NOW(6))
 		`, name, service.AccountTypeAPIKey, extra)
 		require.NoError(t, err)
 		id, err = result.LastInsertId()
@@ -63,8 +63,8 @@ func insertUpstreamBillingProbeAccount(ctx context.Context, t *testing.T, tx int
 		"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 	}`, nextProbeAt)
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO accounts (name, platform, type, status, extra)
-		VALUES (?, 'openai', ?, 'active', ?)
+		INSERT INTO accounts (name, platform, type, status, credentials, extra, created_at, updated_at)
+		VALUES (?, 'openai', ?, 'active', '{}', ?, NOW(6), NOW(6))
 	`, name, service.AccountTypeAPIKey, extra)
 	require.NoError(t, err)
 	id, err = result.LastInsertId()
@@ -184,8 +184,8 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 			"upstream_billing_probe": {"status": "ok", "next_probe_at": %q}
 		}`, nextProbeAt)
 		result, err := tx.ExecContext(ctx, `
-			INSERT INTO accounts (name, platform, type, status, extra)
-			VALUES (?, ?, ?, 'active', ?)
+			INSERT INTO accounts (name, platform, type, status, credentials, extra, created_at, updated_at)
+			VALUES (?, ?, ?, 'active', '{}', ?, NOW(6), NOW(6))
 		`, name, platform, accountType, extra)
 		require.NoError(t, err)
 		id, err = result.LastInsertId()
@@ -200,8 +200,8 @@ func TestListDueUpstreamBillingProbeAccountsIncludesAllAPIKeyPlatforms(t *testin
 	_ = insert("probe-grok-oauth-excluded", "grok", service.AccountTypeOAuth, "2026-07-26T02:59:00Z")
 	// 未启用探测的 API-key 账号不入选。
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO accounts (name, platform, type, status, extra)
-		VALUES ('probe-grok-disabled', 'grok', ?, 'active', '{}')
+		INSERT INTO accounts (name, platform, type, status, credentials, extra, created_at, updated_at)
+		VALUES ('probe-grok-disabled', 'grok', ?, 'active', '{}', '{}', NOW(6), NOW(6))
 	`, service.AccountTypeAPIKey)
 	require.NoError(t, err)
 

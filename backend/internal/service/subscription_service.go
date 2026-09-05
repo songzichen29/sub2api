@@ -522,7 +522,7 @@ func (s *SubscriptionService) assignExistingSubscriptionTimeRange(ctx context.Co
 		existingSub.ValidityUnit = nextValidityUnit
 		s.setWeekendSkipOriginalExpiresAtForRange(existingSub, expiresAt)
 	}
-	if !(wasExpired || wasQuotaExhausted || input.RestartPeriod) {
+	if !wasExpired && !wasQuotaExhausted && !input.RestartPeriod {
 		applyExtensionQuota(existingSub, input)
 	}
 	existingSub.UpdatedAt = now

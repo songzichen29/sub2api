@@ -25,7 +25,7 @@ func TestContentModerationRequestIDMatchesUsageBillingFormat(t *testing.T) {
 	})
 
 	t.Run("empty context returns empty id", func(t *testing.T) {
-		require.Empty(t, contentModerationRequestID(nil))
+		require.Empty(t, contentModerationRequestID(context.TODO()))
 	})
 }
 

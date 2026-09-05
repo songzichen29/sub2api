@@ -225,7 +225,7 @@ const (
 	SettingKeyLoginAgreementDocuments             = "login_agreement_documents"        // 条款文档列表（JSON，Markdown 内容）
 	SettingKeyAccountImportApplyTemplates         = "account_import_apply_templates"
 	SettingKeyOpenAIFreeImageBridgeURL            = "openai_free_image_bridge_url"
-	SettingKeyOpenAIFreeImageBridgeAuthKey       = "openai_free_image_bridge_auth_key"
+	SettingKeyOpenAIFreeImageBridgeAuthKey        = "openai_free_image_bridge_auth_key"
 	SettingKeyStandaloneAccountImportEnabled      = "standalone_account_import_enabled"
 	SettingKeyStandaloneAccountImportPasswordHash = "standalone_account_import_password_hash"
 

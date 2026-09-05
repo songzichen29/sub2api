@@ -632,7 +632,7 @@ func windowNeedsReset(anchor time.Time, storedStart *time.Time, now time.Time, d
 	return !now.Before(effective.Add(duration))
 }
 
-func windowResetTime(anchor time.Time, storedStart *time.Time, now time.Time, duration time.Duration) *time.Time {
+func windowResetTime(anchor time.Time, storedStart *time.Time, now time.Time, duration time.Duration) *time.Time { //nolint:unused // retained for legacy quota-window callers
 	effective := effectiveStoredWindowStart(anchor, storedStart)
 	if effective == nil {
 		return nil

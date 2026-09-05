@@ -402,7 +402,7 @@ func drainRequestBody(req *http.Request) ([]byte, error) {
 	if req.Body == nil {
 		return nil, nil
 	}
-	defer req.Body.Close()
+	defer func() { _ = req.Body.Close() }()
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		return nil, err

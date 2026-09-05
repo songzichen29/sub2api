@@ -609,7 +609,7 @@ func buildPublicOrderResult(order *paymentOrderResponse) PublicOrderResult {
 		SubscriptionGroupID:       order.SubscriptionGroupID,
 		SubscriptionID:            order.SubscriptionID,
 		SubscriptionDays:          order.SubscriptionDays,
-		SubscriptionPlanExpiresAt: order.PaymentOrder.SubscriptionPlanExpiresAt,
+		SubscriptionPlanExpiresAt: order.SubscriptionPlanExpiresAt,
 		CanRefund:                 order.CanRefund,
 		SubscriptionExpiresAt:     order.SubscriptionExpiresAt,
 		SubscriptionRemainingDays: order.SubscriptionRemainingDays,

@@ -51,16 +51,16 @@ const (
 
 // TelemetryEvent represents a single internal telemetry event before formatting.
 type TelemetryEvent struct {
-	EventName   string                 `json:"event_name"`
-	AccountID   int64                  `json:"-"` // for routing
-	DeviceID    string                 `json:"-"` // from identity service metadata.user_id.device_id
-	SessionID   string                 `json:"-"`
-	Model       string                 `json:"-"`
-	AccountUUID string                 `json:"-"`
-	OrgUUID     string                 `json:"-"`
-	UserType    string                 `json:"-"`
-	Extra       map[string]interface{} `json:"-"`
-	Timestamp   time.Time              `json:"-"`
+	EventName   string         `json:"event_name"`
+	AccountID   int64          `json:"-"` // for routing
+	DeviceID    string         `json:"-"` // from identity service metadata.user_id.device_id
+	SessionID   string         `json:"-"`
+	Model       string         `json:"-"`
+	AccountUUID string         `json:"-"`
+	OrgUUID     string         `json:"-"`
+	UserType    string         `json:"-"`
+	Extra       map[string]any `json:"-"`
+	Timestamp   time.Time      `json:"-"`
 	// Token is an optional per-request fallback OAuth bearer; normal gateway
 	// operation resolves auth by AccountID via TokenProvider/AccountRepo.
 	Token string `json:"-"`
@@ -320,7 +320,7 @@ func (s *TelemetryService) MarkExit(accountID int64) {
 		SessionID:   ses.SessionID,
 		Model:       ses.Model,
 		AccountUUID: ses.AccountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"last_session_duration_sec": math.Round(sessionDuration*10) / 10,
 			"last_session_api_requests": ses.APIRequests,
 			"renderer_mode":             "fullscreen",
@@ -338,7 +338,7 @@ func (s *TelemetryService) OnAPIRequest(accountID int64, deviceID, sessionID, mo
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"duration_ms":   durationMs,
 			"status_code":   statusCode,
 			"renderer_mode": "fullscreen",
@@ -370,7 +370,7 @@ func (s *TelemetryService) sendFeatureSequence(accountID int64, deviceID, sessio
 			SessionID:   sessionID,
 			Model:       model,
 			AccountUUID: accountUUID,
-			Extra: map[string]interface{}{
+			Extra: map[string]any{
 				"feature_name":  f,
 				"renderer_mode": "fullscreen",
 			},
@@ -386,7 +386,7 @@ func (s *TelemetryService) sendFeatureSequence(accountID int64, deviceID, sessio
 		SessionID:   sessionID,
 		Model:       model,
 		AccountUUID: accountUUID,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"renderer_mode": "fullscreen",
 		},
 		Timestamp: time.Now(),
@@ -495,7 +495,7 @@ func groupTelemetryEventsByAccount(events []telemetryWireEvent) []telemetryAccou
 }
 
 func (s *TelemetryService) sendAccountBatch(accountID int64, token string, events []telemetryWireEvent, attempt int) {
-	payload := map[string]interface{}{"events": events}
+	payload := map[string]any{"events": events}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		slog.Error("telemetry: failed to marshal batch", "error", err)
@@ -545,7 +545,7 @@ func (s *TelemetryService) doTelemetryPOST(ctx context.Context, body []byte, acc
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusUnauthorized && withAuth {
 		return s.doTelemetryPOST(ctx, body, accountID, "", false)
@@ -676,7 +676,7 @@ func (s *TelemetryService) buildPayload(ev TelemetryEvent) telemetryWireEvent {
 		p.Auth = &telemetryAuth{AccountUUID: acct.accountUUID, OrganizationUUID: acct.orgUUID}
 	}
 
-	additional := make(map[string]interface{}, len(ev.Extra)+1)
+	additional := make(map[string]any, len(ev.Extra)+1)
 	if shouldAttachRendererMode(ev.EventName) {
 		additional["renderer_mode"] = "fullscreen"
 	}
@@ -887,7 +887,7 @@ func sendTelemetry(baseURL, token, tokenType string, events []telemetryWireEvent
 		return nil
 	}
 	s := NewTelemetryService(TelemetryConfig{Enabled: true, BaseURL: baseURL, Token: token, TokenType: tokenType})
-	payload := map[string]interface{}{"events": events}
+	payload := map[string]any{"events": events}
 	body, _ := json.Marshal(payload)
 	return s.doTelemetryPOST(context.Background(), body, 0, "", true)
 }
@@ -897,7 +897,7 @@ func sendTelemetry(baseURL, token, tokenType string, events []telemetryWireEvent
 func BuildTelemetryEvent(
 	eventName string,
 	deviceID, sessionID, model, accountUUID string,
-	extra map[string]interface{},
+	extra map[string]any,
 	config TelemetryConfig,
 ) error {
 	s := NewTelemetryService(TelemetryConfig{Enabled: true})

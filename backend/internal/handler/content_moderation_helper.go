@@ -16,7 +16,7 @@ const contentModerationAccountBinderKey = "content_moderation_account_binder"
 
 type contentModerationAccountBinder func(context.Context, int64, string)
 
-func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision {
+func (h *GatewayHandler) checkContentModeration(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol string, model string, body []byte) *service.ContentModerationDecision { //nolint:unused // retained for downstream gateway variants
 	if h == nil || h.contentModerationService == nil {
 		return nil
 	}

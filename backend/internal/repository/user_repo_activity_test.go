@@ -13,7 +13,7 @@ import (
 func TestGetLatestUsedAtByUserIDsUsesDatabaseTimezoneEpoch(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	want := time.Date(2026, time.July, 22, 11, 36, 25, 970972000, time.UTC)
 	mock.ExpectQuery(`SELECT user_id, UNIX_TIMESTAMP\(MAX\(created_at\)\) AS last_used_at_unix`).

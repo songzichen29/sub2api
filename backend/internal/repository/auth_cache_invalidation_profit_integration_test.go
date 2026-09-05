@@ -52,30 +52,30 @@ func TestAuthCacheInvalidationTrigger_ProfitControlColumns(t *testing.T) {
 		require.NoError(t, err)
 		_, err = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id = ?", user.ID)
 		require.NoError(t, err)
-		_, err = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id = ?", group.ID)
+		_, err = integrationDB.ExecContext(ctx, "DELETE FROM `groups` WHERE id = ?", group.ID)
 		require.NoError(t, err)
 	})
 
-	_, err := integrationDB.ExecContext(ctx, "UPDATE groups SET name = CONCAT(name, '-cosmetic') WHERE id = ?", group.ID)
+	_, err := integrationDB.ExecContext(ctx, "UPDATE `groups` SET name = CONCAT(name, '-cosmetic') WHERE id = ?", group.ID)
 	require.NoError(t, err)
 	require.Zero(t, count(), "cosmetic 更新不得入队（既有语义回归）")
 
-	_, err = integrationDB.ExecContext(ctx, "UPDATE groups SET profit_control_enabled = NOT profit_control_enabled WHERE id = ?", group.ID)
+	_, err = integrationDB.ExecContext(ctx, "UPDATE `groups` SET profit_control_enabled = NOT profit_control_enabled WHERE id = ?", group.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, count(), "profit_control_enabled 变更必须入队")
 	clear()
 
-	_, err = integrationDB.ExecContext(ctx, "UPDATE groups SET profit_min_margin = 0.3 WHERE id = ?", group.ID)
+	_, err = integrationDB.ExecContext(ctx, "UPDATE `groups` SET profit_min_margin = 0.3 WHERE id = ?", group.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, count(), "profit_min_margin 变更必须入队")
 	clear()
 
-	_, err = integrationDB.ExecContext(ctx, "UPDATE groups SET profit_safety_buffer = 0.02 WHERE id = ?", group.ID)
+	_, err = integrationDB.ExecContext(ctx, "UPDATE `groups` SET profit_safety_buffer = 0.02 WHERE id = ?", group.ID)
 	require.NoError(t, err)
 	require.Equal(t, 1, count(), "profit_safety_buffer 变更必须入队")
 	clear()
 
-	_, err = integrationDB.ExecContext(ctx, "UPDATE groups SET profit_min_margin = profit_min_margin WHERE id = ?", group.ID)
+	_, err = integrationDB.ExecContext(ctx, "UPDATE `groups` SET profit_min_margin = profit_min_margin WHERE id = ?", group.ID)
 	require.NoError(t, err)
 	require.Zero(t, count(), "利润字段无实际变化的 UPDATE 不得入队")
 
@@ -90,7 +90,7 @@ func TestAuthCacheInvalidationTrigger_ProfitControlColumns(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			clear()
-			_, err := integrationDB.ExecContext(ctx, "UPDATE groups SET "+update+" WHERE id = ?", group.ID)
+			_, err := integrationDB.ExecContext(ctx, "UPDATE `groups` SET "+update+" WHERE id = ?", group.ID)
 			require.NoError(t, err)
 			require.Equal(t, 1, count(), name+" 变更必须入队")
 		})

@@ -903,8 +903,8 @@ func lockAndMergeAccountProbeExtraMySQL(ctx context.Context, client *dbent.Clien
 			AND credentials = CAST(? AS JSON)
 			AND proxy_id <=> ?,
 			COALESCE(
-				platform IN ('openai', 'anthropic')
-				AND ? IN ('openai', 'anthropic')
+				platform IN (`+ollamaCloudUsagePlatformsSQL+`)
+				AND ? IN (`+ollamaCloudUsagePlatformsSQL+`)
 				AND type = 'apikey'
 				AND ? = 'apikey'
 				AND JSON_EXTRACT(credentials, '$.api_key') <=> JSON_EXTRACT(CAST(? AS JSON), '$.api_key')
@@ -1180,7 +1180,6 @@ func (r *accountRepository) updateCredentialsMySQL(ctx context.Context, id int64
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
 		SET
-			credentials = CAST(? AS JSON),
 			extra = CASE
 					WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
 						AND type = 'apikey'
@@ -1203,6 +1202,7 @@ func (r *accountRepository) updateCredentialsMySQL(ctx context.Context, id int64
 				THEN JSON_REMOVE(COALESCE(extra, JSON_OBJECT()), '$.upstream_billing_probe')
 				ELSE extra
 			END,
+			credentials = CAST(? AS JSON),
 			updated_at = NOW(6)
 		WHERE id = ? AND deleted_at IS NULL
 	`, payloadString, payloadString, payloadString, payloadString, payloadString, id)

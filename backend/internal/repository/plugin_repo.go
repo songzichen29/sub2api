@@ -81,7 +81,8 @@ func (r *pluginRepository) Install(ctx context.Context, plugin *service.PluginIn
 		`SELECT id, state FROM sub2api_plugin_installations WHERE plugin_key = ? FOR UPDATE`,
 		plugin.PluginKey,
 	).Scan(&id, &currentState)
-	if lookupErr == nil {
+	switch lookupErr {
+	case nil:
 		if currentState == "starting" || currentState == "enabled" {
 			return nil, service.ErrPluginStateChanged
 		}
@@ -108,7 +109,7 @@ func (r *pluginRepository) Install(ctx context.Context, plugin *service.PluginIn
 		if err != nil {
 			return nil, err
 		}
-	} else if lookupErr == sql.ErrNoRows {
+	case sql.ErrNoRows:
 		result, insertErr := tx.ExecContext(ctx, `
 			INSERT INTO sub2api_plugin_installations (
 				plugin_key, name, version, description, author, manifest, artifact_data,
@@ -125,7 +126,7 @@ func (r *pluginRepository) Install(ctx context.Context, plugin *service.PluginIn
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		return nil, lookupErr
 	}
 	if err := replacePluginBindings(ctx, tx, id, bindings); err != nil {

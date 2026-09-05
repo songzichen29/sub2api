@@ -74,7 +74,7 @@ func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
 		require.Contains(t, strings.Join(planLines, "\n"), indexName)
 	}
 	assertPlanUsesIndex(`
-EXPLAIN
+EXPLAIN FORMAT=JSON
 SELECT id
 FROM usage_logs
 WHERE upstream_model_mismatch IS TRUE
@@ -82,7 +82,7 @@ ORDER BY created_at DESC, id DESC
 LIMIT 100
 `, usageLogsUpstreamModelMismatchIndex)
 	assertPlanUsesIndex(`
-EXPLAIN
+EXPLAIN FORMAT=JSON
 SELECT id
 FROM usage_logs
 WHERE COALESCE(NULLIF(TRIM(requested_model), ''), model) = ?
@@ -91,7 +91,7 @@ ORDER BY created_at DESC, id DESC
 LIMIT 100
 `, usageLogsEffectiveRequestedModelIndex, "gpt-5.5", start, end)
 	assertPlanUsesIndex(`
-EXPLAIN
+EXPLAIN FORMAT=JSON
 SELECT id
 FROM usage_logs
 WHERE COALESCE(NULLIF(TRIM(upstream_model), ''), model) = ?

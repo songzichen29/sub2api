@@ -176,7 +176,7 @@ func normalizeReasoningReplayFunctionCallItem(item map[string]any) (map[string]a
 }
 
 // extractReasoningReplayItemsFromOutput 从 response.output 数组中提取可缓存的 items。
-func extractReasoningReplayItemsFromOutput(output []any) []map[string]any {
+func extractReasoningReplayItemsFromOutput(output []any) []map[string]any { //nolint:unused // retained for alternate Responses payload paths
 	var items []map[string]any
 	for _, v := range output {
 		m, ok := v.(map[string]any)
@@ -335,15 +335,15 @@ func evictOldestReasoningReplayEntries(count int) {
 
 // reasoningReplayCacheContext 存放 replay cache 写入所需的上下文信息，
 // 通过 gin.Context 传递给 handleStreamingResponse / forwardOpenAIWSV2。
-type reasoningReplayCacheContext struct {
+type reasoningReplayCacheContext struct { //nolint:unused // retained for alternate Responses payload paths
 	Model      string
 	SessionKey string
 }
 
-const reasoningReplayCacheCtxKey = "__reasoning_replay_cache_ctx"
+const reasoningReplayCacheCtxKey = "__reasoning_replay_cache_ctx" //nolint:unused // retained for alternate Responses payload paths
 
 // setReasoningReplayCacheContext 在 gin.Context 中设置 replay cache 写入上下文。
-func setReasoningReplayCacheContext(c *gin.Context, model, sessionKey string) {
+func setReasoningReplayCacheContext(c *gin.Context, model, sessionKey string) { //nolint:unused // retained for alternate Responses payload paths
 	if c == nil || model == "" || sessionKey == "" {
 		return
 	}
@@ -354,7 +354,7 @@ func setReasoningReplayCacheContext(c *gin.Context, model, sessionKey string) {
 }
 
 // getReasoningReplayCacheContext 从 gin.Context 中获取 replay cache 写入上下文。
-func getReasoningReplayCacheContext(c *gin.Context) (model, sessionKey string, ok bool) {
+func getReasoningReplayCacheContext(c *gin.Context) (model, sessionKey string, ok bool) { //nolint:unused // retained for alternate Responses payload paths
 	if c == nil {
 		return "", "", false
 	}
@@ -371,7 +371,7 @@ func getReasoningReplayCacheContext(c *gin.Context) (model, sessionKey string, o
 
 // cacheReasoningReplayFromCompletedSSE 从 SSE response.completed 事件数据中
 // 提取 reasoning/function_call output items 并写入缓存。
-func cacheReasoningReplayFromCompletedSSE(c *gin.Context, data []byte) {
+func cacheReasoningReplayFromCompletedSSE(c *gin.Context, data []byte) { //nolint:unused // retained for alternate Responses payload paths
 	model, sessionKey, ok := getReasoningReplayCacheContext(c)
 	if !ok {
 		return
@@ -429,7 +429,7 @@ func cacheReasoningReplayFromCompletedData(data []byte, model, sessionKey string
 }
 
 // clearReasoningReplayCacheOnError 在遇到 invalid_encrypted_content 错误时清除缓存。
-func clearReasoningReplayCacheOnError(c *gin.Context) {
+func clearReasoningReplayCacheOnError(c *gin.Context) { //nolint:unused // retained for alternate Responses payload paths
 	model, sessionKey, ok := getReasoningReplayCacheContext(c)
 	if !ok {
 		return

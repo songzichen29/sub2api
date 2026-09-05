@@ -460,6 +460,10 @@ SELECT
   e.upstream_latency_ms,
   e.response_latency_ms,
   e.time_to_first_token_ms,
+  COALESCE(e.attempted_key_prefix, ''),
+  e.deleted_key_owner_user_id,
+  COALESCE(du.email, ''),
+  COALESCE(e.deleted_key_name, ''),
   COALESCE(e.api_key_prefix, ''),
   COALESCE(ak.name, ''),
   ak.deleted_at
@@ -488,6 +492,10 @@ LIMIT 1`
 	var responseLatency sql.NullInt64
 	var ttft sql.NullInt64
 	var requestType sql.NullInt64
+	var deletedKeyOwnerID sql.NullInt64
+	var deletedKeyOwnerEmail string
+	var deletedKeyName string
+	var attemptedKeyPrefix string
 	var detailAPIKeyName string
 	var detailAPIKeyDeletedAt sql.NullTime
 
@@ -535,6 +543,10 @@ LIMIT 1`
 		&upstreamLatency,
 		&responseLatency,
 		&ttft,
+		&attemptedKeyPrefix,
+		&deletedKeyOwnerID,
+		&deletedKeyOwnerEmail,
+		&deletedKeyName,
 		&out.APIKeyPrefix,
 		&detailAPIKeyName,
 		&detailAPIKeyDeletedAt,
@@ -602,6 +614,13 @@ LIMIT 1`
 	}
 	out.APIKeyName = detailAPIKeyName
 	out.APIKeyDeleted = detailAPIKeyDeletedAt.Valid
+	out.AttemptedKeyPrefix = attemptedKeyPrefix
+	out.DeletedKeyName = deletedKeyName
+	out.DeletedKeyOwnerEmail = deletedKeyOwnerEmail
+	if deletedKeyOwnerID.Valid {
+		v := deletedKeyOwnerID.Int64
+		out.DeletedKeyOwnerUserID = &v
+	}
 
 	// Normalize upstream_errors to empty string when stored as JSON null.
 	out.UpstreamErrors = strings.TrimSpace(out.UpstreamErrors)

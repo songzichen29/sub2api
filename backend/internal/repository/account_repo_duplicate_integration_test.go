@@ -38,7 +38,7 @@ func TestCreateWithAccountGroupsPersistsPausedCopyAtomically(t *testing.T) {
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE account_id = ?", success.ID)
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE account_id = ?", success.ID)
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = ?", success.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id = ?", group.ID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM `groups` WHERE id = ?", group.ID)
 	})
 
 	var schedulable bool

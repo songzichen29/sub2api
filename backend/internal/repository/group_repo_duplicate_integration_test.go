@@ -43,7 +43,7 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 		CREATE TRIGGER %s BEFORE INSERT ON scheduler_outbox FOR EACH ROW
 		BEGIN
 			IF NEW.group_id IS NOT NULL AND EXISTS (
-				SELECT 1 FROM groups
+				SELECT 1 FROM `+"`groups`"+`
 				WHERE id = NEW.group_id AND duplicate_operation_id = '%s'
 			) THEN
 				SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced duplicate outbox failure';
@@ -57,7 +57,7 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM scheduler_outbox WHERE group_id = ?", source.ID)
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE account_id = ?", account.ID)
 		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = ?", account.ID)
-		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE name IN (?, ?)", source.Name, duplicateName)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM `groups` WHERE name IN (?, ?)", source.Name, duplicateName)
 	})
 
 	duplicate := &service.Group{
@@ -72,7 +72,7 @@ func TestCreateGroupFromSourceRollsBackWhenOutboxInsertFails(t *testing.T) {
 	require.ErrorContains(t, err, "forced duplicate outbox failure")
 
 	var groupCount, bindingCount, outboxCount int
-	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM groups WHERE name = ?", duplicateName).Scan(&groupCount))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM `groups` WHERE name = ?", duplicateName).Scan(&groupCount))
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM account_groups WHERE group_id = ?", duplicate.ID).Scan(&bindingCount))
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM scheduler_outbox WHERE group_id = ?", duplicate.ID).Scan(&outboxCount))
 	require.Zero(t, groupCount)

@@ -25,8 +25,8 @@ type stubAdminService struct {
 	boundAuthIdentity                   *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor                int64
 	createdAccounts                     []*service.CreateAccountInput
-	updatedAccountIDs                   []int64
-	updatedAccounts                     []*service.UpdateAccountInput
+	updatedAccountIDs                   []int64                       //nolint:unused // kept for existing test fixtures
+	updatedAccounts                     []*service.UpdateAccountInput //nolint:unused // kept for existing test fixtures
 	createdProxies                      []*service.CreateProxyInput
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput

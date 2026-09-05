@@ -21,7 +21,7 @@ func requestLogger(c *gin.Context, component string, fields ...zap.Field) *zap.L
 // bindRequestLogger makes request-scoped fields available to downstream services.
 // Streaming work runs below the handler, so this keeps its progress logs correlated
 // with the authenticated user, API key, and request identifiers.
-func bindRequestLogger(c *gin.Context, l *zap.Logger) {
+func bindRequestLogger(c *gin.Context, l *zap.Logger) { //nolint:unused // retained for streaming gateway variants
 	if c == nil || c.Request == nil || l == nil {
 		return
 	}

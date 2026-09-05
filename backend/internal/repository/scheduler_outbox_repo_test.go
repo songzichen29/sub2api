@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-
 func TestSchedulerOutboxRepositoryFirstCreatedAtAfter(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -61,7 +60,6 @@ LIMIT 1
 	require.True(t, got.IsZero())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
-
 
 func TestSchedulerOutboxRepositoryDeleteConsumedUpToUsesBoundedMySQLDelete(t *testing.T) {
 	db, mock, err := sqlmock.New()
