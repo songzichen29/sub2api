@@ -533,6 +533,7 @@ func (s *UserRepoSuite) TestDeductAvailableBalance_ClampsToNonnegativeBalance() 
 		{name: "enough balance", balance: 10, requested: 4, wantDeduct: 4, wantBalance: 6},
 		{name: "insufficient balance", balance: 5, requested: 10, wantDeduct: 5, wantBalance: 0},
 		{name: "negative balance unchanged", balance: -3, requested: 10, wantDeduct: 0, wantBalance: -3},
+		{name: "zero requested unchanged", balance: 10, requested: 0, wantDeduct: 0, wantBalance: 10},
 	} {
 		s.Run(tc.name, func() {
 			user := s.mustCreateUser(&service.User{Email: "available-" + strings.ReplaceAll(tc.name, " ", "-") + "@test.com", Balance: tc.balance})

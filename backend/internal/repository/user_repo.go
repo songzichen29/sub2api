@@ -1039,6 +1039,13 @@ func updateLockedUserBalance(ctx context.Context, client *dbent.Client, id int64
 	if mutationErr != nil {
 		return change, mutationErr
 	}
+	// MySQL reports zero affected rows when an UPDATE writes the existing
+	// value (unless CLIENT_FOUND_ROWS is enabled). The locked SELECT above
+	// already proved that the user exists, so avoid treating a no-op as a
+	// missing user and avoid an unnecessary write.
+	if next == user.Balance {
+		return change, nil
+	}
 
 	affected, err := client.User.Update().
 		Where(dbuser.IDEQ(id), dbuser.DeletedAtIsNil()).
