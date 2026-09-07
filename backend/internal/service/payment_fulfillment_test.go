@@ -882,7 +882,7 @@ func TestExecuteBalanceFulfillmentBypassesUserRedeemRateLimit(t *testing.T) {
 		return nil
 	}
 	cache := &paymentFulfillmentRedeemCacheStub{count: redeemMaxFailedAttempts}
-	redeemService := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil, nil)
+	redeemService := NewRedeemService(redeemRepo, userRepo, nil, cache, nil, client, nil)
 	svc := &PaymentService{entClient: client, redeemService: redeemService, userRepo: userRepo}
 
 	require.NoError(t, svc.ExecuteBalanceFulfillment(ctx, order.ID))
@@ -1022,6 +1022,7 @@ func TestExecuteBalanceFulfillmentCompletesWhenAuxiliaryRebateFailsAfterRedeem(t
 		Save(ctx)
 	require.NoError(t, err)
 
+	usedBy := order.UserID
 	redeemRepo := &redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{
 		order.RechargeCode: {
 			ID:     101,
@@ -1029,6 +1030,7 @@ func TestExecuteBalanceFulfillmentCompletesWhenAuxiliaryRebateFailsAfterRedeem(t
 			Type:   RedeemTypeBalance,
 			Value:  order.Amount,
 			Status: StatusUsed,
+			UsedBy: &usedBy,
 		},
 	}}
 	inviterID := int64(9001)
