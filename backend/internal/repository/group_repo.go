@@ -53,7 +53,7 @@ func lockLiveGroups(ctx context.Context, exec sqlExecutor, groupIDs []int64) err
 	}
 	placeholders, args := buildGroupInt64InClause(groupIDs)
 	rows, err := exec.QueryContext(ctx, `/* account_group_live_group_lock */
-		SELECT id FROM groups
+		SELECT id FROM `+"`groups`"+`
 		WHERE id IN (`+placeholders+`) AND deleted_at IS NULL
 		ORDER BY id
 		FOR UPDATE`, args...)
