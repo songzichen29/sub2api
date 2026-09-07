@@ -874,7 +874,19 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 
 	// Lock the group row to avoid concurrent writes while we cascade.
 	// 这里使用 exec.QueryContext 手动扫描，确保同一事务内加锁并能区分"未找到"与其他错误。
-	rows, err := exec.QueryContext(ctx, "SELECT id, subscription_type FROM `groups` WHERE id = ? AND deleted_at IS NULL FOR UPDATE", id)
+	dbDialect := dialect.MySQL
+	if exec.Driver() != nil {
+		dbDialect = exec.Driver().Dialect()
+	}
+	groupsTable := "`groups`"
+	if dbDialect == dialect.Postgres {
+		groupsTable = "groups"
+	}
+	groupPlaceholder := "?"
+	if dbDialect == dialect.Postgres {
+		groupPlaceholder = "$1"
+	}
+	rows, err := exec.QueryContext(ctx, "SELECT id, subscription_type FROM "+groupsTable+" WHERE id = "+groupPlaceholder+" AND deleted_at IS NULL FOR UPDATE", id)
 	if err != nil {
 		return nil, err
 	}

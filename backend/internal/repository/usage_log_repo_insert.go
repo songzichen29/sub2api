@@ -162,11 +162,6 @@ func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) 
 	if requestID == "" {
 		return r.createSingle(ctx, r.sql, log)
 	}
-	if r.isMySQLDialect() {
-		// The batch CTE below is PostgreSQL-specific. MySQL uses the same
-		// idempotency contract through INSERT IGNORE and a keyed read-back.
-		return r.createSingle(ctx, r.sql, log)
-	}
 	log.RequestID = requestID
 	return r.createBatched(ctx, log)
 }
@@ -493,6 +488,10 @@ func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreate
 	if len(batch) == 0 {
 		return
 	}
+	if r.isMySQLDialect() {
+		r.flushCreateBatchMySQL(db, batch)
+		return
+	}
 
 	uniqueOrder := make([]string, 0, len(batch))
 	preparedByKey := make(map[string]usageLogInsertPrepared, len(batch))
@@ -593,6 +592,34 @@ func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreate
 		fallbackCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		inserted, err := r.createSingle(fallbackCtx, db, req.log)
 		cancel()
+		completeUsageLogCreateRequest(req, usageLogCreateResult{inserted: inserted, err: err})
+	}
+}
+
+// flushCreateBatchMySQL preserves the same bounded queue/back-pressure
+// semantics as PostgreSQL. The PostgreSQL batch CTE cannot run on MySQL, so
+// each prepared request is written with INSERT IGNORE and keyed read-back.
+// This is intentionally kept in the batch worker rather than bypassing the
+// queue in Create: callers rely on queue saturation and cancellation behavior
+// to avoid unbounded synchronous database work.
+func (r *usageLogRepository) flushCreateBatchMySQL(db *sql.DB, batch []usageLogCreateRequest) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, req := range batch {
+		if req.log == nil {
+			completeUsageLogCreateRequest(req, usageLogCreateResult{inserted: false})
+			continue
+		}
+		if req.shared != nil && !req.shared.state.CompareAndSwap(usageLogCreateStateQueued, usageLogCreateStateProcessing) {
+			if req.shared.state.Load() == usageLogCreateStateCanceled {
+				completeUsageLogCreateRequest(req, usageLogCreateResult{
+					inserted: false,
+					err:      service.MarkUsageLogCreateNotPersisted(context.Canceled),
+				})
+				continue
+			}
+		}
+		inserted, err := r.createSingle(ctx, db, req.log)
 		completeUsageLogCreateRequest(req, usageLogCreateResult{inserted: inserted, err: err})
 	}
 }

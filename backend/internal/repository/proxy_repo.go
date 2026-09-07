@@ -743,11 +743,11 @@ func (r *proxyRepository) SweepExpiredProxies(ctx context.Context, now time.Time
 			logger.LegacyPrintf("repository.proxy", "[ProxyExpiry] proxy %d expired but fallback chain unresolved (cycle/all-expired); accounts kept", p.ID)
 		}
 
-		changedAccountIDs, sweepErr := r.sweepOneExpiredProxy(ctx, p.ID, target, change)
+		reroutedAccountIDs, changedAccountIDs, sweepErr := r.sweepOneExpiredProxy(ctx, p.ID, target, change)
 		if sweepErr != nil {
 			return totalChanged, sweepErr
 		}
-		totalChanged += int64(len(changedAccountIDs))
+		totalChanged += int64(len(reroutedAccountIDs))
 		allChangedAccountIDs = append(allChangedAccountIDs, changedAccountIDs...)
 	}
 
@@ -781,37 +781,37 @@ func sortedUniqueAccountIDs(accountIDs []int64) []int64 {
 
 // sweepOneExpiredProxy 在单事务内原子执行：标记代理 expired + 改投绑定账号。
 // 若 r.client 已绑定事务（测试注入场景），直接在 r.sql 上执行，由外层事务保证原子性。
-func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int64, target *int64, change bool) ([]int64, error) {
+func (r *proxyRepository) sweepOneExpiredProxy(ctx context.Context, proxyID int64, target *int64, change bool) ([]int64, []int64, error) {
 	// 尝试开启子事务；若 r.client 已是事务 client，则返回 ErrTxStarted，退回使用 r.sql。
 	tx, txErr := r.client.Tx(ctx)
 	if txErr != nil {
 		if txErr != dbent.ErrTxStarted {
-			return nil, txErr
+			return nil, nil, txErr
 		}
 		// 已在外层事务中（集成测试场景），直接用 r.sql 执行
 		return r.sweepOneExpiredProxyOnExec(ctx, r.sql, proxyID, target, change)
 	}
 
 	// 使用新事务执行
-	var accountIDs []int64
+	var reroutedAccountIDs, changedAccountIDs []int64
 	var err error
-	accountIDs, err = r.sweepOneExpiredProxyOnExec(ctx, tx, proxyID, target, change)
+	reroutedAccountIDs, changedAccountIDs, err = r.sweepOneExpiredProxyOnExec(ctx, tx, proxyID, target, change)
 	if err != nil {
 		_ = tx.Rollback()
-		return nil, err
+		return nil, nil, err
 	}
 	if commitErr := tx.Commit(); commitErr != nil {
-		return nil, commitErr
+		return nil, nil, commitErr
 	}
-	return accountIDs, nil
+	return reroutedAccountIDs, changedAccountIDs, nil
 }
 
 // sweepOneExpiredProxyOnExec 在给定的 sqlExecutor 上执行：标记 expired + 改投账号。
-func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec sqlExecutor, proxyID int64, target *int64, change bool) ([]int64, error) {
+func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec sqlExecutor, proxyID int64, target *int64, change bool) ([]int64, []int64, error) {
 	if _, err := exec.ExecContext(ctx,
 		`UPDATE proxies SET status=?, updated_at=NOW() WHERE id=? AND deleted_at IS NULL`,
 		service.StatusExpired, proxyID); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	dbDialect := dialect.MySQL
 	if r.client != nil && r.client.Driver() != nil {
@@ -820,9 +820,9 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	if !change {
 		accountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, dbDialect, proxyID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return accountIDs, nil
+		return nil, accountIDs, nil
 	}
 
 	// Clear snapshots while the accounts still point at the expired proxy. The
@@ -830,7 +830,7 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	// one notification for every account whose routing state changed.
 	probeAccountIDs, err := invalidateProxyProbeSnapshots(ctx, exec, dbDialect, proxyID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// MySQL 无 UPDATE ... RETURNING：先 SELECT 命中账号 ID，再 UPDATE，最后返回真实命中列表。
@@ -862,30 +862,30 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 
 	rows, err := exec.QueryContext(ctx, selectSQL, selectArgs...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	accountIDs := make([]int64, 0)
 	for rows.Next() {
 		var accountID int64
 		if err := rows.Scan(&accountID); err != nil {
 			_ = rows.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		accountIDs = append(accountIDs, accountID)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	if err := rows.Close(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(accountIDs) > 0 {
 		if _, err := exec.ExecContext(ctx, updateSQL, updateArgs...); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return sortedUniqueAccountIDs(append(probeAccountIDs, accountIDs...)), nil
+	return sortedUniqueAccountIDs(accountIDs), sortedUniqueAccountIDs(append(probeAccountIDs, accountIDs...)), nil
 }
 
 // CountExpired 返回已过期（status=expired）的代理数量。

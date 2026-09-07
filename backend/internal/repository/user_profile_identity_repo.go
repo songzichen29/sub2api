@@ -715,7 +715,10 @@ func (r *userRepository) UpsertIdentityAdoptionDecision(ctx context.Context, inp
 		releaseLocks, err := lockRepositoryScopedKeys(
 			txCtx,
 			client,
-			txAwareSQLExecutor(txCtx, r.sql, r.client),
+			// Keep MySQL named locks on a dedicated *sql.DB connection. A
+			// transaction executor is returned to the pool at commit before a
+			// deferred RELEASE_LOCK can run, which leaves the named lock behind.
+			r.sql,
 			identityAdoptionDecisionLockKeys(input.PendingAuthSessionID, input.IdentityID)...,
 		)
 		if err != nil {

@@ -109,7 +109,10 @@ func (r *userRepository) create(ctx context.Context, userIn *service.User, guard
 	releaseEmailLock, err := lockRepositoryScopedKeys(
 		txCtx,
 		txClient,
-		txAwareSQLExecutor(txCtx, r.sql, r.client),
+		// Named locks must live on a dedicated *sql.DB connection. Using the
+		// transaction executor would return that connection to the pool on
+		// Commit before the deferred RELEASE_LOCK runs, leaving the lock held.
+		r.sql,
 		lockKeys...,
 	)
 	if err != nil {
@@ -274,7 +277,7 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 		releaseEmailLock, err := lockRepositoryScopedKeys(
 			txCtx,
 			txClient,
-			txAwareSQLExecutor(txCtx, r.sql, r.client),
+			r.sql,
 			normalizedEmailUniquenessLockKey(userIn.Email),
 		)
 		if err != nil {
@@ -1267,7 +1270,7 @@ func (r *userRepository) UpdateEmailWithAliasGuard(
 	releaseEmailLock, err := lockRepositoryScopedKeys(
 		ctx,
 		client,
-		txAwareSQLExecutor(ctx, r.sql, r.client),
+		r.sql,
 		normalizedEmailUniquenessLockKey(email),
 		emailAliasUniquenessLockKey(email),
 	)
