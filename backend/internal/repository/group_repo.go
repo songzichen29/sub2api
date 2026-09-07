@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 )
 
@@ -51,9 +53,17 @@ func lockLiveGroups(ctx context.Context, exec sqlExecutor, groupIDs []int64) err
 	for _, id := range groupIDs {
 		unique[id] = struct{}{}
 	}
-	placeholders, args := buildGroupInt64InClause(groupIDs)
+	dbDialect := dialect.MySQL
+	if provider, ok := exec.(interface{ Driver() dialect.Driver }); ok && provider.Driver() != nil {
+		dbDialect = provider.Driver().Dialect()
+	}
+	placeholders, args := buildGroupInt64InClauseForDialect(groupIDs, dbDialect)
+	groupsTable := "`groups`"
+	if dbDialect == dialect.Postgres {
+		groupsTable = "groups"
+	}
 	rows, err := exec.QueryContext(ctx, `/* account_group_live_group_lock */
-		SELECT id FROM `+"`groups`"+`
+		SELECT id FROM `+groupsTable+`
 		WHERE id IN (`+placeholders+`) AND deleted_at IS NULL
 		ORDER BY id
 		FOR UPDATE`, args...)
@@ -72,6 +82,19 @@ func lockLiveGroups(ctx context.Context, exec sqlExecutor, groupIDs []int64) err
 		return service.ErrGroupNotFound
 	}
 	return nil
+}
+
+func buildGroupInt64InClauseForDialect(ids []int64, dbDialect string) (string, []any) {
+	if dbDialect != dialect.Postgres {
+		return buildGroupInt64InClause(ids)
+	}
+	ph := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids))
+	for i, id := range ids {
+		ph = append(ph, fmt.Sprintf("$%d", i+1))
+		args = append(args, id)
+	}
+	return strings.Join(ph, ","), args
 }
 
 func NewGroupRepository(client *dbent.Client, sqlDB *sql.DB) service.GroupRepository {
@@ -101,6 +124,10 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *service.Group) error {
 	if groupIn == nil {
 		return errors.New("group is nil")
+	}
+	modelPricing, err := json.Marshal(groupIn.ModelPricing)
+	if err != nil {
+		return fmt.Errorf("marshal group model pricing: %w", err)
 	}
 	builder := client.Group.Create().
 		SetName(groupIn.Name).
@@ -135,7 +162,14 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetNillableVideoPrice480p(groupIn.VideoPrice480P).
 		SetNillableVideoPrice720p(groupIn.VideoPrice720P).
 		SetNillableVideoPrice1080p(groupIn.VideoPrice1080P).
+		SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices)).
 		SetNillableWebSearchPricePerCall(groupIn.WebSearchPricePerCall).
+		SetNillableSearchPricePer1k(groupIn.SearchPricePer1k).
+		SetNillableAudioRealtimePricePerMin(groupIn.AudioRealtimePricePerMin).
+		SetNillableAudioTtsPricePerMillionChars(groupIn.AudioTTSPricePerMillionChars).
+		SetNillableAudioSttPricePerHour(groupIn.AudioSTTPricePerHour).
+		SetLongContextPricingEnabled(groupIn.LongContextPricingEnabled).
+		SetModelPricing(modelPricing).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
@@ -281,6 +315,10 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
+	modelPricing, err := json.Marshal(groupIn.ModelPricing)
+	if err != nil {
+		return fmt.Errorf("marshal group model pricing: %w", err)
+	}
 	builder := r.client.Group.UpdateOneID(groupIn.ID).
 		SetName(groupIn.Name).
 		SetDescription(groupIn.Description).
@@ -308,6 +346,10 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetNillableImagePrice4k(groupIn.ImagePrice4K).
 		SetBatchImageDiscountMultiplier(groupIn.BatchImageDiscountMultiplier).
 		SetBatchImageHoldMultiplier(groupIn.BatchImageHoldMultiplier).
+		SetVideoRateIndependent(groupIn.VideoRateIndependent).
+		SetVideoRateMultiplier(groupIn.VideoRateMultiplier).
+		SetLongContextPricingEnabled(groupIn.LongContextPricingEnabled).
+		SetModelPricing(modelPricing).
 		SetDefaultValidityDays(groupIn.DefaultValidityDays).
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
@@ -366,10 +408,36 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	} else {
 		builder = builder.ClearImagePrice4k()
 	}
+	if groupIn.VideoPrice480P != nil {
+		builder = builder.SetVideoPrice480p(*groupIn.VideoPrice480P)
+	} else {
+		builder = builder.ClearVideoPrice480p()
+	}
 	if groupIn.WebSearchPricePerCall != nil {
 		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
 	} else {
 		builder = builder.ClearWebSearchPricePerCall()
+	}
+	builder = builder.SetVideoModelPrices(service.NormalizeVideoModelPrices(groupIn.VideoModelPrices))
+	if groupIn.SearchPricePer1k != nil {
+		builder = builder.SetSearchPricePer1k(*groupIn.SearchPricePer1k)
+	} else {
+		builder = builder.ClearSearchPricePer1k()
+	}
+	if groupIn.AudioRealtimePricePerMin != nil {
+		builder = builder.SetAudioRealtimePricePerMin(*groupIn.AudioRealtimePricePerMin)
+	} else {
+		builder = builder.ClearAudioRealtimePricePerMin()
+	}
+	if groupIn.AudioTTSPricePerMillionChars != nil {
+		builder = builder.SetAudioTtsPricePerMillionChars(*groupIn.AudioTTSPricePerMillionChars)
+	} else {
+		builder = builder.ClearAudioTtsPricePerMillionChars()
+	}
+	if groupIn.AudioSTTPricePerHour != nil {
+		builder = builder.SetAudioSttPricePerHour(*groupIn.AudioSTTPricePerHour)
+	} else {
+		builder = builder.ClearAudioSttPricePerHour()
 	}
 	if groupIn.VideoPrice720P != nil {
 		builder = builder.SetVideoPrice720p(*groupIn.VideoPrice720P)
@@ -380,11 +448,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetVideoPrice1080p(*groupIn.VideoPrice1080P)
 	} else {
 		builder = builder.ClearVideoPrice1080p()
-	}
-	if groupIn.WebSearchPricePerCall != nil {
-		builder = builder.SetWebSearchPricePerCall(*groupIn.WebSearchPricePerCall)
-	} else {
-		builder = builder.ClearWebSearchPricePerCall()
 	}
 
 	// 处理 FallbackGroupID：nil 时清除，否则设置
