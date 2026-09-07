@@ -77,7 +77,7 @@ func TestUpdateExtraEnsuresCodexFingerprintSeedAtomicallyOnMySQL(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*JSON_SET.*LOWER\(UUID\(\)\).*WHERE id = \? AND deleted_at IS NULL`).
-		WithArgs(`{"codex_fingerprint_mode":"device"}`, int64(27)).
+		WithArgs(`{"codex_fingerprint_mode":"device"}`, `{"codex_fingerprint_mode":"device"}`, int64(27)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
 		WithArgs(service.SchedulerOutboxEventAccountChanged, int64(27), nil, nil, sqlmock.AnyArg()).
@@ -103,7 +103,7 @@ func TestBulkUpdateEnsuresCodexFingerprintSeedOnMySQL(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectExec(`(?s)UPDATE accounts SET extra = .*JSON_SET.*LOWER\(UUID\(\)\).*WHERE id IN \(\?,\?\)`).
-		WithArgs(sqlmock.AnyArg(), int64(27), int64(28)).
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), int64(27), int64(28)).
 		WillReturnResult(sqlmock.NewResult(0, 2))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO scheduler_outbox")).
 		WillReturnResult(sqlmock.NewResult(1, 1))

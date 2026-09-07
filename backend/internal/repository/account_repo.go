@@ -2669,11 +2669,14 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 		query = "UPDATE accounts SET extra = " + extraExpression + ", updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL"
 	}
-	result, err := client.ExecContext(
-		ctx,
-		query,
-		string(payload), id,
-	)
+	args := []any{string(payload), id}
+	if dbDialect == dialect.MySQL && ensureFingerprintSeed {
+		// ensureCodexFingerprintSeedMySQL repeats the merged JSON expression
+		// in both CASE branches. Each `?` is positional in MySQL, so bind the
+		// same payload for both occurrences before the account ID.
+		args = []any{string(payload), string(payload), id}
+	}
+	result, err := client.ExecContext(ctx, query, args...)
 
 	if err != nil {
 		return err
@@ -3172,7 +3175,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 
 	idx := 1
 	if updates.Name != nil {
-		setClauses = append(setClauses, "name = $"+itoa(idx))
+		setClauses = append(setClauses, "name = ?")
 		args = append(args, *updates.Name)
 		idx++
 	}
@@ -3181,23 +3184,23 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		if *updates.ProxyID == 0 {
 			setClauses = append(setClauses, "proxy_id = NULL")
 		} else {
-			setClauses = append(setClauses, "proxy_id = $"+itoa(idx))
+			setClauses = append(setClauses, "proxy_id = ?")
 			args = append(args, *updates.ProxyID)
 			idx++
 		}
 	}
 	if updates.Concurrency != nil {
-		setClauses = append(setClauses, "concurrency = $"+itoa(idx))
+		setClauses = append(setClauses, "concurrency = ?")
 		args = append(args, *updates.Concurrency)
 		idx++
 	}
 	if updates.Priority != nil {
-		setClauses = append(setClauses, "priority = $"+itoa(idx))
+		setClauses = append(setClauses, "priority = ?")
 		args = append(args, *updates.Priority)
 		idx++
 	}
 	if updates.RateMultiplier != nil {
-		setClauses = append(setClauses, "rate_multiplier = $"+itoa(idx))
+		setClauses = append(setClauses, "rate_multiplier = ?")
 		args = append(args, *updates.RateMultiplier)
 		idx++
 	}
@@ -3205,18 +3208,18 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		if *updates.LoadFactor <= 0 {
 			setClauses = append(setClauses, "load_factor = NULL")
 		} else {
-			setClauses = append(setClauses, "load_factor = $"+itoa(idx))
+			setClauses = append(setClauses, "load_factor = ?")
 			args = append(args, *updates.LoadFactor)
 			idx++
 		}
 	}
 	if updates.Status != nil {
-		setClauses = append(setClauses, "status = $"+itoa(idx))
+		setClauses = append(setClauses, "status = ?")
 		args = append(args, *updates.Status)
 		idx++
 	}
 	if updates.Schedulable != nil {
-		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
+		setClauses = append(setClauses, "schedulable = ?")
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
@@ -3234,7 +3237,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		if err != nil {
 			return 0, err
 		}
-		credentialPlaceholder := "$" + itoa(idx)
+		credentialPlaceholder := "?"
 		credentialExpression := "JSON_MERGE_PATCH(COALESCE(credentials, JSON_OBJECT()), CAST(" + credentialPlaceholder + " AS JSON))"
 		// JSON_MERGE_PATCH recursively merges nested objects. That is correct for
 		// independent credential fields, but wrong for model_mapping: the bulk
@@ -3246,7 +3249,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 			if err != nil {
 				return 0, err
 			}
-			modelPlaceholder := "$" + itoa(idx+1)
+			modelPlaceholder := "?"
 			credentialExpression = "JSON_SET(" + credentialExpression + ", '$.model_mapping', CAST(" + modelPlaceholder + " AS JSON))"
 			args = append(args, payload, modelPayload)
 			idx += 2
@@ -3268,16 +3271,22 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		if err != nil {
 			return 0, err
 		}
-		extraExpression := "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST($" + itoa(idx) + " AS JSON))"
+		extraExpression := "JSON_MERGE_PATCH(COALESCE(extra, JSON_OBJECT()), CAST(? AS JSON))"
 		if upstreamBillingProbeExplicitlyDisabled(extraUpdates) || upstreamBillingProbeSnapshotClearRequested(extraUpdates) {
 			extraExpression = "JSON_REMOVE(" + extraExpression + ", '$.upstream_billing_probe')"
 		}
 		if updates.EnsureCodexFingerprintSeed {
 			extraExpression = ensureCodexFingerprintSeedMySQL(extraExpression)
+			// The CASE expression contains the merged JSON expression in both
+			// branches. MySQL uses positional `?` parameters, so the payload must
+			// be bound once for each occurrence.
+			args = append(args, payload, payload)
+			idx += 2
+		} else {
+			args = append(args, payload)
+			idx++
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
-		args = append(args, payload)
-		idx++
 	}
 	// Tags：替换语义。指针非 nil 即落库；空数组允许（清空所有标签）。
 	// JSON 字段直接整体覆盖，不做 merge —— 标签的语义是"集合"，merge 会
@@ -3287,7 +3296,7 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		if err != nil {
 			return 0, err
 		}
-		setClauses = append(setClauses, "tags = CAST($"+itoa(idx)+" AS JSON)")
+		setClauses = append(setClauses, "tags = CAST(? AS JSON)")
 		args = append(args, payload)
 	}
 
@@ -3304,8 +3313,6 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		query += " AND platform = ? AND type = ?"
 		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
 	}
-	query = opsReplaceDollarPlaceholders(query)
-
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
 	exec := r.sql

@@ -94,7 +94,10 @@ func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligib
 	insertAccount := func(name, accountType string, deleted bool) int64 {
 		deletedAt := any(nil)
 		if deleted {
-			deletedAt = "2026-07-16T00:00:00Z"
+			// MySQL DATETIME does not accept RFC3339's `T`/`Z` form when bound
+			// as a string. Passing a time.Time lets the driver encode the value
+			// using the database's native DATETIME representation.
+			deletedAt = time.Date(2026, time.July, 16, 0, 0, 0, 0, time.UTC)
 		}
 		res, err := s.tx.ExecContext(s.ctx,
 			"INSERT INTO accounts (name, platform, type, credentials, extra, tags, created_at, updated_at, deleted_at) VALUES (?, ?, ?, '{}', '{}', JSON_ARRAY(), NOW(6), NOW(6), ?)",
