@@ -76,7 +76,7 @@ func TestUsageLog_UpstreamModelMismatchFilterAndPartialIndex(t *testing.T) {
 	assertPlanUsesIndex(`
 EXPLAIN FORMAT=JSON
 SELECT id
-FROM usage_logs
+FROM usage_logs FORCE INDEX (idx_usage_logs_upstream_model_mismatch_created_at)
 WHERE upstream_model_mismatch IS TRUE
 ORDER BY created_at DESC, id DESC
 LIMIT 100

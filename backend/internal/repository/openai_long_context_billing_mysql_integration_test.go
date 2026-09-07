@@ -21,8 +21,8 @@ func TestMySQLMigration050DefaultsOpenAILongContextBilling(t *testing.T) {
 	insert := func(name, extra string, parentID any, quotaDimension any) int64 {
 		t.Helper()
 		result, err := tx.ExecContext(ctx, `
-			INSERT INTO accounts (name, platform, type, extra, parent_account_id, quota_dimension)
-			VALUES (?, ?, ?, ?, ?, ?)
+			INSERT INTO accounts (name, platform, type, credentials, extra, tags, created_at, updated_at, parent_account_id, quota_dimension)
+			VALUES (?, ?, ?, '{}', ?, JSON_ARRAY(), NOW(6), NOW(6), ?, ?)
 		`, name, service.PlatformOpenAI, service.AccountTypeOAuth, extra, parentID, quotaDimension)
 		require.NoError(t, err)
 		id, err := result.LastInsertId()

@@ -105,7 +105,7 @@ func TestAuthCacheInvalidationTriggers_CoverSecurityMutationsOnly(t *testing.T) 
 	clear()
 
 	_, err = integrationDB.ExecContext(ctx,
-		"INSERT INTO user_allowed_groups (user_id, group_id) VALUES (?, ?)", user.ID, group.ID)
+		"INSERT INTO user_allowed_groups (user_id, group_id, created_at) VALUES (?, ?, NOW(6))", user.ID, group.ID)
 	require.NoError(t, err)
 	clear()
 	_, err = integrationDB.ExecContext(ctx,

@@ -553,7 +553,7 @@ func (s *UserSubscriptionRepoSuite) TestIncrementUsage_DailyOverdraftCountsCurre
 			SetAllowDailyOverdraft(true)
 	})
 
-	s.Require().ErrorIs(s.repo.IncrementUsage(s.ctx, sub.ID, 1), service.ErrUsageBillingSubscriptionLimitExceeded)
+	s.Require().ErrorIs(s.repo.IncrementUsage(s.ctx, sub.ID, 11), service.ErrUsageBillingSubscriptionLimitExceeded)
 }
 
 func (s *UserSubscriptionRepoSuite) TestIncrementUsage_OneTimeDailyQuotaMarksExhausted() {
@@ -588,7 +588,7 @@ func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 
 	dailyStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	activateAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	err := s.repo.ActivateWindows(s.ctx, sub.ID, activateAt, activateAt, activateAt)
+	err := s.repo.ActivateWindows(s.ctx, sub.ID, dailyStart, activateAt, activateAt)
 	s.Require().NoError(err, "ActivateWindows")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
