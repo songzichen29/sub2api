@@ -176,6 +176,7 @@ func TestClaudeCodeOAuthMimicryRequestBetas_Context1MOnlyForMarkedModel(t *testi
 		claude.BetaRedactThinking,
 		claude.BetaThinkingTokenCount,
 		claude.BetaContextManagement,
+		claude.BetaThinkingBindingControls,
 		claude.BetaPromptCachingScope,
 		claude.BetaMidConversationSystem,
 		claude.BetaExtendedCacheTTL,

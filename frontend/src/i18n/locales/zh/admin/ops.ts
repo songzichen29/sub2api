@@ -676,7 +676,7 @@ export default {
       saveFailed: '保存运行设置失败',
       alertTitle: '告警评估器',
       groupAvailabilityTitle: '分组可用性监控',
-      evalIntervalSeconds: '评估间隔（秒）',
+		evalIntervalSeconds: '评估间隔（秒）',
       silencing: {
         title: '告警静默（维护模式）',
         enabled: '启用静默',

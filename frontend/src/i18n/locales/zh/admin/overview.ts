@@ -486,7 +486,7 @@ export default {
     enterNewPassword: '请输入新密码（选填）',
     leaveEmptyToKeep: '留空则保持原密码不变',
     generatePassword: '生成随机密码',
-    copyPassword: '复制密码',
+	copyPassword: '复制密码',
     creating: '创建中...',
     updating: '更新中...',
     columns: {
@@ -878,12 +878,13 @@ export default {
       maxReasoningEffortOverLimitDowngrade: '超过上限时自动降档',
       maxReasoningEffortOverLimitHint: '设置上限后生效。自动降档会将超过上限的请求改写为上限值后转发；拒绝访问则直接返回错误。',
       reasoningEffortMappings: '推理强度映射',
-      reasoningEffortMappingsHint: '类型和模型均可留空，表示匹配全部模型。同一类型和模型下可添加多条请求值映射，例如前缀 gpt 同时将 high、xhigh 转到 medium。精确优先于前后缀，更长前后缀优先。',
+		reasoningEffortMappingsHint: '类型和模型均可留空，表示匹配全部模型。同一类型和模型下可添加多条请求值映射，例如前缀 gpt 同时将 high、xhigh 转到 medium。转发值可选拒绝，命中对应请求值时直接返回错误。精确优先于前后缀，更长前后缀优先。',
       addReasoningEffortMapping: '添加映射',
       addReasoningEffortPair: '添加请求值',
       reasoningEffortFrom: '来源',
       reasoningEffortFromPlaceholder: '选择来源强度',
-      reasoningEffortTo: '目标',
+		reasoningEffortTo: '目标',
+		reasoningEffortToDeny: '拒绝',
       reasoningEffortToPlaceholder: '选择目标强度',
       removeReasoningEffortMapping: '删除映射',
       removeReasoningEffortPair: '删除请求值',
@@ -1049,21 +1050,30 @@ export default {
       peakMultiplier: '高峰倍率',
       multiplierHint: '作用于 token 计费倍率；token 计费的图片 token 同样适用，0 表示高峰 token 请求按 0 倍计费'
     },
-    modelsList: {
-      title: '自定义 {endpoint} 模型列表',
-      hint: '仅影响 {endpoint} 展示结果，不影响白名单模型调用和账号调度。',
-      loading: '正在加载模型列表...',
-      empty: '暂无可展示模型',
-      selectedSummary: '已选 {selected} / {total}',
-      selectAll: '全选',
-      invertSelection: '反选'
-    },
-    codexModelsManifest: {
-      title: '固定账号获取 Codex Model Manifest',
-      hint: '开启后，该分组的 Codex 客户端 /models 请求只用选定账号向上游拉取并按 slug 合并，不经过调度器；限流/过载中的选定账号仍会被使用。',
-      enable: '使用特定账号获取 manifest',
-      enabledHint: '账号来源限定为当前分组内的 OpenAI 账号，最多选择 10 个。',
-      disabledHint: '未启用：manifest 请求经由调度器选账。',
+	modelAllowlist: {
+		title: '模型白名单',
+		hint: '开启后，不在白名单中的模型会被拒绝（404 model_not_found），模型列表接口也只展示白名单内的模型。条目支持精确模型 ID 与末尾 * 通配。注意：Claude Code 会用 haiku 系小模型做标题/摘要等探测，/messages/count_tokens 同样受白名单控制，请一并勾选所需的小模型。',
+		loading: '正在加载候选模型...',
+		empty: '暂无候选模型，可在下方手工添加条目',
+		selectedSummary: '已选 {selected} / {total}',
+		selectAll: '全选',
+		invertSelection: '反选',
+		wildcardTag: '通配',
+		customPlaceholder: '自定义条目，如 claude-* 或 gpt-5.5-codex',
+		addCustom: '添加',
+		emptySelectionError: '模型白名单已开启，请至少选择或添加一个模型条目',
+		errors: {
+			empty: '请输入模型条目',
+			invalidWildcard: '通配符 * 只能出现在条目末尾',
+			duplicate: '该条目已存在'
+		}
+	},
+	codexModelsManifest: {
+		title: '固定账号获取模型列表',
+		hint: '开启后，普通模型列表与 Codex Model Manifest 均优先从选定账号获取并合并，再应用账号映射和分组列表过滤；限流/过载中的选定账号仍会被使用。',
+		enable: '使用特定账号获取模型列表',
+		enabledHint: '账号来源限定为当前分组内的 OpenAI 账号，最多选择 10 个。',
+		disabledHint: '未启用：普通列表使用本地映射或默认模型；Codex 优先使用本地目录，无本地目录时由调度器选账。',
       accounts: '选定账号',
       searchPlaceholder: '搜索账号（当前分组内 OpenAI 账号）',
       searchEmpty: '未找到匹配账号',
@@ -1140,15 +1150,7 @@ export default {
       noRules: '暂无路由规则',
       noRulesHint: '添加路由规则以将特定模型请求优先路由到指定账号',
       searchAccountPlaceholder: '搜索账号...',
-      accountsHint: '选择此模型模式优先使用的账号',
-      claudeMaxSimulation: {
-        title: 'Claude Max 用量模拟',
-        tooltip:
-          '启用后，对于没有上游缓存写入用量的 Claude 模型，系统会确定性地将 token 映射为少量输入加 1h 缓存创建，同时保持总 token 不变。',
-        enabled: '已启用（模拟 1h 缓存）',
-        disabled: '已禁用',
-        hint: '仅调整用量计费日志中的 token 类别。不会持久化每个请求的映射状态。'
-      },
+		accountsHint: '选择此模型模式优先使用的账号'
     },
     mcpXml: {
       title: 'MCP XML 协议注入',

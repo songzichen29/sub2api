@@ -676,7 +676,7 @@ export default {
       saveFailed: 'Failed to save runtime settings',
       alertTitle: 'Alert Evaluator',
       groupAvailabilityTitle: 'Group Availability Monitor',
-      evalIntervalSeconds: 'Evaluation Interval (seconds)',
+		evalIntervalSeconds: 'Evaluation Interval (seconds)',
       silencing: {
         title: 'Alert Silencing (Maintenance Mode)',
         enabled: 'Enable silencing',

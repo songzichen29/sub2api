@@ -1259,10 +1259,10 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[49].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
-	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
-	groupDescModelsListConfig := groupFields[50].Descriptor()
-	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
-	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
+	// groupDescModelAllowlist is the schema descriptor for model_allowlist field.
+	groupDescModelAllowlist := groupFields[50].Descriptor()
+	// group.DefaultModelAllowlist holds the default value on creation for the model_allowlist field.
+	group.DefaultModelAllowlist = groupDescModelAllowlist.Default.(domain.GroupModelAllowlist)
 	// groupDescCodexModelsManifestConfig is the schema descriptor for codex_models_manifest_config field.
 	groupDescCodexModelsManifestConfig := groupFields[51].Descriptor()
 	// group.DefaultCodexModelsManifestConfig holds the default value on creation for the codex_models_manifest_config field.

@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import GroupSelector from '../GroupSelector.vue'
 import type { AdminGroup } from '@/types'
+
+const authState = { isSimpleMode: false }
+
+vi.mock('@/stores', () => ({ useAuthStore: () => authState }))
 
 vi.mock('vue-i18n', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-i18n')>()
@@ -48,6 +52,7 @@ const mountSelector = (modelValue: number[] = []) => mount(GroupSelector, {
 })
 
 describe('GroupSelector selection actions', () => {
+	beforeEach(() => { authState.isSimpleMode = false })
   it('selects all compatible visible groups while preserving selections outside the filter', async () => {
     const wrapper = mountSelector([3])
     const selectVisible = wrapper.get('input[type="checkbox"]')
@@ -80,4 +85,41 @@ describe('GroupSelector selection actions', () => {
     await clear!.trigger('click')
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toEqual([])
   })
+})
+
+const simpleModeGroups = [
+	{ id: 11, name: 'Basic', platform: 'anthropic', status: 'active' },
+	{ id: 12, name: 'Composite', platform: 'composite', status: 'active' }
+] as AdminGroup[]
+
+const mountSimpleModeSelector = (modelValue: number[] = []) => mount(GroupSelector, {
+	props: { modelValue, groups: simpleModeGroups },
+	global: {
+		stubs: {
+			GroupBadge: { props: ['name'], template: '<span>{{ name }}</span>' },
+			Icon: true
+		}
+	}
+})
+
+describe('GroupSelector simple-mode binding policy', () => {
+	beforeEach(() => { authState.isSimpleMode = false })
+
+	it('hides composite groups in simple mode and preserves basic groups', () => {
+		authState.isSimpleMode = true
+		const wrapper = mountSimpleModeSelector()
+		expect(wrapper.text()).toContain('Basic')
+		expect(wrapper.text()).not.toContain('Composite')
+	})
+
+	it('keeps composite groups available in advanced mode', () => {
+		const wrapper = mountSimpleModeSelector()
+		expect(wrapper.text()).toContain('Composite')
+	})
+
+	it('cleans hidden historical composite IDs while preserving visible selections', () => {
+		authState.isSimpleMode = true
+		const wrapper = mountSimpleModeSelector([11, 12])
+		expect(wrapper.emitted('update:modelValue')).toEqual([[[11]]])
+	})
 })

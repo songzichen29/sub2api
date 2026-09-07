@@ -611,8 +611,8 @@ export default {
       webSearchDisabled: 'Disabled'
     },
     modelRestriction: 'Model Restriction (Optional)',
-    modelWhitelist: 'Model Whitelist',
-    modelMapping: 'Model Mapping',
+	modelWhitelist: 'Model Whitelist',
+	modelMapping: 'Model Mapping',
     selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
     mapRequestModels: 'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
     selectedModels: 'Selected {count} model(s)',

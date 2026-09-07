@@ -486,7 +486,7 @@ export default {
     enterNewPassword: 'Enter new password (optional)',
     leaveEmptyToKeep: 'Leave empty to keep current password',
     generatePassword: 'Generate random password',
-    copyPassword: 'Copy password',
+	copyPassword: 'Copy password',
     creating: 'Creating...',
     updating: 'Updating...',
     form: {
@@ -849,7 +849,7 @@ export default {
     accountsAvailable: 'Avail:',
     accountsRateLimited: 'Limited:',
     accountsTotal: 'Total:',
-    accountsUnit: '',
+	accountsUnit: 'accounts',
     rateAndAccounts: '{rate}x rate · {count} accounts',
     accountsCount: '{count} accounts',
     rateLabel: 'rate',
@@ -894,12 +894,13 @@ export default {
       maxReasoningEffortOverLimitDowngrade: 'Automatically downgrade when over limit',
       maxReasoningEffortOverLimitHint: 'Applies after a ceiling is set. Downgrade rewrites values above the ceiling to the ceiling. Deny rejects the request.',
       reasoningEffortMappings: 'Reasoning effort mappings',
-      reasoningEffortMappingsHint: 'Type and model can both be left empty to match every model. One type and model can hold multiple request mappings, for example prefix gpt mapping both high and xhigh to medium. Exact matches beat affixes, and longer affixes beat shorter ones.',
+		reasoningEffortMappingsHint: 'Type and model can both be left empty to match every model. One type and model can hold multiple request mappings, for example prefix gpt mapping both high and xhigh to medium. Choose Deny as the forwarded value to reject that request value. Exact matches beat affixes, and longer affixes beat shorter ones.',
       addReasoningEffortMapping: 'Add mapping',
       addReasoningEffortPair: 'Add request value',
       reasoningEffortFrom: 'From',
       reasoningEffortFromPlaceholder: 'Select source effort',
-      reasoningEffortTo: 'To',
+		reasoningEffortTo: 'To',
+		reasoningEffortToDeny: 'Deny',
       reasoningEffortToPlaceholder: 'Select target effort',
       removeReasoningEffortMapping: 'Remove mapping',
       removeReasoningEffortPair: 'Remove request value',
@@ -1049,21 +1050,30 @@ export default {
       peakMultiplier: 'Peak multiplier',
       multiplierHint: 'Applies to token billing multiplier; image tokens in token billing are also affected. 0 means peak token requests are billed at 0x.'
     },
-    modelsList: {
-      title: 'Custom {endpoint} Model List',
-      hint: 'Only changes the {endpoint} response. Whitelist model calls and account routing are unchanged.',
-      loading: 'Loading model list...',
-      empty: 'No displayable models',
-      selectedSummary: 'Selected {selected} / {total}',
-      selectAll: 'Select all',
-      invertSelection: 'Invert'
-    },
-    codexModelsManifest: {
-      title: 'Pinned Accounts for Codex Model Manifest',
-      hint: 'When enabled, Codex client /models requests for this group are fetched only from the pinned accounts and merged by slug, bypassing the scheduler. Pinned accounts in rate-limit or overload windows are still used.',
-      enable: 'Fetch manifest with specific accounts',
-      enabledHint: 'Accounts are limited to OpenAI accounts bound to this group, at most 10.',
-      disabledHint: 'Not enabled: manifest requests go through scheduler account selection.',
+	modelAllowlist: {
+		title: 'Model Allowlist',
+		hint: 'When enabled, models outside the allowlist are rejected with 404 model_not_found, and model listing endpoints only show allowlisted models. Entries support exact model IDs and trailing * wildcards. Note: Claude Code probes with haiku-family models for titles/summaries and /messages/count_tokens is also allowlist-controlled, so make sure the small models you need are selected too.',
+		loading: 'Loading candidate models...',
+		empty: 'No candidate models; add custom entries below',
+		selectedSummary: 'Selected {selected} / {total}',
+		selectAll: 'Select all',
+		invertSelection: 'Invert',
+		wildcardTag: 'wildcard',
+		customPlaceholder: 'Custom entry, e.g. claude-* or gpt-5.5-codex',
+		addCustom: 'Add',
+		emptySelectionError: 'The model allowlist is enabled; select or add at least one model entry',
+		errors: {
+			empty: 'Please enter a model entry',
+			invalidWildcard: 'Wildcard * is only allowed at the end of an entry',
+			duplicate: 'This entry already exists'
+		}
+	},
+	codexModelsManifest: {
+		title: 'Pinned Accounts for Model Lists',
+		hint: 'When enabled, ordinary model lists and Codex Model Manifest are discovered from the pinned accounts first, then merged and filtered using account mappings and the group model list. Rate-limited or overloaded pinned accounts are still used.',
+		enable: 'Fetch model lists with specific accounts',
+		enabledHint: 'Accounts are limited to OpenAI accounts bound to this group, at most 10.',
+		disabledHint: 'Disabled: ordinary lists use local mappings or defaults; Codex uses a local catalog when configured, otherwise scheduler discovery.',
       accounts: 'Pinned accounts',
       searchPlaceholder: 'Search accounts (OpenAI accounts in this group)',
       searchEmpty: 'No matching accounts',
@@ -1140,14 +1150,7 @@ export default {
       noRules: 'No routing rules',
       noRulesHint: 'Add routing rules to route specific model requests to designated accounts',
       searchAccountPlaceholder: 'Search accounts...',
-      accountsHint: 'Select accounts to prioritize for this model pattern',
-      claudeMaxSimulation: {
-        title: 'Claude Max Usage Simulation',
-        tooltip: 'When enabled, for Claude models without upstream cache-write usage, the system deterministically maps tokens to a small input plus 1h cache creation while keeping total tokens unchanged.',
-        enabled: 'Enabled (simulate 1h cache)',
-        disabled: 'Disabled',
-        hint: 'Only token categories in usage billing logs are adjusted. No per-request mapping state is persisted.'
-      }
+		accountsHint: 'Select accounts to prioritize for this model pattern'
     },
     mcpXml: {
       title: 'MCP XML Protocol Injection',

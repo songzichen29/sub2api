@@ -23,11 +23,12 @@ const (
 	BetaWebSearch                = "web-search-2025-03-05"
 
 	// 新增（对齐官方 CLI 2.1.19x 以来的流量）
-	BetaPromptCachingScope = "prompt-caching-scope-2026-01-05"
-	BetaEffort             = "effort-2025-11-24"
-	BetaRedactThinking     = "redact-thinking-2026-02-12"
-	BetaContextManagement  = "context-management-2025-06-27"
-	BetaExtendedCacheTTL   = "extended-cache-ttl-2025-04-11"
+	BetaPromptCachingScope      = "prompt-caching-scope-2026-01-05"
+	BetaEffort                  = "effort-2025-11-24"
+	BetaRedactThinking          = "redact-thinking-2026-02-12"
+	BetaContextManagement       = "context-management-2025-06-27"
+	BetaThinkingBindingControls = "thinking-binding-controls-2026-08-01"
+	BetaExtendedCacheTTL        = "extended-cache-ttl-2025-04-11"
 
 	// v2.1.197 binary / ?? telemetry ???? beta ??????????? mimicry?
 	BetaContextHint           = "context-hint-2026-04-09"
@@ -92,7 +93,7 @@ const DefaultCacheControlTTL = "5m"
 //
 // ⚠️ 读取实际生效的版本号请用 CLIVersion()，它会叠加 SUB2API_CLAUDE_CLI_VERSION 覆盖。
 // 直接引用本常量只在"表达内置基线"时才正确（例如覆盖值的下限校验）。
-const CLICurrentVersion = "2.1.220"
+const CLICurrentVersion = "2.1.258"
 
 // CLIBuildTime 是从 Claude Code v2.1.197 native binary 中提取的真实 build_time。
 const CLIBuildTime = "2026-06-29T19:08:42Z"
@@ -185,6 +186,7 @@ func ClaudeCodeOAuthMimicryRequestBetasForModel(model string) []string {
 		BetaRedactThinking,
 		BetaThinkingTokenCount,
 		BetaContextManagement,
+		BetaThinkingBindingControls,
 		BetaPromptCachingScope,
 		BetaMidConversationSystem,
 		BetaExtendedCacheTTL,
