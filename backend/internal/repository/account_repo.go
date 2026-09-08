@@ -3173,11 +3173,9 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 	setClauses := make([]string, 0, 8)
 	args := make([]any, 0, 8)
 
-	idx := 1
 	if updates.Name != nil {
 		setClauses = append(setClauses, "name = ?")
 		args = append(args, *updates.Name)
-		idx++
 	}
 	if updates.ProxyID != nil {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
@@ -3186,23 +3184,19 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		} else {
 			setClauses = append(setClauses, "proxy_id = ?")
 			args = append(args, *updates.ProxyID)
-			idx++
 		}
 	}
 	if updates.Concurrency != nil {
 		setClauses = append(setClauses, "concurrency = ?")
 		args = append(args, *updates.Concurrency)
-		idx++
 	}
 	if updates.Priority != nil {
 		setClauses = append(setClauses, "priority = ?")
 		args = append(args, *updates.Priority)
-		idx++
 	}
 	if updates.RateMultiplier != nil {
 		setClauses = append(setClauses, "rate_multiplier = ?")
 		args = append(args, *updates.RateMultiplier)
-		idx++
 	}
 	if updates.LoadFactor != nil {
 		if *updates.LoadFactor <= 0 {
@@ -3210,18 +3204,15 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 		} else {
 			setClauses = append(setClauses, "load_factor = ?")
 			args = append(args, *updates.LoadFactor)
-			idx++
 		}
 	}
 	if updates.Status != nil {
 		setClauses = append(setClauses, "status = ?")
 		args = append(args, *updates.Status)
-		idx++
 	}
 	if updates.Schedulable != nil {
 		setClauses = append(setClauses, "schedulable = ?")
 		args = append(args, *updates.Schedulable)
-		idx++
 	}
 	// JSON 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
@@ -3252,10 +3243,8 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 			modelPlaceholder := "?"
 			credentialExpression = "JSON_SET(" + credentialExpression + ", '$.model_mapping', CAST(" + modelPlaceholder + " AS JSON))"
 			args = append(args, payload, modelPayload)
-			idx += 2
 		} else {
 			args = append(args, payload)
-			idx++
 		}
 		setClauses = append(setClauses, "credentials = "+credentialExpression)
 	}
@@ -3281,10 +3270,8 @@ func (r *accountRepository) bulkUpdateMySQL(ctx context.Context, ids []int64, up
 			// branches. MySQL uses positional `?` parameters, so the payload must
 			// be bound once for each occurrence.
 			args = append(args, payload, payload)
-			idx += 2
 		} else {
 			args = append(args, payload)
-			idx++
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
 	}
