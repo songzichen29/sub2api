@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMySQLMigration050DefaultsOpenAILongContextBilling(t *testing.T) {
+func TestMySQLMigration102RepairsOpenAILongContextBilling(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)
 
-	migrationSQL, err := dbmigrations.MySQLFS.ReadFile("050_default_openai_long_context_billing.sql")
+	migrationSQL, err := dbmigrations.MySQLFS.ReadFile("102_openai_long_context_boolean_repair.sql")
 	require.NoError(t, err)
 
 	insert := func(name, extra string, parentID any, quotaDimension any) int64 {
@@ -34,6 +34,15 @@ func TestMySQLMigration050DefaultsOpenAILongContextBilling(t *testing.T) {
 	parentID := insert("mysql-migration-050-parent", `{"openai_long_context_billing_enabled": false}`, nil, "global")
 	shadowID := insert("mysql-migration-050-shadow", `{}`, parentID, "spark")
 	malformedID := insert("mysql-migration-050-malformed", `{"openai_long_context_billing_enabled": "false"}`, nil, "global")
+
+	// Exercise an upgrade from the already published migrations. Their bytes
+	// must remain unchanged; the new migration repairs their stored JSON types.
+	for _, name := range []string{"050_default_openai_long_context_billing.sql", "099_fix_openai_long_context_billing_json_boolean.sql"} {
+		previousSQL, readErr := dbmigrations.MySQLFS.ReadFile(name)
+		require.NoError(t, readErr)
+		_, execErr := tx.ExecContext(ctx, string(previousSQL))
+		require.NoError(t, execErr)
+	}
 
 	_, err = tx.ExecContext(ctx, string(migrationSQL))
 	require.NoError(t, err)
@@ -59,7 +68,7 @@ func TestMySQLMigration050DefaultsOpenAILongContextBilling(t *testing.T) {
 
 	_, err = tx.ExecContext(ctx, `
 		UPDATE accounts
-		SET extra = JSON_SET(extra, '$.openai_long_context_billing_enabled', true)
+	SET extra = JSON_SET(extra, '$.openai_long_context_billing_enabled', CAST('true' AS JSON))
 		WHERE id = ?
 	`, parentID)
 	require.NoError(t, err)

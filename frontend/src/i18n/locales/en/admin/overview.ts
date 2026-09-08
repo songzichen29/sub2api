@@ -999,6 +999,8 @@ export default {
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
+
+      minimax: 'MiniMax',
     },
     deleteConfirm: 'Are you sure you want to delete \'{name}\'? All associated API keys will no longer belong to any group.',
     deleteConfirmSubscription: 'Are you sure you want to delete subscription group \'{name}\'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.',

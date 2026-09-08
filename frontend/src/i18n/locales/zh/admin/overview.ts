@@ -928,6 +928,8 @@ export default {
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
+
+      minimax: 'MiniMax',
     },
     saving: '保存中...',
     noGroups: '暂无分组',

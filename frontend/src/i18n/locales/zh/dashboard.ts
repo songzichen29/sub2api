@@ -212,6 +212,13 @@ export default {
               modelsCount: '已获取 {count} 个模型',
               errorDescription: '无法使用当前 API Key 获取模型目录。'
             },
+
+      minimax: {
+        description: '通过当前 MiniMax 分组配置 Claude Code、Codex 或 OpenCode。',
+        codexDescription: '使用 API Key 配置 Codex，并通过当前 MiniMax 分组发送请求。',
+        codexConfigTomlHint: '下载下方模型目录，将两个文件保存到 Codex 配置目录后重启 Codex。',
+        codexNote: '启动 Codex 前先导出 SUB2API_API_KEY。下载的目录只包含模型元数据，不包含 API Key。'
+      },
     },
     customKeyLabel: '自定义密钥',
     customKeyPlaceholder: '输入自定义密钥（至少16个字符）',
@@ -487,7 +494,9 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: '智谱 GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+
+      minimax: 'MiniMax',
     },
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',

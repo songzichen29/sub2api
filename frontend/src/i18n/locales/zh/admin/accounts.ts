@@ -261,6 +261,8 @@ export default {
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
+
+      minimax: 'MiniMax',
     },
     types: {
       oauth: 'OAuth',
@@ -383,6 +385,9 @@ export default {
       grokMonthlyLimit: '月度已用/上限（USD）',
       grokOverage: '超额 onDemandUsed/onDemandCap',
       grokOverageShort: '超额 $',
+
+      estimatedTotalCost: '预计总费用 ${cost}',
+      estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用',
     },
     openaiQuotaReset: {
       count: '次数',
@@ -1632,5 +1637,30 @@ export default {
     audioReceived: '已收到第 {count} 段测试音频',
     videoPreview: '生成视频：',
     videoReceived: '已收到第 {count} 段测试视频',
+
+    grokMediaEligibility: {
+      title: '媒体生成资格',
+      hint: '控制该 Grok OAuth 账号是否可被图片和视频生成请求选中。',
+      auto: '自动判断',
+      enabled: '强制启用',
+      disabled: '强制禁用',
+      current: '当前判定：',
+      eligible: '可用',
+      ineligible: '不可用',
+      loading: '正在读取媒体资格…',
+      loadFailed: '无法读取媒体资格',
+      autoHint: '自动判断只会清除手工覆盖，不会主动触发媒体请求。',
+      forceEnableWarning: '强制启用会绕过自动资格检查，仅应对已确认支持生图/生视频的账号使用。',
+      partialSave: '账号其他配置可能已保存，但媒体资格未更新，请重试。',
+      reasons: {
+        eligible: '已确认付费资格',
+        billing_inconclusive: 'Billing 信息不明确',
+        billing_forbidden: 'Billing 接口拒绝访问',
+        billing_free_tier: 'Free 账号',
+        billing_unobserved: '尚未探测到 Billing',
+        override_enabled: '手工强制启用',
+        override_disabled: '手工强制禁用'
+      }
+    },
   }
 }

@@ -212,6 +212,13 @@ export default {
               modelsCount: '{count} models ready to download',
               errorDescription: 'The catalog could not be fetched with this API key.',
             },
+
+      minimax: {
+        description: 'Configure Claude Code, Codex, or OpenCode through the current MiniMax group.',
+        codexDescription: 'Configure Codex with API key authentication through the current MiniMax group.',
+        codexConfigTomlHint: 'Download the model catalog below, save both files under the Codex config directory, and restart Codex.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.'
+      },
     },
     customKeyLabel: 'Custom Key',
     customKeyPlaceholder: 'Enter your custom key (min 16 chars)',
@@ -487,7 +494,9 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+
+      minimax: 'MiniMax',
     },
     extraModelsHeader: 'Extra Models',
     extraModelsEmpty: 'No extra models',

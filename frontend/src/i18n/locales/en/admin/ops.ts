@@ -72,7 +72,11 @@ export default {
       cleanupConfirm: 'Clean up system logs matching the current filters? This cannot be undone.',
       cleanupSuccess: 'Cleanup complete. Deleted {count} log entries.',
       cleanupFailed: 'Failed to clean up system logs',
-      cleanupFilterRequired: 'Select at least one filter before cleaning up logs.'
+      cleanupFilterRequired: 'Select at least one filter before cleaning up logs.',
+
+      retentionDaysHint: 'Applied by the scheduled data-cleanup job.',
+      persistAccessLogs: 'Store access logs in database',
+      persistAccessLogsHint: 'Disabled by default because access logs add one indexed database row per request. Warning, error, and audit logs are always stored.',
     },
     errorIngestion: {
       title: 'Error Ingestion and Ingress Rejections',

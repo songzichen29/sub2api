@@ -843,20 +843,20 @@ func (r *proxyRepository) sweepOneExpiredProxyOnExec(ctx context.Context, exec s
 	if target == nil {
 		selectSQL = `
 		SELECT id FROM accounts
-		WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`
+		WHERE proxy_id=? AND deleted_at IS NULL FOR UPDATE`
 		selectArgs = []any{proxyID}
 		updateSQL = `
-		UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=?, updated_at=NOW()
-		WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`
+		UPDATE accounts SET proxy_id=NULL, proxy_fallback_origin_id=COALESCE(proxy_fallback_origin_id,?), updated_at=NOW()
+		WHERE proxy_id=? AND deleted_at IS NULL`
 		updateArgs = []any{proxyID, proxyID}
 	} else {
 		selectSQL = `
 		SELECT id FROM accounts
-		WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`
+		WHERE proxy_id=? AND deleted_at IS NULL FOR UPDATE`
 		selectArgs = []any{proxyID}
 		updateSQL = `
-		UPDATE accounts SET proxy_id=?, proxy_fallback_origin_id=?, updated_at=NOW()
-		WHERE proxy_id=? AND proxy_fallback_origin_id IS NULL AND deleted_at IS NULL`
+		UPDATE accounts SET proxy_id=?, proxy_fallback_origin_id=COALESCE(proxy_fallback_origin_id,?), updated_at=NOW()
+		WHERE proxy_id=? AND deleted_at IS NULL`
 		updateArgs = []any{*target, proxyID, proxyID}
 	}
 

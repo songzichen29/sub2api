@@ -72,7 +72,11 @@ export default {
       cleanupConfirm: '确定要清理匹配当前筛选条件的系统日志吗？此操作不可撤销。',
       cleanupSuccess: '清理完成，已删除 {count} 条日志。',
       cleanupFailed: '清理系统日志失败',
-      cleanupFilterRequired: '清理日志前请至少选择一个筛选条件。'
+      cleanupFilterRequired: '清理日志前请至少选择一个筛选条件。',
+
+      retentionDaysHint: '由定时数据清理任务执行。',
+      persistAccessLogs: '将访问日志写入数据库',
+      persistAccessLogsHint: '默认关闭，因为访问日志会为每个请求新增一条带索引的数据库记录。警告、错误和审计日志始终会保留。',
     },
     errorIngestion: {
       title: '错误采集与入口拒绝',

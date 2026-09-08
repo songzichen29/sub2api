@@ -84,6 +84,42 @@ function mountModal(extraProps: Record<string, unknown> = {}) {
 }
 
 describe('BulkEditAccountModal', () => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['apikey']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
+  })
+
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
+    const wrapper = mountModal({
+      selectedPlatforms: [platform],
+      selectedTypes: ['oauth']
+    })
+
+    expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(false)
+  })
+
+  it('全部目标为 Grok OAuth 时，第三方 base_url 正常提交', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['grok'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-base-url-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-base-url').setValue('https://relay.example.com/v1')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        base_url: 'https://relay.example.com/v1'
+      }
+    })
+  })
   beforeEach(() => {
     vi.mocked(adminAPI.accounts.bulkUpdate).mockReset()
     vi.mocked(adminAPI.accounts.checkMixedChannelRisk).mockReset()
@@ -184,6 +220,7 @@ describe('BulkEditAccountModal', () => {
       .find(button => button.text().trim() === 'claude-sonnet-4-6')
     expect(modelOption).toBeTruthy()
     await modelOption!.trigger('click')
+
 
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
