@@ -515,6 +515,16 @@ const baseSettingsResponse = {
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
+  payment_discount_rules: [],
+  payment_quick_amounts: [10, 50],
+  payment_paid_user_rate_enabled: true,
+  payment_paid_user_rate_rules: [],
+  payment_paid_user_rate_backfill: {
+    total_paid_users: 0,
+    assigned_users: 0,
+    rule_count: 0,
+    status: "",
+  },
   payment_recharge_fee_rate: 0,
   payment_load_balance_strategy: "round-robin",
   payment_product_name_prefix: "",
@@ -1099,6 +1109,25 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("submits payment extension settings", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_discount_rules: [],
+        payment_quick_amounts: [10, 50],
+        payment_paid_user_rate_enabled: true,
+        payment_paid_user_rate_rules: [],
+      }),
+    );
   });
 
   it("submits the admin recharge affiliate rebate setting", async () => {

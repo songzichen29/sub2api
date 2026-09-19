@@ -269,7 +269,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAIAdvancedSchedulerWeightPreviousResponse:      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightSessionSticky:         "",
 
-		SettingKeyAllowUserViewErrorRequests: "false",
+		SettingKeyAllowUserViewErrorRequests:          "false",
+		SettingKeyStandaloneAccountImportEnabled:      "false",
+		SettingKeyStandaloneAccountImportPasswordHash: "",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -422,6 +424,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.OpenAIFreeImageBridgeURL = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeURL])
 	result.OpenAIFreeImageBridgeAuthKey = strings.TrimSpace(settings[SettingKeyOpenAIFreeImageBridgeAuthKey])
 	result.OpenAIFreeImageBridgeAuthKeyConfigured = result.OpenAIFreeImageBridgeAuthKey != ""
+	result.StandaloneAccountImportEnabled = settings[SettingKeyStandaloneAccountImportEnabled] == "true"
+	result.StandaloneAccountImportPasswordHash = strings.TrimSpace(settings[SettingKeyStandaloneAccountImportPasswordHash])
+	result.StandaloneAccountImportPasswordConfigured = result.StandaloneAccountImportPasswordHash != ""
 	if freezeHours, err := strconv.Atoi(settings[SettingKeyAffiliateRebateFreezeHours]); err == nil && freezeHours >= 0 {
 		if freezeHours > AffiliateRebateFreezeHoursMax {
 			freezeHours = AffiliateRebateFreezeHoursMax

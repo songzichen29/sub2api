@@ -399,7 +399,7 @@ describe('EditAccountModal', () => {
     const wrapper = mountModal(account, true)
     await wrapper.setProps({ groups: [activeGroup] as any })
     const selector = wrapper.get('[data-tour="account-form-groups"]')
-    expect(selector.findAll('input[type="checkbox"]').map(input => input.attributes('value')))
+    expect(selector.findAll('input[type="checkbox"][value]').map(input => input.attributes('value')))
       .toEqual(['1', '2'])
     expect(selector.text()).toContain('Active group')
     expect(selector.text()).not.toContain('Outdated name')

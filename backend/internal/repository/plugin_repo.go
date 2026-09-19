@@ -226,7 +226,7 @@ func (r *pluginRepository) UpdateConfig(ctx context.Context, id int64, encrypted
 		UPDATE sub2api_plugin_installations
 		SET config_encrypted = ?, updated_at = NOW()
 		WHERE id = ? AND binary_sha256 = ?
-	`, id, encrypted, expectedBinarySHA256)
+	`, encrypted, id, expectedBinarySHA256)
 	if err != nil {
 		return err
 	}

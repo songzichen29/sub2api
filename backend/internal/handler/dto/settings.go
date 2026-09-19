@@ -263,6 +263,10 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string  `json:"openai_advanced_scheduler_effective_weight_previous_response"`
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string  `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
 
+	// Standalone account import
+	StandaloneAccountImportEnabled            bool `json:"standalone_account_import_enabled"`
+	StandaloneAccountImportPasswordConfigured bool `json:"standalone_account_import_password_configured"`
+
 	// Payment configuration
 	PaymentEnabled                   bool                              `json:"payment_enabled"`
 	PaymentMinAmount                 float64                           `json:"payment_min_amount"`

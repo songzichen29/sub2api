@@ -10668,6 +10668,7 @@ async function saveSettings() {
       payment_quick_amounts: parseQuickAmountsInput(
         paymentQuickAmountsInput.value,
       ),
+      payment_paid_user_rate_enabled: form.payment_paid_user_rate_enabled,
       payment_paid_user_rate_rules: normalizePaidUserRateRules(
         form.payment_paid_user_rate_rules,
       ),

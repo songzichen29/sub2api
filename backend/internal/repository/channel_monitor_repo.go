@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
+	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqljson"
 )
@@ -59,6 +60,13 @@ func buildMonitorModelTargetsClause(ids []int64, primaryModels map[int64]string)
 // NewChannelMonitorRepository 创建仓储实例。
 func NewChannelMonitorRepository(client *dbent.Client, db *sql.DB) service.ChannelMonitorRepository {
 	return &channelMonitorRepository{client: client, db: db}
+}
+
+func channelMonitorRepositoryDialect(r *channelMonitorRepository) string {
+	if r != nil && r.client != nil && r.client.Driver() != nil {
+		return r.client.Driver().Dialect()
+	}
+	return dialect.Postgres
 }
 
 // ---------- CRUD ----------
@@ -289,7 +297,11 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 // DeleteHistoryBefore 物理删 checked_at < before 的明细，分批 channelMonitorPruneBatchSize 行一批，
 // 避免单事务删除过多引起锁/WAL 压力。借助 (checked_at) 索引定位小批 id，再按 id 删。
 func (r *channelMonitorRepository) DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error) {
-	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneHistorySQL, before)
+	query := channelMonitorPruneHistorySQL
+	if channelMonitorRepositoryDialect(r) == dialect.MySQL {
+		query = channelMonitorPruneHistoryMySQL
+	}
+	return deleteChannelMonitorBatched(ctx, r.db, query, before)
 }
 
 // ListHistory 按 checked_at 倒序返回某个监控的最近 N 条历史记录。
@@ -646,11 +658,28 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 
 // UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）的明细
 // 按 (monitor_id, model, bucket_date) 聚合写入 channel_monitor_daily_rollups。
-//   - 用 ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE 实现幂等回填，
+//   - 用各数据库的 UPSERT 语法实现幂等回填，
 //     重复执行只会用最新统计覆盖；
-//   - $1::date 让 PG 自动把入参 truncate 到 UTC 日期，调用方不需要预处理 targetDate。
 func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error) {
-	const q = `
+	query := channelMonitorDailyRollupPostgresSQL
+	args := []any{targetDate}
+	if channelMonitorRepositoryDialect(r) == dialect.MySQL {
+		query = channelMonitorDailyRollupMySQL
+		date := targetDate.UTC().Format("2006-01-02")
+		args = []any{date, date, date}
+	}
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("upsert daily rollups for %s: %w", targetDate.Format("2006-01-02"), err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected (upsert rollups): %w", err)
+	}
+	return n, nil
+}
+
+const channelMonitorDailyRollupPostgresSQL = `
 		INSERT INTO channel_monitor_daily_rollups (
 		    monitor_id, model, bucket_date,
 		    total_checks, ok_count,
@@ -691,20 +720,56 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		    count_ping_latency  = EXCLUDED.count_ping_latency,
 		    computed_at         = NOW()
 	`
-	res, err := r.db.ExecContext(ctx, q, targetDate)
-	if err != nil {
-		return 0, fmt.Errorf("upsert daily rollups for %s: %w", targetDate.Format("2006-01-02"), err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("rows affected (upsert rollups): %w", err)
-	}
-	return n, nil
-}
+
+const channelMonitorDailyRollupMySQL = `
+	INSERT INTO channel_monitor_daily_rollups (
+	    monitor_id, model, bucket_date,
+	    total_checks, ok_count,
+	    operational_count, degraded_count, failed_count, error_count,
+	    sum_latency_ms, count_latency,
+	    sum_ping_latency_ms, count_ping_latency,
+	    computed_at
+	)
+	SELECT
+	    monitor_id,
+	    model,
+	    DATE(?) AS bucket_date,
+	    COUNT(*) AS total_checks,
+	    SUM(CASE WHEN status IN ('operational','degraded') THEN 1 ELSE 0 END) AS ok_count,
+	    SUM(CASE WHEN status = 'operational' THEN 1 ELSE 0 END) AS operational_count,
+	    SUM(CASE WHEN status = 'degraded' THEN 1 ELSE 0 END) AS degraded_count,
+	    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+	    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS error_count,
+	    COALESCE(SUM(CASE WHEN latency_ms IS NOT NULL THEN latency_ms ELSE 0 END), 0) AS sum_latency_ms,
+	    COUNT(latency_ms) AS count_latency,
+	    COALESCE(SUM(CASE WHEN ping_latency_ms IS NOT NULL THEN ping_latency_ms ELSE 0 END), 0) AS sum_ping_latency_ms,
+	    COUNT(ping_latency_ms) AS count_ping_latency,
+	    NOW()
+	FROM channel_monitor_histories
+	WHERE checked_at >= DATE(?)
+	  AND checked_at < DATE_ADD(DATE(?), INTERVAL 1 DAY)
+	GROUP BY monitor_id, model
+	ON DUPLICATE KEY UPDATE
+	    total_checks        = VALUES(total_checks),
+	    ok_count            = VALUES(ok_count),
+	    operational_count   = VALUES(operational_count),
+	    degraded_count      = VALUES(degraded_count),
+	    failed_count        = VALUES(failed_count),
+	    error_count         = VALUES(error_count),
+	    sum_latency_ms      = VALUES(sum_latency_ms),
+	    count_latency       = VALUES(count_latency),
+	    sum_ping_latency_ms = VALUES(sum_ping_latency_ms),
+	    count_ping_latency  = VALUES(count_ping_latency),
+	    computed_at         = NOW()
+`
 
 // DeleteRollupsBefore 物理删 bucket_date < beforeDate 的聚合行，同样分批。
 func (r *channelMonitorRepository) DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error) {
-	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneRollupSQL, beforeDate)
+	query := channelMonitorPruneRollupSQL
+	if channelMonitorRepositoryDialect(r) == dialect.MySQL {
+		query = channelMonitorPruneRollupMySQL
+	}
+	return deleteChannelMonitorBatched(ctx, r.db, query, beforeDate)
 }
 
 // channelMonitorPruneBatchSize 单批删除上限。与 ops_cleanup_service 保持一致的 5000，
@@ -734,6 +799,30 @@ WITH batch AS (
 )
 DELETE FROM channel_monitor_daily_rollups
 WHERE id IN (SELECT id FROM batch)
+`
+
+const channelMonitorPruneHistoryMySQL = `
+DELETE FROM channel_monitor_histories
+WHERE id IN (
+    SELECT id FROM (
+        SELECT id FROM channel_monitor_histories
+        WHERE checked_at < ?
+        ORDER BY id
+        LIMIT ?
+    ) AS batch
+)
+`
+
+const channelMonitorPruneRollupMySQL = `
+DELETE FROM channel_monitor_daily_rollups
+WHERE id IN (
+    SELECT id FROM (
+        SELECT id FROM channel_monitor_daily_rollups
+        WHERE bucket_date < DATE(?)
+        ORDER BY id
+        LIMIT ?
+    ) AS batch
+)
 `
 
 // deleteChannelMonitorBatched 循环执行分批 DELETE，直到影响行为 0。返回累计删除行数。
@@ -776,20 +865,34 @@ func (r *channelMonitorRepository) LoadAggregationWatermark(ctx context.Context)
 }
 
 // UpdateAggregationWatermark 更新 watermark（UPSERT 到 id=1）。
-// $1::date 让 PG 把入参 truncate 到 UTC 日期，与 last_aggregated_date 列的 DATE 类型一致。
 func (r *channelMonitorRepository) UpdateAggregationWatermark(ctx context.Context, date time.Time) error {
-	const q = `
+	query := channelMonitorWatermarkPostgresSQL
+	arg := any(date)
+	if channelMonitorRepositoryDialect(r) == dialect.MySQL {
+		query = channelMonitorWatermarkMySQL
+		arg = date.UTC().Format("2006-01-02")
+	}
+	if _, err := r.db.ExecContext(ctx, query, arg); err != nil {
+		return fmt.Errorf("update aggregation watermark: %w", err)
+	}
+	return nil
+}
+
+const channelMonitorWatermarkPostgresSQL = `
 		INSERT INTO channel_monitor_aggregation_watermark (id, last_aggregated_date, updated_at)
 		VALUES (1, $1::date, NOW())
 		ON CONFLICT (id) DO UPDATE SET
 		    last_aggregated_date = EXCLUDED.last_aggregated_date,
 		    updated_at           = NOW()
 	`
-	if _, err := r.db.ExecContext(ctx, q, date); err != nil {
-		return fmt.Errorf("update aggregation watermark: %w", err)
-	}
-	return nil
-}
+
+const channelMonitorWatermarkMySQL = `
+	INSERT INTO channel_monitor_aggregation_watermark (id, last_aggregated_date, updated_at)
+	VALUES (1, DATE(?), NOW())
+	ON DUPLICATE KEY UPDATE
+	    last_aggregated_date = VALUES(last_aggregated_date),
+	    updated_at           = NOW()
+`
 
 // ---------- helpers ----------
 

@@ -1578,6 +1578,7 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	serviceTier := "priority"
 	reasoning := "high"
+	upstreamFirstEventMs := 80
 
 	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 		Result: &OpenAIForwardResult{
@@ -1591,8 +1592,9 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 				InputTokens:  20,
 				OutputTokens: 10,
 			},
-			Duration:     2 * time.Second,
-			FirstTokenMs: func() *int { v := 120; return &v }(),
+			Duration:             2 * time.Second,
+			FirstTokenMs:         func() *int { v := 120; return &v }(),
+			UpstreamFirstEventMs: &upstreamFirstEventMs,
 		},
 		APIKey:    &APIKey{ID: 10, GroupID: i64p(11), Group: &Group{ID: 11, RateMultiplier: 1.2}},
 		User:      &User{ID: 20},
@@ -1613,6 +1615,8 @@ func TestOpenAIGatewayServiceRecordUsage_UsesRequestedModelAndUpstreamModelMetad
 	require.Equal(t, reasoning, *usageRepo.lastLog.ReasoningEffort)
 	require.NotNil(t, usageRepo.lastLog.RequestedReasoningEffort)
 	require.Equal(t, reasoning, *usageRepo.lastLog.RequestedReasoningEffort)
+	require.NotNil(t, usageRepo.lastLog.UpstreamFirstEventMs)
+	require.Equal(t, upstreamFirstEventMs, *usageRepo.lastLog.UpstreamFirstEventMs)
 	require.NotNil(t, usageRepo.lastLog.UserAgent)
 	require.Equal(t, "codex-cli/1.0", *usageRepo.lastLog.UserAgent)
 	require.NotNil(t, usageRepo.lastLog.IPAddress)

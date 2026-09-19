@@ -74,3 +74,10 @@ describe('AppSidebar payment coupons navigation', () => {
     expect(componentSource).toContain("{ path: '/admin/orders/coupons', label: t('nav.paymentCoupons'), icon: TicketIcon }")
   })
 })
+
+describe('AppSidebar invoice navigation', () => {
+  it('keeps user and admin invoice routes visible when payment is enabled', () => {
+    expect(componentSource).toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment }")
+    expect(componentSource).toContain("{ path: '/admin/orders/invoices', label: t('nav.invoiceManagement'), icon: OrderListIcon }")
+  })
+})

@@ -296,6 +296,10 @@ type UpdateSettingsRequest struct {
 	OpenAIAdvancedSchedulerWeightPreviousResponse      *string  `json:"openai_advanced_scheduler_weight_previous_response"`
 	OpenAIAdvancedSchedulerWeightSessionSticky         *string  `json:"openai_advanced_scheduler_weight_session_sticky"`
 
+	// Standalone account import
+	StandaloneAccountImportEnabled  *bool  `json:"standalone_account_import_enabled"`
+	StandaloneAccountImportPassword string `json:"standalone_account_import_password"`
+
 	// 余额不足提醒
 	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold       *float64                `json:"balance_low_notify_threshold"`
@@ -487,6 +491,7 @@ func settingsAuditRequest(req UpdateSettingsRequest) UpdateSettingsRequest {
 	req.TencentCaptchaCloudSecretID = strings.TrimSpace(req.TencentCaptchaCloudSecretID)
 	req.TencentCaptchaCloudSecretKey = strings.TrimSpace(req.TencentCaptchaCloudSecretKey)
 	req.AliyunCaptchaAccessKeySecret = strings.TrimSpace(req.AliyunCaptchaAccessKeySecret)
+	req.StandaloneAccountImportPassword = strings.TrimSpace(req.StandaloneAccountImportPassword)
 	return req
 }
 
@@ -670,7 +675,27 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.AuthSourceDefaultLinuxDoSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultLinuxDoSubscriptions)
 	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
 	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
+	req.AuthSourceDefaultGitHubSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGitHubSubscriptions)
+	req.AuthSourceDefaultGoogleSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultGoogleSubscriptions)
 	req.AuthSourceDefaultDingTalkSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultDingTalkSubscriptions)
+	req.StandaloneAccountImportPassword = strings.TrimSpace(req.StandaloneAccountImportPassword)
+	standaloneAccountImportPasswordHash := ""
+	if req.StandaloneAccountImportPassword != "" {
+		hash, err := service.HashStandaloneAccountImportPassword(req.StandaloneAccountImportPassword)
+		if err != nil {
+			response.InternalError(c, "Failed to hash standalone account import password")
+			return
+		}
+		standaloneAccountImportPasswordHash = hash
+	}
+	standaloneAccountImportEnabled := previousSettings.StandaloneAccountImportEnabled
+	if req.StandaloneAccountImportEnabled != nil {
+		standaloneAccountImportEnabled = *req.StandaloneAccountImportEnabled
+	}
+	if standaloneAccountImportEnabled && standaloneAccountImportPasswordHash == "" && !previousSettings.StandaloneAccountImportPasswordConfigured {
+		response.BadRequest(c, "Standalone account import password is required when enabled")
+		return
+	}
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
 	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
@@ -1895,6 +1920,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerWeightUpstreamCost:     stringSetting(req.OpenAIAdvancedSchedulerWeightUpstreamCost, previousSettings.OpenAIAdvancedSchedulerWeightUpstreamCost),
 		OpenAIAdvancedSchedulerWeightPreviousResponse: stringSetting(req.OpenAIAdvancedSchedulerWeightPreviousResponse, previousSettings.OpenAIAdvancedSchedulerWeightPreviousResponse),
 		OpenAIAdvancedSchedulerWeightSessionSticky:    stringSetting(req.OpenAIAdvancedSchedulerWeightSessionSticky, previousSettings.OpenAIAdvancedSchedulerWeightSessionSticky),
+		StandaloneAccountImportEnabled:                standaloneAccountImportEnabled,
+		StandaloneAccountImportPasswordHash:           standaloneAccountImportPasswordHash,
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -2404,6 +2431,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost:     updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost,
 		OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse: updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse,
 		OpenAIAdvancedSchedulerEffectiveWeightSessionSticky:    updatedSettings.OpenAIAdvancedSchedulerEffectiveWeightSessionSticky,
+		StandaloneAccountImportEnabled:                         updatedSettings.StandaloneAccountImportEnabled,
+		StandaloneAccountImportPasswordConfigured:              updatedSettings.StandaloneAccountImportPasswordConfigured,
 		BalanceLowNotifyEnabled:                                updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:                              updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:                            updatedSettings.BalanceLowNotifyRechargeURL,

@@ -27,12 +27,13 @@ import (
 
 // openaiStreamingResult streaming response result
 type openaiStreamingResult struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
-	searchCount      int
+	usage                *OpenAIUsage
+	firstTokenMs         *int
+	upstreamFirstEventMs *int
+	responseID           string
+	imageCount           int
+	imageOutputSizes     []string
+	searchCount          int
 }
 
 type openaiNonStreamingResult struct {
@@ -135,6 +136,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	var firstTokenMs *int
+	var upstreamFirstEventMs *int
 	ttftMode := s.openAITTFTMode(ctx)
 	firstOutputProgressObserved := false
 	bufferedWriter := bufio.NewWriterSize(w, 4*1024)
@@ -361,14 +363,23 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	// Dedup search tool calls across SSE events (item.done + response.completed
 	// both list the same call_id — counting both would ~2× the surcharge).
 	streamSearchSeen := make(map[string]struct{})
+	recordUpstreamFirstEvent := func() {
+		if upstreamFirstEventMs != nil {
+			return
+		}
+		ms := int(time.Since(startTime).Milliseconds())
+		upstreamFirstEventMs = &ms
+		SetOpsLatencyMs(c, OpsOpenAIUpstreamFirstEventMsKey, int64(ms))
+	}
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
-			searchCount:      searchCounter,
+			usage:                usage,
+			firstTokenMs:         firstTokenMs,
+			upstreamFirstEventMs: upstreamFirstEventMs,
+			responseID:           responseID,
+			imageCount:           imageCounter.Count(),
+			imageOutputSizes:     imageCounter.Sizes(),
+			searchCount:          searchCounter,
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -496,6 +507,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		// Extract data from SSE line (supports both "data: " and "data:" formats)
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
+			if strings.TrimSpace(data) != "" {
+				recordUpstreamFirstEvent()
+			}
 			eventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
 			if codexFailureTerminal && sawBareError && !sawResponseFailed &&
 				(eventType == "response.completed" || eventType == "response.done") {

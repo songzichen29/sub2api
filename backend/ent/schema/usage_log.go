@@ -92,25 +92,25 @@ func (UsageLog) Fields() []ent.Field {
 		// 成本字段
 		field.Float("input_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("output_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("cache_creation_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("cache_read_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("total_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("actual_cost").
 			Default(0).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,10)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(20,10)", dialect.Postgres: "decimal(20,10)"}),
 		field.Float("rate_multiplier").
 			Default(1).
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}),
 		field.Bool("long_context_billing_applied").
 			Default(false).
 			Comment("Whether long-context pricing changed token prices for this request"),
@@ -119,7 +119,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Float("account_rate_multiplier").
 			Optional().
 			Nillable().
-			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}),
+			SchemaType(map[string]string{dialect.MySQL: "decimal(10,4)", dialect.Postgres: "decimal(10,4)"}),
 
 		// 其他字段
 		field.Int8("billing_type").
@@ -130,6 +130,9 @@ func (UsageLog) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.Int("first_token_ms").
+			Optional().
+			Nillable(),
+		field.Int("upstream_first_event_ms").
 			Optional().
 			Nillable(),
 		field.String("user_agent").
@@ -185,7 +188,7 @@ func (UsageLog) Fields() []ent.Field {
 		field.Time("created_at").
 			Default(time.Now).
 			Immutable().
-			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+			SchemaType(map[string]string{dialect.MySQL: "datetime(6)", dialect.Postgres: "timestamptz"}),
 	}
 }
 

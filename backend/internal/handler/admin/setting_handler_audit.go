@@ -571,6 +571,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIAdvancedSchedulerWeightSessionSticky != after.OpenAIAdvancedSchedulerWeightSessionSticky {
 		changed = append(changed, "openai_advanced_scheduler_weight_session_sticky")
 	}
+	if before.StandaloneAccountImportEnabled != after.StandaloneAccountImportEnabled {
+		changed = append(changed, "standalone_account_import_enabled")
+	}
+	if req.StandaloneAccountImportPassword != "" {
+		changed = append(changed, "standalone_account_import_password")
+	}
 	// 余额、订阅到期与账号限额通知
 	if before.BalanceLowNotifyEnabled != after.BalanceLowNotifyEnabled {
 		changed = append(changed, "balance_low_notify_enabled")

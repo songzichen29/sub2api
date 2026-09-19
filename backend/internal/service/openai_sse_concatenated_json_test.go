@@ -327,24 +327,31 @@ func testOpenAIStreamingRepairsConcatenatedJSONDocuments(t *testing.T, passthrou
 	account := &Account{ID: 1, Name: "test", Platform: PlatformOpenAI}
 
 	var usage *OpenAIUsage
+	var upstreamFirstEventMs *int
 	var err error
 	if passthrough {
 		result, forwardErr := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
 		err = forwardErr
 		if result != nil {
 			usage = result.usage
+			upstreamFirstEventMs = result.upstreamFirstEventMs
 		}
 	} else {
 		result, forwardErr := svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
 		err = forwardErr
 		if result != nil {
 			usage = result.usage
+			upstreamFirstEventMs = result.upstreamFirstEventMs
 		}
 	}
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 	require.Equal(t, 7, usage.InputTokens)
 	require.Equal(t, 9, usage.OutputTokens)
+	require.NotNil(t, upstreamFirstEventMs)
+	latencyMs, ok := c.Get(OpsOpenAIUpstreamFirstEventMsKey)
+	require.True(t, ok)
+	require.Equal(t, int64(*upstreamFirstEventMs), latencyMs)
 
 	assertOpenAISSEFrames(t, recorder.Body.String(), []string{
 		"response.in_progress",

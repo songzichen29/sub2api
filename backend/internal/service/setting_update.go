@@ -470,6 +470,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	if strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey) != "" {
 		updates[SettingKeyOpenAIFreeImageBridgeAuthKey] = strings.TrimSpace(settings.OpenAIFreeImageBridgeAuthKey)
 	}
+	updates[SettingKeyStandaloneAccountImportEnabled] = strconv.FormatBool(settings.StandaloneAccountImportEnabled)
+	if strings.TrimSpace(settings.StandaloneAccountImportPasswordHash) != "" {
+		updates[SettingKeyStandaloneAccountImportPasswordHash] = strings.TrimSpace(settings.StandaloneAccountImportPasswordHash)
+	}
 
 	// Gateway forwarding behavior
 	mode := normalizeOpenAITTFTMode(settings.OpenAITTFTMode)
