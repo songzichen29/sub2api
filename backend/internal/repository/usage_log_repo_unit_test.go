@@ -112,6 +112,27 @@ func TestBuildMySQLUsageLogInsertQuery_UsesInsertIgnore(t *testing.T) {
 	require.NotContains(t, strings.ToUpper(query), "RETURNING")
 }
 
+func TestBuildMySQLUsageLogBestEffortInsertQuery_UsesSingleMultiRowStatement(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:    1,
+		APIKeyID:  2,
+		AccountID: 3,
+		RequestID: "req-mysql-batch",
+		Model:     "gpt-5",
+	})
+
+	query, args := buildMySQLUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared, prepared})
+	normalizedQuery := strings.Replace(query, "INSERT IGNORE INTO", "INSERT INTO", 1)
+
+	require.True(t, strings.HasPrefix(query, "INSERT IGNORE INTO usage_logs ("))
+	require.NotContains(t, strings.ToUpper(query), "ON CONFLICT")
+	require.NotContains(t, strings.ToUpper(query), "WITH INPUT")
+	require.Len(t, usageLogInsertColumns(t, normalizedQuery), len(prepared.args))
+	require.Len(t, usageLogInsertColumnNames, len(usageLogInsertArgTypes))
+	require.Equal(t, len(prepared.args)*2, strings.Count(query, "?"))
+	require.Len(t, args, len(prepared.args)*2)
+}
+
 func TestExecUsageLogInsertNoResult_RetriesTransientMySQLWriteErrors(t *testing.T) {
 	prepared := prepareUsageLogInsert(&service.UsageLog{
 		UserID:    1,

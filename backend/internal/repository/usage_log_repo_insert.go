@@ -90,6 +90,75 @@ var usageLogInsertArgTypes = [...]string{
 	"timestamptz", // created_at
 }
 
+// usageLogInsertColumnNames must stay aligned with usageLogInsertArgTypes and
+// prepareUsageLogInsert().args. It is used to build MySQL's native multi-row
+// INSERT without routing production writes through PostgreSQL SQL syntax.
+var usageLogInsertColumnNames = [...]string{
+	"user_id",
+	"api_key_id",
+	"account_id",
+	"request_id",
+	"model",
+	"requested_model",
+	"upstream_model",
+	"upstream_response_model",
+	"upstream_model_mismatch",
+	"group_id",
+	"subscription_id",
+	"input_tokens",
+	"output_tokens",
+	"cache_creation_tokens",
+	"cache_read_tokens",
+	"cache_creation_5m_tokens",
+	"cache_creation_1h_tokens",
+	"image_output_tokens",
+	"image_output_cost",
+	"image_input_tokens",
+	"image_input_cost",
+	"input_cost",
+	"output_cost",
+	"cache_creation_cost",
+	"cache_read_cost",
+	"total_cost",
+	"actual_cost",
+	"rate_multiplier",
+	"account_rate_multiplier",
+	"billing_type",
+	"request_type",
+	"stream",
+	"openai_ws_mode",
+	"duration_ms",
+	"first_token_ms",
+	"upstream_first_event_ms",
+	"user_agent",
+	"ip_address",
+	"image_count",
+	"image_size",
+	"image_input_size",
+	"image_output_size",
+	"image_size_source",
+	"image_size_breakdown",
+	"video_count",
+	"video_resolution",
+	"video_duration_seconds",
+	"service_tier",
+	"reasoning_effort",
+	"requested_reasoning_effort",
+	"inbound_endpoint",
+	"upstream_endpoint",
+	"cache_ttl_overridden",
+	"long_context_billing_applied",
+	"channel_id",
+	"model_mapping_chain",
+	"billing_tier",
+	"billing_mode",
+	"account_stats_cost",
+	"upstream_request_id",
+	"session_id",
+	"native_compaction_v2",
+	"created_at",
+}
+
 const (
 	usageLogCreateBatchMaxSize  = 64
 	usageLogCreateBatchWindow   = 3 * time.Millisecond
@@ -676,15 +745,17 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if r.isMySQLDialect() {
+		query, args := buildMySQLUsageLogBestEffortInsertQuery(preparedList)
+		_, batchErr := execMySQLUsageLogWriteWithRetry(ctx, db, query, args...)
+		if batchErr != nil {
+			logger.LegacyPrintf("repository.usage_log", "best-effort MySQL batch insert failed: %v", batchErr)
+		}
 		for _, group := range groupOrder {
-			singleErr := execUsageLogInsertNoResult(ctx, db, group.prepared, true)
-			if singleErr != nil {
-				logger.LegacyPrintf("repository.usage_log", "best-effort MySQL insert failed: %v", singleErr)
-			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
+			if batchErr == nil && group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
 				r.bestEffortRecent.SetDefault(group.key, struct{}{})
 			}
 			for _, req := range group.reqs {
-				sendUsageLogBestEffortResult(req.resultCh, singleErr)
+				sendUsageLogBestEffortResult(req.resultCh, batchErr)
 			}
 		}
 		return
@@ -1257,6 +1328,35 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`)
+
+	return query.String(), args
+}
+
+func buildMySQLUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (string, []any) {
+	if len(preparedList) == 0 {
+		return "", nil
+	}
+
+	var query strings.Builder
+	_, _ = query.WriteString("INSERT IGNORE INTO usage_logs (")
+	_, _ = query.WriteString(strings.Join(usageLogInsertColumnNames[:], ","))
+	_, _ = query.WriteString(") VALUES ")
+
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertColumnNames))
+	for rowIndex, prepared := range preparedList {
+		if rowIndex > 0 {
+			_, _ = query.WriteString(",")
+		}
+		_, _ = query.WriteString("(")
+		for argIndex := range prepared.args {
+			if argIndex > 0 {
+				_, _ = query.WriteString(",")
+			}
+			_, _ = query.WriteString("?")
+		}
+		_, _ = query.WriteString(")")
+		args = append(args, prepared.args...)
+	}
 
 	return query.String(), args
 }
