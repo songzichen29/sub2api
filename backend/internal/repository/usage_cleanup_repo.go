@@ -322,7 +322,7 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 }
 
 func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, whereClause string, args []any) (int64, error) {
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
 	if err != nil {
 		return 0, err
 	}
@@ -331,9 +331,7 @@ func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx 
 		return 0, err
 	}
 
-	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
-		return rollback(err)
-	}
+	// Keep the same usage_logs -> rollup state lock order as the MySQL triggers.
 	var earliestDeletedAt sql.NullTime
 	selectQuery := fmt.Sprintf(`
 		SELECT MIN(created_at)

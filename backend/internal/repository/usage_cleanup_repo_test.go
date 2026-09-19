@@ -426,8 +426,6 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
 
 	firstDeletedAt := start.Add(time.Hour)
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(start, end, userID, "gpt-4", 2).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(firstDeletedAt))
@@ -456,8 +454,6 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchAtomicallyInvalidatesGroupRol
 	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(start, end, 2).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(firstDeletedAt))
@@ -486,8 +482,6 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchRollsBackWhenInvalidationFail
 	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(start, end, 1).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(deletedAt))
@@ -513,8 +507,6 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchQueryError(t *testing.T) {
 	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(start, end, 5).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(start.Add(time.Hour)))

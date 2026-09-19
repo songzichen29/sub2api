@@ -19,9 +19,9 @@ const usageBillingDedupCleanupBatchSize = 10000
 
 func dashboardAggregationTxOptions() *sql.TxOptions {
 	// MySQL REPEATABLE READ turns INSERT ... SELECT into locking reads. The
-	// aggregation queries scan a large usage_logs range, so those shared gap
-	// locks can deadlock with live usage-log inserts. READ COMMITTED keeps the
-	// source-table reads non-locking while the destination writes stay atomic.
+	// aggregation and rollup queries scan a large usage_logs range, so those
+	// shared locks can deadlock with live usage-log inserts. READ COMMITTED keeps
+	// source-table reads non-locking while destination writes stay atomic.
 	return &sql.TxOptions{Isolation: sql.LevelReadCommitted}
 }
 
@@ -258,7 +258,7 @@ func (r *dashboardAggregationRepository) cleanupUsageLogsBatches(ctx context.Con
 }
 
 func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, cutoff time.Time) (int64, error) {
-	tx, err := db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
 	if err != nil {
 		return 0, err
 	}
@@ -267,9 +267,8 @@ func cleanupUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB
 		return 0, err
 	}
 
-	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
-		return rollback(err)
-	}
+	// DELETE locks usage_logs before its trigger updates the rollup state. Do not
+	// pre-lock the state row here, or live inserts can form the reverse lock order.
 	var earliestDeletedAt sql.NullTime
 	if err := tx.QueryRowContext(ctx, `
 		SELECT MIN(created_at)

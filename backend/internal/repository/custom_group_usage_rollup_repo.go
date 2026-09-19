@@ -121,7 +121,7 @@ func (r *dashboardAggregationRepository) SyncGroupUsageRollups(ctx context.Conte
 	}
 	todayStart = service.GroupUsageTodayStart(todayStart)
 	if db, ok := r.sql.(*sql.DB); ok {
-		tx, err := db.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
 		if err != nil {
 			return err
 		}

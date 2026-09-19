@@ -5,6 +5,8 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"testing"
 	"time"
 
@@ -12,6 +14,44 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+type txOptionsCaptureConnector struct {
+	options  driver.TxOptions
+	beginErr error
+}
+
+func (c *txOptionsCaptureConnector) Connect(context.Context) (driver.Conn, error) {
+	return &txOptionsCaptureConn{connector: c}, nil
+}
+
+func (c *txOptionsCaptureConnector) Driver() driver.Driver {
+	return txOptionsCaptureDriver{}
+}
+
+type txOptionsCaptureDriver struct{}
+
+func (txOptionsCaptureDriver) Open(string) (driver.Conn, error) {
+	return nil, errors.New("direct open is not supported")
+}
+
+type txOptionsCaptureConn struct {
+	connector *txOptionsCaptureConnector
+}
+
+func (*txOptionsCaptureConn) Prepare(string) (driver.Stmt, error) {
+	return nil, errors.New("prepare is not supported")
+}
+
+func (*txOptionsCaptureConn) Close() error { return nil }
+
+func (*txOptionsCaptureConn) Begin() (driver.Tx, error) {
+	return nil, errors.New("legacy begin is not supported")
+}
+
+func (c *txOptionsCaptureConn) BeginTx(_ context.Context, options driver.TxOptions) (driver.Tx, error) {
+	c.connector.options = options
+	return nil, c.connector.beginErr
+}
 
 func TestDashboardAggregationRepositorySyncGroupUsageRollupsNoopsAtCurrentDate(t *testing.T) {
 	setGroupUsageRollupTestTimezone(t)
@@ -27,6 +67,20 @@ func TestDashboardAggregationRepositorySyncGroupUsageRollupsNoopsAtCurrentDate(t
 
 	require.NoError(t, repo.SyncGroupUsageRollups(context.Background(), todayStart))
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDashboardAggregationRepositorySyncGroupUsageRollupsUsesReadCommitted(t *testing.T) {
+	beginErr := errors.New("stop after capturing transaction options")
+	connector := &txOptionsCaptureConnector{beginErr: beginErr}
+	db := sql.OpenDB(connector)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	repo := newDashboardAggregationRepositoryWithSQL(db)
+
+	err := repo.SyncGroupUsageRollups(context.Background(), time.Now())
+
+	require.ErrorIs(t, err, beginErr)
+	require.Equal(t, driver.IsolationLevel(sql.LevelReadCommitted), connector.options.Isolation)
+	require.False(t, connector.options.ReadOnly)
 }
 
 func TestDashboardAggregationRepositorySyncGroupUsageRollupsRebuildsWhenTimezoneChanges(t *testing.T) {
@@ -203,8 +257,6 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedInvalidates
 	todayStart := service.GroupUsageTodayStart(fixedNow)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(cutoff, usageLogsCleanupBatchSize).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(earliestDeletedAt))
@@ -240,8 +292,6 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsNonPartitionedFailureRoll
 	deletedAt := time.Date(2026, 5, 3, 2, 0, 0, 0, time.UTC)
 
 	mock.ExpectBegin()
-	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
 		WithArgs(cutoff, usageLogsCleanupBatchSize).
 		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(deletedAt))
