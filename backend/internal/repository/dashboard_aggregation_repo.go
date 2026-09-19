@@ -17,6 +17,14 @@ type dashboardAggregationRepository struct {
 const usageLogsCleanupBatchSize = 10000
 const usageBillingDedupCleanupBatchSize = 10000
 
+func dashboardAggregationTxOptions() *sql.TxOptions {
+	// MySQL REPEATABLE READ turns INSERT ... SELECT into locking reads. The
+	// aggregation queries scan a large usage_logs range, so those shared gap
+	// locks can deadlock with live usage-log inserts. READ COMMITTED keeps the
+	// source-table reads non-locking while the destination writes stay atomic.
+	return &sql.TxOptions{Isolation: sql.LevelReadCommitted}
+}
+
 // NewDashboardAggregationRepository 创建仪表盘预聚合仓储。
 func NewDashboardAggregationRepository(sqlDB *sql.DB) service.DashboardAggregationRepository {
 	if sqlDB == nil {
@@ -60,7 +68,7 @@ func (r *dashboardAggregationRepository) AggregateRange(ctx context.Context, sta
 	}
 
 	if db, ok := r.sql.(*sql.DB); ok {
-		tx, err := db.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
 		if err != nil {
 			return err
 		}
@@ -116,7 +124,7 @@ func (r *dashboardAggregationRepository) RecomputeRange(ctx context.Context, sta
 
 	// 尽量使用事务保证范围内的一致性（允许在非 *sql.DB 的情况下退化为非事务执行）。
 	if db, ok := r.sql.(*sql.DB); ok {
-		tx, err := db.BeginTx(ctx, nil)
+		tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
 		if err != nil {
 			return err
 		}

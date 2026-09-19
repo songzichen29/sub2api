@@ -131,6 +131,13 @@ func TestDashboardAggregationRepositoryRecomputeRangeInvalidatesGroupRollupsBefo
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestDashboardAggregationTxOptionsUseReadCommitted(t *testing.T) {
+	opts := dashboardAggregationTxOptions()
+	require.NotNil(t, opts)
+	require.Equal(t, sql.LevelReadCommitted, opts.Isolation)
+	require.False(t, opts.ReadOnly)
+}
+
 func TestDashboardAggregationRepositoryRecomputeRangeRebuildsGroupRollupsBeforeCommit(t *testing.T) {
 	setGroupUsageRollupTestTimezone(t)
 	db, mock := newSQLMock(t)

@@ -14,6 +14,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/go-sql-driver/mysql"
 )
 
 // usageLogInsertArgTypes must stay in the same order as:
@@ -99,6 +100,9 @@ const (
 	usageLogBestEffortBatchWindow   = 20 * time.Millisecond
 	usageLogBestEffortBatchQueueCap = 32768
 	usageLogBestEffortRecentTTL     = 30 * time.Second
+
+	usageLogMySQLWriteMaxAttempts  = 3
+	usageLogMySQLWriteRetryBackoff = 10 * time.Millisecond
 )
 
 type usageLogCreateRequest struct {
@@ -302,7 +306,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 	`
 	if r.isMySQLDialect() {
 		mysqlQuery := buildMySQLUsageLogInsertQuery(query)
-		result, err := sqlq.ExecContext(ctx, mysqlQuery, prepared.args...)
+		result, err := execMySQLUsageLogWriteWithRetry(ctx, sqlq, mysqlQuery, prepared.args...)
 		if err != nil {
 			return false, err
 		}
@@ -1335,9 +1339,48 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 	`
 	if len(mysqlOpt) > 0 && mysqlOpt[0] {
 		query = buildMySQLUsageLogInsertQuery(query)
+		_, err := execMySQLUsageLogWriteWithRetry(ctx, sqlq, query, prepared.args...)
+		return err
 	}
 	_, err := sqlq.ExecContext(ctx, query, prepared.args...)
 	return err
+}
+
+func execMySQLUsageLogWriteWithRetry(ctx context.Context, sqlq sqlExecutor, query string, args ...any) (sql.Result, error) {
+	var result sql.Result
+	var err error
+	for attempt := 0; attempt < usageLogMySQLWriteMaxAttempts; attempt++ {
+		result, err = sqlq.ExecContext(ctx, query, args...)
+		if err == nil || !isRetryableMySQLUsageLogWriteError(err) {
+			return result, err
+		}
+		if attempt == usageLogMySQLWriteMaxAttempts-1 {
+			break
+		}
+
+		delay := usageLogMySQLWriteRetryBackoff << attempt
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return result, err
+}
+
+func isRetryableMySQLUsageLogWriteError(err error) bool {
+	var mysqlErr *mysql.MySQLError
+	if !errors.As(err, &mysqlErr) {
+		return false
+	}
+	return mysqlErr.Number == 1205 || mysqlErr.Number == 1213
 }
 
 func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {

@@ -5,11 +5,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,6 +34,23 @@ type usageLogStaticResult struct{}
 
 func (usageLogStaticResult) LastInsertId() (int64, error) { return 1, nil }
 func (usageLogStaticResult) RowsAffected() (int64, error) { return 1, nil }
+
+type usageLogRetryRecorder struct {
+	errors   []error
+	attempts int
+}
+
+func (r *usageLogRetryRecorder) ExecContext(_ context.Context, _ string, _ ...any) (sql.Result, error) {
+	r.attempts++
+	if r.attempts <= len(r.errors) && r.errors[r.attempts-1] != nil {
+		return nil, r.errors[r.attempts-1]
+	}
+	return usageLogStaticResult{}, nil
+}
+
+func (r *usageLogRetryRecorder) QueryContext(context.Context, string, ...any) (*sql.Rows, error) {
+	panic("unexpected QueryContext call")
+}
 
 func usageLogInsertColumns(t *testing.T, query string) []string {
 	t.Helper()
@@ -91,6 +110,53 @@ func TestBuildMySQLUsageLogInsertQuery_UsesInsertIgnore(t *testing.T) {
 	require.Equal(t, 2, strings.Count(query, "?"))
 	require.NotContains(t, strings.ToUpper(query), "ON CONFLICT")
 	require.NotContains(t, strings.ToUpper(query), "RETURNING")
+}
+
+func TestExecUsageLogInsertNoResult_RetriesTransientMySQLWriteErrors(t *testing.T) {
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID:    1,
+		APIKeyID:  2,
+		AccountID: 3,
+		RequestID: "req-mysql-retry",
+		Model:     "gpt-5",
+	})
+
+	t.Run("deadlock then success", func(t *testing.T) {
+		recorder := &usageLogRetryRecorder{errors: []error{
+			&mysql.MySQLError{Number: 1213, Message: "deadlock"},
+			&mysql.MySQLError{Number: 1213, Message: "deadlock"},
+		}}
+
+		require.NoError(t, execUsageLogInsertNoResult(context.Background(), recorder, prepared, true))
+		require.Equal(t, usageLogMySQLWriteMaxAttempts, recorder.attempts)
+	})
+
+	t.Run("lock wait timeout then success", func(t *testing.T) {
+		recorder := &usageLogRetryRecorder{errors: []error{
+			&mysql.MySQLError{Number: 1205, Message: "lock wait timeout"},
+		}}
+
+		require.NoError(t, execUsageLogInsertNoResult(context.Background(), recorder, prepared, true))
+		require.Equal(t, 2, recorder.attempts)
+	})
+
+	t.Run("non transient error is not retried", func(t *testing.T) {
+		wantErr := errors.New("invalid column")
+		recorder := &usageLogRetryRecorder{errors: []error{wantErr}}
+
+		err := execUsageLogInsertNoResult(context.Background(), recorder, prepared, true)
+		require.ErrorIs(t, err, wantErr)
+		require.Equal(t, 1, recorder.attempts)
+	})
+
+	t.Run("deadlock stops at retry limit", func(t *testing.T) {
+		wantErr := &mysql.MySQLError{Number: 1213, Message: "deadlock"}
+		recorder := &usageLogRetryRecorder{errors: []error{wantErr, wantErr, wantErr}}
+
+		err := execUsageLogInsertNoResult(context.Background(), recorder, prepared, true)
+		require.ErrorIs(t, err, wantErr)
+		require.Equal(t, usageLogMySQLWriteMaxAttempts, recorder.attempts)
+	})
 }
 
 func TestUsageLogSQLShapeMatchesPreparedArguments(t *testing.T) {
