@@ -326,8 +326,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: false,
       title: 'My Invoices',
-      titleKey: 'nav.myInvoices',
-      requiresPayment: true
+      titleKey: 'nav.myInvoices'
     }
   },
   {
@@ -726,8 +725,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: true,
       title: 'Invoice Management',
-      titleKey: 'nav.invoiceManagement',
-      requiresPayment: true
+      titleKey: 'nav.invoiceManagement'
     }
   },
 

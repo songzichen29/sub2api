@@ -76,8 +76,17 @@ describe('AppSidebar payment coupons navigation', () => {
 })
 
 describe('AppSidebar invoice navigation', () => {
-  it('keeps user and admin invoice routes visible when payment is enabled', () => {
-    expect(componentSource).toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment }")
+  it('keeps user and admin invoice routes visible independently of payment and simple mode', () => {
+    expect(componentSource).toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon }")
     expect(componentSource).toContain("{ path: '/admin/orders/invoices', label: t('nav.invoiceManagement'), icon: OrderListIcon }")
+    expect(componentSource).not.toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, hideInSimpleMode: true")
+    expect(componentSource).not.toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, featureFlag: flagPayment")
+
+    const orderGroupStart = componentSource.indexOf("path: '/admin/orders',\n      label: t('nav.orderManagement')")
+    const orderGroupEnd = componentSource.indexOf("\n    },\n    { path: '/admin/orders/invoices'", orderGroupStart)
+    expect(orderGroupStart).toBeGreaterThan(-1)
+    expect(orderGroupEnd).toBeGreaterThan(orderGroupStart)
+    expect(componentSource.slice(orderGroupStart, orderGroupEnd)).toContain("featureFlag: flagAdminPayment")
+    expect(componentSource.slice(orderGroupStart, orderGroupEnd)).not.toContain("path: '/admin/orders/invoices'")
   })
 })
