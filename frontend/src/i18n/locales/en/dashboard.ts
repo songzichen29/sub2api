@@ -472,9 +472,6 @@ export default {
       }
     },
     modelQueryPlaceholder: 'Enter full model name',
-    upstreamFirstEvent: 'Upstream first event',
-    upstreamToFirstToken: 'First event→first token'
-  ,
     requestedReasoningEffort: 'Requested reasoning effort',
   },
   monitorCommon: {

@@ -266,10 +266,6 @@
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
               <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
-              <span v-if="row.upstream_first_event_ms != null" class="text-cyan-600 dark:text-cyan-400">{{ t('usage.upstreamFirstEvent') }}</span>
-              <span v-if="row.upstream_first_event_ms != null" class="font-medium tabular-nums text-cyan-600 dark:text-cyan-400">{{ formatDuration(row.upstream_first_event_ms) }}</span>
-              <span v-if="firstTokenGapMs(row) != null" class="text-amber-600 dark:text-amber-400">{{ t('usage.upstreamToFirstToken') }}</span>
-              <span v-if="firstTokenGapMs(row) != null" class="font-medium tabular-nums text-amber-600 dark:text-amber-400">{{ formatDuration(firstTokenGapMs(row)) }}</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
               <span v-if="outputTokensPerSecond(row) != null" class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
@@ -815,11 +811,6 @@ function outputTokensPerSecond(row: Pick<AdminUsageLog, 'output_tokens' | 'image
 function formatOutputTokensPerSecond(row: Pick<AdminUsageLog, 'output_tokens' | 'image_output_tokens' | 'duration_ms' | 'first_token_ms'>): string {
   const tps = outputTokensPerSecond(row)
   return tps == null ? '-' : tps.toFixed(2)
-}
-
-const firstTokenGapMs = (row: Pick<AdminUsageLog, 'first_token_ms' | 'upstream_first_event_ms'>): number | null => {
-  if (row.first_token_ms == null || row.upstream_first_event_ms == null) return null
-  return Math.max(0, row.first_token_ms - row.upstream_first_event_ms)
 }
 
 // Cost tooltip functions

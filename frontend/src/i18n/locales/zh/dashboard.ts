@@ -472,9 +472,6 @@ export default {
       }
     },
     modelQueryPlaceholder: '输入完整模型名',
-    upstreamFirstEvent: '上游首包',
-    upstreamToFirstToken: '首包→首字'
-  ,
     requestedReasoningEffort: '请求推理强度',
   },
   monitorCommon: {
