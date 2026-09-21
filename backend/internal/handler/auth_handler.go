@@ -120,6 +120,7 @@ func respondWithTokenPair(c *gin.Context, authService *service.AuthService, user
 		response.ErrorFrom(c, err)
 		return
 	}
+	authService.RememberRecipientLocale(c.Request.Context(), user.ID, user.Email, c.GetHeader("Accept-Language"))
 
 	tokenPair, err := authService.GenerateTokenPair(c.Request.Context(), user, "")
 	if err != nil {
@@ -433,6 +434,7 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	h.authService.RememberRecipientLocale(c.Request.Context(), user.ID, user.Email, c.GetHeader("Accept-Language"))
 
 	identities, err := h.userService.GetProfileIdentitySummaries(c.Request.Context(), subject.UserID, user)
 	if err != nil {

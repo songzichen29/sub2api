@@ -56,3 +56,16 @@ func TestSendTestEmailRequestPreservesUseTLSOmissionSemantics(t *testing.T) {
 	require.True(t, resolveSMTPUseTLS(omitted.SMTPUseTLS, saved))
 	require.False(t, resolveSMTPUseTLS(explicitFalse.SMTPUseTLS, saved))
 }
+
+func TestSMTPTestEmailContentFollowsRequestLanguage(t *testing.T) {
+	zhSubject, zhBody := smtpTestEmailContent(`站点<script>`, "zh-CN,zh;q=0.9,en;q=0.8")
+	require.Contains(t, zhSubject, "测试邮件")
+	require.Contains(t, zhBody, "邮件配置成功")
+	require.Contains(t, zhBody, `lang="zh-CN"`)
+	require.NotContains(t, zhBody, `<h1>站点<script></h1>`)
+
+	enSubject, enBody := smtpTestEmailContent("Sub2API", "en-US,en;q=0.9")
+	require.Contains(t, enSubject, "Test Email")
+	require.Contains(t, enBody, "Email Configuration Successful")
+	require.Contains(t, enBody, `lang="en"`)
+}

@@ -95,6 +95,67 @@ type SendTestEmailRequest struct {
 	SMTPUseTLS   *bool  `json:"smtp_use_tls"`
 }
 
+func smtpTestEmailContent(siteName, acceptLanguage string) (string, string) {
+	isChinese := false
+	for _, part := range strings.Split(strings.ToLower(acceptLanguage), ",") {
+		tag := strings.TrimSpace(strings.SplitN(part, ";", 2)[0])
+		if strings.HasPrefix(tag, "zh") || tag == "cn" {
+			isChinese = true
+			break
+		}
+		if strings.HasPrefix(tag, "en") {
+			break
+		}
+	}
+
+	lang := "en"
+	subjectSuffix := "Test Email"
+	heading := "Email Configuration Successful!"
+	description := "This is a test email to verify your SMTP settings are working correctly."
+	footer := "This is an automated test message."
+	if isChinese {
+		lang = "zh-CN"
+		subjectSuffix = "测试邮件"
+		heading = "邮件配置成功！"
+		description = "这是一封用于验证 SMTP 配置是否正常工作的测试邮件。"
+		footer = "这是一封系统自动发送的测试邮件。"
+	}
+
+	subject := "[" + siteName + "] " + subjectSuffix
+	body := `
+<!DOCTYPE html>
+<html lang="` + lang + `">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
+        .content { padding: 40px 30px; text-align: center; }
+        .success { color: #10b981; font-size: 48px; margin-bottom: 20px; }
+        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>` + html.EscapeString(siteName) + `</h1>
+        </div>
+        <div class="content">
+            <div class="success">✓</div>
+            <h2>` + heading + `</h2>
+            <p>` + description + `</p>
+        </div>
+        <div class="footer">
+            <p>` + footer + `</p>
+        </div>
+    </div>
+</body>
+</html>
+`
+	return subject, body
+}
+
 // SendTestEmail 发送测试邮件
 // POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
@@ -153,38 +214,7 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	}
 
 	siteName := h.settingService.GetSiteName(c.Request.Context())
-	subject := "[" + siteName + "] Test Email"
-	body := `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5; margin: 0; padding: 20px; }
-        .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }
-        .content { padding: 40px 30px; text-align: center; }
-        .success { color: #10b981; font-size: 48px; margin-bottom: 20px; }
-        .footer { background-color: #f8f9fa; padding: 20px; text-align: center; color: #999; font-size: 12px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>` + html.EscapeString(siteName) + `</h1>
-        </div>
-        <div class="content">
-            <div class="success">✓</div>
-            <h2>Email Configuration Successful!</h2>
-            <p>This is a test email to verify your SMTP settings are working correctly.</p>
-        </div>
-        <div class="footer">
-            <p>This is an automated test message.</p>
-        </div>
-    </div>
-</body>
-</html>
-`
+	subject, body := smtpTestEmailContent(siteName, c.GetHeader("Accept-Language"))
 
 	if err := h.emailService.SendEmailWithConfig(config, req.Email, subject, body); err != nil {
 		response.BadRequest(c, "Failed to send test email: "+err.Error())

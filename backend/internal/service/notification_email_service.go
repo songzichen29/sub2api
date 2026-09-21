@@ -381,6 +381,9 @@ func (s *NotificationEmailService) Send(ctx context.Context, input NotificationE
 	if recipient == "" {
 		return nil
 	}
+	if strings.TrimSpace(input.Locale) != "" {
+		s.RememberRecipientLocale(ctx, input.UserID, recipient, input.Locale)
+	}
 	if info.Optional {
 		unsubscribed, err := s.IsUnsubscribed(ctx, recipient, normalizedEvent)
 		if err != nil {
@@ -437,11 +440,18 @@ func (s *NotificationEmailService) RememberRecipientLocale(ctx context.Context, 
 		return
 	}
 	if userID > 0 {
-		_ = s.settingRepo.Set(ctx, notificationEmailLocaleUserKeyPrefix+strconv.FormatInt(userID, 10), locale)
+		s.rememberRecipientLocaleKey(ctx, notificationEmailLocaleUserKeyPrefix+strconv.FormatInt(userID, 10), locale)
 	}
 	if emailHash := notificationEmailHash(email); emailHash != "" {
-		_ = s.settingRepo.Set(ctx, notificationEmailLocaleEmailKeyPrefix+emailHash, locale)
+		s.rememberRecipientLocaleKey(ctx, notificationEmailLocaleEmailKeyPrefix+emailHash, locale)
 	}
+}
+
+func (s *NotificationEmailService) rememberRecipientLocaleKey(ctx context.Context, key, locale string) {
+	if current, err := s.settingRepo.GetValue(ctx, key); err == nil && normalizeNotificationLocale(current) == locale {
+		return
+	}
+	_ = s.settingRepo.Set(ctx, key, locale)
 }
 
 func (s *NotificationEmailService) ResolveRecipientLocale(ctx context.Context, userID int64, email string) string {

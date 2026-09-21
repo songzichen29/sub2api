@@ -319,6 +319,44 @@ func (s *EmailService) GenerateVerifyCode() (string, error) {
 	return string(code), nil
 }
 
+func (s *EmailService) sendAuthNotificationEmail(ctx context.Context, event, email, siteName, locale string, variables map[string]string) error {
+	input := NotificationEmailSendInput{
+		Event:          event,
+		Locale:         locale,
+		RecipientEmail: email,
+		RecipientName:  emailRecipientName(email),
+		Variables:      variables,
+	}
+	if s.notificationEmailService != nil {
+		if err := s.notificationEmailService.Send(ctx, input); err == nil {
+			return nil
+		} else {
+			if !shouldFallbackNotificationEmail(err) {
+				return err
+			}
+			slog.Warn("auth email template failed; falling back to official template", "event", event, "recipient_hash", notificationEmailHash(email), "err", err.Error())
+		}
+	}
+
+	normalizedLocale := normalizeNotificationLocale(locale)
+	official, ok := notificationEmailOfficialTemplates[event][normalizedLocale]
+	if !ok {
+		return fmt.Errorf("official email template not found for %s/%s", event, normalizedLocale)
+	}
+	renderVariables := make(map[string]string, len(variables)+3)
+	for key, value := range variables {
+		renderVariables[key] = value
+	}
+	renderVariables["site_name"] = siteName
+	renderVariables["recipient_name"] = emailRecipientName(email)
+	renderVariables["recipient_email"] = email
+	rendered, err := renderNotificationEmail(event, official.Subject, official.HTML, renderVariables, nil)
+	if err != nil {
+		return fmt.Errorf("render official email template: %w", err)
+	}
+	return s.SendEmail(ctx, email, rendered.Subject, rendered.HTML)
+}
+
 // SendVerifyCode 发送验证码邮件
 func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName string, locale ...string) error {
 	// 检查是否在冷却期内
@@ -346,12 +384,10 @@ func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName strin
 		return fmt.Errorf("save verify code: %w", err)
 	}
 
-	// 构建邮件内容
-	subject := fmt.Sprintf("[%s] 邮箱验证码", siteName)
-	body := s.buildVerifyCodeEmailBody(code, siteName)
-
-	// 发送邮件
-	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+	if err := s.sendAuthNotificationEmail(ctx, NotificationEmailEventAuthVerifyCode, email, siteName, firstEmailLocale(locale), map[string]string{
+		"verification_code":  code,
+		"expires_in_minutes": strconv.Itoa(int(verifyCodeTTL / time.Minute)),
+	}); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 
@@ -496,12 +532,10 @@ func (s *EmailService) SendPasswordResetEmail(ctx context.Context, email, siteNa
 	// Build full reset URL with URL-encoded token and email
 	fullResetURL := fmt.Sprintf("%s?email=%s&token=%s", resetURL, url.QueryEscape(email), url.QueryEscape(token))
 
-	// Build email content
-	subject := fmt.Sprintf("[%s] 密码重置请求", siteName)
-	body := s.buildPasswordResetEmailBody(fullResetURL, siteName)
-
-	// Send email
-	if err := s.SendEmail(ctx, email, subject, body); err != nil {
+	if err := s.sendAuthNotificationEmail(ctx, NotificationEmailEventAuthPasswordReset, email, siteName, firstEmailLocale(locale), map[string]string{
+		"reset_url":          fullResetURL,
+		"expires_in_minutes": strconv.Itoa(int(passwordResetTokenTTL / time.Minute)),
+	}); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 

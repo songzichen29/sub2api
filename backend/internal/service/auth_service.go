@@ -154,6 +154,13 @@ func (s *AuthService) SetAliyunCaptchaService(aliyunCaptchaService *AliyunCaptch
 	s.aliyunCaptchaService = aliyunCaptchaService
 }
 
+func (s *AuthService) RememberRecipientLocale(ctx context.Context, userID int64, email, locale string) {
+	if s == nil || s.emailService == nil || s.emailService.notificationEmailService == nil {
+		return
+	}
+	s.emailService.notificationEmailService.RememberRecipientLocale(ctx, userID, email, locale)
+}
+
 // Register 用户注册，返回token和用户
 func (s *AuthService) Register(ctx context.Context, email, password string) (string, *User, error) {
 	return s.RegisterWithVerification(ctx, email, password, "", "", "", "")

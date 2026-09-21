@@ -367,6 +367,77 @@ func TestNotificationEmailLocaleMemoryNormalizesAcceptLanguage(t *testing.T) {
 	require.Equal(t, "zh", svc.ResolveRecipientLocale(ctx, 0, "user@example.com"))
 }
 
+func TestNotificationEmailSendRemembersExplicitLocale(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	emailSvc := NewEmailService(repo, nil)
+	var subject string
+	emailSvc.sendFunc = func(_ context.Context, _, gotSubject, _ string) error {
+		subject = gotSubject
+		return nil
+	}
+	svc := NewNotificationEmailService(repo, emailSvc)
+
+	err := svc.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventAuthVerifyCode,
+		Locale:         "zh-CN,zh;q=0.9",
+		RecipientEmail: "User@Example.com",
+		RecipientName:  "User",
+		UserID:         42,
+		Variables: map[string]string{
+			"verification_code":  "123456",
+			"expires_in_minutes": "15",
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, subject, "邮箱验证码")
+	require.Equal(t, "zh", svc.ResolveRecipientLocale(ctx, 42, "user@example.com"))
+	require.Equal(t, "zh", svc.ResolveRecipientLocale(ctx, 0, "user@example.com"))
+
+	subject = ""
+	err = svc.Send(ctx, NotificationEmailSendInput{
+		Event:          NotificationEmailEventBalanceRechargeSuccess,
+		RecipientEmail: "user@example.com",
+		RecipientName:  "User",
+		UserID:         42,
+		Variables: map[string]string{
+			"recharge_amount": "10.00",
+			"current_balance": "20.00",
+			"order_id":        "order-1",
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, subject, "余额充值成功")
+}
+
+func TestEmailServiceAuthTemplatesUseRequestedLocale(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	emailSvc := NewEmailService(repo, nil)
+	NewNotificationEmailService(repo, emailSvc)
+
+	var subject, body string
+	emailSvc.sendFunc = func(_ context.Context, _, gotSubject, gotBody string) error {
+		subject = gotSubject
+		body = gotBody
+		return nil
+	}
+
+	require.NoError(t, emailSvc.sendAuthNotificationEmail(ctx, NotificationEmailEventAuthVerifyCode, "user@example.com", "Sub2API", "zh", map[string]string{
+		"verification_code":  "123456",
+		"expires_in_minutes": "15",
+	}))
+	require.Contains(t, subject, "邮箱验证码")
+	require.Contains(t, body, "您的验证码是")
+
+	require.NoError(t, emailSvc.sendAuthNotificationEmail(ctx, NotificationEmailEventAuthPasswordReset, "user@example.com", "Sub2API", "en-US", map[string]string{
+		"reset_url":          "https://example.com/reset",
+		"expires_in_minutes": "30",
+	}))
+	require.Contains(t, subject, "Password reset request")
+	require.Contains(t, body, "We received a request to reset your password")
+}
+
 func TestNotificationEmailDeliveryKeyUsesShortStableHash(t *testing.T) {
 	key := notificationEmailDeliveryKey(
 		NotificationEmailEventSubscriptionExpiryReminder,
