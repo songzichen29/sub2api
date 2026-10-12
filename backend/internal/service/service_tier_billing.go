@@ -2,6 +2,7 @@ package service
 
 import (
 	"log/slog"
+	"net/url"
 	"strings"
 )
 
@@ -64,7 +65,7 @@ func serviceTierCostRank(tier string) (rank int, known bool) {
 // reports default for effective Fast turns, so OAuth-like credentials retain
 // the final outbound tier while still exposing the observed value.
 func ResolveOpenAIServiceTierBilling(account *Account, requested, observed string) ServiceTierBillingResolution {
-	if account != nil && account.IsOpenAIOAuthLike() && codexOAuthResponseTierIsNonAuthoritative(observed) {
+	if openAIResponseTierIsNonAuthoritative(account, observed) {
 		return ServiceTierBillingResolution{
 			Requested: normalizeBillingServiceTier(requested),
 			Observed:  normalizeBillingServiceTier(observed),
@@ -72,6 +73,24 @@ func ResolveOpenAIServiceTierBilling(account *Account, requested, observed strin
 		}
 	}
 	return ResolveBillingServiceTier(requested, observed)
+}
+
+func openAIResponseTierIsNonAuthoritative(account *Account, observed string) bool {
+	if account == nil || normalizeBillingServiceTier(observed) != "default" {
+		return false
+	}
+	if account.IsOpenAIOAuthLike() {
+		return true
+	}
+	if !account.IsOpenAIApiKey() {
+		return false
+	}
+
+	// OpenAI-compatible relays commonly return service_tier=default as a
+	// compatibility placeholder even when their own billing served the request
+	// as Fast. Only api.openai.com has an authoritative OpenAI tier contract.
+	baseURL, err := url.Parse(strings.TrimSpace(account.GetOpenAIBaseURL()))
+	return err != nil || !strings.EqualFold(baseURL.Hostname(), "api.openai.com")
 }
 
 func codexOAuthResponseTierIsNonAuthoritative(observed string) bool {

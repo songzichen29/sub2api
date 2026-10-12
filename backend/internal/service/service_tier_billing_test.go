@@ -41,13 +41,49 @@ func TestApplyServiceTierBillingResolutionOnlyRewritesDowngrades(t *testing.T) {
 		require.False(t, codexOAuthResponseTierIsNonAuthoritative("flex"))
 	})
 
-	t.Run("openai downgrade rewrites tier", func(t *testing.T) {
+	t.Run("official openai downgrade rewrites tier", func(t *testing.T) {
 		requested := "priority"
 		result := &OpenAIForwardResult{ServiceTier: &requested, UpstreamResponseServiceTier: "default"}
-		resolution := ApplyOpenAIServiceTierBillingResolution(&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, result)
+		resolution := ApplyOpenAIServiceTierBillingResolution(&Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url": "https://api.openai.com/v1",
+			},
+		}, result)
 		require.True(t, resolution.Downgraded)
 		require.NotNil(t, result.ServiceTier)
 		require.Equal(t, "default", *result.ServiceTier)
+	})
+
+	t.Run("custom openai relay default echo keeps outbound priority", func(t *testing.T) {
+		requested := "priority"
+		result := &OpenAIForwardResult{ServiceTier: &requested, UpstreamResponseServiceTier: "default"}
+		resolution := ApplyOpenAIServiceTierBillingResolution(&Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url": "https://relay.example.com/v1",
+			},
+		}, result)
+		require.False(t, resolution.Downgraded)
+		require.Equal(t, "priority", resolution.Billing)
+		require.Same(t, &requested, result.ServiceTier)
+	})
+
+	t.Run("custom openai relay explicit flex downgrade remains authoritative", func(t *testing.T) {
+		requested := "priority"
+		result := &OpenAIForwardResult{ServiceTier: &requested, UpstreamResponseServiceTier: "flex"}
+		resolution := ApplyOpenAIServiceTierBillingResolution(&Account{
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url": "https://relay.example.com/v1",
+			},
+		}, result)
+		require.True(t, resolution.Downgraded)
+		require.Equal(t, "flex", resolution.Billing)
+		require.Equal(t, "flex", *result.ServiceTier)
 	})
 
 	t.Run("openai honoured tier keeps pointer", func(t *testing.T) {
