@@ -235,6 +235,7 @@ type AdminBoundAuthIdentityChannel struct {
 type CreateGroupInput struct {
 	Name                      string
 	Description               string
+	I18n                      GroupI18n // 名称与描述的界面语言译文
 	Platform                  string
 	RateMultiplier            float64
 	IsExclusive               bool
@@ -315,6 +316,7 @@ type CreateGroupInput struct {
 type UpdateGroupInput struct {
 	Name                      string
 	Description               *string
+	I18n                      *GroupI18n // nil 表示不修改；非 nil 整体替换
 	Platform                  string
 	RateMultiplier            *float64 // 使用指针以支持设置为0
 	IsExclusive               *bool
@@ -541,8 +543,8 @@ type UpdateProxyInput struct {
 	Protocol       string
 	Host           string
 	Port           int
-	Username       string
-	Password       string
+	Username       *string
+	Password       *string
 	Status         string
 	ExpiresAt      *time.Time
 	ClearExpiresAt bool
