@@ -690,11 +690,6 @@ SELECT po.id,
        po.order_type,
        po.payment_type,
        po.status,
-       po.amount,
-       po.pay_amount,
-       ual.amount,
-       COALESCE(po.payment_type, ''),
-       COALESCE(po.status, ''),
        ual.created_at
 `+baseJoin+where+`
 `+orderBy+`

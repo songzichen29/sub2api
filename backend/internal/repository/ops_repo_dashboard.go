@@ -70,6 +70,50 @@ func (r *opsRepository) GetDashboardOverview(ctx context.Context, filter *servic
 
 func (r *opsRepository) queryOutputTPS(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsOutputTPS, error) {
 	join, where, args, _ := buildUsageWhere(filter, filter.StartTime.UTC(), filter.EndTime.UTC(), 1)
+	if opsIsMySQLDB(r.db) {
+		// MySQL has no percentile_cont aggregate. Fetch a bounded set of
+		// per-request rates and calculate the PostgreSQL-equivalent linear
+		// interpolation in Go, as queryUsageLatency does for MySQL.
+		query := `
+SELECT ul.output_tokens * 1000.0 / NULLIF(ul.duration_ms, 0) AS output_tps
+FROM usage_logs ul
+` + join + `
+` + where + `
+ AND ul.output_tokens > 0 AND ul.duration_ms > 0
+ AND ul.image_count = 0 AND ul.image_output_tokens = 0
+ AND COALESCE(ul.billing_mode, '') <> 'image'
+` + fmt.Sprintf("AND ul.request_type IN (%d, %d, %d, %d)",
+			service.RequestTypeSync, service.RequestTypeStream, service.RequestTypeWSV2, service.RequestTypeCyberBlocked) + `
+ORDER BY ul.created_at ASC
+LIMIT 10000`
+
+		rows, err := r.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			return nil, err
+		}
+		defer func() { _ = rows.Close() }()
+
+		values := make([]float64, 0, 1024)
+		var sum float64
+		for rows.Next() {
+			var value sql.NullFloat64
+			if err := rows.Scan(&value); err != nil {
+				return nil, err
+			}
+			if value.Valid {
+				values = append(values, value.Float64)
+				sum += value.Float64
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return buildOpsOutputTPSFromValues(values, sum), nil
+	}
+
 	query := `
 SELECT
  percentile_cont(0.05) WITHIN GROUP (ORDER BY output_tps),
@@ -98,6 +142,33 @@ FROM (
 		return nil, err
 	}
 	return &stats, nil
+}
+
+func buildOpsOutputTPSFromValues(values []float64, sum float64) *service.OpsOutputTPS {
+	if len(values) == 0 {
+		return &service.OpsOutputTPS{}
+	}
+	sort.Float64s(values)
+	percentile := func(p float64) *float64 {
+		idx := p * float64(len(values)-1)
+		lower := int(math.Floor(idx))
+		upper := int(math.Ceil(idx))
+		if lower == upper || upper >= len(values) {
+			value := values[lower]
+			return &value
+		}
+		frac := idx - float64(lower)
+		value := values[lower]*(1-frac) + values[upper]*frac
+		return &value
+	}
+	avg := sum / float64(len(values))
+	return &service.OpsOutputTPS{
+		P5:          percentile(0.05),
+		P10:         percentile(0.10),
+		P50:         percentile(0.50),
+		Avg:         &avg,
+		SampleCount: int64(len(values)),
+	}
 }
 
 func (r *opsRepository) getDashboardOverviewRaw(ctx context.Context, filter *service.OpsDashboardFilter) (*service.OpsDashboardOverview, error) {
