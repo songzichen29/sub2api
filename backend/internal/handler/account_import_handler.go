@@ -136,7 +136,7 @@ func (h *AccountImportHandler) GetOptions(c *gin.Context) {
 
 	outGroups := make([]dto.Group, 0, len(groups))
 	for i := range groups {
-		if group := dto.GroupFromServiceShallow(&groups[i]); group != nil {
+		if group := dto.GroupFromServiceShallow(&groups[i]).Localized(c.GetHeader("Accept-Language")); group != nil {
 			outGroups = append(outGroups, *group)
 		}
 	}

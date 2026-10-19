@@ -14,6 +14,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
@@ -99,6 +100,7 @@ type CreateOrderResponse struct {
 	DiscountAmount                float64                         `json:"discount_amount"`
 	CouponCode                    string                          `json:"coupon_code,omitempty"`
 	CouponDiscountAmount          float64                         `json:"coupon_discount_amount"`
+	BonusAmount                   float64                         `json:"bonus_amount"`
 	Status                        string                          `json:"status"`
 	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType                   string                          `json:"payment_type"`
@@ -169,6 +171,8 @@ type RefundPlan struct {
 	BalanceToDeduct float64
 	SubDaysToDeduct int
 	SubscriptionID  int64
+	// deductionHeld 表示扣减已在进入 REFUND_PENDING 前执行并保留，终态收敛时不再重复扣减。
+	deductionHeld bool
 }
 
 type RefundResult struct {
@@ -266,6 +270,27 @@ func (s *PaymentService) SetDiscountService(discountService *DiscountService) {
 
 func (s *PaymentService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
 	s.notificationEmailService = notificationEmailService
+}
+
+// ConfirmNotificationUpstream lets providers with an explicit confirmation
+// capability verify successful webhooks before fulfillment.
+func (s *PaymentService) ConfirmNotificationUpstream(ctx context.Context, verified payment.Provider, n *payment.PaymentNotification) error {
+	if n == nil || n.Status != payment.NotificationStatusSuccess {
+		return nil
+	}
+	confirmer, ok := verified.(payment.NotificationConfirmer)
+	if !ok {
+		return nil
+	}
+	if err := confirmer.ConfirmNotification(ctx, n); err != nil {
+		if s != nil && s.entClient != nil && strings.TrimSpace(n.OrderID) != "" {
+			if order, lookupErr := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx); lookupErr == nil {
+				s.writeAuditLog(ctx, order.ID, "PAYMENT_UPSTREAM_UNCONFIRMED", "system", map[string]any{"error": err.Error(), "provider": verified.ProviderKey()})
+			}
+		}
+		return err
+	}
+	return nil
 }
 
 // --- Provider Registry ---

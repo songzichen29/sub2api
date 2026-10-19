@@ -39,6 +39,8 @@ type PaymentOrder struct {
 	CouponCode string `json:"coupon_code,omitempty"`
 	// 优惠券抵扣金额
 	CouponDiscountAmount float64 `json:"coupon_discount_amount,omitempty"`
+	// BonusAmount holds the value of the "bonus_amount" field.
+	BonusAmount float64 `json:"bonus_amount,omitempty"`
 	// RechargeCode holds the value of the "recharge_code" field.
 	RechargeCode string `json:"recharge_code,omitempty"`
 	// OutTradeNo holds the value of the "out_trade_no" field.
@@ -172,7 +174,7 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldDiscountAmount, paymentorder.FieldCouponDiscountAmount, paymentorder.FieldSubscriptionQuotaUsd, paymentorder.FieldRefundAmount:
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldDiscountAmount, paymentorder.FieldCouponDiscountAmount, paymentorder.FieldBonusAmount, paymentorder.FieldSubscriptionQuotaUsd, paymentorder.FieldRefundAmount:
 			values[i] = new(sql.NullFloat64)
 		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionID, paymentorder.FieldSubscriptionDays, paymentorder.FieldInvoiceApplicationID:
 			values[i] = new(sql.NullInt64)
@@ -261,6 +263,12 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field coupon_discount_amount", values[i])
 			} else if value.Valid {
 				_m.CouponDiscountAmount = value.Float64
+			}
+		case paymentorder.FieldBonusAmount:
+			if value, ok := values[i].(*sql.NullFloat64); !ok {
+				return fmt.Errorf("unexpected type %T for field bonus_amount", values[i])
+			} else if value.Valid {
+				_m.BonusAmount = value.Float64
 			}
 		case paymentorder.FieldRechargeCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -597,6 +605,9 @@ func (_m *PaymentOrder) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("coupon_discount_amount=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CouponDiscountAmount))
+	builder.WriteString(", ")
+	builder.WriteString("bonus_amount=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BonusAmount))
 	builder.WriteString(", ")
 	builder.WriteString("recharge_code=")
 	builder.WriteString(_m.RechargeCode)

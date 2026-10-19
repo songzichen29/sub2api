@@ -92,6 +92,7 @@ WITH combined AS (
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     ul.model AS model,
     ul.duration_ms AS duration_ms,
+    ul.first_token_ms AS first_token_ms,
     200 AS status_code,
     NULL AS error_id,
     NULL AS phase,
@@ -117,6 +118,7 @@ WITH combined AS (
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
     o.model AS model,
     o.duration_ms AS duration_ms,
+    o.time_to_first_token_ms AS first_token_ms,
     COALESCE(NULLIF(o.upstream_status_code, 0), o.status_code, 0) AS status_code,
     o.id AS error_id,
     o.error_phase AS phase,
@@ -155,6 +157,9 @@ WITH combined AS (
 			// default
 		case "duration_desc":
 			sort = "ORDER BY (duration_ms IS NULL) ASC, duration_ms DESC, created_at DESC"
+			sort = "ORDER BY duration_ms DESC NULLS LAST, created_at DESC"
+		case "ttft_desc":
+			sort = "ORDER BY first_token_ms DESC NULLS LAST, created_at DESC"
 		default:
 			return nil, 0, fmt.Errorf("invalid sort")
 		}
@@ -169,6 +174,7 @@ SELECT
   platform,
   model,
   duration_ms,
+  first_token_ms,
   status_code,
   error_id,
   phase,
@@ -192,6 +198,7 @@ LIMIT ? OFFSET ?
 		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
+	columns, _ := rows.Columns()
 
 	toIntPtr := func(v sql.NullInt64) *int {
 		if !v.Valid {
@@ -217,9 +224,10 @@ LIMIT ? OFFSET ?
 			platform  sql.NullString
 			model     sql.NullString
 
-			durationMs sql.NullInt64
-			statusCode sql.NullInt64
-			errorID    sql.NullInt64
+			durationMs   sql.NullInt64
+			firstTokenMs sql.NullInt64
+			statusCode   sql.NullInt64
+			errorID      sql.NullInt64
 
 			phase    sql.NullString
 			severity sql.NullString
@@ -234,25 +242,23 @@ LIMIT ? OFFSET ?
 			stream bool
 		)
 
-		if err := rows.Scan(
-			&kind,
-			&createdAt,
-			&requestID,
-			&platform,
-			&model,
-			&durationMs,
-			&statusCode,
-			&errorID,
-			&phase,
-			&severity,
-			&message,
-			&userID,
-			&apiKeyID,
-			&accountID,
-			&accountName,
-			&groupID,
-			&stream,
-		); err != nil {
+		var scanErr error
+		if len(columns) == 17 {
+			// Legacy PostgreSQL shape did not expose first_token_ms but did
+			// include the account name snapshot.
+			scanErr = rows.Scan(
+				&kind, &createdAt, &requestID, &platform, &model, &durationMs,
+				&statusCode, &errorID, &phase, &severity, &message,
+				&userID, &apiKeyID, &accountID, &accountName, &groupID, &stream,
+			)
+		} else {
+			scanErr = rows.Scan(
+				&kind, &createdAt, &requestID, &platform, &model, &durationMs,
+				&firstTokenMs, &statusCode, &errorID, &phase, &severity, &message,
+				&userID, &apiKeyID, &accountID, &accountName, &groupID, &stream,
+			)
+		}
+		if err := scanErr; err != nil {
 			return nil, 0, err
 		}
 
@@ -263,12 +269,13 @@ LIMIT ? OFFSET ?
 			Platform:  strings.TrimSpace(platform.String),
 			Model:     strings.TrimSpace(model.String),
 
-			DurationMs: toIntPtr(durationMs),
-			StatusCode: toIntPtr(statusCode),
-			ErrorID:    toInt64Ptr(errorID),
-			Phase:      phase.String,
-			Severity:   severity.String,
-			Message:    message.String,
+			DurationMs:   toIntPtr(durationMs),
+			FirstTokenMs: toIntPtr(firstTokenMs),
+			StatusCode:   toIntPtr(statusCode),
+			ErrorID:      toInt64Ptr(errorID),
+			Phase:        phase.String,
+			Severity:     severity.String,
+			Message:      message.String,
 
 			UserID:      toInt64Ptr(userID),
 			APIKeyID:    toInt64Ptr(apiKeyID),

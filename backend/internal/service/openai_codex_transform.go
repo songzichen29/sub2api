@@ -342,6 +342,9 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		}
 		result.Modified = true
 	}
+	if !opts.IsCompact && ensureOpenAIOAuthWebSearchToolForHistory(reqBody, false) {
+		result.Modified = true
+	}
 
 	return result
 }
@@ -1251,6 +1254,9 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
 	if account == nil || account.UsesOpenAICodexProtocol() {
 		return normalizeCodexModel(model)
+	}
+	if strings.EqualFold(account.Platform, PlatformDeepseek) {
+		return normalizeClaudeCodeLongContextModel(strings.TrimSpace(model))
 	}
 	return strings.TrimSpace(model)
 }

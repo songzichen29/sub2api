@@ -20,10 +20,12 @@ func NewContentModerationHandler(svc *service.ContentModerationService) *Content
 }
 
 type contentModerationConfigRequest struct {
-	Enabled *bool   `json:"enabled"`
-	Mode    *string `json:"mode"`
-	BaseURL *string `json:"base_url"`
-	Model   *string `json:"model"`
+	Engine        *string                                               `json:"engine"`
+	EngineConfigs map[string]service.UpdateContentModerationEngineInput `json:"engine_configs"`
+	Enabled       *bool                                                 `json:"enabled"`
+	Mode          *string                                               `json:"mode"`
+	BaseURL       *string                                               `json:"base_url"`
+	Model         *string                                               `json:"model"`
 	// 审计请求使用的代理服务器：null 不修改；0 清除（直连）；>0 指定代理。
 	ProxyID              *int64              `json:"proxy_id"`
 	APIKey               *string             `json:"api_key"`
@@ -62,14 +64,17 @@ type contentModerationConfigRequest struct {
 }
 
 type contentModerationAPIKeyTestRequest struct {
-	APIKeys      []string `json:"api_keys"`
-	BaseURL      string   `json:"base_url"`
-	Model        string   `json:"model"`
-	TimeoutMS    int      `json:"timeout_ms"`
-	Prompt       string   `json:"prompt"`
-	Images       []string `json:"images"`
-	Protocol     string   `json:"protocol"`
-	SystemPrompt string   `json:"system_prompt"`
+	APIKeys      []string            `json:"api_keys"`
+	BaseURL      string              `json:"base_url"`
+	Model        string              `json:"model"`
+	TimeoutMS    int                 `json:"timeout_ms"`
+	Prompt       string              `json:"prompt"`
+	Images       []string            `json:"images"`
+	Protocol     string              `json:"protocol"`
+	SystemPrompt string              `json:"system_prompt"`
+	Engine       string              `json:"engine"`
+	Thresholds   *map[string]float64 `json:"thresholds"`
+	ProxyID      *int64              `json:"proxy_id"`
 }
 
 type contentModerationHashRequest struct {
@@ -92,6 +97,7 @@ func (h *ContentModerationHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 	cfg, err := h.service.UpdateConfig(c.Request.Context(), service.UpdateContentModerationConfigInput{
+		Engine: req.Engine, EngineConfigs: req.EngineConfigs,
 		Enabled:                        req.Enabled,
 		Mode:                           req.Mode,
 		BaseURL:                        req.BaseURL,
@@ -149,6 +155,9 @@ func (h *ContentModerationHandler) TestAPIKeys(c *gin.Context) {
 		Images:       req.Images,
 		Protocol:     req.Protocol,
 		SystemPrompt: req.SystemPrompt,
+		Engine:       req.Engine,
+		Thresholds:   req.Thresholds,
+		ProxyID:      req.ProxyID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

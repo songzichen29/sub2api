@@ -94,27 +94,6 @@
         </div>
 
         <div
-          v-else-if="availability === 'checking'"
-          class="flex h-full items-center justify-center p-10 text-center"
-        >
-          <div class="max-w-md">
-            <div
-              class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 dark:bg-dark-700"
-            >
-              <div
-                class="h-5 w-5 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
-              ></div>
-            </div>
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('customPage.checkingTitle') }}
-            </h3>
-            <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-              {{ t('customPage.checkingDesc') }}
-            </p>
-          </div>
-        </div>
-
-        <div
           v-else-if="availability === 'unavailable'"
           class="flex h-full items-center justify-center p-10 text-center"
         >
@@ -155,6 +134,7 @@
         <!-- Iframe embed mode -->
         <div v-else ref="embedShell" class="custom-embed-shell">
           <a
+            v-if="!menuItem?.hide_open_button"
             ref="openButton"
             :href="embeddedUrl"
             target="_blank"
@@ -223,6 +203,7 @@ const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 :
 const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
 let availabilityCheckSeq = 0
+let markdownRequestVersion = 0
 
 const embedShell = ref<HTMLElement | null>(null)
 const openButton = ref<HTMLAnchorElement | null>(null)
@@ -388,6 +369,7 @@ function buildPageImageUrl(slug: string, src: string): string {
 }
 
 async function fetchAndRenderMarkdown(slug: string) {
+  const version = ++markdownRequestVersion
   loading.value = true
   tocItems.value = []
   activeHeadingId.value = ''
@@ -395,11 +377,13 @@ async function fetchAndRenderMarkdown(slug: string) {
     const resp = await fetch(buildApiUrl(`/pages/${encodeURIComponent(slug)}`), {
       headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {},
     })
+    if (version !== markdownRequestVersion) return
     if (!resp.ok) {
       renderedHtml.value = `<p class="text-red-500">${t('common.pageNotFound')}</p>`
       return
     }
     let raw = await resp.text()
+    if (version !== markdownRequestVersion) return
 
     raw = raw.replace(
       /!\[([^\]]*)\]\(([^)]+)\)/g,
@@ -429,12 +413,16 @@ async function fetchAndRenderMarkdown(slug: string) {
     renderedHtml.value = withIds
     tocItems.value = toc
   } catch {
-    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    if (version === markdownRequestVersion) {
+      renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+    }
   } finally {
-    loading.value = false
-    await nextTick()
-    await nextTick()
-    injectCopyButtons()
+    if (version === markdownRequestVersion) {
+      loading.value = false
+      await nextTick()
+      await nextTick()
+      if (version === markdownRequestVersion) injectCopyButtons()
+    }
   }
 }
 
@@ -504,6 +492,8 @@ watch(markdownSlug, (slug) => {
   if (slug) {
     fetchAndRenderMarkdown(slug)
   } else {
+    markdownRequestVersion++
+    loading.value = false
     renderedHtml.value = ''
     tocItems.value = []
   }
@@ -550,6 +540,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  markdownRequestVersion++
   if (themeObserver) {
     themeObserver.disconnect()
     themeObserver = null

@@ -34,6 +34,8 @@ const (
 	FieldCouponCode = "coupon_code"
 	// FieldCouponDiscountAmount holds the string denoting the coupon_discount_amount field in the database.
 	FieldCouponDiscountAmount = "coupon_discount_amount"
+	// FieldBonusAmount holds the string denoting the bonus_amount field in the database.
+	FieldBonusAmount = "bonus_amount"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -154,6 +156,7 @@ var Columns = []string{
 	FieldDiscountAmount,
 	FieldCouponCode,
 	FieldCouponDiscountAmount,
+	FieldBonusAmount,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,
@@ -219,6 +222,8 @@ var (
 	CouponCodeValidator func(string) error
 	// DefaultCouponDiscountAmount holds the default value on creation for the "coupon_discount_amount" field.
 	DefaultCouponDiscountAmount float64
+	// DefaultBonusAmount holds the default value on creation for the "bonus_amount" field.
+	DefaultBonusAmount float64
 	// RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
 	RechargeCodeValidator func(string) error
 	// DefaultOutTradeNo holds the default value on creation for the "out_trade_no" field.
@@ -321,6 +326,11 @@ func ByCouponCode(opts ...sql.OrderTermOption) OrderOption {
 // ByCouponDiscountAmount orders the results by the coupon_discount_amount field.
 func ByCouponDiscountAmount(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCouponDiscountAmount, opts...).ToFunc()
+}
+
+// ByBonusAmount orders the results by the bonus_amount field.
+func ByBonusAmount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBonusAmount, opts...).ToFunc()
 }
 
 // ByRechargeCode orders the results by the recharge_code field.

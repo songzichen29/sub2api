@@ -5,6 +5,10 @@
 # This script prepares the local deploy directory for Sub2API:
 #   - Copies .env.example to .env
 #   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, DATABASE_PASSWORD)
+# This script prepares deployment files for Sub2API:
+#   - Downloads docker-compose.local.yml and .env.example
+#   - Generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
+#   - Generates a random admin login email (ADMIN_EMAIL)
 #   - Creates necessary data directories
 #
 # After running this script, you can start services with:
@@ -44,6 +48,14 @@ print_error() {
 # Generate random secret
 generate_secret() {
     openssl rand -hex 32
+}
+
+# Generate a random admin login email so new installs never use a guessable default
+generate_admin_email() {
+    local suffix
+    suffix=$(openssl rand -hex 6) || return 1
+    [ -n "$suffix" ] || return 1
+    echo "admin-${suffix}@sub2api.local"
 }
 
 # Check if command exists
@@ -90,6 +102,9 @@ main() {
     JWT_SECRET=$(generate_secret)
     TOTP_ENCRYPTION_KEY=$(generate_secret)
     DATABASE_PASSWORD=$(generate_secret)
+    POSTGRES_PASSWORD=$(generate_secret)
+    ADMIN_EMAIL=$(generate_admin_email)
+
     # Create .env from .env.example
     cp .env.example .env
 
@@ -99,11 +114,15 @@ main() {
         sed -i "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
         sed -i "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=${DATABASE_PASSWORD}/" .env
+        sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
+        sed -i "s/^ADMIN_EMAIL=.*/ADMIN_EMAIL=${ADMIN_EMAIL}/" .env
     else
         # BSD sed (macOS)
         sed -i '' "s/^JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" .env
         sed -i '' "s/^TOTP_ENCRYPTION_KEY=.*/TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}/" .env
         sed -i '' "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=${DATABASE_PASSWORD}/" .env
+        sed -i '' "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${POSTGRES_PASSWORD}/" .env
+        sed -i '' "s/^ADMIN_EMAIL=.*/ADMIN_EMAIL=${ADMIN_EMAIL}/" .env
     fi
 
     # Create data directories
@@ -124,6 +143,7 @@ main() {
     echo "  JWT_SECRET:            ${JWT_SECRET}"
     echo "  TOTP_ENCRYPTION_KEY:   ${TOTP_ENCRYPTION_KEY}"
     echo "  DATABASE_PASSWORD:     ${DATABASE_PASSWORD}"
+    echo "  ADMIN_EMAIL:           ${ADMIN_EMAIL}  (admin login username)"
     echo ""
     print_warning "These credentials have been saved to .env file."
     print_warning "Please keep them secure and do not share publicly!"

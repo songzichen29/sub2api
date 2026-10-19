@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -231,7 +232,39 @@ func lockProxyProbeIdentity(ctx context.Context, client *dbent.Client, proxyID i
 	return identity, rows.Err()
 }
 
-func invalidateProxyProbeSnapshots(ctx context.Context, exec sqlExecutor, dbDialect string, proxyID int64) ([]int64, error) {
+func invalidateProxyProbeSnapshots(ctx context.Context, exec any, args ...any) ([]int64, error) {
+	if client, ok := exec.(*dbent.Client); ok && client != nil && len(args) == 1 {
+		proxyID, ok := proxyIDArgument(args[0])
+		if !ok {
+			return nil, fmt.Errorf("invalid proxy id argument")
+		}
+		return invalidateProxyProbeSnapshotsForExec(ctx, client, client.Driver().Dialect(), proxyID)
+	}
+	if sqlExec, ok := exec.(sqlExecutor); ok && len(args) == 2 {
+		dialect, _ := args[0].(string)
+		proxyID, ok := proxyIDArgument(args[1])
+		if !ok {
+			return nil, fmt.Errorf("invalid proxy id argument")
+		}
+		return invalidateProxyProbeSnapshotsForExec(ctx, sqlExec, dialect, proxyID)
+	}
+	return nil, fmt.Errorf("unsupported proxy snapshot executor")
+}
+
+func proxyIDArgument(value any) (int64, bool) {
+	switch id := value.(type) {
+	case int:
+		return int64(id), true
+	case int64:
+		return id, true
+	case int32:
+		return int64(id), true
+	default:
+		return 0, false
+	}
+}
+
+func invalidateProxyProbeSnapshotsForExec(ctx context.Context, exec sqlExecutor, dbDialect string, proxyID int64) ([]int64, error) {
 	if dbDialect != dialect.MySQL {
 		return invalidateProxyProbeSnapshotsPostgres(ctx, exec, proxyID)
 	}
@@ -243,7 +276,8 @@ func invalidateProxyProbeSnapshotsPostgres(ctx context.Context, exec sqlExecutor
 		UPDATE accounts
 		SET extra = COALESCE(extra, '{}'::jsonb)
 				- 'upstream_billing_probe'
-				- 'ollama_cloud_usage_snapshot',
+				- 'ollama_cloud_usage_snapshot'
+				- 'opencode_go_usage_snapshot',
 			updated_at = NOW()
 		WHERE proxy_id = $1
 			AND type = 'apikey'
@@ -253,6 +287,11 @@ func invalidateProxyProbeSnapshotsPostgres(ctx context.Context, exec sqlExecutor
 				OR (platform IN (`+ollamaCloudUsagePlatformsSQL+`)
 					AND extra ? 'ollama_cloud_usage_snapshot'
 					AND extra -> 'ollama_cloud_usage_snapshot' <> 'null'::jsonb)
+				OR ((platform = 'opencode_go'
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`))
+					AND extra ? 'opencode_go_usage_snapshot'
+					AND extra -> 'opencode_go_usage_snapshot' <> 'null'::jsonb)
 			)
 			AND deleted_at IS NULL
 		RETURNING id
@@ -287,6 +326,11 @@ func invalidateProxyProbeSnapshotsMySQL(ctx context.Context, exec sqlExecutor, p
 				OR (platform IN ('openai', 'anthropic')
 					AND JSON_CONTAINS_PATH(extra, 'one', '$.ollama_cloud_usage_snapshot')
 					AND JSON_TYPE(JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot')) <> 'NULL')
+				OR ((platform = 'opencode_go'
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.base_url'))")+`))
+					AND JSON_CONTAINS_PATH(extra, 'one', '$.opencode_go_usage_snapshot')
+					AND JSON_TYPE(JSON_EXTRACT(extra, '$.opencode_go_usage_snapshot')) <> 'NULL')
 			)
 			AND deleted_at IS NULL
 		FOR UPDATE
@@ -318,7 +362,8 @@ func invalidateProxyProbeSnapshotsMySQL(ctx context.Context, exec sqlExecutor, p
 		SET extra = JSON_REMOVE(
 			COALESCE(extra, JSON_OBJECT()),
 			'$.upstream_billing_probe',
-			'$.ollama_cloud_usage_snapshot'
+			'$.ollama_cloud_usage_snapshot',
+			'$.opencode_go_usage_snapshot'
 		), updated_at = NOW(6)
 		WHERE id IN (`+placeholders+`)`, args...); err != nil {
 		return nil, err

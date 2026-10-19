@@ -22,23 +22,16 @@ const (
 	maxDecompressedBodySize = 64 << 20
 )
 
-// RequestBodyReadErrorKind classifies failures that happen before a request
-// body can be parsed by API handlers.
+var ErrUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
+
 type RequestBodyReadErrorKind string
 
 const (
 	RequestBodyReadErrorKindRead                RequestBodyReadErrorKind = "read"
-	RequestBodyReadErrorKindDecode              RequestBodyReadErrorKind = "decode_content_encoding"
-	RequestBodyReadErrorKindUnsupportedEncoding RequestBodyReadErrorKind = "unsupported_content_encoding"
+	RequestBodyReadErrorKindDecode              RequestBodyReadErrorKind = "decode"
+	RequestBodyReadErrorKindUnsupportedEncoding RequestBodyReadErrorKind = "unsupported_encoding"
 )
 
-// ErrUnsupportedContentEncoding marks a request Content-Encoding value that the
-// gateway cannot decode.
-var ErrUnsupportedContentEncoding = errors.New("unsupported Content-Encoding")
-
-// RequestBodyReadError preserves the low-level reason why reading a request
-// body failed while keeping compatibility with errors.As on the wrapped error
-// (for example *http.MaxBytesError from http.MaxBytesReader).
 type RequestBodyReadError struct {
 	Kind     RequestBodyReadErrorKind
 	Encoding string
@@ -47,12 +40,12 @@ type RequestBodyReadError struct {
 
 func (e *RequestBodyReadError) Error() string {
 	if e == nil {
-		return ""
+		return "request body read failed"
 	}
-	if e.Encoding != "" {
-		return fmt.Sprintf("request body %s failed for Content-Encoding %q: %v", e.Kind, e.Encoding, e.Err)
+	if e.Err == nil {
+		return string(e.Kind)
 	}
-	return fmt.Sprintf("request body %s failed: %v", e.Kind, e.Err)
+	return e.Err.Error()
 }
 
 func (e *RequestBodyReadError) Unwrap() error {
@@ -123,14 +116,10 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		}
 	}
 
-	buf := bytes.NewBuffer(make([]byte, 0, capHint))
-	if _, err := io.Copy(buf, req.Body); err != nil {
-		return nil, &RequestBodyReadError{
-			Kind: RequestBodyReadErrorKindRead,
-			Err:  err,
-		}
+	raw, err := readRequestBodyChunks(req.Body, capHint, req.ContentLength)
+	if err != nil {
+		return nil, &RequestBodyReadError{Kind: RequestBodyReadErrorKindRead, Err: err}
 	}
-	raw := buf.Bytes()
 
 	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
 	if enc == "" || enc == "identity" {
@@ -143,11 +132,7 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 		if errors.Is(err, ErrUnsupportedContentEncoding) {
 			kind = RequestBodyReadErrorKindUnsupportedEncoding
 		}
-		return nil, &RequestBodyReadError{
-			Kind:     kind,
-			Encoding: enc,
-			Err:      err,
-		}
+		return nil, &RequestBodyReadError{Kind: kind, Encoding: enc, Err: err}
 	}
 
 	req.Header.Del("Content-Encoding")
@@ -155,6 +140,56 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	req.ContentLength = int64(len(decoded))
 
 	return decoded, nil
+}
+
+// Read bounded chunks as bytes arrive, then assemble the exact-size result.
+// This avoids doubling large buffers or eagerly allocating an untrusted
+// Content-Length before the corresponding bytes have arrived.
+func readRequestBodyChunks(reader io.Reader, initialCapacity int, contentLength int64) ([]byte, error) {
+	capacity := initialCapacity
+	var chunks [][]byte
+	total := 0
+	for {
+		chunkCapacity := capacity
+		if remaining := contentLength - int64(total); remaining >= 0 && remaining < int64(chunkCapacity) {
+			chunkCapacity = int(remaining) + 1
+		}
+		chunk := make([]byte, chunkCapacity)
+		n := 0
+		var err error
+		for n < len(chunk) && err == nil {
+			var read int
+			read, err = reader.Read(chunk[n:])
+			n += read
+		}
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		if n > 0 {
+			chunks = append(chunks, chunk[:n])
+			total += n
+		}
+		if err != nil {
+			if len(chunks) == 0 {
+				return chunk[:0], nil
+			}
+			if len(chunks) == 1 {
+				return chunks[0], nil
+			}
+			body := make([]byte, total)
+			offset := 0
+			for _, part := range chunks {
+				offset += copy(body[offset:], part)
+			}
+			return body, nil
+		}
+		if capacity < requestBodyReadMaxInitCap {
+			capacity *= 2
+			if capacity > requestBodyReadMaxInitCap {
+				capacity = requestBodyReadMaxInitCap
+			}
+		}
+	}
 }
 
 // ReadLenientJSONRequestBodyWithPrealloc reads a request body and normalizes
@@ -191,7 +226,7 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 		defer func() { _ = zr.Close() }()
 		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
 	default:
-		return nil, ErrUnsupportedContentEncoding
+		return nil, fmt.Errorf("%w: %s", ErrUnsupportedContentEncoding, encoding)
 	}
 }
 

@@ -80,6 +80,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
+	"codex_credits_snapshot":    {},
+	"codex_referral_snapshot":   {},
 	"grok_billing_snapshot":      {},
 	"session_window_utilization": {},
 }
@@ -874,7 +876,22 @@ func lockAndMergeAccountProbeExtraPostgres(ctx context.Context, client *dbent.Cl
 			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
-			extra -> 'ollama_cloud_usage_snapshot'
+			extra -> 'ollama_cloud_usage_snapshot',
+			COALESCE(
+				(
+					(platform = 'opencode_go' AND $2 = 'opencode_go'
+						AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)
+						AND COALESCE(btrim($4::jsonb ->> 'account_mode') <> 'zen', true))
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND $2 IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`
+						AND `+opencodeGoBaseURLMatchSQLPrefix+`$4::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`)
+				)
+				AND type = 'apikey' AND $3 = 'apikey'
+				AND credentials -> 'api_key' IS NOT DISTINCT FROM $4::jsonb -> 'api_key', false
+			),
+			extra -> 'opencode_go_usage_auto_refresh',
+			extra -> 'opencode_go_usage_snapshot'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -923,12 +940,27 @@ func lockAndMergeAccountProbeExtraMySQL(ctx context.Context, client *dbent.Clien
 			JSON_EXTRACT(extra, '$.upstream_billing_probe'),
 			JSON_EXTRACT(extra, '$.ollama_cloud_usage_session'),
 			JSON_EXTRACT(extra, '$.ollama_cloud_usage_auto_refresh'),
-			JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot')
+			JSON_EXTRACT(extra, '$.ollama_cloud_usage_snapshot'),
+			COALESCE(
+				(
+					(platform = 'opencode_go' AND ? = 'opencode_go'
+						AND COALESCE(TRIM(JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.account_mode'))) <> 'zen', TRUE)
+						AND COALESCE(TRIM(JSON_UNQUOTE(JSON_EXTRACT(CAST(? AS JSON), '$.account_mode'))) <> 'zen', TRUE))
+					OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`) AND ? IN (`+opencodeGoUsageMountPlatformsSQL+`)
+						AND `+opencodeGoBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(credentials, '$.base_url'))")+`
+						AND `+opencodeGoBaseURLMatchesMySQL("JSON_UNQUOTE(JSON_EXTRACT(CAST(? AS JSON), '$.base_url'))")+`)
+				)
+				AND type = 'apikey' AND ? = 'apikey'
+				AND JSON_EXTRACT(credentials, '$.api_key') <=> JSON_EXTRACT(CAST(? AS JSON), '$.api_key'), FALSE
+			),
+			JSON_EXTRACT(extra, '$.opencode_go_usage_auto_refresh'),
+			JSON_EXTRACT(extra, '$.opencode_go_usage_snapshot')
 		FROM accounts
 		WHERE id = ? AND deleted_at IS NULL
 		FOR UPDATE
 	`, account.Platform, account.Type, string(credentials), proxyID,
-		account.Platform, account.Type, string(credentials), string(credentials), proxyID, account.ID)
+		account.Platform, account.Type, string(credentials), string(credentials), proxyID,
+		account.Platform, string(credentials), account.Platform, string(credentials), account.Type, string(credentials), account.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -945,15 +977,18 @@ func lockAndMergeAccountProbeExtraMySQL(ctx context.Context, client *dbent.Clien
 
 func mergeLockedAccountProbeExtraRows(rows *sql.Rows, account *service.Account, explicitProbeEnabled, explicitRateSyncEnabled *bool) (map[string]any, error) {
 	var (
-		identityUnchanged            bool
-		ollamaGroupIdentityUnchanged bool
-		ollamaProxyIdentityUnchanged bool
-		currentEnabled               []byte
-		currentRateSyncEnabled       []byte
-		currentSnapshot              []byte
-		currentOllamaSession         []byte
-		currentOllamaAutoRefresh     []byte
-		currentOllamaSnapshot        []byte
+		identityUnchanged              bool
+		ollamaGroupIdentityUnchanged   bool
+		ollamaProxyIdentityUnchanged   bool
+		currentEnabled                 []byte
+		currentRateSyncEnabled         []byte
+		currentSnapshot                []byte
+		currentOllamaSession           []byte
+		currentOllamaAutoRefresh       []byte
+		currentOllamaSnapshot          []byte
+		opencodeGroupIdentityUnchanged bool
+		currentOpenCodeAutoRefresh     []byte
+		currentOpenCodeSnapshot        []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -965,6 +1000,9 @@ func mergeLockedAccountProbeExtraRows(rows *sql.Rows, account *service.Account, 
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
 		&currentOllamaSnapshot,
+		&opencodeGroupIdentityUnchanged,
+		&currentOpenCodeAutoRefresh,
+		&currentOpenCodeSnapshot,
 	); err != nil {
 		return nil, err
 	}
@@ -980,6 +1018,8 @@ func mergeLockedAccountProbeExtraRows(rows *sql.Rows, account *service.Account, 
 		service.OllamaCloudUsageSessionExtraKey,
 		service.OllamaCloudUsageAutoRefreshExtraKey,
 		service.OllamaCloudUsageSnapshotExtraKey,
+		service.OpenCodeGoUsageAutoRefreshExtraKey,
+		service.OpenCodeGoUsageSnapshotExtraKey,
 	} {
 		delete(extra, key)
 	}
@@ -1057,6 +1097,20 @@ func mergeLockedAccountProbeExtraRows(rows *sql.Rows, account *service.Account, 
 			}
 		}
 	}
+	if service.IsOpenCodeGoUsageAccount(account) && opencodeGroupIdentityUnchanged {
+		if value, ok, err := decodeAccountExtraJSON(currentOpenCodeAutoRefresh); err != nil {
+			return nil, err
+		} else if ok {
+			extra[service.OpenCodeGoUsageAutoRefreshExtraKey] = value
+		}
+		if ollamaProxyIdentityUnchanged {
+			if snapshot, ok, err := decodeAccountExtraJSON(currentOpenCodeSnapshot); err != nil {
+				return nil, err
+			} else if ok {
+				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
+			}
+		}
+	}
 	return extra, nil
 }
 
@@ -1106,6 +1160,20 @@ func (r *accountRepository) updateCredentialsPostgres(ctx context.Context, id in
 		SET
 			credentials = $1::jsonb,
 			extra = CASE
+				WHEN type = 'apikey'
+					AND credentials IS DISTINCT FROM $1::jsonb
+					AND ((platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`) AND `+opencodeGoBaseURLMatchSQLPrefix+`credentials ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`))
+					AND (credentials -> 'api_key' IS DISTINCT FROM $1::jsonb -> 'api_key'
+						OR (platform = 'opencode_go' AND COALESCE(btrim($1::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE)
+						OR (platform IN (`+opencodeGoUsageMountPlatformsSQL+`) AND (`+opencodeGoBaseURLMatchSQLPrefix+`$1::jsonb ->> 'base_url'`+opencodeGoBaseURLMatchSQLSuffix+`) IS NOT TRUE))
+				THEN COALESCE(extra, '{}'::jsonb)
+					- 'upstream_billing_probe'
+					- 'opencode_go_usage_auto_refresh'
+					- 'opencode_go_usage_snapshot'
+					- 'ollama_cloud_usage_session'
+					- 'ollama_cloud_usage_auto_refresh'
+					- 'ollama_cloud_usage_snapshot'
 				-- 凭证整体未变化 ⇒ Ollama 组身份必然未变化；顶层 DISTINCT 守卫防止
 				-- 非 Ollama 账号的无变化持久化误清探测快照或重写 NULL extra。
 				WHEN platform IN (`+ollamaCloudUsagePlatformsSQL+`)
@@ -1680,7 +1748,6 @@ func (r *accountRepository) ListOAuthRefreshCandidates(ctx context.Context) ([]s
 		SELECT id
 		FROM accounts
 		WHERE deleted_at IS NULL
-			AND schedulable = TRUE
 			AND status = 'active'
 			AND type IN ('oauth', 'setup-token')
 			AND platform IN ('anthropic', 'openai', 'gemini', 'antigravity')
@@ -3039,8 +3106,25 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 			"NOT (COALESCE("+ollamaCloudBaseURLMatchesSQL("credentials ->> 'base_url'")+", false)"+
 				" AND COALESCE("+ollamaCloudBaseURLMatchesSQL(credentialPlaceholder+"::jsonb ->> 'base_url'")+", false))")
 	}
+	opencodeGroupIdentityChanges := make([]string, 0, 3)
+	opencodeOldUsageIdentity := "((platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true))" +
+		" OR (platform IN (" + opencodeGoUsageMountPlatformsSQL + ") AND " + opencodeGoBaseURLMatchSQLPrefix + "credentials ->> 'base_url'" + opencodeGoBaseURLMatchSQLSuffix + "))"
+	if _, ok := updates.Credentials["api_key"]; ok {
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			opencodeOldUsageIdentity+" AND credentials -> 'api_key' IS DISTINCT FROM "+credentialPlaceholder+"::jsonb -> 'api_key'")
+	}
+	if _, ok := updates.Credentials["base_url"]; ok {
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			"platform IN ("+opencodeGoUsageMountPlatformsSQL+") AND "+opencodeGoBaseURLMatchSQLPrefix+"credentials ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+
+				" AND ("+opencodeGoBaseURLMatchSQLPrefix+credentialPlaceholder+"::jsonb ->> 'base_url'"+opencodeGoBaseURLMatchSQLSuffix+") IS NOT TRUE")
+	}
+	if _, ok := updates.Credentials["account_mode"]; ok {
+		opencodeGroupIdentityChanges = append(opencodeGroupIdentityChanges,
+			"platform = 'opencode_go' AND COALESCE(btrim(credentials ->> 'account_mode') <> 'zen', true)"+
+				" AND COALESCE(btrim("+credentialPlaceholder+"::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE")
+	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -3071,13 +3155,35 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 				snapshotIdentityChanged = "(" + snapshotIdentityChanged + " OR " + proxyChanged + ")"
 			}
 		}
+		opencodeEligibleAccount := "type = 'apikey' AND " + opencodeOldUsageIdentity
+		opencodeGroupIdentityChanged := ""
+		if len(opencodeGroupIdentityChanges) > 0 {
+			opencodeGroupIdentityChanged = "(" + opencodeEligibleAccount + " AND (" + joinClauses(opencodeGroupIdentityChanges, " OR ") + "))"
+		}
+		opencodeSnapshotIdentityChanged := opencodeGroupIdentityChanged
+		if ollamaProxyIdentityChanged != "" {
+			opencodeProxyChanged := "(" + opencodeEligibleAccount + " AND " + ollamaProxyIdentityChanged + ")"
+			if opencodeSnapshotIdentityChanged == "" {
+				opencodeSnapshotIdentityChanged = opencodeProxyChanged
+			} else {
+				opencodeSnapshotIdentityChanged = "(" + opencodeSnapshotIdentityChanged + " OR " + opencodeProxyChanged + ")"
+			}
+		}
+		caseBranches := make([]string, 0, 4)
+		if opencodeGroupIdentityChanged != "" {
+			caseBranches = append(caseBranches, " WHEN "+opencodeGroupIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")
+		}
+		if opencodeSnapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches, " WHEN "+opencodeSnapshotIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_snapshot'")
+		}
 		if groupIdentityChanged != "" {
-			extraExpression = "CASE" +
-				" WHEN " + groupIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'" +
-				" WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot'" +
-				" ELSE " + extraExpression + " END"
-		} else if snapshotIdentityChanged != "" {
-			extraExpression = "CASE WHEN " + snapshotIdentityChanged + " THEN (" + extraExpression + ") - 'ollama_cloud_usage_snapshot' ELSE " + extraExpression + " END"
+			caseBranches = append(caseBranches, " WHEN "+groupIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_session' - 'ollama_cloud_usage_auto_refresh' - 'ollama_cloud_usage_snapshot'")
+		}
+		if snapshotIdentityChanged != "" {
+			caseBranches = append(caseBranches, " WHEN "+snapshotIdentityChanged+" THEN ("+extraExpression+") - 'ollama_cloud_usage_snapshot'")
+		}
+		if len(caseBranches) > 0 {
+			extraExpression = "CASE" + strings.Join(caseBranches, "") + " ELSE " + extraExpression + " END"
 		}
 		if updates.EnsureCodexFingerprintSeed {
 			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)

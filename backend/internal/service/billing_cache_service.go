@@ -768,8 +768,14 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platforms ...string) error {
-	// 简易模式：跳过所有计费检查
-	if s.cfg.RunMode == config.RunModeSimple {
+	// 简易模式 normally bypasses billing, but operators may explicitly keep
+	// API-key rate windows enforced as a DB-authoritative guard.
+	if s != nil && s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if apiKey != nil && s.cfg.SimpleModeKeyRateLimitEnabled {
+			if err := s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
@@ -808,6 +814,31 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return err
 	}
 
+	return nil
+}
+
+// checkSimpleModeAPIKeyRateLimits enforces explicitly enabled key windows from
+// the repository source of truth; simple mode still bypasses other billing.
+func (s *BillingCacheService) checkSimpleModeAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	if apiKey == nil || !apiKey.HasRateLimits() {
+		return nil
+	}
+	if s.apiKeyRateLimitLoader == nil {
+		return ErrBillingServiceUnavailable
+	}
+	data, err := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+	if err != nil || data == nil {
+		return ErrBillingServiceUnavailable
+	}
+	if apiKey.RateLimit5h > 0 && data.EffectiveUsage5h() >= apiKey.RateLimit5h {
+		return ErrAPIKeyRateLimit5hExceeded
+	}
+	if apiKey.RateLimit1d > 0 && data.EffectiveUsage1d() >= apiKey.RateLimit1d {
+		return ErrAPIKeyRateLimit1dExceeded
+	}
+	if apiKey.RateLimit7d > 0 && data.EffectiveUsage7d() >= apiKey.RateLimit7d {
+		return ErrAPIKeyRateLimit7dExceeded
+	}
 	return nil
 }
 

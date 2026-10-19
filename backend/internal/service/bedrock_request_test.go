@@ -483,6 +483,37 @@ func TestBedrockCrossRegionPrefix(t *testing.T) {
 }
 
 func TestResolveBedrockModelID(t *testing.T) {
+	t.Run("sonnet 5.5 uses the global inference profile in every region", func(t *testing.T) {
+		for _, region := range []string{"us-east-1", "eu-west-1", "ap-southeast-2"} {
+			account := &Account{
+				Platform: PlatformAnthropic,
+				Type:     AccountTypeBedrock,
+				Credentials: map[string]any{
+					"aws_region": region,
+				},
+			}
+			modelID, ok := ResolveBedrockModelID(account, "claude-sonnet-5-5")
+			require.True(t, ok, region)
+			assert.Equal(t, "global.anthropic.claude-sonnet-5-5", modelID, region)
+		}
+	})
+
+	t.Run("explicit global sonnet 5.5 profile is not rewritten", func(t *testing.T) {
+		account := &Account{
+			Platform: PlatformAnthropic,
+			Type:     AccountTypeBedrock,
+			Credentials: map[string]any{
+				"aws_region": "eu-west-1",
+				"model_mapping": map[string]any{
+					"public-sonnet": "global.anthropic.claude-sonnet-5-5",
+				},
+			},
+		}
+		modelID, ok := ResolveBedrockModelID(account, "public-sonnet")
+		require.True(t, ok)
+		assert.Equal(t, "global.anthropic.claude-sonnet-5-5", modelID)
+	})
+
 	t.Run("default alias resolves and adjusts region", func(t *testing.T) {
 		account := &Account{
 			Platform: PlatformAnthropic,
@@ -788,6 +819,19 @@ func TestIsBedrockOpus47OrNewer(t *testing.T) {
 }
 
 func TestSanitizeBedrockThinking(t *testing.T) {
+	t.Run("sonnet 5.5 converts legacy enabled to adaptive", func(t *testing.T) {
+		input := `{"thinking":{"type":"enabled","budget_tokens":10000},"messages":[]}`
+		result := sanitizeBedrockThinking([]byte(input), "global.anthropic.claude-sonnet-5-5")
+		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
+		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
+	})
+
+	t.Run("sonnet 5.5 converts legacy disabled to between_tools", func(t *testing.T) {
+		input := `{"thinking":{"type":"disabled"},"messages":[]}`
+		result := sanitizeBedrockThinking([]byte(input), "global.anthropic.claude-sonnet-5-5")
+		assert.Equal(t, "between_tools", gjson.GetBytes(result, "thinking.type").String())
+	})
+
 	t.Run("Fable 5 将 enabled 转换为 adaptive 并移除预算", func(t *testing.T) {
 		input := `{"thinking":{"type":"enabled","budget_tokens":10000},"messages":[]}`
 		result := sanitizeBedrockThinking([]byte(input), "anthropic.claude-fable-5")
@@ -1004,5 +1048,149 @@ func TestPrepareBedrockRequestBodyWithTokens_CCCompat(t *testing.T) {
 		assert.Equal(t, "adaptive", gjson.GetBytes(result, "thinking.type").String())
 		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
 		assert.Equal(t, "toolu_01_Ab", gjson.GetBytes(result, "messages.0.content.0.id").String())
+	})
+}
+
+func TestPrepareBedrockSonnet55PreservesEffort(t *testing.T) {
+	input := []byte(`{"model":"claude-sonnet-5-5","max_tokens":1024,"output_config":{"effort":"medium","format":{"type":"json_schema","schema":{"type":"object"}}},"messages":[{"role":"user","content":"hello"}]}`)
+	result, err := PrepareBedrockRequestBodyWithTokens(input, "global.anthropic.claude-sonnet-5-5", nil, false)
+	require.NoError(t, err)
+	assert.Equal(t, "medium", gjson.GetBytes(result, "output_config.effort").String())
+	assert.False(t, gjson.GetBytes(result, "output_config.format").Exists())
+	assert.Contains(t, gjson.GetBytes(result, "messages.0.content.1.text").String(), `"type":"object"`, "schema should still be included in the final user message")
+	assert.False(t, gjson.GetBytes(result, "model").Exists())
+
+	oldModel, err := PrepareBedrockRequestBodyWithTokens(input, "us.anthropic.claude-sonnet-4-6", nil, false)
+	require.NoError(t, err)
+	assert.False(t, gjson.GetBytes(oldModel, "output_config").Exists())
+}
+
+func TestSanitizeBedrockCCFields(t *testing.T) {
+	t.Run("removes service_tier and interface_geo", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","service_tier":"standard","interface_geo":"us","messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.True(t, gjson.GetBytes(result, "messages").Exists())
+	})
+
+	t.Run("removes context_management", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]},"messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.True(t, gjson.GetBytes(result, "messages").Exists())
+	})
+
+	t.Run("injects max_tokens when missing", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+	})
+
+	t.Run("preserves existing max_tokens", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","max_tokens":4096,"messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(4096), gjson.GetBytes(result, "max_tokens").Int())
+	})
+
+	t.Run("injects anthropic_version when missing", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+	})
+
+	t.Run("preserves existing anthropic_version", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","anthropic_version":"bedrock-2023-05-31","messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+	})
+
+	t.Run("no-op when fields already clean", func(t *testing.T) {
+		body := []byte(`{"model":"claude-opus-4-6","max_tokens":81920,"anthropic_version":"bedrock-2023-05-31","messages":[]}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+	})
+
+	t.Run("full CC request sanitization", func(t *testing.T) {
+		body := []byte(`{
+			"model":"claude-opus-4-6",
+			"service_tier":"standard",
+			"interface_geo":"us",
+			"context_management":{"edits":[{"type":"clear_thinking_20251015","keep":"all"}]},
+			"messages":[{"role":"user","content":"hello"}],
+			"thinking":{"type":"enabled"}
+		}`)
+		result := sanitizeBedrockCCFields(body)
+		assert.False(t, gjson.GetBytes(result, "service_tier").Exists())
+		assert.False(t, gjson.GetBytes(result, "interface_geo").Exists())
+		assert.False(t, gjson.GetBytes(result, "context_management").Exists())
+		assert.Equal(t, int64(defaultCCMaxTokens), gjson.GetBytes(result, "max_tokens").Int())
+		assert.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(result, "anthropic_version").String())
+		assert.Equal(t, "enabled", gjson.GetBytes(result, "thinking.type").String())
+	})
+}
+
+func TestSanitizeBedrockCCBetaTokens(t *testing.T) {
+	t.Run("filters unsupported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","context-1m-2025-08-07","unsupported-feature"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		assert.True(t, beta.IsArray())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "context-1m-2025-08-07", tokens[0].String())
+	})
+
+	t.Run("removes anthropic_beta if all tokens filtered", func(t *testing.T) {
+		input := `{"anthropic_beta":["prompt-caching-2024-07-31","unsupported-feature"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+	})
+
+	t.Run("thinking alone does not auto-inject beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":[],"thinking":{"type":"enabled"},"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+	})
+
+	t.Run("auto-injects computer-use beta token", func(t *testing.T) {
+		input := `{"anthropic_beta":[],"tools":[{"type":"computer_20250124","name":"computer"}],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		assert.True(t, beta.Exists())
+		tokens := beta.Array()
+		assert.Equal(t, 1, len(tokens))
+		assert.Equal(t, "computer-use-2025-11-24", tokens[0].String())
+	})
+
+	t.Run("transforms advanced-tool-use to tool-search-tool", func(t *testing.T) {
+		input := `{"anthropic_beta":["advanced-tool-use-2025-11-20"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens)) // tool-search-tool + tool-examples (auto-associated)
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "tool-search-tool-2025-10-19")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "tool-examples-2025-10-29")
+	})
+
+	t.Run("no-op when anthropic_beta not present", func(t *testing.T) {
+		input := `{"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		assert.False(t, gjson.GetBytes(result, "anthropic_beta").Exists())
+	})
+
+	t.Run("preserves supported beta tokens", func(t *testing.T) {
+		input := `{"anthropic_beta":["computer-use-2025-11-24","context-1m-2025-08-07"],"messages":[]}`
+		result := sanitizeBedrockCCBetaTokens([]byte(input), "claude-opus-4-6")
+		beta := gjson.GetBytes(result, "anthropic_beta")
+		tokens := beta.Array()
+		assert.Equal(t, 2, len(tokens))
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "computer-use-2025-11-24")
+		assert.Contains(t, []string{tokens[0].String(), tokens[1].String()}, "context-1m-2025-08-07")
 	})
 }
