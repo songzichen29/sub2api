@@ -17,8 +17,32 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func filterOpenAIOAuthBetaHeader(values []string) []string {
+	var filtered []string
+	for _, value := range values {
+		var kept []string
+		for _, token := range strings.Split(value, ",") {
+			token = strings.TrimSpace(token)
+			if token == "" || strings.EqualFold(token, "responses=experimental") {
+				continue
+			}
+			kept = append(kept, token)
+		}
+		if len(kept) > 0 {
+			filtered = append(filtered, strings.Join(kept, ", "))
+		}
+	}
+	return filtered
+}
+
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	if account != nil && account.IsOpenCodeGo() {
+		requestedModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+		if IsOpenCodeUnsupportedModel(requestedModel) {
+			return nil, writeOpenCodeUnsupportedModelError(c, false, requestedModel)
+		}
+	}
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -42,6 +66,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	apiKeyID := getAPIKeyIDFromContext(c)
+	// Preserve the client-derived execution scope before request normalization
+	// rewrites prompt cache and metadata fields for the selected account.
+	wsExecutionScope, _ := resolveOpenAIWSExecutionScope(c, body, apiKeyID)
 	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
@@ -179,7 +206,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) {
 		normalizedReasoningBody, reasoningChanged, reasoningErr := normalizeOpenAIResponsesReasoningContentReplay(body)
@@ -901,6 +928,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				account,
 				wsReqBody,
 				clientPromptCacheKey,
+				wsExecutionScope,
 				token,
 				wsDecision,
 				isCodexCLI,
@@ -1119,7 +1147,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			}
 			respBody = s.redactAgentIdentitySensitiveBody(ctx, account, respBody)
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
-			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
+			invalidEncrypted := upstreamCode == "invalid_encrypted_content" ||
+				(upstreamCode == "thinking_signature_invalid" && strings.Contains(strings.ToLower(upstreamMsg), "encrypted content") && strings.Contains(strings.ToLower(upstreamMsg), "could not be verified"))
+			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && invalidEncrypted {
 				decoded, decodeErr := ensureReqBody()
 				if decodeErr != nil {
 					return nil, decodeErr
@@ -1355,6 +1385,11 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
 	}
+	if account.IsOpenCodeGo() {
+		// OpenCode Go resolves the native protocol per model; its adaptive
+		// setting is not a signal to downgrade Responses globally.
+		return false
+	}
 	if account.IsCNProvider() {
 		// CN 的显式协议配置优先于异步探针 Extra；adaptive 仅 DeepSeek / Kimi
 		// 有原生 Responses，GLM 回退 Chat Completions。
@@ -1457,6 +1492,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 			req.Header.Del("OpenAI-Beta")
 			req.Header.Del("originator")
 		} else {
+			// The legacy responses=experimental marker is rejected by the
+			// ChatGPT OAuth endpoint, while unrelated caller beta tokens remain
+			// meaningful and must be preserved.
+			if beta := filterOpenAIOAuthBetaHeader(req.Header.Values("OpenAI-Beta")); len(beta) > 0 {
+				req.Header.Del("OpenAI-Beta")
+				for _, value := range beta {
+					req.Header.Add("OpenAI-Beta", value)
+				}
+			} else {
+				req.Header.Del("OpenAI-Beta")
+			}
 			req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
@@ -1514,13 +1560,17 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
+	applyOpenCodeUpstreamUserAgent(account, targetURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
-	applyOpenCodeSessionHeader(c, account, targetURL, req.Header)
+	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, body)
 	// x-codex-beta-features：按真实 Codex 的会话级行为补注（在账号级覆写之后，
 	// 保证不被覆盖丢失）。
 	applyOpenAICodexBetaFeatures(c, account, req.Header)
 	setOpenAICodexRoutingHintFromBody(req.Header, account, body)
 	logOpenAIRoutingDiagnosticsFromBody(ctx, account, "http", req.Header, body, "not_applicable")
+	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }

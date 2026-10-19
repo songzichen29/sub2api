@@ -1171,6 +1171,7 @@
                           | 'all'
                           | 'priority'
                           | 'flex'
+                          | 'missing'
                       "
                       :options="openaiFastPolicyTierOptions"
                     />
@@ -3640,6 +3641,70 @@
                   </div>
                 </div>
               </div>
+
+              <!-- ★ 新增：系统全局默认平台限额矩阵 -->
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3">
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotas") }}
+                  </label>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultPlatformQuotasHint") }}
+                  </p>
+                  <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                    {{ t("admin.settings.defaults.platformQuotaNotice") }}
+                  </p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead>
+                      <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                        <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                        <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="space-y-2">
+                      <tr v-for="p in platformQuotaRows(form.default_platform_quotas)" :key="p" class="align-top">
+                        <td class="pr-4 py-1">
+                          <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.daily"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="pr-4 py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.weekly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                        <td class="py-1">
+                          <input
+                            v-model.number="form.default_platform_quotas[p]!.monthly"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            class="input h-8 w-28 text-sm"
+                            :placeholder="t('admin.settings.platformQuota.placeholder')"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -3979,6 +4044,68 @@
                         </div>
                       </div>
                     </div>
+
+                    <!-- ★ 新增：auth source 平台限额覆盖区块 -->
+                    <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                      <div class="mb-3">
+                        <label class="font-medium text-gray-900 dark:text-white">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverride") }}
+                        </label>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.authSourceDefaults.platformQuotasOverrideHint") }}
+                        </p>
+                      </div>
+                      <div class="overflow-x-auto">
+                        <table class="min-w-full text-sm">
+                          <thead>
+                            <tr class="text-left text-xs text-gray-500 dark:text-gray-400">
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.platform") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.daily") }}</th>
+                              <th class="pb-2 pr-4 font-medium">{{ t("admin.settings.platformQuota.weekly") }}</th>
+                              <th class="pb-2 font-medium">{{ t("admin.settings.platformQuota.monthly") }}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="p in platformQuotaRows(authSourceDefaults[authSource.source].platform_quotas)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                              <td class="pr-4 py-1">
+                                <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.daily"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="pr-4 py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.weekly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                              <td class="py-1">
+                                <input
+                                  v-model.number="authSourceDefaults[authSource.source].platform_quotas[p]!.monthly"
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  class="input h-8 w-28 text-sm"
+                                  :placeholder="t('admin.settings.platformQuota.placeholder')"
+                                />
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                    <!-- /auth source 平台限额覆盖区块 -->
                   </div>
                 </div>
               </div>
@@ -4195,6 +4322,90 @@
             </div>
           </div>
 
+          <!-- OpenCode Go Usage Settings -->
+          <div class="card" data-testid="opencode-go-usage-global-settings">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.opencodeGoUsage.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.opencodeGoUsage.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div v-if="opencodeGoUsageLoading" class="flex items-center gap-2 text-gray-500">
+                <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.opencodeGoUsage.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="opencodeGoUsageForm.enabled"
+                    :aria-label="t('admin.settings.opencodeGoUsage.enabled')"
+                    data-testid="opencode-go-usage-global-enabled"
+                  />
+                </div>
+                <div v-if="opencodeGoUsageForm.enabled" class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-debounce">
+                      {{ t("admin.settings.opencodeGoUsage.debounceMinutes") }}
+                    </label>
+                    <input
+                      id="opencode-go-usage-debounce"
+                      v-model.number="opencodeGoUsageForm.debounce_minutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      class="input w-32"
+                      data-testid="opencode-go-usage-global-debounce"
+                      @keydown.enter.prevent="saveOpenCodeGoUsageSettings"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.debounceHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-interval">
+                      {{ t("admin.settings.opencodeGoUsage.intervalMinutes") }}
+                    </label>
+                    <input
+                      id="opencode-go-usage-interval"
+                      v-model.number="opencodeGoUsageForm.interval_minutes"
+                      type="number"
+                      min="5"
+                      max="1440"
+                      class="input w-32"
+                      data-testid="opencode-go-usage-global-interval"
+                      @keydown.enter.prevent="saveOpenCodeGoUsageSettings"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.intervalHint") }}
+                    </p>
+                  </div>
+                </div>
+                <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="opencodeGoUsageSaving"
+                    data-testid="opencode-go-usage-global-save"
+                    @click="saveOpenCodeGoUsageSettings"
+                  >
+                    {{ opencodeGoUsageSaving ? t("common.saving") : t("common.save") }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Gateway Scheduling Settings -->
           <div class="card">
             <div
@@ -4266,7 +4477,6 @@
                     class="input pr-8"
                     data-testid="openai-oauth-scheduling-rate-multiplier"
                     min="0"
-                    required
                     step="0.01"
                     type="number"
                   />
@@ -4347,7 +4557,6 @@
                     class="input pr-8"
                     data-testid="openai-oauth-scheduling-rate-multiplier"
                     min="0"
-                    required
                     step="0.01"
                     type="number"
                   />
@@ -4919,6 +5128,121 @@
                   }}
                 </p>
               </div>
+
+              <!-- Codex 客户端版本号 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexClientVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.openai_codex_client_version"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  :placeholder="
+                    t(
+                      'admin.settings.gatewayForwarding.openaiCodexClientVersionPlaceholder',
+                    )
+                  "
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openaiCodexClientVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- Codex 版本号自动同步 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.openaiCodexVersionAutoSync",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.openaiCodexVersionAutoSyncHint",
+                      )
+                    }}
+                  </p>
+                  <p
+                    v-if="codexSyncedVersionLabel"
+                    class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ codexSyncedVersionLabel }}
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
+              </div>
+
+              <!-- Claude Code 客户端版本号 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.claude_code_client_version"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  placeholder="2.1.280"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- Claude Code 版本号自动同步 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSync",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSyncHint",
+                      )
+                    }}
+                  </p>
+                  <p
+                    v-if="claudeSyncedVersionLabel"
+                    class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ claudeSyncedVersionLabel }}
+                  </p>
+                </div>
+                <Toggle v-model="form.claude_code_version_auto_sync_enabled" />
+              </div>
+
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -5924,6 +6248,17 @@
                     />
                   </div>
 
+                  <label class="flex items-center gap-2 sm:col-span-2">
+                    <input
+                      v-model="item.hide_open_button"
+                      type="checkbox"
+                      data-testid="custom-menu-hide-open-button"
+                    />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">
+                      {{ t("admin.settings.customMenu.hideOpenButton") }}
+                    </span>
+                  </label>
+
                   <!-- SVG Icon (full width) -->
                   <div class="sm:col-span-2">
                     <label
@@ -6189,6 +6524,36 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.siteBillingMode.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.siteBillingMode.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.siteBillingMode.label') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ siteBillingModeHint }}
+                </p>
+              </div>
+              <div class="w-full shrink-0 sm:w-56">
+                <Select
+                  :modelValue="siteBillingMode"
+                  :options="siteBillingModeOptions"
+                  @update:modelValue="siteBillingMode = $event as SiteBillingMode"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.pluginManagement.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -6239,6 +6604,18 @@
                 </p>
               </div>
               <Toggle v-model="form.risk_control_enabled" />
+            </div>
+
+            <div>
+              <label class="input-label">
+                {{ t('admin.settings.features.riskControl.riskControlUserAllowlist') }}
+              </label>
+              <OpenAIFastPolicyUserSelector
+                v-model="riskControlAllowlistedUserIds"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.features.riskControl.riskControlUserAllowlistHint') }}
+              </p>
             </div>
 
             <div class="flex items-center justify-between">
@@ -7489,6 +7866,13 @@
               </span>
             </div>
           </div>
+          <!-- 充值优惠阶梯（独立卡片，与服务商管理同级） -->
+          <RechargeBonusTierEditor
+            v-if="form.payment_enabled"
+            v-model="form.payment_recharge_bonus_tiers"
+            v-model:mode="form.payment_recharge_bonus_mode"
+            v-model:notice="form.payment_recharge_bonus_notice"
+          />
 
           <!-- Provider Management -->
           <PaymentProviderList
@@ -8101,6 +8485,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
+import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import { opsAPI, type EmailNotificationConfig } from "@/api/admin/ops";
@@ -8110,7 +8495,9 @@ import {
   defaultWeChatConnectScopesForMode,
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
+  normalizeAccountSchedulingThresholdsMap,
   normalizePlatformQuotasMap,
+  sanitizePlatformQuotasMap,
   resolveWeChatConnectModeCapabilities,
 } from "@/api/admin/settings";
 import type {
@@ -8119,6 +8506,7 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
   PaymentPaidUserRateBackfillStatus,
   PaymentPaidUserRateRule,
@@ -8134,9 +8522,20 @@ import type {
   Proxy,
 } from "@/types";
 import type { DiscountRule, ProviderInstance } from "@/types/payment";
+import {
+  serializeFingerprintRowsToJSON,
+  type FingerprintSignalRow,
+} from "./codexFingerprintSignals";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
-import Select from "@/components/common/Select.vue";
+import Select, { type SelectOption } from "@/components/common/Select.vue";
+import {
+  SITE_BILLING_MODES,
+  SITE_BILLING_MODE_I18N_KEYS,
+  billingModeToSettings,
+  resolveSiteBillingMode,
+  type SiteBillingMode,
+} from "@/utils/siteBillingMode";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
@@ -8147,6 +8546,14 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
+import {
+  normalizeRechargeBonusMode,
+  normalizeRechargeBonusTiers,
+  sanitizeRechargeBonusTiersForSubmit,
+  type RechargeBonusMode,
+  type RechargeBonusTierDraft,
+} from "@/utils/rechargeBonus";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
@@ -8290,6 +8697,14 @@ const ollamaCloudUsageSaving = ref(false);
 const ollamaCloudUsageForm = reactive({
   enabled: false,
   interval_minutes: 60,
+  debounce_minutes: 1,
+});
+
+const opencodeGoUsageLoading = ref(true);
+const opencodeGoUsageSaving = ref(false);
+const opencodeGoUsageForm = reactive({
+  enabled: false,
+  interval_minutes: 15,
   debounce_minutes: 1,
 });
 
@@ -8781,6 +9196,7 @@ type SettingsForm = Omit<
   | "wechat_connect_open_enabled"
   | "wechat_connect_mp_enabled"
   | "wechat_connect_mobile_enabled"
+  | "openai_oauth_scheduling_rate_multiplier"
 > & {
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
@@ -8804,7 +9220,7 @@ type SettingsForm = Omit<
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_low_upstream_rate_priority_enabled: boolean;
-  openai_oauth_scheduling_rate_multiplier: number;
+  openai_oauth_scheduling_rate_multiplier: number | "" | null;
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
@@ -8824,7 +9240,20 @@ type SettingsForm = Omit<
   session_binding_enabled: boolean;
   step_up_enabled: boolean;
   audit_log_retention_days: number;
+  // 充值赠送阶梯编辑态：允许留空的行，提交时清洗为 RechargeBonusTier[]
+  payment_recharge_bonus_tiers: RechargeBonusTierDraft[];
+  payment_recharge_bonus_mode: RechargeBonusMode;
+  payment_recharge_bonus_notice: string;
+  // 系统全局平台限额 map；form 内始终归一化为全部平台对象（模板非空绑定依赖此不变量）
+  default_platform_quotas: DefaultPlatformQuotasMap;
+  account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
 };
+
+// 平台限额表格的行：平台清单顺序中、已在归一化 map 里的平台（清单晚于设置加载时
+// 不渲染尚未归一化的平台，保持模板非空绑定）。
+function platformQuotaRows(map: DefaultPlatformQuotasMap | undefined): string[] {
+  return listPlatformIds().filter((platform) => !!map?.[platform]);
+}
 
 const form = reactive<SettingsForm>({
   registration_enabled: true,
@@ -8854,6 +9283,8 @@ const form = reactive<SettingsForm>({
   affiliate_admin_recharge_enabled: false,
   default_concurrency: 1,
   default_subscriptions: [],
+  default_platform_quotas: normalizePlatformQuotasMap(),
+  account_scheduling_thresholds: normalizeAccountSchedulingThresholdsMap(),
   force_email_on_third_party_signup: false,
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
@@ -8871,6 +9302,7 @@ const form = reactive<SettingsForm>({
   hide_ccs_import_button: false,
   payment_enabled: false,
   risk_control_enabled: false,
+  cyber_policy_user_allowlist: "",
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
   payment_min_amount: 1,
@@ -8886,6 +9318,9 @@ const form = reactive<SettingsForm>({
   payment_paid_user_rate_rules: [],
   payment_paid_user_rate_backfill: emptyPaidUserRateBackfill(),
   payment_recharge_fee_rate: 0,
+  payment_recharge_bonus_tiers: [],
+  payment_recharge_bonus_mode: "bonus",
+  payment_recharge_bonus_notice: "",
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
@@ -8908,6 +9343,7 @@ const form = reactive<SettingsForm>({
     url: string;
     visibility: "user" | "admin";
     sort_order: number;
+    hide_open_button?: boolean;
   }>,
   custom_endpoints: [] as Array<{
     name: string;
@@ -9051,6 +9487,22 @@ const form = reactive<SettingsForm>({
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
   // Balance & quota notification
+  openai_codex_client_version: "",
+  // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
+  openai_codex_client_version_synced: "",
+  openai_codex_version_auto_sync_enabled: true,
+  claude_code_client_version: "",
+  // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
+  claude_code_client_version_synced: "",
+  claude_code_version_auto_sync_enabled: true,
+  // codex_cli_only 加固
+  min_codex_version: "",
+  max_codex_version: "",
+  codex_cli_only_blacklist: "",
+  codex_cli_only_whitelist: "",
+  codex_cli_only_allow_app_server_clients: false,
+  codex_cli_only_engine_fingerprint_signals: "",
+  // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
   balance_low_notify_recharge_url: "",
@@ -9066,6 +9518,8 @@ const form = reactive<SettingsForm>({
   channel_monitor_hide_user_ranking: false,
   // Available Channels feature switch
   available_channels_enabled: false,
+  // Subscription feature switch (user sidebar "My Subscriptions" entry)
+  subscription_enabled: true,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
@@ -9087,6 +9541,19 @@ function applyCaptchaSelection(provider: CaptchaProviderSelection | null): void 
   form.tencent_captcha_enabled = provider === "tencent";
   form.aliyun_captcha_enabled = provider === "aliyun";
 }
+
+// Keep the settings API representation as user IDs; the selector displays emails.
+const riskControlAllowlistedUserIds = computed<number[]>({
+  get: () => Array.from(new Set(
+    form.cyber_policy_user_allowlist
+      .split(/[,\s]+/)
+      .map(Number)
+      .filter((id) => Number.isSafeInteger(id) && id > 0),
+  )),
+  set: (ids) => {
+    form.cyber_policy_user_allowlist = ids.join(",");
+  },
+});
 
 const captchaMasterEnabled = computed({
   get: () =>
@@ -9946,6 +10413,52 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+// ── codex_cli_only 黑/白名单结构化编辑（行 ↔ JSON）──
+interface CodexClientRow {
+  originator: string;
+  uaContains: string; // 逗号分隔，序列化时拆成 ua_contains 数组
+  skipEngineFingerprint?: boolean; // 仅白名单：命中即跳过引擎指纹门
+}
+const codexBlacklistRows = ref<CodexClientRow[]>([]);
+const codexWhitelistRows = ref<CodexClientRow[]>([]);
+const codexFingerprintRows = ref<FingerprintSignalRow[]>([]);
+function serializeCodexRowsToJSON(rows: CodexClientRow[]): string {
+  const entries = rows
+    .map((r) => {
+      const entry: {
+        originator: string;
+        ua_contains: string[];
+        skip_engine_fingerprint?: boolean;
+      } = {
+        originator: r.originator.trim(),
+        ua_contains: r.uaContains
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      };
+      if (r.skipEngineFingerprint) entry.skip_engine_fingerprint = true;
+      return entry;
+    })
+    .filter((e) => e.originator !== "" || e.ua_contains.length > 0);
+  return entries.length > 0 ? JSON.stringify(entries) : "";
+}
+
+const codexSyncedVersionLabel = computed(() => {
+  const synced = form.openai_codex_client_version_synced?.trim();
+  if (!synced) return "";
+  return t("admin.settings.gatewayForwarding.openaiCodexVersionSyncedValue", {
+    version: synced,
+  });
+});
+
+const claudeSyncedVersionLabel = computed(() => {
+  const synced = form.claude_code_client_version_synced?.trim();
+  if (!synced) return "";
+  return t("admin.settings.gatewayForwarding.claudeCodeVersionSyncedValue", {
+    version: synced,
+  });
+});
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -9972,6 +10485,11 @@ async function loadSettings() {
     paymentQuickAmountsInput.value = formatQuickAmounts(
       form.payment_quick_amounts,
     );
+    // For this optional override, null explicitly selects per-account rates.
+    if (settings.openai_oauth_scheduling_rate_multiplier === null) {
+      form.openai_oauth_scheduling_rate_multiplier = null;
+    }
+    syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
         defaultClaudeOAuthSystemPromptBlocks;
@@ -10008,6 +10526,17 @@ async function loadSettings() {
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings));
     form.default_platform_quotas = normalizePlatformQuotasMap(
       settings.default_platform_quotas,
+    );
+    form.payment_recharge_bonus_tiers = normalizeRechargeBonusTiers(
+      settings.payment_recharge_bonus_tiers,
+    );
+    form.payment_recharge_bonus_mode = normalizeRechargeBonusMode(
+      settings.payment_recharge_bonus_mode,
+    );
+    form.payment_recharge_bonus_notice = settings.payment_recharge_bonus_notice || "";
+    form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
+    form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
+      settings.account_scheduling_thresholds,
     );
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
@@ -10342,6 +10871,23 @@ function findInvalidDefaultSubscription(
     return !item.validity_days || item.validity_days < 1;
   });
 }
+// 站点类型：由 subscription_enabled 与 payment_balance_disabled 两个开关派生的单选，
+// 保存时同时写回两者，避免出现「既无充值也无订阅」的组合。
+const siteBillingModeOptions = computed<SelectOption[]>(() =>
+  SITE_BILLING_MODES.map((mode) => ({
+    value: mode,
+    label: t(`admin.settings.features.siteBillingMode.options.${SITE_BILLING_MODE_I18N_KEYS[mode]}`),
+  })),
+);
+const siteBillingMode = computed<SiteBillingMode>({
+  get: () => resolveSiteBillingMode(form),
+  set: (mode) => {
+    Object.assign(form, billingModeToSettings(mode));
+  },
+});
+const siteBillingModeHint = computed(() =>
+  t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
+);
 
 async function saveSettings() {
   saving.value = true;
@@ -10476,6 +11022,16 @@ async function saveSettings() {
     form.claude_oauth_system_prompt_blocks =
       claudeOAuthSystemPromptBlocksJSON;
 
+    const oauthSchedulingRate = form.openai_oauth_scheduling_rate_multiplier;
+    if (
+      oauthSchedulingRate !== "" &&
+      oauthSchedulingRate !== null &&
+      (!Number.isFinite(oauthSchedulingRate) || oauthSchedulingRate < 0)
+    ) {
+      appStore.showError(t("admin.settings.openaiExperimentalScheduler.oauthRateInvalid"));
+      return;
+    }
+
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
       email_verify_enabled: form.email_verify_enabled,
@@ -10512,6 +11068,7 @@ async function saveSettings() {
       affiliate_admin_recharge_enabled: form.affiliate_admin_recharge_enabled,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
+      default_platform_quotas: sanitizePlatformQuotasMap(form.default_platform_quotas),
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name,
@@ -10647,9 +11204,30 @@ async function saveSettings() {
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent: form.openai_codex_user_agent?.trim() || "",
+      openai_codex_client_version:
+        form.openai_codex_client_version?.trim() || "",
+      openai_codex_version_auto_sync_enabled:
+        form.openai_codex_version_auto_sync_enabled,
+      claude_code_client_version: form.claude_code_client_version?.trim() || "",
+      claude_code_version_auto_sync_enabled:
+        form.claude_code_version_auto_sync_enabled,
+      min_codex_version: form.min_codex_version?.trim() || "",
+      max_codex_version: form.max_codex_version?.trim() || "",
+      codex_cli_only_allow_app_server_clients:
+        form.codex_cli_only_allow_app_server_clients,
+      codex_cli_only_engine_fingerprint_signals: serializeFingerprintRowsToJSON(
+        codexFingerprintRows.value,
+      ),
+      codex_cli_only_blacklist: serializeCodexRowsToJSON(
+        codexBlacklistRows.value,
+      ),
+      codex_cli_only_whitelist: serializeCodexRowsToJSON(
+        codexWhitelistRows.value,
+      ),
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
+      cyber_policy_user_allowlist: form.cyber_policy_user_allowlist,
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:
         Number(form.cyber_session_block_ttl_seconds) || 3600,
@@ -10673,6 +11251,11 @@ async function saveSettings() {
         form.payment_paid_user_rate_rules,
       ),
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
+      payment_recharge_bonus_tiers: sanitizeRechargeBonusTiersForSubmit(
+        form.payment_recharge_bonus_tiers,
+      ),
+      payment_recharge_bonus_mode: form.payment_recharge_bonus_mode,
+      payment_recharge_bonus_notice: form.payment_recharge_bonus_notice,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
       payment_product_name_prefix: form.payment_product_name_prefix,
@@ -10693,7 +11276,7 @@ async function saveSettings() {
       openai_low_upstream_rate_priority_enabled:
         form.openai_low_upstream_rate_priority_enabled,
       openai_oauth_scheduling_rate_multiplier:
-        form.openai_oauth_scheduling_rate_multiplier,
+        oauthSchedulingRate === "" ? null : oauthSchedulingRate,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       openai_advanced_scheduler_sticky_weighted_enabled:
         form.openai_advanced_scheduler_sticky_weighted_enabled,
@@ -10747,6 +11330,8 @@ async function saveSettings() {
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      // Subscription feature switch
+      subscription_enabled: form.subscription_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,
@@ -10829,6 +11414,9 @@ async function saveSettings() {
     }
     form.payment_paid_user_rate_backfill =
       updated.payment_paid_user_rate_backfill || emptyPaidUserRateBackfill();
+    if (updated.openai_oauth_scheduling_rate_multiplier === null) {
+      form.openai_oauth_scheduling_rate_multiplier = null;
+    }
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     refreshDefaultSubscriptionDisplayState(
       updated.default_subscriptions as DefaultSubscriptionSetting[] | undefined,
@@ -11109,6 +11697,37 @@ async function saveOllamaCloudUsageSettings() {
     );
   } finally {
     ollamaCloudUsageSaving.value = false;
+  }
+}
+
+async function loadOpenCodeGoUsageSettings() {
+  opencodeGoUsageLoading.value = true;
+  try {
+    Object.assign(
+      opencodeGoUsageForm,
+      await adminAPI.accounts.getOpenCodeGoUsageSettings(),
+    );
+  } catch (_error: unknown) {
+    // Keep the fail-safe disabled defaults when this optional setting cannot be loaded.
+  } finally {
+    opencodeGoUsageLoading.value = false;
+  }
+}
+
+async function saveOpenCodeGoUsageSettings() {
+  opencodeGoUsageSaving.value = true;
+  try {
+    const updated = await adminAPI.accounts.updateOpenCodeGoUsageSettings({
+      ...opencodeGoUsageForm,
+    });
+    Object.assign(opencodeGoUsageForm, updated);
+    appStore.showSuccess(t("admin.settings.opencodeGoUsage.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.opencodeGoUsage.saveFailed")),
+    );
+  } finally {
+    opencodeGoUsageSaving.value = false;
   }
 }
 
@@ -11398,6 +12017,7 @@ const openaiFastPolicyTierOptions = computed(() => [
     label: t("admin.settings.openaiFastPolicy.tierUltrafast"),
   },
   { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+  { value: "missing", label: t("admin.settings.openaiFastPolicy.tierMissing") },
 ]);
 
 const openaiFastPolicyActionOptions = computed(() => [
@@ -11848,6 +12468,7 @@ onMounted(() => {
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
+  loadOpenCodeGoUsageSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();

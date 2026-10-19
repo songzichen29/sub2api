@@ -124,6 +124,9 @@ type PaymentConfig struct {
 	HelpText                 string                            `json:"help_text"`
 	AlipayForceQRCode        bool                              `json:"alipay_force_qrcode"`
 	StripePublishableKey     string                            `json:"stripe_publishable_key,omitempty"`
+	RechargeBonusTiers       []RechargeBonusTier               `json:"payment_recharge_bonus_tiers"`
+	RechargeBonusMode        string                            `json:"payment_recharge_bonus_mode"`
+	RechargeBonusNotice      string                            `json:"payment_recharge_bonus_notice"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -167,11 +170,14 @@ type UpdatePaymentConfigRequest struct {
 	CancelRateLimitMode    *string `json:"cancel_rate_limit_window_mode"`
 
 	// Use Alipay face-to-face precreate and an app deep link on mobile clients.
-	AlipayMobilePrecreateDeepLink *bool   `json:"alipay_mobile_precreate_deep_link"`
-	VisibleMethodAlipaySource     *string `json:"payment_visible_method_alipay_source"`
-	VisibleMethodWxpaySource      *string `json:"payment_visible_method_wxpay_source"`
-	VisibleMethodAlipayEnabled    *bool   `json:"payment_visible_method_alipay_enabled"`
-	VisibleMethodWxpayEnabled     *bool   `json:"payment_visible_method_wxpay_enabled"`
+	AlipayMobilePrecreateDeepLink *bool                `json:"alipay_mobile_precreate_deep_link"`
+	VisibleMethodAlipaySource     *string              `json:"payment_visible_method_alipay_source"`
+	VisibleMethodWxpaySource      *string              `json:"payment_visible_method_wxpay_source"`
+	VisibleMethodAlipayEnabled    *bool                `json:"payment_visible_method_alipay_enabled"`
+	VisibleMethodWxpayEnabled     *bool                `json:"payment_visible_method_wxpay_enabled"`
+	RechargeBonusTiers            *[]RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	RechargeBonusMode             *string              `json:"payment_recharge_bonus_mode"`
+	RechargeBonusNotice           *string              `json:"payment_recharge_bonus_notice"`
 }
 
 // MethodLimits holds per-payment-type limits.
@@ -314,6 +320,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingAlipayMobilePrecreateDeepLink,
 		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
 		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
+		SettingRechargeBonusTiers, SettingRechargeBonusMode, SettingRechargeBonusNotice,
 	}
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
@@ -368,6 +375,9 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
 		AlipayForceQRCode:         vals[SettingAlipayForceQRCode] == "true",
+		RechargeBonusTiers:        parseRechargeBonusTiers(vals[SettingRechargeBonusTiers]),
+		RechargeBonusMode:         func() string { mode, _ := NormalizeRechargeBonusMode(vals[SettingRechargeBonusMode]); return mode }(),
+		RechargeBonusNotice:       vals[SettingRechargeBonusNotice],
 
 		CancelRateLimitEnabled:        vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:            pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -562,6 +572,25 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.VisibleMethodWxpayEnabled != nil {
 		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
+	}
+	if req.RechargeBonusTiers != nil || req.RechargeBonusMode != nil {
+		tiersValue, modeValue, bonusErr := s.resolveRechargeBonusUpdate(ctx, req)
+		if bonusErr != nil {
+			return bonusErr
+		}
+		if req.RechargeBonusTiers != nil {
+			m[SettingRechargeBonusTiers] = tiersValue
+		}
+		if req.RechargeBonusMode != nil {
+			m[SettingRechargeBonusMode] = modeValue
+		}
+	}
+	if req.RechargeBonusNotice != nil {
+		notice := derefStr(req.RechargeBonusNotice)
+		if noticeErr := validateRechargeBonusNotice(notice); noticeErr != nil {
+			return infraerrors.BadRequest("INVALID_RECHARGE_BONUS_NOTICE", noticeErr.Error())
+		}
+		m[SettingRechargeBonusNotice] = notice
 	}
 	if err := s.settingRepo.SetMultiple(ctx, m); err != nil {
 		return err

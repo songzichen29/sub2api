@@ -1,29 +1,61 @@
 package routes
 
 import (
+	"time"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	ratelimit "github.com/Wei-Shaw/sub2api/internal/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+)
+
+// publicOrderVerifyRateLimit caps anonymous legacy out_trade_no lookups per
+// client IP. The payment result page polls at most a handful of times per
+// order, so this leaves ample headroom for real users while making
+// out_trade_no enumeration impractical.
+const (
+	publicOrderVerifyRateLimit       = 20
+	publicOrderVerifyRateLimitWindow = time.Minute
 )
 
 // RegisterPaymentRoutes registers all payment-related routes:
 // user-facing endpoints, webhook endpoints, and admin endpoints.
-func RegisterPaymentRoutes(
-	v1 *gin.RouterGroup,
-	paymentHandler *handler.PaymentHandler,
-	invoiceHandler *handler.InvoiceHandler,
-	webhookHandler *handler.PaymentWebhookHandler,
-	adminPaymentHandler *admin.PaymentHandler,
-	adminInvoiceHandler *admin.InvoiceHandler,
-	jwtAuth middleware.JWTAuthMiddleware,
-	adminAuth middleware.AdminAuthMiddleware,
-	auditLog middleware.AuditLogMiddleware,
-	settingService *service.SettingService,
-	panelRateLimiter *middleware.PanelRateLimiter,
-) {
+func RegisterPaymentRoutes(v1 *gin.RouterGroup, paymentHandler *handler.PaymentHandler, args ...any) {
+	var invoiceHandler *handler.InvoiceHandler
+	var webhookHandler *handler.PaymentWebhookHandler
+	var adminPaymentHandler *admin.PaymentHandler
+	var adminInvoiceHandler *admin.InvoiceHandler
+	var jwtAuth middleware.JWTAuthMiddleware
+	var adminAuth middleware.AdminAuthMiddleware
+	var auditLog middleware.AuditLogMiddleware
+	var settingService *service.SettingService
+	var panelRateLimiter *middleware.PanelRateLimiter
+	var redisClient *redis.Client
+	if len(args) >= 10 {
+		invoiceHandler, _ = args[0].(*handler.InvoiceHandler)
+		webhookHandler, _ = args[1].(*handler.PaymentWebhookHandler)
+		adminPaymentHandler, _ = args[2].(*admin.PaymentHandler)
+		adminInvoiceHandler, _ = args[3].(*admin.InvoiceHandler)
+		jwtAuth, _ = args[4].(middleware.JWTAuthMiddleware)
+		adminAuth, _ = args[5].(middleware.AdminAuthMiddleware)
+		auditLog, _ = args[6].(middleware.AuditLogMiddleware)
+		settingService, _ = args[7].(*service.SettingService)
+		panelRateLimiter, _ = args[8].(*middleware.PanelRateLimiter)
+		redisClient, _ = args[9].(*redis.Client)
+	} else if len(args) >= 8 {
+		webhookHandler, _ = args[0].(*handler.PaymentWebhookHandler)
+		adminPaymentHandler, _ = args[1].(*admin.PaymentHandler)
+		jwtAuth, _ = args[2].(middleware.JWTAuthMiddleware)
+		adminAuth, _ = args[3].(middleware.AdminAuthMiddleware)
+		auditLog, _ = args[4].(middleware.AuditLogMiddleware)
+		settingService, _ = args[5].(*service.SettingService)
+		panelRateLimiter, _ = args[6].(*middleware.PanelRateLimiter)
+		redisClient, _ = args[7].(*redis.Client)
+	}
 	// --- User-facing payment endpoints (authenticated) ---
 	authenticated := v1.Group("/payment")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
@@ -69,9 +101,15 @@ func RegisterPaymentRoutes(
 	// Signed resume-token recovery is the preferred public lookup path.
 	// The legacy anonymous out_trade_no verify endpoint remains available as a
 	// persisted-state compatibility path for staggered upgrades.
+	// The anonymous verify endpoint is IP rate-limited to prevent out_trade_no
+	// enumeration. It fails open on Redis errors so an outage never blocks a
+	// user who is mid-payment from seeing their result.
+	publicRateLimiter := ratelimit.NewRateLimiter(redisClient)
 	public := v1.Group("/payment/public")
 	{
-		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
+		public.POST("/orders/verify",
+			publicRateLimiter.Limit("payment-public-order-verify", publicOrderVerifyRateLimit, publicOrderVerifyRateLimitWindow),
+			paymentHandler.VerifyOrderPublic)
 		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
 	}
 

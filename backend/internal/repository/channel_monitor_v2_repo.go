@@ -986,6 +986,9 @@ func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter servi
 			group = bucketExpr + "," + group
 		} else {
 			bucketExpr = channelMonitorV2BucketExpr("m.bucket_start", int(filter.Bucket.Seconds()))
+			args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
+			where = shiftSQLPlaceholders(where, 1)
+			bucketExpr = channelMonitorV2DateBinExpr("m.bucket_start")
 			group = bucketExpr + "," + group
 		}
 	}
@@ -1024,6 +1027,11 @@ func (r *channelMonitorV2Repository) loadHistograms(ctx context.Context, filter 
 			group = bucketExpr + "," + group
 		} else {
 			bucketExpr = channelMonitorV2BucketExpr("h.bucket_start", int(filter.Bucket.Seconds()))
+			oldArgs := args
+			args = []any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}
+			args = append(args, oldArgs...)
+			where = shiftSQLPlaceholders(where, 1)
+			bucketExpr = channelMonitorV2DateBinExpr("h.bucket_start")
 			group = bucketExpr + "," + group
 		}
 	}
@@ -1347,6 +1355,13 @@ func sqlPlaceholders(count int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
+func shiftSQLPlaceholders(query string, offset int) string {
+	for i := 64; i >= 1; i-- {
+		query = strings.ReplaceAll(query, fmt.Sprintf("$%d", i), fmt.Sprintf("$%d", i+offset))
+	}
+	return query
+}
+
 func channelMonitorV2BucketExpr(column string, seconds int) string {
 	if seconds <= 0 {
 		return column
@@ -1488,6 +1503,9 @@ func (r *channelMonitorV2Repository) loadIgnoredErrorCounts(
 	groupBy := "e.bucket_start, e.platform, e.model"
 	if filter.Bucket > 0 && bucketSeconds == 0 {
 		bucketExpr = channelMonitorV2BucketExpr("e.bucket_start", int(filter.Bucket.Seconds()))
+		args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
+		where = shiftSQLPlaceholders(where, 1)
+		bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
 		groupBy = bucketExpr + ", e.platform, e.model"
 	}
 	for _, category := range cfg.IgnoredErrorCategories {
@@ -1584,6 +1602,9 @@ func (r *channelMonitorV2Repository) loadIgnoredErrorCountsByMatrixKey(
 	groupSQL := "e.bucket_start, e.platform, e.group_id, e.model"
 	if filter.Bucket > 0 && bucketSeconds == 0 {
 		bucketExpr = channelMonitorV2BucketExpr("e.bucket_start", int(filter.Bucket.Seconds()))
+		args = append([]any{fmt.Sprintf("%d seconds", int(filter.Bucket.Seconds()))}, args...)
+		where = shiftSQLPlaceholders(where, 1)
+		bucketExpr = channelMonitorV2DateBinExpr("e.bucket_start")
 		groupSQL = bucketExpr + ", e.platform, e.group_id, e.model"
 	}
 	for _, category := range cfg.IgnoredErrorCategories {

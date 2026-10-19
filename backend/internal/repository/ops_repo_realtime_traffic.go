@@ -79,7 +79,9 @@ SELECT
   COALESCE(MAX(token_sum), 0) AS peak_tokens_per_min
 FROM combined`
 
-	q = opsReplaceDollarPlaceholders(q)
+	if opsIsMySQLDB(r.db) {
+		q = opsReplaceDollarPlaceholders(q)
+	}
 
 	args := append(usageArgs, errorArgs...)
 	var successCount int64

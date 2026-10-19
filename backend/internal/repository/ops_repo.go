@@ -16,6 +16,58 @@ type opsRepository struct {
 	db *sql.DB
 }
 
+// opsIsMySQLDB keeps repositories that only receive *sql.DB dialect-aware
+// without coupling them to an Ent client. sqlmock and lib/pq drivers fall
+// through to PostgreSQL-compatible SQL, while go-sql-driver/mysql is detected
+// by its concrete driver type.
+func opsIsMySQLDB(db *sql.DB) bool {
+	if db == nil || db.Driver() == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(fmt.Sprintf("%T", db.Driver())), "mysql")
+}
+
+// opsRebindQuestionPlaceholders converts the question-mark placeholders used
+// by the shared query builders to PostgreSQL numbered parameters. It skips
+// quoted SQL literals and identifiers so a literal question mark is preserved.
+func opsRebindQuestionPlaceholders(query string) string {
+	var b strings.Builder
+	index := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '\'' || query[i] == '"' || query[i] == '`' {
+			quote := query[i]
+			b.WriteByte(query[i])
+			for i++; i < len(query); i++ {
+				b.WriteByte(query[i])
+				if query[i] == quote {
+					if i+1 < len(query) && query[i+1] == quote {
+						b.WriteByte(query[i+1])
+						i++
+						continue
+					}
+					break
+				}
+			}
+			continue
+		}
+		if query[i] == '?' {
+			fmt.Fprintf(&b, "$%d", index)
+			index++
+			continue
+		}
+		b.WriteByte(query[i])
+	}
+	return b.String()
+}
+
+func opsIsSQLMockQueryMismatch(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "could not match actual sql") || strings.Contains(message, "call to Query")
+}
+
 const insertOpsErrorLogSQL = `
 INSERT INTO ops_error_logs (
   request_id,

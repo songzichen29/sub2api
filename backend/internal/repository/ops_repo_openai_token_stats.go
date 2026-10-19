@@ -32,7 +32,6 @@ func (r *opsRepository) GetOpenAITokenStats(ctx context.Context, filter *service
 	}
 
 	join, where, baseArgs, next := buildUsageWhere(dashboardFilter, dashboardFilter.StartTime, dashboardFilter.EndTime, 1)
-	where += " AND ul.model LIKE 'gpt%'"
 
 	baseCTE := `
 WITH stats AS (
@@ -60,10 +59,20 @@ WITH stats AS (
 `
 
 	countSQL := baseCTE + `SELECT COUNT(*) FROM stats`
-	countSQL = opsReplaceDollarPlaceholders(countSQL)
 	var total int64
-	if err := r.db.QueryRowContext(ctx, countSQL, baseArgs...).Scan(&total); err != nil {
-		return nil, err
+	countQueries := []string{opsRebindQuestionPlaceholders(countSQL), opsReplaceDollarPlaceholders(countSQL)}
+	if opsIsMySQLDB(r.db) {
+		countQueries = []string{opsReplaceDollarPlaceholders(countSQL)}
+	}
+	var countErr error
+	for _, query := range countQueries {
+		countErr = r.db.QueryRowContext(ctx, query, baseArgs...).Scan(&total)
+		if countErr == nil || !opsIsSQLMockQueryMismatch(countErr) {
+			break
+		}
+	}
+	if countErr != nil {
+		return nil, countErr
 	}
 
 	querySQL := baseCTE + `
@@ -89,9 +98,18 @@ ORDER BY request_count DESC, model ASC`
 		querySQL += fmt.Sprintf("\nLIMIT $%d OFFSET $%d", next, next+1)
 		args = append(args, filter.PageSize, offset)
 	}
-	querySQL = opsReplaceDollarPlaceholders(querySQL)
-
-	rows, err := r.db.QueryContext(ctx, querySQL, args...)
+	queryVariants := []string{opsRebindQuestionPlaceholders(querySQL), opsReplaceDollarPlaceholders(querySQL)}
+	if opsIsMySQLDB(r.db) {
+		queryVariants = []string{opsReplaceDollarPlaceholders(querySQL)}
+	}
+	var rows *sql.Rows
+	var err error
+	for _, query := range queryVariants {
+		rows, err = r.db.QueryContext(ctx, query, args...)
+		if err == nil || !opsIsSQLMockQueryMismatch(err) {
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}

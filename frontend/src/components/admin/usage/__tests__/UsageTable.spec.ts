@@ -16,9 +16,26 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
+import en from '@/i18n/locales/en/admin/resources'
+import zh from '@/i18n/locales/zh/admin/resources'
 import UsageTable from '../UsageTable.vue'
 
+let locale: 'en' | 'zh' = 'en'
+const localizedMessages: Record<'en' | 'zh', Record<string, string>> = {
+  en: {
+    'admin.usage.longContext': 'Long context',
+    'admin.usage.longContextPricingTooltip': 'Long-context pricing was applied. Input and output rates depend on the pricing tier, not a uniform multiplier.',
+    'usage.longContextPricingApplied': 'Long-context pricing was applied. Input and output rates depend on the pricing tier, not a uniform multiplier.',
+  },
+  zh: {
+    'admin.usage.longContext': '长上下文',
+    'admin.usage.longContextPricingTooltip': '已应用长上下文计费。输入和输出费率取决于定价档位，并非统一倍率。',
+    'usage.longContextPricingApplied': '已应用长上下文计费。输入和输出费率取决于定价档位，并非统一倍率。',
+  },
+}
+
 const messages: Record<string, string> = {
+  'usage.outputTps': 'Output TPS',
   'admin.usage.userDeletedBadge': 'Deleted',
   'usage.costDetails': 'Cost Breakdown',
   'admin.usage.inputCost': 'Input Cost',
@@ -39,7 +56,6 @@ const messages: Record<string, string> = {
   'usage.userBilled': 'User billed',
   'usage.accountBilled': 'Account billed',
   'usage.currentBillingMultiplier': 'Billing rate',
-  'usage.outputTps': 'Output rate',
   'usage.outputTpsHint': 'Output tokens divided by generation time',
   'usage.imageUnit': ' images',
   'usage.imageCount': 'Image count',
@@ -81,7 +97,7 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => messages[key] ?? key,
+      t: (key: string) => localizedMessages[locale][key] ?? messages[key] ?? key,
     }),
   }
 })
@@ -90,14 +106,14 @@ const DataTableStub = {
   props: ['data'],
   template: `
     <div>
-      <div v-for="row in data" :key="row.request_id">
+      <div v-for="row in data" :key="row.request_id" :data-request-id="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-pricing_tier" :row="row" />
         <slot name="cell-tokens" :row="row" />
-        <slot name="cell-cost" :row="row" />
         <slot name="cell-latency" :row="row" />
+        <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
       </div>
@@ -134,7 +150,22 @@ const baseImageRow = {
 }
 
 describe('admin UsageTable tooltip', () => {
+  it('shows output TPS in the latency cell using total duration', () => {
+    const row = { ...baseImageRow, image_count: 0, billing_mode: 'token', output_tokens: 1000, duration_ms: 20_000, first_token_ms: 10_000 }
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row, { ...row, request_id: 'no-duration', duration_ms: null }, { ...row, request_id: 'image', image_count: 1 }],
+        loading: false,
+        columns: [{ key: 'latency', label: 'Latency' }],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.findAll('[data-testid="output-tps"]').map(cell => cell.text())).toEqual(['50.0 tok/s', '—', '—'])
+    expect(wrapper.text()).toContain('Output TPS')
+  })
+
   beforeEach(() => {
+    locale = 'en'
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -207,7 +238,7 @@ describe('admin UsageTable tooltip', () => {
       },
     })
 
-    expect(wrapper.text()).toContain('Output rate')
+    expect(wrapper.text()).toContain('Output TPS')
     expect(wrapper.text()).toContain('25.00 tok/s')
   })
 
@@ -275,7 +306,11 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.text()).toContain('Billing rate x0.4')
   })
 
-  it('marks only usage rows that actually applied long-context billing', () => {
+  it.each([
+    ['en', 'Long context', 'Long-context pricing was applied. Input and output rates depend on the pricing tier, not a uniform multiplier.'],
+    ['zh', '长上下文', '已应用长上下文计费。输入和输出费率取决于定价档位，并非统一倍率。'],
+  ] as const)('marks only applied long-context billing with localized text in %s', (language, label, tooltip) => {
+    locale = language
     const wrapper = mount(UsageTable, {
       props: {
         data: [
@@ -288,6 +323,10 @@ describe('admin UsageTable tooltip', () => {
             ...baseImageRow,
             request_id: 'req-long-context-disabled',
             long_context_billing_applied: false,
+          },
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-absent',
           },
         ],
         loading: false,
@@ -304,7 +343,12 @@ describe('admin UsageTable tooltip', () => {
     })
 
     expect(wrapper.findAll('[data-testid="long-context-billing-marker"]')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="long-context-billing-marker"]').text()).toBe('x2')
+    const marker = wrapper.get('[data-request-id="req-long-context-enabled"] [data-testid="long-context-billing-marker"]')
+    expect(marker.text()).toBe(label)
+    expect(marker.attributes('title')).toBe(tooltip)
+    expect(wrapper.find('[data-request-id="req-long-context-disabled"] [data-testid="long-context-billing-marker"]').exists()).toBe(false)
+    expect(wrapper.find('[data-request-id="req-long-context-absent"] [data-testid="long-context-billing-marker"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('x2')
   })
 
   it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
@@ -357,6 +401,22 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.get('[data-testid="native-compaction-badge"]').text()).toBe('Compaction')
   })
 
+  it.each([
+    [0, '0.0x'],
+    [0.5, '0.50x'],
+    [undefined, '1.00x'],
+  ])('shows the stored user rate %s in cost details', async (rate, expected) => {
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, rate_multiplier: rate }], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const rateLabel = wrapper.get('.fixed').findAll('span').find(span => span.text() === 'Rate')!
+    expect(rateLabel.element.parentElement?.textContent).toContain(expected)
+    wrapper.unmount()
+  })
+
   it('shows service tier and billing breakdown in cost tooltip', async () => {
     const row = {
       request_id: 'req-admin-1',
@@ -405,6 +465,53 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('$5.0000 / 1M tokens')
     expect(text).toContain('$30.0000 / 1M tokens')
     expect(text).toContain('$0.069568')
+  })
+
+  it.each(['token', 'image', 'per_request'])('keeps eight decimal places in %s cost details', async (billingMode) => {
+    const row = {
+      ...baseImageRow,
+      billing_mode: billingMode,
+      image_count: billingMode === 'image' ? 2 : 0,
+      input_cost: 0.00000001,
+      image_input_cost: 0.00000002,
+      output_cost: 0.00000003,
+      image_output_cost: 0.00000004,
+      cache_creation_cost: 0.00000005,
+      cache_read_cost: 0.00000006,
+      total_cost: 0.00000022,
+      actual_cost: 0.00000042,
+      account_stats_cost: 0.00000012,
+      account_rate_multiplier: 1.5,
+    }
+    const wrapper = mount(UsageTable, {
+      props: { data: [row], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text())
+    expect(amounts).toEqual(expect.arrayContaining([
+      '$0.00000001', '$0.00000002', '$0.00000003', '$0.00000004',
+      '$0.00000005', '$0.00000006', '$0.00000022', '$0.00000042', '$0.00000018',
+    ]))
+    if (billingMode === 'image') expect(amounts).toContain('$0.00000011')
+    wrapper.unmount()
+  })
+
+  it('uses eight decimal places for missing cost values', async () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, billing_mode: 'per_request', image_count: 0, total_cost: undefined, actual_cost: undefined }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const triggers = wrapper.findAll('.group.relative')
+    await triggers[triggers.length - 1].trigger('mouseenter')
+    const amounts = wrapper.get('.fixed').findAll('span').map(span => span.text()).filter(text => text.startsWith('$'))
+    expect(amounts).toEqual(['$0.00000000', '$0.00000000', '$0.00000000', '$0.00000000'])
+    wrapper.unmount()
   })
 
   it('shows requested and upstream models separately for admin rows', () => {

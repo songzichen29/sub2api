@@ -4,10 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"mime"
-	"path/filepath"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -15,7 +14,10 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input)
+	isOpus55 := claude.IsOpus55(req.Model)
+	isSonnet55 := claude.IsSonnet55(req.Model)
+	isHaiku55 := claude.IsHaiku55(req.Model)
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +55,79 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
 		out.ToolChoice = tc
+	}
+
+	// The 5.5 models reject manual thinking. Opus/Sonnet 5.5 additionally reject
+	// forced tool use; Haiku 5.5 accepts it (starts with the tool call, no thinking
+	// block). Sonnet 5.5 supports between_tools to disable up-front thinking;
+	// Haiku 5.5 uses disabled (at high effort or below) instead.
+	// Resolve the upstream model before conversion: client aliases need not
+	// identify a Claude model.
+	if isOpus55 || isSonnet55 || isHaiku55 {
+		var choice struct {
+			Type string `json:"type"`
+		}
+		if len(out.ToolChoice) > 0 {
+			if err := json.Unmarshal(out.ToolChoice, &choice); err != nil {
+				return nil, fmt.Errorf("invalid tool_choice: %w", err)
+			}
+		}
+		if (choice.Type == "any" || choice.Type == "tool") && !isHaiku55 {
+			return nil, fmt.Errorf("%s does not support forced tool_choice; use auto or none", req.Model)
+		}
+		effort := "medium"
+		if isSonnet55 {
+			effort = "high"
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && (*req.TopP < 0.99 || *req.TopP > 1) {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default top_p")
+			}
+		}
+		if isHaiku55 {
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && *req.TopP != 0.99 {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not support non-default top_p")
+			}
+			if req.Temperature != nil && req.TopP != nil {
+				return nil, fmt.Errorf("claude-haiku-5-5 does not allow temperature and top_p together; omit both")
+			}
+		}
+		if req.Reasoning != nil && req.Reasoning.Effort != "" {
+			effort = req.Reasoning.Effort
+		}
+		if isSonnet55 && effort == "none" {
+			// OpenAI's no-reasoning request maps to Sonnet 5.5's lowest
+			// thinking mode. between_tools still preserves signed progress
+			// blocks produced during tool use.
+			out.Thinking = &AnthropicThinking{Type: "between_tools"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		if isHaiku55 && effort == "none" {
+			// Haiku 5.5's lowest thinking mode is disabled (valid at high
+			// effort or below); low keeps token spend minimal like Sonnet above.
+			out.Thinking = &AnthropicThinking{Type: "disabled"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		switch effort {
+		case "low", "medium", "high", "xhigh", "max":
+		default:
+			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
+		}
+		out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
+		return out, nil
 	}
 
 	// reasoning.effort → output_config.effort + thinking
@@ -104,7 +179,7 @@ func mapResponsesEffortToAnthropic(effort string) string {
 // convertResponsesInputToAnthropic extracts system prompt and messages from
 // a Responses API instructions + input array. Returns the system as raw JSON
 // (for Anthropic's polymorphic system field) and a list of Anthropic messages.
-func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage) (json.RawMessage, []AnthropicMessage, error) {
+func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool) (json.RawMessage, []AnthropicMessage, error) {
 	var systemParts []string
 	if strings.TrimSpace(instructions) != "" {
 		systemParts = append(systemParts, strings.TrimSpace(instructions))
@@ -169,11 +244,26 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			})
 
 		case item.Type == "reasoning":
-			// Anthropic 无法摄入 OpenAI 的 reasoning：encrypted_content 是不透明的，
-			// 而 thinking 块的重放需要 Anthropic 自己签发的 signature，无法伪造。
-			// Codex 常见形态（只带 summary + encrypted_content）本来就会被丢弃，
-			// 这里让带 content 数组的形态保持同样行为——否则 reasoning_text 块会被
-			// 原样塞进 Anthropic 请求体，上游直接回 400。
+			// Only decode marked Anthropic bridge envelopes, not arbitrary
+			// OpenAI ciphertext. The upstream remains responsible for signature validation.
+			if preserveThinking && strings.HasPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix) {
+				raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix))
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking envelope: %w", err)
+				}
+				var block AnthropicContentBlock
+				if err := json.Unmarshal(raw, &block); err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking block: %w", err)
+				}
+				if (block.Type != "thinking" || block.Signature == "") && (block.Type != "redacted_thinking" || block.Data == "") {
+					return nil, nil, fmt.Errorf("invalid Anthropic signed thinking block")
+				}
+				content, err := json.Marshal([]AnthropicContentBlock{block})
+				if err != nil {
+					return nil, nil, err
+				}
+				messages = append(messages, AnthropicMessage{Role: "assistant", Content: content})
+			}
 
 		case item.Role == "user":
 			content, err := convertResponsesUserToAnthropicContent(item.Content)
@@ -489,8 +579,12 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 				})
 			}
 		case "input_file":
-			if block := responsesFileToAnthropicBlock(p); block != nil {
-				blocks = append(blocks, *block)
+			src := dataURIToAnthropicFileSource(p.FileData)
+			if src != nil {
+				blocks = append(blocks, AnthropicContentBlock{
+					Type:   "document",
+					Source: src,
+				})
 			}
 		}
 	}
@@ -579,179 +673,10 @@ func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
 	}
 }
 
-func responsesFileToAnthropicBlock(p ResponsesContentPart) *AnthropicContentBlock {
-	fileData := strings.TrimSpace(p.FileData)
-	if fileData != "" {
-		mediaType, data := responsesFileMediaTypeAndData(p)
-		if strings.HasPrefix(mediaType, "image/") {
-			return &AnthropicContentBlock{
-				Type: "image",
-				Source: &AnthropicImageSource{
-					Type:      "base64",
-					MediaType: mediaType,
-					Data:      data,
-				},
-			}
-		}
-		if shouldInlineResponsesFileAsText(mediaType, p.Filename) {
-			if text, ok := decodeResponsesFileText(data); ok {
-				return &AnthropicContentBlock{
-					Type: "text",
-					Text: responsesFileTextLabel(p.Filename, text),
-				}
-			}
-		}
-		return &AnthropicContentBlock{
-			Type: "document",
-			Source: &AnthropicImageSource{
-				Type:      "base64",
-				MediaType: mediaType,
-				Data:      data,
-			},
-		}
-	}
-
-	if fileID := strings.TrimSpace(p.FileID); fileID != "" {
-		return &AnthropicContentBlock{
-			Type: "document",
-			Source: &AnthropicImageSource{
-				Type:   "file",
-				FileID: fileID,
-			},
-		}
-	}
-
-	if fileURL := strings.TrimSpace(p.FileURL); fileURL != "" {
-		return &AnthropicContentBlock{
-			Type: "document",
-			Source: &AnthropicImageSource{
-				Type: "url",
-				URL:  fileURL,
-			},
-		}
-	}
-
-	return nil
-}
-
-func responsesFileMediaTypeAndData(p ResponsesContentPart) (string, string) {
-	data := strings.TrimSpace(p.FileData)
-	if mediaType, payload, ok := splitResponsesDataURI(data); ok {
-		if normalized := normalizeResponsesMediaType(firstNonEmptyString(p.MimeType, mediaType)); normalized != "" {
-			return normalized, payload
-		}
-		return mediaType, payload
-	}
-	mediaType := normalizeResponsesMediaType(p.MimeType)
-	if mediaType == "" {
-		mediaType = inferResponsesFileMediaType(p.Filename)
-	}
-	return mediaType, data
-}
-
-func splitResponsesDataURI(value string) (mediaType, data string, ok bool) {
-	if !strings.HasPrefix(value, "data:") {
-		return "", "", false
-	}
-	rest := strings.TrimPrefix(value, "data:")
-	commaIdx := strings.Index(rest, ",")
-	if commaIdx < 0 {
-		return "", "", false
-	}
-	meta := rest[:commaIdx]
-	payload := rest[commaIdx+1:]
-	mediaType = meta
-	if semicolonIdx := strings.Index(mediaType, ";"); semicolonIdx >= 0 {
-		mediaType = mediaType[:semicolonIdx]
-	}
-	if !strings.Contains(meta, ";base64") {
-		return "", "", false
-	}
-	return normalizeResponsesMediaType(mediaType), payload, true
-}
-
-func inferResponsesFileMediaType(filename string) string {
-	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(filename)))
-	if ext != "" {
-		if mt := normalizeResponsesMediaType(mime.TypeByExtension(ext)); mt != "" {
-			return mt
-		}
-	}
-	switch ext {
-	case ".md", ".markdown", ".txt", ".log", ".csv", ".tsv", ".yaml", ".yml":
-		return "text/plain"
-	case ".json":
-		return "application/json"
-	case ".pdf":
-		return "application/pdf"
-	}
-	return "application/pdf"
-}
-
-func normalizeResponsesMediaType(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if mt, _, err := mime.ParseMediaType(value); err == nil {
-		return strings.ToLower(strings.TrimSpace(mt))
-	}
-	return strings.ToLower(value)
-}
-
-func shouldInlineResponsesFileAsText(mediaType, filename string) bool {
-	mediaType = normalizeResponsesMediaType(mediaType)
-	if strings.HasPrefix(mediaType, "text/") {
-		return true
-	}
-	switch mediaType {
-	case "application/json", "application/xml", "application/javascript", "application/x-javascript", "application/yaml", "application/x-yaml":
-		return true
-	}
-	switch strings.ToLower(filepath.Ext(strings.TrimSpace(filename))) {
-	case ".md", ".markdown", ".txt", ".log", ".csv", ".tsv", ".json", ".yaml", ".yml", ".xml", ".js", ".ts", ".py", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".hpp", ".css", ".html":
-		return true
-	}
-	return false
-}
-
-func decodeResponsesFileText(data string) (string, bool) {
-	trimmed := strings.TrimSpace(data)
-	if trimmed == "" {
-		return "", false
-	}
-	for _, enc := range []*base64.Encoding{
-		base64.StdEncoding,
-		base64.RawStdEncoding,
-		base64.URLEncoding,
-		base64.RawURLEncoding,
-	} {
-		decoded, err := enc.DecodeString(trimmed)
-		if err == nil && utf8.Valid(decoded) {
-			return string(decoded), true
-		}
-	}
-	if utf8.ValidString(trimmed) {
-		return trimmed, true
-	}
-	return "", false
-}
-
-func responsesFileTextLabel(filename, text string) string {
-	filename = strings.TrimSpace(filename)
-	if filename == "" {
-		return text
-	}
-	return fmt.Sprintf("[File: %s]\n%s", filename, text)
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+// dataURIToAnthropicFileSource parses a data URI into a document source.
+// file_id-only parts are not convertible here and stay dropped.
+func dataURIToAnthropicFileSource(fileData string) *AnthropicImageSource {
+	return dataURIToAnthropicImageSource(fileData)
 }
 
 // mergeConsecutiveMessages merges consecutive messages with the same role
@@ -829,6 +754,9 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 }
 
 // normalizeAnthropicInputSchema ensures input_schema is a valid object schema.
+// Codex 会把部分内置工具（例如 codex_app 的 automation_update）的 parameters
+// 根节点声明成对象分支的 oneOf/anyOf，Anthropic 只接受 object 根节点，这里把
+// 顶层联合摊平成单个 object schema。
 func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 	const emptyObjectSchema = `{"type":"object","properties":{}}`
 
@@ -841,6 +769,8 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(schema, &m); err != nil {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
 	}
+
+	flattenAnthropicRootUnions(m)
 
 	typeRaw, ok := m["type"]
 	if !ok || strings.TrimSpace(string(typeRaw)) == "" || string(typeRaw) == "null" {

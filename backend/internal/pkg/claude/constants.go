@@ -18,35 +18,34 @@ const (
 	BetaInterleavedThinking      = "interleaved-thinking-2025-05-14"
 	BetaFineGrainedToolStreaming = "fine-grained-tool-streaming-2025-05-14"
 	BetaTokenCounting            = "token-counting-2024-11-01"
+	BetaThinkingTokenCount       = "thinking-token-count-2026-05-13"
+	BetaMidConversationSystem    = "mid-conversation-system-2026-04-07"
+	BetaAdvisorTool              = "contextual-completion-2025-01-01"
+	BetaAfkMode                  = "claude-code-2025-04-20"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
-	BetaWebSearch                = "web-search-2025-03-05"
+	// Legacy structured output compatibility; forwarded only when explicitly requested.
+	BetaStructuredOutputs = "structured-outputs-2025-11-13"
+	// Tool-change compatibility tokens; never enabled without an explicit client request.
+	BetaMidConversationToolChanges = "mid-conversation-tool-changes-2026-07-01"
+	BetaInlineTools                = "inline-tools-2026-09-15"
 
-	// 新增（对齐官方 CLI 2.1.19x 以来的流量）
-	BetaPromptCachingScope      = "prompt-caching-scope-2026-01-05"
-	BetaEffort                  = "effort-2025-11-24"
-	BetaRedactThinking          = "redact-thinking-2026-02-12"
-	BetaContextManagement       = "context-management-2025-06-27"
-	BetaThinkingBindingControls = "thinking-binding-controls-2026-08-01"
-	BetaExtendedCacheTTL        = "extended-cache-ttl-2025-04-11"
+	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
+	BetaPromptCachingScope          = "prompt-caching-scope-2026-01-05"
+	BetaEffort                      = "effort-2025-11-24"
+	BetaRedactThinking              = "redact-thinking-2026-02-12"
+	BetaContextManagement           = "context-management-2025-06-27"
+	BetaThinkingBindingControls     = "thinking-binding-controls-2026-08-01"
+	BetaMidConversationOutputConfig = "mid-conversation-output-config-2026-07-01"
+	BetaExtendedCacheTTL            = "extended-cache-ttl-2025-04-11"
 
-	// v2.1.197 binary / ?? telemetry ???? beta ??????????? mimicry?
-	BetaContextHint           = "context-hint-2026-04-09"
-	BetaMidConversationSystem = "mid-conversation-system-2026-04-07"
-	BetaConversationSystem    = BetaMidConversationSystem // backward-compatible alias
-	BetaManagedAgents         = "managed-agents-2026-04-01"
-	BetaStructuredOutputs     = "structured-outputs-2025-12-15"
-	BetaTaskBudgets           = "task-budgets-2026-03-13"
-	BetaThinkingTokenCount    = "thinking-token-count-2026-05-13"
-	BetaTokenCount            = BetaThinkingTokenCount // backward-compatible alias
-	BetaUserProfiles          = "user-profiles-2026-03-24"
-	BetaSideFallback          = "side-fallback-2026-06-01"
-	BetaCodeExecution         = "code-execution-2025-08-25"
-	BetaAdvisorTool           = "advisor-tool-2026-03-01"
-	BetaAfkMode               = "afk-mode-2026-01-31"
-
-	// server-side refusal fallback beta ????beta Messages API ????
-	// ??? sanitize ??????strip-or-keep???????? beta ????
+	// server-side refusal fallback beta 字段族（beta Messages API 专有）。
+	// 客户端（Claude Code / SDK / OpenCode 等）会默认透传 body.fallbacks /
+	// body.fallback_credit_token，上游仅在 anthropic-beta 携带对应 token 时接受；
+	// 缺 token 时 Pydantic 拒收："fallbacks: Extra inputs are not permitted"。
+	// 仅用于 sanitize 的条件判断（strip-or-keep），禁止加入
+	// FullClaudeCodeMimicryBetas / DefaultBetaHeader / APIKeyBetaHeader /
+	// Bedrock 白名单：server-side fallback 会换模型、改计费，不能默认打开。
 	BetaServerSideFallback   = "server-side-fallback-2026-07-01"
 	BetaFallbackCredit       = "fallback-credit-2026-07-01"
 	BetaFallbackCreditLegacy = "fallback-credit-2026-06-01"
@@ -84,7 +83,8 @@ const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + 
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
 // DefaultCacheControlTTL 是网关代理为自己生成的 cache_control 块默认使用的 ttl。
-// 真实 Claude Code CLI v2.1.197 当前使用 "1h"。
+// 真实 Claude Code CLI 当前使用 "1h"，但本仓策略是"客户端透传 ttl 优先；
+// 客户端缺省时统一使用 5m"，这样既不浪费 1h 缓存额度，也保留客户端自定义能力。
 const DefaultCacheControlTTL = "5m"
 
 // CLICurrentVersion 是内置的 Claude Code CLI 伪装版本号基线（三段 semver）。
@@ -95,90 +95,58 @@ const DefaultCacheControlTTL = "5m"
 // 直接引用本常量只在"表达内置基线"时才正确（例如覆盖值的下限校验）。
 const CLICurrentVersion = "2.1.258"
 
-// CLIBuildTime 是从 Claude Code v2.1.197 native binary 中提取的真实 build_time。
-const CLIBuildTime = "2026-06-29T19:08:42Z"
+// CLIBuildTime is the stable build metadata reported by telemetry.
+const CLIBuildTime = "2026-04-01T00:00:00.000Z"
 
-// HasContext1MMarker reports whether a model string is explicitly marked for
-// Claude Code's 1M-context beta. Real Claude Code adds context-1m only when the
-// selected model/env model contains the literal "[1m]" marker.
-func HasContext1MMarker(model string) bool {
-	return strings.Contains(strings.ToLower(model), "[1m]")
-}
-
-// claudeCodeHeaderWireOrder is the application-level HTTP/1.1 header order
-// captured from Claude Code v2.1.197. Transport headers (Connection, Host,
-// Accept-Encoding, Content-Length) are written after this list by the custom
-// Anthropic H1 round tripper.
-var claudeCodeHeaderWireOrder = []string{
-	"Accept",
-	"Authorization",
-	"Content-Type",
-	"User-Agent",
-	"X-Claude-Code-Session-Id",
-	"X-Stainless-Arch",
-	"X-Stainless-Lang",
-	"X-Stainless-OS",
-	"X-Stainless-Package-Version",
-	"X-Stainless-Retry-Count",
-	"X-Stainless-Runtime",
-	"X-Stainless-Runtime-Version",
-	"X-Stainless-Timeout",
-	"anthropic-beta",
-	"anthropic-dangerous-direct-browser-access",
-	"anthropic-version",
-	"x-app",
-}
-
-// ClaudeCodeHeaderWireOrder returns a copy of the captured Claude Code
-// application header order.
-func ClaudeCodeHeaderWireOrder() []string {
-	out := make([]string, len(claudeCodeHeaderWireOrder))
-	copy(out, claudeCodeHeaderWireOrder)
-	return out
-}
-
-// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的 beta 列表，
-// 用于 telemetry event_data.betas。默认不包含 context-1m；该 beta 必须通过
-// FullClaudeCodeMimicryBetasForModel 按模型名中的 [1m] 标记条件化加入。
-func FullClaudeCodeMimicryBetas() []string {
-	return FullClaudeCodeMimicryBetasForModel("")
-}
-
-// FullClaudeCodeMimicryBetasForModel 返回 telemetry event_data.betas；顺序与
-// Claude Code v2.1.197 telemetry 样本一致，但 context-1m 仅在模型含 [1m] 时加入。
+// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
+// 用于 OAuth 账号伪装成 Claude Code 时使用。
+// 顺序与真实 CLI 抓包一致。
 //
-// 注意：真实 telemetry 的 betas 字段不包含 oauth-2025-04-20；API 请求 header
-// 的 anthropic-beta 仍需要 OAuth token。请求 header 请使用
-// ClaudeCodeOAuthMimicryRequestBetasForModel。
-func FullClaudeCodeMimicryBetasForModel(model string) []string {
-	betas := []string{BetaClaudeCode}
-	if HasContext1MMarker(model) {
-		betas = append(betas, BetaContext1M)
-	}
-	betas = append(betas,
+// 使用建议：
+//   - OAuth mimic：所有模型（包括 Haiku）都使用这整份列表。
+//   - OAuth 真实客户端透传：保留客户端 beta；未提供时使用模型对应默认值。
+//   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
+//   - 不默认加入 redact-thinking，避免上游抹除 thinking 内容；客户端显式传入时由合并逻辑保留。
+func FullClaudeCodeMimicryBetas() []string {
+	return []string{
+		BetaClaudeCode,
 		BetaInterleavedThinking,
 		BetaRedactThinking,
 		BetaThinkingTokenCount,
 		BetaContextManagement,
 		BetaPromptCachingScope,
 		BetaMidConversationSystem,
-	)
+	}
+}
+
+func FullClaudeCodeMimicryBetasForModel(model string) []string {
+	betas := append([]string(nil), FullClaudeCodeMimicryBetas()...)
+	if strings.Contains(strings.ToLower(model), "[1m]") {
+		out := make([]string, 0, len(betas)+1)
+		out = append(out, BetaClaudeCode, BetaContext1M)
+		out = append(out, betas[1:]...)
+		return out
+	}
 	return betas
 }
 
-// ClaudeCodeOAuthMimicryRequestBetas 返回 OAuth mimic 路径中 API 请求 header
-// anthropic-beta 应使用的 beta 集合。默认不包含 context-1m；该 beta 必须通过
-// ClaudeCodeOAuthMimicryRequestBetasForModel 按模型名中的 [1m] 标记条件化加入。
-func ClaudeCodeOAuthMimicryRequestBetas() []string {
-	return ClaudeCodeOAuthMimicryRequestBetasForModel("")
+var claudeCodeHeaderWireOrder = []string{
+	"Accept", "Authorization", "Content-Type", "User-Agent",
+	"X-Claude-Code-Session-Id", "X-Stainless-Arch", "X-Stainless-Lang", "X-Stainless-OS",
 }
 
-// ClaudeCodeOAuthMimicryRequestBetasForModel 返回 OAuth mimic 路径中 API 请求
-// header anthropic-beta 应使用的 beta 集合。它刻意与 telemetry betas 区分：
-// header 需要 oauth-2025-04-20，而 telemetry 的 betas 字段不包含该 token。
+func ClaudeCodeHeaderWireOrder() []string {
+	out := make([]string, len(claudeCodeHeaderWireOrder))
+	copy(out, claudeCodeHeaderWireOrder)
+	return out
+}
+
 func ClaudeCodeOAuthMimicryRequestBetasForModel(model string) []string {
-	betas := []string{BetaClaudeCode, BetaOAuth}
-	if HasContext1MMarker(model) {
+	betas := []string{
+		BetaClaudeCode,
+		BetaOAuth,
+	}
+	if strings.Contains(strings.ToLower(model), "[1m]") {
 		betas = append(betas, BetaContext1M)
 	}
 	betas = append(betas,
@@ -194,23 +162,31 @@ func ClaudeCodeOAuthMimicryRequestBetasForModel(model string) []string {
 	return betas
 }
 
+func ClaudeCodeOAuthMimicryRequestBetas() []string {
+	return ClaudeCodeOAuthMimicryRequestBetasForModel("")
+}
+
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
-var DefaultHeaders = map[string]string{
-	// Keep these in sync with recent Claude CLI traffic to reduce the chance
-	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
-	// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
-	"User-Agent":                                "claude-cli/" + CLIVersion() + " (external, cli)",
-	"X-Stainless-Lang":                          "js",
-	"X-Stainless-Package-Version":               "0.94.0",
-	"X-Stainless-OS":                            "Linux",
-	"X-Stainless-Arch":                          "x64",
-	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v26.3.0",
-	"X-Stainless-Retry-Count":                   "0",
-	"X-Stainless-Timeout":                       "600",
-	"X-App":                                     "cli",
-	"Anthropic-Dangerous-Direct-Browser-Access": "true",
-	"Accept-Encoding":                           "gzip, deflate, br, zstd",
+// 每次调用现构造：User-Agent 走 DefaultUserAgent()（运行期可变版本号），
+// 不再在包 init 时固化。同一次请求内应只取一次 UA 字符串并在出站头与
+// billing 两条路径间复用，避免版本缓存翻转瞬间头/体不一致。
+func DefaultHeaders() map[string]string {
+	return map[string]string{
+		// Keep these in sync with recent Claude CLI traffic to reduce the chance
+		// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
+		// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
+		"User-Agent":                                DefaultUserAgent(),
+		"X-Stainless-Lang":                          "js",
+		"X-Stainless-Package-Version":               "0.94.0",
+		"X-Stainless-OS":                            "Linux",
+		"X-Stainless-Arch":                          "arm64",
+		"X-Stainless-Runtime":                       "node",
+		"X-Stainless-Runtime-Version":               "v24.3.0",
+		"X-Stainless-Retry-Count":                   "0",
+		"X-Stainless-Timeout":                       "600",
+		"X-App":                                     "cli",
+		"Anthropic-Dangerous-Direct-Browser-Access": "true",
+	}
 }
 
 // Model 表示一个 Claude 模型
@@ -260,10 +236,22 @@ var DefaultModels = []Model{
 		CreatedAt:   "2026-05-29T00:00:00Z",
 	},
 	{
+		ID:          "claude-opus-5-5",
+		Type:        "model",
+		DisplayName: "Claude Opus 5.5",
+		CreatedAt:   "2026-09-22T00:00:00Z",
+	},
+	{
 		ID:          "claude-opus-5",
 		Type:        "model",
 		DisplayName: "Claude Opus 5",
 		CreatedAt:   "2026-07-25T00:00:00Z",
+	},
+	{
+		ID:          "claude-sonnet-5-5",
+		Type:        "model",
+		DisplayName: "Claude Sonnet 5.5",
+		CreatedAt:   "2026-09-28T00:00:00Z",
 	},
 	{
 		ID:          "claude-sonnet-5",
@@ -288,6 +276,12 @@ var DefaultModels = []Model{
 		Type:        "model",
 		DisplayName: "Claude Haiku 4.5",
 		CreatedAt:   "2025-10-01T00:00:00Z",
+	},
+	{
+		ID:          "claude-haiku-5-5",
+		Type:        "model",
+		DisplayName: "Claude Haiku 5.5",
+		CreatedAt:   "2026-10-07T00:00:00Z",
 	},
 }
 

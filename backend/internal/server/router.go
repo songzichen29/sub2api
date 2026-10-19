@@ -130,7 +130,7 @@ func registerRoutes(
 	routes.RegisterAccountImportRoutes(v1, h, redisClient)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
-	routes.RegisterPaymentRoutes(v1, h.Payment, h.Invoice, h.PaymentWebhook, h.Admin.Payment, h.Admin.Invoice, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter)
+	routes.RegisterPaymentRoutes(v1, h.Payment, h.Invoice, h.PaymentWebhook, h.Admin.Payment, h.Admin.Invoice, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
 }

@@ -38,6 +38,7 @@ var (
 	ErrSubscriptionQuotaExhausted  = infraerrors.Forbidden("SUBSCRIPTION_QUOTA_EXHAUSTED", "subscription quota exhausted")
 	ErrSubscriptionAlreadyExists   = infraerrors.Conflict("SUBSCRIPTION_ALREADY_EXISTS", "subscription already exists for this user and group")
 	ErrSubscriptionAssignConflict  = infraerrors.Conflict("SUBSCRIPTION_ASSIGN_CONFLICT", "subscription exists but request conflicts with existing assignment semantics")
+	ErrSubscriptionNotRevoked      = infraerrors.Conflict("SUBSCRIPTION_NOT_REVOKED", "subscription is not revoked")
 	ErrSubscriptionRestoreConflict = infraerrors.Conflict("SUBSCRIPTION_RESTORE_CONFLICT", "subscription already exists for this user and group")
 	ErrGroupNotSubscriptionType    = infraerrors.BadRequest("GROUP_NOT_SUBSCRIPTION_TYPE", "group is not a subscription type")
 	ErrInvalidInput                = infraerrors.BadRequest("INVALID_INPUT", "at least one of resetDaily, resetWeekly, or resetMonthly must be true")
@@ -271,6 +272,40 @@ func (s *SubscriptionService) Restore(ctx context.Context, subscriptionID int64)
 		return nil, ErrSubscriptionNotFound
 	}
 	return s.userSubRepo.Restore(ctx, subscriptionID, SubscriptionStatusActive)
+}
+
+// RestoreSubscription restores a soft-deleted subscription while preventing
+// duplicate active subscriptions for the same user and group.
+func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	if s == nil || s.userSubRepo == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	sub, err := s.userSubRepo.GetByIDIncludeDeleted(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub.DeletedAt == nil {
+		return nil, ErrSubscriptionNotRevoked
+	}
+	exists, err := s.userSubRepo.ExistsActiveByUserIDAndGroupID(ctx, sub.UserID, sub.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrSubscriptionRestoreConflict
+	}
+	status := sub.Status
+	if status == SubscriptionStatusActive && !sub.ExpiresAt.After(time.Now()) {
+		status = SubscriptionStatusExpired
+	}
+	restored, err := s.userSubRepo.Restore(ctx, subscriptionID, status)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.invalidateSubscriptionCaches(restored.UserID, restored.GroupID); err != nil {
+		return nil, err
+	}
+	return restored, nil
 }
 
 // AssignOrExtendSubscription 分配或续期订阅（用于兑换码等场景）
@@ -805,7 +840,7 @@ func applyExtensionQuota(sub *UserSubscription, input *AssignSubscriptionInput) 
 
 // createSubscription 创建新订阅（内部方法）
 func (s *SubscriptionService) createSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
-	now := time.Now()
+	now := s.currentTime()
 	startsAt, expiresAt, err := resolveAssignTimeRange(input, now)
 	if err != nil {
 		return nil, err
@@ -1084,7 +1119,7 @@ func (s *SubscriptionService) RevokeSubscription(ctx context.Context, subscripti
 
 // ExtendSubscription 调整订阅时长（正数延长，负数缩短）
 func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*UserSubscription, error) {
-	sub, err := s.userSubRepo.GetByID(ctx, subscriptionID)
+	sub, err := s.userSubRepo.GetByIDForUpdate(ctx, subscriptionID)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
 	}
@@ -1097,7 +1132,7 @@ func (s *SubscriptionService) ExtendSubscription(ctx context.Context, subscripti
 		days = -MaxValidityDays
 	}
 
-	now := time.Now()
+	now := s.currentTime()
 	isExpired := !sub.ExpiresAt.After(now)
 
 	// 如果订阅已过期，不允许负向调整
@@ -1724,10 +1759,7 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	dailyStart := timezone.StartOfDay(now)
 	weeklyStart := now
 	monthlyStart := now
-	if err := s.userSubRepo.ResetUsageWindows(
-		ctx, sub.ID, resetDaily, resetWeekly, resetMonthly,
-		dailyStart, weeklyStart, monthlyStart,
-	); err != nil {
+	if err := resetSubscriptionUsageWindows(ctx, s.userSubRepo, sub.ID, resetDaily, resetWeekly, resetMonthly, dailyStart, weeklyStart, monthlyStart); err != nil {
 		return nil, err
 	}
 	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {
@@ -1735,6 +1767,20 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	}
 	// Return the refreshed subscription from DB
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+func resetSubscriptionUsageWindows(ctx context.Context, repo UserSubscriptionRepository, id int64, daily, weekly, monthly bool, dailyStart, weeklyStart, monthlyStart time.Time) error {
+	if r, ok := repo.(interface {
+		ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time, time.Time) error
+	}); ok {
+		return r.ResetUsageWindows(ctx, id, daily, weekly, monthly, dailyStart, weeklyStart, monthlyStart)
+	}
+	if r, ok := repo.(interface {
+		ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time) error
+	}); ok {
+		return r.ResetUsageWindows(ctx, id, daily, weekly, monthly, dailyStart, weeklyStart)
+	}
+	return fmt.Errorf("subscription repository does not support resetting usage windows")
 }
 
 // GetDailyLimitResetPaymentTarget validates a user's subscription and returns

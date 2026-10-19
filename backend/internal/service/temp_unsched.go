@@ -16,6 +16,8 @@ type TempUnschedState struct {
 	TriggerCount         int64  `json:"trigger_count,omitempty"`
 	TriggerThreshold     int    `json:"trigger_threshold,omitempty"`
 	TriggerWindowMinutes int    `json:"trigger_window_minutes,omitempty"`
+	Scope                string `json:"scope,omitempty"`
+	Model                string `json:"model,omitempty"`
 }
 
 // TempUnschedCache 临时不可调度缓存接口

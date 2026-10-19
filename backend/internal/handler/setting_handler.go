@@ -92,6 +92,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		OIDCOAuthProviderName:               settings.OIDCOAuthProviderName,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
+		PaymentBalanceDisabled:              settings.PaymentBalanceDisabled,
 		Version:                             h.version,
 		BalanceLowNotifyEnabled:             settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:           settings.AccountQuotaNotifyEnabled,
@@ -106,6 +107,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,

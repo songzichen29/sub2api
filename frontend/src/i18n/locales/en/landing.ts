@@ -152,6 +152,7 @@ export default {
     usedQuota: 'Used Quota',
     resetNow: 'Resetting soon',
     subscriptionType: 'Subscription Type',
+    billingType: 'Billing Type',
     subscriptionExpires: 'Subscription Expires',
     todayRequests: 'Today Requests',
     todayInputTokens: 'Today Input',

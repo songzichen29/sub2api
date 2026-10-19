@@ -111,30 +111,33 @@ func (c *BackupS3Config) IsConfigured() bool {
 
 // BackupScheduleConfig 定时备份配置
 type BackupScheduleConfig struct {
-	Enabled     bool   `json:"enabled"`
-	CronExpr    string `json:"cron_expr"`    // cron 表达式，如 "0 2 * * *" 每天凌晨2点
-	RetainDays  int    `json:"retain_days"`  // 备份文件过期天数，默认14，0=不自动清理
-	RetainCount int    `json:"retain_count"` // 最多保留份数，0=不限制
+	Enabled        bool                        `json:"enabled"`
+	CronExpr       string                      `json:"cron_expr"`    // cron 表达式，如 "0 2 * * *" 每天凌晨2点
+	RetainDays     int                         `json:"retain_days"`  // 备份文件过期天数，默认14，0=不自动清理
+	RetainCount    int                         `json:"retain_count"` // 最多保留份数，0=不限制
+	MonthlyArchive *BackupMonthlyArchiveConfig `json:"monthly_archive,omitempty"`
 }
 
 // BackupRecord 备份记录
 type BackupRecord struct {
-	ID            string       `json:"id"`
-	Status        string       `json:"status"`      // pending, running, completed, failed
-	BackupType    string       `json:"backup_type"` // mysql
-	FileName      string       `json:"file_name"`
-	S3Key         string       `json:"s3_key"`
-	Parts         []BackupPart `json:"parts,omitempty"`
-	SizeBytes     int64        `json:"size_bytes"`
-	TriggeredBy   string       `json:"triggered_by"` // manual, scheduled
-	ErrorMsg      string       `json:"error_message,omitempty"`
-	StartedAt     string       `json:"started_at"`
-	FinishedAt    string       `json:"finished_at,omitempty"`
-	ExpiresAt     string       `json:"expires_at,omitempty"`     // 过期时间
-	Progress      string       `json:"progress,omitempty"`       // "dumping", "uploading", ""
-	RestoreStatus string       `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
-	RestoreError  string       `json:"restore_error,omitempty"`
-	RestoredAt    string       `json:"restored_at,omitempty"`
+	ID               string                `json:"id"`
+	Status           string                `json:"status"`      // pending, running, completed, failed
+	BackupType       string                `json:"backup_type"` // mysql
+	FileName         string                `json:"file_name"`
+	S3Key            string                `json:"s3_key"`
+	Parts            []BackupPart          `json:"parts,omitempty"`
+	SizeBytes        int64                 `json:"size_bytes"`
+	TriggeredBy      string                `json:"triggered_by"` // manual, scheduled
+	ErrorMsg         string                `json:"error_message,omitempty"`
+	StartedAt        string                `json:"started_at"`
+	FinishedAt       string                `json:"finished_at,omitempty"`
+	ExpiresAt        string                `json:"expires_at,omitempty"`     // 过期时间
+	Progress         string                `json:"progress,omitempty"`       // "dumping", "uploading", ""
+	RestoreStatus    string                `json:"restore_status,omitempty"` // "", "running", "completed", "failed"
+	RestoreStartedAt string                `json:"restore_started_at,omitempty"`
+	RestoreError     string                `json:"restore_error,omitempty"`
+	RestoredAt       string                `json:"restored_at,omitempty"`
+	MonthlyArchive   *BackupMonthlyArchive `json:"monthly_archive,omitempty"`
 }
 
 // BackupDownloadPart 描述一个可下载的备份分卷。
@@ -1186,6 +1189,11 @@ func (s *BackupService) DeleteBackup(ctx context.Context, backupID string) error
 	}
 
 	return s.saveRecordsLocked(ctx, remaining)
+}
+
+// DeleteArchivedBackup removes an archived backup record and its objects.
+func (s *BackupService) DeleteArchivedBackup(ctx context.Context, backupID string) error {
+	return s.DeleteBackup(ctx, backupID)
 }
 
 // GetBackupDownloadURL 获取备份文件预签名下载 URL

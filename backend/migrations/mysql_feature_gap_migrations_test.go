@@ -371,6 +371,32 @@ func TestMySQLV021FeatureMigrationExists(t *testing.T) {
 	requireNotPostgresOnlySQL(t, sql)
 }
 
+func TestMySQLUpstreamV0217FeatureMigrationExists(t *testing.T) {
+	content, err := MySQLFS.ReadFile("103_upstream_v0_2_17_schema.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	for _, fragment := range []string{
+		"content_moderation_logs` ADD COLUMN `engine_meta` JSON",
+		"channel_model_pricing` ADD COLUMN `reasoning_effort_multipliers` JSON",
+		"UPDATE `channel_model_pricing` SET `reasoning_effort_multipliers` = JSON_OBJECT(''max'', `max_reasoning_effort_multiplier`)",
+		"@reasoning_multipliers_exists = 0",
+		"ordinal FOR ORDINALITY",
+		"channel_account_stats_model_pricing` ADD COLUMN `reasoning_effort_multipliers` JSON",
+		"user_affiliate_ledger` ADD COLUMN `operation_id` VARCHAR(64)",
+		"payment_orders` ADD COLUMN `bonus_amount` DECIMAL(20,2)",
+		"groups` ADD COLUMN `i18n` JSON",
+		"DROP CHECK `user_platform_quotas_platform_check`",
+		"DROP CHECK `chk_composite_model_routes_target_platform`",
+		"ENUM('openai','anthropic','gemini','grok','antigravity','kimi','zhipu','deepseek','minimax','opencode_go')",
+		"CREATE TABLE IF NOT EXISTS `gemini_cached_contents`",
+		"`mutation_lease_until` DATETIME(6) NULL",
+	} {
+		require.Contains(t, sql, fragment)
+	}
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func TestMySQLChannelMonitorV2MigrationAvoidsUnsupportedColumnIfNotExists(t *testing.T) {
 	content, err := MySQLFS.ReadFile("076_channel_monitor_v2.sql")
 	require.NoError(t, err)
