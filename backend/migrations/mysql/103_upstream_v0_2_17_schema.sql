@@ -100,8 +100,7 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- Platform checks are application-owned now; dropping them allows the
--- registered command_code, cline, opencode_go and typesafe platforms.
+-- Platform checks are application-owned now; dropping them allows the registered command_code, cline, opencode_go and typesafe platforms.
 SET @constraint_exists = (SELECT COUNT(1) FROM information_schema.table_constraints
   WHERE constraint_schema = DATABASE() AND table_name = 'user_platform_quotas'
     AND constraint_name = 'user_platform_quotas_platform_check' AND constraint_type = 'CHECK');
@@ -120,8 +119,7 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
--- OpenCode is supported by channel monitoring; TypeSafe remains a gateway
--- platform and therefore is intentionally absent from these provider enums.
+-- OpenCode is supported by channel monitoring; TypeSafe remains a gateway platform and therefore is intentionally absent from these provider enums.
 ALTER TABLE `channel_monitors`
   MODIFY COLUMN `provider` ENUM('openai','anthropic','gemini','grok','antigravity','kimi','zhipu','deepseek','minimax','opencode_go') NOT NULL;
 ALTER TABLE `channel_monitor_request_templates`
