@@ -103,9 +103,9 @@ func TestSettingService_AffiliateKindRatePrefersExplicitSetting(t *testing.T) {
 	svc := &SettingService{
 		settingRepo: &stubSettingRepo{
 			values: map[string]string{
-				SettingKeyAffiliateRebateRate:              "35",
-				SettingKeyAffiliateRechargeRebateRate:      "25",
-				SettingKeyAffiliateSubscriptionRebateRate:  "15",
+				SettingKeyAffiliateRebateRate:             "35",
+				SettingKeyAffiliateRechargeRebateRate:     "25",
+				SettingKeyAffiliateSubscriptionRebateRate: "15",
 			},
 		},
 	}

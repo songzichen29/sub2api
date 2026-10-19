@@ -107,7 +107,7 @@ func TestNormalizeAccountTags_RejectsTooManyTags(t *testing.T) {
 // TestNormalizeAccountTags_RejectsInvalidCharset 验证字符集反例。
 func TestNormalizeAccountTags_RejectsInvalidCharset(t *testing.T) {
 	for _, badTag := range []string{
-		"vip!",       // 感叹号不在白名单
+		"vip!",        // 感叹号不在白名单
 		"hello world", // 空格（非首尾）
 		"x@y",         // @ 符号
 		"a/b",         // 斜杠
