@@ -732,7 +732,9 @@ const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
-const AUTO_REFRESH_SILENT_WINDOW_MS = 15000
+// Keep the silent window short enough that it never changes the interval the
+// administrator selected (especially the 5-second option).
+const AUTO_REFRESH_SILENT_WINDOW_MS = 0
 const autoRefreshSilentUntil = ref(0)
 const hasPendingListSync = ref(false)
 const todayStatsByAccountId = ref<Record<string, WindowStats>>({})
@@ -1417,12 +1419,14 @@ const isAnyModalOpen = computed(() => {
 })
 
 const enterAutoRefreshSilentWindow = () => {
-  autoRefreshSilentUntil.value = Date.now() + AUTO_REFRESH_SILENT_WINDOW_MS
+  autoRefreshSilentUntil.value = AUTO_REFRESH_SILENT_WINDOW_MS > 0
+    ? Date.now() + AUTO_REFRESH_SILENT_WINDOW_MS
+    : 0
   autoRefreshCountdown.value = autoRefreshIntervalSeconds.value
 }
 
 const inAutoRefreshSilentWindow = () => {
-  return Date.now() < autoRefreshSilentUntil.value
+  return AUTO_REFRESH_SILENT_WINDOW_MS > 0 && Date.now() < autoRefreshSilentUntil.value
 }
 
 const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
