@@ -407,6 +407,66 @@ func TestOpenAIStreamProcessingFailureAfterOutputIsRecorded(t *testing.T) {
 	}
 }
 
+func TestOpenAIPoolModeStreamFailureAfterOutputIsMaskedForClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stream := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_pool_failure"}}`,
+		"",
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","delta":"partial"}`,
+		"",
+		"event: response.failed",
+		`data: {"type":"response.failed","response":{"id":"resp_pool_failure","status":"failed","error":{"type":"server_error","code":"server_error","message":"An error occurred while processing your request. Please include request ID rid-pool-failure in your message."}}}`,
+		"",
+	}, "\n")
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	account := &Account{
+		ID:       42,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Name:     "pool-account",
+		Credentials: map[string]any{
+			"pool_mode": true,
+			"pool_mode_retry_status_codes": []any{
+				float64(http.StatusForbidden),
+				float64(http.StatusTooManyRequests),
+				float64(http.StatusBadGateway),
+				float64(http.StatusServiceUnavailable),
+				float64(http.StatusGatewayTimeout),
+			},
+		},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(stream)),
+		Header:     http.Header{"X-Request-Id": []string{"rid-pool-failure"}},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "gpt-6.1-sol", "gpt-6.1-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr), "a stream with prior output must not be replayed")
+
+	body := rec.Body.String()
+	require.Contains(t, body, "partial")
+	require.Contains(t, body, "Upstream service temporarily unavailable. Please retry.")
+	require.Contains(t, body, `"code":"server_error"`)
+	require.NotContains(t, body, "rid-pool-failure")
+	require.NotContains(t, body, "An error occurred while processing your request")
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.NotEmpty(t, events)
+	require.Contains(t, events[len(events)-1].Message, "rid-pool-failure", "ops must retain the original upstream diagnostics")
+}
+
 // helper 单测：只有降载码被改写，其余错误码（尤其 rate_limit_exceeded，客户端
 // 依赖其原码解析重试延时）必须原样保留。
 func TestSanitizeOpenAICapacityShedErrorCodeForClient(t *testing.T) {
