@@ -1273,6 +1273,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 		}
 		suppressOpsUpstreamAttributionForLocalModelConfiguration(c, entry)
+		redactConfiguredPoolFailureForDisplay(c, entry)
 
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
@@ -1319,6 +1320,7 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 		}
 		applyOpsUpstreamErrorEvents(entry, visibleEvents)
 	}
+	redactConfiguredPoolFailureForDisplay(c, entry)
 	if entry.UpstreamStatusCode == nil && entry.UpstreamErrorMessage == nil &&
 		entry.UpstreamErrorDetail == nil && len(entry.UpstreamErrors) == 0 {
 		return
@@ -1582,6 +1584,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	if streamErr.Turn > 0 && !streamErr.RequestScoped {
 		applyOpsStreamErrorSnapshot(entry, streamErr)
 	}
+	redactConfiguredPoolFailureForDisplay(c, entry)
 
 	if apiKey != nil {
 		entry.APIKeyID = &apiKey.ID
@@ -1602,6 +1605,35 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	}
 
 	enqueueOpsErrorLog(ops, entry)
+}
+
+func redactConfiguredPoolFailureForDisplay(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	if entry == nil || !service.IsOpsPoolModeConfiguredFailure(c) {
+		return
+	}
+	entry.StatusCode = 0
+	entry.UpstreamStatusCode = nil
+	message := "Upstream service temporarily unavailable. Please retry."
+	entry.ErrorMessage = message
+	entry.ErrorBody = ""
+	entry.UpstreamErrorMessage = &message
+	entry.UpstreamErrorDetail = nil
+	if len(entry.UpstreamErrors) == 0 {
+		return
+	}
+	redacted := make([]*service.OpsUpstreamErrorEvent, 0, len(entry.UpstreamErrors))
+	for _, event := range entry.UpstreamErrors {
+		if event == nil {
+			continue
+		}
+		copy := *event
+		copy.UpstreamStatusCode = 0
+		copy.Message = message
+		copy.Detail = ""
+		copy.UpstreamResponseBody = ""
+		redacted = append(redacted, &copy)
+	}
+	entry.UpstreamErrors = redacted
 }
 
 func applyOpsStreamErrorSnapshot(entry *service.OpsInsertErrorLogInput, streamErr service.OpsStreamError) {

@@ -1700,6 +1700,9 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 		message = "OpenAI upstream response failed"
 	}
 	statusCode := openAIStreamFailureStatus(payload, message)
+	if account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode) {
+		MarkOpsPoolModeConfiguredFailure(c)
+	}
 	detail := ""
 	if len(payload) > 0 && s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes

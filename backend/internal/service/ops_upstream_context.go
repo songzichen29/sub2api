@@ -16,12 +16,13 @@ import (
 // Gin context keys used by Ops error logger for capturing upstream error details.
 // These keys are set by gateway services and consumed by handler/ops_error_logger.go.
 const (
-	OpsUpstreamStatusCodeKey   = "ops_upstream_status_code"
-	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
-	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
-	OpsUpstreamErrorsKey       = "ops_upstream_errors"
-	OpsUpstreamModelKey        = "ops_upstream_model"
-	OpsUpstreamRequestBodyKey  = "ops_upstream_request_body"
+	OpsUpstreamStatusCodeKey        = "ops_upstream_status_code"
+	OpsUpstreamErrorMessageKey      = "ops_upstream_error_message"
+	OpsUpstreamErrorDetailKey       = "ops_upstream_error_detail"
+	OpsUpstreamErrorsKey            = "ops_upstream_errors"
+	OpsUpstreamModelKey             = "ops_upstream_model"
+	OpsUpstreamRequestBodyKey       = "ops_upstream_request_body"
+	OpsPoolModeConfiguredFailureKey = "ops_pool_mode_configured_failure"
 
 	// Optional stage latencies (milliseconds) for troubleshooting and alerting.
 	OpsAuthLatencyMsKey      = "ops_auth_latency_ms"
@@ -72,6 +73,19 @@ const (
 	OpsClientBusinessLimitedReasonLocalPolicyDenied       = "local_policy_denied"
 	OpsClientBusinessLimitedReasonLocalModelConfiguration = "local_model_configuration"
 )
+
+// MarkOpsPoolModeConfiguredFailure marks a pool-mode failure whose status is
+// configured for same-account retries. User and monitoring error records hide
+// the configured status while retaining a generic failure entry.
+func MarkOpsPoolModeConfiguredFailure(c *gin.Context) {
+	if c != nil {
+		c.Set(OpsPoolModeConfiguredFailureKey, true)
+	}
+}
+
+func IsOpsPoolModeConfiguredFailure(c *gin.Context) bool {
+	return c != nil && c.GetBool(OpsPoolModeConfiguredFailureKey)
+}
 
 func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
 

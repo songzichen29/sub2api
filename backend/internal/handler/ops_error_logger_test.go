@@ -723,6 +723,76 @@ func TestMarkOpsStreamError_FirstWins(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, se.IntendedStatus)
 }
 
+func TestRedactConfiguredPoolFailureForDisplay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	service.MarkOpsPoolModeConfiguredFailure(c)
+	original := &service.OpsUpstreamErrorEvent{
+		UpstreamStatusCode:   http.StatusServiceUnavailable,
+		UpstreamRequestID:    "upstream-rid",
+		Message:              "Our servers are currently overloaded",
+		Detail:               `{"status":503}`,
+		UpstreamResponseBody: `{"status":503}`,
+	}
+	status := http.StatusServiceUnavailable
+	upstreamMessage := "Our servers are currently overloaded"
+	upstreamDetail := `{"status":503}`
+	entry := &service.OpsInsertErrorLogInput{
+		StatusCode:           http.StatusServiceUnavailable,
+		ErrorMessage:         "Our servers are currently overloaded",
+		ErrorBody:            `{"status":503}`,
+		UpstreamStatusCode:   &status,
+		UpstreamErrorMessage: &upstreamMessage,
+		UpstreamErrorDetail:  &upstreamDetail,
+		UpstreamErrors:       []*service.OpsUpstreamErrorEvent{original},
+	}
+
+	redactConfiguredPoolFailureForDisplay(c, entry)
+
+	require.Zero(t, entry.StatusCode)
+	require.Equal(t, "Upstream service temporarily unavailable. Please retry.", entry.ErrorMessage)
+	require.Empty(t, entry.ErrorBody)
+	require.Nil(t, entry.UpstreamStatusCode)
+	require.Equal(t, "Upstream service temporarily unavailable. Please retry.", *entry.UpstreamErrorMessage)
+	require.Nil(t, entry.UpstreamErrorDetail)
+	require.Zero(t, entry.UpstreamErrors[0].UpstreamStatusCode)
+	require.Empty(t, entry.UpstreamErrors[0].Detail)
+	require.Empty(t, entry.UpstreamErrors[0].UpstreamResponseBody)
+	require.Equal(t, "upstream-rid", entry.UpstreamErrors[0].UpstreamRequestID)
+	require.Equal(t, http.StatusServiceUnavailable, original.UpstreamStatusCode, "redaction must not mutate the request-local diagnostic event")
+	require.Contains(t, original.Message, "overloaded")
+}
+
+func TestLogOpsStreamErrorHidesConfiguredPoolStatus(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 1)
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	setOpsRequestContext(c, "gpt-5.6-sol", true)
+	service.MarkOpsPoolModeConfiguredFailure(c)
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
+		UpstreamStatusCode: http.StatusServiceUnavailable,
+		UpstreamRequestID:  "upstream-rid",
+		Message:            "Our servers are currently overloaded",
+		Detail:             `{"status":503}`,
+	}})
+	service.MarkOpsStreamFailure(c, "upstream_error", "server_error", "Upstream service temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	logOpsStreamError(c, ops, http.StatusOK)
+	job := <-opsErrorLogQueue
+
+	require.NotNil(t, job.entry)
+	require.Zero(t, job.entry.StatusCode)
+	require.Nil(t, job.entry.UpstreamStatusCode)
+	require.NotContains(t, job.entry.ErrorMessage, "503")
+	require.NotContains(t, job.entry.ErrorBody, "503")
+	require.NotNil(t, job.entry.UpstreamErrorsJSON)
+	require.NotContains(t, *job.entry.UpstreamErrorsJSON, "503")
+	require.NotContains(t, *job.entry.UpstreamErrorsJSON, "overloaded")
+	require.Contains(t, *job.entry.UpstreamErrorsJSON, "upstream-rid")
+}
+
 func TestLogOpsStreamError_RecordsOneFailurePerWebSocketTurn(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 4)
 	gin.SetMode(gin.TestMode)

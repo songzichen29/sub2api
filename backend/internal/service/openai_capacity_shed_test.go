@@ -458,6 +458,7 @@ func TestOpenAIPoolModeStreamFailureAfterOutputIsMaskedForClient(t *testing.T) {
 	require.Contains(t, body, `"code":"server_error"`)
 	require.NotContains(t, body, "rid-pool-failure")
 	require.NotContains(t, body, "An error occurred while processing your request")
+	require.True(t, IsOpsPoolModeConfiguredFailure(c), "configured pool-mode failures must be masked in monitoring and user error logs")
 
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)
