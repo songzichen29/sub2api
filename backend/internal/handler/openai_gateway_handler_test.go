@@ -2294,6 +2294,10 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 	}{
 		{name: "401", statusCode: http.StatusUnauthorized},
 		{name: "403", statusCode: http.StatusForbidden},
+		{name: "429", statusCode: http.StatusTooManyRequests},
+		{name: "502", statusCode: http.StatusBadGateway},
+		{name: "503", statusCode: http.StatusServiceUnavailable},
+		{name: "504", statusCode: http.StatusGatewayTimeout},
 	}
 
 	for _, tt := range tests {
@@ -2465,10 +2469,11 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	h.Responses(c)
 
 	require.Equal(t, []int64{9912, 9912}, upstream.calls())
-	require.Equal(t, http.StatusTooManyRequests, rec.Code)
-	require.Equal(t, "1", rec.Header().Get("Retry-After"))
-	require.Equal(t, "rate_limit_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-	require.Equal(t, "Upstream rate limit exceeded, please retry later", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Empty(t, rec.Header().Get("Retry-After"))
+	require.Equal(t, "upstream_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+	require.Equal(t, "Upstream service temporarily unavailable", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+	require.NotContains(t, rec.Body.String(), "429")
 }
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {

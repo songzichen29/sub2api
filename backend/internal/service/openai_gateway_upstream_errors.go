@@ -393,6 +393,7 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	failoverErr.PoolModeRetryStatus = account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode)
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)

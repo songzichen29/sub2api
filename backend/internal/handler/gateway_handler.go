@@ -617,12 +617,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					markPoolModeRetryStatus(failoverErr, account)
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr, account)
 					switch action {
 					case FailoverContinue:
 						continue
@@ -1156,12 +1157,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					markPoolModeRetryStatus(failoverErr, account)
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr, account)
 					switch action {
 					case FailoverContinue:
 						// 本次尝试已确定性失败，立即释放该账号的会话注册
@@ -2031,6 +2033,13 @@ func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotT
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {
 	statusCode := failoverErr.StatusCode
 	responseBody := failoverErr.ResponseBody
+	if failoverErr.PoolModeRetryStatus {
+		c.Writer.Header().Del("Retry-After")
+		upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+		service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
+		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable", streamStarted)
+		return
+	}
 	if service.IsOpenAISilentRefusalErrorBody(responseBody) {
 		service.SetOpsUpstreamError(c, statusCode, service.OpenAISilentRefusalClientMessage(), "")
 		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", service.OpenAISilentRefusalClientMessage(), streamStarted)

@@ -540,6 +540,26 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 	})
 }
 
+func TestHandleFailoverError_PoolModeRetryStatusDoesNotUnscheduleAccount(t *testing.T) {
+	mock := &mockTempUnscheduler{}
+	fs := NewFailoverState(3, false)
+	account := &service.Account{
+		ID:   100,
+		Type: service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                    true,
+			"pool_mode_retry_status_codes": []any{float64(http.StatusBadGateway)},
+		},
+	}
+	err := newTestFailoverErr(http.StatusBadGateway, true, false)
+
+	action := fs.HandleFailoverError(context.Background(), mock, 100, service.PlatformOpenAI, 0, err, account)
+
+	require.Equal(t, FailoverContinue, action)
+	require.True(t, err.PoolModeRetryStatus)
+	require.Empty(t, mock.calls, "pool-mode retry failures must not alter account scheduling state")
+}
+
 // ---------------------------------------------------------------------------
 // HandleFailoverError — TempUnschedule 调用验证
 // ---------------------------------------------------------------------------

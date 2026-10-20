@@ -320,11 +320,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
+				markPoolModeRetryStatus(failoverErr, account)
 				if c.Writer.Size() != writerSizeBeforeForward {
 					h.handleCCFailoverExhausted(c, failoverErr, true)
 					return
 				}
-				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr, account)
 				switch action {
 				case FailoverContinue:
 					continue
