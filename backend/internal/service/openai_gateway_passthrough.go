@@ -1408,7 +1408,7 @@ func openAIStreamFailedEventSemanticStatus(payload []byte, message string) int {
 	combined := strings.TrimSpace(errType + " " + code + " " + strings.ToLower(strings.TrimSpace(message)))
 	for _, path := range openAIStreamErrorStatusPaths {
 		if status := int(gjson.GetBytes(payload, path).Int()); status == http.StatusUnauthorized ||
-			status == http.StatusForbidden || status == http.StatusTooManyRequests || status == 529 {
+			status == http.StatusForbidden || status == http.StatusTooManyRequests || (status >= 500 && status <= 599) {
 			return status
 		}
 	}
@@ -1435,13 +1435,14 @@ func openAIStreamFailureStatus(payload []byte, message string) int {
 		return http.StatusBadGateway
 	}
 	semanticStatus := openAIStreamFailedEventSemanticStatus(payload, message)
+	// Preserve explicit stream 5xx statuses for pool retry matching and diagnostics.
+	// The enclosing HTTP 200 only establishes the stream, not a successful response.
+	if semanticStatus >= 500 && semanticStatus <= 599 {
+		return semanticStatus
+	}
 	switch semanticStatus {
 	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, 529:
 		return semanticStatus
-	case http.StatusServiceUnavailable:
-		if isOpenAIUpstreamCapacityShedEvent(payload) {
-			return semanticStatus
-		}
 	}
 	return http.StatusBadGateway
 }
@@ -1614,11 +1615,19 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	if isOpenAIUpstreamAccessStateError(message, payload) {
 		return true
 	}
-	switch openAIStreamFailedEventSemanticStatus(payload, message) {
+	status := openAIStreamFailedEventSemanticStatus(payload, message)
+	switch status {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
 	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
 		return true
+	}
+	// Only an explicit 5xx (or the existing capacity signal) is authoritative.
+	// The classifier's generic 502 fallback must not make policy errors retryable.
+	for _, path := range openAIStreamErrorStatusPaths {
+		if status := int(gjson.GetBytes(payload, path).Int()); status >= 500 && status <= 599 {
+			return true
+		}
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
@@ -1700,9 +1709,6 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 		message = "OpenAI upstream response failed"
 	}
 	statusCode := openAIStreamFailureStatus(payload, message)
-	if account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(statusCode) {
-		MarkOpsPoolModeConfiguredFailure(c)
-	}
 	detail := ""
 	if len(payload) > 0 && s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
@@ -1981,6 +1987,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		if bareErrorAccountSideEffectsPending {
 			s.handleOpenAIStreamTerminalAccountSideEffects(c, account, bareErrorPayload, failedMessage, resp.Header, mappedModel)
+			s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", bareErrorPayload, failedMessage)
 			bareErrorAccountSideEffectsPending = false
 		}
 		if clientDisconnected || !writePendingLines() {
@@ -2185,7 +2192,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				dataBytes,
 				eventType,
 				openAIStreamClientOutputStarted(c, clientOutputStarted),
-				account,
 			); sanitized {
 				dataBytes = sanitizedData
 				trimmedData = strings.TrimSpace(string(sanitizedData))

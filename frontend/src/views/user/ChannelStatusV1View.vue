@@ -10,14 +10,20 @@
       @refresh="refresh()"
     />
 
+    <p v-if="qualityError" role="alert" class="mb-4 text-sm text-red-600">{{ qualityError }}</p>
+
     <MonitorCardGrid
       :items="items"
       :window="currentWindow"
       :countdown-seconds="countdown"
       :loading="loading"
       :detail-cache="detailCache"
+      :quality-plans="qualityPlans"
       @card-click="openDetail"
+      @quality-select="qualitySelection = $event"
     />
+
+    <ModelQualityDetails :selection="qualitySelection" @close="qualitySelection = null" />
 
     <MonitorDetailDialog
       :show="showDetail"
@@ -40,6 +46,9 @@ import {
   type UserMonitorDetail,
 } from '@/api/channelMonitor'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ModelQualityDetails from '@/features/model-quality/ModelQualityDetails.vue'
+import { useModelQuality } from '@/features/model-quality/useModelQuality'
+import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
 import MonitorHero, {
   type MonitorWindow,
   type OverallStatus,
@@ -51,6 +60,8 @@ import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { plans: qualityPlans, error: qualityError, refresh: refreshQuality } = useModelQuality()
+const qualitySelection = ref<QualitySelection | null>(null)
 
 // ── State ──
 const items = ref<UserMonitorView[]>([])
@@ -110,7 +121,7 @@ async function reload(silent = false) {
 }
 
 async function refresh(silent = false) {
-  await reload(silent)
+  await Promise.all([reload(silent), refreshQuality()])
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {

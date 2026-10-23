@@ -247,16 +247,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/model-marketplace',
-    name: 'ModelMarketplace',
-    component: () => import('@/views/user/ModelMarketplaceView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Model Marketplace',
-      titleKey: 'modelMarketplace.title',
-      descriptionKey: 'modelMarketplace.description',
-      layout: 'header-only'
-    }
+    redirect: to => ({ path: '/model-plaza', query: { ...to.query, embedded: '1' } })
   },
   {
     path: '/available-channels',
@@ -919,24 +910,19 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // Respect the available-channels feature flag even when a user enters either
-  // catalog URL directly instead of using the menu link.
-  if (to.path === '/available-channels' || to.path === '/model-marketplace') {
+  // Respect the available-channels feature flag for direct navigation.
+  if (to.path === '/available-channels') {
     if (!appStore.publicSettingsLoaded) {
       try {
         await appStore.fetchPublicSettings()
       } catch (error) {
-        console.warn('Failed to load public settings for marketplace route', error)
+        console.warn('Failed to load public settings for available-channels route', error)
       }
     }
     const availableChannelsEnabled = appStore.cachedPublicSettings?.available_channels_enabled === true
     if (appStore.publicSettingsLoaded && !availableChannelsEnabled) {
       // Do not silently replace Available Channels with Model Plaza.
       next(authStore.isAdmin ? '/admin/dashboard' : '/dashboard')
-      return
-    }
-    if (availableChannelsEnabled && to.path === '/model-marketplace') {
-      next({ path: '/available-channels', query: to.query })
       return
     }
   }

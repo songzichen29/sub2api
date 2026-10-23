@@ -118,6 +118,17 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h, settingService)
 		registerChannelMonitorV2Routes(admin, h, settingService)
+		quality := admin.Group("/model-quality")
+		quality.GET("", h.ModelQuality.AdminList)
+		quality.GET("/options", h.ModelQuality.Options)
+		quality.POST("", h.ModelQuality.Save)
+		quality.PUT("/:id", h.ModelQuality.Save)
+		quality.POST("/:id/run", h.ModelQuality.Run)
+		quality.GET("/:id/history", h.ModelQuality.AdminHistory)
+		quality.GET("/groups/:groupID/history", h.ModelQuality.AdminGroupHistory)
+		quality.GET("/groups/:groupID/results", h.ModelQuality.AdminGroupResults)
+		quality.GET("/runs/:id", h.ModelQuality.AdminDetail)
+		quality.POST("/runs/:id/cancel", h.ModelQuality.Cancel)
 
 		// 风控中心
 		registerContentModerationRoutes(admin, h)

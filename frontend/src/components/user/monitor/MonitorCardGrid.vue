@@ -42,7 +42,9 @@
         :window="window"
         :availability-value="resolveAvailability(item)"
         :countdown-seconds="countdownSeconds"
+        :quality-plans="qualityPlans.filter(plan => plan.monitor_ids?.includes(item.id))"
         @click="emit('cardClick', item)"
+        @quality-select="emit('qualitySelect', $event)"
       />
     </div>
   </div>
@@ -53,17 +55,21 @@ import { useI18n } from 'vue-i18n'
 import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
+import type { QualityPlan } from '@/api/modelQuality'
+import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   items: UserMonitorView[]
   window: '7d' | '15d' | '30d'
   countdownSeconds: number
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
-}>()
+  qualityPlans?: QualityPlan[]
+}>(), { qualityPlans: () => [] })
 
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void
+  (e: 'qualitySelect', selection: QualitySelection): void
 }>()
 
 const { t } = useI18n()

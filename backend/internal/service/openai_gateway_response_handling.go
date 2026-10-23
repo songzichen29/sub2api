@@ -406,6 +406,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		if codexFailureTerminal && sawBareError && !sawResponseFailed && bareErrorAccountSideEffectsPending {
 			s.handleOpenAIStreamTerminalAccountSideEffects(c, account, bareErrorPayload, failedMessage, resp.Header, mappedModel)
+			s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", bareErrorPayload, failedMessage)
 			bareErrorAccountSideEffectsPending = false
 		}
 		if codexFailureTerminal && sawBareError && !sawResponseFailed && !clientDisconnected {
@@ -693,7 +694,6 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				dataBytes,
 				eventType,
 				openAIStreamClientOutputStarted(c, clientOutputStarted),
-				account,
 			); sanitized {
 				dataBytes = sanitizedData
 				data = string(sanitizedData)
@@ -1925,40 +1925,13 @@ func buildOpenAIResponseFailedSSE(responseID, model string, createdAt int64, sou
 	return "event: response.failed\ndata: " + string(payload) + "\n\n"
 }
 
-func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string, clientOutputStarted bool, account *Account) ([]byte, bool) {
+func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string, clientOutputStarted bool) ([]byte, bool) {
 	eventType = strings.TrimSpace(eventType)
 	isFailedEvent := eventType == "response.failed"
 	if (!isFailedEvent && eventType != "error") || len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return payload, false
 	}
 	updated := payload
-	if clientOutputStarted && account != nil && account.IsPoolMode() {
-		semanticStatus := openAIStreamFailedEventSemanticStatus(payload, extractOpenAISSEErrorMessage(payload))
-		configuredStatus := account.IsPoolModeRetryableStatus(semanticStatus)
-		// Ops classifies the generic Responses `server_error` terminal event as
-		// 503, while the failover classifier keeps it as the generic 502 bucket.
-		// Treat both views as the same configured pool failure for client masking.
-		if !configuredStatus {
-			for _, path := range []string{"response.error.type", "error.type", "response.error.code", "error.code"} {
-				value := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, path).String()))
-				if (value == "server_error" || value == "service_unavailable_error" || value == "overloaded_error") &&
-					account.IsPoolModeRetryableStatus(http.StatusServiceUnavailable) {
-					configuredStatus = true
-					break
-				}
-			}
-		}
-		for _, path := range openAIStreamErrorStatusPaths {
-			status := int(gjson.GetBytes(payload, path).Int())
-			if status >= 400 && status <= 599 && account.IsPoolModeRetryableStatus(status) {
-				configuredStatus = true
-				break
-			}
-		}
-		if configuredStatus {
-			updated, _ = sanitizeConfiguredPoolFailureForClient(updated)
-		}
-	}
 	// 容量降载码对 Codex CLI 是致命错误；事件既然要写给客户端（failover 已不可用），
 	// 就改写为客户端可重试的错误码。error 帧与 response.failed 都要改：上游降载
 	// 总是先推 error 帧再收 failed，两帧携带同一个错误。
@@ -2007,44 +1980,6 @@ func sanitizeOpenAIResponseFailedEventForClient(payload []byte, eventType string
 		"response.incomplete_details",
 	} {
 		next, err := sjson.DeleteBytes(updated, path)
-		if err != nil {
-			return payload, false
-		}
-		updated = next
-	}
-	return updated, !bytes.Equal(updated, payload)
-}
-
-func sanitizeConfiguredPoolFailureForClient(payload []byte) ([]byte, bool) {
-	path := ""
-	switch {
-	case gjson.GetBytes(payload, "response.error").IsObject():
-		path = "response.error"
-	case gjson.GetBytes(payload, "error").IsObject():
-		path = "error"
-	}
-
-	updated := payload
-	for _, field := range []struct{ key, value string }{
-		{key: "type", value: "server_error"},
-		{key: "code", value: "server_error"},
-		{key: "message", value: "Upstream service temporarily unavailable. Please retry."},
-	} {
-		fieldPath := field.key
-		if path != "" {
-			fieldPath = path + "." + field.key
-		}
-		next, err := sjson.SetBytes(updated, fieldPath, field.value)
-		if err != nil {
-			return payload, false
-		}
-		updated = next
-	}
-	for _, fieldPath := range openAIStreamErrorStatusPaths {
-		if !gjson.GetBytes(updated, fieldPath).Exists() {
-			continue
-		}
-		next, err := sjson.DeleteBytes(updated, fieldPath)
 		if err != nil {
 			return payload, false
 		}

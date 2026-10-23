@@ -1,5 +1,7 @@
 # 模型广场验收报告
 
+> 自定义 Model Marketplace 已于 2026-10-23 移除。以下验收结果仅记录当时实现，不代表当前功能；当前使用上游作者的 `/model-plaza`。
+
 > 阶段：阶段 3（验收闭环）
 > 验收日期：2026-04-26
 > 关联方案 doc：`easysdd/features/2026-04-26-model-marketplace/model-marketplace-design.md`

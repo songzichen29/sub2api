@@ -223,7 +223,6 @@ export default {
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
     keyUsage: 'Usage Query',
-    modelMarketplace: 'Model Marketplace',
     paymentCoupons: 'Payment Coupons'
   ,
     plugins: 'Plugins',

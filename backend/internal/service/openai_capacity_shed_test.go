@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/sjson"
 )
 
 // --- mock: 只记录临时不可调度写入，其余方法不应被调用 ---
@@ -75,6 +77,29 @@ func TestStreamFailedEventCapacityShedRetriesOnSameAccount(t *testing.T) {
 	other := []byte(`{"type":"response.failed","response":{"error":{"code":"server_error"}}}`)
 	require.False(t, isOpenAIUpstreamCapacityShedEvent(other))
 	require.False(t, openAIStreamFailedEventRetryableOnSameAccount(nonPool, other, "boom"))
+}
+
+func TestOpenAIStreamConfigured5xxRetryStatuses(t *testing.T) {
+	for _, status := range []int{500, 502, 503, 504, 529} {
+		for _, path := range openAIStreamErrorStatusPaths {
+			t.Run(fmt.Sprintf("%d/%s", status, path), func(t *testing.T) {
+				payload, err := sjson.SetBytes([]byte(`{"type":"error","error":{"code":"server_error","message":"maintenance"}}`), path, status)
+				require.NoError(t, err)
+				account := &Account{Type: AccountTypeAPIKey, Credentials: map[string]any{
+					"pool_mode": true, "pool_mode_retry_status_codes": []any{float64(status)},
+				}}
+				require.Equal(t, status, openAIStreamFailedEventSemanticStatus(payload, "maintenance"))
+				require.Equal(t, status, openAIStreamFailureStatus(payload, "maintenance"))
+				require.True(t, openAIStreamFailedEventRetryableOnSameAccount(account, payload, "maintenance"))
+				require.True(t, openAIStreamErrorEventShouldFailover(payload, "maintenance"))
+				account.Credentials["pool_mode_retry_status_codes"] = []any{}
+				require.False(t, openAIStreamFailedEventRetryableOnSameAccount(account, payload, "maintenance"))
+			})
+		}
+	}
+	// Do not promote a semantic/context error to a retryable server failure.
+	payload := []byte(`{"type":"error","error":{"status_code":503,"code":"context_length_exceeded","message":"maximum context length exceeded"}}`)
+	require.False(t, openAIStreamErrorEventShouldFailover(payload, "maximum context length exceeded"))
 }
 
 func TestOpenAIHTTPCapacityShedIsRequestScopedForOAuthAccounts(t *testing.T) {
@@ -407,7 +432,7 @@ func TestOpenAIStreamProcessingFailureAfterOutputIsRecorded(t *testing.T) {
 	}
 }
 
-func TestOpenAIPoolModeStreamFailureAfterOutputIsMaskedForClient(t *testing.T) {
+func TestOpenAIPoolModeStreamFailureAfterOutputPreservesError(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stream := strings.Join([]string{
 		"event: response.created",
@@ -454,11 +479,10 @@ func TestOpenAIPoolModeStreamFailureAfterOutputIsMaskedForClient(t *testing.T) {
 
 	body := rec.Body.String()
 	require.Contains(t, body, "partial")
-	require.Contains(t, body, "Upstream service temporarily unavailable. Please retry.")
 	require.Contains(t, body, `"code":"server_error"`)
-	require.NotContains(t, body, "rid-pool-failure")
-	require.NotContains(t, body, "An error occurred while processing your request")
-	require.True(t, IsOpsPoolModeConfiguredFailure(c), "configured pool-mode failures must be masked in monitoring and user error logs")
+	require.Contains(t, body, "rid-pool-failure")
+	require.Contains(t, body, "An error occurred while processing your request")
+	require.NotContains(t, body, "Upstream service temporarily unavailable. Please retry.")
 
 	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
 	require.True(t, ok)

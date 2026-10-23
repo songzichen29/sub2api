@@ -837,37 +837,4 @@ export default {
     invalidPassword: '密码错误或验证已过期',
     verified: '验证成功'
   },
-  modelMarketplace: {
-    title: '模型广场',
-    description: '查看可访问模型、所属渠道与定价信息',
-    searchPlaceholder: '搜索模型、渠道、分组或平台...',
-    modelSearchPlaceholder: '搜索模型名称...',
-    filtersTitle: '筛选',
-    filtersSubtitle: '按供应商快速收敛结果',
-    groupFiltersTitle: '分组名称',
-    allProviders: '全部供应商',
-    allGroups: '全部分组',
-    groupSearchPlaceholder: '搜索分组名称...',
-    totalModels: '共 {count} 个模型',
-    fromLabel: '供应商',
-    moreChannels: '展开其余 {count} 个渠道',
-    collapseChannels: '收起渠道',
-    intervalCount: '{count} 档阶梯价',
-    detailsTitle: '模型定价详情',
-    showDetails: '查看详情',
-    hideDetails: '收起详情',
-    showIntervalDetails: '查看区间价格',
-    hideIntervalDetails: '收起区间价格',
-    intervalRangeOpen: '> {min} tokens',
-    intervalRangeBounded: '> {min} 且 <= {max} tokens',
-    intervalTable: {
-      context: '上下文区间'
-    },
-    channelCount: '{count} 个渠道',
-    empty: {
-      noChannels: '暂无可用渠道',
-      noGroups: '没有匹配的分组',
-      noModelResults: '当前筛选条件下没有匹配的模型'
-    }
-  }
 }

@@ -723,74 +723,33 @@ func TestMarkOpsStreamError_FirstWins(t *testing.T) {
 	require.Equal(t, http.StatusTooManyRequests, se.IntendedStatus)
 }
 
-func TestRedactConfiguredPoolFailureForDisplay(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	c, _ := gin.CreateTestContext(httptest.NewRecorder())
-	service.MarkOpsPoolModeConfiguredFailure(c)
-	original := &service.OpsUpstreamErrorEvent{
-		UpstreamStatusCode:   http.StatusServiceUnavailable,
-		UpstreamRequestID:    "upstream-rid",
-		Message:              "Our servers are currently overloaded",
-		Detail:               `{"status":503}`,
-		UpstreamResponseBody: `{"status":503}`,
-	}
-	status := http.StatusServiceUnavailable
-	upstreamMessage := "Our servers are currently overloaded"
-	upstreamDetail := `{"status":503}`
-	entry := &service.OpsInsertErrorLogInput{
-		StatusCode:           http.StatusServiceUnavailable,
-		ErrorMessage:         "Our servers are currently overloaded",
-		ErrorBody:            `{"status":503}`,
-		UpstreamStatusCode:   &status,
-		UpstreamErrorMessage: &upstreamMessage,
-		UpstreamErrorDetail:  &upstreamDetail,
-		UpstreamErrors:       []*service.OpsUpstreamErrorEvent{original},
-	}
-
-	redactConfiguredPoolFailureForDisplay(c, entry)
-
-	require.Zero(t, entry.StatusCode)
-	require.Equal(t, "Upstream service temporarily unavailable. Please retry.", entry.ErrorMessage)
-	require.Empty(t, entry.ErrorBody)
-	require.Nil(t, entry.UpstreamStatusCode)
-	require.Equal(t, "Upstream service temporarily unavailable. Please retry.", *entry.UpstreamErrorMessage)
-	require.Nil(t, entry.UpstreamErrorDetail)
-	require.Zero(t, entry.UpstreamErrors[0].UpstreamStatusCode)
-	require.Empty(t, entry.UpstreamErrors[0].Detail)
-	require.Empty(t, entry.UpstreamErrors[0].UpstreamResponseBody)
-	require.Equal(t, "upstream-rid", entry.UpstreamErrors[0].UpstreamRequestID)
-	require.Equal(t, http.StatusServiceUnavailable, original.UpstreamStatusCode, "redaction must not mutate the request-local diagnostic event")
-	require.Contains(t, original.Message, "overloaded")
-}
-
-func TestLogOpsStreamErrorHidesConfiguredPoolStatus(t *testing.T) {
+func TestLogOpsStreamErrorPreservesAllUpstreamAttempts(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 1)
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	setOpsRequestContext(c, "gpt-5.6-sol", true)
-	service.MarkOpsPoolModeConfiguredFailure(c)
-	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{{
-		UpstreamStatusCode: http.StatusServiceUnavailable,
-		UpstreamRequestID:  "upstream-rid",
-		Message:            "Our servers are currently overloaded",
-		Detail:             `{"status":503}`,
-	}})
-	service.MarkOpsStreamFailure(c, "upstream_error", "server_error", "Upstream service temporarily unavailable. Please retry.", http.StatusServiceUnavailable)
+	// A legacy request-wide pool marker must not erase any attempt's diagnostics.
+	c.Set("ops_pool_mode_configured_failure", true)
+	c.Set(service.OpsUpstreamErrorsKey, []*service.OpsUpstreamErrorEvent{
+		{AccountID: 1, UpstreamStatusCode: 503, UpstreamRequestID: "rid-first", Message: "provider overloaded", Detail: `{"status":503}`},
+		{AccountID: 2, UpstreamStatusCode: 429, UpstreamRequestID: "rid-final", Message: "rate limit reached", Detail: `{"status":429}`},
+	})
+	service.MarkOpsStreamFailure(c, "upstream_error", "rate_limit_exceeded", "rate limit reached", http.StatusTooManyRequests)
 	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	logOpsStreamError(c, ops, http.StatusOK)
 	job := <-opsErrorLogQueue
 
 	require.NotNil(t, job.entry)
-	require.Zero(t, job.entry.StatusCode)
-	require.Nil(t, job.entry.UpstreamStatusCode)
-	require.NotContains(t, job.entry.ErrorMessage, "503")
-	require.NotContains(t, job.entry.ErrorBody, "503")
+	require.NotZero(t, job.entry.StatusCode)
+	require.NotNil(t, job.entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusTooManyRequests, *job.entry.UpstreamStatusCode)
+	require.Equal(t, "rate limit reached", job.entry.ErrorMessage)
 	require.NotNil(t, job.entry.UpstreamErrorsJSON)
-	require.NotContains(t, *job.entry.UpstreamErrorsJSON, "503")
-	require.NotContains(t, *job.entry.UpstreamErrorsJSON, "overloaded")
-	require.Contains(t, *job.entry.UpstreamErrorsJSON, "upstream-rid")
+	for _, diagnostic := range []string{"503", "429", "rid-first", "rid-final", "provider overloaded", "rate limit reached"} {
+		require.Contains(t, *job.entry.UpstreamErrorsJSON, diagnostic)
+	}
 }
 
 func TestLogOpsStreamError_RecordsOneFailurePerWebSocketTurn(t *testing.T) {

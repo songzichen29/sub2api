@@ -947,7 +947,7 @@ var ProviderSet = wire.NewSet(
 	NewCompositeRouteResolver,
 	NewAccountService,
 	NewProxyService,
-	NewRedeemService,
+	ProvideRedeemService,
 	NewPromoService,
 	NewUsageService,
 	NewDashboardService,
@@ -1067,6 +1067,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
+	ProvideModelQualityService,
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
@@ -1150,6 +1151,17 @@ func ProvideChannelMonitorRunner(
 func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
+	return svc
+}
+
+// Wire cannot inject a variadic constructor; keep the production arguments explicit.
+func ProvideRedeemService(repo RedeemCodeRepository, users UserRepository, subscriptions *SubscriptionService, cache RedeemCache, billing *BillingCacheService, client *dbent.Client, invalidator APIKeyAuthCacheInvalidator) *RedeemService {
+	return NewRedeemService(repo, users, subscriptions, cache, billing, client, invalidator)
+}
+
+func ProvideModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, groups GroupRepository, channels *ChannelService, apiKeys *APIKeyService, monitors *ChannelMonitorService) *ModelQualityService {
+	svc := NewModelQualityService(repo, keys, groups, channels, apiKeys, monitors)
+	svc.Start()
 	return svc
 }
 

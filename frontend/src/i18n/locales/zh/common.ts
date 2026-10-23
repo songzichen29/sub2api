@@ -223,7 +223,6 @@ export default {
     promptAudit: '提示词审计',
     auditLogs: '操作日志',
     keyUsage: '用量查询',
-    modelMarketplace: '模型广场',
     paymentCoupons: '支付优惠券'
   ,
     plugins: '插件管理',

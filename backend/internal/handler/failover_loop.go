@@ -121,15 +121,6 @@ func effectiveSameAccountRetryLimit(failoverErr *service.UpstreamFailoverError, 
 	return limit
 }
 
-func markPoolModeRetryStatus(failoverErr *service.UpstreamFailoverError, account *service.Account) {
-	if failoverErr == nil || account == nil || !account.IsPoolMode() {
-		return
-	}
-	if account.IsPoolModeRetryableStatus(failoverErr.StatusCode) {
-		failoverErr.PoolModeRetryStatus = true
-	}
-}
-
 // FailoverState 跨循环迭代共享的 failover 状态
 type FailoverState struct {
 	SwitchCount           int
@@ -206,15 +197,11 @@ func (s *FailoverState) HandleFailoverError(
 	platform string,
 	retryLimit int,
 	failoverErr *service.UpstreamFailoverError,
-	account ...*service.Account,
 ) FailoverAction {
 	// 客户端已断开：failover 只会用已取消的 context 重新选号并必然失败，
 	// 不应再被当成账号耗尽处理（误报 502）。
 	if ctx != nil && ctx.Err() != nil {
 		return FailoverCanceled
-	}
-	if len(account) > 0 {
-		markPoolModeRetryStatus(failoverErr, account[0])
 	}
 	s.LastFailoverErr = failoverErr
 
@@ -244,7 +231,7 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	// 同账号重试用尽，执行临时封禁
-	if failoverErr.RetryableOnSameAccount && !failoverErr.PoolModeRetryStatus {
+	if failoverErr.RetryableOnSameAccount {
 		gatewayService.TempUnscheduleRetryableError(ctx, accountID, failoverErr)
 	}
 

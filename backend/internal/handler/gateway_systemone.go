@@ -206,8 +206,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		if forwardErr != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(forwardErr, &failoverErr) {
-				markPoolModeRetryStatus(failoverErr, account)
-				switch fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr, account) {
+				switch fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr) {
 				case FailoverContinue:
 					reqLog.Warn("systemone.upstream_failover_switching",
 						zap.Int64("account_id", account.ID),

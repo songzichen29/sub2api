@@ -1,5 +1,8 @@
 # Frontend 模型广场架构说明
 
+> 已于 2026-10-23 移除自定义 Model Marketplace 实现，以下内容仅作历史设计记录。
+> 当前保留上游作者的 Model Plaza（`/model-plaza`）；旧 `/model-marketplace` 页面地址兼容跳转，专用 API 已移除。
+
 ## 1. 目标
 
 模型广场是一个从全局 header 进入的独立探索页，用于展示：

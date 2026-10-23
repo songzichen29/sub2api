@@ -66,9 +66,6 @@
               <p class="text-sm font-semibold text-blue-900 dark:text-blue-100">
                 {{ t('channelMonitorV2.bootstrap.title') }}
               </p>
-              <p class="mt-0.5 text-xs text-blue-800/80 dark:text-blue-200/80">
-                {{ t('channelMonitorV2.bootstrap.description') }}
-              </p>
             </div>
             <span class="shrink-0 text-xs font-medium tabular-nums text-blue-700 dark:text-blue-300">
               {{ t('channelMonitorV2.bootstrap.progress', { percent: bootstrapPercent }) }}
@@ -193,6 +190,8 @@
         </div>
       </section>
 
+      <p v-if="qualityError" role="alert" class="text-sm text-red-600">{{ qualityError }}</p>
+
       <!-- Overview KPI: success · TTFT · tokens/s(optional) · cache · (+ RPM when throughput visible) -->
       <section
         v-if="snapshot"
@@ -203,7 +202,6 @@
         <MetricCell
           :label="t('channelMonitorV2.metrics.successRate')"
           :value="formatPercent(1 - snapshot.metrics.error_rate)"
-          :detail="t('channelMonitorV2.metrics.errorRateValue', { value: formatPercent(snapshot.metrics.error_rate) })"
           :state="snapshot.health.error_rate"
         />
         <MetricCell
@@ -217,20 +215,17 @@
           v-if="showThroughput"
           :label="t('channelMonitorV2.metrics.tps')"
           :value="formatTps(snapshot.metrics.tpm)"
-          :detail="t('channelMonitorV2.metrics.tpsDetail')"
           :title="exactTps(snapshot.metrics.tpm)"
         />
         <MetricCell
           :label="t('channelMonitorV2.metrics.cacheRate')"
           :value="formatPercent(snapshot.metrics.cache_rate)"
-          :detail="t('channelMonitorV2.metrics.cacheDetail')"
           :state="snapshot.health.cache || snapshot.health.overall"
         />
         <MetricCell
           v-if="showThroughput"
           :label="t('channelMonitorV2.metrics.rpm')"
           :value="formatRate(snapshot.metrics.rpm)"
-          :detail="t('channelMonitorV2.metrics.rpmDetail')"
           :title="exactRate(snapshot.metrics.rpm)"
         />
       </section>
@@ -260,7 +255,11 @@
           :coverage="matrix.coverage"
           :health-mode="healthMode"
           :show-throughput="showThroughput"
-        />
+        >
+          <template #quality="{ row }">
+            <ModelQualityStrip :plans="qualityPlans.filter(p => p.group_id === row.group_id && (!row.model || p.target.model === row.model))" @select="qualitySelection = $event" />
+          </template>
+        </RelayPulseMatrix>
         <div
           v-else-if="loading"
           class="card flex min-h-[320px] items-center justify-center !rounded-3xl !border-0 text-sm text-gray-400 shadow-sm ring-1 ring-gray-900/5 dark:ring-dark-700"
@@ -454,6 +453,7 @@
         </div>
       </section>
     </div>
+    <ModelQualityDetails :selection="qualitySelection" :admin="isAdmin" @close="qualitySelection = null" />
   </AppLayout>
 </template>
 
@@ -462,6 +462,10 @@ import { useI18n } from 'vue-i18n'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ModelQualityStrip from '@/features/model-quality/ModelQualityStrip.vue'
+import ModelQualityDetails from '@/features/model-quality/ModelQualityDetails.vue'
+import { useModelQuality } from '@/features/model-quality/useModelQuality'
+import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Select from '@/components/common/Select.vue'
@@ -511,6 +515,8 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 const { t, te, locale } = useI18n()
 const isAdmin = computed(() => authStore.isAdmin)
+const { plans: qualityPlans, error: qualityError } = useModelQuality(isAdmin)
+const qualitySelection = ref<QualitySelection | null>(null)
 /** Admins always see RPM/TPM; users honor the hide-throughput system setting. */
 const showThroughput = computed(() => isAdmin.value || !isChannelMonitorThroughputHidden())
 /** Admins always see ranking; users honor the hide-user-ranking system setting. */

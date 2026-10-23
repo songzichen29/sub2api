@@ -936,7 +936,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					markPoolModeRetryStatus(failoverErr, account)
 					if failoverClientGone(c) {
 						reqLog.Info("openai.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),
@@ -1521,7 +1520,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					markPoolModeRetryStatus(failoverErr, account)
 					if failoverClientGone(c) {
 						reqLog.Info("openai_messages.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),
@@ -1675,12 +1673,6 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
 func (h *OpenAIGatewayHandler) handleAnthropicFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
-	if failoverErr != nil && failoverErr.PoolModeRetryStatus {
-		c.Writer.Header().Del("Retry-After")
-		service.SetOpsUpstreamError(c, failoverErr.StatusCode, service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody), "")
-		h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream service temporarily unavailable", streamStarted)
-		return
-	}
 	if failoverErr != nil {
 		copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)
 	}
@@ -3660,12 +3652,6 @@ func (h *OpenAIGatewayHandler) handleConcurrencyError(c *gin.Context, err error,
 func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, streamStarted bool) {
 	if failoverErr == nil {
 		h.handleFailoverExhaustedSimple(c, http.StatusBadGateway, streamStarted)
-		return
-	}
-	if failoverErr.PoolModeRetryStatus {
-		c.Writer.Header().Del("Retry-After")
-		service.SetOpsUpstreamError(c, failoverErr.StatusCode, service.ExtractUpstreamErrorMessage(failoverErr.ResponseBody), "")
-		h.handleStreamingAwareError(c, http.StatusBadGateway, "upstream_error", "Upstream service temporarily unavailable", streamStarted)
 		return
 	}
 	copyFailoverRetryAfter(c, failoverErr.ResponseHeaders)

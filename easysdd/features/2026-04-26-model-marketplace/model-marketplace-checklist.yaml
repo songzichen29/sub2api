@@ -1,5 +1,7 @@
 feature: 2026-04-26-model-marketplace
 source: model-marketplace-design.md
+# 自定义实现已于 2026-10-23 移除；以下步骤仅为历史记录，当前使用 /model-plaza。
+status: removed
 steps:
   - id: step-1
     title: header 入口与 header-only 布局接入

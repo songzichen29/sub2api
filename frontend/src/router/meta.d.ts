@@ -71,11 +71,5 @@ declare module 'vue-router' {
      */
     descriptionKey?: string
 
-    /**
-     * Optional layout hint for route-level shells.
-     * Current codebase mainly composes layouts inside view components;
-     * this meta is a declaration hook for routes that need a non-default shell.
-     */
-    layout?: 'default' | 'header-only'
   }
 }

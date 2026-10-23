@@ -95,8 +95,6 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
-		authenticated.GET("/model-marketplace", h.ModelMarketplace.List)
-
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）
 		usage := authenticated.Group("/usage")
 		usage.Use(panelRateLimiter.Heavy())
@@ -138,6 +136,15 @@ func RegisterUserRoutes(
 			subscriptions.PUT("/:id/daily-overdraft", h.Subscription.SetDailyOverdraft)
 			subscriptions.PUT("/:id/weekend-skip", h.Subscription.SetWeekendSkip)
 		}
+
+		// 模型质量检测（用户只读，按分组权限过滤）。
+		quality := authenticated.Group("/model-quality")
+		quality.Use(panelRateLimiter.Heavy())
+		quality.GET("", h.ModelQuality.List)
+		quality.GET("/:id/history", h.ModelQuality.History)
+		quality.GET("/groups/:groupID/history", h.ModelQuality.GroupHistory)
+		quality.GET("/groups/:groupID/results", h.ModelQuality.GroupResults)
+		quality.GET("/runs/:id", h.ModelQuality.Detail)
 
 		// 渠道监控（用户只读）
 		monitors := authenticated.Group("/channel-monitors")

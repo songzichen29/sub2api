@@ -1,12 +1,14 @@
 ---
 doc_type: feature-design
 feature: 2026-04-26-model-marketplace
-status: approved
+status: removed
 summary: 将“模型广场”从侧边栏里的 available-channels 升级页，重构为从 header 进入的独立探索页：无应用侧边栏、左侧供应商筛选、右侧紧凑模型结果区，并显式区分同模型下的多个渠道实例。
 tags: [frontend, model-marketplace, header-entry, marketplace, channels]
 ---
 
 # 模型广场 Feature Design
+
+> 自定义 Model Marketplace 已于 2026-10-23 移除，本文仅保留历史设计。当前使用上游作者的 `/model-plaza`；旧 `/model-marketplace` 地址兼容跳转，专用 API 已移除。
 
 ## 0. 术语约定
 

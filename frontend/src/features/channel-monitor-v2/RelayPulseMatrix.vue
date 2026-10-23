@@ -10,13 +10,9 @@
           </span>
           {{ t('channelMonitorV2.matrix.title') }}
         </h2>
-        <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-          {{ t('channelMonitorV2.matrix.description') }}
-        </p>
       </div>
       <div class="flex w-full min-w-0 flex-wrap items-center justify-end gap-2 text-xs text-gray-500 dark:text-gray-400 sm:w-auto">
         <span class="badge badge-gray shrink-0">{{ bucketLabel }}</span>
-        <span class="hidden text-[11px] text-gray-400 dark:text-dark-400 sm:inline">{{ t('channelMonitorV2.matrix.wheelZoomX') }}</span>
         <button
           type="button"
           class="inline-flex shrink-0 items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-dark-700 dark:bg-dark-900 dark:text-gray-300 dark:hover:bg-dark-800"
@@ -118,6 +114,9 @@
                   </template>
                 </span>
               </span>
+            </div>
+            <div v-if="$slots.quality && entry.row.group_id" class="col-span-full min-w-0 px-3 pb-3">
+              <slot name="quality" :row="entry.row" />
             </div>
           </div>
         </div>

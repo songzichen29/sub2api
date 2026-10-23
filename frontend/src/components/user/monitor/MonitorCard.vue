@@ -1,9 +1,6 @@
 <template>
-  <button
-    type="button"
-    class="group text-left p-5 rounded-2xl min-h-[280px] w-full bg-white/70 backdrop-blur-xl border border-gray-200/80 shadow-card dark:bg-dark-800/60 dark:border-dark-700/70 hover:-translate-y-1 hover:shadow-card-hover dark:hover:border-primary-500/30 hover:border-gray-300 transition-all duration-300 ease-out flex flex-col"
-    @click="emit('click')"
-  >
+  <article class="group flex min-h-[280px] w-full flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 text-left shadow-card dark:border-dark-700/70 dark:bg-dark-800/60">
+    <button type="button" class="w-full text-left focus-visible:outline focus-visible:outline-primary-500" :aria-label="item.name" @click="emit('click')">
     <!-- Header: icon + name/model + status chip -->
     <div class="flex items-start gap-3">
       <span
@@ -73,7 +70,9 @@
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
     />
-  </button>
+    </button>
+    <ModelQualityStrip v-if="qualityPlans.length" class="mt-4" :plans="qualityPlans" :show-group="new Set(qualityPlans.map(p => p.group_id)).size > 1" @select="emit('qualitySelect', $event)" />
+  </article>
 </template>
 
 <script setup lang="ts">
@@ -90,6 +89,9 @@ import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
+import ModelQualityStrip from '@/features/model-quality/ModelQualityStrip.vue'
+import type { QualityPlan } from '@/api/modelQuality'
+import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
 
 // 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家）。
 const PROVIDER_TINT: Record<string, string> = {
@@ -104,15 +106,17 @@ const PROVIDER_TINT: Record<string, string> = {
   opencode_go: 'text-amber-700 dark:text-amber-300',
 }
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   item: UserMonitorView
   window: '7d' | '15d' | '30d'
   availabilityValue: number | null
   countdownSeconds: number
-}>()
+  qualityPlans?: QualityPlan[]
+}>(), { qualityPlans: () => [] })
 
 const emit = defineEmits<{
   (e: 'click'): void
+  (e: 'qualitySelect', selection: QualitySelection): void
 }>()
 
 const { t } = useI18n()

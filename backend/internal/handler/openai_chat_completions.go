@@ -346,7 +346,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					markPoolModeRetryStatus(failoverErr, account)
 					if failoverClientGone(c) {
 						reqLog.Info("openai_chat_completions.failover_aborted_client_disconnected",
 							zap.Int64("account_id", account.ID),

@@ -40,7 +40,7 @@ import type { HealthState } from '@/api/channelMonitorV2'
 const props = defineProps<{
   label: string
   value: string
-  detail: string
+  detail?: string
   state?: HealthState
   /** Exact numeric tooltip (e.g. uncompacted RPM/TPM). */
   title?: string

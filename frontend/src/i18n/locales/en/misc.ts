@@ -837,37 +837,4 @@ export default {
     invalidPassword: 'Invalid password or verification expired',
     verified: 'Verified'
   },
-  modelMarketplace: {
-    title: 'Model Marketplace',
-    description: 'Browse accessible models, their channels, and pricing',
-    searchPlaceholder: 'Search models, channels, groups, or platforms...',
-    modelSearchPlaceholder: 'Search model names...',
-    filtersTitle: 'Filters',
-    filtersSubtitle: 'Narrow results by provider',
-    groupFiltersTitle: 'Groups',
-    allProviders: 'All providers',
-    allGroups: 'All groups',
-    groupSearchPlaceholder: 'Search group names...',
-    totalModels: '{count} models',
-    fromLabel: 'Provider',
-    moreChannels: 'Show {count} more channels',
-    collapseChannels: 'Collapse channels',
-    intervalCount: '{count} pricing tiers',
-    detailsTitle: 'Model pricing details',
-    showDetails: 'Show details',
-    hideDetails: 'Hide details',
-    showIntervalDetails: 'Show tier prices',
-    hideIntervalDetails: 'Hide tier prices',
-    intervalRangeOpen: '> {min} tokens',
-    intervalRangeBounded: '> {min} and <= {max} tokens',
-    intervalTable: {
-      context: 'Context Range'
-    },
-    channelCount: '{count} channels',
-    empty: {
-      noChannels: 'No available channels',
-      noGroups: 'No matching groups',
-      noModelResults: 'No models match the current filters'
-    }
-  }
 }

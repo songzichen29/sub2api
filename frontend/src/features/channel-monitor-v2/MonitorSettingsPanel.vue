@@ -10,9 +10,6 @@
           </span>
           {{ t('channelMonitorV2.settings.title') }}
         </h2>
-        <p class="page-description mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('channelMonitorV2.settings.description') }}
-        </p>
       </div>
       <button
         type="button"
@@ -51,16 +48,12 @@
         <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
             <strong class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.enableTitle') }}</strong>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-              {{ t('channelMonitorV2.settings.enableHint') }}
-            </p>
           </div>
           <Toggle v-model="draft.enabled" />
         </div>
         <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
             <strong class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.refreshTitle') }}</strong>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">{{ t('channelMonitorV2.settings.refreshHint') }}</p>
           </div>
           <div class="tabs inline-flex w-auto" role="group" :aria-label="t('channelMonitorV2.settings.refreshAria')">
             <button
@@ -86,9 +79,6 @@
       <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.platformsTitle') }}</h3>
-          <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-            {{ t('channelMonitorV2.settings.platformsHint') }}
-          </p>
           <div v-if="availablePlatforms.length" class="mt-3 flex flex-wrap items-center gap-2">
             <Select
               v-model="selectedPlatform"
@@ -178,9 +168,6 @@
       <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.errorsTitle') }}</h3>
-          <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-            {{ t('channelMonitorV2.settings.errorsHint') }}
-          </p>
         </div>
         <div class="max-h-[min(40vh,320px)] overflow-y-auto px-3 py-2 sm:px-4">
           <div class="grid grid-cols-1 gap-1 sm:grid-cols-2">
@@ -215,9 +202,6 @@
       <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.healthTitle') }}</h3>
-          <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
-            {{ t('channelMonitorV2.settings.healthHint') }}
-          </p>
         </div>
         <div class="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
           <label class="block">

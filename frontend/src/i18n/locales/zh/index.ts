@@ -6,6 +6,7 @@ import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
 import invoice from './invoice'
+import modelQuality from './modelQuality'
 
 export default {
   ...landing,
@@ -16,4 +17,5 @@ export default {
   admin,
   ...misc,
   ...invoice,
+  ...modelQuality,
 }
