@@ -1,5 +1,10 @@
 export default {
   modelQuality: {
+    currentResults: '本次结果', resultScope: '结果范围', addModel: '添加模型', removeModel: '移除模型', remove: '移除',
+    modeSupport: '鹈鹕、自由创作：gpt-6-astra，思考强度 low / medium / high。',
+    selectModelModes: '请为每行填写模型，并至少选择一种检测模式。', tooManyConfigs: '一个计划最多支持 100 个模型与模式组合。', duplicateConfig: '模型、模式、思考强度和服务等级不能重复。',
+    delete: '删除计划', deleteConfirm: '删除「{name}」及其全部检测记录？此操作无法撤销。',
+
     statusTitle: '降智状态', testResult: '检测结果', groupHistory: '分组检测记录', selectedRun: '选中记录', selectRun: '选择一条检测记录',
     monitor: '绑定渠道', selectMonitor: '选择渠道', noMonitors: '请先在渠道监控中配置 OpenAI 渠道。',
     boundCredentialNotice: '自动使用渠道的 URL 和 Key 交由 Manxue 检测，按渠道正常计费。', intervalShort: '每 {minutes} 分钟',
@@ -18,7 +23,7 @@ export default {
     cardCount: '共 {count} 条', noResult: '暂无结果', loadingResult: '结果加载中', expand: '放大', more: '详情',
     phases: { queued: '排队中', submitting: '提交中', generating: '生成中', classifying: '判定中', complete: '整理结果' },
     empty: '暂无检测计划', noRuns: '尚未检测', loading: '加载中…', loadFailed: '加载检测数据失败', operationFailed: '操作失败',
-    rate: '判定通过率', samples: '有效样本 {count}', excluded: '异常 {errors} · 无法判定/取消 {unknown}', recent: '最近 60 次（左旧右新）',
+    rate: '判定通过率', samples: '有效样本 {count}', excluded: '异常 {errors} · 无法判定/取消 {unknown}', recent: '最近 60 轮（左旧右新）',
     next: '下次检测', manual: '仅手动', time: '发起时间', finished: '完成时间', reason: '判定原因', source: '判定来源', answer: '模型回答', html: '作品 HTML 源码',
     duration: '生成耗时', inputTokens: '输入 Token', outputTokens: '输出 Token', reasoningTokens: '思考 Token', notReported: '未上报',
     previousPage: '上一页', nextPage: '下一页', page: '第 {page} 页', allGroups: '全部分组',

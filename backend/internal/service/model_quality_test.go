@@ -23,6 +23,11 @@ type qualityTestRepo struct {
 	historyPlans              []string
 	resultLimit, resultOffset int
 	results                   []*ModelQualityRun
+	queued                    []*ModelQualityRun
+	dimensions                []ModelQualityDimension
+	resultScope               []string
+	deleted                   string
+	resultBenchmark           string
 }
 
 func (r *qualityTestRepo) GetPlan(context.Context, string) (*ModelQualityPlan, error) {
@@ -50,13 +55,36 @@ func (r *qualityTestRepo) HistoryForPlans(_ context.Context, ids []string, _, _ 
 	r.historyPlans = ids
 	return []*ModelQualityRun{r.run}, nil
 }
-func (r *qualityTestRepo) ResultsForPlans(_ context.Context, ids []string, limit, offset int) ([]*ModelQualityRun, error) {
+func (r *qualityTestRepo) ResultsForPlans(_ context.Context, ids []string, benchmark string, limit, offset int) ([]*ModelQualityRun, error) {
+	r.resultBenchmark = benchmark
 	r.historyPlans, r.resultLimit, r.resultOffset = ids, limit, offset
 	return r.results, nil
 }
 func (r *qualityTestRepo) CreatePlan(_ context.Context, p *ModelQualityPlan) error {
 	r.plan = p
 	return nil
+}
+
+func (r *qualityTestRepo) UpdatePlan(_ context.Context, p *ModelQualityPlan) error {
+	r.plan = p
+	return nil
+}
+func (r *qualityTestRepo) DeletePlan(_ context.Context, id string) error { r.deleted = id; return nil }
+func (r *qualityTestRepo) QueueBatch(_ context.Context, runs []*ModelQualityRun, _ bool) error {
+	r.queued = runs
+	return nil
+}
+func (r *qualityTestRepo) Batches(context.Context, string, int) ([]ModelQualityBatch, error) {
+	return []ModelQualityBatch{}, nil
+}
+func (r *qualityTestRepo) ResultDimensions(_ context.Context, planID, batchID, excludeBatchID string) ([]ModelQualityDimension, error) {
+	r.resultScope = []string{planID, batchID, excludeBatchID}
+	return r.dimensions, nil
+}
+func (r *qualityTestRepo) PlanResults(_ context.Context, planID, batchID, excludeBatchID, model, benchmark string, limit, offset int) ([]*ModelQualityRun, error) {
+	r.resultScope = []string{planID, batchID, excludeBatchID, model, benchmark}
+	r.resultLimit, r.resultOffset = limit, offset
+	return r.results, nil
 }
 
 type qualityTestKeys struct {
@@ -457,4 +485,91 @@ func TestManxueHTTPPrivacyAndLimits(t *testing.T) {
 		_, verdict, _, _ := interpretManxue(task, "candy")
 		require.Equal(t, "error", verdict)
 	})
+}
+
+func TestModelQualityMultipleModelsAndModesInOneRound(t *testing.T) {
+	s, repo, client, _ := qualityFixture()
+	s.monitors = qualityTestMonitors{&ChannelMonitor{ID: 8, Name: "channel", Provider: MonitorProviderOpenAI, Enabled: true, Endpoint: "https://relay.example", APIKey: "test-key"}}
+	in := ModelQualityInput{Name: "multi", GroupID: 12, IntervalMinutes: 3, Configs: []ModelQualityConfig{
+		{MonitorID: 8, Model: "gpt-6-astra", Benchmark: "candy", ReasoningEffort: "high"},
+		{MonitorID: 8, Model: "gpt-6-astra", Benchmark: "pelican", ReasoningEffort: "high"},
+		{MonitorID: 8, Model: "another-model", Benchmark: "candy", ReasoningEffort: "low"},
+	}}
+	p, err := s.Save(context.Background(), "", 3, in)
+	require.NoError(t, err)
+	require.Len(t, p.Configs, 3)
+	require.Equal(t, 3, p.IntervalMinutes)
+	runs, err := s.Queue(context.Background(), p.ID, false)
+	require.NoError(t, err)
+	require.Len(t, runs, 3)
+	require.Len(t, repo.queued, 3)
+	ids := map[string]bool{}
+	for i, run := range runs {
+		require.NotEmpty(t, run.BatchID)
+		require.Equal(t, runs[0].BatchID, run.BatchID)
+		require.Equal(t, p.Configs[i].ID, run.ConfigID)
+		require.False(t, ids[run.ID])
+		ids[run.ID] = true
+		s.step(context.Background(), run)
+		require.Equal(t, p.Configs[i].Model, client.request.Model)
+		require.Equal(t, p.Configs[i].Benchmark, client.request.Benchmark)
+	}
+	// Existing plans can add models without deleting previous snapshots.
+	in.Configs = append(in.Configs, ModelQualityConfig{MonitorID: 8, Model: "new-model", Benchmark: "candy"})
+	_, err = s.Save(context.Background(), p.ID, 3, in)
+	require.NoError(t, err)
+	require.Len(t, repo.plan.Configs, 4)
+	in.IntervalMinutes = 2
+	_, err = s.Save(context.Background(), "", 3, in)
+	require.ErrorIs(t, err, ErrQualityInvalid)
+	in.IntervalMinutes = 3
+	in.Configs[1].MonitorID = 99
+	_, err = s.Save(context.Background(), "", 3, in)
+	require.ErrorIs(t, err, ErrQualityInvalid)
+	in.Configs[1] = in.Configs[0]
+	_, err = s.Save(context.Background(), "", 3, in)
+	require.ErrorIs(t, err, ErrQualityInvalid)
+}
+
+func TestModelQualityPlanResultsIsolateRoundAndHistory(t *testing.T) {
+	s, repo, _, _ := qualityFixture()
+	repo.dimensions = []ModelQualityDimension{{Model: "old-model", Benchmark: "creative"}, {Model: "model-b", Benchmark: "candy"}, {Model: "old-model", Benchmark: "future-mode"}}
+	for i := 0; i < 13; i++ {
+		repo.results = append(repo.results, &ModelQualityRun{})
+	}
+	result, err := s.PlanResults(context.Background(), "plan", "batch-1", "", "old-model", "creative", 42, false, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"model-b", "old-model"}, result.Models)
+	require.Equal(t, []string{"creative", "future-mode"}, result.Benchmarks)
+	require.Equal(t, []string{"plan", "batch-1", "", "old-model", "creative"}, repo.resultScope)
+	require.Len(t, result.Items, 12)
+	require.True(t, result.HasMore)
+	_, err = s.PlanResults(context.Background(), "plan", "", "batch-1", "old-model", "future-mode", 42, false, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"plan", "", "batch-1", "old-model", "future-mode"}, repo.resultScope)
+	require.Equal(t, 12, repo.resultOffset)
+	_, err = s.PlanResults(context.Background(), "other-plan", "batch-1", "", "", "", 42, false, 1)
+	require.ErrorIs(t, err, ErrQualityNotFound)
+	repo.plan.PublicVisible = false
+	_, err = s.PlanResults(context.Background(), "plan", "batch-1", "", "", "", 42, false, 1)
+	require.ErrorIs(t, err, ErrQualityNotFound)
+}
+
+func TestModelQualityQueueWaitDoesNotConsumeExecutionTimeout(t *testing.T) {
+	s, _, client, run := qualityFixture()
+	run.StartedAt = time.Now().Add(-time.Hour)
+	now := time.Now()
+	run.ExecutionStartedAt = &now
+	s.step(context.Background(), run)
+	require.Equal(t, 1, client.creates)
+	require.Nil(t, run.FinishedAt)
+}
+
+func TestModelQualityDeleteAuthorization(t *testing.T) {
+	s, repo, _, _ := qualityFixture()
+	err := s.Delete(context.Background(), "plan", 42, false)
+	require.ErrorIs(t, err, ErrQualityInvalid)
+	require.Empty(t, repo.deleted)
+	require.NoError(t, s.Delete(context.Background(), "plan", 42, true))
+	require.Equal(t, "plan", repo.deleted)
 }

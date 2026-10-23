@@ -1,6 +1,11 @@
 <template>
   <BaseDialog :show="!!selection" :title="dialogTitle" width="full" @close="emit('close')">
-    <div class="flex h-[min(76vh,850px)] min-h-0 flex-col gap-3">
+    <div class="flex h-[min(76dvh,850px)] max-h-[calc(90dvh-8rem)] min-h-0 flex-col gap-3">
+      <div class="flex shrink-0 items-center gap-4 border-b border-gray-200 text-sm dark:border-dark-700" role="tablist" :aria-label="t('modelQuality.resultScope')">
+        <button v-if="selection?.batchId" type="button" role="tab" data-scope="current" class="border-b-2 px-1 py-2" :class="scope === 'current' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" :aria-selected="scope === 'current'" @click="changeScope('current')">{{ t('modelQuality.currentResults') }}</button>
+        <button type="button" role="tab" data-scope="history" class="border-b-2 px-1 py-2" :class="scope === 'history' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" :aria-selected="scope === 'history'" @click="changeScope('history')">{{ t('modelQuality.history') }}</button>
+        <select v-if="models.length" v-model="model" class="input ml-auto !w-auto max-w-[50%]" :aria-label="t('modelQuality.model')" data-model-filter @change="changeModel"><option v-for="item in models" :key="item" :value="item">{{ item }}</option></select>
+      </div>
       <div class="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div class="flex gap-1 border-b border-gray-200 dark:border-dark-700" role="tablist" :aria-label="t('modelQuality.resultTabs')">
           <button v-for="tab in tabs" :key="tab" type="button" role="tab" class="border-b-2 px-3 py-2 text-sm" :class="benchmark === tab ? 'border-primary-500 font-medium text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500'" :aria-selected="benchmark === tab" :data-benchmark-tab="tab" @click="changeTab(tab)">{{ qualityBenchmarkLabel(tab, t) }}</button>
@@ -14,7 +19,7 @@
       <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto pr-1" :aria-label="t('modelQuality.testResult')" :aria-busy="loading">
         <div v-if="loading && !cards.length" class="grid gap-3" :style="gridStyle"><div v-for="n in 8" :key="n" class="h-64 animate-pulse rounded-lg bg-gray-100 dark:bg-dark-700" /></div>
         <div v-else-if="cards.length" class="grid items-start gap-3 pb-1" :style="gridStyle">
-          <ModelQualityResultCard v-for="run in cards" :key="run.id" :run="run" :highlighted="run.id === selection?.runId" :body-height="`${Math.round(size * .8)}px`" @expand="expandedID = run.id; expandedMode = 'preview'" />
+          <ModelQualityResultCard v-for="run in cards" :key="run.id" :run="run" :highlighted="scope === 'current'" :body-height="`${Math.round(size * .8)}px`" @expand="expandedID = run.id; expandedMode = 'preview'" />
         </div>
         <p v-else class="py-16 text-center text-sm text-gray-500">{{ t('modelQuality.noRuns') }}</p>
       </div>
@@ -54,8 +59,10 @@ const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const dialogTitle = computed(() => props.selection?.planName ? `${props.selection.planName} · ${t('modelQuality.testResult')}` : t('modelQuality.testResult'))
 const rows = ref<api.QualityRun[]>([])
-const pinned = ref<api.QualityRun | null>(null)
 const tabs = ref<api.QualityBenchmark[]>([])
+const models = ref<string[]>([])
+const model = ref('')
+const scope = ref<'current' | 'history'>('current')
 const benchmark = ref<api.QualityBenchmark | ''>('')
 const page = ref(1)
 const hasMore = ref(false)
@@ -66,85 +73,76 @@ const expandedID = ref('')
 const expandedMode = ref<'preview' | 'source'>('preview')
 const scroller = ref<HTMLElement>()
 const gridStyle = computed(() => ({ gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${size.value}px), 1fr))` }))
-const cards = computed(() => pinned.value && page.value === 1 && pinned.value.target.benchmark === benchmark.value && !rows.value.some(r => r.id === pinned.value?.id) ? [pinned.value, ...rows.value] : rows.value)
+const cards = computed(() => rows.value.filter(r => !!r.finished_at))
 const expanded = computed(() => cards.value.find(r => r.id === expandedID.value))
-let epoch = 0
 let request = 0
 let disposed = false
 let timer: ReturnType<typeof setTimeout> | undefined
 
 function schedule() {
   if (timer) clearTimeout(timer)
-  if (disposed || !props.selection) return
+  if (disposed || !props.selection || scope.value !== 'history') return
   timer = setTimeout(async () => {
     if (!document.hidden) await refresh()
     else schedule()
-  }, cards.value.some(r => !r.finished_at) ? 5000 : 30000)
+  }, 30000)
 }
 async function refresh() {
   const selection = props.selection
   if (!selection || disposed) return
   const seq = ++request
-  const currentEpoch = epoch
   loading.value = true
   error.value = ''
   try {
-    const result = await api.groupResults(props.admin, selection.groupId, benchmark.value, page.value)
-    if (seq !== request || currentEpoch !== epoch || disposed) return
+    const result = await api.planResults(props.admin, selection.planId, {
+      ...(scope.value === 'current' ? { batch_id: selection.batchId } : { exclude_batch_id: selection.batchId }),
+      model: model.value, benchmark: benchmark.value, page: page.value,
+    })
+    if (seq !== request || disposed) return
     rows.value = result.items
+    models.value = result.models
+    model.value = result.model
     tabs.value = result.benchmarks
-    if (pinned.value && !tabs.value.includes(pinned.value.target.benchmark)) tabs.value = [...tabs.value, pinned.value.target.benchmark]
     benchmark.value = result.benchmark
     hasMore.value = result.has_more
-    const included = pinned.value && rows.value.find(r => r.id === pinned.value?.id)
-    if (included) pinned.value = included
-    else if (pinned.value && !pinned.value.finished_at && page.value === 1 && pinned.value.target.benchmark === benchmark.value) {
-      const updated = await api.detail(props.admin, pinned.value.id)
-      if (seq === request && currentEpoch === epoch && !disposed) pinned.value = updated
-    }
   } catch (e) {
-    if (seq === request && currentEpoch === epoch && !disposed) error.value = extractApiErrorMessage(e, t('modelQuality.loadFailed'))
+    if (seq === request && !disposed) error.value = extractApiErrorMessage(e, t('modelQuality.loadFailed'))
   } finally {
-    if (seq === request && currentEpoch === epoch && !disposed) { loading.value = false; schedule() }
+    if (seq === request && !disposed) { loading.value = false; schedule() }
   }
+}
+function resetPage() {
+  page.value = 1; rows.value = []; hasMore.value = false; expandedID.value = ''
+  scroller.value?.scrollTo?.({ top: 0 })
+}
+function changeScope(value: 'current' | 'history') {
+  if (scope.value === value) return
+  scope.value = value
+  tabs.value = []; models.value = []
+  resetPage(); void refresh()
+}
+function changeModel() {
+  benchmark.value = ''; tabs.value = []
+  resetPage(); void refresh()
 }
 function changeTab(tab: api.QualityBenchmark) {
   if (benchmark.value === tab) return
   benchmark.value = tab
-  page.value = 1
-  rows.value = []
-  expandedID.value = ''
-  scroller.value?.scrollTo?.({ top: 0 })
-  void refresh()
+  resetPage(); void refresh()
 }
 function changePage(delta: number) {
-  page.value += delta
-  rows.value = []
-  expandedID.value = ''
+  page.value += delta; rows.value = []; expandedID.value = ''
   scroller.value?.scrollTo?.({ top: 0 })
   void refresh()
 }
-watch([() => props.selection, () => props.admin], async ([selection]) => {
-  const currentEpoch = ++epoch
+watch([() => props.selection, () => props.admin], ([selection]) => {
   ++request
   if (timer) clearTimeout(timer)
-  rows.value = []; pinned.value = null; tabs.value = []; page.value = 1
+  resetPage(); tabs.value = []; models.value = []; model.value = ''
+  scope.value = selection?.batchId ? 'current' : 'history'
   benchmark.value = selection?.benchmark || ''
-  expandedID.value = ''; error.value = ''; hasMore.value = false; loading.value = !!selection
-  if (!selection) return
-  if (selection.runId) {
-    try {
-      const chosen = await api.detail(props.admin, selection.runId)
-      if (currentEpoch !== epoch || disposed) return
-      pinned.value = chosen
-      benchmark.value = chosen.target.benchmark
-      tabs.value = [benchmark.value]
-    } catch (e) {
-      if (currentEpoch !== epoch || disposed) return
-      error.value = extractApiErrorMessage(e, t('modelQuality.loadFailed'))
-    }
-  }
-  if (currentEpoch === epoch && !disposed) await refresh()
+  error.value = ''; loading.value = false
+  if (selection) void refresh()
 }, { immediate: true })
-onBeforeUnmount(() => { disposed = true; epoch++; request++; if (timer) clearTimeout(timer) })
+onBeforeUnmount(() => { disposed = true; request++; if (timer) clearTimeout(timer) })
 </script>

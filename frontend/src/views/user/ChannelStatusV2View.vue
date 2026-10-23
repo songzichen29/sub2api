@@ -257,7 +257,7 @@
           :show-throughput="showThroughput"
         >
           <template #quality="{ row }">
-            <ModelQualityStrip :plans="qualityPlans.filter(p => p.group_id === row.group_id && (!row.model || p.target.model === row.model))" @select="qualitySelection = $event" />
+            <ModelQualityStrip :plans="qualityPlans.filter(p => p.group_id === row.group_id && (!row.model || (p.configs?.length ? p.configs : [p.target]).some(c => c.model === row.model)))" @select="qualitySelection = $event" />
           </template>
         </RelayPulseMatrix>
         <div

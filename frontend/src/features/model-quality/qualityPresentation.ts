@@ -1,6 +1,8 @@
-import type { QualityBenchmark, QualityRun } from '@/api/modelQuality'
+import type { QualityBenchmark } from '@/api/modelQuality'
 
 export interface QualitySelection {
+  planId: string
+  batchId?: string
   groupId: number
   groupName: string
   planName?: string
@@ -14,13 +16,13 @@ export function qualityBenchmarkLabel(benchmark: string, t: (key: string) => str
   return label === key ? benchmark : label
 }
 
-export function qualityVerdict(run?: QualityRun): string {
+export function qualityVerdict(run?: { status?: string; verdict: string }): string {
   if (!run) return 'empty'
   if (run.status === 'cancelled') return 'cancelled'
   return ['normal', 'degraded', 'error', 'unknown', 'pending'].includes(run.verdict) ? run.verdict : 'unknown'
 }
 
-export function qualityColor(run?: QualityRun): string {
+export function qualityColor(run?: { status?: string; verdict: string }): string {
   switch (qualityVerdict(run)) {
     case 'normal': return 'bg-emerald-500'
     case 'degraded': return 'bg-yellow-400'

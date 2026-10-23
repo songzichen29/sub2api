@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 
 export interface QualityConfig {
+  id?: string
   monitor_id?: number
   base_url?: string
   api_key_id?: number
@@ -24,6 +25,8 @@ export interface QualityTarget {
 export interface QualityRun {
   id: string
   plan_id: string
+  batch_id?: string
+  config_id?: string
   target: QualityTarget
   status: string
   verdict: string
@@ -46,14 +49,18 @@ export interface QualityRun {
 export interface QualityInput {
   name: string
   group_id: number
-  config: QualityConfig
+  configs: QualityConfig[]
+  config?: QualityConfig
   enabled: boolean
   public_visible: boolean
   interval_minutes: number
 }
-export interface QualityPlan extends Omit<QualityInput, 'config'> {
+export interface QualityPlan extends Omit<QualityInput, 'config' | 'configs'> {
   id: string
   config?: QualityConfig
+  configs?: QualityConfig[]
+  batches?: QualityBatch[]
+  active_run_id?: string
   can_edit: boolean
   next_run_at: string
   created_at: string
@@ -61,6 +68,14 @@ export interface QualityPlan extends Omit<QualityInput, 'config'> {
   stats: { total: number; passed: number; failed: number; errors: number; unknown: number }
   recent: QualityRun[]
   monitor_ids?: number[] | null
+}
+export interface QualityBatch {
+  id: string
+  plan_id: string
+  started_at: string
+  finished_at: string
+  verdict: string
+  count: number
 }
 export interface QualityOptions {
   groups: { id: number; name: string; channel_name: string }[]
@@ -74,7 +89,8 @@ export const options = async () => (await apiClient.get<QualityOptions>('/admin/
 export const save = async (id: string | null, input: QualityInput) => id
   ? (await apiClient.put(`/admin/model-quality/${id}`, input)).data
   : (await apiClient.post('/admin/model-quality', input)).data
-export const run = async (id: string) => (await apiClient.post<QualityRun>(`/admin/model-quality/${id}/run`)).data
+export const run = async (id: string) => (await apiClient.post<QualityRun[]>(`/admin/model-quality/${id}/run`)).data
+export const remove = async (id: string) => (await apiClient.delete(`/admin/model-quality/${id}`)).data
 export const cancel = async (id: string) => (await apiClient.post(`/admin/model-quality/runs/${id}/cancel`)).data
 export const history = async (admin: boolean, id: string, page: number) =>
   (await apiClient.get<QualityRun[]>(`${root(admin)}/${id}/history`, { params: { page } })).data
@@ -85,10 +101,22 @@ export const groupHistory = async (admin: boolean, groupId: number, page: number
 
 export type QualityBenchmark = string
 export interface QualityResults {
+  batch_id?: string
+  model: string
+  models: string[]
   benchmark: QualityBenchmark
   benchmarks: QualityBenchmark[]
   items: QualityRun[]
   has_more: boolean
 }
+export interface QualityResultFilter {
+  batch_id?: string
+  exclude_batch_id?: string
+  model?: string
+  benchmark?: string
+  page: number
+}
+export const planResults = async (admin: boolean, id: string, params: QualityResultFilter) =>
+  (await apiClient.get<QualityResults>(`${root(admin)}/${id}/results`, { params })).data
 export const groupResults = async (admin: boolean, groupId: number, benchmark: QualityBenchmark | '', page: number) =>
   (await apiClient.get<QualityResults>(`${root(admin)}/groups/${groupId}/results`, { params: { benchmark, page } })).data

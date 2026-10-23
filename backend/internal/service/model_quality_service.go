@@ -59,15 +59,66 @@ func NewModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, 
 }
 
 type ModelQualityInput struct {
-	Name            string             `json:"name"`
-	GroupID         int64              `json:"group_id"`
-	Config          ModelQualityConfig `json:"config"`
-	Enabled         bool               `json:"enabled"`
-	PublicVisible   bool               `json:"public_visible"`
-	IntervalMinutes int                `json:"interval_minutes"`
+	Name            string               `json:"name"`
+	GroupID         int64                `json:"group_id"`
+	Config          ModelQualityConfig   `json:"config"`
+	Configs         []ModelQualityConfig `json:"configs"`
+	Enabled         bool                 `json:"enabled"`
+	PublicVisible   bool                 `json:"public_visible"`
+	IntervalMinutes int                  `json:"interval_minutes"`
 }
 
 func qualityInvalid(message string) error { return fmt.Errorf("%w: %s", ErrQualityInvalid, message) }
+
+func modelQualityConfigID(c ModelQualityConfig) string {
+	if c.ID != "" {
+		return c.ID
+	}
+	return modelQualityConfigKey(c)
+}
+
+func modelQualityConfigKey(c ModelQualityConfig) string {
+	return QualityConfigID(c.Model, c.Benchmark, c.ReasoningEffort, c.ServiceTier)
+}
+
+func QualityConfigID(model, benchmark, effort, tier string) string {
+	key := strings.Join([]string{strings.TrimSpace(model), benchmark, effort, tier}, "\x00")
+	sum := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%x", sum[:12])
+}
+
+func qualityConfigs(p *ModelQualityPlan) []ModelQualityConfig {
+	if len(p.Configs) > 0 {
+		return p.Configs
+	}
+	return []ModelQualityConfig{p.Config}
+}
+
+func qualityConfigForRun(p *ModelQualityPlan, configID string) (ModelQualityConfig, bool) {
+	if configID == "" {
+		configs := qualityConfigs(p)
+		if len(configs) > 0 {
+			return configs[0], true
+		}
+	}
+	for _, c := range qualityConfigs(p) {
+		if modelQualityConfigID(c) == configID {
+			return c, true
+		}
+	}
+	return ModelQualityConfig{}, false
+}
+
+func qualityConfigViews(configs []ModelQualityConfig) []ModelQualityConfigView {
+	out := make([]ModelQualityConfigView, 0, len(configs))
+	for _, c := range configs {
+		out = append(out, ModelQualityConfigView{
+			ID: modelQualityConfigID(c), Benchmark: c.Benchmark, Model: c.Model,
+			ReasoningEffort: c.ReasoningEffort, ServiceTier: c.ServiceTier,
+		})
+	}
+	return out
+}
 
 func validateQualityConfig(c *ModelQualityConfig) error {
 	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
@@ -111,8 +162,8 @@ func validateQualityConfig(c *ModelQualityConfig) error {
 	return nil
 }
 
-func (s *ModelQualityService) validateKey(ctx context.Context, p *ModelQualityPlan) (*APIKey, error) {
-	k, err := s.keys.GetByID(ctx, p.Config.APIKeyID)
+func (s *ModelQualityService) validateKey(ctx context.Context, p *ModelQualityPlan, config ModelQualityConfig) (*APIKey, error) {
+	k, err := s.keys.GetByID(ctx, config.APIKeyID)
 	if err != nil || k == nil {
 		return nil, qualityInvalid("检测 Key 不存在或已删除")
 	}
@@ -127,20 +178,44 @@ func (s *ModelQualityService) validateKey(ctx context.Context, p *ModelQualityPl
 
 func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, in ModelQualityInput) (*ModelQualityPlan, error) {
 	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" || len(in.Name) > 160 || in.GroupID <= 0 || in.IntervalMinutes < 15 || in.IntervalMinutes > 10080 {
-		return nil, qualityInvalid("名称必填，检测间隔须为 15–10080 分钟")
+	if in.Name == "" || len(in.Name) > 160 || in.GroupID <= 0 || in.IntervalMinutes < 3 || in.IntervalMinutes > 10080 {
+		return nil, qualityInvalid("名称必填，检测间隔须为 3–10080 分钟")
 	}
-	if err := validateQualityConfig(&in.Config); err != nil {
-		return nil, err
+	configs := in.Configs
+	if len(configs) == 0 {
+		configs = []ModelQualityConfig{in.Config}
 	}
-	if id == "" && in.Config.MonitorID == 0 {
+	if len(configs) == 0 || len(configs) > 100 {
+		return nil, qualityInvalid("至少需要一组检测配置，最多支持 100 组")
+	}
+	monitorID := configs[0].MonitorID
+	seenConfigs := make(map[string]struct{}, len(configs))
+	for i := range configs {
+		if configs[i].MonitorID != monitorID {
+			return nil, qualityInvalid("同一计划的所有检测必须绑定同一渠道")
+		}
+		if err := validateQualityConfig(&configs[i]); err != nil {
+			return nil, err
+		}
+		configKey := modelQualityConfigKey(configs[i])
+		if _, exists := seenConfigs[configKey]; exists {
+			return nil, qualityInvalid("不能重复添加相同的模型、模式和思考强度")
+		}
+		seenConfigs[configKey] = struct{}{}
+		configs[i].ID = configKey
+	}
+	in.Config = configs[0]
+	if id == "" && monitorID == 0 {
 		return nil, qualityInvalid("请选择已配置的检测渠道")
 	}
-	if in.Config.MonitorID > 0 {
-		in.Config.BaseURL, in.Config.APIKeyID = "", 0
+	if monitorID > 0 {
+		for i := range configs {
+			configs[i].BaseURL, configs[i].APIKeyID = "", 0
+		}
+		in.Config = configs[0]
 	}
 	now := time.Now()
-	p := &ModelQualityPlan{ID: id, OwnerID: owner, GroupID: in.GroupID, Name: in.Name, Config: in.Config, Enabled: in.Enabled, PublicVisible: in.PublicVisible, IntervalMinutes: in.IntervalMinutes, NextRunAt: now.Add(time.Duration(in.IntervalMinutes) * time.Minute), CreatedAt: now}
+	p := &ModelQualityPlan{ID: id, OwnerID: owner, GroupID: in.GroupID, Name: in.Name, Config: in.Config, Configs: configs, Enabled: in.Enabled, PublicVisible: in.PublicVisible, IntervalMinutes: in.IntervalMinutes, NextRunAt: now.Add(time.Duration(in.IntervalMinutes) * time.Minute), CreatedAt: now}
 	validateCredentials := in.Enabled || id == ""
 	if id != "" {
 		old, err := s.repo.GetPlan(ctx, id)
@@ -150,23 +225,27 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 		if old.OwnerID != owner {
 			return nil, qualityInvalid("请由计划创建者修改检测配置")
 		}
-		// Keep a plan's sample population stable; changed dimensions require a new plan.
-		if old.GroupID != in.GroupID || old.Config.Model != in.Config.Model || old.Config.Benchmark != in.Config.Benchmark || old.Config.ReasoningEffort != in.Config.ReasoningEffort || old.Config.ServiceTier != in.Config.ServiceTier {
-			return nil, qualityInvalid("更换分组、模型、模式、思考强度或服务等级时请新建计划，避免混合统计")
+		if old.GroupID != in.GroupID {
+			return nil, qualityInvalid("已有计划不能更换分组")
 		}
-		if old.Config.MonitorID > 0 && old.Config.MonitorID != in.Config.MonitorID {
+		if old.Config.MonitorID > 0 && old.Config.MonitorID != monitorID {
 			return nil, qualityInvalid("更换检测渠道请新建计划")
 		}
-		validateCredentials = validateCredentials || old.Config.MonitorID != in.Config.MonitorID
+		validateCredentials = validateCredentials || old.Config.MonitorID != monitorID
 		p.CreatedAt = old.CreatedAt
 	}
+	in.Config = configs[0]
+	p.Config = configs[0]
+	p.Configs = configs
 	// Disabling a plan must remain possible after its test key expires.
 	if validateCredentials {
-		if _, err := s.target(ctx, p); err != nil {
-			return nil, err
-		}
-		if _, err := s.credentials(ctx, p); err != nil {
-			return nil, err
+		for _, config := range configs {
+			if _, err := s.target(ctx, p, config); err != nil {
+				return nil, err
+			}
+			if _, err := s.credentials(ctx, p, config); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if id == "" {
@@ -176,12 +255,23 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 	return p, s.repo.UpdatePlan(ctx, p)
 }
 
-func (s *ModelQualityService) target(ctx context.Context, p *ModelQualityPlan) (ModelQualityTarget, error) {
-	t := ModelQualityTarget{GroupID: p.GroupID, Model: p.Config.Model, Benchmark: p.Config.Benchmark, ReasoningEffort: p.Config.ReasoningEffort, ServiceTier: p.Config.ServiceTier}
-	if p.Config.MonitorID > 0 {
-		t.MonitorID = p.Config.MonitorID
+func (s *ModelQualityService) Delete(ctx context.Context, id string, user int64, admin bool) error {
+	p, err := s.repo.GetPlan(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !admin && p.OwnerID != user {
+		return qualityInvalid("请由计划创建者删除检测计划")
+	}
+	return s.repo.DeletePlan(ctx, id)
+}
+
+func (s *ModelQualityService) target(ctx context.Context, p *ModelQualityPlan, config ModelQualityConfig) (ModelQualityTarget, error) {
+	t := ModelQualityTarget{ConfigID: modelQualityConfigID(config), GroupID: p.GroupID, Model: config.Model, Benchmark: config.Benchmark, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier}
+	if config.MonitorID > 0 {
+		t.MonitorID = config.MonitorID
 		if s.monitors != nil {
-			if m, err := s.monitors.Get(ctx, p.Config.MonitorID); err == nil && m != nil {
+			if m, err := s.monitors.Get(ctx, config.MonitorID); err == nil && m != nil {
 				t.MonitorName = m.Name
 			}
 		}
@@ -210,18 +300,18 @@ func (c qualityCredentials) hash() string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(c.baseURL+"\x00"+c.key)))
 }
 
-func (s *ModelQualityService) credentials(ctx context.Context, p *ModelQualityPlan) (qualityCredentials, error) {
-	if p.Config.MonitorID == 0 {
-		key, err := s.validateKey(ctx, p)
+func (s *ModelQualityService) credentials(ctx context.Context, p *ModelQualityPlan, config ModelQualityConfig) (qualityCredentials, error) {
+	if config.MonitorID == 0 {
+		key, err := s.validateKey(ctx, p, config)
 		if err != nil {
 			return qualityCredentials{}, err
 		}
-		return qualityCredentials{p.Config.BaseURL, key.Key}, nil
+		return qualityCredentials{config.BaseURL, key.Key}, nil
 	}
 	if s.monitors == nil {
 		return qualityCredentials{}, qualityInvalid("渠道配置不可用")
 	}
-	m, err := s.monitors.Get(ctx, p.Config.MonitorID)
+	m, err := s.monitors.Get(ctx, config.MonitorID)
 	if err != nil || m == nil {
 		return qualityCredentials{}, qualityInvalid("检测渠道不存在或已删除")
 	}
@@ -248,7 +338,7 @@ func (s *ModelQualityService) credentials(ctx context.Context, p *ModelQualityPl
 	if !strings.HasSuffix(u.EscapedPath(), "/v1") {
 		baseURL += "/v1"
 	}
-	check := p.Config
+	check := config
 	check.MonitorID, check.BaseURL = 0, baseURL
 	if err := validateQualityConfig(&check); err != nil {
 		return qualityCredentials{}, qualityInvalid("渠道需要公网 HTTPS 地址并支持 Responses 接口")
@@ -256,20 +346,28 @@ func (s *ModelQualityService) credentials(ctx context.Context, p *ModelQualityPl
 	return qualityCredentials{baseURL, m.APIKey}, nil
 }
 
-func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bool) (*ModelQualityRun, error) {
+func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bool) ([]*ModelQualityRun, error) {
 	p, err := s.repo.GetPlan(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	t, err := s.target(ctx, p)
-	if err != nil {
-		t = ModelQualityTarget{GroupID: p.GroupID, Model: p.Config.Model, Benchmark: p.Config.Benchmark, ReasoningEffort: p.Config.ReasoningEffort, ServiceTier: p.Config.ServiceTier}
+	now := time.Now()
+	batchID := uuid.NewString()
+	runs := make([]*ModelQualityRun, 0, len(qualityConfigs(p)))
+	for _, config := range qualityConfigs(p) {
+		if _, err := s.credentials(ctx, p, config); err != nil {
+			return nil, err
+		}
+		target, err := s.target(ctx, p, config)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now})
 	}
-	r := &ModelQualityRun{ID: uuid.NewString(), PlanID: id, Target: t, Status: "queued", Verdict: "pending", StartedAt: time.Now()}
-	if err := s.repo.Queue(ctx, r, scheduled); err != nil {
+	if err := s.repo.QueueBatch(ctx, runs, scheduled); err != nil {
 		return nil, err
 	}
-	return r, nil
+	return runs, nil
 }
 
 func (s *ModelQualityService) visiblePlans(ctx context.Context, userID int64, admin bool) ([]*ModelQualityPlan, error) {
@@ -305,7 +403,8 @@ func (s *ModelQualityService) List(ctx context.Context, userID int64, admin bool
 	items := make([]*ModelQualityView, 0, len(plans))
 	bindings := s.monitorBindings(ctx, plans)
 	for _, p := range plans {
-		t, _ := s.target(ctx, p)
+		configs := qualityConfigs(p)
+		t, _ := s.target(ctx, p, configs[0])
 		stats, err := s.repo.Stats(ctx, p.ID)
 		if err != nil {
 			return nil, err
@@ -314,11 +413,16 @@ func (s *ModelQualityService) List(ctx context.Context, userID int64, admin bool
 		if err != nil {
 			return nil, err
 		}
-		v := &ModelQualityView{ModelQualityPlan: p, Target: t, Stats: stats, Recent: recent, MonitorIDs: bindings[p.GroupID]}
+		v := &ModelQualityView{ModelQualityPlan: p, Target: t, Configs: qualityConfigViews(configs), Stats: stats, Recent: recent, MonitorIDs: bindings[p.GroupID]}
+		v.Batches, err = s.repo.Batches(ctx, p.ID, 60)
+		if err != nil {
+			return nil, err
+		}
 		if p.Config.MonitorID > 0 {
 			v.MonitorIDs = []int64{p.Config.MonitorID}
 		}
 		if admin {
+			v.ActiveRunID = p.ActiveRunID
 			v.CanEdit = p.OwnerID == userID
 			cfg := p.Config
 			v.AdminConfig = &cfg
@@ -428,7 +532,12 @@ func (s *ModelQualityService) GroupResults(ctx context.Context, groupID, user in
 	byBenchmark := make(map[string][]string)
 	for _, p := range plans {
 		if p.GroupID == groupID {
-			byBenchmark[p.Config.Benchmark] = append(byBenchmark[p.Config.Benchmark], p.ID)
+			for _, config := range qualityConfigs(p) {
+				ids := byBenchmark[config.Benchmark]
+				if len(ids) == 0 || ids[len(ids)-1] != p.ID {
+					byBenchmark[config.Benchmark] = append(ids, p.ID)
+				}
+			}
 		}
 	}
 	if len(byBenchmark) == 0 {
@@ -448,7 +557,63 @@ func (s *ModelQualityService) GroupResults(ctx context.Context, groupID, user in
 		return nil, qualityInvalid("invalid result filter")
 	}
 	const pageSize = 12
-	rows, err := s.repo.ResultsForPlans(ctx, ids, pageSize+1, (page-1)*pageSize)
+	rows, err := s.repo.ResultsForPlans(ctx, ids, benchmark, pageSize+1, (page-1)*pageSize)
+	if err != nil {
+		return nil, err
+	}
+	out.HasMore = len(rows) > pageSize
+	if out.HasMore {
+		rows = rows[:pageSize]
+	}
+	out.Items = rows
+	return out, nil
+}
+
+// batchID selects only the clicked round. Without it, history is scoped to this
+// plan and can exclude the clicked round. Dimensions come from snapshots so
+// editing a plan never relabels or hides results from earlier configurations.
+func (s *ModelQualityService) PlanResults(ctx context.Context, planID, batchID, excludeBatchID, model, benchmark string, user int64, admin bool, page int) (*ModelQualityResults, error) {
+	if page < 1 || page > 100000 || len(batchID) > 36 || len(excludeBatchID) > 36 || (batchID != "" && excludeBatchID != "") || len(model) > 200 || len(benchmark) > 32 {
+		return nil, qualityInvalid("invalid result filter")
+	}
+	if err := s.authorize(ctx, planID, user, admin); err != nil {
+		return nil, err
+	}
+	dimensions, err := s.repo.ResultDimensions(ctx, planID, batchID, excludeBatchID)
+	if err != nil {
+		return nil, err
+	}
+	out := &ModelQualityResults{BatchID: batchID, Items: []*ModelQualityRun{}, Models: []string{}, Benchmarks: []string{}}
+	models, benchmarks := map[string]bool{}, map[string]bool{}
+	for _, d := range dimensions {
+		models[d.Model] = true
+	}
+	for m := range models {
+		out.Models = append(out.Models, m)
+	}
+	sort.Strings(out.Models)
+	if len(out.Models) == 0 {
+		return out, nil
+	}
+	if !models[model] {
+		model = out.Models[0]
+	}
+	out.Model = model
+	for _, d := range dimensions {
+		if d.Model == model {
+			benchmarks[d.Benchmark] = true
+		}
+	}
+	for b := range benchmarks {
+		out.Benchmarks = append(out.Benchmarks, b)
+	}
+	sort.Strings(out.Benchmarks)
+	if !benchmarks[benchmark] {
+		benchmark = out.Benchmarks[0]
+	}
+	out.Benchmark = benchmark
+	const pageSize = 12
+	rows, err := s.repo.PlanResults(ctx, planID, batchID, excludeBatchID, model, benchmark, pageSize+1, (page-1)*pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +776,11 @@ func (s *ModelQualityService) persist(ctx context.Context, r *ModelQualityRun, n
 // Each claim performs at most one remote operation. Leases outlive the HTTP timeout.
 // An interrupted POST is never blindly repeated: without a remote ID its outcome is unknown.
 func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
-	if time.Since(r.StartedAt) > 12*time.Minute {
+	executionStart := r.StartedAt
+	if r.ExecutionStartedAt != nil {
+		executionStart = *r.ExecutionStartedAt
+	}
+	if time.Since(executionStart) > 12*time.Minute {
 		if r.RemoteID != "" {
 			_ = s.client.Cancel(ctx, r.RemoteID)
 		}
@@ -641,11 +810,16 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 			s.finish(ctx, r, "failed", "error", "无法读取检测配置")
 			return
 		}
-		if _, err := s.target(ctx, p); err != nil {
+		config, ok := qualityConfigForRun(p, r.ConfigID)
+		if !ok {
+			s.finish(ctx, r, "failed", "error", "检测配置已被删除")
+			return
+		}
+		if _, err := s.target(ctx, p, config); err != nil {
 			s.finish(ctx, r, "failed", "error", "目标分组或渠道配置已失效")
 			return
 		}
-		credential, err := s.credentials(ctx, p)
+		credential, err := s.credentials(ctx, p, config)
 		if err != nil {
 			s.finish(ctx, r, "failed", "error", err.Error())
 			return
@@ -656,7 +830,7 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		if !s.persist(ctx, r, time.Now().Add(time.Minute)) {
 			return
 		}
-		task, err := s.client.Create(ctx, ManxueCreateRequest{Benchmark: p.Config.Benchmark, BaseURL: credential.baseURL, APIKey: credential.key, Model: p.Config.Model, ReasoningEffort: p.Config.ReasoningEffort, ServiceTier: p.Config.ServiceTier, IdempotencyKey: r.ID})
+		task, err := s.client.Create(ctx, ManxueCreateRequest{Benchmark: config.Benchmark, BaseURL: credential.baseURL, APIKey: credential.key, Model: config.Model, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier, IdempotencyKey: r.ID})
 		if err != nil {
 			s.deferRun(ctx, r, err, true)
 			return
@@ -696,9 +870,11 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 	secrets := []string{r.RemoteID}
 	credentialAvailable := false
 	if p, e := s.repo.GetPlan(ctx, r.PlanID); e == nil {
-		if credential, e := s.credentials(ctx, p); e == nil {
-			secrets = append(secrets, credential.baseURL, credential.key)
-			credentialAvailable = credential.key != "" && (r.CredentialHash == "" || r.CredentialHash == credential.hash())
+		if config, ok := qualityConfigForRun(p, r.ConfigID); ok {
+			if credential, e := s.credentials(ctx, p, config); e == nil {
+				secrets = append(secrets, credential.baseURL, credential.key)
+				credentialAvailable = credential.key != "" && (r.CredentialHash == "" || r.CredentialHash == credential.hash())
+			}
 		}
 	}
 	if !credentialAvailable {

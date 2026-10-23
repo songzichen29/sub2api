@@ -1,5 +1,10 @@
 export default {
   modelQuality: {
+    currentResults: 'This run', resultScope: 'Result scope', addModel: 'Add model', removeModel: 'Remove model', remove: 'Remove',
+    modeSupport: 'Pelican and creative: gpt-6-astra with low / medium / high reasoning effort.',
+    selectModelModes: 'Enter a model and select at least one mode for each row.', tooManyConfigs: 'A plan supports up to 100 model and mode combinations.', duplicateConfig: 'Model, mode, reasoning effort and service tier combinations must be unique.',
+    delete: 'Delete plan', deleteConfirm: 'Delete “{name}” and all its results? This cannot be undone.',
+
     statusTitle: 'Model quality', testResult: 'Test result', groupHistory: 'Group test history', selectedRun: 'Selected test', selectRun: 'Select a test result',
     monitor: 'Linked channel', selectMonitor: 'Select a channel', noMonitors: 'Configure an OpenAI channel in channel monitoring first.',
     boundCredentialNotice: 'Manxue tests use the channel URL and API key. Normal channel usage charges apply.', intervalShort: 'Every {minutes} min',

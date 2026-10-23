@@ -23,7 +23,7 @@ export function useModelQuality(admin: MaybeRefOrGetter<boolean> = false) {
   }
   async function poll() {
     if (!document.hidden) await refresh()
-    if (!disposed) timer = setTimeout(poll, plans.value.some(p => p.recent.some(r => !r.finished_at)) ? 5000 : 30000)
+    if (!disposed) timer = setTimeout(poll, plans.value.some(p => !!p.active_run_id) ? 5000 : 30000)
   }
   onMounted(poll)
   onBeforeUnmount(() => { disposed = true; if (timer) clearTimeout(timer) })

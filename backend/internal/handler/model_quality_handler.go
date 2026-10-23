@@ -72,7 +72,7 @@ func (h *ModelQualityHandler) Save(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 128<<10)
 	var input service.ModelQualityInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		response.BadRequest(c, "invalid detection configuration")
@@ -84,6 +84,18 @@ func (h *ModelQualityHandler) Save(c *gin.Context) {
 		return
 	}
 	response.Success(c, p)
+}
+
+func (h *ModelQualityHandler) Delete(c *gin.Context) {
+	user, ok := qualityViewer(c)
+	if !ok {
+		return
+	}
+	if err := h.service.Delete(c.Request.Context(), c.Param("id"), user, true); err != nil {
+		qualityError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
 }
 
 func (h *ModelQualityHandler) Run(c *gin.Context) {
@@ -149,6 +161,26 @@ func (h *ModelQualityHandler) detail(c *gin.Context, admin bool) {
 
 func (h *ModelQualityHandler) GroupResults(c *gin.Context)      { h.results(c, false) }
 func (h *ModelQualityHandler) AdminGroupResults(c *gin.Context) { h.results(c, true) }
+
+func (h *ModelQualityHandler) PlanResults(c *gin.Context)      { h.planResults(c, false) }
+func (h *ModelQualityHandler) AdminPlanResults(c *gin.Context) { h.planResults(c, true) }
+func (h *ModelQualityHandler) planResults(c *gin.Context, admin bool) {
+	user, ok := qualityViewer(c)
+	if !ok {
+		return
+	}
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil {
+		response.BadRequest(c, "invalid page")
+		return
+	}
+	result, err := h.service.PlanResults(c.Request.Context(), c.Param("id"), c.Query("batch_id"), c.Query("exclude_batch_id"), c.Query("model"), c.Query("benchmark"), user, admin, page)
+	if err != nil {
+		qualityError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
 func (h *ModelQualityHandler) results(c *gin.Context, admin bool) {
 	user, ok := qualityViewer(c)
 	if !ok {

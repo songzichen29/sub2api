@@ -141,6 +141,7 @@ func RegisterUserRoutes(
 		quality := authenticated.Group("/model-quality")
 		quality.Use(panelRateLimiter.Heavy())
 		quality.GET("", h.ModelQuality.List)
+		quality.GET("/:id/results", h.ModelQuality.PlanResults)
 		quality.GET("/:id/history", h.ModelQuality.History)
 		quality.GET("/groups/:groupID/history", h.ModelQuality.GroupHistory)
 		quality.GET("/groups/:groupID/results", h.ModelQuality.GroupResults)
