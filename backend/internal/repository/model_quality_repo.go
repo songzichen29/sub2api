@@ -393,7 +393,11 @@ func (r *modelQualityRepository) Batches(ctx context.Context, planID string, lim
 		CASE WHEN SUM(CASE WHEN verdict = 'degraded' THEN 1 ELSE 0 END) > 0 THEN 'degraded'
 		WHEN SUM(CASE WHEN verdict = 'error' THEN 1 ELSE 0 END) > 0 THEN 'error'
 		WHEN SUM(CASE WHEN verdict <> 'normal' THEN 1 ELSE 0 END) > 0 THEN 'unknown'
-		ELSE 'normal' END
+		ELSE 'normal' END,
+		SUM(CASE WHEN verdict = 'normal' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict = 'degraded' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict = 'error' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict NOT IN ('normal', 'degraded', 'error') THEN 1 ELSE 0 END)
 		FROM model_quality_runs WHERE plan_id = ? GROUP BY batch_id
 		HAVING COUNT(*) = COUNT(finished_at) ORDER BY MIN(started_at) DESC, batch_id DESC LIMIT ?`, planID, limit)
 	if err != nil {
@@ -403,9 +407,10 @@ func (r *modelQualityRepository) Batches(ctx context.Context, planID string, lim
 	out := []service.ModelQualityBatch{}
 	for rows.Next() {
 		b := service.ModelQualityBatch{PlanID: planID}
-		if err := rows.Scan(&b.ID, &b.StartedAt, &b.FinishedAt, &b.Count, &b.Verdict); err != nil {
+		if err := rows.Scan(&b.ID, &b.StartedAt, &b.FinishedAt, &b.Count, &b.Verdict, &b.Stats.Passed, &b.Stats.Failed, &b.Stats.Errors, &b.Stats.Unknown); err != nil {
 			return nil, err
 		}
+		b.Stats.Total = int64(b.Count)
 		out = append(out, b)
 	}
 	return out, rows.Err()
@@ -448,6 +453,44 @@ func (r *modelQualityRepository) queryRuns(ctx context.Context, query string, ar
 
 func (r *modelQualityRepository) Stats(ctx context.Context, id string) (service.ModelQualityStats, error) {
 	var s service.ModelQualityStats
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN verdict = 'normal' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict = 'degraded' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict = 'error' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict = 'unknown' THEN 1 ELSE 0 END),0) FROM model_quality_runs WHERE plan_id = ? AND finished_at IS NOT NULL`, id).Scan(&s.Total, &s.Passed, &s.Failed, &s.Errors, &s.Unknown)
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*), COALESCE(SUM(CASE WHEN verdict = 'normal' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict = 'degraded' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict = 'error' THEN 1 ELSE 0 END),0), COALESCE(SUM(CASE WHEN verdict NOT IN ('normal', 'degraded', 'error') THEN 1 ELSE 0 END),0) FROM model_quality_runs WHERE plan_id = ? AND finished_at IS NOT NULL`, id).Scan(&s.Total, &s.Passed, &s.Failed, &s.Errors, &s.Unknown)
 	return s, err
+}
+
+// Group only the last 24 hours, independent of the clicked batch and page.
+// Target snapshots keep legacy rows without config_id separated by effort/tier.
+func (r *modelQualityRepository) RecentStats(ctx context.Context, planID string, now time.Time) (map[string]service.ModelQualityStats, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT config_id, target_json, COUNT(*),
+		SUM(CASE WHEN verdict = 'normal' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict = 'degraded' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict = 'error' THEN 1 ELSE 0 END),
+		SUM(CASE WHEN verdict NOT IN ('normal', 'degraded', 'error') THEN 1 ELSE 0 END)
+		FROM model_quality_runs WHERE plan_id = ? AND finished_at >= ? AND finished_at <= ?
+		GROUP BY config_id, target_json`, planID, now.Add(-24*time.Hour), now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]service.ModelQualityStats{}
+	for rows.Next() {
+		var id, target string
+		var stats service.ModelQualityStats
+		if err := rows.Scan(&id, &target, &stats.Total, &stats.Passed, &stats.Failed, &stats.Errors, &stats.Unknown); err != nil {
+			return nil, err
+		}
+		if id == "" {
+			var snapshot service.ModelQualityTarget
+			if err := json.Unmarshal([]byte(target), &snapshot); err != nil {
+				return nil, err
+			}
+			id = snapshot.ConfigID
+			if id == "" {
+				id = service.QualityConfigID(snapshot.Model, snapshot.Benchmark, snapshot.ReasoningEffort, snapshot.ServiceTier)
+			}
+		}
+		total := out[id]
+		total.Add(stats)
+		out[id] = total
+	}
+	return out, rows.Err()
 }

@@ -28,6 +28,9 @@ type qualityTestRepo struct {
 	resultScope               []string
 	deleted                   string
 	resultBenchmark           string
+	recentStats               map[string]ModelQualityStats
+	statsPlan                 string
+	statsNow                  time.Time
 }
 
 func (r *qualityTestRepo) GetPlan(context.Context, string) (*ModelQualityPlan, error) {
@@ -85,6 +88,10 @@ func (r *qualityTestRepo) PlanResults(_ context.Context, planID, batchID, exclud
 	r.resultScope = []string{planID, batchID, excludeBatchID, model, benchmark}
 	r.resultLimit, r.resultOffset = limit, offset
 	return r.results, nil
+}
+func (r *qualityTestRepo) RecentStats(_ context.Context, planID string, now time.Time) (map[string]ModelQualityStats, error) {
+	r.statsPlan, r.statsNow = planID, now
+	return r.recentStats, nil
 }
 
 type qualityTestKeys struct {
@@ -363,9 +370,14 @@ func TestModelQualityValidationCancellationAndVisibility(t *testing.T) {
 	})
 	t.Run("user list and detail respect group and publication", func(t *testing.T) {
 		s, repo, _, run := qualityFixture()
+		repo.recentStats = map[string]ModelQualityStats{
+			"high": {Total: 10, Passed: 6, Failed: 1, Errors: 2, Unknown: 1},
+			"low":  {Total: 2, Passed: 1, Errors: 1},
+		}
 		list, err := s.List(context.Background(), 42, false)
 		require.NoError(t, err)
 		require.Len(t, list, 1)
+		require.Equal(t, ModelQualityStats{Total: 12, Passed: 7, Failed: 1, Errors: 3, Unknown: 1}, list[0].Stats24H)
 		b, err := json.Marshal(list)
 		require.NoError(t, err)
 		require.NotContains(t, string(b), "base_url")
@@ -533,10 +545,15 @@ func TestModelQualityMultipleModelsAndModesInOneRound(t *testing.T) {
 
 func TestModelQualityPlanResultsIsolateRoundAndHistory(t *testing.T) {
 	s, repo, _, _ := qualityFixture()
+	repo.recentStats = map[string]ModelQualityStats{
+		"low":  {Total: 30, Passed: 10, Failed: 5, Errors: 10, Unknown: 5},
+		"high": {Total: 10, Passed: 9, Failed: 1},
+	}
 	repo.dimensions = []ModelQualityDimension{{Model: "old-model", Benchmark: "creative"}, {Model: "model-b", Benchmark: "candy"}, {Model: "old-model", Benchmark: "future-mode"}}
 	for i := 0; i < 13; i++ {
-		repo.results = append(repo.results, &ModelQualityRun{})
+		repo.results = append(repo.results, &ModelQualityRun{ConfigID: "low"})
 	}
+	repo.results[1].ConfigID = "high"
 	result, err := s.PlanResults(context.Background(), "plan", "batch-1", "", "old-model", "creative", 42, false, 1)
 	require.NoError(t, err)
 	require.Equal(t, []string{"model-b", "old-model"}, result.Models)
@@ -544,10 +561,16 @@ func TestModelQualityPlanResultsIsolateRoundAndHistory(t *testing.T) {
 	require.Equal(t, []string{"plan", "batch-1", "", "old-model", "creative"}, repo.resultScope)
 	require.Len(t, result.Items, 12)
 	require.True(t, result.HasMore)
-	_, err = s.PlanResults(context.Background(), "plan", "", "batch-1", "old-model", "future-mode", 42, false, 2)
+	require.Equal(t, repo.recentStats["low"], *result.Items[0].Stats24H)
+	require.Equal(t, repo.recentStats["high"], *result.Items[1].Stats24H)
+	require.Equal(t, "plan", repo.statsPlan)
+	require.WithinDuration(t, time.Now(), repo.statsNow, time.Second)
+	result, err = s.PlanResults(context.Background(), "plan", "", "batch-1", "old-model", "future-mode", 42, false, 2)
 	require.NoError(t, err)
 	require.Equal(t, []string{"plan", "", "batch-1", "old-model", "future-mode"}, repo.resultScope)
 	require.Equal(t, 12, repo.resultOffset)
+	require.Equal(t, repo.recentStats["low"], *result.Items[0].Stats24H)
+	require.Equal(t, "plan", repo.statsPlan)
 	_, err = s.PlanResults(context.Background(), "other-plan", "batch-1", "", "", "", 42, false, 1)
 	require.ErrorIs(t, err, ErrQualityNotFound)
 	repo.plan.PublicVisible = false

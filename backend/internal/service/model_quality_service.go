@@ -402,6 +402,7 @@ func (s *ModelQualityService) List(ctx context.Context, userID int64, admin bool
 	}
 	items := make([]*ModelQualityView, 0, len(plans))
 	bindings := s.monitorBindings(ctx, plans)
+	now := time.Now()
 	for _, p := range plans {
 		configs := qualityConfigs(p)
 		t, _ := s.target(ctx, p, configs[0])
@@ -414,6 +415,13 @@ func (s *ModelQualityService) List(ctx context.Context, userID int64, admin bool
 			return nil, err
 		}
 		v := &ModelQualityView{ModelQualityPlan: p, Target: t, Configs: qualityConfigViews(configs), Stats: stats, Recent: recent, MonitorIDs: bindings[p.GroupID]}
+		recentStats, err := s.repo.RecentStats(ctx, p.ID, now)
+		if err != nil {
+			return nil, err
+		}
+		for _, stat := range recentStats {
+			v.Stats24H.Add(stat)
+		}
 		v.Batches, err = s.repo.Batches(ctx, p.ID, 60)
 		if err != nil {
 			return nil, err
@@ -620,6 +628,16 @@ func (s *ModelQualityService) PlanResults(ctx context.Context, planID, batchID, 
 	out.HasMore = len(rows) > pageSize
 	if out.HasMore {
 		rows = rows[:pageSize]
+	}
+	if len(rows) > 0 {
+		stats, err := s.repo.RecentStats(ctx, planID, time.Now())
+		if err != nil {
+			return nil, err
+		}
+		for _, run := range rows {
+			stat := stats[run.ConfigID]
+			run.Stats24H = &stat
+		}
 	}
 	out.Items = rows
 	return out, nil

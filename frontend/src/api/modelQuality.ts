@@ -35,6 +35,7 @@ export interface QualityRun {
   started_at: string
   finished_at: string | null
   cancel_requested: boolean
+  stats_24h?: QualityStats
   result?: {
     answer?: string
     html?: string
@@ -55,6 +56,13 @@ export interface QualityInput {
   public_visible: boolean
   interval_minutes: number
 }
+export interface QualityStats {
+  total: number
+  passed: number
+  failed: number
+  errors: number
+  unknown: number
+}
 export interface QualityPlan extends Omit<QualityInput, 'config' | 'configs'> {
   id: string
   config?: QualityConfig
@@ -65,7 +73,8 @@ export interface QualityPlan extends Omit<QualityInput, 'config' | 'configs'> {
   next_run_at: string
   created_at: string
   target: QualityTarget
-  stats: { total: number; passed: number; failed: number; errors: number; unknown: number }
+  stats: QualityStats
+  stats_24h?: QualityStats
   recent: QualityRun[]
   monitor_ids?: number[] | null
 }
@@ -76,6 +85,7 @@ export interface QualityBatch {
   finished_at: string
   verdict: string
   count: number
+  stats?: QualityStats
 }
 export interface QualityOptions {
   groups: { id: number; name: string; channel_name: string }[]

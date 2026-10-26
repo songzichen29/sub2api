@@ -24,7 +24,7 @@
       <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto pr-1" :aria-label="t('modelQuality.testResult')" :aria-busy="loading">
         <div v-if="loading && !cards.length" class="grid gap-3" :style="gridStyle"><div v-for="n in 8" :key="n" class="h-64 animate-pulse rounded-lg bg-gray-100 dark:bg-dark-700" /></div>
         <div v-else-if="cards.length" class="grid items-start gap-3 pb-1" :style="gridStyle">
-          <ModelQualityResultCard v-for="run in cards" :key="run.id" :run="run" :highlighted="scope === 'current'" :body-height="`${Math.round(size * .8)}px`" @expand="expandedID = run.id; expandedMode = 'preview'" />
+          <ModelQualityResultCard v-for="run in cards" :key="run.id" :run="run" :plan-name="selection?.planName" :highlighted="scope === 'current'" :body-height="`${Math.round(size * .8)}px`" @expand="expandedID = run.id; expandedMode = 'preview'" />
         </div>
         <p v-else class="py-16 text-center text-sm text-gray-500">{{ t('modelQuality.noRuns') }}</p>
       </div>

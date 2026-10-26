@@ -127,6 +127,48 @@ describe('integrated model quality', () => {
     expect(wrapper.findAll('[data-run-id]')).toHaveLength(1)
     expect(wrapper.find('[data-run-id="batch"]').classes()).toContain('bg-yellow-400')
   })
+  it('shows weighted 24h success rates separately from latest-round verdicts', () => {
+    const batch = { id: 'round-a', plan_id: 'p1', verdict: 'error', count: 2, started_at: '2026-10-23T10:00:00Z', finished_at: '2026-10-23T10:05:00Z', stats: { total: 2, passed: 1, failed: 0, errors: 1, unknown: 0 } }
+    wrapper = mount(ModelQualityStrip, { props: { plans: [{ ...plan, stats_24h: batch.stats, batches: [batch] }] } })
+    expect(wrapper.find('[data-quality-success-rate]').text()).toContain('50.0%')
+    expect(wrapper.text()).toContain('modelQuality.verdicts.partialError')
+    wrapper.unmount()
+    wrapper = mount(ModelQualityStrip, { props: { plans: [
+      { ...plan, stats_24h: batch.stats, batches: [batch, { ...batch, id: 'old-round', started_at: '2026-10-22T10:00:00Z', stats: { total: 50, passed: 50, failed: 0, errors: 0, unknown: 0 } }] },
+      { ...plan, id: 'p2', stats_24h: { total: 8, passed: 8, failed: 0, errors: 0, unknown: 0 }, batches: [{ ...batch, id: 'round-b', plan_id: 'p2', verdict: 'normal', count: 8, stats: { total: 8, passed: 8, failed: 0, errors: 0, unknown: 0 } }] },
+    ] } })
+    expect(wrapper.find('[data-quality-success-rate]').text()).toContain('90.0%')
+    expect(wrapper.find('[data-quality-success-rate]').text()).toContain('(9/10)')
+  })
+  it('shows 24h rates in every card, keeps them stable across pages and scopes, and separates configurations', async () => {
+    const gallery = (model = 'model', benchmark = 'candy', passed = 10) => ({ items: [
+      { ...run('visible'), stats_24h: { total: 30, passed, failed: 15 - passed, errors: 10, unknown: 5 } },
+      { ...run('low'), target: { ...target, reasoning_effort: 'low' }, stats_24h: { total: 10, passed: 7, failed: 1, errors: 1, unknown: 1 } },
+    ], model, models: ['model', 'other'], benchmark, benchmarks: ['candy', 'pelican'], has_more: true })
+    api.planResults.mockResolvedValue(gallery())
+    wrapper = mount(ModelQualityDetails, { props: { selection: { planId: 'p1', batchId: 'batch', groupId: 1, groupName: 'Group' } }, global: { stubs: { teleport: true } } })
+    await flushPromises()
+    const rate = () => wrapper.find('[data-result-card="visible"] [data-quality-success-rate]')
+    expect(wrapper.findAll('[data-result-card]')).toHaveLength(2)
+    expect(wrapper.findAll('article header [data-quality-success-rate]')).toHaveLength(2)
+    expect(wrapper.find('[role="tablist"] [data-quality-success-rate]').exists()).toBe(false)
+    expect(rate().text()).toContain('33.3%')
+    expect(wrapper.find('[data-result-card="low"] [data-quality-success-rate]').text()).toContain('70.0%')
+    await wrapper.findAll('button').find(b => b.text() === 'modelQuality.nextPage')!.trigger('click'); await flushPromises()
+    expect(rate().text()).toContain('33.3%')
+    await wrapper.find('[data-scope="history"]').trigger('click'); await flushPromises()
+    expect(rate().text()).toContain('33.3%')
+    api.planResults.mockResolvedValue(gallery('model', 'pelican', 15))
+    await wrapper.find('[data-benchmark-tab="pelican"]').trigger('click'); await flushPromises()
+    expect(rate().text()).toContain('50.0%')
+    api.planResults.mockResolvedValue(gallery('other', 'pelican', 0))
+    await wrapper.find('[data-model-button="other"]').trigger('click'); await flushPromises()
+    expect(rate().text()).toContain('0.0%')
+    api.planResults.mockResolvedValue({ ...gallery(), items: [run('visible')] })
+    await wrapper.find('[data-scope="current"]').trigger('click'); await flushPromises()
+    expect(rate().text()).toContain('—')
+    expect(rate().text()).not.toContain('NaN')
+  })
   it('binds a channel and submits no URL or API key fields', async () => {
     api.options.mockResolvedValue({ groups: [{ id: 1, name: 'Group', channel_name: 'Channel' }], keys: [], monitors: [{ id: 2, name: 'Monitor', group_id: 1, model: 'model' }] })
     api.save.mockResolvedValue({})

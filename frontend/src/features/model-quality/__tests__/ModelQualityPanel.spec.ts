@@ -16,6 +16,7 @@ const plan: QualityPlan = {
   next_run_at: '2026-10-23T10:00:00Z', created_at: '2026-10-23T09:00:00Z',
   target: { group_id: 1, group_name: '测试分组', channel_id: 2, channel_name: '测试渠道', benchmark: 'candy', model: 'test-model', reasoning_effort: 'high', service_tier: '' },
   stats: { total: 102, passed: 1, failed: 1, errors: 80, unknown: 20 },
+  stats_24h: { total: 10, passed: 6, failed: 1, errors: 2, unknown: 1 },
   recent: [{ id: 'r1', plan_id: 'p1', target: {} as QualityPlan['target'], status: 'succeeded', verdict: 'normal', phase: 'complete', reason: '', started_at: '2026-10-23T09:00:00Z', finished_at: '2026-10-23T09:01:00Z', cancel_requested: false }],
 }
 async function render() {
@@ -24,11 +25,11 @@ async function render() {
   await flushPromises()
 }
 describe('model quality results', () => {
-  it('excludes errors and unknown results from pass rate and hides admin actions', async () => {
+  it('uses only the 24h stats and includes errors in the denominator', async () => {
     await render()
     expect(api.list).toHaveBeenCalledWith(false)
-    expect(wrapper.text()).toContain('50.0%')
-    expect(wrapper.findAll('[title]').map(node => node.attributes('title'))).toContain('modelQuality.samples:{"count":2}')
+    expect(wrapper.find('[data-plan-success-rate]').text()).toContain('60.0%')
+    expect(wrapper.find('[data-plan-success-rate]').text()).toContain('(6/10)')
     expect(wrapper.text()).not.toContain('modelQuality.caveat')
     expect(wrapper.text()).not.toContain('modelQuality.run')
   })

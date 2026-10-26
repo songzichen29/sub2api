@@ -2,13 +2,20 @@
   <div v-if="recent.length" class="min-w-0 border-t border-gray-200/70 pt-4 dark:border-dark-700" data-testid="quality-strip">
     <div class="min-w-0">
       <div class="mb-1 flex items-center justify-between gap-3 text-xs">
-        <span class="min-w-0 truncate font-semibold text-gray-800 dark:text-gray-100">{{ t('modelQuality.statusTitle') }}<span v-if="showGroup" class="ml-2 font-normal">{{ groupNames }}</span></span>
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="shrink-0 font-semibold text-gray-800 dark:text-gray-100">{{ t('modelQuality.statusTitle') }}</span>
+          <span class="min-w-0 truncate text-[11px] text-gray-500 dark:text-gray-400" :title="intervalDetails" data-quality-interval>{{ intervalSummary }}</span>
+          <span v-if="showGroup" class="min-w-0 truncate text-gray-600 dark:text-gray-300" :title="groupNames">{{ groupNames }}</span>
+        </div>
         <span class="flex shrink-0 items-center gap-1.5 text-gray-600 dark:text-gray-300">
           <span class="h-2 w-2 rounded-full" :class="qualityColor(statusRun)" aria-hidden="true" />
-          {{ t(`modelQuality.verdicts.${qualityVerdict(statusRun)}`) }}
+          {{ t(`modelQuality.verdicts.${qualitySummaryVerdict(statusSummary)}`) }}
         </span>
       </div>
-      <div class="mb-2 truncate text-xs text-gray-500 dark:text-gray-400" :title="planSummary">{{ planSummary }}</div>
+      <div class="mb-2 flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-gray-400" :title="planSummary">{{ planSummary }}</span>
+        <ModelQualitySuccessRate :stats="recentStats" :label="t('modelQuality.last24hRate')" />
+      </div>
       <div v-if="recent.length" class="flex h-5 flex-nowrap gap-[2px]" :aria-label="t('modelQuality.history')">
         <button
           v-for="{ batch, plan } in timeline"
@@ -34,8 +41,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { QualityBatch, QualityPlan } from '@/api/modelQuality'
-import { qualityBenchmarkLabel, qualityColor, qualityTime, qualityVerdict, type QualitySelection } from './qualityPresentation'
+import type { QualityBatch, QualityPlan, QualityStats } from '@/api/modelQuality'
+import ModelQualitySuccessRate from './ModelQualitySuccessRate.vue'
+import { qualityBenchmarkLabel, qualityColor, qualityTime, qualityVerdict, qualitySummaryVerdict, type QualitySelection } from './qualityPresentation'
 const props = defineProps<{ plans: QualityPlan[]; showGroup?: boolean }>()
 const emit = defineEmits<{ select: [selection: QualitySelection] }>()
 const { t } = useI18n()
@@ -55,20 +63,45 @@ const recent = computed(() => {
 })
 const timeline = computed(() => [...recent.value].reverse())
 const groupNames = computed(() => [...new Set(props.plans.map(plan => plan.target.group_name))].join(' / '))
+const planInterval = (plan: QualityPlan) => plan.enabled ? t('modelQuality.intervalShort', { minutes: plan.interval_minutes }) : t('modelQuality.manual')
+const intervalDetails = computed(() => props.plans.map(plan => `${plan.name}：${planInterval(plan)}`).join(' / '))
+const intervalSummary = computed(() => {
+  const intervals = [...new Set(props.plans.map(planInterval))]
+  return intervals.length === 1 ? intervals[0] : intervalDetails.value
+})
 const planSummary = computed(() => {
   const configs = props.plans.flatMap<{ model: string; benchmark: string }>(plan => plan.configs?.length ? plan.configs : [plan.target])
   const models = [...new Set(configs.map(c => c.model))]
   const benchmarks = [...new Set(configs.map(c => qualityBenchmarkLabel(c.benchmark, t)))]
   return `${models.join(' / ')} · ${benchmarks.join(' / ')}`
 })
+const latest = computed(() => props.plans.flatMap(plan => completedBatches(plan).sort(byNewest).slice(0, 1)))
+const recentStats = computed<QualityStats | undefined>(() => {
+  if (props.plans.some(plan => !plan.stats_24h)) return undefined
+  return props.plans.reduce((sum, plan) => {
+    for (const key of ['total', 'passed', 'failed', 'errors', 'unknown'] as const) sum[key] += plan.stats_24h![key]
+    return sum
+  }, { total: 0, passed: 0, failed: 0, errors: 0, unknown: 0 })
+})
+const latestStats = computed<QualityStats | undefined>(() => {
+  if (!latest.value.length || latest.value.some(batch => !batch.stats)) return undefined
+  return latest.value.reduce((total, batch) => {
+    const stats = batch.stats!
+    for (const key of ['total', 'passed', 'failed', 'errors', 'unknown'] as const) total[key] += stats[key]
+    return total
+  }, { total: 0, passed: 0, failed: 0, errors: 0, unknown: 0 })
+})
 const statusRun = computed(() => {
-  const latest = props.plans.flatMap(plan => completedBatches(plan).sort(byNewest).slice(0, 1))
   for (const verdict of severity) {
-    const batch = latest.find(b => qualityVerdict(b) === verdict)
+    const batch = latest.value.find(b => qualityVerdict(b) === verdict)
     if (batch) return batch
   }
   return undefined
 })
-const batchLabel = (batch: QualityBatch, plan: QualityPlan) => `${qualityTime(batch.started_at)} · ${plan.name} · ${t('modelQuality.cardCount', { count: batch.count })} · ${t(`modelQuality.verdicts.${qualityVerdict(batch)}`)}`
+const statusSummary = computed(() => statusRun.value ? { verdict: statusRun.value.verdict, stats: latestStats.value } : undefined)
+const batchLabel = (batch: QualityBatch, plan: QualityPlan) => {
+  const label = `${qualityTime(batch.started_at)} · ${plan.name} · ${t('modelQuality.cardCount', { count: batch.count })} · ${t(`modelQuality.verdicts.${qualitySummaryVerdict(batch)}`)}`
+  return label
+}
 const clock = (value: string) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 </script>

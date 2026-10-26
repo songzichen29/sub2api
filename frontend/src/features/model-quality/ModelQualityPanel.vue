@@ -18,7 +18,7 @@
         </header>
         <ModelQualityStrip :plans="[plan]" @select="selection = $event" />
         <div class="mt-4 flex items-center justify-between gap-3 text-xs text-gray-500">
-          <span :title="t('modelQuality.samples', { count: plan.stats.passed + plan.stats.failed })">{{ t('modelQuality.rate') }} <strong class="ml-1 font-medium tabular-nums text-gray-800 dark:text-gray-100">{{ passRate(plan) }}</strong></span>
+          <ModelQualitySuccessRate :stats="plan.stats_24h" :label="t('modelQuality.last24hRate')" data-plan-success-rate />
           <button type="button" class="hover:text-primary-600" @click="selection = { planId: plan.id, groupId: plan.group_id, groupName: plan.target.group_name, planName: plan.name, benchmark: plan.target.benchmark }">{{ t('modelQuality.history') }}</button>
         </div>
         <div v-if="admin" class="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-dark-700">
@@ -44,6 +44,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ModelQualityForm from './ModelQualityForm.vue'
 import ModelQualityDetails from './ModelQualityDetails.vue'
 import ModelQualityStrip from './ModelQualityStrip.vue'
+import ModelQualitySuccessRate from './ModelQualitySuccessRate.vue'
 import { useModelQuality } from './useModelQuality'
 import { qualityTime, type QualitySelection } from './qualityPresentation'
 import * as api from '@/api/modelQuality'
@@ -61,7 +62,6 @@ const deleting = ref<api.QualityPlan | null>(null)
 const selection = ref<QualitySelection | null>(null)
 const groups = computed(() => Array.from(new Map(plans.value.map(p => [p.group_id, { id: p.group_id, name: p.target.group_name || `#${p.group_id}` }])).values()))
 const filteredPlans = computed(() => plans.value.filter(p => (!groupFilter.value || p.group_id === groupFilter.value) && (!props.groupIds?.length || props.groupIds.includes(p.group_id))))
-const passRate = (p: api.QualityPlan) => p.stats.passed + p.stats.failed ? `${(100 * p.stats.passed / (p.stats.passed + p.stats.failed)).toFixed(1)}%` : '—'
 function openForm(plan: api.QualityPlan | null) { editing.value = plan; formOpen.value = true }
 async function saved() { formOpen.value = false; await refresh() }
 async function start(plan: api.QualityPlan) {

@@ -202,6 +202,47 @@ func TestModelQualityResultsSQLFiltersBeforePagination(t *testing.T) {
 	}
 }
 
+func TestModelQualityRecentStatsUse24HoursAndSeparateConfigurations(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	now := time.Date(2026, 10, 26, 8, 0, 0, 0, time.UTC)
+	high := service.QualityConfigID("model-a", "pelican", "high", "")
+	low := service.QualityConfigID("model-a", "pelican", "low", "")
+	// The completed-time window applies before aggregation. No batch filter,
+	// page limit or current model filter can narrow these rolling statistics.
+	mock.ExpectQuery(`SELECT config_id, target_json, COUNT\(\*\), .* FROM model_quality_runs WHERE plan_id = \? AND finished_at >= \? AND finished_at <= \? GROUP BY config_id, target_json$`).
+		WithArgs("plan", now.Add(-24*time.Hour), now).
+		WillReturnRows(sqlmock.NewRows([]string{"config", "target", "total", "normal", "degraded", "error", "unknown"}).
+			AddRow(high, `{}`, 10, 9, 1, 0, 0).
+			AddRow(high, `{"monitor_name":"renamed"}`, 10, 8, 0, 1, 1).
+			AddRow("", `{"model":"model-a","benchmark":"pelican","reasoning_effort":"high"}`, 2, 1, 0, 1, 0).
+			AddRow("", `{"model":"model-a","benchmark":"pelican","reasoning_effort":"low"}`, 3, 1, 1, 1, 0))
+	stats, err := NewModelQualityRepository(db).RecentStats(context.Background(), "plan", now)
+	require.NoError(t, err)
+	require.Len(t, stats, 2)
+	require.Equal(t, service.ModelQualityStats{Total: 22, Passed: 18, Failed: 1, Errors: 2, Unknown: 1}, stats[high])
+	require.Equal(t, service.ModelQualityStats{Total: 3, Passed: 1, Failed: 1, Errors: 1}, stats[low])
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestModelQualityBatchesExposeCountsForMixedResults(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	now := time.Now()
+	mock.ExpectQuery(`SELECT batch_id, .* HAVING COUNT\(\*\) = COUNT\(finished_at\).* LIMIT \?`).WithArgs("plan", 60).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "started", "finished", "count", "verdict", "normal", "degraded", "error", "unknown"}).
+			AddRow("mixed", now, now, 3, "degraded", 1, 1, 1, 0).
+			AddRow("error", now, now, 2, "error", 1, 0, 1, 0))
+	batches, err := NewModelQualityRepository(db).Batches(context.Background(), "plan", 60)
+	require.NoError(t, err)
+	require.Len(t, batches, 2)
+	require.Equal(t, service.ModelQualityStats{Total: 3, Passed: 1, Failed: 1, Errors: 1}, batches[0].Stats)
+	require.Equal(t, service.ModelQualityStats{Total: 2, Passed: 1, Errors: 1}, batches[1].Stats)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestModelQualityLegacyPlanAndRunIdentity(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

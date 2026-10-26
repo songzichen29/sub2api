@@ -78,11 +78,13 @@ type ModelQualityRun struct {
 	ExecutionStartedAt *time.Time          `json:"-"`
 	FinishedAt         *time.Time          `json:"finished_at"`
 	Result             *ModelQualityResult `json:"result,omitempty"`
-	CancelRequested    bool                `json:"cancel_requested"`
-	RemoteID           string              `json:"-"`
-	LeaseToken         string              `json:"-"`
-	Attempts           int                 `json:"-"`
-	CredentialHash     string              `json:"-"`
+	// Rolling statistics for this plan/configuration, measured at response time.
+	Stats24H        *ModelQualityStats `json:"stats_24h,omitempty"`
+	CancelRequested bool               `json:"cancel_requested"`
+	RemoteID        string             `json:"-"`
+	LeaseToken      string             `json:"-"`
+	Attempts        int                `json:"-"`
+	CredentialHash  string             `json:"-"`
 }
 
 type ModelQualityStats struct {
@@ -93,6 +95,14 @@ type ModelQualityStats struct {
 	Unknown int64 `json:"unknown"`
 }
 
+func (s *ModelQualityStats) Add(other ModelQualityStats) {
+	s.Total += other.Total
+	s.Passed += other.Passed
+	s.Failed += other.Failed
+	s.Errors += other.Errors
+	s.Unknown += other.Unknown
+}
+
 type ModelQualityView struct {
 	*ModelQualityPlan
 	CanEdit bool                     `json:"can_edit"`
@@ -101,6 +111,7 @@ type ModelQualityView struct {
 	// Admin-only; the API key itself is never included.
 	AdminConfig *ModelQualityConfig `json:"config,omitempty"`
 	Stats       ModelQualityStats   `json:"stats"`
+	Stats24H    ModelQualityStats   `json:"stats_24h"`
 	Recent      []*ModelQualityRun  `json:"recent"`
 	Batches     []ModelQualityBatch `json:"batches"`
 	ActiveRunID string              `json:"active_run_id,omitempty"`
@@ -118,12 +129,13 @@ type ModelQualityResults struct {
 }
 
 type ModelQualityBatch struct {
-	ID         string    `json:"id"`
-	PlanID     string    `json:"plan_id"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	Verdict    string    `json:"verdict"`
-	Count      int       `json:"count"`
+	ID         string            `json:"id"`
+	PlanID     string            `json:"plan_id"`
+	StartedAt  time.Time         `json:"started_at"`
+	FinishedAt time.Time         `json:"finished_at"`
+	Verdict    string            `json:"verdict"`
+	Count      int               `json:"count"`
+	Stats      ModelQualityStats `json:"stats"`
 }
 
 type ModelQualityDimension struct {
@@ -159,6 +171,7 @@ type ModelQualityRepository interface {
 	ResultsForPlans(context.Context, []string, string, int, int) ([]*ModelQualityRun, error)
 	ResultDimensions(context.Context, string, string, string) ([]ModelQualityDimension, error)
 	PlanResults(context.Context, string, string, string, string, string, int, int) ([]*ModelQualityRun, error)
+	RecentStats(context.Context, string, time.Time) (map[string]ModelQualityStats, error)
 	Batches(context.Context, string, int) ([]ModelQualityBatch, error)
 	Stats(context.Context, string) (ModelQualityStats, error)
 }

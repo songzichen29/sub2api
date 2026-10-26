@@ -1,4 +1,4 @@
-import type { QualityBenchmark } from '@/api/modelQuality'
+import type { QualityBenchmark, QualityStats } from '@/api/modelQuality'
 
 export interface QualitySelection {
   planId: string
@@ -33,4 +33,19 @@ export function qualityColor(run?: { status?: string; verdict: string }): string
 
 export function qualityTime(value: string): string {
   return new Date(value).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+export function qualitySuccessRate(stats?: QualityStats): string {
+  return stats?.total ? `${(100 * stats.passed / stats.total).toFixed(1)}%` : '—'
+}
+
+export function qualitySummaryVerdict(batch?: { verdict: string; stats?: QualityStats }): string {
+  const verdict = qualityVerdict(batch)
+  const stats = batch?.stats
+  if (stats?.total) {
+    if (verdict === 'degraded' && stats.failed < stats.total) return 'partialDegraded'
+    if (verdict === 'error' && stats.errors < stats.total) return 'partialError'
+    if (verdict === 'unknown' && stats.unknown < stats.total) return 'partialUnknown'
+  }
+  return verdict
 }
