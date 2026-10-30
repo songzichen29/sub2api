@@ -3,13 +3,10 @@ package service
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand/v2"
 	"net"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -17,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/google/uuid"
@@ -43,19 +41,36 @@ type qualityMonitorReader interface {
 }
 
 type ModelQualityService struct {
-	repo       ModelQualityRepository
-	keys       qualityKeyReader
-	groups     qualityGroupReader
-	channels   qualityChannelReader
-	visibility qualityVisibility
-	monitors   qualityMonitorReader
-	client     ManxueClient
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	repo         ModelQualityRepository
+	keys         qualityKeyReader
+	groups       qualityGroupReader
+	channels     qualityChannelReader
+	visibility   qualityVisibility
+	monitors     qualityMonitorReader
+	generator    qualityCompletionClient
+	judge        qualityCompletionClient
+	judgeOrigin  string
+	judgeKeyName string
+	judgeModel   string
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
-func NewModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, groups GroupRepository, channels *ChannelService, apiKeys *APIKeyService, monitors *ChannelMonitorService) *ModelQualityService {
-	return &ModelQualityService{repo: repo, keys: keys, groups: groups, channels: channels, visibility: apiKeys, monitors: monitors, client: NewManxueClient()}
+func NewModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, groups GroupRepository, channels *ChannelService, apiKeys *APIKeyService, monitors *ChannelMonitorService, cfg *config.Config) *ModelQualityService {
+	port, keyName, model := 8080, "测试降智", "gpt-6.1-sol"
+	if cfg != nil {
+		if cfg.Server.Port > 0 {
+			port = cfg.Server.Port
+		}
+		if cfg.ModelQuality.JudgeKeyName != "" {
+			keyName = cfg.ModelQuality.JudgeKeyName
+		}
+		if cfg.ModelQuality.JudgeModel != "" {
+			model = cfg.ModelQuality.JudgeModel
+		}
+	}
+	return &ModelQualityService{repo: repo, keys: keys, groups: groups, channels: channels, visibility: apiKeys, monitors: monitors,
+		generator: newQualityHTTPClient(false), judge: newQualityHTTPClient(true), judgeOrigin: fmt.Sprintf("http://127.0.0.1:%d/v1", port), judgeKeyName: keyName, judgeModel: model}
 }
 
 type ModelQualityInput struct {
@@ -134,7 +149,7 @@ func validateQualityConfig(c *ModelQualityConfig) error {
 		host := strings.ToLower(u.Hostname())
 		ip := net.ParseIP(host)
 		if host == "localhost" || strings.HasSuffix(host, ".localhost") || !strings.Contains(host, ".") || (ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast())) {
-			return qualityInvalid("Manxue 必须能从公网访问本站 Base URL")
+			return qualityInvalid("检测渠道必须使用公网 HTTPS 地址")
 		}
 	}
 	if c.Benchmark != "candy" && c.Benchmark != "pelican" && c.Benchmark != "creative" {
@@ -143,16 +158,10 @@ func validateQualityConfig(c *ModelQualityConfig) error {
 	if c.Model == "" || len(c.Model) > 200 {
 		return qualityInvalid("模型名称不能为空且最多 200 字节")
 	}
-	if c.Benchmark != "candy" && c.Model != "gpt-6-astra" {
-		return qualityInvalid("Manxue 的鹈鹕和自由创作模式目前只接受 gpt-6-astra")
-	}
 	if c.ReasoningEffort == "" {
 		c.ReasoningEffort = "low"
 	}
-	allowed := c.ReasoningEffort == "low" || c.ReasoningEffort == "medium" || c.ReasoningEffort == "high"
-	if c.Benchmark == "candy" {
-		allowed = allowed || c.ReasoningEffort == "xhigh" || c.ReasoningEffort == "max" || c.ReasoningEffort == "ultra"
-	}
+	allowed := c.ReasoningEffort == "low" || c.ReasoningEffort == "medium" || c.ReasoningEffort == "high" || c.ReasoningEffort == "xhigh" || c.ReasoningEffort == "max" || c.ReasoningEffort == "ultra"
 	if !allowed {
 		return qualityInvalid("该模式不支持所选思考强度")
 	}
@@ -352,6 +361,10 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		return nil, err
 	}
 	now := time.Now()
+	judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, 0)
+	if err != nil {
+		return nil, err
+	}
 	batchID := uuid.NewString()
 	runs := make([]*ModelQualityRun, 0, len(qualityConfigs(p)))
 	for _, config := range qualityConfigs(p) {
@@ -362,7 +375,8 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		if err != nil {
 			return nil, err
 		}
-		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now})
+		target.BenchmarkVersion, target.JudgeModel = qualityBenchmarkVersion, s.judgeModel
+		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now, JudgeKeyID: judgeKey.ID})
 	}
 	if err := s.repo.QueueBatch(ctx, runs, scheduled); err != nil {
 		return nil, err
@@ -754,7 +768,7 @@ func (s *ModelQualityService) Start() {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					step, done := context.WithTimeout(ctx, 40*time.Second)
+					step, done := context.WithTimeout(ctx, 9*time.Minute)
 					r, err := s.repo.Claim(step, time.Now(), uuid.NewString())
 					if err == nil {
 						s.step(step, r)
@@ -791,139 +805,6 @@ func (s *ModelQualityService) persist(ctx context.Context, r *ModelQualityRun, n
 	return true
 }
 
-// Each claim performs at most one remote operation. Leases outlive the HTTP timeout.
-// An interrupted POST is never blindly repeated: without a remote ID its outcome is unknown.
-func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
-	executionStart := r.StartedAt
-	if r.ExecutionStartedAt != nil {
-		executionStart = *r.ExecutionStartedAt
-	}
-	if time.Since(executionStart) > 12*time.Minute {
-		if r.RemoteID != "" {
-			_ = s.client.Cancel(ctx, r.RemoteID)
-		}
-		s.finish(ctx, r, "failed", "error", "检测超时，未计入通过率")
-		return
-	}
-	if r.CancelRequested {
-		if r.RemoteID != "" {
-			if err := s.client.Cancel(ctx, r.RemoteID); err != nil {
-				var he *manxueHTTPError
-				if !errors.As(err, &he) || he.Status != 404 {
-					s.deferRun(ctx, r, err, false)
-					return
-				}
-			}
-		}
-		s.finish(ctx, r, "cancelled", "unknown", "检测已取消；已经发生的上游用量仍可能计费")
-		return
-	}
-	if r.Status == "submitting" && r.RemoteID == "" {
-		s.finish(ctx, r, "failed", "error", "提交结果不确定，已停止自动重发以避免重复计费；可手动重新检测")
-		return
-	}
-	if r.RemoteID == "" {
-		p, err := s.repo.GetPlan(ctx, r.PlanID)
-		if err != nil {
-			s.finish(ctx, r, "failed", "error", "无法读取检测配置")
-			return
-		}
-		config, ok := qualityConfigForRun(p, r.ConfigID)
-		if !ok {
-			s.finish(ctx, r, "failed", "error", "检测配置已被删除")
-			return
-		}
-		if _, err := s.target(ctx, p, config); err != nil {
-			s.finish(ctx, r, "failed", "error", "目标分组或渠道配置已失效")
-			return
-		}
-		credential, err := s.credentials(ctx, p, config)
-		if err != nil {
-			s.finish(ctx, r, "failed", "error", err.Error())
-			return
-		}
-		r.Status = "submitting"
-		r.CredentialHash = credential.hash()
-		r.Attempts++
-		if !s.persist(ctx, r, time.Now().Add(time.Minute)) {
-			return
-		}
-		task, err := s.client.Create(ctx, ManxueCreateRequest{Benchmark: config.Benchmark, BaseURL: credential.baseURL, APIKey: credential.key, Model: config.Model, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier, IdempotencyKey: r.ID})
-		if err != nil {
-			s.deferRun(ctx, r, err, true)
-			return
-		}
-		if task.ID == "" || len(task.ID) > 256 || strings.ContainsAny(task.ID, "/\\") {
-			s.finish(ctx, r, "failed", "error", "Manxue 未返回有效任务 ID；未自动重发")
-			return
-		}
-		r.RemoteID, r.Status, r.Phase, r.Reason, r.Attempts = task.ID, "running", "generating", "", 0
-		s.persist(ctx, r, time.Now().Add(4*time.Second))
-		return
-	}
-	task, err := s.client.Get(ctx, r.RemoteID)
-	if err != nil {
-		s.deferRun(ctx, r, err, false)
-		return
-	}
-	r.Attempts = 0
-	if task.Benchmark != "" && task.Benchmark != r.Target.Benchmark {
-		s.finish(ctx, r, "failed", "error", "Manxue 返回了不匹配的检测模式")
-		return
-	}
-	if task.ID != "" && task.ID != r.RemoteID {
-		s.finish(ctx, r, "failed", "error", "Manxue 返回了不匹配的任务 ID")
-		return
-	}
-	if task.Status == "running" {
-		if task.Phase == "generating" || task.Phase == "classifying" {
-			r.Phase = task.Phase
-		}
-		r.Reason = ""
-		s.persist(ctx, r, time.Now().Add(4*time.Second))
-		return
-	}
-	status, verdict, reason, result := interpretManxue(task, r.Target.Benchmark)
-	// Only known, useful fields are stored; never persist raw remote JSON/URLs/task IDs.
-	secrets := []string{r.RemoteID}
-	credentialAvailable := false
-	if p, e := s.repo.GetPlan(ctx, r.PlanID); e == nil {
-		if config, ok := qualityConfigForRun(p, r.ConfigID); ok {
-			if credential, e := s.credentials(ctx, p, config); e == nil {
-				secrets = append(secrets, credential.baseURL, credential.key)
-				credentialAvailable = credential.key != "" && (r.CredentialHash == "" || r.CredentialHash == credential.hash())
-			}
-		}
-	}
-	if !credentialAvailable {
-		reason = "检测已结束；渠道凭据已变更或失效，未保留远端文本"
-	}
-	clean := func(v string) string {
-		for _, secret := range secrets {
-			if secret != "" {
-				v = strings.ReplaceAll(v, secret, "[REDACTED]")
-			}
-		}
-		return logredact.RedactText(v)
-	}
-	reason = clean(reason)
-	if result != nil {
-		result.Answer, result.HTML, result.Source = clean(result.Answer), clean(result.HTML), clean(result.Source)
-		// Deleted credentials cannot be reliably scrubbed from untrusted free text.
-		if !credentialAvailable {
-			result.Answer, result.HTML, result.Source = "", "", ""
-			reason = "检测已结束；检测 Key 已失效，未保留远端文本以避免泄露凭据"
-		}
-		result.Source = qualityTextLimit(result.Source, 1024)
-		if result.ServiceTier != "default" && result.ServiceTier != "priority" && result.ServiceTier != "ultrafast" {
-			result.ServiceTier = ""
-		}
-	}
-	reason = qualityTextLimit(reason, 8192)
-	r.Result = result
-	s.finish(ctx, r, status, verdict, reason)
-}
-
 func qualityTextLimit(s string, limit int) string {
 	if len(s) <= limit {
 		return s
@@ -933,85 +814,4 @@ func qualityTextLimit(s string, limit int) string {
 		s = s[:len(s)-1]
 	}
 	return s
-}
-
-func (s *ModelQualityService) deferRun(ctx context.Context, r *ModelQualityRun, err error, creating bool) {
-	var he *manxueHTTPError
-	isHTTP := errors.As(err, &he)
-	if isHTTP && he.Status == http.StatusNotFound {
-		s.finish(ctx, r, "failed", "error", "Manxue 任务已过期或因重启丢失；未自动重新提交")
-		return
-	}
-	if creating && (!isHTTP || (he.Status != 429 && he.Status != 503)) {
-		reason := "提交未成功或结果不确定，未自动重发；请检查配置后手动检测"
-		if isHTTP {
-			reason = fmt.Sprintf("Manxue 拒绝提交（HTTP %d），请检查配置", he.Status)
-		}
-		s.finish(ctx, r, "failed", "error", reason)
-		return
-	}
-	if !creating && isHTTP && he.Status != 429 && he.Status < 500 {
-		s.finish(ctx, r, "failed", "error", fmt.Sprintf("Manxue 查询异常（HTTP %d）", he.Status))
-		return
-	}
-	if !creating {
-		r.Attempts++
-	}
-	if creating {
-		r.Status = "queued"
-	}
-	delay := time.Duration(1<<min(r.Attempts, 6))*time.Second + time.Duration(rand.IntN(1000))*time.Millisecond
-	if isHTTP && he.RetryAfter > delay {
-		delay = he.RetryAfter
-	}
-	// The local deadline still bounds how long a remote outage keeps a plan occupied.
-	if left := 12*time.Minute - time.Since(r.StartedAt); delay > left {
-		delay = left
-	}
-	r.Reason = "等待 Manxue 服务恢复，检测结果尚未确定"
-	s.persist(ctx, r, time.Now().Add(delay))
-}
-
-func interpretManxue(t *ManxueTask, benchmark string) (string, string, string, *ModelQualityResult) {
-	if t.Status == "failed" {
-		return "failed", "error", "Manxue 检测执行失败，未计入通过率", nil
-	}
-	if t.Status == "cancelled" {
-		return "cancelled", "unknown", "Manxue 检测已取消", nil
-	}
-	if t.Status != "succeeded" {
-		return "failed", "error", "Manxue 返回未知任务状态", nil
-	}
-	if benchmark == "candy" {
-		if t.Candy == nil {
-			return "succeeded", "unknown", "缺少糖果判题结果", nil
-		}
-		c := t.Candy
-		r := &ModelQualityResult{Answer: c.Answer, DurationMS: c.DurationMS, InputTokens: c.InputTokens, OutputTokens: c.OutputTokens, ReasoningTokens: c.ReasoningTokens, ServiceTier: c.ServiceTier}
-		switch c.Status {
-		case "passed":
-			return "succeeded", "normal", "糖果检测通过", r
-		case "incorrect":
-			return "succeeded", "degraded", "糖果答案不符；单次未通过不能证明模型整体能力下降", r
-		case "error":
-			return "failed", "error", "糖果检测异常，未计入通过率", r
-		default:
-			return "succeeded", "unknown", "糖果检测无法判定", r
-		}
-	}
-	r := &ModelQualityResult{}
-	_ = json.Unmarshal(t.Result, r)
-	if t.Assessment == nil {
-		return "succeeded", "unknown", "缺少分类判定", r
-	}
-	a := t.Assessment
-	r.Source = a.Source
-	verdict := "unknown"
-	switch a.Quality {
-	case "normal":
-		verdict = "normal"
-	case "degraded", "suspicious":
-		verdict = "degraded"
-	}
-	return "succeeded", verdict, a.Reason, r
 }

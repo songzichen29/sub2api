@@ -16,13 +16,19 @@
       <pre v-else-if="run.result?.html" class="overflow-auto whitespace-pre-wrap break-words bg-gray-50 p-3 text-[11px] leading-5 dark:bg-dark-900" :style="{ height: bodyHeight }">{{ run.result.html }}</pre>
       <div v-else-if="run.result?.answer" class="quality-answer overflow-auto p-3 text-xs leading-6" :style="{ height: bodyHeight }" v-html="answerHTML" />
       <div v-else class="flex items-center justify-center p-3 text-center text-xs leading-5 text-gray-500" :style="{ height: bodyHeight }">{{ run.reason || t('modelQuality.noResult') }}</div>
-      <div class="flex items-center gap-3 border-t border-gray-100 px-3 py-1.5 text-[11px] dark:border-dark-700">
-        <button v-if="run.result?.html" type="button" class="text-primary-600 hover:underline dark:text-primary-400" :data-source-toggle="run.id" @click="mode = mode === 'preview' ? 'source' : 'preview'">{{ t(mode === 'preview' ? 'modelQuality.sourceView' : 'modelQuality.preview') }}</button>
-        <button v-if="run.result?.html || run.result?.answer" type="button" class="text-primary-600 hover:underline dark:text-primary-400" :data-expand-run="run.id" @click="emit('expand', run)">{{ t('modelQuality.expand') }}</button>
+      <div class="flex items-start gap-3 border-t border-gray-100 px-3 py-1.5 text-[11px] dark:border-dark-700">
+        <button v-if="run.result?.html" type="button" class="shrink-0 whitespace-nowrap text-primary-600 hover:underline dark:text-primary-400" :data-source-toggle="run.id" @click="mode = mode === 'preview' ? 'source' : 'preview'">{{ t(mode === 'preview' ? 'modelQuality.sourceView' : 'modelQuality.preview') }}</button>
+        <button v-if="run.result?.html || run.result?.answer" type="button" class="shrink-0 whitespace-nowrap text-primary-600 hover:underline dark:text-primary-400" :data-expand-run="run.id" @click="emit('expand', run)">{{ t('modelQuality.expand') }}</button>
         <details class="ml-auto min-w-0 text-gray-500">
           <summary class="cursor-pointer text-right">{{ t('modelQuality.more') }}</summary>
           <div class="space-y-1 break-words pt-2 text-left leading-5">
             <p v-if="run.reason">{{ run.reason }}</p>
+            <p>{{ t('modelQuality.source') }}: {{ run.result?.source || t('modelQuality.notReported') }}</p>
+            <template v-if="run.result?.assessment">
+              <p>{{ t('modelQuality.judgeModel') }}: {{ run.result.assessment.model }} · {{ t('modelQuality.evidenceConfidence') }} {{ Math.round(run.result.assessment.confidence * 100) }}%</p>
+              <p v-for="check in run.result.assessment.checks" :key="check.id">{{ t(`modelQuality.checks.${check.id}`) }} {{ check.score }}/2: {{ check.evidence }}</p>
+              <p>{{ t('modelQuality.judgeUsage') }} {{ run.result.judge_input_tokens ?? '—' }} / {{ run.result.judge_output_tokens ?? '—' }}</p>
+            </template>
             <p>{{ t('modelQuality.inputTokens') }} {{ run.result?.input_tokens ?? '—' }} · {{ t('modelQuality.outputTokens') }} {{ run.result?.output_tokens ?? '—' }}</p>
             <p>{{ t('modelQuality.reasoningTokens') }} {{ run.result?.reasoning_tokens ?? '—' }}</p>
           </div>

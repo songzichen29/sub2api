@@ -39,7 +39,7 @@
           <fieldset class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
             <legend class="mb-2 text-xs text-gray-500">{{ t('modelQuality.benchmark') }}</legend>
             <label v-for="mode in modes" :key="mode" class="flex items-center gap-2">
-              <input v-model="row.modes" type="checkbox" :value="mode" :disabled="mode !== 'candy' && row.model !== 'gpt-6-astra' && !row.modes.includes(mode)" />{{ t(`modelQuality.benchmarks.${mode}`) }}
+              <input v-model="row.modes" type="checkbox" :value="mode" />{{ t(`modelQuality.benchmarks.${mode}`) }}
             </label>
           </fieldset>
         </div>
@@ -96,7 +96,6 @@ const configs = computed<api.QualityConfig[]>(() => models.value.flatMap(row => 
 const validationError = computed(() => {
   if (models.value.some(row => !row.model.trim() || !row.modes.length)) return t('modelQuality.selectModelModes')
   if (configs.value.length > 100) return t('modelQuality.tooManyConfigs')
-  if (configs.value.some(c => c.benchmark !== 'candy' && (c.model !== 'gpt-6-astra' || !['low', 'medium', 'high'].includes(c.reasoning_effort)))) return t('modelQuality.modeSupport')
   const keys = configs.value.map(c => JSON.stringify([c.model, c.benchmark, c.reasoning_effort, c.service_tier]))
   return new Set(keys).size !== keys.length ? t('modelQuality.duplicateConfig') : ''
 })

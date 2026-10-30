@@ -1159,8 +1159,8 @@ func ProvideRedeemService(repo RedeemCodeRepository, users UserRepository, subsc
 	return NewRedeemService(repo, users, subscriptions, cache, billing, client, invalidator)
 }
 
-func ProvideModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, groups GroupRepository, channels *ChannelService, apiKeys *APIKeyService, monitors *ChannelMonitorService) *ModelQualityService {
-	svc := NewModelQualityService(repo, keys, groups, channels, apiKeys, monitors)
+func ProvideModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, groups GroupRepository, channels *ChannelService, apiKeys *APIKeyService, monitors *ChannelMonitorService, cfg *config.Config) *ModelQualityService {
+	svc := NewModelQualityService(repo, keys, groups, channels, apiKeys, monitors, cfg)
 	svc.Start()
 	return svc
 }

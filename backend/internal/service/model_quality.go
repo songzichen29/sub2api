@@ -40,28 +40,47 @@ type ModelQualityPlan struct {
 }
 
 type ModelQualityTarget struct {
-	ConfigID        string `json:"config_id"`
-	MonitorID       int64  `json:"monitor_id,omitempty"`
-	MonitorName     string `json:"monitor_name,omitempty"`
-	GroupID         int64  `json:"group_id"`
-	GroupName       string `json:"group_name"`
-	ChannelID       int64  `json:"channel_id"`
-	ChannelName     string `json:"channel_name"`
-	Benchmark       string `json:"benchmark"`
-	Model           string `json:"model"`
-	ReasoningEffort string `json:"reasoning_effort"`
-	ServiceTier     string `json:"service_tier"`
+	BenchmarkVersion string `json:"benchmark_version,omitempty"`
+	JudgeModel       string `json:"judge_model,omitempty"`
+	ConfigID         string `json:"config_id"`
+	MonitorID        int64  `json:"monitor_id,omitempty"`
+	MonitorName      string `json:"monitor_name,omitempty"`
+	GroupID          int64  `json:"group_id"`
+	GroupName        string `json:"group_name"`
+	ChannelID        int64  `json:"channel_id"`
+	ChannelName      string `json:"channel_name"`
+	Benchmark        string `json:"benchmark"`
+	Model            string `json:"model"`
+	ReasoningEffort  string `json:"reasoning_effort"`
+	ServiceTier      string `json:"service_tier"`
 }
 
 type ModelQualityResult struct {
-	Answer          string `json:"answer,omitempty"`
-	HTML            string `json:"html,omitempty"`
-	Source          string `json:"source,omitempty"`
-	DurationMS      int64  `json:"duration_ms"`
-	InputTokens     *int64 `json:"input_tokens,omitempty"`
-	OutputTokens    *int64 `json:"output_tokens,omitempty"`
-	ReasoningTokens *int64 `json:"reasoning_tokens,omitempty"`
-	ServiceTier     string `json:"service_tier,omitempty"`
+	Assessment        *ModelQualityAssessment `json:"assessment,omitempty"`
+	JudgeInputTokens  *int64                  `json:"judge_input_tokens,omitempty"`
+	JudgeOutputTokens *int64                  `json:"judge_output_tokens,omitempty"`
+	Answer            string                  `json:"answer,omitempty"`
+	HTML              string                  `json:"html,omitempty"`
+	Source            string                  `json:"source,omitempty"`
+	DurationMS        int64                   `json:"duration_ms"`
+	InputTokens       *int64                  `json:"input_tokens,omitempty"`
+	OutputTokens      *int64                  `json:"output_tokens,omitempty"`
+	ReasoningTokens   *int64                  `json:"reasoning_tokens,omitempty"`
+	ServiceTier       string                  `json:"service_tier,omitempty"`
+}
+
+type ModelQualityAssessment struct {
+	Version    string              `json:"version"`
+	Basis      string              `json:"basis"`
+	Model      string              `json:"model"`
+	Confidence float64             `json:"confidence"`
+	Checks     []ModelQualityCheck `json:"checks"`
+}
+
+type ModelQualityCheck struct {
+	ID       string `json:"id"`
+	Score    int    `json:"score"`
+	Evidence string `json:"evidence"`
 }
 
 type ModelQualityRun struct {
@@ -85,6 +104,7 @@ type ModelQualityRun struct {
 	LeaseToken      string             `json:"-"`
 	Attempts        int                `json:"-"`
 	CredentialHash  string             `json:"-"`
+	JudgeKeyID      int64              `json:"-"`
 }
 
 type ModelQualityStats struct {

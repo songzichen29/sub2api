@@ -68,6 +68,7 @@ const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
+	ModelQuality            ModelQualityConfig            `mapstructure:"model_quality"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
 	Security                SecurityConfig                `mapstructure:"security"`
@@ -110,6 +111,13 @@ type Config struct {
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
+}
+
+// ModelQualityConfig contains no secrets: the judge key is resolved per plan
+// owner from the API-key repository and sent only to this application's gateway.
+type ModelQualityConfig struct {
+	JudgeKeyName string `mapstructure:"judge_key_name"`
+	JudgeModel   string `mapstructure:"judge_model"`
 }
 
 // SimpleModeConfig controls startup behavior in simple mode.
@@ -2098,6 +2106,9 @@ func setDefaults() {
 	viper.SetDefault("webauthn.rp_id", "")
 	viper.SetDefault("webauthn.rp_origins", []string{})
 
+	// Model quality judge (credentials remain in the API-key repository).
+	viper.SetDefault("model_quality.judge_key_name", "测试降智")
+	viper.SetDefault("model_quality.judge_model", "gpt-6.1-sol")
 	// Security
 	viper.SetDefault("security.url_allowlist.enabled", false)
 	viper.SetDefault("security.url_allowlist.upstream_hosts", []string{

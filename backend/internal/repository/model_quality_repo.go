@@ -30,10 +30,11 @@ type qualityStoredConfig struct {
 type qualityStoredTarget struct {
 	service.ModelQualityTarget
 	CredentialHash string `json:"_credential_hash,omitempty"`
+	JudgeKeyID     int64  `json:"_judge_key_id,omitempty"`
 }
 
 func encodeQualityTarget(run *service.ModelQualityRun) ([]byte, error) {
-	return json.Marshal(qualityStoredTarget{run.Target, run.CredentialHash})
+	return json.Marshal(qualityStoredTarget{ModelQualityTarget: run.Target, CredentialHash: run.CredentialHash, JudgeKeyID: run.JudgeKeyID})
 }
 
 func qualityNotFound(err error) error {
@@ -81,6 +82,7 @@ func scanQualityRun(row scannable) (*service.ModelQualityRun, error) {
 		return nil, err
 	}
 	r.Target, r.CredentialHash = stored.ModelQualityTarget, stored.CredentialHash
+	r.JudgeKeyID = stored.JudgeKeyID
 	if r.ConfigID == "" {
 		r.ConfigID = r.Target.ConfigID
 		if r.ConfigID == "" {

@@ -11,6 +11,8 @@ export interface QualityConfig {
   service_tier: string
 }
 export interface QualityTarget {
+  benchmark_version?: string
+  judge_model?: string
   monitor_id?: number
   monitor_name?: string
   group_id: number
@@ -45,6 +47,15 @@ export interface QualityRun {
     output_tokens?: number
     reasoning_tokens?: number
     service_tier?: string
+    judge_input_tokens?: number
+    judge_output_tokens?: number
+    assessment?: {
+      version: string
+      basis: string
+      model: string
+      confidence: number
+      checks: { id: string; score: number; evidence: string }[]
+    }
   }
 }
 export interface QualityInput {

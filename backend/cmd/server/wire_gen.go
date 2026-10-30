@@ -183,7 +183,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorV2Service := service.ProvideChannelMonitorV2Service(channelMonitorV2Repository, settingService)
 	channelMonitorV2Handler := handler.NewChannelMonitorV2Handler(channelMonitorV2Service, apiKeyService)
 	modelQualityRepository := repository.NewModelQualityRepository(db)
-	modelQualityService := service.ProvideModelQualityService(modelQualityRepository, apiKeyRepository, groupRepository, channelService, apiKeyService, channelMonitorService)
+	modelQualityService := service.ProvideModelQualityService(modelQualityRepository, apiKeyRepository, groupRepository, channelService, apiKeyService, channelMonitorService, configConfig)
 	modelQualityHandler := handler.NewModelQualityHandler(modelQualityService)
 	dashboardAggregationRepository := repository.NewDashboardAggregationRepository(db)
 	dashboardStatsCache := repository.NewDashboardCache(redisClient, configConfig)

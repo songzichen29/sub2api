@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelQualityStrip from '../ModelQualityStrip.vue'
 import ModelQualityDetails from '../ModelQualityDetails.vue'
 import ModelQualityForm from '../ModelQualityForm.vue'
+import ModelQualityResultCard from '../ModelQualityResultCard.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import type { QualityPlan, QualityRun } from '@/api/modelQuality'
 import type { UserMonitorView } from '@/api/channelMonitor'
@@ -197,11 +198,33 @@ describe('integrated model quality', () => {
     await wrapper.findAll('label').find(l => l.text().includes('modelQuality.name'))!.find('input').setValue('Multi')
     await wrapper.find('[data-model-config] input[value="pelican"]').setValue(true)
     await wrapper.findAll('button').find(b => b.text() === 'modelQuality.addModel')!.trigger('click')
-    await wrapper.findAll('[data-model-config]')[1].find('input').setValue('custom-model')
+    const customRow = wrapper.findAll('[data-model-config]')[1]
+    await customRow.find('input').setValue('custom-model')
+    await customRow.find('input[value="pelican"]').setValue(true)
+    await customRow.find('input[value="creative"]').setValue(true)
     await wrapper.find('form').trigger('submit'); await flushPromises()
     const input = api.save.mock.calls[0][1]
-    expect(input.configs.map((c: { model: string; benchmark: string }) => [c.model, c.benchmark])).toEqual([['gpt-6-astra', 'candy'], ['gpt-6-astra', 'pelican'], ['custom-model', 'candy']])
+    expect(input.configs.map((c: { model: string; benchmark: string }) => [c.model, c.benchmark])).toEqual([['gpt-6-astra', 'candy'], ['gpt-6-astra', 'pelican'], ['custom-model', 'candy'], ['custom-model', 'pelican'], ['custom-model', 'creative']])
     expect(input.interval_minutes).toBe(3)
     expect(input.configs.every((c: { monitor_id: number }) => c.monitor_id === 2)).toBe(true)
+  })
+  it('renders native judge evidence as text and still supports legacy results', async () => {
+    const assessed: QualityRun = {
+      ...run('assessed'),
+      result: {
+        answer: '21', source: 'native-v1:gpt-6-luna:answer_reasoning', judge_input_tokens: 120, judge_output_tokens: 35,
+        assessment: { version: 'native-v1', model: 'gpt-6-luna', basis: 'answer_reasoning', confidence: 0.92, checks: [{ id: 'answer', score: 2, evidence: '<img src=x onerror="alert(1)"> is untrusted text' }] },
+      },
+    }
+    wrapper = mount(ModelQualityResultCard, { props: { run: assessed, bodyHeight: '240px' } })
+    expect(wrapper.find('details').text()).toContain('gpt-6-luna')
+    expect(wrapper.find('details').text()).toContain('92%')
+    expect(wrapper.find('details').text()).toContain('120 / 35')
+    expect(wrapper.find('details').text()).toContain('<img src=x')
+    expect(wrapper.find('details img').exists()).toBe(false)
+    await wrapper.setProps({ run: { ...run('legacy'), result: { answer: '21', source: 'source_classifier:source-migrated-20260917' } } })
+    expect(wrapper.find('details').text()).toContain('source_classifier:source-migrated-20260917')
+    expect(wrapper.find('details').text()).not.toContain('gpt-6-luna')
+    expect(wrapper.find('details').text()).not.toContain('NaN')
   })
 })
