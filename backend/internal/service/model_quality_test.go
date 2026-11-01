@@ -312,13 +312,15 @@ func TestModelQualityRestartAndFailure(t *testing.T) {
 		require.Zero(t, c.creates+c.gets)
 		require.Equal(t, "cancelled", r.Status)
 	})
-	t.Run("rotated generator key", func(t *testing.T) {
+	t.Run("rotated key does not invalidate saved artifact", func(t *testing.T) {
 		s, _, c, r := qualityFixture()
 		s.step(context.Background(), r)
 		s.keys.(qualityTestKeys).key.Key = "new"
 		s.step(context.Background(), r)
-		require.Zero(t, c.gets)
-		require.Equal(t, "error", r.Verdict)
+		require.Equal(t, 1, c.creates)
+		require.Equal(t, 1, c.gets)
+		require.Equal(t, "new", c.credential.key)
+		require.Equal(t, "normal", r.Verdict)
 	})
 	t.Run("wrong owner", func(t *testing.T) {
 		s, _, c, r := qualityFixture()

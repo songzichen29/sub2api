@@ -102,9 +102,9 @@ func TestModelQualityJudgeKeyResolution(t *testing.T) {
 	_, err = s.qualityJudgeKey(context.Background(), 3, 9)
 	require.Error(t, err)
 	keys.key.ExpiresAt = nil
-	s.judgeModel = "unapproved-model"
+	s.judgeModel = "custom-judge-model"
 	_, err = s.qualityJudgeKey(context.Background(), 3, 9)
-	require.Error(t, err)
+	require.NoError(t, err, "key authorization must not impose a model or upstream-account allowlist")
 	s.judgeModel = "gpt-6.1-sol"
 	_, err = s.qualityJudgeKey(context.Background(), 3, 9)
 	require.NoError(t, err)

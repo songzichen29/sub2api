@@ -45,6 +45,40 @@ func TestQualityResponsesContract(t *testing.T) {
 	}
 }
 
+func TestQualityJudgeModelSuggestions(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		status     int
+		want       []string
+	}{
+		{"deduplicated", `{"data":[{"id":"z-model"},{"id":"a-model"},{"id":" z-model "},{"id":""},{"id":"bad\nmodel"},{"id":"private-key"}]}`, 200, []string{"a-model", "z-model"}},
+		{"empty", `{"data":[]}`, 200, []string{}},
+		{"missing", `{}`, 200, nil},
+		{"invalid", `private-key`, 200, nil},
+		{"oversize", strings.Repeat("x", (1<<20)+1), 200, nil},
+		{"http", `private-key`, 502, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, http.MethodGet, r.Method)
+				require.Equal(t, "/v1/models", r.URL.Path)
+				require.Equal(t, "Bearer private-key", r.Header.Get("Authorization"))
+				w.WriteHeader(tc.status)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer server.Close()
+			models, err := newQualityHTTPClient(true).Models(context.Background(), qualityCredentials{server.URL + "/v1", "private-key"})
+			if tc.want == nil {
+				require.Error(t, err)
+				require.NotContains(t, err.Error(), "private-key")
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.want, models)
+			}
+		})
+	}
+}
+
 func TestQualityRejectsIncompleteAndOversizeResponses(t *testing.T) {
 	for _, tc := range []struct{ name, body, contentType string }{
 		{"incomplete", `{"status":"incomplete","output_text":"21"}`, "application/json"},

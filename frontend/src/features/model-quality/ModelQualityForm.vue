@@ -1,7 +1,8 @@
 <template>
-  <BaseDialog :show="true" :title="t(plan ? 'modelQuality.edit' : 'modelQuality.create')" width="wide" @close="emit('close')">
+  <BaseDialog :show="true" :title="t(plan ? 'modelQuality.edit' : 'modelQuality.create')" width="wide" @close="close">
     <form id="quality-form" class="space-y-4" @submit.prevent="save">
       <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+      <fieldset :disabled="saving" class="space-y-4" :aria-busy="saving">
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1 text-sm">
           <span>{{ t('modelQuality.name') }}</span>
@@ -28,6 +29,24 @@
           <input v-model.number="form.interval_minutes" type="number" class="input" min="3" max="10080" step="1" required />
         </label>
       </div>
+      <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
+        <label for="quality-judge-model" class="block text-sm">{{ t('modelQuality.planJudgeModel') }}</label>
+        <Select
+          id="quality-judge-model"
+          data-testid="quality-judge-model"
+          :model-value="form.judge_model"
+          :options="judgeModelOptions"
+          :aria-label="t('modelQuality.planJudgeModel')"
+          aria-describedby="quality-judge-hint"
+          :disabled="loading || saving"
+          :creatable-prefix="t('modelQuality.useJudgeModel')"
+          searchable
+          creatable
+          @update:model-value="form.judge_model = typeof $event === 'string' ? $event.trim() : ''"
+        />
+        <p id="quality-judge-hint" class="text-xs text-gray-500">{{ t('modelQuality.judgeProbeNotice') }}</p>
+        <p v-if="options.judge_models_warning" class="text-xs text-amber-700 dark:text-amber-400">{{ options.judge_models_warning }}</p>
+      </div>
       <div class="space-y-3">
         <div v-for="(row, index) in models" :key="row.key" class="space-y-3 border-t border-gray-200 pt-3 dark:border-dark-700" data-model-config>
           <div class="grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto_auto]">
@@ -50,10 +69,12 @@
       <label class="flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" />{{ t('modelQuality.enabled') }}</label>
       <label class="flex items-center gap-2 text-sm"><input v-model="form.public_visible" type="checkbox" />{{ t('modelQuality.publicVisible') }}</label>
       <p class="text-xs text-gray-500">{{ t('modelQuality.boundCredentialNotice') }}</p>
+      </fieldset>
+      <p v-if="saving" role="status" class="text-sm text-gray-600 dark:text-gray-300">{{ t(skipJudgeProbe ? 'modelQuality.saving' : 'modelQuality.testingJudge') }}</p>
     </form>
     <template #footer>
-      <button type="button" class="btn btn-secondary" @click="emit('close')">{{ t('modelQuality.close') }}</button>
-      <button type="submit" form="quality-form" class="btn btn-primary" :disabled="saving || loading || !form.group_id || !monitorID || !!validationError">{{ t('modelQuality.save') }}</button>
+      <button type="button" class="btn btn-secondary" :disabled="saving" @click="close">{{ t('modelQuality.close') }}</button>
+      <button type="submit" form="quality-form" class="btn btn-primary" :disabled="saving || loading || !form.group_id || !monitorID || !!validationError">{{ t(skipJudgeProbe ? 'modelQuality.save' : 'modelQuality.testAndSave') }}</button>
     </template>
   </BaseDialog>
 </template>
@@ -62,6 +83,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import * as api from '@/api/modelQuality'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -77,7 +99,12 @@ const form = reactive({
   name: props.plan?.name ?? '', group_id: props.plan?.group_id ?? 0,
   enabled: props.plan?.enabled ?? false, public_visible: props.plan?.public_visible ?? false,
   interval_minutes: props.plan?.interval_minutes ?? 3,
+  judge_model: props.plan?.judge_model || props.plan?.target.judge_model || 'gpt-6.1-sol',
 })
+const initialJudgeModel = computed(() => props.plan?.judge_model || props.plan?.target.judge_model || options.value.default_judge_model || 'gpt-6.1-sol')
+const skipJudgeProbe = computed(() => !!props.plan?.enabled && !form.enabled && form.judge_model === initialJudgeModel.value)
+const judgeModelOptions = computed(() => [...new Set([form.judge_model, options.value.default_judge_model || 'gpt-6.1-sol', ...(options.value.judge_models || [])])]
+  .filter(Boolean).map(model => ({ value: model, label: model })))
 const modes = ['candy', 'pelican', 'creative'] as const
 const efforts = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
 type ModelRow = { key: number; model: string; effort: string; tier: string; modes: api.QualityConfig['benchmark'][] }
@@ -94,6 +121,7 @@ const configs = computed<api.QualityConfig[]>(() => models.value.flatMap(row => 
   monitor_id: monitorID.value, model: row.model.trim(), benchmark, reasoning_effort: row.effort, service_tier: row.tier,
 }))))
 const validationError = computed(() => {
+  if (!form.judge_model.trim() || new TextEncoder().encode(form.judge_model).length > 200) return t('modelQuality.invalidJudgeModel')
   if (models.value.some(row => !row.model.trim() || !row.modes.length)) return t('modelQuality.selectModelModes')
   if (configs.value.length > 100) return t('modelQuality.tooManyConfigs')
   const keys = configs.value.map(c => JSON.stringify([c.model, c.benchmark, c.reasoning_effort, c.service_tier]))
@@ -107,8 +135,9 @@ function changeMonitor() {
   }
 }
 function addModel() { models.value.push({ key: nextKey++, model: '', effort: 'low', tier: '', modes: ['candy'] }) }
+function close() { if (!saving.value) emit('close') }
 async function save() {
-  if (saving.value || validationError.value || !monitorID.value || !form.group_id) return
+  if (saving.value || loading.value || validationError.value || !monitorID.value || !form.group_id) return
   saving.value = true; error.value = ''
   try { await api.save(props.plan?.id ?? null, { ...form, configs: configs.value }); emit('saved') }
   catch (e) { error.value = extractApiErrorMessage(e, t('modelQuality.operationFailed')) }
@@ -117,6 +146,7 @@ async function save() {
 onMounted(async () => {
   try {
     options.value = await api.options()
+    if (!props.plan?.judge_model && !props.plan?.target.judge_model) form.judge_model = options.value.default_judge_model || 'gpt-6.1-sol'
     if (!monitorID.value && props.plan?.monitor_ids?.length === 1) monitorID.value = props.plan.monitor_ids[0]
     if (monitorID.value) changeMonitor()
   }

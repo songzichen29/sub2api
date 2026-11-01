@@ -4,6 +4,10 @@ package service
 // truth and must not be silently overwritten or presented as native evaluations.
 const qualityBenchmarkVersion = "native-v1"
 
+// Version output-format compatibility independently of the tasks and rubric.
+// Existing artifacts remain judgeable; scores and verdict thresholds are unchanged.
+const qualityJudgeFormatVersion = "json-v2"
+
 const qualityCandyPrompt = `黑色袋子里有三种口味、两种形状的糖果：
 圆形：苹果味7个，桃子味9个，西瓜味8个；
 五角星形：苹果味7个，桃子味6个，西瓜味4个。

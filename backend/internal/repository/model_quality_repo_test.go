@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -14,6 +15,78 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+type qualityConfigCapture struct{ raw string }
+
+func (c *qualityConfigCapture) Match(value driver.Value) bool {
+	c.raw, _ = value.(string)
+	return json.Valid([]byte(c.raw))
+}
+
+func TestModelQualityPlanJudgeModelRoundTrip(t *testing.T) {
+	for _, update := range []bool{false, true} {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		now := time.Now()
+		p := &service.ModelQualityPlan{ID: "plan", OwnerID: 3, GroupID: 12, Name: "test", JudgeModel: "custom-judge", Config: service.ModelQualityConfig{Model: "generator", Benchmark: "pelican"}, IntervalMinutes: 3, NextRunAt: now, CreatedAt: now}
+		capture := &qualityConfigCapture{}
+		repo := NewModelQualityRepository(db)
+		if update {
+			mock.ExpectBegin()
+			mock.ExpectQuery(`SELECT active_run_id .* FOR UPDATE`).WithArgs(p.ID).WillReturnRows(sqlmock.NewRows([]string{"active"}).AddRow(nil))
+			mock.ExpectExec(`UPDATE model_quality_plans SET name`).WithArgs(p.Name, capture, false, false, 3, now, p.ID).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
+			require.NoError(t, repo.UpdatePlan(context.Background(), p))
+		} else {
+			mock.ExpectExec(`INSERT INTO model_quality_plans`).WithArgs(p.ID, p.OwnerID, p.GroupID, p.Name, capture, false, false, 3, now, now).WillReturnResult(sqlmock.NewResult(0, 1))
+			require.NoError(t, repo.CreatePlan(context.Background(), p))
+		}
+		var config map[string]any
+		require.NoError(t, json.Unmarshal([]byte(capture.raw), &config))
+		require.Equal(t, p.JudgeModel, config["judge_model"])
+		for _, stored := range []string{capture.raw, `{"model":"generator","benchmark":"pelican"}`} {
+			mock.ExpectQuery(`SELECT .* FROM model_quality_plans WHERE id = \?`).WithArgs(p.ID).WillReturnRows(sqlmock.NewRows(strings.Split(qualityPlanColumns, ", ")).AddRow(p.ID, 3, 12, p.Name, stored, false, false, 3, now, now, nil))
+			loaded, err := repo.GetPlan(context.Background(), p.ID)
+			require.NoError(t, err)
+			require.Equal(t, "generator", loaded.Config.Model)
+			if stored == capture.raw {
+				require.Equal(t, p.JudgeModel, loaded.JudgeModel)
+			} else {
+				require.Empty(t, loaded.JudgeModel, "legacy plans use service default")
+			}
+		}
+		require.NoError(t, mock.ExpectationsWereMet())
+		db.Close()
+	}
+}
+
+func TestModelQualityQueueRejectsJudgeModelEditedAfterRead(t *testing.T) {
+	for _, storedModel := range []string{"new-model", "selected-model", ""} {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		now := time.Now()
+		config, err := json.Marshal(qualityStoredConfig{JudgeModel: storedModel})
+		require.NoError(t, err)
+		mock.ExpectBegin()
+		mock.ExpectQuery(`SELECT active_run_id, enabled, next_run_at, interval_minutes.* FOR UPDATE`).WithArgs("plan").WillReturnRows(sqlmock.NewRows([]string{"active", "enabled", "due", "interval", "config"}).AddRow(nil, false, now, 3, string(config)))
+		if storedModel == "new-model" {
+			mock.ExpectRollback()
+		} else {
+			mock.ExpectExec(`INSERT INTO model_quality_runs`).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectExec(`UPDATE model_quality_plans SET active_run_id`).WillReturnResult(sqlmock.NewResult(0, 1))
+			mock.ExpectCommit()
+		}
+		run := &service.ModelQualityRun{ID: "run", PlanID: "plan", Target: service.ModelQualityTarget{JudgeModel: "selected-model"}, StartedAt: now}
+		err = NewModelQualityRepository(db).Queue(context.Background(), run, false)
+		if storedModel == "new-model" {
+			require.ErrorIs(t, err, service.ErrQualityBusy)
+		} else {
+			require.NoError(t, err)
+		}
+		require.NoError(t, mock.ExpectationsWereMet())
+		db.Close()
+	}
+}
 
 func TestModelQualityQueueSerializesAndHonorsDisabledSchedule(t *testing.T) {
 	for _, tc := range []struct {

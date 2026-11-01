@@ -52,6 +52,8 @@ type ModelQualityService struct {
 	judgeOrigin  string
 	judgeKeyName string
 	judgeModel   string
+	judgeProbeMu sync.Mutex
+	judgeProbing map[int64]bool
 	cancel       context.CancelFunc
 	wg           sync.WaitGroup
 }
@@ -75,6 +77,7 @@ func NewModelQualityService(repo ModelQualityRepository, keys APIKeyRepository, 
 
 type ModelQualityInput struct {
 	Name            string               `json:"name"`
+	JudgeModel      string               `json:"judge_model"`
 	GroupID         int64                `json:"group_id"`
 	Config          ModelQualityConfig   `json:"config"`
 	Configs         []ModelQualityConfig `json:"configs"`
@@ -224,8 +227,9 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 		in.Config = configs[0]
 	}
 	now := time.Now()
-	p := &ModelQualityPlan{ID: id, OwnerID: owner, GroupID: in.GroupID, Name: in.Name, Config: in.Config, Configs: configs, Enabled: in.Enabled, PublicVisible: in.PublicVisible, IntervalMinutes: in.IntervalMinutes, NextRunAt: now.Add(time.Duration(in.IntervalMinutes) * time.Minute), CreatedAt: now}
+	p := &ModelQualityPlan{ID: id, OwnerID: owner, GroupID: in.GroupID, Name: in.Name, JudgeModel: strings.TrimSpace(in.JudgeModel), Config: in.Config, Configs: configs, Enabled: in.Enabled, PublicVisible: in.PublicVisible, IntervalMinutes: in.IntervalMinutes, NextRunAt: now.Add(time.Duration(in.IntervalMinutes) * time.Minute), CreatedAt: now}
 	validateCredentials := in.Enabled || id == ""
+	skipJudgeProbe := false
 	if id != "" {
 		old, err := s.repo.GetPlan(ctx, id)
 		if err != nil {
@@ -233,6 +237,9 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 		}
 		if old.OwnerID != owner {
 			return nil, qualityInvalid("请由计划创建者修改检测配置")
+		}
+		if old.ActiveRunID != "" {
+			return nil, ErrQualityBusy
 		}
 		if old.GroupID != in.GroupID {
 			return nil, qualityInvalid("已有计划不能更换分组")
@@ -242,6 +249,15 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 		}
 		validateCredentials = validateCredentials || old.Config.MonitorID != monitorID
 		p.CreatedAt = old.CreatedAt
+		if p.JudgeModel == "" {
+			p.JudgeModel = s.planJudgeModel(old)
+		}
+		// A broken judge must not prevent turning off its scheduled plan.
+		skipJudgeProbe = old.Enabled && !in.Enabled && p.JudgeModel == s.planJudgeModel(old)
+	}
+	p.JudgeModel = s.planJudgeModel(p)
+	if err := validateQualityJudgeModel(p.JudgeModel); err != nil {
+		return nil, err
 	}
 	in.Config = configs[0]
 	p.Config = configs[0]
@@ -257,6 +273,14 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 			}
 		}
 	}
+	// Test on the server before writing, so bypassing the form cannot persist an
+	// untested selection. One small scoring request; never retry automatically.
+	if !skipJudgeProbe {
+		if err := s.probeQualityJudge(ctx, owner, p.JudgeModel); err != nil {
+			return nil, err
+		}
+	}
+	p.NextRunAt = time.Now().Add(time.Duration(p.IntervalMinutes) * time.Minute)
 	if id == "" {
 		p.ID = uuid.NewString()
 		return p, s.repo.CreatePlan(ctx, p)
@@ -276,7 +300,7 @@ func (s *ModelQualityService) Delete(ctx context.Context, id string, user int64,
 }
 
 func (s *ModelQualityService) target(ctx context.Context, p *ModelQualityPlan, config ModelQualityConfig) (ModelQualityTarget, error) {
-	t := ModelQualityTarget{ConfigID: modelQualityConfigID(config), GroupID: p.GroupID, Model: config.Model, Benchmark: config.Benchmark, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier}
+	t := ModelQualityTarget{ConfigID: modelQualityConfigID(config), GroupID: p.GroupID, Model: config.Model, Benchmark: config.Benchmark, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier, JudgeModel: s.planJudgeModel(p)}
 	if config.MonitorID > 0 {
 		t.MonitorID = config.MonitorID
 		if s.monitors != nil {
@@ -361,6 +385,9 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		return nil, err
 	}
 	now := time.Now()
+	if err := validateQualityJudgeModel(s.planJudgeModel(p)); err != nil {
+		return nil, err
+	}
 	judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, 0)
 	if err != nil {
 		return nil, err
@@ -375,7 +402,7 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		if err != nil {
 			return nil, err
 		}
-		target.BenchmarkVersion, target.JudgeModel = qualityBenchmarkVersion, s.judgeModel
+		target.BenchmarkVersion, target.JudgeModel = qualityBenchmarkVersion, s.planJudgeModel(p)
 		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now, JudgeKeyID: judgeKey.ID})
 	}
 	if err := s.repo.QueueBatch(ctx, runs, scheduled); err != nil {
@@ -675,9 +702,12 @@ type QualityGroupOption struct {
 	ChannelName string `json:"channel_name"`
 }
 type ModelQualityOptions struct {
-	Groups   []QualityGroupOption   `json:"groups"`
-	Keys     []QualityKeyOption     `json:"keys"`
-	Monitors []QualityMonitorOption `json:"monitors"`
+	Groups             []QualityGroupOption   `json:"groups"`
+	Keys               []QualityKeyOption     `json:"keys"`
+	Monitors           []QualityMonitorOption `json:"monitors"`
+	DefaultJudgeModel  string                 `json:"default_judge_model"`
+	JudgeModels        []string               `json:"judge_models"`
+	JudgeModelsWarning string                 `json:"judge_models_warning,omitempty"`
 }
 
 type QualityMonitorOption struct {
@@ -688,7 +718,7 @@ type QualityMonitorOption struct {
 }
 
 func (s *ModelQualityService) Options(ctx context.Context, owner int64) (*ModelQualityOptions, error) {
-	out := &ModelQualityOptions{Groups: []QualityGroupOption{}, Keys: []QualityKeyOption{}, Monitors: []QualityMonitorOption{}}
+	out := &ModelQualityOptions{Groups: []QualityGroupOption{}, Keys: []QualityKeyOption{}, Monitors: []QualityMonitorOption{}, DefaultJudgeModel: s.planJudgeModel(nil), JudgeModels: []string{s.planJudgeModel(nil)}}
 	groups, err := s.groups.ListActive(ctx)
 	if err != nil {
 		return nil, err
@@ -723,6 +753,23 @@ func (s *ModelQualityService) Options(ctx context.Context, owner int64) (*ModelQ
 			}
 			if len(monitors) == 0 || int64(page*200) >= total {
 				break
+			}
+		}
+	}
+	// Suggestions only: listing a model is not proof that a scoring request can
+	// succeed. Save always performs the actual probe, including custom model IDs.
+	if client, ok := s.judge.(qualityModelLister); ok {
+		key, keyErr := s.qualityJudgeKey(ctx, owner, 0)
+		if keyErr != nil {
+			out.JudgeModelsWarning = keyErr.Error()
+		} else {
+			listCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+			models, listErr := client.Models(listCtx, qualityCredentials{s.judgeOrigin, key.Key})
+			cancel()
+			if listErr != nil {
+				out.JudgeModelsWarning = "暂时无法读取评分模型列表，可手动填写后测试"
+			} else {
+				out.JudgeModels = models
 			}
 		}
 	}

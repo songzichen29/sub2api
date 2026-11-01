@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"math"
 	"sort"
 	"strings"
@@ -15,9 +14,6 @@ import (
 )
 
 func (s *ModelQualityService) qualityJudgeKey(ctx context.Context, owner, id int64) (*APIKey, error) {
-	if s.judgeModel != "gpt-6-luna" && s.judgeModel != "gpt-6.1-sol" {
-		return nil, qualityInvalid("裁判模型须为 gpt-6-luna 或 gpt-6.1-sol")
-	}
 	if id == 0 {
 		// Resolve by exact name within the plan owner's keys, never globally and
 		// never choose arbitrarily when names are duplicated.
@@ -109,14 +105,18 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		finish("failed", "error", "检测配置与运行快照不匹配")
 		return
 	}
-	if _, err = s.target(ctx, p, cfg); err != nil {
-		finish("failed", "error", "目标分组或渠道配置已失效")
-		return
-	}
-	credential, err := s.credentials(ctx, p, cfg)
-	if err != nil {
-		finish("failed", "error", err.Error())
-		return
+	generating := r.Result == nil
+	var credential qualityCredentials
+	if generating {
+		if _, err = s.target(ctx, p, cfg); err != nil {
+			finish("failed", "error", "目标分组或渠道配置已失效")
+			return
+		}
+		credential, err = s.credentials(ctx, p, cfg)
+		if err != nil {
+			finish("failed", "error", err.Error())
+			return
+		}
 	}
 	judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, r.JudgeKeyID)
 	if err != nil {
@@ -125,21 +125,19 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 	}
 	r.JudgeKeyID = judgeKey.ID
 	if r.Target.JudgeModel == "" {
-		r.Target.JudgeModel = s.judgeModel
+		r.Target.JudgeModel = s.planJudgeModel(p)
 	}
-	if r.Target.JudgeModel != "gpt-6-luna" && r.Target.JudgeModel != "gpt-6.1-sol" {
+	if validateQualityJudgeModel(r.Target.JudgeModel) != nil {
 		finish("failed", "error", "裁判模型配置无效")
 		return
 	}
 	r.Target.BenchmarkVersion = qualityBenchmarkVersion
-	if r.Result != nil && r.CredentialHash != credential.hash() {
-		finish("failed", "error", "生成后渠道凭据已变更，已停止本次评分；请重新检测")
-		return
-	}
-	secrets := []string{credential.key, credential.baseURL, judgeKey.Key, s.judgeOrigin}
+	// Once the sanitized artifact is saved, judging depends only on the judge
+	// key/model. Generator credentials, availability and upstream account changes
+	// cannot invalidate that artifact. Account selection belongs to the gateway.
+	secrets := []string{credential.key, credential.baseURL, cfg.BaseURL, judgeKey.Key, s.judgeOrigin}
 	request := qualityCompletionRequest{Model: cfg.Model, Effort: cfg.ReasoningEffort, ServiceTier: cfg.ServiceTier, Input: qualityPrompt(cfg.Benchmark), MaxOutputTokens: 24000}
 	client, endpoint, timeout := s.generator, credential, 8*time.Minute
-	generating := r.Result == nil
 	if generating {
 		r.CredentialHash = credential.hash()
 		r.Phase = "generating"
@@ -152,8 +150,7 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 			finish("failed", "error", "缺少待评分作品")
 			return
 		}
-		data, _ := json.Marshal(map[string]any{"benchmark": cfg.Benchmark, "task": qualityPrompt(cfg.Benchmark), "rubric": qualityRubric(cfg.Benchmark), "artifact": artifact})
-		request = qualityCompletionRequest{Model: r.Target.JudgeModel, Effort: "medium", Instructions: qualityJudgeInstructions, Input: string(data), Schema: qualityAssessmentSchema(cfg.Benchmark), MaxOutputTokens: 6000}
+		request = qualityJudgeRequest(cfg.Benchmark, r.Target.JudgeModel, artifact)
 		client, endpoint, timeout = s.judge, qualityCredentials{s.judgeOrigin, judgeKey.Key}, 2*time.Minute
 		r.Phase = "classifying"
 	}
@@ -210,16 +207,18 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		s.persist(saveCtx, r, time.Now())
 		return
 	}
+	r.Result.JudgeInputTokens, r.Result.JudgeOutputTokens = completion.InputTokens, completion.OutputTokens
 	assessment, verdict, reason, err := parseQualityAssessment(completion.Text, cfg.Benchmark, r.Target.JudgeModel)
 	if err != nil {
-		finish("failed", "error", "裁判返回的评分结构无效，未当成正常或降智")
+		// Parser errors contain only fixed diagnostics, never upstream content,
+		// JSON property names or credentials. Preserve generation and judge usage.
+		finish("failed", "error", "裁判返回的评分结构无效："+err.Error()+"；已保留生成结果，不能据此判定降智")
 		return
 	}
 	for i := range assessment.Checks {
 		assessment.Checks[i].Evidence = qualityTextLimit(cleanQualityText(assessment.Checks[i].Evidence, secrets...), 2048)
 	}
 	r.Result.Assessment = assessment
-	r.Result.JudgeInputTokens, r.Result.JudgeOutputTokens = completion.InputTokens, completion.OutputTokens
 	r.Result.Source = qualityBenchmarkVersion + ":" + r.Target.JudgeModel + ":" + assessment.Basis
 	finish("succeeded", verdict, qualityTextLimit(cleanQualityText(reason, secrets...), 8192))
 }
@@ -285,6 +284,10 @@ func qualityAssessmentSchema(benchmark string) map[string]any {
 }
 
 func parseQualityAssessment(text, benchmark, model string) (*ModelQualityAssessment, string, string, error) {
+	text, err := qualityAssessmentJSON(text)
+	if err != nil {
+		return nil, "", "", err
+	}
 	var raw struct {
 		Confidence *float64 `json:"confidence"`
 		Reason     string   `json:"reason"`
@@ -295,28 +298,36 @@ func parseQualityAssessment(text, benchmark, model string) (*ModelQualityAssessm
 		} `json:"checks"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(text))
-	decoder.DisallowUnknownFields()
-	invalid := errors.New("invalid quality assessment")
-	if len(text) > 32768 || decoder.Decode(&raw) != nil || raw.Confidence == nil || math.IsNaN(*raw.Confidence) || *raw.Confidence < 0 || *raw.Confidence > 1 || strings.TrimSpace(raw.Reason) == "" || len(raw.Reason) > 8192 {
-		return nil, "", "", invalid
+	// Extra metadata does not affect scoring and is never persisted. The known
+	// fields below still require complete, unambiguous evidence; no inferred pass.
+	if decoder.Decode(&raw) != nil {
+		return nil, "", "", errors.New("评分字段类型不符合约定")
 	}
-	var extra any
-	if decoder.Decode(&extra) != io.EOF {
-		return nil, "", "", invalid
+	if raw.Confidence == nil || math.IsNaN(*raw.Confidence) || *raw.Confidence < 0 || *raw.Confidence > 1 {
+		return nil, "", "", errors.New("confidence 缺失或不在 0 到 1 之间")
+	}
+	if strings.TrimSpace(raw.Reason) == "" || len(raw.Reason) > 8192 {
+		return nil, "", "", errors.New("reason 缺失、为空或超过长度上限")
 	}
 	rubric := qualityRubric(benchmark)
 	if len(raw.Checks) != len(rubric) {
-		return nil, "", "", invalid
+		return nil, "", "", errors.New("checks 评分项数量与检测规则不符")
 	}
-	out := &ModelQualityAssessment{Version: qualityBenchmarkVersion, Basis: "html_source", Model: model, Confidence: *raw.Confidence}
+	out := &ModelQualityAssessment{Version: qualityBenchmarkVersion + ":" + qualityJudgeFormatVersion, Basis: "html_source", Model: model, Confidence: *raw.Confidence}
 	if benchmark == "candy" {
 		out.Basis = "answer_reasoning"
 	}
 	seen := map[string]bool{}
 	sum, failures := 0, 0
 	for _, c := range raw.Checks {
-		if _, ok := rubric[c.ID]; !ok || seen[c.ID] || c.Score == nil || *c.Score < 0 || *c.Score > 2 || strings.TrimSpace(c.Evidence) == "" || len(c.Evidence) > 4096 {
-			return nil, "", "", invalid
+		if _, ok := rubric[c.ID]; !ok || seen[c.ID] {
+			return nil, "", "", errors.New("评分项 ID 缺失、重复或不在检测规则内")
+		}
+		if c.Score == nil || *c.Score < 0 || *c.Score > 2 {
+			return nil, "", "", errors.New("score 缺失或不是 0、1、2")
+		}
+		if strings.TrimSpace(c.Evidence) == "" || len(c.Evidence) > 4096 {
+			return nil, "", "", errors.New("evidence 缺失、为空或超过长度上限")
 		}
 		seen[c.ID] = true
 		sum += *c.Score

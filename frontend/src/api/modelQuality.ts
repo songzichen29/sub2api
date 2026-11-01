@@ -60,6 +60,7 @@ export interface QualityRun {
 }
 export interface QualityInput {
   name: string
+  judge_model?: string
   group_id: number
   configs: QualityConfig[]
   config?: QualityConfig
@@ -99,6 +100,9 @@ export interface QualityBatch {
   stats?: QualityStats
 }
 export interface QualityOptions {
+  default_judge_model?: string
+  judge_models?: string[]
+  judge_models_warning?: string
   groups: { id: number; name: string; channel_name: string }[]
   keys: { id: number; name: string; group_id: number }[]
   monitors: { id: number; name: string; group_id: number; model: string }[]
@@ -108,8 +112,8 @@ const root = (admin: boolean) => admin ? '/admin/model-quality' : '/model-qualit
 export const list = async (admin: boolean) => (await apiClient.get<QualityPlan[]>(root(admin))).data
 export const options = async () => (await apiClient.get<QualityOptions>('/admin/model-quality/options')).data
 export const save = async (id: string | null, input: QualityInput) => id
-  ? (await apiClient.put(`/admin/model-quality/${id}`, input)).data
-  : (await apiClient.post('/admin/model-quality', input)).data
+  ? (await apiClient.put(`/admin/model-quality/${id}`, input, { timeout: 150000 })).data
+  : (await apiClient.post('/admin/model-quality', input, { timeout: 150000 })).data
 export const run = async (id: string) => (await apiClient.post<QualityRun[]>(`/admin/model-quality/${id}/run`)).data
 export const remove = async (id: string) => (await apiClient.delete(`/admin/model-quality/${id}`)).data
 export const cancel = async (id: string) => (await apiClient.post(`/admin/model-quality/runs/${id}/cancel`)).data

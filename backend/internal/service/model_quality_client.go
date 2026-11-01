@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,50 @@ type qualityCompletion struct {
 
 type qualityCompletionClient interface {
 	Complete(context.Context, qualityCredentials, qualityCompletionRequest) (*qualityCompletion, error)
+}
+
+type qualityModelLister interface {
+	Models(context.Context, qualityCredentials) ([]string, error)
+}
+
+// Read-only suggestions from the same gateway/key that will perform judging.
+// A successful model listing is never used as a substitute for a real probe.
+func (c *qualityHTTPClient) Models(ctx context.Context, credential qualityCredentials) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(credential.baseURL, "/")+"/models", nil)
+	if err != nil {
+		return nil, errors.New("评分模型列表地址无效")
+	}
+	req.Header.Set("Authorization", "Bearer "+credential.key)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, errors.New("读取评分模型列表失败")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, &qualityHTTPStatusError{StatusCode: resp.StatusCode}
+	}
+	const maxBytes = 1 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err != nil || len(data) > maxBytes || json.Unmarshal(data, &payload) != nil || payload.Data == nil {
+		return nil, errors.New("评分模型列表响应无效")
+	}
+	models := make([]string, 0, len(payload.Data))
+	seen := map[string]bool{}
+	for _, entry := range payload.Data {
+		model := strings.TrimSpace(entry.ID)
+		if validateQualityJudgeModel(model) != nil || seen[model] || (credential.key != "" && strings.Contains(model, credential.key)) {
+			continue
+		}
+		seen[model] = true
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models, nil
 }
 
 type qualityHTTPClient struct{ client *http.Client }

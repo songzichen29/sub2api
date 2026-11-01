@@ -23,7 +23,8 @@ const qualityRunSummaryColumns = `id, plan_id, config_id, batch_id, target_json,
 
 type qualityStoredConfig struct {
 	service.ModelQualityConfig
-	Configs []service.ModelQualityConfig `json:"configs,omitempty"`
+	Configs    []service.ModelQualityConfig `json:"configs,omitempty"`
+	JudgeModel string                       `json:"judge_model,omitempty"`
 }
 
 // Keep the source fingerprint in the existing JSON column, outside public DTOs.
@@ -57,6 +58,7 @@ func scanQualityPlan(row scannable) (*service.ModelQualityPlan, error) {
 		return nil, err
 	}
 	p.Config = stored.ModelQualityConfig
+	p.JudgeModel = stored.JudgeModel
 	p.Configs = stored.Configs
 	if len(p.Configs) == 0 {
 		p.Configs = []service.ModelQualityConfig{p.Config}
@@ -102,7 +104,7 @@ func scanQualityRun(row scannable) (*service.ModelQualityRun, error) {
 }
 
 func (r *modelQualityRepository) CreatePlan(ctx context.Context, p *service.ModelQualityPlan) error {
-	cfg, err := json.Marshal(qualityStoredConfig{ModelQualityConfig: p.Config, Configs: p.Configs})
+	cfg, err := json.Marshal(qualityStoredConfig{ModelQualityConfig: p.Config, Configs: p.Configs, JudgeModel: p.JudgeModel})
 	if err != nil {
 		return err
 	}
@@ -132,7 +134,7 @@ func (r *modelQualityRepository) ListPlans(ctx context.Context) ([]*service.Mode
 }
 
 func (r *modelQualityRepository) UpdatePlan(ctx context.Context, p *service.ModelQualityPlan) error {
-	cfg, err := json.Marshal(qualityStoredConfig{ModelQualityConfig: p.Config, Configs: p.Configs})
+	cfg, err := json.Marshal(qualityStoredConfig{ModelQualityConfig: p.Config, Configs: p.Configs, JudgeModel: p.JudgeModel})
 	if err != nil {
 		return err
 	}
@@ -221,6 +223,9 @@ func (r *modelQualityRepository) QueueBatch(ctx context.Context, runs []*service
 	}
 	for i, item := range runs {
 		c, t := configs[i], item.Target
+		if config.JudgeModel != "" && config.JudgeModel != t.JudgeModel {
+			return service.ErrQualityBusy
+		}
 		if c.MonitorID != t.MonitorID || c.Model != t.Model || c.Benchmark != t.Benchmark || c.ReasoningEffort != t.ReasoningEffort || c.ServiceTier != t.ServiceTier {
 			return service.ErrQualityBusy
 		}

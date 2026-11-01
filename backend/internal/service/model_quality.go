@@ -29,6 +29,7 @@ type ModelQualityPlan struct {
 	OwnerID         int64                `json:"-"`
 	GroupID         int64                `json:"group_id"`
 	Name            string               `json:"name"`
+	JudgeModel      string               `json:"judge_model"`
 	Config          ModelQualityConfig   `json:"-"`
 	Configs         []ModelQualityConfig `json:"-"`
 	Enabled         bool                 `json:"enabled"`
