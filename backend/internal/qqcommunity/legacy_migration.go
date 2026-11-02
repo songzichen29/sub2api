@@ -67,8 +67,8 @@ func (s *Service) InitializeLegacy(ctx context.Context, gateway string) error {
 		// Preserve audit history without replaying previously received commands.
 		if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_jobs(id,event_key,app_id,event_type,group_id,member_id,message_id,kind,status,payload,result_text,error,created_at,finished_at)
 	 SELECT CONCAT('legacy:',id),CONCAT('legacy:',id),$1,'LEGACY_AUDIT',group_id,qq_id,'',command,
- CASE WHEN status IN ('completed','failed','expired') THEN status ELSE 'interrupted' END,
- '{}',result_text,'旧版检测记录，仅保留历史，不重放',created_at,finished_at FROM qq_bot_events`, old.BotQQ); err != nil {
+ CASE WHEN status IN ('success','completed') THEN 'completed' WHEN status IN ('failed','send_failed') THEN 'failed' WHEN status IN ('expired','cancelled') THEN status ELSE 'interrupted' END,
+ '{}',result_text,'',created_at,finished_at FROM qq_bot_events`, old.BotQQ); err != nil {
 			return err
 		}
 		max := old.CheckinRewardMax

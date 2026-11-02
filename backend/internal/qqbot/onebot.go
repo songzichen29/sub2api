@@ -115,7 +115,9 @@ func (s *Service) disconnect() {
 	}
 }
 func (s *Service) Stop() {
- if s.Community != nil {s.Community.Stop()}
+	if s.Community != nil {
+		s.Community.Stop()
+	}
 	s.mu.Lock()
 	s.stopped = true
 	for c := range s.sessions {
