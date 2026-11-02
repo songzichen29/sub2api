@@ -2,9 +2,23 @@ import DOMPurify from 'dompurify'
 
 /** Only use this document in an opaque-origin sandboxed iframe, never v-html. */
 export function qualityPreviewDocument(raw: string, nonce = ''): string {
+  const source = new DOMParser().parseFromString(raw, 'text/html')
+  const inlineScripts = new Map<string, string>()
+  for (const script of source.querySelectorAll('script')) {
+    if (script.namespaceURI !== 'http://www.w3.org/1999/xhtml' || script.hasAttribute('src')) {
+      script.remove()
+      continue
+    }
+    // DOMPurify's markup probe treats ordinary comparisons such as k<12 as
+    // markup and drops the whole script. Sanitize inert placeholders, then
+    // restore code only inside the opaque-origin, network-blocked sandbox.
+    const marker = `sub2api-preview-script-${inlineScripts.size}`
+    inlineScripts.set(marker, script.textContent || '')
+    script.textContent = marker
+  }
   // Preserve styles, SVG and inline drawing scripts used by generated artwork.
   // The sandbox prevents access to the app; CSP denies network/subframes/forms.
-  const clean = DOMPurify.sanitize(raw, {
+  const clean = DOMPurify.sanitize(source.documentElement.outerHTML, {
     WHOLE_DOCUMENT: true,
     // SVG artwork reuses definitions (e.g. bicycle wheels) through <use>.
     // DOMPurify drops it by default; retain it and restrict both href forms below.
@@ -14,7 +28,9 @@ export function qualityPreviewDocument(raw: string, nonce = ''): string {
   })
   const doc = new DOMParser().parseFromString(clean, 'text/html')
   for (const script of doc.querySelectorAll('script')) {
-    if (script.hasAttribute('src')) { script.remove(); continue }
+    const code = inlineScripts.get(script.textContent || '')
+    if (script.hasAttribute('src') || code === undefined) { script.remove(); continue }
+    script.textContent = code
     if (nonce) script.setAttribute('nonce', nonce)
     else script.removeAttribute('nonce')
   }

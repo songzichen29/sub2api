@@ -2,6 +2,41 @@ import { describe, expect, it } from 'vitest'
 import { qualityPreviewDocument } from '../qualityPreview'
 
 describe('isolated artwork document', () => {
+  it('preserves inline drawing scripts containing compact less-than comparisons in document order', () => {
+    const setup = 'const colors = ["#284e51", "#edf2e9"];'
+    const draw = `const canvas = document.getElementById('scene');
+      const context = canvas.getContext('2d');
+      for(let k=0;k<12;k++) { context.fillRect(k*10, 0, 8, 8); }
+      if(canvas.width<960) { canvas.width = 960; }`
+    const raw = `<html><head><script>${setup}</script></head><body>
+      <canvas id="scene" width="960" height="600"></canvas><script>${draw}</script>
+    </body></html>`
+    const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'drawing-nonce'), 'text/html')
+    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit])')]
+    expect(scripts.map(script => script.textContent)).toEqual([setup, draw])
+    expect(scripts.map(script => script.getAttribute('nonce'))).toEqual(['drawing-nonce', 'drawing-nonce'])
+    expect(doc.head.querySelector('script')?.textContent).toBe(setup)
+    expect(doc.querySelector('canvas')?.nextElementSibling?.textContent).toBe(draw)
+  })
+
+  it('discards external and foreign-namespace scripts before restoring inline code', () => {
+    const raw = `<html><body>
+      <script src="https://outside.test/draw.js">externalFallback()</script>
+      <script src="javascript:alert(1)">unsafeFallback()</script>
+      <script src="">emptySourceFallback()</script>
+      <svg xmlns="http://www.w3.org/2000/svg"><script>foreignScript()</script></svg>
+      <canvas id="scene" onclick="alert(1)"></canvas>
+      <script type="module" nonce="untrusted" onload="alert(1)">for(let i=0;i<5;i++) { console.log(i); }</script>
+    </body></html>`
+    const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'trusted'), 'text/html')
+    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit])')]
+    expect(scripts).toHaveLength(1)
+    expect(scripts[0]?.textContent).toBe('for(let i=0;i<5;i++) { console.log(i); }')
+    expect(scripts[0]?.getAttribute('type')).toBe('module')
+    expect(scripts[0]?.getAttribute('nonce')).toBe('trusted')
+    expect(doc.querySelector('[onclick], [onload], script[src], svg script')).toBeNull()
+  })
+
   it('preserves local SVG references used for wheels, clouds and plants', () => {
     const raw = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1000 670">
       <defs>
