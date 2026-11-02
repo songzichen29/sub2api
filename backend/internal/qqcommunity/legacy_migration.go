@@ -65,10 +65,11 @@ func (s *Service) InitializeLegacy(ctx context.Context, gateway string) error {
 			return err
 		}
 		// Preserve audit history without replaying previously received commands.
-		if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_jobs(id,event_key,app_id,event_type,group_id,member_id,message_id,kind,status,payload,result_text,error,created_at,finished_at)
-	 SELECT CONCAT('legacy:',id),CONCAT('legacy:',id),$1,'LEGACY_AUDIT',group_id,qq_id,'',command,
+		if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_jobs(id,event_key,app_id,event_type,group_id,member_id,message_id,kind,status,payload,result_text,error,created_at,finished_at,message_preview)
+	 SELECT CONCAT('legacy:',id),CONCAT('legacy:',id),$1,'LEGACY_AUDIT',group_id,qq_id,'',
+ CASE command WHEN '聊天' THEN 'chat' WHEN '帮助' THEN 'help' WHEN '余额' THEN 'balance' WHEN '签到' THEN 'checkin' WHEN '渠道' THEN 'channel_status' WHEN '清空对话' THEN 'clear' WHEN '绑定' THEN 'binding' ELSE 'event' END,
  CASE WHEN status IN ('success','completed') THEN 'completed' WHEN status IN ('failed','send_failed') THEN 'failed' WHEN status IN ('expired','cancelled') THEN status ELSE 'interrupted' END,
- '{}',result_text,'',created_at,finished_at FROM qq_bot_events`, old.BotQQ); err != nil {
+ '{}',result_text,'',created_at,finished_at,command FROM qq_bot_events`, old.BotQQ); err != nil {
 			return err
 		}
 		max := old.CheckinRewardMax
