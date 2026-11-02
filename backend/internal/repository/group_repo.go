@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/setting"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -979,27 +981,20 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 	if _, err := txClient.Group.Delete().Where(group.IDEQ(id)).Exec(ctx); err != nil {
 		return nil, err
 	}
-	// Lock and validate the text value before using JSONB operators. A legacy
-	// malformed setting must not prevent deletion or be silently replaced.
-	var moderationValue string
-	err = scanSingleRow(ctx, exec, `SELECT value FROM settings WHERE key = $1 FOR UPDATE`,
-		[]any{service.SettingKeyContentModerationConfig}, &moderationValue)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	// Follow the same lock order as SetContentModerationConfig: groups, then
+	// settings. Ent quotes reserved identifiers and binds for the active dialect.
+	moderation, err := exec.Setting.Query().
+		Where(setting.KeyEQ(service.SettingKeyContentModerationConfig)).
+		ForUpdate().Only(ctx)
+	if err != nil && !dbent.IsNotFound(err) {
 		return nil, err
 	}
-	// Keep the moderation scope in sync in the same transaction. Updating the
-	// setting row in SQL also serializes concurrent group deletions across nodes.
-	if err == nil && json.Valid([]byte(moderationValue)) {
-		if _, err := exec.ExecContext(ctx, `UPDATE settings
-		SET value = jsonb_set(value::jsonb, '{group_ids}',
-			(SELECT COALESCE(jsonb_agg(group_id ORDER BY ord), '[]'::jsonb)
-			 FROM jsonb_array_elements(value::jsonb->'group_ids') WITH ORDINALITY AS ids(group_id, ord)
-			 WHERE group_id <> to_jsonb($2::bigint)))::text,
-			updated_at = NOW()
-		WHERE key = $1 AND jsonb_typeof(value::jsonb->'group_ids') = 'array'
-			AND value::jsonb->'group_ids' @> jsonb_build_array($2::bigint)`,
-			service.SettingKeyContentModerationConfig, id); err != nil {
-			return nil, err
+	if err == nil {
+		if value, changed := removeModerationGroupID(moderation.Value, id); changed {
+			if err := exec.Setting.Update().Where(setting.IDEQ(moderation.ID)).
+				SetValue(value).SetUpdatedAt(time.Now()).Exec(ctx); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -1013,6 +1008,41 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 	}
 
 	return affectedUserIDs, nil
+}
+
+// removeModerationGroupID preserves unknown fields and numeric precision. Legacy
+// malformed JSON or a non-array scope is left untouched, so it cannot block a
+// group deletion or be silently replaced with a default configuration.
+func removeModerationGroupID(value string, id int64) (string, bool) {
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(value), &config); err != nil || config == nil {
+		return value, false
+	}
+	var ids []json.RawMessage
+	if err := json.Unmarshal(config["group_ids"], &ids); err != nil {
+		return value, false
+	}
+	kept := make([]json.RawMessage, 0, len(ids))
+	for _, raw := range ids {
+		var groupID *int64
+		if err := json.Unmarshal(raw, &groupID); err == nil && groupID != nil && *groupID == id {
+			continue
+		}
+		kept = append(kept, raw)
+	}
+	if len(kept) == len(ids) {
+		return value, false
+	}
+	groupIDs, err := json.Marshal(kept)
+	if err != nil {
+		return value, false
+	}
+	config["group_ids"] = groupIDs
+	updated, err := json.Marshal(config)
+	if err != nil {
+		return value, false
+	}
+	return string(updated), true
 }
 
 type groupAccountCounts struct {
