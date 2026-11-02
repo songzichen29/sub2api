@@ -7,6 +7,7 @@ import admin from './admin'
 import misc from './misc'
 import invoice from './invoice'
 import modelQuality from './modelQuality'
+import qqBot from './qqBot'
 
 export default {
   ...landing,
@@ -18,4 +19,5 @@ export default {
   ...misc,
   ...invoice,
   ...modelQuality,
+  ...qqBot,
 }

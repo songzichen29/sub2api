@@ -30,6 +30,13 @@ func RegisterAdminRoutes(
 	// 审计中间件挂在认证之后：所有管理面变更类操作 + 敏感读取入审计日志
 	admin.Use(gin.HandlerFunc(auditLog))
 	admin.Use(middleware.AdminComplianceGuard(settingService))
+	bot := admin.Group("/qq-bot")
+	bot.GET("/config", h.QQBot.GetConfig)
+	bot.PUT("/config", h.QQBot.SaveConfig)
+	bot.GET("/connection", h.QQBot.Connection)
+	bot.POST("/test-model", panelRateLimiter.Heavy(), h.QQBot.TestModel)
+	bot.GET("/records/:kind", h.QQBot.List)
+	bot.DELETE("/bindings/:userID", h.QQBot.AdminUnbind)
 	{
 		// 部署与运营合规确认
 		registerAdminComplianceRoutes(admin, h)

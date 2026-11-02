@@ -28,6 +28,10 @@ func RegisterUserRoutes(
 		// 用户接口
 		user := authenticated.Group("/user")
 		{
+			user.GET("/qq-bot", h.QQBot.BindingStatus)
+			user.POST("/qq-bot/code", h.QQBot.CreateCode)
+			user.POST("/qq-bot/confirm", h.QQBot.Confirm)
+			user.DELETE("/qq-bot", h.QQBot.Unbind)
 			user.GET("/profile", h.User.GetProfile)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)

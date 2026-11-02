@@ -581,6 +581,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/qq-bot',
+    name: 'AdminQQBot',
+    component: () => import('@/views/admin/QQBotView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'QQ group bot',
+      titleKey: 'qqBot.title',
+      descriptionKey: 'qqBot.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),
