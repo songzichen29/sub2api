@@ -149,6 +149,11 @@ var auditActionOverrides = map[string]string{
 var auditBodyOmittedRoutes = map[string]struct{}{
 	"PUT /api/v1/admin/qq-bot/config":                           {},
 	"POST /api/v1/admin/qq-bot/test-model":                      {},
+	"PUT /api/v1/admin/qqbot/config":                            {},
+	"PUT /api/v1/admin/qqbot/config/:section":                   {},
+	"POST /api/v1/admin/qqbot/test/:kind":                       {},
+	"POST /api/v1/admin/qqbot/models/:kind":                     {},
+	"POST /api/v1/admin/qqbot/chat-preview":                     {},
 	"POST /api/v1/auth/passkey/login/finish":                    {},
 	"POST /api/v1/user/passkeys/register/finish":                {},
 	"POST /api/v1/admin/accounts/import/codex-session":          {},

@@ -838,7 +838,14 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/orders/invoices', label: t('nav.invoiceManagement'), icon: OrderListIcon },
-    { path: '/admin/qq-bot', label: t('qqBot.title'), icon: CogIcon },
+    { path: '/admin/qqbot', label: t('qqBot.title'), icon: CogIcon, children: [
+ {path:'/admin/qqbot/overview',label:t('qqbot.workspace.overview'),icon:ChartIcon},
+ {path:'/admin/qqbot/groups',label:t('qqbot.workspace.groups'),icon:CogIcon},
+ {path:'/admin/qqbot/config',label:t('qqbot.basicConfig'),icon:CogIcon},
+ {path:'/admin/qqbot/activities',label:t('qqbot.activitiesTitle'),icon:CogIcon},
+ {path:'/admin/qqbot/bindings',label:t('qqbot.bindingsTitle'),icon:CogIcon},
+ {path:'/admin/qqbot/records',label:t('qqbot.workspace.records'),icon:ChartIcon},
+ ] },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]

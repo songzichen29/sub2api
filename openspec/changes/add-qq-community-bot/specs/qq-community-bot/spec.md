@@ -38,14 +38,14 @@ The system SHALL credit a configured positive reward to an active bound user at 
 - **THEN** the user's balance is unchanged and no successful reward is recorded
 
 ### Requirement: Authorized account and channel queries
-The system SHALL resolve identity from the authenticated QQ event and current binding. It MUST expose only the caller's balance and channel metrics within that user's currently available groups.
+The system SHALL resolve identity from the authenticated QQ event and current binding. It MUST expose only the caller's balance. Public channel reports and channel notifications MUST exclude exclusive groups.
 
 #### Scenario: Attempt to query another account
 - **WHEN** message text contains another QQ, user ID, nickname or claimed administrator role
 - **THEN** the backend continues to use the sender's binding and never returns another user's balance
 
 ### Requirement: Bounded operator-funded conversation
-The system SHALL send explicit chat requests through the existing Sub2API gateway using the operator's dedicated API Key, with per-member/group history isolation, daily member/site quotas, cooldown and output/history bounds. It MUST NOT grant the model financial mutation tools.
+The system SHALL send chat requests through the configured gateway using the operator's dedicated API Key, with daily member/site quotas, cooldown and output/history bounds. Group history SHALL retain speaker identity and exclude private commands. Clearing history MUST delete only the sender's history in the current group. Autonomous replies SHALL default to disabled. The model MUST NOT receive financial mutation tools.
 
 #### Scenario: Chat limit reached
 - **WHEN** a member or the site reaches its configured quota
@@ -57,3 +57,28 @@ The system SHALL provide administrator configuration, connection/model tests, bi
 #### Scenario: Save configuration without replacing secrets
 - **WHEN** an administrator leaves an existing credential field empty
 - **THEN** its stored value is retained and never returned as plaintext
+
+### Requirement: Key model discovery and image generation
+The system SHALL retrieve all nonempty model IDs available to the selected chat or image connection, without model-name filtering. Administrators MAY select a returned model or enter one manually. Changing an endpoint MUST require a replacement or explicit clearance of a saved credential before forwarding it. Image generation SHALL support generation, edits and referenced images through OneBot native image segments, and SHALL default to disabled.
+
+#### Scenario: Discover models with saved credentials
+- **WHEN** an administrator requests the selected connection's models
+- **THEN** the backend uses that connection's credential and returns unique sorted IDs without returning the secret
+
+#### Scenario: Image delivery confirmation
+- **WHEN** a generated image is sent through OneBot
+- **THEN** delivery is marked successful only after a successful receipt containing a message ID
+
+### Requirement: Full community activities with disabled defaults
+The system SHALL provide invitation rewards, transfers, lotteries, growth and periodic tasks, rankings, custom commands, site knowledge, group administration and automatic notifications. New activities, autonomous replies, moderation and notifications SHALL default to disabled; existing check-in settings SHALL be preserved.
+
+#### Scenario: Confirm a transfer once
+- **WHEN** concurrent confirmations use the same email token
+- **THEN** at most one transfer commits, with sender and recipient balances and ledgers updated atomically
+
+### Requirement: Restart-safe upgrade
+The system SHALL migrate the legacy configuration, bindings, pending binding codes, check-in receipts and command audit in one transaction into independent qqc_ tables and settings. It MUST NOT replay past balance changes or tasks. Legacy private chat history MUST NOT be copied into shared group context.
+
+#### Scenario: Restart after migration
+- **WHEN** initialization runs after a committed migration
+- **THEN** the configuration marker prevents repeated migration and balances remain unchanged

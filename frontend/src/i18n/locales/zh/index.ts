@@ -8,6 +8,7 @@ import misc from './misc'
 import invoice from './invoice'
 import modelQuality from './modelQuality'
 import qqBot from './qqBot'
+import qqCommunity from './qqCommunity'
 
 export default {
   ...landing,
@@ -20,4 +21,5 @@ export default {
   ...invoice,
   ...modelQuality,
   ...qqBot,
+  ...qqCommunity,
 }

@@ -12,10 +12,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type QQBotHandler struct{ service *qqbot.Service }
+type QQBotHandler struct {
+	service   *qqbot.Service
+	Community *QQCommunityHandler
+}
 
-func NewQQBotHandler(s *qqbot.Service) *QQBotHandler { return &QQBotHandler{service: s} }
-func (h *QQBotHandler) OneBot(c *gin.Context)        { h.service.ServeOneBot(c.Writer, c.Request) }
+func NewQQBotHandler(s *qqbot.Service) *QQBotHandler {
+	h := &QQBotHandler{service: s}
+	if s.Community != nil {
+		h.Community = NewQQCommunityHandler(s.Community)
+	}
+	return h
+}
+func (h *QQBotHandler) OneBot(c *gin.Context) {
+	if h.Community != nil {
+		h.service.Community.ServeOneBot(c.Writer, c.Request)
+		return
+	}
+	h.service.ServeOneBot(c.Writer, c.Request)
+}
 func (h *QQBotHandler) GetConfig(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	cfg, err := h.service.Config(c.Request.Context())
@@ -26,6 +41,10 @@ func (h *QQBotHandler) GetConfig(c *gin.Context) {
 	response.Success(c, cfg)
 }
 func (h *QQBotHandler) SaveConfig(c *gin.Context) {
+	if h.Community != nil {
+		response.Error(c, http.StatusGone, "QQ 管理已升级，请刷新页面后使用 QQ 机器人配置")
+		return
+	}
 	var cfg qqbot.Config
 	if c.ShouldBindJSON(&cfg) != nil {
 		response.BadRequest(c, "配置格式不正确")
@@ -38,8 +57,18 @@ func (h *QQBotHandler) SaveConfig(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
-func (h *QQBotHandler) Connection(c *gin.Context) { response.Success(c, h.service.ConnectionStatus()) }
+func (h *QQBotHandler) Connection(c *gin.Context) {
+	if h.Community != nil {
+		response.Success(c, h.service.Community.ConnectionStatus())
+		return
+	}
+	response.Success(c, h.service.ConnectionStatus())
+}
 func (h *QQBotHandler) TestModel(c *gin.Context) {
+	if h.Community != nil {
+		response.Error(c, http.StatusGone, "请使用新版 QQ 机器人模型测试")
+		return
+	}
 	var cfg qqbot.Config
 	if c.ShouldBindJSON(&cfg) != nil {
 		response.BadRequest(c, "配置格式不正确")
@@ -61,6 +90,10 @@ func qqUserID(c *gin.Context) (int64, bool) {
 	return subject.UserID, true
 }
 func (h *QQBotHandler) BindingStatus(c *gin.Context) {
+	if h.Community != nil {
+		h.communityProfile(c, "BindingStatus")
+		return
+	}
 	c.Header("Cache-Control", "no-store")
 	id, ok := qqUserID(c)
 	if !ok {
@@ -74,6 +107,10 @@ func (h *QQBotHandler) BindingStatus(c *gin.Context) {
 	response.Success(c, b)
 }
 func (h *QQBotHandler) CreateCode(c *gin.Context) {
+	if h.Community != nil {
+		h.communityProfile(c, "CreateCode")
+		return
+	}
 	id, ok := qqUserID(c)
 	if !ok {
 		return
@@ -87,6 +124,10 @@ func (h *QQBotHandler) CreateCode(c *gin.Context) {
 	response.Success(c, gin.H{"code": code, "expires_at": expiry})
 }
 func (h *QQBotHandler) Confirm(c *gin.Context) {
+	if h.Community != nil {
+		h.communityProfile(c, "Confirm")
+		return
+	}
 	id, ok := qqUserID(c)
 	if !ok {
 		return
@@ -106,6 +147,10 @@ func (h *QQBotHandler) Confirm(c *gin.Context) {
 	response.Success(c, b)
 }
 func (h *QQBotHandler) Unbind(c *gin.Context) {
+	if h.Community != nil {
+		h.communityProfile(c, "Unbind")
+		return
+	}
 	id, ok := qqUserID(c)
 	if !ok {
 		return
@@ -117,6 +162,10 @@ func (h *QQBotHandler) Unbind(c *gin.Context) {
 	response.Success(c, gin.H{"unbound": true})
 }
 func (h *QQBotHandler) AdminUnbind(c *gin.Context) {
+	if h.Community != nil {
+		response.Error(c, http.StatusGone, "请使用新版 QQ 绑定管理")
+		return
+	}
 	id, err := strconv.ParseInt(c.Param("userID"), 10, 64)
 	if err != nil || id <= 0 {
 		response.BadRequest(c, "用户 ID 不正确")

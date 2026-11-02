@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -80,7 +81,13 @@ func (h *qqBotHost) ChannelStatus(ctx context.Context, id int64) (string, error)
 	}
 	return out.String(), nil
 }
-func ProvideQQBotService(repo qqbot.Repository, encryptor SecretEncryptor, keys *APIKeyService, billing *BillingCacheService, monitor *ChannelMonitorV2Service, settings *SettingService, cfg *config.Config) *qqbot.Service {
+func ProvideQQBotService(repo qqbot.Repository, encryptor SecretEncryptor, keys *APIKeyService, billing *BillingCacheService, monitor *ChannelMonitorV2Service, settings *SettingService, cfg *config.Config, db *sql.DB, email *EmailService, users UserRepository, groups GroupRepository, channels ChannelRepository, channelService *ChannelService, priceResolver *ModelPricingResolver, billingService *BillingService, rates UserGroupRateRepository) (*qqbot.Service, error) {
 	host := &qqBotHost{keys: keys, billing: billing, monitor: monitor, settings: settings}
-	return qqbot.NewService(repo, encryptor, host, fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port))
+	s := qqbot.NewService(repo, encryptor, host, fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port))
+	community, err := provideQQCommunityService(db, encryptor, cfg, keys, billing, email, settings, users, monitor, groups, channels, channelService, priceResolver, billingService, rates)
+	if err != nil {
+		return nil, err
+	}
+	s.Community = community
+	return s, nil
 }

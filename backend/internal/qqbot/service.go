@@ -3,6 +3,7 @@ package qqbot
 import (
 	"bytes"
 	"context"
+ "github.com/Wei-Shaw/sub2api/internal/qqcommunity"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -23,6 +24,7 @@ var numericID = regexp.MustCompile(`^[1-9][0-9]{4,19}$`)
 var bindCodePattern = regexp.MustCompile(`^[a-f0-9]{32}$`)
 
 type Service struct {
+ Community *qqcommunity.Service
 	repo      Repository
 	encryptor Encryptor
 	host      Host

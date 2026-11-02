@@ -25,6 +25,14 @@ func RegisterAuthRoutes(
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
 
+	if h.QQBot != nil && h.QQBot.Community != nil {
+		bot := v1.Group("/qqbot")
+		bot.Use(rateLimiter.LimitWithOptions("qqbot-confirm", 20, time.Minute, middleware.RateLimitOptions{FailureMode: middleware.RateLimitFailClose}))
+		bot.POST("/email-binding/preview", h.QQBot.Community.PreviewEmailBinding)
+		bot.POST("/email-binding/confirm", h.QQBot.Community.ConfirmEmailBinding)
+		bot.POST("/transfer/preview", h.QQBot.Community.PreviewTransfer)
+		bot.POST("/transfer/confirm", h.QQBot.Community.ConfirmTransfer)
+	}
 	// 公开接口
 	auth := v1.Group("/auth")
 	auth.Use(servermiddleware.BackendModeAuthGuard(settingService))

@@ -580,18 +580,16 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.settings.description'
     }
   },
-  {
-    path: '/admin/qq-bot',
-    name: 'AdminQQBot',
-    component: () => import('@/views/admin/QQBotView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'QQ group bot',
-      titleKey: 'qqBot.title',
-      descriptionKey: 'qqBot.description'
-    }
-  },
+  {path:'/qqbot/bind',name:'QQBotEmailBind',component:()=>import('@/views/auth/QQBotBindView.vue'),meta:{requiresAuth:false,title:'确认 QQ 绑定'}},
+  {path:'/qqbot/transfer',name:'QQBotTransfer',component:()=>import('@/views/auth/QQBotTransferView.vue'),meta:{requiresAuth:false,title:'确认转账'}},
+  { path: '/admin/qq-bot', redirect: '/admin/qqbot/overview' },
+  { path: '/admin/qqbot', redirect: '/admin/qqbot/overview' },
+  { path: '/admin/qqbot/overview', name: 'AdminQQBotOverview', component: () => import('@/views/admin/QQBotOverviewView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '运行总览' } },
+  { path: '/admin/qqbot/groups', name: 'AdminQQBotGroups', component: () => import('@/views/admin/QQBotView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '群管理' } },
+  { path: '/admin/qqbot/config', name: 'AdminQQBotConfig', component: () => import('@/views/admin/QQBotView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '基础配置' } },
+  { path: '/admin/qqbot/activities', name: 'AdminQQBotActivities', component: () => import('@/views/admin/QQBotActivitiesView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '活动配置' } },
+  { path: '/admin/qqbot/bindings', name: 'AdminQQBotBindings', component: () => import('@/views/admin/QQBotBindingsView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '成员与账户' } },
+  { path: '/admin/qqbot/records', name: 'AdminQQBotRecords', component: () => import('@/views/admin/QQBotRecordsView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '运行记录' } },
   {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
