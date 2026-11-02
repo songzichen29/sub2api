@@ -27,30 +27,24 @@ func TestNormalizeReplyLineBreaks(t *testing.T) {
 	}
 }
 
-func TestSplitReplyRespectsRemainingMessageSlots(t *testing.T) {
-	for _, slots := range []int{1, 2, 4, 5} {
-		// Newlines occur just over half a chunk apart, so blindly preferring
-		// them would require more passive messages than QQ permits.
-		input := strings.Repeat(strings.Repeat("中", 800)+"\n", slots)
-		chunks := splitReply(input, slots)
-		require.LessOrEqual(t, len(chunks), slots)
+func TestSplitReplyPreservesEntireLongResponse(t *testing.T) {
+	for _, input := range []string{
+		strings.Repeat("中文🙂", 7000) + "最后一段也必须发送。",
+		strings.Repeat(strings.Repeat("中", 800)+"\n", 30) + "结尾",
+		strings.Repeat("a", 1501),
+	} {
+		chunks := splitReply(input)
 		require.Equal(t, input, strings.Join(chunks, ""))
 		for _, chunk := range chunks {
 			require.LessOrEqual(t, utf8.RuneCountInString(chunk), 1500)
-		}
-
-		chunks = splitReply(strings.Repeat(input, 3), slots)
-		require.Len(t, chunks, slots)
-		require.Contains(t, chunks[len(chunks)-1], "内容过长，已截断")
-		for _, chunk := range chunks {
-			require.LessOrEqual(t, utf8.RuneCountInString(chunk), 1500)
+			require.True(t, utf8.ValidString(chunk))
 		}
 	}
-	require.Empty(t, splitReply("没有可用回复次数", 0))
+	require.Equal(t, []string{"暂无内容。"}, splitReply(""))
 }
 
 func TestSplitReplyPrefersWholeLinesWhenSpaceAllows(t *testing.T) {
 	first := strings.Repeat("中", 1000) + "\n"
 	second := strings.Repeat("文", 700)
-	require.Equal(t, []string{first, second}, splitReply(first+second, 2))
+	require.Equal(t, []string{first, second}, splitReply(first+second))
 }

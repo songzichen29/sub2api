@@ -60,27 +60,17 @@ func replyPlainLabel(text string) string {
 	return replyLabelEscapes.Replace(strings.Join(strings.Fields(text), " "))
 }
 
-// QQ allows five passive messages per incoming message. Split the reply within
-// the remaining slots, accounting for any messages already sent.
-func splitReply(text string, maxChunks int) []string {
-	if maxChunks <= 0 {
-		return nil
-	}
+// NapCat sends ordinary group messages. Split the entire response without the
+// official QQ bot API's five-passive-message limit.
+func splitReply(text string) []string {
 	r := []rune(text)
 	const width = 1500
-	if len(r) > width*maxChunks {
-		r = append(r[:width*maxChunks-50], []rune("\n（内容过长，已截断。）")...)
-	}
 	var chunks []string
 	for len(r) > 0 {
 		n := min(len(r), width)
 		// Keep normal list entries and paragraphs intact when possible.
 		if n < len(r) {
-			// A shorter chunk must still leave enough room in the remaining
-			// passive replies. Otherwise a newline-heavy response can exceed
-			// QQ's five-message limit even after the initial truncation.
-			minWidth := max(width/2, len(r)-width*(maxChunks-len(chunks)-1))
-			for i := n - 1; i+1 >= minWidth; i-- {
+			for i := n - 1; i+1 >= width/2; i-- {
 				if r[i] == '\n' {
 					n = i + 1
 					break

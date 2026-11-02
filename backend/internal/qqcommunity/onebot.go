@@ -338,6 +338,36 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 	return s.Enqueue(ctx, c, Payload{ID: e.ID, Type: kind, Data: raw})
 }
 func (s *Service) sendOneBot(ctx context.Context, c Config, j Job, text string, img []byte) ([]byte, error) {
+	chunks := []string{""}
+	if text != "" {
+		chunks = splitReply(text)
+	}
+	var receipt []byte
+	for i, chunk := range chunks {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		part := j
+		if i > 0 {
+			part.SuppressMention = true
+			part.ReplyReference = ""
+		}
+		var picture []byte
+		if i == len(chunks)-1 {
+			picture = img
+		}
+		var err error
+		receipt, err = s.sendOneBotChunk(ctx, c, part, chunk, picture)
+		if err != nil {
+			// Earlier parts may already be visible. Never resend them or mark a
+			// partially delivered reply as successful.
+			return nil, err
+		}
+	}
+	return receipt, nil
+}
+
+func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text string, img []byte) ([]byte, error) {
 	segments := []map[string]any{}
 	if j.ReplyReference != "" {
 		segments = append(segments, map[string]any{"type": "reply", "data": map[string]string{"id": j.ReplyReference}})
@@ -346,7 +376,7 @@ func (s *Service) sendOneBot(ctx context.Context, c Config, j Job, text string, 
 		segments = append(segments, map[string]any{"type": "at", "data": map[string]string{"qq": j.MemberID}})
 	}
 	if text != "" {
-		segments = append(segments, map[string]any{"type": "text", "data": map[string]string{"text": limitText(text, 4000)}})
+		segments = append(segments, map[string]any{"type": "text", "data": map[string]string{"text": text}})
 	}
 	if len(img) > 0 {
 		segments = append(segments, map[string]any{"type": "image", "data": map[string]string{"file": "base64://" + base64.StdEncoding.EncodeToString(img)}})

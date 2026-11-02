@@ -818,9 +818,14 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 		return s.send(ctx, c, *j, text, img, seq+1)
 	}
-	chunks := splitReply(normalizeReplyLineBreaks(text), 5-seq+1)
-	for _, chunk := range chunks {
-		if err := s.sendFormatted(ctx, c, *j, chunk, nil, seq); err != nil {
+	chunks := splitReply(normalizeReplyLineBreaks(text))
+	for i, chunk := range chunks {
+		part := *j
+		if i > 0 {
+			part.SuppressMention = true
+			part.ReplyReference = ""
+		}
+		if err := s.sendFormatted(ctx, c, part, chunk, nil, seq); err != nil {
 			return err
 		}
 		seq++
