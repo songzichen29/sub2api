@@ -37,15 +37,6 @@ func usageReplyPage(doc *replyDocument) *ReplyPage {
 	return &ReplyPage{BoundUserID: doc.UserID, Kind: "usage", Title: doc.Title, SourcePath: "/key-usage", Data: map[string]any{"models": models}}
 }
 
-func priceReplyPage(model, filter string, blocks []string) *ReplyPage {
-	selected := make([]string, 0, len(blocks))
-	for _, block := range blocks {
-		selected = append(selected, cardPlainText(block))
-	}
-
-	return &ReplyPage{Kind: "prices", Title: "模型价格 · " + model, SourcePath: "/model-plaza", Data: map[string]any{"model": model, "filter": filter, "blocks": selected}}
-}
-
 // An administrator can review real pages and captures without sending messages
 // to QQ, invoking a paid model or changing a member's balance.
 func (s *Service) PreviewReplyPage(ctx context.Context, kind, model, filter, group, member string) (string, error) {

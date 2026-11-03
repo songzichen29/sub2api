@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -83,37 +82,4 @@ func (s *Service) todayUsageDocument(ctx context.Context, c Config, j Job, now t
 		return "", nil, err
 	}
 	return text, doc, nil
-}
-
-type ModelPriceProvider interface {
-	ModelPrice(context.Context, string, int64, time.Time) ([]string, error)
-}
-
-func (s *Service) SetModelPriceProvider(p ModelPriceProvider) { s.modelPrices = p }
-
-func (s *Service) sendModelPrice(ctx context.Context, c Config, j Job, arg string) error {
-	parts := strings.Fields(arg)
-	if len(parts) < 1 || len(parts) > 2 || len(parts[0]) > 200 {
-		return s.send(ctx, c, j, "用法：价格 模型名 [分组关键词]；按筛选结果返回一个页面。", nil, 1)
-	}
-	filter := ""
-	if len(parts) == 2 {
-		filter = parts[1]
-	}
-	uid, err := boundUser(ctx, s.db, c.AppID, j.MemberID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return s.send(ctx, c, j, "价格查询失败，请稍后重试。", nil, 1)
-	}
-	if s.modelPrices == nil {
-		return s.send(ctx, c, j, "价格查询暂时不可用。", nil, 1)
-	}
-	queryCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	blocks, err := s.modelPrices.ModelPrice(queryCtx, parts[0], uid, time.Now())
-	if err != nil {
-		return s.send(ctx, c, j, "价格查询失败，请稍后重试。", nil, 1)
-	}
-	j.ReplyPage = priceReplyPage(parts[0], filter, blocks)
-	j.ReplyPage.BoundUserID = uid
-	return s.send(ctx, c, j, "模型价格 · "+parts[0]+" · 打开页面可继续筛选分组", nil, 1)
 }

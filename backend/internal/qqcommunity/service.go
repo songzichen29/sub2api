@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 	"unicode"
-
-	"github.com/lib/pq"
 )
 
 type Service struct {
@@ -29,7 +27,6 @@ type Service struct {
 	pageOrigin            string
 	pageGate              chan struct{}
 	pages                 replyPageStore
-	modelPrices           ModelPriceProvider
 	healthSource          HealthSnapshotProvider
 	priceSource           PriceSnapshotProvider
 	priceWake             chan struct{}
@@ -59,6 +56,8 @@ func (s *Service) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.startModeration(ctx)
+	// Retired pricing has no production provider, so this returns immediately.
+	s.startPriceMonitor(ctx)
 	s.startHealthMonitor(ctx)
 	s.startGrowthMonitor(ctx)
 	for i := 0; i < 2; i++ {
@@ -314,70 +313,6 @@ func (s *Service) memberEvent(ctx context.Context, c Config, j Job, e Event) err
 
 func (s *Service) SettleInvites(ctx context.Context, member string) error {
 	// QQ invitations are retired; retain this callback for existing integrations.
-	return nil
-}
-
-func (s *Service) settleInvites(ctx context.Context, c Config, member string) error {
-	if !c.Enabled || c.InviteReward <= 0 || c.InviteDailyLimit <= 0 {
-		return nil
-	}
-	eligibleAsInviter := true
-	requirement := c.inviteRechargeRequirement()
-	if requirement.enabled() {
-		var userID int64
-		err := s.db.QueryRowContext(ctx, `SELECT b.user_id FROM qqc_bindings b JOIN users u ON u.id=b.user_id
- WHERE b.app_id=$1 AND b.member_id=$2 AND u.status='active' AND u.deleted_at IS NULL`, c.AppID, member).Scan(&userID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		eligibility, err := requirement.eligibility(ctx, s.db, userID, false)
-		if err != nil {
-			return err
-		}
-		eligibleAsInviter = requirement.satisfied(eligibility)
-	}
-	// Filter eligibility before bounding the batch. Otherwise old unbound or
-	// already-paid relationships can permanently hide later valid invitations.
-	rows, err := s.db.QueryContext(ctx, `SELECT m.group_id,m.member_id FROM qqc_members m
- JOIN qqc_bindings b ON b.app_id=m.app_id AND b.member_id=m.member_id
- JOIN users u ON u.id=b.user_id AND u.status='active' AND u.deleted_at IS NULL
- JOIN qqc_bindings ib ON ib.app_id=m.app_id AND ib.member_id=m.inviter_id
- JOIN users iu ON iu.id=ib.user_id AND iu.status='active' AND iu.deleted_at IS NULL
- WHERE m.app_id=$1 AND (m.member_id=$2 OR (m.inviter_id=$2 AND $6)) AND m.group_id=ANY($3)
- AND m.joined_at IS NOT NULL AND m.left_at IS NULL AND m.inviter_id<>'' AND m.member_id<>m.inviter_id
- AND m.invited_at<=m.joined_at AND m.invited_at>m.joined_at-INTERVAL '7 days' AND b.user_id<>ib.user_id
- AND NOT EXISTS(SELECT 1 FROM qqc_rewards r WHERE r.kind='invite' AND r.app_id=m.app_id AND r.source_member_id=m.member_id)
- AND NOT EXISTS(SELECT 1 FROM qqc_rewards r WHERE r.kind='invite' AND r.source_user_id=b.user_id)
- AND (SELECT COUNT(*) FROM qqc_rewards r WHERE r.kind='invite' AND r.user_id=ib.user_id
-      AND (r.created_at AT TIME ZONE 'Asia/Shanghai')::date=$5::date)<$4
- ORDER BY m.joined_at,m.group_id,m.member_id LIMIT 100`, c.AppID, member, pq.Array(c.AllowedGroups), c.InviteDailyLimit, day(time.Now()), eligibleAsInviter)
-	if err != nil {
-		return err
-	}
-	var jobs []Job
-	for rows.Next() {
-		j := Job{AppID: c.AppID}
-		if err = rows.Scan(&j.GroupID, &j.MemberID); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		jobs = append(jobs, j)
-	}
-	err = rows.Err()
-	_ = rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, j := range jobs {
-		if c.allows(j.GroupID) {
-			if _, err = s.reward(ctx, c, j, "invite"); err != nil {
-				return err
-			}
-		}
-	}
 	return nil
 }
 

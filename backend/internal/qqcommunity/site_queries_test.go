@@ -5,16 +5,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-type siteModelPriceFunc func(context.Context, string, int64, time.Time) ([]string, error)
-
-func (f siteModelPriceFunc) ModelPrice(ctx context.Context, model string, id int64, at time.Time) ([]string, error) {
-	return f(ctx, model, id, at)
-}
 
 func TestSiteQueryRejectsInvalidArgumentsBeforeReading(t *testing.T) {
 	s := New(nil, nil, false, nil)

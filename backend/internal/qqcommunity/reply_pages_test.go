@@ -27,7 +27,7 @@ func (p *replyDetailProvider) MonitorDetail(_ context.Context, uid int64, input 
 func TestReplyPageDetailsRestrictedToSnapshotAndCurrentBinding(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := New(db, nil, false, nil)
 	c := accountQueryConfig()
 	p := &replyDetailProvider{}
@@ -62,7 +62,7 @@ func TestReplyPageDetailsRestrictedToSnapshotAndCurrentBinding(t *testing.T) {
 func TestReplyPageCapabilityExpiresAndRevokesOnRebinding(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := New(db, nil, false, nil)
 	c := accountQueryConfig()
 	j := Job{AppID: c.AppID, GroupID: "group", MemberID: "member"}
@@ -98,7 +98,7 @@ func TestReplyPageCapabilityExpiresAndRevokesOnRebinding(t *testing.T) {
 func TestReplyPageDisabledGroupAndBoundedStore(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := New(db, nil, false, nil)
 	c := accountQueryConfig()
 	token, err := s.rememberReplyPage(c, Job{GroupID: "group"}, 0, *balanceReplyPage(1))

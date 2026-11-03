@@ -111,27 +111,6 @@ func (s *Service) querySiteInfoDetailed(ctx context.Context, c Config, j Job, q 
 	return result, nil
 }
 
-func (s *Service) querySiteModelPrice(ctx context.Context, c Config, j Job, q siteQuery, at time.Time) SiteQueryResult {
-	if s.modelPrices == nil || s.db == nil {
-		return siteQueryOutcome("价格查询暂时不可用。", "unavailable", "provider_unavailable")
-	}
-	uid, err := boundUser(ctx, s.db, c.AppID, j.MemberID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return siteQueryOutcome("价格查询失败，请稍后重试。", "failed", "binding_lookup_failed")
-	}
-	blocks, err := s.modelPrices.ModelPrice(ctx, q.Model, uid, at)
-	if err != nil {
-		return siteQueryOutcome("价格查询失败，请稍后重试。", "failed", "provider_failed")
-	}
-	if len(blocks) == 0 {
-		return siteQueryOutcome("未找到该模型价格，请核对名称或查看网站。", "not_found", "model_not_found")
-	}
-	result := siteQueryPageResult(blocks, q.Page, "价格 "+replyPlainLabel(q.Model))
-	result.Page = priceReplyPage(q.Model, "", blocks)
-	result.Page.BoundUserID = uid
-	return result
-}
-
 func (s *Service) querySiteChannelStatus(ctx context.Context, q siteQuery) SiteQueryResult {
 	if s.channelStatus == nil {
 		return siteQueryOutcome("渠道状态暂时不可用，请稍后重试。", "unavailable", "provider_unavailable")
@@ -264,13 +243,6 @@ func siteCheckinRules(c CheckinConfig) string {
 		text += siteRuleClaimInstructions(reward)
 	}
 	return text
-}
-
-func siteInviteRules(c Config) string {
-	if c.InviteReward <= 0 || c.InviteDailyLimit <= 0 {
-		return "🎁 **邀请规则**\n邀请活动未开启。"
-	}
-	return fmt.Sprintf("🎁 **邀请规则**\n每位有效受邀者奖励：%s\n每位邀请人每日上限：%d 人（北京时间）\n通过官方邀请，7 天内入群并留群；双方绑定账号，每位受邀账号限奖一次。\n%s\n查询：邀请奖励", siteRuleMoney(c.InviteReward), c.InviteDailyLimit, c.inviteRechargeRequirement().invite())
 }
 
 func siteLotteryRules(c LotteryConfig) string {

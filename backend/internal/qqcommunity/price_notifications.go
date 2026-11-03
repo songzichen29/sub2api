@@ -442,15 +442,6 @@ func (s *Service) deliverPriceNotification(parent context.Context, c Config, j J
 	s.finish(j, "completed", "")
 }
 
-func containsPriceGroup(c Config, group string) bool {
-	for _, g := range priceNotificationGroups(c) {
-		if g == group {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *Service) sendPriceNotification(ctx context.Context, c Config, j Job, text string) error {
 	if !c.Enabled || c.AppID != j.AppID || !allowsNotification(c, j) || c.NotificationQuietHours.active(time.Now()) {
 		return ErrDisabled
