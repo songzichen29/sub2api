@@ -22,6 +22,14 @@ The system SHALL provide an authenticated expiring binding-code workflow. A QQ c
 - **WHEN** a code is expired, invalid, reused or submitted for an already-bound QQ
 - **THEN** the system rejects the claim without revealing the owner's identity
 
+#### Scenario: Resume the first account command after private binding
+- **WHEN** an unbound group member sends an account command, privately submits a website code and the website account owner confirms that QQ
+- **THEN** the bot sends private guidance first, announces private delivery in the group only after a confirmed message ID, and atomically dispatches the first saved command once at website confirmation; the result is sent privately and check-in includes the current balance
+
+#### Scenario: Duplicate financial command or failed private delivery
+- **WHEN** messages or website confirmations repeat, the process restarts, or private delivery fails
+- **THEN** pending commands are not accumulated, already started operations are not automatically replayed, and the group receives only a generic temporary-session/friend guidance without private account details; transfers still require the original email confirmation
+
 ### Requirement: Atomic daily check-in rewards
 The system SHALL credit a configured positive reward to an active bound user at most once per Asia/Shanghai date across all QQ accounts and groups. Reward record and balance increment MUST commit together, with cache invalidation after commit.
 

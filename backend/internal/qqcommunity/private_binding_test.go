@@ -31,7 +31,7 @@ func TestOneBotPrivateBindingRequiresGroupInitiation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	s := New(db, nil, false, nil)
+	s := New(db, fixtureEncryptor{}, true, nil)
 	c := DefaultConfig()
 	c.Enabled = true
 	c.AppID = "bot"
@@ -55,7 +55,7 @@ func TestGroupBindingStartsPrivateChatAndPrivateCodeRequiresWebsiteApproval(t *t
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	s := New(db, nil, false, nil)
+	s := New(db, fixtureEncryptor{}, true, nil)
 	c := Config{Enabled: true, AppID: "bot", AppSecret: "test-secret", AllowedGroups: []string{"allowed-group"}}
 	requests := make(chan map[string]json.RawMessage, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,9 +100,7 @@ func TestGroupBindingStartsPrivateChatAndPrivateCodeRequiresWebsiteApproval(t *t
 	group := Event{GroupID: "allowed-group"}
 	group.Author.MemberID = "sender-qq"
 	group.Author.Username = "sender"
-	mock.ExpectExec("INSERT INTO qqc_private_bind_sessions").
-		WithArgs(c.AppID, "sender-qq", sqlmock.AnyArg(), group.GroupID, "sender", sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(0, 1))
+	expectNewPrivateBinding(t, mock, c, group, nil, "")
 	require.NoError(t, s.beginPrivateBinding(ctx, c, group))
 	first := <-requests
 	require.JSONEq(t, `"send_private_msg"`, string(first["action"]))
@@ -125,6 +123,7 @@ func TestGroupBindingStartsPrivateChatAndPrivateCodeRequiresWebsiteApproval(t *t
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("DELETE FROM qqc_private_bind_sessions").WithArgs(c.AppID, "sender-qq", "request-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE qqc_binding_commands SET user_id=").WithArgs(c.AppID, "sender-qq", "request-1", codeHash(code)).WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 	codeJSON, err := json.Marshal(code)
 	require.NoError(t, err)
@@ -141,7 +140,7 @@ func TestExpiredPrivateBindingDoesNotClaimCode(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-	s := New(db, nil, false, nil)
+	s := New(db, fixtureEncryptor{}, true, nil)
 	c := Config{Enabled: true, AppID: "bot", AllowedGroups: []string{"allowed-group"}}
 	mock.ExpectQuery("SELECT request_id,group_id,nickname FROM qqc_private_bind_sessions").WithArgs(c.AppID, "sender-qq").
 		WillReturnError(sql.ErrNoRows)
@@ -164,7 +163,7 @@ func TestPrivateBindingClaimAndSessionConsumptionAreAtomic(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
 			defer db.Close()
-			s := New(db, nil, false, nil)
+			s := New(db, fixtureEncryptor{}, true, nil)
 			c := Config{AppID: "bot"}
 			e := Event{GroupID: "group"}
 			e.Author.MemberID, e.Author.Username = "qq", "nickname"

@@ -296,6 +296,9 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 		return "", err
 	}
 	// User-level serialization also protects lifetime usage across AppID changes.
+	if err = ensureResumedBinding(ctx, tx, c, j); err != nil {
+		return "", err
+	}
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,274))`, strconv.FormatInt(uid, 10)); err != nil {
 		return "", err
 	}

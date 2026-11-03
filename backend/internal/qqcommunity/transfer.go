@@ -109,7 +109,7 @@ func calcFee(amount decimal.Decimal, feePercent float64) (fee, net decimal.Decim
 // prepareTransfer validates and inserts a pending transfer record; delivers
 // nothing to QQ itself — the caller must send the QQ reply first and then call
 // deliverTransferEmail so that SMTP cannot delay the acknowledgement.
-func (s *Service) prepareTransfer(ctx context.Context, c Config, e Event, arg string) (string, *preparedTransferEmail) {
+func (s *Service) prepareTransfer(ctx context.Context, c Config, e Event, arg string, jobs ...Job) (string, *preparedTransferEmail) {
 	if !c.TransferEnabled {
 		return "转账功能未启用。", nil
 	}
@@ -186,6 +186,11 @@ func (s *Service) prepareTransfer(ctx context.Context, c Config, e Event, arg st
 	}
 
 	// Re-read balance as a string to avoid float64 precision loss.
+	if len(jobs) > 0 {
+		if err = ensureResumedBinding(ctx, tx, c, jobs[0]); err != nil {
+			return "绑定身份已变更，本次转账未执行，请重新发送指令。", nil
+		}
+	}
 	var balanceStr string
 	err = tx.QueryRowContext(ctx,
 		`SELECT u.balance::text FROM users u

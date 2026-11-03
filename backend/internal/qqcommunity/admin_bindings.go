@@ -108,5 +108,8 @@ func (s *Service) Unbind(ctx context.Context, user int64, req UnbindRequest) err
 		return err
 	}
 	// Keep reward eligibility, invitation events, and financial history intact.
+	if _, err = tx.ExecContext(ctx, `DELETE FROM qqc_binding_commands WHERE app_id=$1 AND member_id=$2`, req.AppID, member); err != nil {
+		return err
+	}
 	return tx.Commit()
 }

@@ -61,6 +61,9 @@ func (s *Service) processGrowthTasks(ctx context.Context, c Config, j Job, at ti
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, checkinConfigLock); err != nil {
 		return "", 0, err
 	}
+	if err = ensureResumedBinding(ctx, tx, c, j); err != nil {
+		return "", 0, err
+	}
 	uid, err := boundUser(ctx, tx, c.AppID, j.MemberID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return bindFirst, 0, nil

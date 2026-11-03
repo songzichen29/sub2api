@@ -71,7 +71,8 @@ func (s *Service) claimBinding(ctx context.Context, c Config, e Event, code, req
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx, `UPDATE qqc_bind_requests SET member_id=$1,nickname=$2,group_id=$3
 WHERE app_id=$4 AND code_hash=$5 AND expires_at>clock_timestamp() AND member_id=''
-AND EXISTS(SELECT 1 FROM qqc_private_bind_sessions s WHERE s.app_id=$4 AND s.member_id=$1 AND s.request_id=$6 AND s.group_id=$3 AND s.expires_at>clock_timestamp())`,
+AND EXISTS(SELECT 1 FROM qqc_private_bind_sessions s WHERE s.app_id=$4 AND s.member_id=$1 AND s.request_id=$6 AND s.group_id=$3 AND s.expires_at>clock_timestamp())
+AND NOT EXISTS(SELECT 1 FROM qqc_binding_commands p WHERE p.app_id=$4 AND p.member_id=$1 AND p.request_id=$6 AND delivered=FALSE)`,
 		e.Author.MemberID, limitText(e.Author.Username, 100), e.GroupID, c.AppID, codeHash(code), requestID)
 	if err != nil {
 		return "绑定失败，请稍后重试。", false
@@ -89,6 +90,9 @@ AND EXISTS(SELECT 1 FROM qqc_private_bind_sessions s WHERE s.app_id=$4 AND s.mem
 	n, err = res.RowsAffected()
 	if err != nil || n != 1 {
 		return "私聊会话已更新，请按最新私聊提示重新提交。", false
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE qqc_binding_commands SET user_id=(SELECT user_id FROM qqc_bind_requests WHERE app_id=$1 AND code_hash=$4) WHERE app_id=$1 AND member_id=$2 AND request_id=$3 AND delivered=TRUE`, c.AppID, e.Author.MemberID, requestID, codeHash(code)); err != nil {
+		return "绑定失败，请稍后重试。", false
 	}
 	if err = tx.Commit(); err != nil {
 		return "绑定失败，请稍后重试。", false
@@ -130,6 +134,9 @@ FOR UPDATE OF r FOR NO KEY UPDATE OF u`, user, c.AppID).Scan(&r.MemberID, &r.Gro
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM qqc_email_bind_requests WHERE app_id=$1 AND (user_id=$2 OR member_id=$3)`, c.AppID, user, member); err != nil {
+		return err
+	}
+	if err = enqueueBindingCommand(ctx, tx, c, user, member, r.GroupID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -511,6 +518,9 @@ func (s *Service) reward(ctx context.Context, c Config, j Job, kind string) (str
 		return "", err
 	}
 	// Admin-assisted rebinding must not reset a QQ identity's reward eligibility.
+	if err = ensureResumedBinding(ctx, tx, c, j); err != nil {
+		return "", err
+	}
 	var rewarded bool
 	if kind == "checkin" {
 		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM qqc_rewards WHERE app_id=$1 AND member_id=$2 AND kind='checkin' AND (created_at AT TIME ZONE 'Asia/Shanghai')::date=$3::date)`, c.AppID, j.MemberID, rewardDay).Scan(&rewarded)

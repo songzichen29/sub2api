@@ -387,10 +387,10 @@ func (s *Service) sendOneBot(ctx context.Context, c Config, j Job, text string, 
 
 func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text string, img []byte) ([]byte, error) {
 	segments := []map[string]any{}
-	if j.ReplyReference != "" {
+	if j.ReplyReference != "" && !j.PrivateReply {
 		segments = append(segments, map[string]any{"type": "reply", "data": map[string]string{"id": j.ReplyReference}})
 	}
-	if j.MemberID != "" && !j.SuppressMention {
+	if j.MemberID != "" && !j.SuppressMention && !j.PrivateReply {
 		segments = append(segments, map[string]any{"type": "at", "data": map[string]string{"qq": j.MemberID}})
 	}
 	if text != "" {
@@ -399,7 +399,13 @@ func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text str
 	if len(img) > 0 {
 		segments = append(segments, map[string]any{"type": "image", "data": map[string]string{"file": "base64://" + base64.StdEncoding.EncodeToString(img)}})
 	}
-	raw, err := s.oneBotCall(ctx, c, "send_group_msg", map[string]any{"group_id": j.GroupID, "message": segments})
+	action := "send_group_msg"
+	params := map[string]any{"group_id": j.GroupID, "message": segments}
+	if j.PrivateReply {
+		action = "send_private_msg"
+		params["user_id"] = j.MemberID
+	}
+	raw, err := s.oneBotCall(ctx, c, action, params)
 	if err != nil {
 		return nil, err
 	}

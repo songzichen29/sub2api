@@ -112,6 +112,8 @@ func (s *Service) maintenance(ctx context.Context) {
 	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_image=NULL,result_text='',payload='{}',member_nickname='',message_preview='' WHERE created_at<NOW()-INTERVAL '24 hours' AND (result_image IS NOT NULL OR result_text<>'' OR payload<>'{}'::jsonb OR member_nickname<>'' OR message_preview<>'')`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_bind_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_private_bind_sessions WHERE expires_at<NOW()`)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_binding_commands WHERE expires_at<NOW()`)
+	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='expired',error='绑定后指令排队超时，未自动重试',finished_at=NOW(),payload='{}' WHERE status='queued' AND event_type='BINDING_COMMAND_RESUME' AND created_at<NOW()-INTERVAL '5 minutes'`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_email_bind_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_transfer_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_email_limits WHERE day<CURRENT_DATE-2`)
@@ -161,6 +163,21 @@ func (s *Service) runOne(parent context.Context) {
 	}
 	if j.EventType == priceNotificationEvent || j.EventType == healthNotificationEvent {
 		s.deliverPriceNotification(ctx, c, j)
+		return
+	}
+	if j.EventType == bindingCommandEvent {
+		err = s.resumeBindingCommand(ctx, c, &j)
+		if err != nil {
+			s.finish(j, "delivery_failed", "绑定后指令处理或私聊投递失败；未自动重试："+err.Error())
+			// Never publish the private result or replay the operation. A fresh
+			// group notice only explains how to restore private delivery.
+			notice := j
+			notice.PrivateReply, notice.TransientReply = false, true
+			notice.CreatedAt = time.Now()
+			_ = s.send(ctx, c, notice, "绑定后原指令的私聊结果未确认送达，请开启群临时会话或添加机器人为好友。操作未自动重试，请先核对网站余额、抽奖记录或转账邮件，避免重复操作。", nil, 1)
+		} else {
+			s.finish(j, "completed", "")
+		}
 		return
 	}
 	var e Event
@@ -413,6 +430,47 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			return s.send(ctx, c, *j, "用法："+cmd+"；翻页："+cmd+" 页码。", nil, 1)
 		}
 	}
+	if requiresBinding(cmd) && !j.PrivateReply {
+		if cmd == "抽奖" {
+			if _, ok := lotteryDrawCount(arg); !ok {
+				return s.send(ctx, c, *j, lotteryDrawUsage, nil, 1)
+			}
+		}
+		if cmd == "转账" {
+			if arg == "" {
+				return s.send(ctx, c, *j, transferUsage, nil, 1)
+			}
+			if _, _, err := parseTransferArgs(arg); err != nil {
+				return s.send(ctx, c, *j, err.Error(), nil, 1)
+			}
+		}
+		_, err := boundUser(ctx, s.db, c.AppID, j.MemberID)
+		if errors.Is(err, sql.ErrNoRows) {
+			// Existing inactive bindings require account support, not a new code.
+			var exists bool
+			if err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM qqc_bindings WHERE app_id=$1 AND member_id=$2)`, c.AppID, j.MemberID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				return s.send(ctx, c, *j, "当前绑定账号不可用，请联系站点管理员。", nil, 1)
+			}
+			content := "/" + cmd
+			if arg != "" {
+				content += " " + arg
+			}
+			text := privateBindingSent
+			if err = s.beginPrivateBindingCommand(ctx, c, e, j, content); err != nil {
+				text = privateBindingFailed
+			}
+			// Group delivery is a small status notice, without account details.
+			notice := *j
+			notice.TransientReply = true
+			return s.send(ctx, c, notice, text, nil, 1)
+		}
+		if err != nil {
+			return err
+		}
+	}
 	text := ""
 	var img []byte
 	imageType := "image/jpeg"
@@ -517,13 +575,13 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		} else if bound {
 			text = "当前 QQ 已绑定账号。"
 		} else if err := s.beginPrivateBinding(ctx, c, e); err != nil {
-			text = "私聊消息未确认送达。请添加机器人为好友或开启群临时会话，再在群里重发 /绑定。"
+			text = privateBindingFailed
 		} else {
-			text = "已发送私聊，请在私聊提交网站绑定码；网站账号持有人还需核对 QQ 号并确认。"
+			text = privateBindingSent
 		}
 	case "签到":
 		var err error
-		text, err = s.reward(ctx, c, *j, "checkin")
+		text, err = s.checkinWithBalance(ctx, c, *j)
 		if err != nil {
 			text = "签到失败，请稍后重试。"
 		}
@@ -536,10 +594,15 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			break
 		}
 		var pending *preparedTransferEmail
-		text, pending = s.prepareTransfer(ctx, c, e, arg)
+		text, pending = s.prepareTransfer(ctx, c, e, arg, *j)
 		if pending != nil {
-			if err := s.send(ctx, c, *j, text, nil, seq); err != nil {
-				return err
+			deliveryErr := s.send(ctx, c, *j, text, nil, seq)
+			if j.PrivateReply {
+				s.deliverTransferEmail(ctx, pending)
+				return deliveryErr
+			}
+			if deliveryErr != nil {
+				return deliveryErr
 			}
 			s.deliverTransferEmail(ctx, pending)
 			return nil

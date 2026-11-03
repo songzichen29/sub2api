@@ -514,6 +514,16 @@ func (s *Service) sendFormatted(ctx context.Context, c Config, j Job, text strin
 }
 
 func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job, text string, img []byte, seq int, keyboard *messageKeyboard) error {
+	if j.PrivateReply {
+		if err := s.checkPrivateReplyBinding(ctx, c, j); err != nil {
+			return err
+		}
+		// Save the first result before delivery. Failure must not replay the
+		// original financial operation or leak a private reply into group history.
+		if _, err := s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2 WHERE id=$1`, j.ID, text); err != nil {
+			return err
+		}
+	}
 	if blocked, err := s.moderationBlocked(ctx, c, j.GroupID, j.MessageID); err != nil {
 		return err
 	} else if blocked {
@@ -536,6 +546,9 @@ func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job
 		return err
 	}
 	if j.TransientReply {
+		return nil
+	}
+	if j.PrivateReply {
 		return nil
 	}
 	if err = s.recordAutonomousReply(ctx, c, j); err != nil {
