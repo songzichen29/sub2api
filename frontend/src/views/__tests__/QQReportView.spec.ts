@@ -60,4 +60,23 @@ describe('QQ business report', () => {
     expect(view.find('[data-report-ready="true"]').exists()).toBe(false)
     view.unmount()
   })
+
+  it('reloads the report and clears the previous result when opening another link in the same tab', async () => {
+    mockReport('prices', { model: 'model-a', filter: 'pro', blocks: ['pro 分组\nUSD 0.32'] })
+    const view = mount(QQReportView, { global: { plugins: [i18n] } })
+    await flushPromises()
+    expect(view.text()).toContain('USD 0.32')
+
+    const fetcher = mockReport('usage', { models: [{ model: 'model-b', requests: 1, total_tokens: 30 }] })
+    const nextToken = 'b'.repeat(64)
+    history.replaceState(null, '', '/qq/report#' + nextToken)
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    expect(view.find('table').exists()).toBe(false)
+    await flushPromises()
+    expect(fetcher).toHaveBeenCalledWith('/api/v1/qq-bot/report', expect.objectContaining({ body: JSON.stringify({ token: nextToken }) }))
+    expect(view.text()).toContain('model-b')
+    expect(view.text()).not.toContain('USD 0.32')
+    expect((view.get('input').element as HTMLInputElement).value).toBe('')
+    view.unmount()
+  })
 })

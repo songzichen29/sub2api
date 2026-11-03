@@ -86,39 +86,52 @@ const priceBlocks = computed(() => (report.value?.data.blocks || []).filter(matc
 const passiveGroups = computed(() => (report.value?.data.report?.Groups || []).filter(item => matches(item.Name)))
 const money = (amount: number | undefined) => '$' + Number(amount || 0).toFixed(2)
 const formatTime = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
-const controller = new AbortController()
+let controller: AbortController | undefined
 const { locale } = useI18n({ useScope: 'global' })
 const previousLocale = locale.value
 const previousLanguage = document.documentElement.lang
 let expiryTimer: ReturnType<typeof setTimeout> | undefined
 onUnmounted(() => {
-  controller.abort(); clearTimeout(expiryTimer)
+  window.removeEventListener('hashchange', loadReport)
+  controller?.abort(); clearTimeout(expiryTimer)
   locale.value = previousLocale
   document.documentElement.lang = previousLanguage
 })
-onMounted(async () => {
-  const referrer = document.createElement('meta'); referrer.name = 'referrer'; referrer.content = 'no-referrer'; document.head.appendChild(referrer)
+async function loadReport() {
+  controller?.abort()
+  const request = new AbortController()
+  controller = request
+  clearTimeout(expiryTimer)
+  report.value = null; error.value = ''; ready.value = false; filter.value = ''
+  selectedMonitor.value = null; selectedQuality.value = null
   try {
     // QQ commands and report copy are Chinese. Use the same language for the
     // shared components without overwriting the visitor's saved preference.
     await loadLocaleMessages('zh')
-    if (controller.signal.aborted) return
+    if (request.signal.aborted) return
     locale.value = 'zh'
     document.documentElement.lang = 'zh'
     const token = location.hash.slice(1)
     if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('页面链接不完整，请在群里重新查询。')
-    const response = await fetch('/api/v1/qq-bot/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store', body: JSON.stringify({ token }), signal: controller.signal })
+    const response = await fetch('/api/v1/qq-bot/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store', body: JSON.stringify({ token }), signal: request.signal })
     if (!response.ok) throw new Error('页面链接已失效，请在群里重新发送查询指令。')
-    report.value = await response.json() as Report
+    const loaded = await response.json() as Report
+    if (request.signal.aborted) return
+    report.value = loaded
     filter.value = report.value!.data.filter || ''
     expiryTimer = setTimeout(() => { report.value = null; ready.value = false; error.value = '页面链接已到期，请在群里重新查询。' }, Math.max(0, new Date(report.value!.expires_at).getTime() - Date.now()))
     await nextTick()
     await document.fonts.ready
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-    ready.value = true
+    if (!request.signal.aborted) ready.value = true
   } catch (cause) {
-    if (!controller.signal.aborted) error.value = cause instanceof Error ? cause.message : '页面加载失败，请稍后重试。'
+    if (!request.signal.aborted) error.value = cause instanceof Error ? cause.message : '页面加载失败，请稍后重试。'
   }
+}
+onMounted(() => {
+  const referrer = document.createElement('meta'); referrer.name = 'referrer'; referrer.content = 'no-referrer'; document.head.appendChild(referrer)
+  window.addEventListener('hashchange', loadReport)
+  void loadReport()
 })
 </script>
 
