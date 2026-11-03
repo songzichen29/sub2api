@@ -329,8 +329,8 @@ func TestCommunityMySQL(t *testing.T) {
 		var count int
 		var amount float64
 		require.NoError(t, db.QueryRow(`SELECT COUNT(*),COALESCE(SUM(amount),0) FROM qqc_rewards WHERE kind='invite' AND user_id=990001`).Scan(&count, &amount))
-		require.Equal(t, 1, count)
-		require.InDelta(t, .3, amount, 1e-8)
+		require.Zero(t, count, "retired QQ invitation callbacks must not issue rewards")
+		require.Zero(t, amount)
 	})
 	t.Run("zero balance checkin remains valid", func(t *testing.T) {
 		cfg, err := s.CheckinConfig(ctx)
