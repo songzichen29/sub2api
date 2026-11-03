@@ -114,6 +114,8 @@
           <h2 class="text-lg font-semibold">{{ t('qqbot.ai') }}</h2>
           <label class="flex items-center gap-2"><input v-model="form.chat_disabled" type="checkbox" />{{ t('qqbot.workspace.chatDisabled') }}</label>
           <p class="text-xs text-gray-500">{{ t('qqbot.workspace.chatDisabledHelp') }}</p>
+          <label class="flex items-center gap-2"><input v-model="form.meme_enabled" type="checkbox" data-testid="meme-enabled" />{{ t('qqbot.memeEnabled') }}</label>
+          <p class="text-xs text-gray-500">{{ t('qqbot.memeHelp') }}</p>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-1">Base URL<input v-model.trim="form.base_url" class="input" placeholder="https://api.example.com/v1" /><span class="text-xs text-gray-500">{{ t('qqbot.baseHelp') }}</span></label>
             <label class="space-y-1">API Key<input v-model="form.api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.api_key_set)" /><span class="flex gap-2 text-xs"><input v-model="form.clear_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</span></label>

@@ -61,6 +61,7 @@ export interface QQBotConfig {
   notification_quiet_hours?: { enabled: boolean; start_hour: number; end_hour: number }
   section_versions?: Record<string, string>
   chat_disabled?: boolean
+  meme_enabled?: boolean
   group_policies?: QQGroupPolicy[]
   reward_alert_daily?: number
   moderation?: QQModerationConfig
@@ -217,7 +218,7 @@ export interface QQGroupInfo { app_id: string; sandbox: boolean; group_id: strin
 export interface QQNapCatLogin {
   configured: boolean; online: boolean; connected: boolean; offline: boolean; phase: string
   scan_accepted: boolean; expected_qq: string; logged_in_qq: string; account_mismatch: boolean
-  qr_code?: string; login_failed: boolean
+  qr_code?: string; login_failed: boolean; auto_recovery?: boolean
 }
 export const qqbotAPI = {
  login: async (signal?: AbortSignal) => (await apiClient.get<QQNapCatLogin>('/admin/qqbot/login', { signal, timeout: 15000 })).data,

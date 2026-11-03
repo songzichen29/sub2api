@@ -14,6 +14,8 @@
           <div><dt class="text-gray-500">{{ t('qqbot.login.state') }}</dt><dd role="status">{{ stateLabel }}</dd></div>
         </dl>
         <p v-if="status.account_mismatch" role="alert" class="text-sm text-red-600">{{ t('qqbot.login.mismatch', { qq: status.logged_in_qq }) }}</p>
+        <p v-if="status.auto_recovery" class="text-sm text-gray-600 dark:text-gray-300" data-testid="login-auto-recovery">{{ t('qqbot.login.autoRecovery') }}</p>
+        <p v-if="status.online && !status.connected && !status.account_mismatch" class="text-sm text-amber-700 dark:text-amber-300">{{ t('qqbot.login.connectionHelp') }}</p>
         <template v-if="!status.online">
           <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('qqbot.login.scanHelp') }}</p>
           <img v-if="qrImage" :src="qrImage" :alt="t('qqbot.login.qrAlt')" width="232" height="232" class="border border-gray-200 bg-white p-2" />

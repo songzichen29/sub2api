@@ -1,9 +1,13 @@
 export default { qqbot: {
+  memeEnabled: '允许聊天搜索表情包',
+  memeHelp: '小碗可按话题搜索现成表情包并发送，保留 GIF 动画；使用聊天额度，不消耗生图次数。搜索来源暂不可用时回复文字。',
   commandReplyFormat: '指令回复格式',
   commandReplyImage: '图片（优先）',
   commandReplyText: '纯文字',
   commandReplyHelp: '指令（含 /聊天）结果在服务内生成图片，长内容自动分页；链接另附文字，图片不可用时回退文字。普通聊天使用文字。',
   login: {
+    autoRecovery: '已启用自动恢复：断线后先重连；需要扫码时自动获取并定期刷新二维码，仍需在手机确认。',
+    connectionHelp: 'QQ 仍在线，正在等待 OneBot 自动重连。若长时间未恢复，请检查 NapCat 的反向 WebSocket 配置；此状态不需要重新扫码。',
     title: 'QQ 登录', refreshStatus: '刷新状态', unconfigured: '未配置 NapCat 登录连接，请在服务器配置 WebUI 地址和凭据。',
     expected: '机器人 QQ', state: '登录状态', mismatch: '当前登录 QQ 为 {qq}，与配置不一致，请核对服务器登录账号。',
     scanHelp: '使用机器人 QQ 扫描二维码，并在手机上确认登录。', qrAlt: 'NapCat QQ 登录二维码', waitQR: '正在等待二维码，可稍后刷新。',
@@ -29,6 +33,7 @@ export default { qqbot: {
     "sources": "本次提供的知识来源",
     "updated": "更新于 {time}",
     "actions": {
+      "meme_search": "表情包搜索",
       "menu": "真实帮助菜单",
       "chat": "普通回答",
       "help": "真实帮助菜单",

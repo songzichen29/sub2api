@@ -424,6 +424,10 @@ func downloadImage(ctx context.Context, rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if trustedMemeURL(rawURL) {
+		req.Header.Set("User-Agent", "Mozilla/5.0")
+		req.Header.Set("Referer", "https://fabiaoqing.com/")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err

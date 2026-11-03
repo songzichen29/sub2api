@@ -42,6 +42,7 @@ type Service struct {
 	groupInfo             groupInfoCache
 	spamSourceDiagnostics spamSourceReceptionDiagnostics
 	imageDownload         func(context.Context, string) ([]byte, error)
+	memeSearch            func(context.Context, string) ([]memeCandidate, error)
 	cancel                context.CancelFunc
 	wg                    sync.WaitGroup
 }
@@ -60,6 +61,7 @@ func (s *Service) Start() {
 	s.startPriceMonitor(ctx)
 	s.startHealthMonitor(ctx)
 	s.startGrowthMonitor(ctx)
+	s.startNapCatRecovery(ctx)
 	for i := 0; i < 2; i++ {
 		s.wg.Add(1)
 		go func() {
@@ -409,6 +411,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	}
 	text := ""
 	var img []byte
+	imageType := "image/jpeg"
 	imageEdited := false
 	seq := 1
 	progressAttempted := false
@@ -640,6 +643,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 						err = s.recordSiteQuery(ctx, j, result.Decision)
 					}
 				}
+				if err == nil && turn.Meme != nil {
+					text, img, imageType = s.resolveMemeReply(ctx, turnConfig, *turn.Meme)
+					turn.Text = text
+				}
 				if err == nil && (turn.ImagePrompt != "" || turn.ImagePlan != nil) {
 					turn, err = s.reviewImageTurn(ctx, turnConfig, j, e, prompt, input, ref, pending, turn)
 				} else if err == nil {
@@ -712,7 +719,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			return fmt.Errorf("模型调用失败：%w", err)
 		}
 		// Persist before sending to QQ. Delivery retries only reuse this saved result.
-		if _, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2,result_image=$3,image_type=$4,input_tokens=$5,output_tokens=$6,chat_execution=$7 WHERE id=$1`, j.ID, text, img, "image/jpeg", j.InputTokens, j.OutputTokens, nullableChatExecution(j.ChatExecution)); err != nil {
+		if _, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2,result_image=$3,image_type=$4,input_tokens=$5,output_tokens=$6,chat_execution=$7 WHERE id=$1`, j.ID, text, img, imageType, j.InputTokens, j.OutputTokens, nullableChatExecution(j.ChatExecution)); err != nil {
 			return errors.New("生成成功但结果保存失败；未自动重新生成")
 		}
 	}

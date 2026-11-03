@@ -49,6 +49,11 @@ func (s *Service) siteChatTurnOnce(ctx context.Context, c Config, messages []Mes
 		choice = "required"
 	}
 	tools = append(tools, chatTextToolWithPlans(c.ChatProtocol, c.ImageEnabled), siteQueryTool(c.ChatProtocol))
+	if c.MemeEnabled {
+		tools = append(tools, memeSearchTool(c.ChatProtocol))
+		instructions = strings.Replace(instructions, "本轮必须且只能选择一个操作：", "本轮必须且只能选择一个操作：search_meme（搜索现成表情包）、", 1)
+		instructions += "\n" + memeSearchInstructions
+	}
 	boundary := 0
 	for boundary < len(messages) && (messages[boundary].Role == "system" || messages[boundary].Role == "developer") {
 		boundary++
@@ -65,6 +70,14 @@ func (s *Service) siteChatTurnOnce(ctx context.Context, c Config, messages []Mes
 	turn, err := parseChatTurnWith(raw, ct, func(result chatTurnResult, calls []chatToolCall) (chatTurnResult, error) {
 		if len(calls) != 1 || calls[0].Type != "function" {
 			return result, errors.New("模型返回了不支持的工具调用")
+		}
+		if calls[0].Function.Name == memeSearchToolName {
+			if !c.MemeEnabled {
+				return result, errors.New("表情搜索尚未启用")
+			}
+			query, err := parseMemeRequest(calls[0].Function.Arguments)
+			result.Meme = query
+			return result, err
 		}
 		if calls[0].Function.Name == siteQueryToolName {
 			var query siteQuery

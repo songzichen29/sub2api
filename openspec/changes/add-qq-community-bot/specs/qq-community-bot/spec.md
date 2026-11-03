@@ -82,3 +82,17 @@ The system SHALL migrate the legacy configuration, bindings, pending binding cod
 #### Scenario: Restart after migration
 - **WHEN** initialization runs after a committed migration
 - **THEN** the configuration marker prevents repeated migration and balances remain unchanged
+
+### Requirement: Optional contextual meme search
+The system SHALL provide an administrator-controlled tool to search existing memes by a short topic or emotion. Searches SHALL use a fixed public source without sending site credentials or account identifiers. Returned images MUST come from the allowed image host, use public-IP-pinned downloads, satisfy size and format limits, and retain original GIF bytes. A meme turn SHALL use chat quota and SHALL NOT reserve image-generation quota. Failed searches SHALL return an honest text fallback.
+
+#### Scenario: Search with image generation disabled
+- **WHEN** meme search is enabled and the chat model requests an existing meme
+- **THEN** the backend searches and sends an actual image through OneBot, even if image generation is disabled
+
+### Requirement: Automatic offline login QR recovery
+The system SHALL monitor configured NapCat login state without requiring an open admin browser. It SHALL request a QR code when an idle offline login has no code, refresh stale unscanned codes with backoff, and replace codes left over after logout. It MUST NOT refresh or restart an online, scanned, initializing or reconnecting login. An online QQ account with a disconnected OneBot transport SHALL be displayed separately and MUST NOT trigger QR regeneration. QR login still requires phone confirmation.
+
+#### Scenario: Offline recovery and scan confirmation
+- **WHEN** an online bot loses its login and NapCat finishes its own reconnect attempt
+- **THEN** a fresh QR is requested and shown in the admin login panel, and subsequent phone confirmation is never interrupted by automatic refresh

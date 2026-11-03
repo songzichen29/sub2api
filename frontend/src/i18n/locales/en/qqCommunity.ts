@@ -1,9 +1,13 @@
 export default { qqbot: {
+  memeEnabled: 'Allow meme search in chat',
+  memeHelp: 'Search and send existing memes with GIF animation preserved. Uses chat quota, not image-generation quota. Falls back to text when search is unavailable.',
   commandReplyFormat: 'Command reply format',
   commandReplyImage: 'Prefer images',
   commandReplyText: 'Text only',
   commandReplyHelp: 'Commands, including /聊天, use locally rendered, paginated images. Links are also sent as text. Falls back to text when images are unavailable. Regular chat uses text.',
   login: {
+    autoRecovery: 'Automatic recovery is enabled: reconnect first; fetch and refresh a QR code when login is required. Phone confirmation is still needed.',
+    connectionHelp: 'QQ is online and waiting for OneBot to reconnect. If this persists, check the reverse WebSocket configuration in NapCat. A new QR login is not needed.',
     title: 'QQ login', refreshStatus: 'Refresh status', unconfigured: 'NapCat login is not configured. Set the WebUI URL and credentials on the server.',
     expected: 'Bot QQ', state: 'Login status', mismatch: 'Logged in as QQ {qq}, which differs from the configured account. Check the server login.',
     scanHelp: 'Scan with the bot QQ account and confirm on your phone.', qrAlt: 'NapCat QQ login QR code', waitQR: 'Waiting for a QR code. Refresh shortly.',
@@ -29,6 +33,7 @@ export default { qqbot: {
     "sources": "Knowledge sources provided for this answer",
     "updated": "Updated {time}",
     "actions": {
+      "meme_search": "Meme search",
       "menu": "Actual help menu",
       "chat": "Conversation",
       "help": "Actual help menu",

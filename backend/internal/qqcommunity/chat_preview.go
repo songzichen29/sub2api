@@ -122,6 +122,10 @@ func (s *Service) PreviewChat(ctx context.Context, req ChatPreviewRequest) (Chat
 		return out, errors.New("试问模型调用失败，请检查聊天连接及工具能力")
 	}
 	out.Action, out.Text = "chat", turn.Text
+	if turn.Meme != nil {
+		out.Action = "meme_search"
+		out.Text = "已选择搜索现成表情包：" + turn.Meme.Keyword + "。群聊会实际搜索并发送；本次试问不发送群消息。"
+	}
 	if turn.SiteQuery != nil {
 		result, queryErr := s.querySiteInfoDetailed(ctx, c, j, *turn.SiteQuery)
 		if queryErr != nil {

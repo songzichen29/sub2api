@@ -16,7 +16,7 @@ var ErrConfigConflict = errors.New("此模块已被其他页面更新，请重�
 var configSections = map[string][]string{
 	"connection":   {"enabled", "app_id", "app_secret", "sandbox", "clear_app_secret", "command_reply_format"},
 	"groups":       {"allowed_groups", "group_policies"},
-	"chat":         {"chat_disabled", "base_url", "api_key", "chat_model", "chat_protocol", "system_prompt", "max_output_tokens", "history_messages", "clear_api_key"},
+	"chat":         {"chat_disabled", "meme_enabled", "base_url", "api_key", "chat_model", "chat_protocol", "system_prompt", "max_output_tokens", "history_messages", "clear_api_key"},
 	"knowledge":    {"site_knowledge"},
 	"images":       {"image_enabled", "image_base_url", "image_api_key", "image_model", "image_size", "clear_image_api_key"},
 	"group-admins": {"group_admins"}, "moderation": {"moderation"}, "autonomous": {"autonomous"},

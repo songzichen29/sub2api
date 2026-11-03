@@ -23,6 +23,7 @@ const chatActionInstructions = `默认使用 reply_text 文字回答。闲聊、
 
 type chatTurnResult struct {
 	Text           string
+	Meme           *memeRequest
 	SiteQuery      *siteQuery
 	ImagePlan      *pendingImagePlan
 	ImagePrompt    string

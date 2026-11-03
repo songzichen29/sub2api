@@ -27,6 +27,7 @@ type NapCatLoginStatus struct {
 	Mismatch     bool   `json:"account_mismatch"`
 	QRCode       string `json:"qr_code,omitempty"`
 	LoginFailed  bool   `json:"login_failed"`
+	AutoRecovery bool   `json:"auto_recovery"`
 }
 
 type napcatLoginClient struct {
@@ -37,6 +38,10 @@ type napcatLoginClient struct {
 	credential  string
 	validUntil  time.Time
 	lastRefresh time.Time
+	lastQRCode  string
+	qrObserved  time.Time
+	wasOnline   bool
+	recoverQR   bool
 }
 
 // ConfigureNapCatLogin only accepts the operator's fixed server configuration.
@@ -149,6 +154,7 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 		return result, nil
 	}
 	result.Configured = true
+	result.AutoRecovery = c.Enabled
 	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 	n.mu.Lock()
@@ -205,4 +211,68 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 		result.Mismatch = result.LoggedInQQ != c.AppID
 	}
 	return result, nil
+}
+
+// NapCat owns quick-login and reverse-WebSocket reconnects. Only request a QR
+// after its login flow is idle: a broken OneBot socket alone is not a logout.
+func (s *Service) startNapCatRecovery(ctx context.Context) {
+	if s.napcatLogin == nil {
+		return
+	}
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		ticker := time.NewTicker(15 * time.Second)
+		defer ticker.Stop()
+		for {
+			s.recoverNapCatLogin(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+}
+
+func (s *Service) recoverNapCatLogin(ctx context.Context) {
+	status, err := s.NapCatLogin(ctx, false)
+	if err != nil || !status.AutoRecovery {
+		return
+	}
+	if !s.napcatLogin.shouldRefreshQR(*status, time.Now()) {
+		return
+	}
+	// NapCatLogin re-reads the actual login status while holding the same client
+	// lock, so a scan or successful login racing this check is still protected.
+	if _, err := s.NapCatLogin(ctx, true); err == nil {
+		s.napcatLogin.mu.Lock()
+		s.napcatLogin.recoverQR = false
+		s.napcatLogin.mu.Unlock()
+	}
+}
+
+func (n *napcatLoginClient) shouldRefreshQR(status NapCatLoginStatus, now time.Time) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.wasOnline && !status.Online {
+		n.recoverQR = true
+	}
+	n.wasOnline = status.Online
+	if status.Online {
+		n.recoverQR, n.lastQRCode, n.qrObserved = false, "", time.Time{}
+		return false
+	}
+	if status.ScanAccepted || status.Phase == "initializing" || status.Phase == "reconnecting" {
+		return false
+	}
+	if status.QRCode != n.lastQRCode || n.qrObserved.IsZero() {
+		n.lastQRCode, n.qrObserved = status.QRCode, now
+	}
+	if now.Sub(n.lastRefresh) < 30*time.Second {
+		return false
+	}
+	// Refresh stable, unscanned QR codes periodically instead of leaving an
+	// expired code on screen indefinitely. Back off requests when no QR exists.
+	return n.recoverQR || status.QRCode == "" || (now.Sub(n.qrObserved) >= 110*time.Second && now.Sub(n.lastRefresh) >= 110*time.Second)
 }

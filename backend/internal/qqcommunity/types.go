@@ -15,6 +15,7 @@ type Config struct {
 	NotificationQuietHours   QuietHours               `json:"notification_quiet_hours"`
 	SectionVersions          map[string]string        `json:"section_versions,omitempty"`
 	ChatDisabled             bool                     `json:"chat_disabled"`
+	MemeEnabled              bool                     `json:"meme_enabled"`
 	GroupPolicies            []GroupPolicy            `json:"group_policies"`
 	RewardAlertDaily         float64                  `json:"reward_alert_daily"`
 	Moderation               ModerationConfig         `json:"moderation"`
