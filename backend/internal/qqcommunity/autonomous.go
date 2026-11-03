@@ -31,13 +31,19 @@ type AutonomousConfig struct {
 	FollowupSeconds       int      `json:"followup_seconds"`
 	MaxChars              int      `json:"max_chars"`
 	MentionUser           bool     `json:"mention_user"`
+	MediaEnabled          bool     `json:"media_enabled"`
+	MediaSamplePercent    int      `json:"media_sample_percent"`
+	MediaDailyCalls       int      `json:"media_daily_calls"`
 }
 
 func DefaultAutonomousConfig() AutonomousConfig {
-	return AutonomousConfig{Groups: []string{}, Names: []string{"CTAV"}, Topics: []string{}, SamplePercent: 15, CooldownSeconds: 120, MinMessages: 6, MemberCooldownSeconds: 600, HourlyReplies: 3, DailyReplies: 20, DailyCalls: 40, StartHour: 9, EndHour: 23, FollowupSeconds: 60, MaxChars: 100}
+	return AutonomousConfig{Groups: []string{}, Names: []string{"CTAV"}, Topics: []string{}, SamplePercent: 15, CooldownSeconds: 120, MinMessages: 6, MemberCooldownSeconds: 600, HourlyReplies: 3, DailyReplies: 20, DailyCalls: 40, StartHour: 9, EndHour: 23, FollowupSeconds: 60, MaxChars: 100, MediaSamplePercent: 10, MediaDailyCalls: 100}
 }
 func validateAutonomous(c Config) error {
 	a := c.Autonomous
+	if a.MediaSamplePercent < 0 || a.MediaSamplePercent > 100 || a.MediaDailyCalls < 0 || a.MediaDailyCalls > 2000 {
+		return errors.New("图片表情接话抽样率或每日识别上限超出范围")
+	}
 	for _, v := range []struct{ n, min, max int }{{a.SamplePercent, 0, 100}, {a.CooldownSeconds, 5, 3600}, {a.MinMessages, 0, 100}, {a.MemberCooldownSeconds, 0, 86400}, {a.HourlyReplies, 0, 100}, {a.DailyReplies, 0, 1000}, {a.DailyCalls, 0, 2000}, {a.StartHour, 0, 23}, {a.EndHour, 0, 23}, {a.FollowupSeconds, 0, 120}, {a.MaxChars, 20, 300}} {
 		if v.n < v.min || v.n > v.max {
 			return errors.New("自主接话参数超出范围")
@@ -244,7 +250,8 @@ func (s *Service) routeAutonomous(ctx context.Context, c Config, p Payload, e Ev
 	if n == 0 {
 		return nil
 	}
-	text, skip := autonomousText(e, c.CustomCommands...)
+	text, skip := autonomousCandidate(e, c.CustomCommands...)
+	media := autonomousMedia(e)
 	named := botNameCall(c.Autonomous, e)
 	if named {
 		// A configured name explicitly addresses the bot, even in a short message,
@@ -254,6 +261,9 @@ func (s *Service) routeAutonomous(ctx context.Context, c Config, p Payload, e Ev
 	valid := skip == ""
 	hash := codeHash(strings.ToLower(strings.Join(strings.Fields(text), "")))
 	duplicate := valid && st.TextHash == hash && st.LastMessage.Valid && time.Since(st.LastMessage.Time) < 5*time.Minute
+	if !media && st.LastMessage.Valid && time.Since(st.LastMessage.Time) > 5*time.Second {
+		duplicate = false
+	}
 	increment := 0
 	if valid && !duplicate {
 		increment = 1
@@ -277,8 +287,24 @@ func (s *Service) routeAutonomous(ctx context.Context, c Config, p Payload, e Ev
 	if skip != "" {
 		return finish(skip)
 	}
+	if media && !named && !c.Autonomous.MediaEnabled {
+		return finish("media_disabled")
+	}
 	if duplicate && !named {
 		return finish("repeat")
+	}
+	if media && !named {
+		res, err := tx.ExecContext(ctx, `INSERT INTO qqc_autonomous_seen(app_id,group_id,message_id) VALUES($1,$2,$3) ON CONFLICT(app_id,group_id,message_id) DO UPDATE SET created_at=clock_timestamp() WHERE qqc_autonomous_seen.created_at<clock_timestamp()-INTERVAL '5 minutes'`, c.AppID, e.GroupID, "media:"+hash)
+		if err != nil {
+			return err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return finish("repeat")
+		}
 	}
 	trigger := ""
 	if named {
@@ -290,13 +316,24 @@ func (s *Service) routeAutonomous(ctx context.Context, c Config, p Payload, e Ev
 		if c.Autonomous.DailyCalls == 0 || c.Autonomous.DailyReplies == 0 || c.Autonomous.HourlyReplies == 0 || c.TotalDailyChatLimit == 0 {
 			return finish("disabled_quota")
 		}
-		if c.HistoryMessages > 0 && st.LastReply.Valid && time.Since(st.LastReply.Time) <= time.Duration(c.Autonomous.FollowupSeconds)*time.Second && st.ReplyMember == e.Author.MemberID && (st.ReplyKind == "chat" || st.ReplyKind == "ambient_chat") && st.ReplyTrigger != "followup" && st.ReplyTrigger != "followup_claimed" && followupText(text) {
+		if media {
+			if st.Messages+int64(increment)-st.ReplyCounter < int64(c.Autonomous.MinMessages) {
+				return finish("message_gap")
+			}
+			if c.Autonomous.MediaDailyCalls == 0 {
+				return finish("media_limit")
+			}
+			mediaConfig := c
+			mediaConfig.Autonomous.SamplePercent = c.Autonomous.MediaSamplePercent
+			if !sampledMessage(mediaConfig, e) {
+				return finish("media_not_sampled")
+			}
+			trigger = "media"
+		}
+		if !media && c.HistoryMessages > 0 && st.LastReply.Valid && time.Since(st.LastReply.Time) <= time.Duration(c.Autonomous.FollowupSeconds)*time.Second && st.ReplyMember == e.Author.MemberID && (st.ReplyKind == "chat" || st.ReplyKind == "ambient_chat") && st.ReplyTrigger != "followup" && st.ReplyTrigger != "followup_claimed" && followupText(text) {
 			trigger = "followup"
 		}
 		if trigger == "" {
-			if st.LastReply.Valid && time.Since(st.LastReply.Time) < time.Duration(c.Autonomous.CooldownSeconds)*time.Second {
-				return finish("group_cooldown")
-			}
 			if st.Messages+int64(increment)-st.ReplyCounter < int64(c.Autonomous.MinMessages) {
 				return finish("message_gap")
 			}
@@ -315,17 +352,13 @@ func (s *Service) routeAutonomous(ctx context.Context, c Config, p Payload, e Ev
 				}
 			}
 		}
-		// Candidate pacing must permit a configured five-second conversation.
-		// Keep the existing ten-second cap for quieter configurations.
-		if trigger != "followup" && st.LastCandidate.Valid && time.Since(st.LastCandidate.Time) < time.Duration(min(10, c.Autonomous.CooldownSeconds))*time.Second {
-			return finish("candidate_cooldown")
-		}
+		// Workers wait for cooldown; retain a bounded queue during generation.
 	}
 	var pending, total int
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_jobs WHERE app_id=$1 AND group_id=$2 AND kind='ambient_chat' AND status IN ('queued','running')`, c.AppID, e.GroupID).Scan(&pending); err != nil {
 		return err
 	}
-	if trigger != "name" && pending > 0 {
+	if trigger != "name" && pending >= 3 {
 		return finish("pending")
 	}
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_jobs WHERE status='queued'`).Scan(&total); err != nil {
@@ -391,6 +424,9 @@ func (s *Service) reserveAutonomous(ctx context.Context, c Config, j Job, sendin
 	if c.Autonomous.DailyCalls == 0 || c.TotalDailyChatLimit == 0 {
 		return c, "disabled_quota", nil
 	}
+	if j.TriggerReason == "media" && (!c.Autonomous.MediaEnabled || c.Autonomous.MediaDailyCalls == 0) {
+		return c, "media_disabled", nil
+	}
 	if time.Since(j.CreatedAt) > 45*time.Second {
 		return c, "stale", nil
 	}
@@ -412,9 +448,8 @@ func (s *Service) reserveAutonomous(ctx context.Context, c Config, j Job, sendin
 		if st.LastReply.Valid && time.Since(st.LastReply.Time) < time.Duration(c.Autonomous.CooldownSeconds)*time.Second {
 			return c, "group_cooldown", nil
 		}
-		if st.Messages-st.ReplyCounter < int64(c.Autonomous.MinMessages) {
-			return c, "message_gap", nil
-		}
+		// Gap eligibility was checked before enqueueing. A preceding answer
+		// cannot consume messages already queued during its generation.
 	}
 	if sending && len([]rune(j.ResultText)) > c.Autonomous.MaxChars {
 		return c, "length_changed", nil
@@ -456,6 +491,14 @@ func (s *Service) reserveAutonomous(ctx context.Context, c Config, j Job, sendin
 		}
 		if n != 1 {
 			return c, "already_reserved", nil
+		}
+		if j.TriggerReason == "media" {
+			if err = reserveCounter(ctx, tx, c.AppID, "group:"+j.GroupID, "ambient_media", c.Autonomous.MediaDailyCalls); err != nil {
+				if errors.Is(err, errUsageLimit) {
+					return c, "media_limit", nil
+				}
+				return c, "", err
+			}
 		}
 		if err = reserveCounter(ctx, tx, c.AppID, "group:"+j.GroupID, "ambient_chat", c.Autonomous.DailyCalls); err != nil {
 			if errors.Is(err, errUsageLimit) {
@@ -521,40 +564,91 @@ func (s *Service) autonomousMessage(ctx context.Context, c Config, j *Job, e Eve
 	}
 	c = current
 	if reason != "" {
+		if reason == "group_cooldown" || reason == "member_cooldown" {
+			// Requeue before reserving any model quota. started_at doubles as
+			// a not-before timestamp only while the job is queued.
+			_, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='queued',started_at=clock_timestamp()+INTERVAL '1 second',decision_reason='waiting_cooldown' WHERE id=$1 AND status='running' AND model_reserved_at IS NULL`, j.ID)
+			if err == nil {
+				j.Status = "queued"
+			}
+			return err
+		}
 		j.Status = "skipped"
 		return s.autonomousDecision(ctx, j, reason)
 	}
+	media := j.TriggerReason == "media"
+	input := Message{Role: "user", Content: e.Content}
+	marker := ""
+	if media {
+		readCtx, done := context.WithTimeout(ctx, 8*time.Second)
+		input, marker, err = s.autonomousMediaInput(readCtx, e)
+		done()
+		if err != nil {
+			j.Status = "skipped"
+			return s.autonomousDecision(ctx, j, "media_read_failed")
+		}
+	}
+	// Autonomous chatter does not use account tools or the full site manual.
+	// Retain persona/speaker context while reducing prompt and upstream delay.
+	historyConfig := c
+	historyConfig.SiteKnowledge = SiteKnowledgeConfig{}
+	historyConfig.HistoryMessages = min(c.HistoryMessages, 6)
 	var msgs []Message
 	if j.TriggerReason == "followup" {
-		msgs = s.history(ctx, c, *j)
+		msgs = s.history(ctx, historyConfig, *j)
 	} else {
-		msgs = s.sharedHistory(ctx, c, *j)
+		msgs = s.sharedHistory(ctx, historyConfig, *j)
 	}
-	msgs = append(msgs, Message{Role: "system", Content: autonomousInstructions + fmt.Sprintf("回复不超过 %d 字。话题偏好仅作为参考：%s。", c.Autonomous.MaxChars, strings.Join(c.Autonomous.Topics, "、"))}, groupUserMessage(c, e, Message{Content: e.Content}))
+	instructions := autonomousInstructions + fmt.Sprintf("回复不超过 %d 字。", c.Autonomous.MaxChars)
+	if media {
+		instructions = mediaModelInstructions(c.Autonomous.MaxChars)
+	}
+	msgs = append(msgs, Message{Role: "system", Content: instructions}, groupUserMessage(c, e, input))
 	modelCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	c.MaxOutputTokens = min(c.MaxOutputTokens, 512)
+	c.MaxOutputTokens = min(c.MaxOutputTokens, 384)
+	if media {
+		c.MaxOutputTokens = min(current.MaxOutputTokens, 512)
+	}
 	raw, in, out, err := s.chat(modelCtx, c, msgs)
 	j.InputTokens, j.OutputTokens = in, out
 	if err != nil {
+		if media {
+			j.Status = "skipped"
+			return s.autonomousDecision(ctx, j, "vision_unavailable")
+		}
 		j.Error = err.Error()
 		_ = s.autonomousDecision(ctx, j, "model_error")
 		return err
 	}
-	text, err := parseAutonomousReply(raw, c.Autonomous.MaxChars)
+	var text string
+	var img []byte
+	imageType, successReason := "", "replied"
+	if media {
+		var reply autonomousMediaResult
+		reply, err = s.resolveAutonomousMedia(ctx, c, raw, marker)
+		text, img, imageType, successReason = reply.Text, reply.Image, reply.ImageType, reply.Reason
+		if err == nil && text == "" && len(img) == 0 {
+			j.Status = "skipped"
+			return s.autonomousDecision(ctx, j, reply.Reason)
+		}
+	} else {
+		text, err = parseAutonomousReply(raw, c.Autonomous.MaxChars)
+	}
 	if err != nil {
 		j.Error = err.Error()
 		_ = s.autonomousDecision(ctx, j, "invalid_output")
 		return err
 	}
-	if text == "" {
+	if text == "" && len(img) == 0 {
 		j.Status = "skipped"
 		return s.autonomousDecision(ctx, j, "model_skip")
 	}
-	if _, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2,input_tokens=$3,output_tokens=$4 WHERE id=$1`, j.ID, text, in, out); err != nil {
+	if _, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2,input_tokens=$3,output_tokens=$4,result_image=$5,image_type=$6 WHERE id=$1`, j.ID, text, in, out, img, imageType); err != nil {
 		return err
 	}
 	j.ResultText = text
+	j.Image, j.ImageType = img, imageType
 	c, reason, err = s.reserveAutonomous(ctx, c, *j, true)
 	if err != nil {
 		return err
@@ -571,11 +665,11 @@ func (s *Service) autonomousMessage(ctx context.Context, c Config, j *Job, e Eve
 	}
 	sendCtx, sendCancel := context.WithTimeout(ctx, 15*time.Second)
 	defer sendCancel()
-	if err = s.send(sendCtx, c, *j, text, nil, 1); err != nil {
+	if err = s.send(sendCtx, c, *j, text, img, 1); err != nil {
 		_ = s.autonomousDecision(ctx, j, "send_error")
 		return err
 	}
-	return s.autonomousDecision(ctx, j, "replied")
+	return s.autonomousDecision(ctx, j, successReason)
 }
 func (s *Service) recordAutonomousReply(ctx context.Context, c Config, j Job) error {
 	if s.db == nil || !c.autonomousGroup(j.GroupID) {
@@ -609,7 +703,7 @@ type AutonomousStat struct {
 }
 
 func (s *Service) autonomousStats(ctx context.Context, c Config) ([]AutonomousStat, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT group_id,reason,count FROM qqc_autonomous_decisions WHERE app_id=$1 AND day=$2 UNION ALL SELECT substring(scope from 7),'model_calls',count FROM qqc_daily_usage WHERE app_id=$1 AND kind='ambient_chat' AND day=$2 AND scope LIKE 'group:%' UNION ALL SELECT group_id,'sent',COUNT(*) FROM qqc_jobs WHERE app_id=$1 AND kind='ambient_chat' AND (reply_sent_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date GROUP BY group_id ORDER BY 1,2`, c.AppID, day(time.Now()))
+	rows, err := s.db.QueryContext(ctx, `SELECT group_id,reason,count FROM qqc_autonomous_decisions WHERE app_id=$1 AND day=$2 UNION ALL SELECT substring(scope from 7),'model_calls',count FROM qqc_daily_usage WHERE app_id=$1 AND kind='ambient_chat' AND day=$2 AND scope LIKE 'group:%' UNION ALL SELECT substring(scope from 7),'media_recognitions',count FROM qqc_daily_usage WHERE app_id=$1 AND kind='ambient_media' AND day=$2 AND scope LIKE 'group:%' UNION ALL SELECT group_id,'sent',COUNT(*) FROM qqc_jobs WHERE app_id=$1 AND kind='ambient_chat' AND (reply_sent_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date GROUP BY group_id ORDER BY 1,2`, c.AppID, day(time.Now()))
 	if err != nil {
 		return nil, err
 	}

@@ -350,6 +350,8 @@ func (s *Service) claimJob(ctx context.Context) (Job, error) {
 	// members wait for a slow model call. The transaction lock and global cap
 	// above apply across service instances; notification pacing stays separate.
 	j, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM qqc_jobs q WHERE status='queued'
+ AND (q.started_at IS NULL OR q.started_at<=NOW())
+ AND (q.kind<>'ambient_chat' OR NOT EXISTS(SELECT 1 FROM qqc_jobs a WHERE a.app_id=q.app_id AND a.group_id=q.group_id AND a.kind='ambient_chat' AND a.status='running'))
  AND (event_type NOT IN ('PRICE_CHANGE_NOTIFICATION','HEALTH_CHANGE_NOTIFICATION','RANKING_REWARD_NOTIFICATION') OR (
    NOT EXISTS(SELECT 1 FROM qqc_jobs p WHERE p.app_id=q.app_id AND p.event_type IN ('PRICE_CHANGE_NOTIFICATION','HEALTH_CHANGE_NOTIFICATION','RANKING_REWARD_NOTIFICATION') AND p.status='running')
    AND NOT EXISTS(SELECT 1 FROM qqc_jobs p WHERE p.app_id=q.app_id AND p.event_type IN ('PRICE_CHANGE_NOTIFICATION','HEALTH_CHANGE_NOTIFICATION','RANKING_REWARD_NOTIFICATION') AND p.started_at>NOW()-INTERVAL '3100 milliseconds')
@@ -361,6 +363,7 @@ func (s *Service) claimJob(ctx context.Context) (Job, error) {
 	if _, err = tx.ExecContext(ctx, `UPDATE qqc_jobs SET status='running',started_at=NOW() WHERE id=$1`, j.ID); err != nil {
 		return j, err
 	}
+	j.Status = "running"
 	return j, tx.Commit()
 }
 

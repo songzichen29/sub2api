@@ -307,13 +307,10 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 				if id == c.AppID {
 					kind = groupAtMessageCreate
 				}
-			case "image":
-				u := obValue(seg.Data["url"])
-				if u != "" {
-					e.Attachments = append(e.Attachments, Attachment{URL: u, ContentType: "image/jpeg"})
-				}
 			case "reply":
 				e.MessageReference.MessageID = obValue(seg.Data["id"])
+			default:
+				appendOneBotMedia(&e, seg)
 			}
 		}
 		e.Content = strings.TrimSpace(text.String())
@@ -327,7 +324,7 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 		if strings.HasPrefix(e.Content, "/画图 ") {
 			e.Content = "/生图 " + strings.TrimSpace(strings.TrimPrefix(e.Content, "/画图"))
 		}
-		if cmd == "" && arg == "" && e.Content == "" && len(e.Attachments) == 0 {
+		if cmd == "" && arg == "" && e.Content == "" && len(e.Attachments) == 0 && len(e.Faces) == 0 && !e.UnsupportedMedia {
 			return nil
 		}
 	} else {

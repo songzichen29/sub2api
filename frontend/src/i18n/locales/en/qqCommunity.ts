@@ -382,6 +382,11 @@ export default { qqbot: {
   "recoveryHelp": "Recovery requires errors at or below the recovery threshold and first-token latency below 80% of the failure threshold. Recovery bypasses cooldown. Each incident alerts once. Settings changes restart observation and cancel queued notices."
 },
   autonomous: {
+  media_enabled: "Autonomous image and sticker replies",
+  media_sample_percent: "Image and sticker sampling (%)",
+  media_daily_calls: "Daily image and sticker recognition limit per group",
+  mediaHelp: "Off by default with 10% sampling. Uses allowed groups, active hours, cooldowns and chat quotas. Prefer an existing meme, a short text or silence. Images require vision in the current chat model; unreadable or unsupported input is skipped silently. GIFs use a few frames. No image generation. A daily limit of zero disables media interjections.",
+
   "title": "Autonomous group replies",
   "help": "Join questions and casual conversation without a mention. Disabled by default; select allowed groups explicitly. A configured bot name anywhere in a message triggers normal chat, including messages containing only the name. English names are case-insensitive. Other meaningful text is sampled for model decisions. Group cooldown supports five seconds, and the model prioritizes natural participation. Keep NapCat connected and reporting group messages.",
   "enabled": "Enable autonomous replies",
@@ -405,6 +410,19 @@ export default { qqbot: {
   "records": "Recent autonomous decisions (among the latest 50 bot jobs)",
   "empty": "No records yet",
   "reasons": {
+    "media": "Image or sticker",
+    "media_recognitions": "Image and sticker recognitions",
+    "candidate_media": "Sampled image or sticker candidate",
+    "media_disabled": "Media interjections disabled",
+    "media_not_sampled": "Media not sampled",
+    "media_unrecognized": "Unknown sticker or message type",
+    "media_limit": "Group media recognition limit reached",
+    "media_read_failed": "Image read or decode failed; skipped silently",
+    "vision_unavailable": "Vision unavailable or verification failed; skipped silently",
+    "meme_search_failed": "Meme search failed; skipped silently",
+    "meme_text_fallback": "Meme unavailable; sent short text",
+    "meme_sent": "Existing meme sent",
+    "waiting_cooldown": "Waiting for cooldown before processing",
     "config_changed": "Configuration changed; cancelled",
     "cancelled": "Cancelled",
     "length_changed": "Reply length limit reduced",

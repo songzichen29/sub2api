@@ -109,6 +109,8 @@ type Event struct {
 	Timestamp        json.RawMessage  `json:"timestamp"`
 	Mentions         []Mention        `json:"mentions"`
 	Attachments      []Attachment     `json:"attachments"`
+	Faces            []string         `json:"faces,omitempty"`
+	UnsupportedMedia bool             `json:"unsupported_media,omitempty"`
 	MessageScene     MessageScene     `json:"message_scene"`
 	MessageType      int              `json:"message_type"`
 	MsgElements      []MessageElement `json:"msg_elements"`
@@ -127,6 +129,7 @@ type Event struct {
 	JoinRequestID string `json:"join_request_id"`
 }
 type Attachment struct {
+	FileID      string `json:"file_id,omitempty"`
 	URL         string `json:"url"`
 	ContentType string `json:"content_type"`
 	Size        int64  `json:"size"`

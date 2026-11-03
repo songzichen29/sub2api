@@ -154,6 +154,16 @@ describe('QQ module settings', () => {
   await w.get('form').trigger('submit'); await flushPromises()
   expect(server.autonomous).toMatchObject({ enabled: false, groups: [], sample_percent: 5, daily_calls: 15, daily_replies: 8 })
  })
+ it('saves image interjection controls independently of image generation', async () => {
+  const w = await mountView(); await category(w, '对话与指令')
+  expect((w.get('[data-testid="autonomous-media_enabled"]').element as HTMLInputElement).checked).toBe(false)
+  expect((w.get('[data-testid="autonomous-media_sample_percent"]').element as HTMLInputElement).value).toBe('10')
+  await w.get('[data-testid="autonomous-media_enabled"]').setValue(true)
+  await w.get('[data-testid="autonomous-media_daily_calls"]').setValue(50)
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(server.autonomous).toMatchObject({ media_enabled: true, media_sample_percent: 10, media_daily_calls: 50 })
+  expect(server.image_enabled).toBe(false)
+ })
  it('saves five-second group and member cooldowns for conversation', async () => {
   const w = await mountView(); await category(w, '对话与指令')
   await w.get('[data-testid="autonomous-cooldown_seconds"]').setValue(5)

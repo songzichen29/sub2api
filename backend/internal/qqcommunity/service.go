@@ -207,6 +207,9 @@ func (s *Service) runOne(parent context.Context) {
 	} else {
 		err = s.message(ctx, c, &j, e)
 	}
+	if err == nil && j.Status == "queued" {
+		return
+	}
 	if err != nil {
 		status := "delivery_failed"
 		if j.Error != "" {
@@ -395,7 +398,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	if cmd == "" && addressed && !hasImages && parts == "" && len(attachments) == 0 && e.referenceID() == "" {
 		cmd = naturalAccountCommand(e.Content)
 	}
-	if strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), "")) == "" && !hasImages && parts == "" && e.referenceID() == "" {
+	if strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), "")) == "" && !hasImages && parts == "" && len(e.Faces) == 0 && !e.UnsupportedMedia && e.referenceID() == "" {
 		cmd = "帮助"
 	}
 	j.CommandReply = cmd != "" || e.CommandReply

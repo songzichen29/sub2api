@@ -124,6 +124,11 @@ func (s *Service) chatMessageWithImageProgress(ctx context.Context, c Config, e 
 		prompt = "【引用提示】未找到被引用消息的内容，不要猜测；需要时请用户重新发送。\n\n" + prompt
 	}
 	message := Message{Role: "user", Content: prompt}
+	for _, id := range e.Faces {
+		if name := qqFaceNames[id]; name != "" {
+			message.Content += "\nQQ内置表情：" + name
+		}
+	}
 	images := imageAttachments(attachments)
 	if len(images) > maxInputImages {
 		return Message{}, errors.New("每条消息最多支持 4 张图片，请分开发送。")

@@ -17,7 +17,16 @@ func TestAutonomousConfigDefaultsAndValidation(t *testing.T) {
 	require.Zero(t, c.Autonomous.DailyCalls)
 	c = DefaultConfig()
 	require.False(t, c.Autonomous.Enabled)
+	require.False(t, c.Autonomous.MediaEnabled)
+	require.Equal(t, 10, c.Autonomous.MediaSamplePercent)
+	require.Equal(t, 100, c.Autonomous.MediaDailyCalls)
 	require.NoError(t, validateAutonomous(c))
+	c.Autonomous.MediaSamplePercent = 101
+	require.Error(t, validateAutonomous(c))
+	c.Autonomous.MediaSamplePercent = 10
+	c.Autonomous.MediaDailyCalls = -1
+	require.Error(t, validateAutonomous(c))
+	c.Autonomous.MediaDailyCalls = 100
 	c.Autonomous.Enabled = true
 	require.Error(t, validateAutonomous(c))
 	c.Autonomous.Groups = []string{"group"}

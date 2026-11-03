@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func autonomousConversationFixture(t *testing.T) (*Service, sqlmock.Sqlmock, Config) {
+func autonomousConversationFixture(t *testing.T, configure ...func(*Config)) (*Service, sqlmock.Sqlmock, Config) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -21,6 +21,9 @@ func autonomousConversationFixture(t *testing.T) (*Service, sqlmock.Sqlmock, Con
 	c.Autonomous.CooldownSeconds, c.Autonomous.MemberCooldownSeconds = 5, 5
 	c.Autonomous.MinMessages, c.Autonomous.SamplePercent = 1, 100
 	c.Autonomous.StartHour, c.Autonomous.EndHour = 0, 0
+	for _, fn := range configure {
+		fn(&c)
+	}
 	raw, err := json.Marshal(c)
 	require.NoError(t, err)
 	mock.ExpectBegin()

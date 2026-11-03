@@ -104,3 +104,30 @@ The system SHALL monitor configured NapCat login state without requiring an open
 #### Scenario: Offline recovery and scan confirmation
 - **WHEN** an online bot loses its login and NapCat finishes its own reconnect attempt
 - **THEN** a fresh QR is requested and shown in the admin login panel, and subsequent phone confirmation is never interrupted by automatic refresh
+
+
+### Requirement: Sampled autonomous image and sticker participation
+The system SHALL recognize ordinary image, GIF, QQ face and market-sticker events without a mention when the media-interjection switch is enabled. It SHALL sample media independently at a default 10%, enforce a per-group daily recognition budget, and retain existing allowed groups, hours, cooldowns and chat/reply quotas. Explicit mentions and name calls SHALL retain the normal chat path. Autonomous media SHALL never invoke image generation.
+
+#### Scenario: Unreadable or unverified visual input
+- **WHEN** an image cannot be downloaded or decoded, its contents are unclear, or the chat model cannot return an image-only random verification value
+- **THEN** the bot silently skips and records the reason instead of inventing image contents
+
+#### Scenario: Existing meme response
+- **WHEN** the model understands a sampled image or a reliably mapped QQ face and selects a contextual existing meme
+- **THEN** the bot searches the existing trusted source and sends original image/GIF bytes with a confirmed receipt; failed search uses optional short text or silence without a repeated search-failure notice
+
+#### Scenario: Limited animation evidence
+- **WHEN** a GIF is analyzed
+- **THEN** bounded decoding supplies a few keyframes or one static frame and explicitly limits the model's claims about the full animation
+
+#### Scenario: Repeated stickers and concurrent media budgets
+- **WHEN** the same stable sticker is resent or concurrent recognition attempts reach the daily group cap
+- **THEN** persistent duplicate suppression and atomic quota reservations prevent extra recognition calls
+
+### Requirement: Bounded queue for ongoing conversation
+The system SHALL retain up to three autonomous jobs per group during generation and cooldown, serializing autonomous model work per group while preserving other groups and explicit command priority. Deferred jobs SHALL reserve no model quota until eligible and SHALL expire within the existing 45-second freshness bound.
+
+#### Scenario: Follow-up arrives before the previous answer completes
+- **WHEN** a new eligible question arrives while one autonomous reply is running
+- **THEN** it remains queued, waits for applicable cooldown, and is not discarded solely because the prior answer advanced the message counter

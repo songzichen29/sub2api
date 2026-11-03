@@ -132,6 +132,11 @@ func (s *Service) recordGroupEvent(ctx context.Context, c Config, e Event) error
 		text += "\n" + parts
 	}
 	text = limitText(text, 1100)
+	for _, id := range e.Faces {
+		if name := qqFaceNames[id]; name != "" {
+			text += "\nQQ内置表情：" + name
+		}
+	}
 	if e.referenceID() != "" {
 		text += "\n（引用正文仅供该次请求使用。）"
 	}

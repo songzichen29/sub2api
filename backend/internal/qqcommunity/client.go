@@ -575,8 +575,18 @@ func (s *Service) Probe(ctx context.Context, kind string) (string, error) {
 		return "图片编辑接口测试成功（已调用付费接口，不发送到群）。", err
 	}
 	if kind == "vision" {
-		result, _, _, err := s.chat(ctx, c, []Message{{Role: "user", Content: "Describe the color and shape in this image in one short sentence.", Images: []string{probeImage()}}})
-		return "视觉请求已完成，请核对回答是否识别蓝色方块：" + limitText(result, 250), err
+		marker, expected, err := visualMarker()
+		if err != nil {
+			return "", err
+		}
+		result, _, _, err := s.chat(ctx, c, []Message{{Role: "user", Content: "Read the characters in the attached image. Return only those characters, without any other text.", Images: []string{marker}}})
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(result) != expected {
+			return "", errors.New("视觉识别校验未通过；当前模型可能未接收图片，请检查模型与网关")
+		}
+		return "视觉识别校验通过（随机图片字符识别成功，未发送群消息）。", nil
 	}
 	if kind == "tools" {
 		c.ImageEnabled = true

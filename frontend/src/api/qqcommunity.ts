@@ -37,11 +37,13 @@ export interface QQAutonomousConfig {
   sample_percent: number; cooldown_seconds: number; min_messages: number
   member_cooldown_seconds: number; hourly_replies: number; daily_replies: number; daily_calls: number
   start_hour: number; end_hour: number; followup_seconds: number; max_chars: number; mention_user: boolean
+  media_enabled: boolean; media_sample_percent: number; media_daily_calls: number
 }
 export function defaultAutonomousConfig(): QQAutonomousConfig {
   return { enabled: false, groups: [], names: ['CTAV'], topics: [], sample_percent: 15, cooldown_seconds: 120,
     min_messages: 6, member_cooldown_seconds: 600, hourly_replies: 3, daily_replies: 20, daily_calls: 40,
-    start_hour: 9, end_hour: 23, followup_seconds: 60, max_chars: 100, mention_user: false }
+    start_hour: 9, end_hour: 23, followup_seconds: 60, max_chars: 100, mention_user: false,
+    media_enabled: false, media_sample_percent: 10, media_daily_calls: 100 }
 }
 export interface QQHealthNotificationConfig {
   enabled: boolean; groups: string[]; minimum_samples: number; error_percent: number

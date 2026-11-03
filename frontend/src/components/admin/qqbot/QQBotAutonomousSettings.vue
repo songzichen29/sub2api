@@ -6,6 +6,12 @@
     <div class="flex flex-wrap gap-2"><button v-for="preset in presets" :key="preset.key" type="button" class="btn btn-secondary" @click="applyPreset(preset)">{{ t(`qqbot.workspace.${preset.key}`) }}</button></div>
     <p class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-800">{{ t('qqbot.workspace.behaviorSummary', { sample: value.sample_percent, cooldown: value.cooldown_seconds, messages: value.min_messages, hourly: value.hourly_replies, daily: value.daily_replies, calls: value.daily_calls, start: value.start_hour, end: value.end_hour }) }}</p>
     <QQGroupPicker v-model="value.groups" :groups="groups || []" :policies="policies" :names="props.names" :label="t('qqbot.autonomous.groups')" />
+    <label class="flex items-center gap-2"><input v-model="value.media_enabled" data-testid="autonomous-media_enabled" type="checkbox" />{{ t('qqbot.autonomous.media_enabled') }}</label>
+    <p class="text-sm text-gray-500">{{ t('qqbot.autonomous.mediaHelp') }}</p>
+    <div class="grid gap-4 md:grid-cols-2">
+      <label class="space-y-1">{{ t('qqbot.autonomous.media_sample_percent') }}<input v-model.number="value.media_sample_percent" data-testid="autonomous-media_sample_percent" type="number" min="0" max="100" step="1" required class="input" /></label>
+      <label class="space-y-1">{{ t('qqbot.autonomous.media_daily_calls') }}<input v-model.number="value.media_daily_calls" data-testid="autonomous-media_daily_calls" type="number" min="0" max="2000" step="1" required class="input" /></label>
+    </div>
     <details><summary class="cursor-pointer text-sm">{{ t('qqbot.workspace.advanced') }}</summary><div class="mt-3 grid gap-4 md:grid-cols-2">
       <label class="space-y-1">{{ t('qqbot.autonomous.names') }}<textarea v-model="botNames" data-testid="autonomous-names" class="input" rows="2" /></label>
       <label class="space-y-1 md:col-span-2">{{ t('qqbot.autonomous.topics') }}<textarea v-model="topics" data-testid="autonomous-topics" class="input" rows="2" /></label>
