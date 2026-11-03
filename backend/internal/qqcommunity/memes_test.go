@@ -3,6 +3,8 @@ package qqcommunity
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"image"
@@ -10,8 +12,10 @@ import (
 	"image/gif"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,10 +47,79 @@ func TestMemeSearchUsesCanonicalResultsWithoutFollowingRedirects(t *testing.T) {
 	s := New(nil, nil, false, nil)
 	transport := &http.Transport{Proxy: nil}
 	defer transport.CloseIdleConnections()
-	s.http.Transport = memeSearchTestTransport{target: server.URL, transport: transport}
+	s.memeHTTP.Transport = memeSearchTestTransport{target: server.URL, transport: transport}
 	items, err := s.searchMemes(context.Background(), "猫猫 开心")
 	require.NoError(t, err)
 	require.Equal(t, []memeCandidate{{URL: "https://img.soutula.com/happy.gif"}}, items)
+}
+
+func TestMemeSearchSupportsOriginTLSWithCertificateVerification(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12, CipherSuites: []uint16{tls.TLS_RSA_WITH_AES_128_GCM_SHA256}}
+	server.StartTLS()
+	defer server.Close()
+	client := newMemeSearchHTTPClient()
+	defer client.CloseIdleConnections()
+	_, err := client.Get(server.URL)
+	require.Error(t, err, "an untrusted certificate must still be rejected")
+	transport := client.Transport.(*http.Transport)
+	transport.TLSClientConfig.RootCAs = x509.NewCertPool()
+	transport.TLSClientConfig.RootCAs.AddCert(server.Certificate())
+	response, err := client.Get(server.URL)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	require.Equal(t, uint16(tls.TLS_RSA_WITH_AES_128_GCM_SHA256), response.TLS.CipherSuite)
+}
+
+func TestMemeSearchFallsBackToPrimaryThemeWhenCompoundHasNoResults(t *testing.T) {
+	for _, sourceErr := range []error{nil, errors.New("compound search redirected")} {
+		t.Run(boolText(sourceErr != nil), func(t *testing.T) {
+			s := New(nil, nil, false, nil)
+			c := DefaultConfig()
+			c.MemeEnabled = true
+			var keywords []string
+			s.memeSearch = func(_ context.Context, keyword string) ([]memeCandidate, error) {
+				keywords = append(keywords, keyword)
+				if keyword == "开心 大笑" {
+					return nil, sourceErr
+				}
+				return []memeCandidate{{URL: "https://img.soutula.com/happy.gif"}}, nil
+			}
+			var img bytes.Buffer
+			require.NoError(t, gif.Encode(&img, image.NewPaletted(image.Rect(0, 0, 2, 2), color.Palette{color.Black, color.White}), nil))
+			s.imageDownload = func(context.Context, string) ([]byte, error) { return img.Bytes(), nil }
+			text, data, mime := s.resolveMemeReply(context.Background(), c, memeRequest{Keyword: "开心 大笑", Text: "好耶！"})
+			require.Equal(t, []string{"开心 大笑", "开心"}, keywords)
+			require.Equal(t, "好耶！", text)
+			require.Equal(t, "image/gif", mime)
+			require.Equal(t, img.Bytes(), data)
+		})
+	}
+}
+
+// Opt-in network smoke test; it never calls a model, sends a QQ message, or
+// consumes a member quota. Run the compiled test in the production container to
+// cover the actual DNS, TLS, result page and pinned image download together.
+func TestMemeLiveSource(t *testing.T) {
+	if os.Getenv("SUB2API_MEME_LIVE_TEST") != "1" {
+		t.Skip("set SUB2API_MEME_LIVE_TEST=1 to access the public meme source")
+	}
+	s := New(nil, nil, false, nil)
+	defer s.memeHTTP.CloseIdleConnections()
+	c := DefaultConfig()
+	c.MemeEnabled = true
+	for _, keyword := range []string{"开心", "开心 大笑"} {
+		t.Run(keyword, func(t *testing.T) {
+			started := time.Now()
+			text, data, mime := s.resolveMemeReply(context.Background(), c, memeRequest{Keyword: keyword})
+			t.Logf("bytes=%d mime=%s duration=%v reply=%s", len(data), mime, time.Since(started), text)
+			require.NotEmpty(t, data, "the real search and image download must succeed")
+			require.True(t, strings.HasPrefix(mime, "image/"))
+		})
+	}
 }
 
 type memeSearchTestTransport struct {

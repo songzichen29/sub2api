@@ -43,6 +43,7 @@ type Service struct {
 	spamSourceDiagnostics spamSourceReceptionDiagnostics
 	imageDownload         func(context.Context, string) ([]byte, error)
 	memeSearch            func(context.Context, string) ([]memeCandidate, error)
+	memeHTTP              *http.Client
 	cancel                context.CancelFunc
 	wg                    sync.WaitGroup
 }
@@ -51,7 +52,7 @@ func New(db *sql.DB, encryptor Encryptor, ready bool, invalidate func(context.Co
 	if invalidate == nil {
 		invalidate = func(context.Context, int64) {}
 	}
-	return &Service{db: wrapDatabase(db), encryptor: encryptor, encryptionReady: ready, invalidate: invalidate, priceWake: make(chan struct{}, 1), tokenGate: make(chan struct{}, 1), http: &http.Client{Timeout: 210 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: noRedirect}, imageDownload: downloadImage, tokenURL: "https://bots.qq.com/app/getAppAccessToken", qqURL: "https://api.sgroup.qq.com"}
+	return &Service{db: wrapDatabase(db), encryptor: encryptor, encryptionReady: ready, invalidate: invalidate, priceWake: make(chan struct{}, 1), tokenGate: make(chan struct{}, 1), http: &http.Client{Timeout: 210 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: noRedirect}, imageDownload: downloadImage, memeHTTP: newMemeSearchHTTPClient(), tokenURL: "https://bots.qq.com/app/getAppAccessToken", qqURL: "https://api.sgroup.qq.com"}
 }
 func (s *Service) Start() {
 	ctx, cancel := context.WithCancel(context.Background())

@@ -3,6 +3,7 @@ package qqcommunity
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"image"
@@ -19,7 +20,29 @@ import (
 )
 
 const memeSearchToolName = "search_meme"
-const memeSearchInstructions = `本轮还提供 search_meme：根据简短关键词搜索现成表情包并由系统实际发送，支持静态图与 GIF。这是专门的表情搜索，不是通用网页、新闻或 X 检索。用户要找表情包、斗图时可使用；轻松闲聊中也可偶尔用贴合语境的表情接梗，不要每轮都用，认真处理账户、费用或故障时优先文字和站点工具。每轮仍只能选择一个操作，search_meme 也属于可选操作。只想找现成表情时不要调用生图；用户明确要求创作或修改图片时继续使用对应图片工具。keyword 只含表情主题或情绪，例如“猫猫 困”“开心”，不得包含用户原话中的账号、QQ号、邮箱、绑定码、密钥或其他私人资料。text 是随图发送的简短自然回复，可以为空；不要承诺搜索成功或描述尚未见到的具体画面。搜索失败时系统会直接给出失败说明，不编造结果。`
+const memeSearchInstructions = `本轮还提供 search_meme：根据简短关键词搜索现成表情包并由系统实际发送，支持静态图与 GIF。这是专门的表情搜索，不是通用网页、新闻或 X 检索。用户要找表情包、斗图时可使用；轻松闲聊中也可偶尔用贴合语境的表情接梗，不要每轮都用，认真处理账户、费用或故障时优先文字和站点工具。每轮仍只能选择一个操作，search_meme 也属于可选操作。只想找现成表情时不要调用生图；用户明确要求创作或修改图片时继续使用对应图片工具。keyword 优先只用一个最核心的表情主题或情绪词，例如“猫猫”“困”“开心”，不要堆叠同义词或擅自添加“大笑”等修饰，不得包含用户原话中的账号、QQ号、邮箱、绑定码、密钥或其他私人资料。text 是随图发送的简短自然回复，可以为空；不要承诺搜索成功或描述尚未见到的具体画面。搜索失败时系统会直接给出失败说明，不编造结果。`
+
+// This public search origin still negotiates RSA key exchange with AES-GCM.
+// Keep that compatibility in a dedicated client: model/API clients retain their
+// default suites, certificates are verified, and TLS 1.2 remains the minimum.
+func newMemeSearchHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 6 * time.Second,
+		Transport: &http.Transport{Proxy: nil, TLSHandshakeTimeout: 5 * time.Second, TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			CipherSuites: []uint16{
+				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+				tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+				tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+				tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+				tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			},
+		}},
+		CheckRedirect: noRedirect,
+	}
+}
 
 type memeRequest struct {
 	Keyword string `json:"keyword"`
@@ -113,7 +136,7 @@ func (s *Service) searchMemes(ctx context.Context, keyword string) ([]memeCandid
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0")
-	response, err := s.http.Do(req)
+	response, err := s.memeHTTP.Do(req)
 	if err != nil {
 		return nil, errors.New("表情搜索来源暂时不可用")
 	}
@@ -135,6 +158,11 @@ func (s *Service) resolveMemeReply(ctx context.Context, c Config, request memeRe
 	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
 	defer cancel()
 	items, err := s.searchMemes(ctx, request.Keyword)
+	// Space-separated themes can return no matches or a redirect at this source.
+	// Retry the main theme once within the same overall deadline and chat turn.
+	if fields := strings.Fields(request.Keyword); len(items) == 0 && len(fields) > 1 && ctx.Err() == nil {
+		items, err = s.searchMemes(ctx, fields[0])
+	}
 	if err == nil {
 		for i, item := range items {
 			if i >= 3 || ctx.Err() != nil {
