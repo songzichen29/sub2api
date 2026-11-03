@@ -16,10 +16,8 @@ func (s *Service) myRewards(ctx context.Context, c Config, j Job) (string, error
 	if err != nil {
 		return "", err
 	}
-	// Retry eligible invitations before reading totals; reward writes remain idempotent.
-	if err = s.settleInvites(ctx, c, j.MemberID); err != nil {
-		return "", err
-	}
+	// Retain historical rewards without settling retired invitation activities.
+
 	var lottery, invite, checkin, redemption, growth, streak, ranking, total float64
 	err = s.db.QueryRowContext(ctx, `SELECT
  COALESCE(SUM(amount) FILTER (WHERE kind='lottery'),0),

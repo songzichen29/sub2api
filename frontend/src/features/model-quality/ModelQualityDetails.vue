@@ -4,7 +4,7 @@
       <div class="flex shrink-0 flex-wrap items-start gap-x-6 gap-y-1 border-b border-gray-200 text-sm dark:border-dark-700">
         <div class="flex shrink-0 gap-4" role="tablist" :aria-label="t('modelQuality.resultScope')">
           <button v-if="selection?.batchId" type="button" role="tab" data-scope="current" class="border-b-2 px-1 py-2" :class="scope === 'current' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" :aria-selected="scope === 'current'" @click="changeScope('current')">{{ t('modelQuality.currentResults') }}</button>
-          <button type="button" role="tab" data-scope="history" class="border-b-2 px-1 py-2" :class="scope === 'history' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" :aria-selected="scope === 'history'" @click="changeScope('history')">{{ t('modelQuality.history') }}</button>
+          <button v-if="!snapshotOnly" type="button" role="tab" data-scope="history" class="border-b-2 px-1 py-2" :class="scope === 'history' ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'" :aria-selected="scope === 'history'" @click="changeScope('history')">{{ t('modelQuality.history') }}</button>
         </div>
         <div v-if="models.length > 1" class="flex min-w-0 flex-1 basis-full flex-wrap gap-x-3 gap-y-1 sm:basis-0" role="group" :aria-label="t('modelQuality.model')" data-model-switcher>
           <button v-for="item in models" :key="item" type="button" class="max-w-full break-all border-b-2 px-2 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500" :class="model === item ? 'border-primary-500 font-medium text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'" :aria-pressed="model === item" :data-model-button="item" @click="changeModel(item)">{{ item }}</button>
@@ -59,7 +59,7 @@ import ModelQualityResultCard from './ModelQualityResultCard.vue'
 import ModelQualityPreview from './ModelQualityPreview.vue'
 import { qualityBenchmarkLabel, qualityVerdict, type QualitySelection } from './qualityPresentation'
 
-const props = withDefaults(defineProps<{ selection: QualitySelection | null; admin?: boolean }>(), { admin: false })
+const props = withDefaults(defineProps<{ selection: QualitySelection | null; admin?: boolean; snapshotOnly?: boolean; loadResults?: (selection: QualitySelection, filters: { batch_id?: string; exclude_batch_id?: string; model?: string; benchmark?: api.QualityBenchmark | ''; page: number }) => Promise<api.QualityResults> }>(), { admin: false })
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 const dialogTitle = computed(() => props.selection?.planName ? `${props.selection.planName} · ${t('modelQuality.testResult')}` : t('modelQuality.testResult'))
@@ -99,10 +99,11 @@ async function refresh() {
   loading.value = true
   error.value = ''
   try {
-    const result = await api.planResults(props.admin, selection.planId, {
+    const filters = {
       ...(scope.value === 'current' ? { batch_id: selection.batchId } : { exclude_batch_id: selection.batchId }),
       model: model.value, benchmark: benchmark.value, page: page.value,
-    })
+    }
+    const result = props.loadResults ? await props.loadResults(selection, filters) : await api.planResults(props.admin, selection.planId, filters)
     if (seq !== request || disposed) return
     rows.value = result.items
     models.value = result.models
@@ -121,7 +122,7 @@ function resetPage() {
   scroller.value?.scrollTo?.({ top: 0 })
 }
 function changeScope(value: 'current' | 'history') {
-  if (scope.value === value) return
+  if (scope.value === value || (props.snapshotOnly && value === 'history')) return
   scope.value = value
   tabs.value = []; models.value = []
   resetPage(); void refresh()

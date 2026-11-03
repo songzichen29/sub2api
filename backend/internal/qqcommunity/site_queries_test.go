@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,39 +37,11 @@ func TestSiteQueryRejectsInvalidArgumentsBeforeReading(t *testing.T) {
 	}
 }
 
-func TestSiteQueryModelPriceUsesBoundIdentityAndCompletePages(t *testing.T) {
-	for _, bound := range []bool{false, true} {
-		t.Run(map[bool]string{true: "bound", false: "public"}[bound], func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			require.NoError(t, err)
-			defer func() { _ = db.Close() }()
-			rows := sqlmock.NewRows([]string{"user_id"})
-			uid := int64(0)
-			if bound {
-				uid = 42
-				rows.AddRow(uid)
-			}
-			mock.ExpectQuery("SELECT b.user_id FROM qqc_bindings").WithArgs("trusted-app", "trusted-member").WillReturnRows(rows)
-			s := New(db, nil, false, nil)
-			s.SetModelPriceProvider(siteModelPriceFunc(func(ctx context.Context, model string, id int64, at time.Time) ([]string, error) {
-				require.Equal(t, uid, id)
-				require.Equal(t, "gpt-5", model)
-				deadline, ok := ctx.Deadline()
-				require.True(t, ok)
-				require.LessOrEqual(t, time.Until(deadline), 15*time.Second)
-				return []string{"group1", "group2", "group3", "group4", "group5", "group6: complete tier 1\ncomplete tier 2"}, nil
-			}))
-			c := DefaultConfig()
-			c.AppID = "trusted-app"
-			text, err := s.querySiteInfo(context.Background(), c, Job{MemberID: "trusted-member"}, siteQuery{Kind: "model_price", Model: "gpt-5", Page: 2})
-			require.NoError(t, err)
-			require.Contains(t, text, "group6: complete tier 1\ncomplete tier 2")
-			require.NotContains(t, text, "group5")
-			require.Contains(t, text, "第 2/2 页")
-			require.Contains(t, text, "查询时间：")
-			require.Contains(t, text, "北京时间")
-			require.NoError(t, mock.ExpectationsWereMet())
-		})
+func TestSiteQueryRetiredFeaturesRejectedWithoutDatabaseOrProvider(t *testing.T) {
+	s := New(nil, nil, false, nil)
+	for _, q := range []siteQuery{{Kind: "model_price", Model: "model-a"}, {Kind: "activity_rules", Activity: "invite"}} {
+		_, err := s.querySiteInfo(context.Background(), DefaultConfig(), Job{}, q)
+		require.Error(t, err)
 	}
 }
 

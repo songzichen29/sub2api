@@ -126,6 +126,7 @@ func registerRoutes(
 	panelRateLimiter := middleware2.NewPanelRateLimiter(redisClient, settingService)
 	if h.QQBot != nil && h.QQBot.Community != nil {
 		v1.POST("/qq-bot/report", panelRateLimiter.PublicIP(), h.QQBot.Community.ReplyPage)
+		v1.POST("/qq-bot/report/detail", panelRateLimiter.PublicIP(), h.QQBot.Community.ReplyPageDetail)
 	}
 
 	// 注册各模块路由

@@ -14,14 +14,18 @@
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
     <div v-else class="flex items-end gap-[2px] h-5 w-full">
-      <div
+      <button
+        type="button"
         v-for="(bar, idx) in displayBars"
         :key="idx"
         class="flex-1 min-w-0 rounded-sm"
         :class="bar.colorClass"
         :style="{ height: bar.heightPct + '%' }"
         :title="bar.title"
-      ></div>
+        :aria-label="bar.title || '暂无检测'"
+        :disabled="!bar.point"
+        @click.stop="bar.point && emit('pointSelect', bar.point)"
+      ></button>
     </div>
 
     <div
@@ -50,10 +54,12 @@ const props = withDefaults(defineProps<{
   maintenance: false,
 })
 
+const emit = defineEmits<{ pointSelect: [point: MonitorTimelinePoint] }>()
 const { t } = useI18n()
 const { statusLabel, formatLatency, formatRelativeTime } = useChannelMonitorFormat()
 
 interface Bar {
+  point?: MonitorTimelinePoint
   colorClass: string
   heightPct: number
   title: string
@@ -104,6 +110,7 @@ const displayBars = computed<Bar[]>(() => {
     const relative = formatRelativeTime(point.checked_at)
     const label = statusLabel(point.status)
     bars.push({
+      point,
       colorClass,
       heightPct,
       title: `${relative} · ${label} · ${latency}ms`,

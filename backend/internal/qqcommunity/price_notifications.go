@@ -478,7 +478,7 @@ func allowsNotification(c Config, j Job) bool {
 	}
 	switch j.EventType {
 	case priceNotificationEvent:
-		return c.PriceNotifications.Enabled && containsPriceGroup(c, j.GroupID)
+		return false // QQ model pricing has been retired.
 	case healthNotificationEvent:
 		return c.HealthNotifications.Enabled && slices.Contains(healthNotificationGroups(c), j.GroupID)
 	case rankingNotificationEvent:

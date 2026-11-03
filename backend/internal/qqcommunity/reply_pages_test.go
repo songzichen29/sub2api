@@ -3,6 +3,7 @@ package qqcommunity
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,53 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
+
+type replyDetailProvider struct {
+	calls int
+	uid   int64
+}
+
+func (p *replyDetailProvider) MonitorPage(context.Context, int64) (any, error) { return nil, nil }
+func (p *replyDetailProvider) MonitorDetail(_ context.Context, uid int64, input MonitorDetailRequest) (any, error) {
+	p.calls++
+	p.uid = uid
+	return map[string]any{"batch_id": input.BatchID}, nil
+}
+
+func TestReplyPageDetailsRestrictedToSnapshotAndCurrentBinding(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	s := New(db, nil, false, nil)
+	c := accountQueryConfig()
+	p := &replyDetailProvider{}
+	s.monitorPages = p
+	page := ReplyPage{Kind: "monitor", BoundUserID: 42, Data: json.RawMessage(`{"quality_plans":[{"id":"plan","batches":[{"id":"batch"}]}]}`)}
+	token, err := s.rememberReplyPage(c, Job{GroupID: "group", MemberID: "member"}, 42, page)
+	require.NoError(t, err)
+	expectAccess := func(uid int64) {
+		expectAccountQueryConfig(t, mock, c)
+		mock.ExpectQuery("SELECT b.user_id FROM qqc_bindings").WithArgs(c.AppID, "member").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(uid))
+	}
+	for _, input := range []MonitorDetailRequest{{Token: token, PlanID: "other", BatchID: "batch"}, {Token: token, PlanID: "plan", BatchID: "other"}} {
+		expectAccess(42)
+		_, err = s.ReplyPageDetail(context.Background(), input)
+		require.ErrorIs(t, err, ErrReplyPageExpired)
+	}
+	require.Zero(t, p.calls)
+	input := MonitorDetailRequest{Token: token, PlanID: "plan", BatchID: "batch", Page: 1}
+	expectAccess(42)
+	expectAccess(42)
+	_, err = s.ReplyPageDetail(context.Background(), input)
+	require.NoError(t, err)
+	require.EqualValues(t, 42, p.uid)
+	require.Equal(t, 1, p.calls)
+	expectAccess(43)
+	_, err = s.ReplyPageDetail(context.Background(), input)
+	require.ErrorIs(t, err, ErrReplyPageExpired)
+	require.Equal(t, 1, p.calls)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
 
 func TestReplyPageCapabilityExpiresAndRevokesOnRebinding(t *testing.T) {
 	db, mock, err := sqlmock.New()

@@ -24,6 +24,35 @@ func (qqPageActive) ListUserView(context.Context) ([]*UserMonitorView, error) {
 
 type qqPageQuality struct{ t *testing.T }
 
+func (q qqPageQuality) PlanResults(_ context.Context, plan, batch, exclude, model, benchmark string, uid int64, admin bool, page int) (*ModelQualityResults, error) {
+	require.EqualValues(q.t, 42, uid)
+	require.False(q.t, admin)
+	require.Equal(q.t, "plan", plan)
+	require.Equal(q.t, "batch", batch)
+	require.Empty(q.t, exclude)
+	require.Equal(q.t, "test-model", model)
+	require.Equal(q.t, "pelican", benchmark)
+	require.Equal(q.t, 2, page)
+	return &ModelQualityResults{Model: model, Models: []string{model}, Benchmark: benchmark, Benchmarks: []string{benchmark}, Items: []*ModelQualityRun{{ID: "run", PlanID: plan, BatchID: batch, Target: ModelQualityTarget{Model: model, Benchmark: benchmark, ChannelName: "secret-channel", ChannelID: 99}, Reason: "secret-upstream-error", CredentialHash: "secret-credential", Result: &ModelQualityResult{HTML: "<div>作品</div>", Assessment: &ModelQualityAssessment{Checks: []ModelQualityCheck{{ID: "wheel", Score: 2, Evidence: "两个车轮"}}}}}}}, nil
+}
+
+func TestQQMonitorDetailChecksCurrentVisibilityAndProjectsResults(t *testing.T) {
+	p := &qqBotMonitorPages{quality: qqPageQuality{t}, status: &qqBotChannelStatus{settings: qqPageRuntime{true}}}
+	input := qqcommunity.MonitorDetailRequest{PlanID: "plan", BatchID: "batch", Model: "test-model", Benchmark: "pelican", Page: 2}
+	data, err := p.MonitorDetail(context.Background(), 42, input)
+	require.NoError(t, err)
+	raw, err := json.Marshal(data)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "作品")
+	require.Contains(t, string(raw), "两个车轮")
+	for _, secret := range []string{"secret-channel", "secret-upstream-error", "secret-credential"} {
+		require.NotContains(t, string(raw), secret)
+	}
+	p.status.settings = qqPageRuntime{false}
+	_, err = p.MonitorDetail(context.Background(), 42, input)
+	require.Error(t, err)
+}
+
 func (q qqPageQuality) List(_ context.Context, uid int64, admin bool) ([]*ModelQualityView, error) {
 	require.EqualValues(q.t, 42, uid)
 	require.False(q.t, admin)

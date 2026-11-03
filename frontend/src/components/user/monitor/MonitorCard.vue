@@ -65,12 +65,13 @@
       :samples-label="extraModelsCountLabel"
     />
 
+    </button>
     <!-- Timeline -->
     <MonitorTimeline
       :buckets="item.timeline"
       :countdown-seconds="countdownSeconds"
+      @point-select="emit('pointSelect', $event); emit('click')"
     />
-    </button>
     <ModelQualityStrip v-if="qualityPlans.length" class="mt-4" :plans="qualityPlans" :show-group="new Set(qualityPlans.map(p => p.group_id)).size > 1" @select="emit('qualitySelect', $event)" />
   </article>
 </template>
@@ -78,7 +79,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { UserMonitorView } from '@/api/channelMonitor'
+import type { UserMonitorView, MonitorTimelinePoint } from '@/api/channelMonitor'
 import {
   useChannelMonitorFormat,
   providerGradient,
@@ -117,6 +118,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'click'): void
   (e: 'qualitySelect', selection: QualitySelection): void
+  (e: 'pointSelect', point: MonitorTimelinePoint): void
 }>()
 
 const { t } = useI18n()

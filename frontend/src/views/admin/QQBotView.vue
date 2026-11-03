@@ -70,14 +70,8 @@
             </div>
           </div>
         </section>
-        <section v-show="activeTab === 'notifications'" id="qqbot-settings-panel-notifications" role="tabpanel" aria-labelledby="qqbot-settings-tab-notifications" class="card space-y-4 p-6" :aria-label="t('qqbot.priceNotifications.title')">
+        <section v-show="activeTab === 'notifications'" id="qqbot-settings-panel-notifications" role="tabpanel" aria-labelledby="qqbot-settings-tab-notifications" class="card space-y-4 p-6" :aria-label="t('qqbot.health.title')">
           <fieldset v-if="form.notification_quiet_hours" class="space-y-3 rounded-lg border p-4 dark:border-dark-700"><legend>{{ t('qqbot.workspace.quietHours') }}</legend><label class="flex items-center gap-2"><input v-model="form.notification_quiet_hours.enabled" type="checkbox" />{{ t('common.enabled') }}</label><div class="grid gap-3 sm:grid-cols-2"><label>{{ t('qqbot.workspace.startHour') }}<input v-model.number="form.notification_quiet_hours.start_hour" class="input" type="number" min="0" max="23" required /></label><label>{{ t('qqbot.workspace.endHour') }}<input v-model.number="form.notification_quiet_hours.end_hour" class="input" type="number" min="0" max="23" required /></label></div><p class="text-xs text-gray-500">{{ t('qqbot.workspace.quietHoursHelp') }}</p></fieldset>
-          <h2 class="text-lg font-semibold">{{ t('qqbot.priceNotifications.title') }}</h2>
-          <p class="text-sm text-gray-500">{{ t('qqbot.priceNotifications.help') }}</p>
-          <label class="flex items-center gap-2"><input v-model="priceNotifications.enabled" data-testid="price-notifications-enabled" type="checkbox" />{{ t('qqbot.priceNotifications.enabled') }}</label>
-          <label class="flex items-center gap-2"><input v-model="priceNotifications.scheduled" data-testid="price-notifications-scheduled" type="checkbox" />{{ t('qqbot.priceNotifications.scheduled') }}</label>
-          <QQGroupPicker v-model="notificationGroups" :groups="allowedGroups" :policies="groupPolicies" :names="groupNames" :label="t('qqbot.priceNotifications.groups')" allow-all />
-          <p class="text-xs text-gray-500">{{ t('qqbot.priceNotifications.permission') }}</p>
           <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
             <legend class="font-medium">{{ t('qqbot.health.title') }}</legend>
             <p class="text-sm text-gray-500">{{ t('qqbot.health.help') }}</p>
@@ -223,7 +217,7 @@ const tabs = [
   { key: 'images', label: 'qqbot.images' },
   { key: 'commands', label: 'qqbot.customCommands' },
   { key: 'knowledge', label: 'qqbot.knowledge.title' },
-  { key: 'notifications', label: 'qqbot.priceNotifications.title' },
+  { key: 'notifications', label: 'qqbot.health.title' },
   { key: 'limits', label: 'qqbot.limits' }
 ] as const
 type SettingsTab = (typeof tabs)[number]['key']

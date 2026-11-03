@@ -32,7 +32,7 @@ func isBuiltinCommand(cmd string) bool {
 // Removed built-ins cannot be revived accidentally by stored custom replies.
 func isRetiredCommand(cmd string) bool {
 	switch cmd {
-	case "help", "我的", "福利", "领取任务", "画图", "奖励兑换", "举报垃圾信息", "今日排行榜", "今日排行版":
+	case "邀请奖励", "邀请活动", "我的邀请", "价格", "help", "我的", "福利", "领取任务", "画图", "奖励兑换", "举报垃圾信息", "今日排行榜", "今日排行版":
 		return true
 	}
 	return false

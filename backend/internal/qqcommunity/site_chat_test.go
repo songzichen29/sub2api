@@ -44,15 +44,15 @@ func TestSiteChatSelectsReadOnlyQueryAcrossProtocols(t *testing.T) {
 						if stream {
 							w.Header().Set("Content-Type", "text/event-stream")
 						}
-						_, _ = w.Write(siteQueryTestResponse(t, protocol, `{"kind":"model_price","model":"model-test","activity":"","page":1}`, stream))
+						_, _ = w.Write(siteQueryTestResponse(t, protocol, `{"kind":"channel_status","model":"","activity":"","page":1}`, stream))
 					}))
 					defer server.Close()
 					s := New(nil, nil, false, nil)
 					c := DefaultConfig()
 					c.BaseURL, c.ChatProtocol, c.ImageEnabled = server.URL, protocol, images
-					turn, err := s.siteChatTurn(context.Background(), c, []Message{{Role: "user", Content: "model-test多少钱？"}})
+					turn, err := s.siteChatTurn(context.Background(), c, []Message{{Role: "user", Content: "渠道现在怎么样？"}})
 					require.NoError(t, err)
-					require.Equal(t, &siteQuery{Kind: "model_price", Model: "model-test", Page: 1}, turn.SiteQuery)
+					require.Equal(t, &siteQuery{Kind: "channel_status", Page: 1}, turn.SiteQuery)
 					require.Empty(t, turn.ImagePrompt)
 					require.EqualValues(t, 11, turn.InputTokens)
 					require.Equal(t, 1, calls)

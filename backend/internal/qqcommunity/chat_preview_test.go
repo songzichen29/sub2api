@@ -170,7 +170,8 @@ func TestChatPreviewMenuAndReadOnlyToolsAcrossProtocols(t *testing.T) {
 					switch scenario {
 					case "menu":
 						require.Equal(t, "menu", out.Action)
-						require.Contains(t, out.Text, "价格 模型名")
+						require.NotContains(t, out.Text, "价格 模型名")
+						require.NotContains(t, out.Text, "邀请奖励")
 						require.Zero(t, calls)
 						require.Nil(t, out.ChatExecution)
 					case "chat":

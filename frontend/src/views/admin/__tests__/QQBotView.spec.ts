@@ -141,16 +141,11 @@ describe('QQ module settings', () => {
   await w.get('form').trigger('submit'); await flushPromises()
   expect(server.chat_disabled).toBe(true); expect(server.history_messages).toBe(0)
  })
- it('requires explicit all-groups selection and saves notification scope', async () => {
+ it('keeps health notification scope and removes retired price controls', async () => {
   const w = await mountView(); await category(w, '通知与额度'); await w.get('#qqbot-settings-tab-notifications').trigger('click')
-  const pickers = w.get('#qqbot-settings-panel-notifications').findAllComponents({ name: 'QQGroupPicker' })
-  await pickers[0]!.findAll('input[type="checkbox"]')[1]!.setValue(true)
-  await w.get('[data-testid="price-notifications-enabled"]').setValue(true)
-  await w.get('form').trigger('submit'); await flushPromises()
-  expect(server.price_notifications?.groups).toEqual(['group'])
-  await pickers[0]!.findAll('input[type="checkbox"]')[1]!.setValue(false)
-  await w.get('form').trigger('submit'); await flushPromises()
-  expect(server.price_notifications?.groups).toEqual(['group'])
+  expect(w.find('[data-testid="price-notifications-enabled"]').exists()).toBe(false)
+  expect(w.find('[data-testid="health-enabled"]').exists()).toBe(true)
+  w.unmount()
  })
  it('presets keep autonomous participation opt-in and bounded', async () => {
   const w = await mountView(); await category(w, '对话与指令')

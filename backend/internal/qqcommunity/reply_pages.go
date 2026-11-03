@@ -32,6 +32,69 @@ type MonitorPageProvider interface {
 	MonitorPage(context.Context, int64) (any, error)
 }
 
+type MonitorDetailRequest struct {
+	Token     string `json:"token"`
+	PlanID    string `json:"plan_id"`
+	BatchID   string `json:"batch_id"`
+	Model     string `json:"model"`
+	Benchmark string `json:"benchmark"`
+	Page      int    `json:"page"`
+}
+
+type MonitorDetailProvider interface {
+	MonitorDetail(context.Context, int64, MonitorDetailRequest) (any, error)
+}
+
+// A report grants access only to batches already present in its snapshot, and
+// only while its originating QQ binding and current site visibility remain valid.
+func (s *Service) ReplyPageDetail(ctx context.Context, input MonitorDetailRequest) (any, error) {
+	if input.PlanID == "" || input.BatchID == "" || len(input.PlanID) > 36 || len(input.BatchID) > 36 || len(input.Model) > 200 || len(input.Benchmark) > 32 || input.Page < 0 || input.Page > 100000 {
+		return nil, ErrReplyPageExpired
+	}
+	page, err := s.ReplyPage(ctx, input.Token)
+	if err != nil || page.Kind != "monitor" || page.BoundUserID <= 0 {
+		return nil, ErrReplyPageExpired
+	}
+	var snapshot struct {
+		Plans []struct {
+			ID      string `json:"id"`
+			Batches []struct {
+				ID string `json:"id"`
+			} `json:"batches"`
+		} `json:"quality_plans"`
+	}
+	raw, err := json.Marshal(page.Data)
+	if err != nil || json.Unmarshal(raw, &snapshot) != nil {
+		return nil, ErrReplyPageExpired
+	}
+	allowed := false
+	for _, plan := range snapshot.Plans {
+		if plan.ID == input.PlanID {
+			for _, batch := range plan.Batches {
+				if batch.ID == input.BatchID {
+					allowed = true
+				}
+			}
+		}
+	}
+	provider, ok := s.monitorPages.(MonitorDetailProvider)
+	if !allowed || !ok {
+		return nil, ErrReplyPageExpired
+	}
+	data, err := provider.MonitorDetail(ctx, page.BoundUserID, input)
+	if err != nil {
+		return nil, ErrReplyPageExpired
+	}
+	raw, err = json.Marshal(data)
+	if err != nil || len(raw) > 2<<20 {
+		return nil, errors.New("检测结果过大，请切换模型或检测类型")
+	}
+	if _, err = s.ReplyPage(ctx, input.Token); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
 type replyPageEntry struct {
 	Page               ReplyPage
 	App, Group, Member string

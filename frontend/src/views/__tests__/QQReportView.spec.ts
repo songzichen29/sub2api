@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import QQReportView from '../QQReportView.vue'
 import { i18n, loadLocaleMessages } from '@/i18n'
+import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
+import ModelQualityDetails from '@/features/model-quality/ModelQualityDetails.vue'
 
 vi.mock('@/components/user/monitor/MonitorCardGrid.vue', () => ({ default: { props: ['items'], template: '<div>{{ items.map(i => i.name).join(",") }}</div>' } }))
 
@@ -23,16 +25,28 @@ function mockReport(kind: string, data: object) {
 }
 
 describe('QQ business report', () => {
-  it('loads a capability in the body, uses no account session, and filters one complete price page', async () => {
-    const fetcher = mockReport('prices', { model: 'model-a', filter: 'pro', blocks: ['pro 分组\nUSD 0.32', 'standard 分组\nUSD 0.50'] })
+  it('opens the clicked quality batch using the report capability and hides history enumeration', async () => {
+    const fetcher = mockReport('monitor', { mode: 'v1', items: [], quality_plans: [] })
+    const view = mount(QQReportView, { global: { plugins: [i18n] } })
+    await flushPromises()
+    fetcher.mockResolvedValue({ ok: true, json: async () => ({ items: [], models: ['model'], model: 'model', benchmarks: ['pelican'], benchmark: 'pelican', has_more: false }) })
+    view.findComponent(MonitorCardGrid).vm.$emit('qualitySelect', { planId: 'plan', batchId: 'batch', planName: '检测' })
+    await flushPromises()
+    expect(fetcher).toHaveBeenLastCalledWith('/api/v1/qq-bot/report/detail', expect.objectContaining({ credentials: 'omit', body: JSON.stringify({ token, plan_id: 'plan', batch_id: 'batch', model: '', benchmark: '', page: 1 }) }))
+    expect(view.findComponent(ModelQualityDetails).props('snapshotOnly')).toBe(true)
+    expect(document.querySelector('[data-scope="history"]')).toBeNull()
+    view.unmount()
+  })
+  it('loads a capability in the body, uses no account session, and filters the shared model usage page', async () => {
+    const fetcher = mockReport('usage', { filter: 'pro', models: [{ model: 'pro-model', actual_cost: .32 }, { model: 'standard-model', actual_cost: .5 }] })
     const view = mount(QQReportView, { global: { plugins: [i18n] } })
     await flushPromises()
     expect(fetcher).toHaveBeenCalledWith('/api/v1/qq-bot/report', expect.objectContaining({ credentials: 'omit', cache: 'no-store', body: JSON.stringify({ token }) }))
-    expect(view.text()).toContain('USD 0.32')
-    expect(view.text()).not.toContain('USD 0.50')
+    expect(view.text()).toContain('$0.3200')
+    expect(view.text()).not.toContain('$0.5000')
     expect(view.find('[data-report-ready="true"]').exists()).toBe(true)
     await view.get('input').setValue('')
-    expect(view.text()).toContain('USD 0.50')
+    expect(view.text()).toContain('$0.5000')
     expect(view.text()).not.toContain('下一页')
     view.unmount()
   })
@@ -62,10 +76,10 @@ describe('QQ business report', () => {
   })
 
   it('reloads the report and clears the previous result when opening another link in the same tab', async () => {
-    mockReport('prices', { model: 'model-a', filter: 'pro', blocks: ['pro 分组\nUSD 0.32'] })
+    mockReport('balance', { balance: 12.34 })
     const view = mount(QQReportView, { global: { plugins: [i18n] } })
     await flushPromises()
-    expect(view.text()).toContain('USD 0.32')
+    expect(view.text()).toContain('$12.34')
 
     const fetcher = mockReport('usage', { models: [{ model: 'model-b', requests: 1, total_tokens: 30 }] })
     const nextToken = 'b'.repeat(64)
@@ -75,7 +89,7 @@ describe('QQ business report', () => {
     await flushPromises()
     expect(fetcher).toHaveBeenCalledWith('/api/v1/qq-bot/report', expect.objectContaining({ body: JSON.stringify({ token: nextToken }) }))
     expect(view.text()).toContain('model-b')
-    expect(view.text()).not.toContain('USD 0.32')
+    expect(view.text()).not.toContain('$12.34')
     expect((view.get('input').element as HTMLInputElement).value).toBe('')
     view.unmount()
   })

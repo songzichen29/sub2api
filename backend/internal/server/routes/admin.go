@@ -52,7 +52,6 @@ func RegisterAdminRoutes(
 		bot.GET("/checkin", h.QQBot.Community.GetCheckinConfig)
 		bot.PUT("/checkin", h.QQBot.Community.SaveCheckinConfig)
 		bot.GET("/invite", h.QQBot.Community.GetInviteConfig)
-		bot.PUT("/invite", h.QQBot.Community.SaveInviteConfig)
 		bot.GET("/transfer", h.QQBot.Community.GetTransferConfig)
 		bot.GET("/transfers", h.QQBot.Community.TransferHistory)
 		bot.PUT("/transfer", h.QQBot.Community.SaveTransferConfig)

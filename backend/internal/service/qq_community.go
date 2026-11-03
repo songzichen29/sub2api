@@ -39,8 +39,6 @@ func provideQQCommunityService(db *sql.DB, encryptor SecretEncryptor, cfg *confi
 		return nil, err
 	}
 	s.SetHealthSnapshotProvider(status)
-	s.SetModelPriceProvider(&qqBotModelPrices{groups: groups, users: users, rates: rates, channels: channelService, billing: billingService, resolver: priceResolver})
-	s.SetPriceSnapshotProvider(&qqBotPriceSource{channels: channels, groups: groups})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := s.InitializeLegacy(ctx, fmt.Sprintf("http://127.0.0.1:%d/v1", cfg.Server.Port)); err != nil {

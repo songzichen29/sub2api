@@ -13,13 +13,12 @@
       <template v-else>
         <p class="text-sm text-gray-500">这是本次查询的数据快照；最新结果请在群里重新查询。持有链接的人可查看本页。</p>
         <label v-if="report.kind !== 'balance'" class="block max-w-md text-sm">
-          {{ report.kind === 'prices' ? '筛选分组或价格内容' : report.kind === 'monitor' ? '筛选渠道或模型' : '筛选模型' }}
+          {{ report.kind === 'monitor' ? '筛选渠道或模型' : '筛选模型' }}
           <input v-model="filter" class="input mt-2 w-full" type="search" placeholder="输入关键词筛选" />
         </label>
         <section v-if="report.kind === 'monitor' && report.data.mode === 'v1'">
-          <MonitorCardGrid :items="monitorItems" window="7d" :countdown-seconds="null" :loading="false" :detail-cache="{}" :quality-plans="report.data.quality_plans || []" @card-click="selectedMonitor = $event" @quality-select="selectedQuality = $event" />
-          <p v-if="selectedMonitor" class="mt-4 text-sm">{{ selectedMonitor.name }} · {{ selectedMonitor.primary_model }} · 点击历史状态条可查看时间与状态；完整历史见网站监控页。</p>
-          <p v-if="selectedQuality" class="mt-4 text-sm">{{ selectedQuality.planName }} · 批次 {{ selectedQuality.batchId }} · 完整检测结果见网站监控页。</p>
+          <MonitorCardGrid :items="monitorItems" window="7d" :countdown-seconds="null" :loading="false" :detail-cache="{}" :quality-plans="report.data.quality_plans || []" @card-click="selectedMonitor = $event" @quality-select="selectedQuality = $event" @point-select="selectPoint" />
+          <p v-if="selectedMonitor" class="mt-4 text-sm">{{ selectedMonitor.name }} · {{ selectedMonitor.primary_model }} · 点击上方历史方块查看时间与延迟，点击下方检测方块查看评分和作品。</p>
         </section>
         <section v-else-if="report.kind === 'monitor'" class="overflow-hidden rounded-lg border bg-white dark:bg-dark-900">
           <table class="w-full text-left text-sm">
@@ -45,17 +44,9 @@
           <ModelUsageTable :items="usageItems" />
           <p v-if="!usageItems.length" class="rounded-lg border bg-white p-6 text-gray-500 dark:bg-dark-900">暂无匹配的模型用量。</p>
         </section>
-        <section v-else-if="report.kind === 'prices'" class="space-y-4">
-          <p class="text-sm text-gray-500">模型：{{ report.data.model }} · {{ priceBlocks.length }} 项报价 · 金额单位 USD</p>
-          <div class="grid gap-4 md:grid-cols-2">
-            <article v-for="(block, index) in priceBlocks" :key="index" class="min-w-0 rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900">
-              <h2 class="mb-3 break-words text-base font-semibold">{{ block.split('\n')[0] }}</h2>
-              <p class="whitespace-pre-wrap break-words text-sm leading-7">{{ block.split('\n').slice(1).join('\n').trim() }}</p>
-            </article>
-          </div>
-          <p v-if="!priceBlocks.length" class="rounded-lg border bg-white p-6 text-gray-500 dark:bg-dark-900">暂无匹配的价格。可调整筛选词，或在群里发送“价格 模型名”。</p>
-        </section>
       </template>
+      <ModelQualityDetails v-if="report?.kind === 'monitor'" :selection="selectedQuality" snapshot-only :load-results="loadQualityResults" @close="selectedQuality = null" />
+      <BaseDialog :show="!!selectedPoint" :title="selectedPoint?.item.name || '检测详情'" width="normal" @close="selectedPoint = null"><dl v-if="selectedPoint" class="space-y-3 text-sm"><div>模型：{{ selectedPoint.item.primary_model }}</div><div>时间：{{ formatTime(selectedPoint.point.checked_at) }}</div><div>状态：{{ statusLabel(selectedPoint.point.status) }}</div><div>响应延迟：{{ selectedPoint.point.latency_ms ?? '—' }} ms</div><div>网络延迟：{{ selectedPoint.point.ping_latency_ms ?? '—' }} ms</div></dl></BaseDialog>
       <div v-if="ready" data-report-ready="true" aria-hidden="true" />
     </div>
   </main>
@@ -65,27 +56,38 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { loadLocaleMessages } from '@/i18n'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ModelQualityDetails from '@/features/model-quality/ModelQualityDetails.vue'
+import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import WalletBalanceValue from '@/components/common/WalletBalanceValue.vue'
 import ModelUsageTable, { type ModelUsageRow } from '@/components/common/ModelUsageTable.vue'
-import type { UserMonitorView } from '@/api/channelMonitor'
-import type { QualityPlan } from '@/api/modelQuality'
+import type { UserMonitorView, MonitorTimelinePoint } from '@/api/channelMonitor'
+import type { QualityResults, QualityBenchmark, QualityPlan } from '@/api/modelQuality'
 import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
 
 interface Report {
   kind: string; title: string; source_path: string; created_at: string; expires_at: string
-  data: { mode?: string; items?: UserMonitorView[]; quality_plans?: QualityPlan[]; balance?: number; models?: ModelUsageRow[]; blocks?: string[]; model?: string; filter?: string; report?: { Groups?: { Name: string; Metrics: { ErrorRate: number; TTFTP50Ms: number | null } }[] } }
+  data: { mode?: string; items?: UserMonitorView[]; quality_plans?: QualityPlan[]; balance?: number; models?: ModelUsageRow[]; filter?: string; report?: { Groups?: { Name: string; Metrics: { ErrorRate: number; TTFTP50Ms: number | null } }[] } }
 }
 const report = ref<Report | null>(null), error = ref(''), filter = ref(''), ready = ref(false)
+const selectedPoint = ref<{ item: UserMonitorView; point: MonitorTimelinePoint } | null>(null)
 const selectedMonitor = ref<UserMonitorView | null>(null), selectedQuality = ref<QualitySelection | null>(null)
 const capturing = new URLSearchParams(location.search).get('capture') === '1'
 const matches = (value: string) => value.toLocaleLowerCase().includes(filter.value.trim().toLocaleLowerCase())
 const monitorItems = computed(() => (report.value?.data.items || []).filter(item => matches([item.name, item.primary_model, item.group_name].join(' '))))
 const usageItems = computed(() => (report.value?.data.models || []).filter(item => matches(item.model)))
-const priceBlocks = computed(() => (report.value?.data.blocks || []).filter(matches))
 const passiveGroups = computed(() => (report.value?.data.report?.Groups || []).filter(item => matches(item.Name)))
 const money = (amount: number | undefined) => '$' + Number(amount || 0).toFixed(2)
 const formatTime = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+const { statusLabel } = useChannelMonitorFormat()
+function selectPoint(item: UserMonitorView, point: MonitorTimelinePoint) { selectedPoint.value = { item, point } }
+async function loadQualityResults(selection: QualitySelection, filters: { model?: string; benchmark?: QualityBenchmark | ''; page?: number }): Promise<QualityResults> {
+  const token = location.hash.slice(1)
+  const response = await fetch('/api/v1/qq-bot/report/detail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store', body: JSON.stringify({ token, plan_id: selection.planId, batch_id: selection.batchId, ...filters }), signal: controller?.signal })
+  if (!response.ok) throw new Error('检测结果暂不可用或链接已过期，请在群里重新查询。')
+  return response.json() as Promise<QualityResults>
+}
 let controller: AbortController | undefined
 const { locale } = useI18n({ useScope: 'global' })
 const previousLocale = locale.value
@@ -103,7 +105,7 @@ async function loadReport() {
   controller = request
   clearTimeout(expiryTimer)
   report.value = null; error.value = ''; ready.value = false; filter.value = ''
-  selectedMonitor.value = null; selectedQuality.value = null
+  selectedMonitor.value = null; selectedQuality.value = null; selectedPoint.value = null
   try {
     // QQ commands and report copy are Chinese. Use the same language for the
     // shared components without overwriting the visitor's saved preference.
@@ -119,7 +121,7 @@ async function loadReport() {
     if (request.signal.aborted) return
     report.value = loaded
     filter.value = report.value!.data.filter || ''
-    expiryTimer = setTimeout(() => { report.value = null; ready.value = false; error.value = '页面链接已到期，请在群里重新查询。' }, Math.max(0, new Date(report.value!.expires_at).getTime() - Date.now()))
+    expiryTimer = setTimeout(() => { report.value = null; selectedQuality.value = null; selectedPoint.value = null; ready.value = false; error.value = '页面链接已到期，请在群里重新查询。' }, Math.max(0, new Date(report.value!.expires_at).getTime() - Date.now()))
     await nextTick()
     await document.fonts.ready
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))

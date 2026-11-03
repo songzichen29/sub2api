@@ -51,7 +51,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import QQBotCheckinSettings from '@/components/admin/qqbot/QQBotCheckinSettings.vue'
 import QQBotGrowthSettings from '@/components/admin/qqbot/QQBotGrowthSettings.vue'
 import QQBotLotterySettings from '@/components/admin/qqbot/QQBotLotterySettings.vue'
-import QQBotInviteSettings from '@/components/admin/qqbot/QQBotInviteSettings.vue'
 import QQActivityPreview from '@/components/admin/qqbot/QQActivityPreview.vue'
 import QQBotRewardCodes from '@/components/admin/qqbot/QQBotRewardCodes.vue'
 
@@ -63,7 +62,6 @@ const tabs = [
   { key: 'checkin', label: 'qqbot.checkinTitle', component: QQBotCheckinSettings },
   { key: 'growth', label: 'qqbot.growth.tab', component: QQBotGrowthSettings },
   { key: 'lottery', label: 'qqbot.lotteryTitle', component: QQBotLotterySettings },
-  { key: 'invite', label: 'qqbot.inviteTitle', component: QQBotInviteSettings },
   { key: 'preview', label: 'qqbot.workspace.preview', component: QQActivityPreview },
   { key: 'rewards', label: 'qqbot.redemption.title', component: QQBotRewardCodes }
 ] as const

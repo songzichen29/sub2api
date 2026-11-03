@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/shopspring/decimal"
@@ -29,13 +28,6 @@ func (q siteQuery) validate() error {
 		return errors.New("查询页码须为 1 到 10000 的整数")
 	}
 	switch q.Kind {
-	case "model_price":
-		if q.Activity != "" {
-			return errors.New("价格查询不能指定活动类型")
-		}
-		if q.Model == "" || len(q.Model) > 200 || strings.IndexFunc(q.Model, unicode.IsSpace) >= 0 || strings.IndexFunc(q.Model, unicode.IsControl) >= 0 {
-			return errors.New("请提供准确的模型名称，最多 200 字节且不能包含空白")
-		}
 	case "channel_status":
 		if q.Model != "" || q.Activity != "" {
 			return errors.New("渠道状态查询不接受模型或活动参数")
@@ -49,12 +41,12 @@ func (q siteQuery) validate() error {
 			return errors.New("活动规则查询不能指定模型")
 		}
 		switch q.Activity {
-		case "", "all", "checkin", "invite", "lottery", "growth":
+		case "", "all", "checkin", "lottery", "growth":
 		default:
-			return errors.New("活动类型仅支持签到、邀请、抽奖、成长任务或全部规则")
+			return errors.New("活动类型仅支持签到、抽奖、成长任务或全部规则")
 		}
 	default:
-		return errors.New("仅支持模型价格、渠道状态、活动规则、本人余额、今日用量和抽奖次数查询")
+		return errors.New("仅支持渠道状态、活动规则、本人余额、今日用量和抽奖次数查询")
 	}
 	return nil
 }
@@ -94,8 +86,6 @@ func (s *Service) querySiteInfoDetailed(ctx context.Context, c Config, j Job, q 
 	now := time.Now()
 	var result SiteQueryResult
 	switch q.Kind {
-	case "model_price":
-		result = s.querySiteModelPrice(queryCtx, c, j, q, now)
 	case "channel_status":
 		if s.monitorPages != nil {
 			page, e := s.prepareMonitorPage(queryCtx, c, j)
@@ -241,9 +231,7 @@ func (s *Service) querySiteActivityRules(ctx context.Context, c Config, j Job, q
 			sections = append(sections, siteGrowthRules(checkin.Growth))
 		}
 	}
-	if activity == "all" || activity == "invite" {
-		sections = append(sections, siteInviteRules(current))
-	}
+
 	if activity == "all" || activity == "lottery" {
 		lottery, e := loadLotteryConfig(ctx, tx)
 		if e != nil {

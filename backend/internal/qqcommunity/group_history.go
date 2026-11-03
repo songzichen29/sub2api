@@ -214,7 +214,7 @@ func (s *Service) historyForQuestion(ctx context.Context, c Config, j Job, quest
 		result = append(result, message)
 		messages = append(result, messages[boundary:]...)
 	}
-	return messages
+	return withGroupAdminChatInstructions(s.withBindingContext(ctx, c, j, messages), c, j, true)
 }
 
 func (s *Service) sharedHistory(ctx context.Context, c Config, j Job) []Message {
@@ -226,7 +226,7 @@ func (s *Service) loadHistory(ctx context.Context, c Config, j Job, shared bool)
 	if shared {
 		instructions = sharedGroupHistoryInstructions
 	}
-	messages := []Message{{Role: "system", Content: c.SystemPrompt}, {Role: "system", Content: instructions}}
+	messages := []Message{{Role: "system", Content: c.SystemPrompt}, {Role: "system", Content: instructions + "\n" + currentTimeMessage(time.Now()).Content}}
 	if knowledge, ok := siteKnowledgeMessage(c.SiteKnowledge); ok {
 		messages = append(messages, knowledge)
 	}

@@ -2,10 +2,43 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/qqcommunity"
 )
+
+func (p *qqBotMonitorPages) MonitorDetail(ctx context.Context, uid int64, input qqcommunity.MonitorDetailRequest) (any, error) {
+	if uid <= 0 || !p.status.settings.GetChannelMonitorRuntime(ctx).Enabled {
+		return nil, qqcommunity.ErrReplyPageExpired
+	}
+	quality, ok := p.quality.(interface {
+		PlanResults(context.Context, string, string, string, string, string, int64, bool, int) (*ModelQualityResults, error)
+	})
+	if !ok {
+		return nil, errors.New("检测详情暂不可用")
+	}
+	result, err := quality.PlanResults(ctx, input.PlanID, input.BatchID, "", input.Model, input.Benchmark, uid, false, input.Page)
+	if err != nil {
+		return nil, err
+	}
+	view := *result
+	view.Items = make([]*ModelQualityRun, 0, len(result.Items))
+	for _, run := range result.Items {
+		if run == nil || run.PlanID != input.PlanID || run.BatchID != input.BatchID {
+			continue
+		}
+		// Explicit projection: never expose upstream channel identity, raw
+		// errors, internal leases, credentials or account routing metadata.
+		reason := ""
+		if run.Reason != "" {
+			reason = "检测说明请查看评分明细；异常详情请联系管理员。"
+		}
+		target := ModelQualityTarget{Model: run.Target.Model, Benchmark: run.Target.Benchmark, GroupName: run.Target.GroupName, ReasoningEffort: run.Target.ReasoningEffort, ServiceTier: run.Target.ServiceTier, JudgeModel: run.Target.JudgeModel}
+		view.Items = append(view.Items, &ModelQualityRun{ID: run.ID, PlanID: run.PlanID, BatchID: run.BatchID, Target: target, Status: run.Status, Verdict: run.Verdict, Reason: reason, StartedAt: run.StartedAt, FinishedAt: run.FinishedAt, Result: run.Result, Stats24H: run.Stats24H})
+	}
+	return &view, nil
+}
 
 type qqBotMonitorPages struct {
 	active interface {

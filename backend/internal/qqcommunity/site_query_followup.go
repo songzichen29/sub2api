@@ -54,7 +54,7 @@ func (s *Service) resolveSiteQueryFollowup(ctx context.Context, c Config, j Job,
 	if s.db == nil || j.MemberID == "" || j.GroupID == "" {
 		return nil, nil
 	}
-	if _, ok := siteQueryFollowup(text, SiteQueryDecision{Kind: "model_price", Model: "probe", Page: 2}); !ok {
+	if _, ok := siteQueryFollowup(text, SiteQueryDecision{Kind: "activity_rules", Activity: "all", Page: 2}); !ok {
 		return nil, nil
 	}
 	at := j.CreatedAt

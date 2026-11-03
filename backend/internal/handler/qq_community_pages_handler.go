@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/qqcommunity"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
@@ -24,6 +25,24 @@ func (h *QQCommunityHandler) ReplyPage(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, page)
+}
+
+func (h *QQCommunityHandler) ReplyPageDetail(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("X-Robots-Tag", "noindex, nofollow")
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
+	var input qqcommunity.MonitorDetailRequest
+	if c.ShouldBindJSON(&input) != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "检测参数不正确"})
+		return
+	}
+	data, err := h.bot.ReplyPageDetail(c.Request.Context(), input)
+	if err != nil {
+		c.JSON(http.StatusGone, gin.H{"error": "该检测结果暂不可用或链接已过期，请在群里重新查询"})
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 func (h *QQCommunityHandler) PreviewReplyPage(c *gin.Context) {

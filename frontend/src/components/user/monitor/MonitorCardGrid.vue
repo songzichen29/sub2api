@@ -45,6 +45,7 @@
         :quality-plans="qualityPlans.filter(plan => plan.monitor_ids?.includes(item.id))"
         @click="emit('cardClick', item)"
         @quality-select="emit('qualitySelect', $event)"
+        @point-select="emit('pointSelect', item, $event)"
       />
     </div>
   </div>
@@ -52,7 +53,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import type { UserMonitorView, UserMonitorDetail } from '@/api/channelMonitor'
+import type { UserMonitorView, UserMonitorDetail, MonitorTimelinePoint } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
 import type { QualityPlan } from '@/api/modelQuality'
@@ -70,6 +71,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   (e: 'cardClick', item: UserMonitorView): void
   (e: 'qualitySelect', selection: QualitySelection): void
+  (e: 'pointSelect', item: UserMonitorView, point: MonitorTimelinePoint): void
 }>()
 
 const { t } = useI18n()

@@ -59,7 +59,6 @@ func (s *Service) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.startModeration(ctx)
-	s.startPriceMonitor(ctx)
 	s.startHealthMonitor(ctx)
 	s.startGrowthMonitor(ctx)
 	for i := 0; i < 2; i++ {
@@ -263,11 +262,6 @@ func (s *Service) memberEvent(ctx context.Context, c Config, j Job, e Event) err
 		if err != nil {
 			return err
 		}
-		_, err = s.reward(ctx, c, j, "invite")
-		if err != nil {
-			reason = "reward_settlement_failed"
-			return err
-		}
 		if n == 0 {
 			outcome, reason = "ignored", "existing_inviter_or_late_invitation"
 		} else {
@@ -290,11 +284,6 @@ func (s *Service) memberEvent(ctx context.Context, c Config, j Job, e Event) err
 			}
 			n, err := res.RowsAffected()
 			if err != nil {
-				return err
-			}
-			_, err = s.reward(ctx, c, j, "invite")
-			if err != nil {
-				reason = "reward_settlement_failed"
 				return err
 			}
 			outcome, reason = "recorded", "member_join_recorded"
@@ -324,11 +313,8 @@ func (s *Service) memberEvent(ctx context.Context, c Config, j Job, e Event) err
 }
 
 func (s *Service) SettleInvites(ctx context.Context, member string) error {
-	c, err := s.Config(ctx)
-	if err != nil {
-		return err
-	}
-	return s.settleInvites(ctx, c, member)
+	// QQ invitations are retired; retain this callback for existing integrations.
+	return nil
 }
 
 func (s *Service) settleInvites(ctx context.Context, c Config, member string) error {
@@ -513,8 +499,8 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		text = "已清空你在本群的聊天历史。"
 	case "帮助":
 		return s.sendHelp(ctx, c, *j, arg)
-	case "价格":
-		return s.sendModelPrice(ctx, c, *j, arg)
+	case "价格", "邀请奖励", "邀请活动", "我的邀请":
+		text = "该功能已移除，请发送 帮助 查看当前功能。"
 	case "我的余额":
 		var balance float64
 		var uid int64
@@ -571,18 +557,6 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 		if cmd == "抽奖活动" {
 			return s.sendCommandPage(ctx, c, *j, cmd, text, arg)
-		}
-	case "邀请奖励", "邀请活动":
-		var err error
-		text, err = s.inviteInfo(ctx, c, *j)
-		if err != nil {
-			text = "邀请活动查询失败，请稍后重试。"
-		}
-	case "我的邀请":
-		var err error
-		text, err = s.myInvites(ctx, c, *j)
-		if err != nil {
-			text = "邀请信息查询失败，请稍后重试。"
 		}
 	case "今日排行榜", "今日排行版":
 		text = "排行榜功能已移除。"
@@ -647,10 +621,6 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 		kind := "chat"
 		prompt := strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), ""))
-		if cmd != "生图" && !hasImages && isLiveXLookup(prompt) {
-			text = "当前机器人没有联网或 X 检索能力，无法核实最新推文。你可以贴出推文正文，我可以帮你总结或翻译。"
-			break
-		}
 		if prompt == "" && (hasImages || parts != "" || e.referenceID() != "") {
 			prompt = "请分析这条消息的内容。"
 		}
@@ -701,7 +671,6 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			}
 		} else {
 			messages := s.historyForQuestion(ctx, c, *j, prompt)
-			messages = withGroupAdminChatInstructions(messages, c, *j, addressed)
 			messages = withChatCapabilities(messages, c, *j)
 			var input Message
 			input, err = s.chatMessageWithImageProgress(ctx, c, e, prompt, ref, func() {

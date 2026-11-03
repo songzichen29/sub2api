@@ -73,13 +73,6 @@ func (s *Service) PreviewReplyPage(ctx context.Context, kind, model, filter, gro
 		var balance float64
 		err = s.db.QueryRowContext(ctx, `SELECT u.balance FROM users u WHERE u.id=$1 AND u.status='active' AND u.deleted_at IS NULL`, uid).Scan(&balance)
 		page = balanceReplyPage(balance)
-	case "prices":
-		if s.modelPrices == nil || model == "" || len(model) > 200 {
-			return "", errors.New("请输入模型名称")
-		}
-		var blocks []string
-		blocks, err = s.modelPrices.ModelPrice(ctx, model, uid, time.Now())
-		page = priceReplyPage(model, filter, blocks)
 	default:
 		return "", errors.New("未知页面类型")
 	}
