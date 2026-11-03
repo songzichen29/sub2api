@@ -3,6 +3,7 @@ package qqcommunity
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image/png"
@@ -25,6 +26,28 @@ func replyTestFont(t *testing.T) *opentype.Font {
 	f, err := opentype.Parse(goregular.TTF)
 	require.NoError(t, err)
 	return f
+}
+
+func TestExplicitReplyFontCannotHideFailureBehindSystemFallback(t *testing.T) {
+	dir := t.TempDir()
+	good, bad := filepath.Join(dir, "good.ttf"), filepath.Join(dir, "bad.ttf")
+	require.NoError(t, os.WriteFile(good, goregular.TTF, 0600))
+	broken := append([]byte(nil), goregular.TTF...)
+	// Emulate the packaged TTC's unaligned table offsets rejected by sfnt.
+	binary.BigEndian.PutUint32(broken[20:24], binary.BigEndian.Uint32(broken[20:24])|1)
+	require.NoError(t, os.WriteFile(bad, broken, 0600))
+	f, source, err := resolveCardFont(bad, []string{good})
+	require.ErrorContains(t, err, "invalid table offset")
+	require.Nil(t, f)
+	require.Empty(t, source)
+	f, source, err = resolveCardFont(good, []string{bad})
+	require.NoError(t, err)
+	require.NotNil(t, f)
+	require.Equal(t, good, source)
+	f, source, err = resolveCardFont("", []string{bad, good})
+	require.NoError(t, err)
+	require.NotNil(t, f)
+	require.Equal(t, good, source)
 }
 
 func TestReplyCardPaginationRetainsUnicodeAndSuffix(t *testing.T) {

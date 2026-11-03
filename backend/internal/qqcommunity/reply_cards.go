@@ -9,6 +9,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/png"
+	"log/slog"
 	"math"
 	"os"
 	"regexp"
@@ -51,35 +52,69 @@ type replyCardPage struct {
 
 var cardFont struct {
 	sync.Once
-	Font *opentype.Font
-	Err  error
+	Font   *opentype.Font
+	Source string
+	Err    error
 }
 
 func loadCardFont() (*opentype.Font, error) {
 	cardFont.Do(func() {
-		paths := []string{os.Getenv("QQBOT_CARD_FONT"), "/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc", "/usr/share/fonts/wenquanyi/wqy-zenhei/wqy-zenhei.ttc", "C:/Windows/Fonts/msyh.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc"}
-		for _, path := range paths {
-			if path == "" {
-				continue
-			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			if collection, err := opentype.ParseCollection(data); err == nil {
-				cardFont.Font, err = collection.Font(0)
-				if err == nil {
-					return
-				}
-			}
-			if f, err := opentype.Parse(data); err == nil {
-				cardFont.Font = f
-				return
-			}
-		}
-		cardFont.Err = errors.New("Chinese reply font unavailable")
+		cardFont.Font, cardFont.Source, cardFont.Err = resolveCardFont(os.Getenv("QQBOT_CARD_FONT"), []string{
+			"/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttf",
+			"/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc",
+			"/usr/share/fonts/wenquanyi/wqy-zenhei/wqy-zenhei.ttc",
+			"C:/Windows/Fonts/msyh.ttc",
+			"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+		})
 	})
 	return cardFont.Font, cardFont.Err
+}
+
+func resolveCardFont(override string, defaults []string) (*opentype.Font, string, error) {
+	paths := defaults
+	// An explicit font is also used by release checks. Falling back here would
+	// conceal an unusable image font behind a developer's system font.
+	if override != "" {
+		paths = []string{override}
+	}
+	var failures []error
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			failures = append(failures, err)
+			continue
+		}
+		collection, err := opentype.ParseCollection(data)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("parse reply font %s: %w", path, err))
+			continue
+		}
+		for i := 0; i < collection.NumFonts(); i++ {
+			f, err := collection.Font(i)
+			if err == nil {
+				return f, path, nil
+			}
+			failures = append(failures, fmt.Errorf("parse reply font %s face %d: %w", path, i, err))
+		}
+	}
+	return nil, "", fmt.Errorf("Chinese reply font unavailable: %w", errors.Join(failures...))
+}
+
+// CommandReplyImagePreview exercises the production font loader and renderer
+// without configuration, database access, model calls or QQ messages.
+func CommandReplyImagePreview() ([]byte, string, error) {
+	f, err := loadCardFont()
+	if err != nil {
+		return nil, "", err
+	}
+	for _, r := range "帮助监控用量余额中文" {
+		glyph, err := f.GlyphIndex(nil, r)
+		if err != nil || glyph == 0 {
+			return nil, cardFont.Source, fmt.Errorf("reply font missing Chinese glyph %U", r)
+		}
+	}
+	data, err := renderReplyCard(f, "QQ 指令图片检查", replyCardPage{Lines: []string{"帮助 · 监控 · 用量 · 余额", "中文字体与 PNG 渲染正常", "此检查不连接数据库，不发送 QQ 消息。"}}, 0, 1)
+	return data, cardFont.Source, err
 }
 
 var cardLink = regexp.MustCompile(`https?://[^\s<>]+`)
@@ -286,6 +321,9 @@ func drawHealthBuckets(img *image.RGBA, x, y, width, height int, points []Channe
 // pages are never repeated. Uncertain delivery errors abort without retry.
 func (s *Service) sendCommandCards(ctx context.Context, c Config, j Job, text string) ([]byte, bool, error) {
 	f, err := loadCardFont()
+	if err != nil {
+		slog.WarnContext(ctx, "QQ command image fell back to text", "component", "qqbot.reply_card", "reason", "font_unavailable", "job_id", j.ID, "error", err)
+	}
 	if err != nil || len(text) > 256<<10 {
 		raw, err := s.sendOneBot(ctx, c, j, text, nil)
 		return raw, false, err
@@ -319,6 +357,11 @@ func (s *Service) sendCommandCardsWithFont(ctx context.Context, c Config, j Job,
 		}
 		var rejected *oneBotRejected
 		if renderErr != nil || errors.As(err, &rejected) {
+			if renderErr != nil {
+				slog.WarnContext(ctx, "QQ command image fell back to text", "component", "qqbot.reply_card", "reason", "render_failed", "job_id", j.ID, "page", i+1, "error", renderErr)
+			} else {
+				slog.WarnContext(ctx, "QQ command image fell back to text", "component", "qqbot.reply_card", "reason", "image_rejected", "job_id", j.ID, "page", i+1, "retcode", rejected.Retcode)
+			}
 			fallback := strings.Join(page.Lines, "\n")
 			// The detailed text pages already contain every chart value.
 			if len(page.Lines) == 0 {

@@ -75,6 +75,14 @@
 - 卡片不调用生图模型、不扣生图额度、不要求开启生图。缺少字体或渲染失败时回退完整文字；OneBot 明确拒收时只回退当前页，超时、断线、无消息 ID 或不明回执不重发已发送内容。
 - Mock 验证覆盖登录状态、扫码刷新保护、凭据缓存和错误脱敏、长文本分页、原生图片回执、明确拒收回退及不明投递不重发；前端覆盖轮询卸载、在线隐藏二维码、错误清除旧状态和未配置状态。真实群收图仍需实际 QQ 客户端验收。
 
+### 镜像字体兼容性与验收
+
+Alpine 的原始 `wqy-zenhei.ttc` 在 Go `sfnt` 中会报 `invalid table offset`；仅检查文件存在或可读不能证明可渲染。Docker 构建时用 fontTools 将首个字形集重新保存为 `wqy-zenhei.ttf`，渲染器优先读取该文件，构建工具随后卸载。
+
+镜像构建必须执行 `/app/sub2api --qqbot-card-check`，失败即停止构建。它使用生产字体加载器检查中文字符并生成 PNG，不启动服务、不连接数据库、不调用模型或发送 QQ 消息。运维可加 `--qqbot-card-output /tmp/qq-card-check.png` 导出图片核对。
+
+设置 `QQBOT_CARD_FONT` 时严格使用指定字体，不能回退到其他系统字体掩盖失败。图片回退为文字会记录 `component=qqbot.reply_card`，区分 `font_unavailable`、`render_failed` 和 `image_rejected`，不记录用户正文、Key 或图片内容。
+
 ### 2026-11-03 发布记录
 
 - 生产代码 `fefa1ee44da7feb06a09d643108d35bc61abc0a0`，GitHub 构建 `41514801751` 成功，新机固定摘要 `sha256:b0c3d4fe656f0372a829adcf861932f85604d0db3a16a934bd67102e6a4f8251`。

@@ -127,6 +127,12 @@ RUN apk add --no-cache \
     && if [ -x /usr/bin/mysqldump ]; then ln -sf /usr/bin/mysqldump /usr/local/bin/mysqldump; fi \
     && rm -rf /var/cache/apk/*
 
+# The package's original TTC has table offsets rejected by Go's sfnt parser.
+# Re-serialize its first face as standalone TTF; build tools do not stay installed.
+RUN apk add --no-cache --virtual .qqbot-font-build py3-fonttools \
+    && python3 -c "from fontTools.ttLib import TTFont; TTFont('/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttc', fontNumber=0).save('/usr/share/fonts/wqy-zenhei/wqy-zenhei.ttf')" \
+    && apk del .qqbot-font-build
+
 # Create non-root user
 RUN addgroup -g 1000 sub2api && \
     adduser -u 1000 -G sub2api -s /bin/sh -D sub2api
@@ -137,6 +143,9 @@ WORKDIR /app
 # Copy binary/resources with ownership to avoid extra full-layer chown copy
 COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
 COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
+
+# Gate the actual runtime font and renderer, rather than just its presence.
+RUN /app/sub2api --qqbot-card-check
 
 # Create data directory
 RUN mkdir -p /app/data && chown sub2api:sub2api /app/data

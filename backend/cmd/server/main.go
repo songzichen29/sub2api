@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"flag"
 	"log"
@@ -19,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/qqcommunity"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 	"github.com/Wei-Shaw/sub2api/internal/web"
@@ -59,7 +61,22 @@ func main() {
 	// Parse command line flags
 	setupMode := flag.Bool("setup", false, "Run setup wizard in CLI mode")
 	showVersion := flag.Bool("version", false, "Show version information")
+	checkQQCard := flag.Bool("qqbot-card-check", false, "Check QQ command image font and rendering without starting services")
+	qqCardOutput := flag.String("qqbot-card-output", "", "Optional PNG output path for --qqbot-card-check")
 	flag.Parse()
+	if *checkQQCard {
+		data, source, err := qqcommunity.CommandReplyImagePreview()
+		if err != nil {
+			log.Fatalf("QQ command image check failed: %v", err)
+		}
+		if *qqCardOutput != "" {
+			if err := os.WriteFile(*qqCardOutput, data, 0644); err != nil {
+				log.Fatalf("Write QQ command image preview: %v", err)
+			}
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok": true, "font": source, "png_bytes": len(data)})
+		return
+	}
 
 	if *showVersion {
 		log.Printf("Sub2API %s (commit: %s, built: %s)\n", Version, Commit, Date)
