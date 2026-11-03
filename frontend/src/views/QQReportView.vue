@@ -17,7 +17,7 @@
           <input v-model="filter" class="input mt-2 w-full" type="search" placeholder="输入关键词筛选" />
         </label>
         <section v-if="report.kind === 'monitor' && report.data.mode === 'v1'">
-          <MonitorCardGrid :items="monitorItems" window="7d" :countdown-seconds="0" :loading="false" :detail-cache="{}" :quality-plans="report.data.quality_plans || []" @card-click="selectedMonitor = $event" @quality-select="selectedQuality = $event" />
+          <MonitorCardGrid :items="monitorItems" window="7d" :countdown-seconds="null" :loading="false" :detail-cache="{}" :quality-plans="report.data.quality_plans || []" @card-click="selectedMonitor = $event" @quality-select="selectedQuality = $event" />
           <p v-if="selectedMonitor" class="mt-4 text-sm">{{ selectedMonitor.name }} · {{ selectedMonitor.primary_model }} · 点击历史状态条可查看时间与状态；完整历史见网站监控页。</p>
           <p v-if="selectedQuality" class="mt-4 text-sm">{{ selectedQuality.planName }} · 批次 {{ selectedQuality.batchId }} · 完整检测结果见网站监控页。</p>
         </section>
@@ -63,6 +63,8 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { loadLocaleMessages } from '@/i18n'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import WalletBalanceValue from '@/components/common/WalletBalanceValue.vue'
 import ModelUsageTable, { type ModelUsageRow } from '@/components/common/ModelUsageTable.vue'
@@ -85,11 +87,24 @@ const passiveGroups = computed(() => (report.value?.data.report?.Groups || []).f
 const money = (amount: number | undefined) => '$' + Number(amount || 0).toFixed(2)
 const formatTime = (value: string) => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
 const controller = new AbortController()
+const { locale } = useI18n({ useScope: 'global' })
+const previousLocale = locale.value
+const previousLanguage = document.documentElement.lang
 let expiryTimer: ReturnType<typeof setTimeout> | undefined
-onUnmounted(() => { controller.abort(); clearTimeout(expiryTimer) })
+onUnmounted(() => {
+  controller.abort(); clearTimeout(expiryTimer)
+  locale.value = previousLocale
+  document.documentElement.lang = previousLanguage
+})
 onMounted(async () => {
   const referrer = document.createElement('meta'); referrer.name = 'referrer'; referrer.content = 'no-referrer'; document.head.appendChild(referrer)
   try {
+    // QQ commands and report copy are Chinese. Use the same language for the
+    // shared components without overwriting the visitor's saved preference.
+    await loadLocaleMessages('zh')
+    if (controller.signal.aborted) return
+    locale.value = 'zh'
+    document.documentElement.lang = 'zh'
     const token = location.hash.slice(1)
     if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('页面链接不完整，请在群里重新查询。')
     const response = await fetch('/api/v1/qq-bot/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store', body: JSON.stringify({ token }), signal: controller.signal })

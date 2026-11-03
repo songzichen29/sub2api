@@ -61,7 +61,7 @@ import type { QualitySelection } from '@/features/model-quality/qualityPresentat
 const props = withDefaults(defineProps<{
   items: UserMonitorView[]
   window: '7d' | '15d' | '30d'
-  countdownSeconds: number
+  countdownSeconds: number | null
   loading: boolean
   detailCache: Record<number, UserMonitorDetail>
   qualityPlans?: QualityPlan[]

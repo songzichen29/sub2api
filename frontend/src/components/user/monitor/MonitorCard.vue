@@ -110,7 +110,7 @@ const props = withDefaults(defineProps<{
   item: UserMonitorView
   window: '7d' | '15d' | '30d'
   availabilityValue: number | null
-  countdownSeconds: number
+  countdownSeconds: number | null
   qualityPlans?: QualityPlan[]
 }>(), { qualityPlans: () => [] })
 
