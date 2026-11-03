@@ -73,7 +73,9 @@ func TestReplyPageCapabilityExpiresAndRevokesOnRebinding(t *testing.T) {
 	mock.ExpectQuery("SELECT b.user_id FROM qqc_bindings").WithArgs(c.AppID, "member").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
 	page, err := s.ReplyPage(context.Background(), token)
 	require.NoError(t, err)
-	require.Equal(t, 12.5, page.Data.(map[string]any)["balance"])
+	data, ok := page.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 12.5, data["balance"])
 	require.WithinDuration(t, time.Now().Add(10*time.Minute), page.ExpiresAt, time.Second)
 	// The same QQ now belongs to a different website account. An old link
 	// must not remain usable even though its TTL has not elapsed.
