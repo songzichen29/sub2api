@@ -24,6 +24,11 @@ func TestAutonomousConfigDefaultsAndValidation(t *testing.T) {
 	require.Error(t, validateAutonomous(c))
 	c.AllowedGroups = []string{"group"}
 	require.NoError(t, validateAutonomous(c))
+	c.Autonomous.CooldownSeconds, c.Autonomous.MemberCooldownSeconds = 5, 5
+	require.NoError(t, validateAutonomous(c))
+	c.Autonomous.CooldownSeconds = 4
+	require.Error(t, validateAutonomous(c))
+	c.Autonomous.CooldownSeconds = 5
 	c.Autonomous.SamplePercent = 101
 	require.Error(t, validateAutonomous(c))
 	c = DefaultConfig()
@@ -57,6 +62,10 @@ func TestAutonomousNamesAndLocalFilters(t *testing.T) {
 	text, reason := autonomousText(Event{Content: "今天这个错误怎么处理？"})
 	require.Empty(t, reason)
 	require.NotEmpty(t, text)
+	for _, text := range []string{"你好", "好啊", "为什么", "怎么弄", "继续", "ok"} {
+		_, reason := autonomousText(Event{Content: text})
+		require.Empty(t, reason, text)
+	}
 	e := Event{Content: "这个问题怎么处理？"}
 	e.MessageReference.MessageID = "another-user"
 	_, reason = autonomousText(e)

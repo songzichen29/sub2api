@@ -383,7 +383,7 @@ export default { qqbot: {
 },
   autonomous: {
   "title": "Autonomous group replies",
-  "help": "Reply without a mention. Disabled by default; select allowed groups explicitly. A configured bot name anywhere in a message triggers normal chat, including messages containing only the name. English names are case-insensitive. Other messages are filtered before a few candidates reach the model. Keep NapCat connected and reporting group messages.",
+  "help": "Join questions and casual conversation without a mention. Disabled by default; select allowed groups explicitly. A configured bot name anywhere in a message triggers normal chat, including messages containing only the name. English names are case-insensitive. Other meaningful text is sampled for model decisions. Group cooldown supports five seconds, and the model prioritizes natural participation. Keep NapCat connected and reporting group messages.",
   "enabled": "Enable autonomous replies",
   "groups": "Enabled group QQ IDs (one per line, required)",
   "names": "Bot names (one per line; match anywhere, English is case-insensitive)",
@@ -400,7 +400,7 @@ export default { qqbot: {
   "end_hour": "End hour (Beijing time; same as start means all day)",
   "max_chars": "Maximum autonomous reply characters",
   "mention": "Mention the member in autonomous replies",
-  "limitsHelp": "Autonomous calls use the global chat quota, not individual quotas. Skips and failures still use call quota; failed sends retain reservations. Zero limits disable the respective autonomous capability. Messages containing a bot name use normal chat quotas, bypass autonomous hours and quotas, and may include images or quotes. One follow-up requires shared history. Without a bot name, short messages, images, links and mentions of others are skipped.",
+  "limitsHelp": "Autonomous calls use the global chat quota, not individual quotas. Skips and failures still use call quota; failed sends retain reservations. Zero limits disable the respective autonomous capability; zero member cooldown adds no extra delay. Messages containing a bot name use normal chat quotas, bypass autonomous hours and quotas, and may include images or quotes. Follow-ups require shared history. Meaningful short text is eligible; repetitive text, images, links and mentions of others are skipped by default.",
   "stats": "Today’s filtering, calls and sends (Beijing time)",
   "records": "Recent autonomous decisions (among the latest 50 bot jobs)",
   "empty": "No records yet",

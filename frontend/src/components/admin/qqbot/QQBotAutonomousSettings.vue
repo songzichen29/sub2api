@@ -52,7 +52,7 @@ const presets = [
 ] as const
 function applyPreset(preset: typeof presets[number]) { Object.assign(value.value, { sample_percent: preset.sample_percent, cooldown_seconds: preset.cooldown_seconds, min_messages: preset.min_messages, hourly_replies: preset.hourly_replies, daily_replies: preset.daily_replies, daily_calls: preset.daily_calls }) }
 const fields = [
-  { key: 'sample_percent', min: 0, max: 100 }, { key: 'cooldown_seconds', min: 10, max: 3600 },
+  { key: 'sample_percent', min: 0, max: 100 }, { key: 'cooldown_seconds', min: 5, max: 3600 },
   { key: 'min_messages', min: 0, max: 100 }, { key: 'member_cooldown_seconds', min: 0, max: 86400 },
   { key: 'hourly_replies', min: 0, max: 100 }, { key: 'daily_replies', min: 0, max: 1000 },
   { key: 'daily_calls', min: 0, max: 2000 }, { key: 'followup_seconds', min: 0, max: 120 },

@@ -51,6 +51,14 @@ The system SHALL send chat requests through the configured gateway using the ope
 - **WHEN** a member or the site reaches its configured quota
 - **THEN** no model request is sent and a clear limit reply is returned
 
+#### Scenario: Frequent autonomous participation
+- **WHEN** an operator configures five-second group and member cooldowns and full casual sampling
+- **THEN** meaningful short questions and chat can reach the model without a mention, candidate pacing honors five seconds, and the model prioritizes natural replies
+
+#### Scenario: New messages during an answer
+- **WHEN** another group message arrives while a recent autonomous reply is being generated
+- **THEN** the original answer remains eligible, references its source message, and still observes its age, current policy, cooldown and quota limits
+
 ### Requirement: Management, secret storage and records
 The system SHALL provide administrator configuration, connection/model tests, binding/reward/message records and user binding management. Secrets MUST be encrypted at rest and omitted from configuration read responses.
 

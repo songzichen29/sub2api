@@ -154,6 +154,17 @@ describe('QQ module settings', () => {
   await w.get('form').trigger('submit'); await flushPromises()
   expect(server.autonomous).toMatchObject({ enabled: false, groups: [], sample_percent: 5, daily_calls: 15, daily_replies: 8 })
  })
+ it('saves five-second group and member cooldowns for conversation', async () => {
+  const w = await mountView(); await category(w, '对话与指令')
+  await w.get('[data-testid="autonomous-cooldown_seconds"]').setValue(5)
+  await w.get('[data-testid="autonomous-member_cooldown_seconds"]').setValue(5)
+  await w.get('[data-testid="autonomous-sample_percent"]').setValue(100)
+  const input = w.get('[data-testid="autonomous-cooldown_seconds"]').element as HTMLInputElement
+  expect(input.checkValidity()).toBe(true)
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(api.saveSection).toHaveBeenCalledWith('autonomous', expect.any(String), expect.objectContaining({ autonomous: expect.objectContaining({ cooldown_seconds: 5, member_cooldown_seconds: 5, sample_percent: 100 }) }))
+  expect(server.autonomous).toMatchObject({ cooldown_seconds: 5, member_cooldown_seconds: 5, sample_percent: 100 })
+ })
  it('saves custom replies and preserves drafts on validation failure', async () => {
   const w = await mountView(); await category(w, '对话与指令'); await w.get('#qqbot-settings-tab-commands').trigger('click')
   const panel = w.get('#qqbot-settings-panel-commands'); await panel.findAll('button')[0]!.trigger('click')
