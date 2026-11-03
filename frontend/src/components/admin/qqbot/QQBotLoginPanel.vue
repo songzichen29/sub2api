@@ -21,7 +21,7 @@
           <div><dt class="text-gray-500">{{ t('qqbot.login.lastMessage') }}</dt><dd>{{ displayTime(status.session_health?.last_message_at) }}</dd></div>
           <div><dt class="text-gray-500">{{ t('qqbot.login.lastProbe') }}</dt><dd>{{ displayTime(status.session_health?.checked_at) }}</dd></div>
         </dl>
-        <p v-if="sessionUnhealthy" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="qq-session-alert">{{ t('qqbot.login.sessionAlert') }}</p>
+        <p v-if="sessionUnhealthy" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="qq-session-alert">{{ t(authFailed ? 'qqbot.login.authFailedHelp' : 'qqbot.login.sessionAlert') }}</p>
         <p class="text-xs text-gray-500">{{ t('qqbot.login.receptionHelp') }}</p>
         <p v-if="status.account_mismatch" role="alert" class="text-sm text-red-600">{{ t('qqbot.login.mismatch', { qq: status.logged_in_qq }) }}</p>
         <p v-if="status.auto_recovery" class="text-sm text-gray-600 dark:text-gray-300" data-testid="login-auto-recovery">{{ t('qqbot.login.autoRecovery') }}</p>
@@ -56,7 +56,8 @@ const controller = new AbortController()
 function inLoginFlow(s: QQNapCatLogin) { return s.scan_accepted || ['initializing', 'reconnecting', 'qrcode_scanned', 'logging_in'].includes(s.phase) }
 const loginInProgress = computed(() => status.value ? inLoginFlow(status.value) : false)
 const restartCoolingDown = computed(() => now.value < restartAvailableAt.value)
-const sessionUnhealthy = computed(() => ['degraded', 'stale', 'offline_reported'].includes(status.value?.session_health?.state || ''))
+const authFailed = computed(() => status.value?.session_health?.state === 'authentication_failed')
+const sessionUnhealthy = computed(() => authFailed.value || ['degraded', 'stale', 'offline_reported'].includes(status.value?.session_health?.state || ''))
 const sessionLabel = computed(() => t(`qqbot.login.session.${status.value?.session_health?.state || 'unknown'}`))
 function displayTime(value?: string) { return value ? new Date(value).toLocaleString() : t('qqbot.login.noEvidence') }
 const stateLabel = computed(() => {
@@ -64,6 +65,7 @@ const stateLabel = computed(() => {
   if (!s) return ''
   if (s.online) {
     if (s.account_mismatch) return t('qqbot.login.wrongAccount')
+    if (authFailed.value) return t('qqbot.login.session.authentication_failed')
     if (sessionUnhealthy.value) return t('qqbot.login.sessionProblem')
     return t(s.connected ? 'qqbot.login.online' : 'qqbot.login.waitConnection')
   }

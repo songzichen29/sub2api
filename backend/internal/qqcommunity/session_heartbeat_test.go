@@ -70,6 +70,7 @@ func TestQQHeartbeatCannotAnnounceCachedOnlineAndDeduplicatesAcrossReconnects(t 
 	}{
 		{"cached online only", "", false, false, "skipped"},
 		{"failed live session", "failed", false, false, "skipped"},
+		{"authentication rejected despite good probe", "authentication_failed", false, false, "skipped"},
 		{"duplicate on reconnect", "ok", true, false, ""},
 		{"disabled during probe", "ok", false, true, "cancelled"},
 	} {
@@ -84,6 +85,9 @@ func TestQQHeartbeatCannotAnnounceCachedOnlineAndDeduplicatesAcrossReconnects(t 
 			conn.health = oneBotHealth{online: &online, heartbeat: now, checked: now, probe: tc.probe}
 			if tc.probe == "failed" {
 				conn.health.failures = 3
+			}
+			if tc.probe == "authentication_failed" {
+				conn.health.probe, conn.health.authRejectedAt = "ok", now
 			}
 			rows := sqlmock.NewRows([]string{"id"})
 			var idArg sqlmock.Argument = heartbeatIDArgument{rows}

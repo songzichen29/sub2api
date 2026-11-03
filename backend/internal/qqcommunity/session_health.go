@@ -18,6 +18,7 @@ type QQSessionHealth struct {
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
 	Failures      int        `json:"failures"`
 	Alert         bool       `json:"alert"`
+	AuthFailedAt  *time.Time `json:"auth_failed_at,omitempty"`
 }
 
 // Guarded by oneBotConnection.mu; a new connection starts without old evidence.
@@ -28,6 +29,7 @@ type oneBotHealth struct {
 	probe                                             string
 	failures                                          int
 	alerted                                           bool
+	authRejectedAt                                    time.Time
 }
 
 func healthTime(t time.Time) *time.Time {
@@ -38,11 +40,13 @@ func healthTime(t time.Time) *time.Time {
 }
 
 func (h oneBotHealth) snapshot(now time.Time) QQSessionHealth {
-	out := QQSessionHealth{State: "unknown", Probe: h.probe, CheckedAt: healthTime(h.checked), LastSuccessAt: healthTime(h.succeeded), HeartbeatAt: healthTime(h.heartbeat), LastMessageAt: healthTime(h.message), Failures: h.failures, Alert: h.failures >= 3}
+	out := QQSessionHealth{State: "unknown", Probe: h.probe, CheckedAt: healthTime(h.checked), LastSuccessAt: healthTime(h.succeeded), HeartbeatAt: healthTime(h.heartbeat), LastMessageAt: healthTime(h.message), Failures: h.failures, Alert: h.failures >= 3, AuthFailedAt: healthTime(h.authRejectedAt)}
 	if out.Probe == "" {
 		out.Probe = "pending"
 	}
-	if h.offlineNotice || (h.online != nil && !*h.online) {
+	if !h.authRejectedAt.IsZero() {
+		out.State, out.Alert = "authentication_failed", true
+	} else if h.offlineNotice || (h.online != nil && !*h.online) {
 		out.State, out.Alert = "offline_reported", true
 	} else if (!h.heartbeat.IsZero() && now.Sub(h.heartbeat) > 90*time.Second) || (!h.checked.IsZero() && now.Sub(h.checked) > 150*time.Second) {
 		out.State = "stale"
@@ -165,12 +169,13 @@ func (c *oneBotConnection) probeHealth(ctx context.Context, now time.Time) {
 func (s *Service) sessionDiagnostic(appID string) DiagnosticCheck {
 	h := s.sessionHealth(appID)
 	messages := map[string]string{
-		"disconnected":     "OneBot 未连接，QQ 收信链路不可验证",
-		"unknown":          "QQ 会话尚未完成实时探测，不能仅凭已连接判断正常",
-		"offline_reported": "NapCat 上报 QQ 离线；WebSocket 连接不代表已登录",
-		"stale":            "QQ 会话探测或心跳已过期，当前状态未验证",
-		"degraded":         "QQ 实时会话探测异常；未自动重登，请检查 NapCat/QQ 会话",
-		"probe_ok":         "QQ 实时会话探测通过；实际收信仍以最后消息时间为准",
+		"disconnected":          "OneBot 未连接，QQ 收信链路不可验证",
+		"unknown":               "QQ 会话尚未完成实时探测，不能仅凭已连接判断正常",
+		"offline_reported":      "NapCat 上报 QQ 离线；WebSocket 连接不代表已登录",
+		"authentication_failed": "QQ 已拒绝身份验证，登录身份失效；请重新登录并验证收发",
+		"stale":                 "QQ 会话探测或心跳已过期，当前状态未验证",
+		"degraded":              "QQ 实时会话探测异常；未自动重登，请检查 NapCat/QQ 会话",
+		"probe_ok":              "QQ 实时会话探测通过；实际收信仍以最后消息时间为准",
 	}
 	return DiagnosticCheck{"qq_session", h.State == "probe_ok", messages[h.State]}
 }

@@ -90,6 +90,17 @@ describe('NapCat login panel', () => {
     expect(w.get('[data-testid="qq-session-health"]').text()).toBe(zh.qqbot.login.session.unknown)
     expect(w.text()).toContain(zh.qqbot.login.receptionHelp)
   })
+  it('shows expired authentication even when NapCat and its probe still report online', async () => {
+    api.login.mockResolvedValue({ ...base, online: true, connected: true, session_health: { state: 'authentication_failed', probe: 'ok', failures: 0, alert: true } })
+    const w = show(); await flushPromises()
+    expect(w.get('[data-testid="qq-session-health"]').text()).toBe(zh.qqbot.login.session.authentication_failed)
+    expect(w.get('[data-testid="qq-session-alert"]').text()).toBe(zh.qqbot.login.authFailedHelp)
+    expect(w.text()).not.toContain(zh.qqbot.login.online)
+    expect(w.get('[data-testid="qq-restart-login"]').attributes('disabled')).toBeUndefined()
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(api.refreshLoginQR).not.toHaveBeenCalled()
+    expect(api.restartLogin).not.toHaveBeenCalled()
+  })
   it('requires confirmation, then follows a new QR without repeating the restart', async () => {
     api.login.mockResolvedValue({ ...base, online: true, connected: true })
     const w = show(); await flushPromises()

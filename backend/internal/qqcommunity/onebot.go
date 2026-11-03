@@ -40,6 +40,8 @@ type oneBotAck struct {
 	Status  string          `json:"status"`
 	Retcode int             `json:"retcode"`
 	Data    json.RawMessage `json:"data"`
+	Message string          `json:"message"`
+	Wording string          `json:"wording"`
 }
 type obID string
 
@@ -96,6 +98,7 @@ type obEvent struct {
 
 func obValue(b json.RawMessage) string { var v obID; _ = json.Unmarshal(b, &v); return string(v) }
 func (c *oneBotConnection) call(ctx context.Context, action string, params any) (json.RawMessage, error) {
+	started := time.Now()
 	id := randomID()
 	ch := make(chan oneBotAck, 1)
 	c.mu.Lock()
@@ -113,12 +116,21 @@ func (c *oneBotConnection) call(ctx context.Context, action string, params any) 
 	defer t.Stop()
 	select {
 	case a := <-ch:
+		if qqAuthenticationRejected(a) {
+			c.mu.Lock()
+			c.health.authRejectedAt = time.Now()
+			c.logHealthTransition(c.health.authRejectedAt)
+			c.mu.Unlock()
+			// A login failure cannot be fixed by retrying the reply as text.
+			return nil, errQQSessionExpired
+		}
 		if a.Status != "ok" || a.Retcode != 0 {
 			if a.Status == "failed" && a.Retcode != 0 {
 				return nil, &oneBotRejected{Action: action, Retcode: a.Retcode}
 			}
 			return nil, fmt.Errorf("OneBot %s acknowledgement invalid; delivery unconfirmed", action)
 		}
+		c.observeSuccessfulSend(action, a.Data, started)
 		return a.Data, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()

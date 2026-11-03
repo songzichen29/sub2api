@@ -124,6 +124,17 @@ An authenticated administrator SHALL be able to restart the configured NapCat lo
 - **WHEN** confirmation is cancelled, requests overlap, or the restart response is lost
 - **THEN** cancellation sends no restart, concurrent submissions send at most one, and uncertain delivery is not automatically retried
 
+### Requirement: Explicit QQ authentication rejection overrides cached login
+The system SHALL recognize explicit QQ identity or login-expiration errors in failed OneBot acknowledgements and immediately report authentication_failed with a timestamp. Transport heartbeats, queued inbound events and successful read-only probes MUST NOT clear that failure on the current connection. Generic errors, timeouts and successful responses containing quoted text MUST NOT be treated as authentication rejection. Upstream error text MUST NOT be stored or exposed to users.
+
+#### Scenario: Heartbeat send returns w21 while the socket remains online
+- **WHEN** QQ rejects a send with an authentication-expiration message despite cached online flags and a successful protocol probe
+- **THEN** the administrator sees expired authentication, subsequent online heartbeat announcements are suppressed, and image replies do not retry as text
+
+#### Scenario: Later successful delivery or a new connection
+- **WHEN** a send started after the rejection receives a valid message ID
+- **THEN** the current connection may clear the authentication failure; an older in-flight send cannot clear it, and a fresh connection starts unverified rather than inheriting a successful status
+
 
 ### Requirement: Sampled autonomous image and sticker participation
 The system SHALL recognize ordinary image, GIF, QQ face and market-sticker events without a mention when the media-interjection switch is enabled. It SHALL sample media independently at a default 10%, enforce a per-group daily recognition budget, and retain existing allowed groups, hours, cooldowns and chat/reply quotas. Explicit mentions and name calls SHALL retain the normal chat path. Autonomous media SHALL never invoke image generation.

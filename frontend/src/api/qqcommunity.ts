@@ -225,9 +225,9 @@ export interface QQNapCatLogin {
   qr_code?: string; login_failed: boolean; auto_recovery?: boolean
   restart_available_at?: string
   session_health?: {
-    state: 'unknown' | 'disconnected' | 'offline_reported' | 'stale' | 'degraded' | 'probe_ok'
+    state: 'unknown' | 'disconnected' | 'authentication_failed' | 'offline_reported' | 'stale' | 'degraded' | 'probe_ok'
     probe: string; checked_at?: string; last_success_at?: string; heartbeat_at?: string
-    last_message_at?: string; failures: number; alert: boolean
+    last_message_at?: string; auth_failed_at?: string; failures: number; alert: boolean
   }
 }
 export const qqbotAPI = {
