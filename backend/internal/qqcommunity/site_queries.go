@@ -249,12 +249,12 @@ func siteLotteryRules(c LotteryConfig) string {
 	if !c.Enabled {
 		return "🎉 **抽奖规则**\n抽奖活动未开启。"
 	}
-	text := fmt.Sprintf("🎉 **%s**\n累计有效充值每满 %s 送 %d 次\n每次抽奖消耗 1 次；可发送 抽奖 1～10 连抽\n需绑定网站账号。\n\n**普通奖池**", replyPlainLabel(c.Title), siteRuleMoney(c.RechargeStep), c.ChancesPerStep)
+	text := fmt.Sprintf("🎉 **%s**\n统计起点：%s\n起点后累计有效充值每满 %s 送 %d 次\n每次抽奖消耗 1 次；可发送 抽奖 1～10 连抽\n需绑定网站账号。\n\n**普通奖池**", replyPlainLabel(c.Title), lotteryPeriodStartLabel, siteRuleMoney(c.RechargeStep), c.ChancesPerStep)
 	for _, p := range c.Prizes {
 		text += fmt.Sprintf("\n\n%s\n%s（概率 %.2f%%）", replyPlainLabel(p.Name), siteRuleMoney(p.Amount), float64(p.ProbabilityBPS)/100)
 	}
 	if c.GuaranteeEnabled {
-		text += fmt.Sprintf("\n\n**保底奖池**\n累计每抽 %d 次触发（含历史）；普通中奖不重置保底进度。", c.GuaranteeEvery)
+		text += fmt.Sprintf("\n\n**保底奖池**\n本期累计每抽 %d 次触发；普通中奖不重置保底进度。", c.GuaranteeEvery)
 		for _, p := range c.GuaranteePrizes {
 			text += fmt.Sprintf("\n\n%s\n%s（概率 %.2f%%）", replyPlainLabel(p.Name), siteRuleMoney(p.Amount), float64(p.ProbabilityBPS)/100)
 		}

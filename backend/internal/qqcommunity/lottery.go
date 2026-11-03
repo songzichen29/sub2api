@@ -48,6 +48,12 @@ const lotteryMaxDrawCount = 10
 
 const lotteryDrawUsage = "用法：抽奖 [次数]，次数为 1–10；不填默认抽 1 次。"
 
+// This activity was reset for all accounts at the operator's request. Keep
+// historical records for audit, while calculating this period from the cutoff.
+var lotteryPeriodStart = time.Date(2026, time.November, 3, 9, 48, 32, 263935000, time.UTC)
+
+const lotteryPeriodStartLabel = "2026-11-03 17:48:32（北京时间）"
+
 func lotteryDrawCount(arg string) (int, bool) {
 	if arg == "" {
 		return 1, true
@@ -105,19 +111,19 @@ func lotteryResult(cfg LotteryConfig, state LotteryState, draws []lotteryOutcome
 }
 
 // Count USD principal from completed online balance orders and redeemed positive
-// balance codes, including history. Payment-generated codes only count as orders.
+// balance codes in the current lottery period. Payment-generated codes only count as orders.
 // Bonus credits, subscriptions and administrative credits never create chances.
 // Refund-in-progress orders are suspended; partial refunds remove principal pro rata.
 func lotteryState(ctx context.Context, db queryRower, c LotteryConfig, uid int64, lockSources bool) (LotteryState, error) {
 	out := LotteryState{UserID: uid}
-	total, err := rechargeSum(ctx, db, uid, nil, lockSources)
+	total, err := rechargeSum(ctx, db, uid, &lotteryPeriodStart, lockSources)
 	if err != nil {
 		return out, err
 	}
-	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1`, uid).Scan(&out.Used); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&out.Used); err != nil {
 		return out, err
 	}
-	if err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants WHERE user_id=$1`, uid).Scan(&out.BonusChances); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants WHERE user_id=$1 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&out.BonusChances); err != nil {
 		return out, err
 	}
 	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(out.Used)
@@ -218,12 +224,12 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 	}
 	if showRules {
 		var b strings.Builder
-		fmt.Fprintf(&b, "🎉 **%s**\n累计有效充值每满 USD %.2f 送 %d 次\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), cfg.RechargeStep, cfg.ChancesPerStep)
+		fmt.Fprintf(&b, "🎉 **%s**\n统计起点：%s\n起点后累计有效充值每满 USD %.2f 送 %d 次\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), lotteryPeriodStartLabel, cfg.RechargeStep, cfg.ChancesPerStep)
 		for _, p := range cfg.Prizes {
 			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
 		}
 		if cfg.GuaranteeEnabled {
-			fmt.Fprintf(&b, "\n\n**保底奖池**\n累计每抽 %d 次触发（含历史）\n普通中奖不重置保底进度", cfg.GuaranteeEvery)
+			fmt.Fprintf(&b, "\n\n**保底奖池**\n本期累计每抽 %d 次触发\n普通中奖不重置保底进度", cfg.GuaranteeEvery)
 			for _, p := range cfg.GuaranteePrizes {
 				fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
 			}
@@ -235,7 +241,7 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 		return "", err
 	}
 	var wins int64
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0`, uid).Scan(&wins); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&wins); err != nil {
 		return "", err
 	}
 	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n再充值 USD %.2f 获赠", state.Used, wins, state.Remaining, state.NextRecharge)
