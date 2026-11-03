@@ -108,6 +108,7 @@ func (s *Service) maintenance(ctx context.Context) {
 	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='expired',error='排队超过回复时限，请重新发送',finished_at=NOW(),payload='{}' WHERE status='queued' AND created_at<NOW()-INTERVAL '5 minutes' AND event_type IN ('GROUP_AT_MESSAGE_CREATE','GROUP_MESSAGE_CREATE','INTERACTION_CREATE')`)
 	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_image=NULL,result_text='',payload='{}',member_nickname='',message_preview='' WHERE created_at<NOW()-INTERVAL '24 hours' AND (result_image IS NOT NULL OR result_text<>'' OR payload<>'{}'::jsonb OR member_nickname<>'' OR message_preview<>'')`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_bind_requests WHERE expires_at<NOW()`)
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_private_bind_sessions WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_email_bind_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_transfer_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_email_limits WHERE day<CURRENT_DATE-2`)
@@ -498,8 +499,8 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	case "渠道状态":
 		return s.sendChannelStatus(ctx, c, *j, arg)
 	case "绑定":
-		if arg == "" {
-			text = "用法：绑定 邮箱或绑定码"
+		if arg != "" {
+			text = "绑定码或邮箱不能在群里提交。若已发出绑定码，请在网站重新生成；然后在群里单独发送 /绑定，按私聊提示操作。"
 			break
 		}
 		var bound bool
@@ -508,19 +509,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			text = "绑定状态查询失败，请稍后重试。"
 		} else if bound {
 			text = "当前 QQ 已绑定账号。"
-		} else if strings.Contains(arg, "@") {
-			var pending *preparedBindingEmail
-			text, pending = s.prepareEmailBinding(ctx, c, e, arg)
-			if pending != nil {
-				// A slow SMTP server must not delay the user's QQ acknowledgement.
-				if err := s.send(ctx, c, *j, text, nil, seq); err != nil {
-					return err
-				}
-				s.deliverBindingEmail(ctx, e, pending)
-				return nil
-			}
+		} else if err := s.beginPrivateBinding(ctx, c, e); err != nil {
+			text = "私聊消息未确认送达。请检查是否允许机器人私聊，再在群里重发 /绑定。"
 		} else {
-			text = s.claimBinding(ctx, c, e, arg)
+			text = "已发送私聊，请在私聊提交网站绑定码；网站账号持有人还需核对 QQ 号并确认。"
 		}
 	case "签到":
 		var err error

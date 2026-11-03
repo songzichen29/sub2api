@@ -15,7 +15,7 @@
         <p class="text-sm">{{ t('qqBot.robot', { qq: status.bot_qq }) }}</p>
         <div v-if="code" class="space-y-2">
           <p class="text-sm">{{ t('qqBot.codeHint') }}</p>
-          <code class="block select-all break-all rounded border border-gray-200 p-3 dark:border-dark-700">/绑定 {{ code }}</code>
+          <code class="block select-all break-all rounded border border-gray-200 p-3 dark:border-dark-700">{{ code }}</code>
           <p class="text-xs text-gray-500">{{ t('qqBot.expires', { time: new Date(expiresAt).toLocaleString() }) }}</p>
         </div>
         <div v-if="status.pending_qq" class="space-y-3">

@@ -19,7 +19,7 @@ export default {
     previous: '上一页', next: '下一页', page: '第 {page} 页，共 {total} 条', empty: '暂无记录',
     profileTitle: 'QQ 账号绑定', profileHint: '绑定后可在授权群内查询余额、签到、查看渠道和聊天。群里的余额回复对其他成员可见。',
     disabled: '站点尚未启用 QQ 机器人。', bound: '已绑定 QQ：{qq}', robot: '机器人 QQ：{qq}',
-    createCode: '生成绑定码', regenerate: '重新生成', codeHint: '在机器人所在的授权群发送以下指令，五分钟内有效。提交后点击刷新，并核对 QQ 后确认。',
+    createCode: '生成绑定码', regenerate: '重新生成', codeHint: '先在授权群发送 /绑定。收到机器人私聊后，在私聊中发送下方绑定码；切勿在群里发码。然后刷新并核对 QQ 后确认。',
     expires: '有效至 {time}', pending: '待确认 QQ：{qq}', confirm: '确认绑定此 QQ', confirmed: 'QQ 绑定成功',
     privacy: '绑定码仅用于本次关联。请勿发送密码、登录令牌或 API Key。',
     commands: '群内指令', commandHelp: '/帮助、/余额、/签到、/渠道、/聊天 问题、/清空对话；也可在群内提及机器人后输入问题。',

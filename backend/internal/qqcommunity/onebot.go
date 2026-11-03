@@ -270,7 +270,13 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 	if err != nil {
 		return err
 	}
-	if !c.Enabled || c.AppID != string(in.SelfID) || !c.allows(string(in.GroupID)) {
+	if !c.Enabled || c.AppID != string(in.SelfID) {
+		return nil
+	}
+	if in.PostType == "message" && in.MessageType == "private" {
+		return s.handlePrivateBinding(ctx, c, in)
+	}
+	if !c.allows(string(in.GroupID)) {
 		return nil
 	}
 	e := Event{ID: string(in.MessageID), GroupID: string(in.GroupID), MemberID: string(in.UserID)}
@@ -407,6 +413,26 @@ func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text str
 		return nil, errors.New("OneBot send acknowledged without message_id")
 	}
 	return json.Marshal(map[string]string{"id": string(ack.ID)})
+}
+
+func (s *Service) sendOneBotPrivate(ctx context.Context, c Config, memberID, text string) error {
+	if memberID == "" || text == "" {
+		return errors.New("private message recipient or text missing")
+	}
+	raw, err := s.oneBotCall(ctx, c, "send_private_msg", map[string]any{
+		"user_id": memberID,
+		"message": []map[string]any{{"type": "text", "data": map[string]string{"text": text}}},
+	})
+	if err != nil {
+		return err
+	}
+	var ack struct {
+		ID obID `json:"message_id"`
+	}
+	if json.Unmarshal(raw, &ack) != nil || ack.ID == "" {
+		return errors.New("OneBot private send acknowledged without message_id")
+	}
+	return nil
 }
 
 // Translate only QQ operations actually used by the upstream business engine.

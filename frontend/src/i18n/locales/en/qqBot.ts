@@ -19,7 +19,7 @@ export default {
     previous: 'Previous', next: 'Next', page: 'Page {page}, {total} records', empty: 'No records',
     profileTitle: 'QQ account binding', profileHint: 'Bind to check your balance, claim rewards, view channels and chat in allowed groups. Balance replies are visible to the group.',
     disabled: 'The site has not enabled the QQ bot.', bound: 'Bound QQ: {qq}', robot: 'Bot QQ: {qq}',
-    createCode: 'Generate binding code', regenerate: 'Generate again', codeHint: 'Send this command in an allowed group containing the bot within five minutes. Refresh here, verify the QQ and confirm.',
+    createCode: 'Generate binding code', regenerate: 'Generate again', codeHint: 'First send /绑定 in an allowed group. When the bot messages you, send the code below in that private chat. Never post it in the group. Refresh here, verify the QQ ID and confirm.',
     expires: 'Expires at {time}', pending: 'QQ awaiting confirmation: {qq}', confirm: 'Confirm this QQ', confirmed: 'QQ account bound',
     privacy: 'The code is only for this binding. Never send passwords, login tokens or API keys.',
     commands: 'Group commands', commandHelp: '/帮助 (help), /余额 (balance), /签到 (check-in), /渠道 (channels), /聊天 question (chat), /清空对话 (clear); or mention the bot with your question.',

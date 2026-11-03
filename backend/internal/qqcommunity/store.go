@@ -60,19 +60,40 @@ func (s *Service) CreateBindingCode(ctx context.Context, user int64) (BindReques
  ON CONFLICT(user_id) DO UPDATE SET app_id=EXCLUDED.app_id,code_hash=EXCLUDED.code_hash,expires_at=EXCLUDED.expires_at,member_id='',nickname='',group_id=''`, user, c.AppID, codeHash(r.Code), r.ExpiresAt)
 	return r, err
 }
-func (s *Service) claimBinding(ctx context.Context, c Config, e Event, code string) string {
+func (s *Service) claimBinding(ctx context.Context, c Config, e Event, code, requestID string) (string, bool) {
 	if len(code) != 24 {
-		return "绑定码格式无效，请从网站个人资料页复制。"
+		return "绑定码格式无效，请从网站个人资料页复制。", false
 	}
-	res, err := s.db.ExecContext(ctx, `UPDATE qqc_bind_requests SET member_id=$1,nickname=$2,group_id=$3 WHERE app_id=$4 AND code_hash=$5 AND expires_at>NOW() AND member_id=''`, e.Author.MemberID, limitText(e.Author.Username, 100), e.GroupID, c.AppID, codeHash(code))
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "绑定失败，请稍后重试。"
+		return "绑定失败，请稍后重试。", false
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return "绑定码无效或已过期，请重新生成。"
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `UPDATE qqc_bind_requests SET member_id=$1,nickname=$2,group_id=$3
+WHERE app_id=$4 AND code_hash=$5 AND expires_at>clock_timestamp() AND member_id=''
+AND EXISTS(SELECT 1 FROM qqc_private_bind_sessions s WHERE s.app_id=$4 AND s.member_id=$1 AND s.request_id=$6 AND s.group_id=$3 AND s.expires_at>clock_timestamp())`,
+		e.Author.MemberID, limitText(e.Author.Username, 100), e.GroupID, c.AppID, codeHash(code), requestID)
+	if err != nil {
+		return "绑定失败，请稍后重试。", false
 	}
-	return "绑定申请已受理，请在网站个人资料页确认。"
+	n, err := res.RowsAffected()
+	if err != nil || n != 1 {
+		return "绑定码或私聊会话无效、已使用或已过期，请在群里重新发送 /绑定 并使用最新绑定码。", false
+	}
+	// Consume the same session atomically with the code claim. Concurrent private
+	// submissions must not claim multiple website accounts for one exchange.
+	res, err = tx.ExecContext(ctx, `DELETE FROM qqc_private_bind_sessions WHERE app_id=$1 AND member_id=$2 AND request_id=$3`, c.AppID, e.Author.MemberID, requestID)
+	if err != nil {
+		return "绑定失败，请稍后重试。", false
+	}
+	n, err = res.RowsAffected()
+	if err != nil || n != 1 {
+		return "私聊会话已更新，请按最新私聊提示重新提交。", false
+	}
+	if err = tx.Commit(); err != nil {
+		return "绑定失败，请稍后重试。", false
+	}
+	return "绑定申请已受理，请在网站个人资料页核对 QQ 号并确认。", true
 }
 func (s *Service) ConfirmBinding(ctx context.Context, user int64, member string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -96,7 +117,7 @@ WHERE r.user_id=$1 AND r.app_id=$2 AND r.expires_at>clock_timestamp() AND u.stat
 FOR UPDATE OF r FOR NO KEY UPDATE OF u`, user, c.AppID).Scan(&r.MemberID, &r.GroupID, &r.Nickname, &r.ExpiresAt)
 	// Row locking can wait after the SQL expiry predicate has been evaluated.
 	if err != nil || r.MemberID == "" || r.MemberID != member || !r.ExpiresAt.After(time.Now()) {
-		return errors.New("绑定请求不存在、尚未收到群内指令或已过期")
+		return errors.New("绑定请求不存在、尚未收到私聊绑定码或已过期")
 	}
 	if !c.allows(r.GroupID) {
 		return errors.New("该群已停止提供绑定服务")
@@ -114,6 +135,18 @@ FOR UPDATE OF r FOR NO KEY UPDATE OF u`, user, c.AppID).Scan(&r.MemberID, &r.Gro
 	return tx.Commit()
 }
 
+func sanitizePublicBinding(e *Event, c Config) bool {
+	cmd, arg := command(e.Content, c.CustomCommands...)
+	if cmd != "绑定" || arg == "" {
+		return false
+	}
+	// The code was already posted to QQ, but must not be copied into our
+	// durable queue, message previews, or shared conversation history.
+	e.Content = "/绑定 已公开"
+	e.MsgElements = nil
+	return true
+}
+
 func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) {
 	if p.Type == interactionCreate {
 		return s.enqueueInteraction(ctx, c, p)
@@ -125,6 +158,14 @@ func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) 
 	if err = json.Unmarshal(p.Data, &e); err != nil {
 		reason = "invalid_payload"
 		return err
+	}
+	if isGroupMessageEvent(p.Type) {
+		if sanitizePublicBinding(&e, c) {
+			p.Data, err = json.Marshal(e)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	j.GroupID, j.MemberID = e.GroupID, e.MemberID
 	if e.GroupID == "" || len(e.GroupID) > 128 {
@@ -461,7 +502,7 @@ func (s *Service) reward(ctx context.Context, c Config, j Job, kind string) (str
 	var userID int64
 	err = tx.QueryRowContext(ctx, `SELECT b.user_id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.status='active' AND u.deleted_at IS NULL`, c.AppID, j.MemberID).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "请先发送“绑定 邮箱或绑定码”绑定网站账号。", nil
+		return bindFirst, nil
 	}
 	if err != nil {
 		return "", err

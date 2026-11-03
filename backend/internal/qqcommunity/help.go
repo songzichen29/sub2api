@@ -58,7 +58,7 @@ func helpSystemItems() []helpItem {
 		{action: "growth", label: "成长任务", description: "查看成长进度和奖励", command: "成长任务"},
 		{action: "channels", label: "渠道状态", description: "查看渠道状态（别名：监控、渠道监控）", command: "渠道状态"},
 		{action: "image", label: "生成图片", description: "根据描述生成图片", command: "生图", usage: "生图 图片描述", input: true},
-		{action: "bind", label: "绑定账号", description: "绑定网站账号", command: "绑定", usage: "绑定 邮箱或绑定码", input: true},
+		{action: "bind", label: "绑定账号", description: "群内发起，私聊提交绑定码，网站确认", command: "绑定"},
 		{action: "transfer", label: "余额转账", description: "申请余额转账", command: "转账", usage: "转账 金额 邮箱", input: true},
 	}
 }

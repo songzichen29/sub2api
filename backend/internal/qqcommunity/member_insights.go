@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const bindFirst = "请先发送“绑定 邮箱或绑定码”绑定网站账号。"
+const bindFirst = "请先在允许的群发送 /绑定，再按机器人私聊提示提交网站绑定码。"
 
 func formatUsageTokens(tokens int64) string {
 	switch {

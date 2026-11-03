@@ -144,7 +144,7 @@ func (s *Service) prepareTransfer(ctx context.Context, c Config, e Event, arg st
 		   AND u.status='active' AND u.deleted_at IS NULL`,
 		c.AppID, e.Author.MemberID).Scan(&fromUID, &fromEmail)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "请先发送“绑定 邮箱或绑定码”绑定网站账号。", nil
+		return bindFirst, nil
 	}
 	if err != nil {
 		return "账户信息查询失败，请稍后重试。", nil
@@ -293,6 +293,23 @@ func (s *Service) PreviewTransfer(ctx context.Context, token string) (TransferPr
 	return p, nil
 }
 
+// cancelPendingTransfer consumes a locked request without moving any balance.
+// A failed confirmation must not become payable after a later top-up.
+func cancelPendingTransfer(ctx context.Context, tx *transaction, appID, token string) error {
+	res, err := tx.ExecContext(ctx, `DELETE FROM qqc_transfer_requests WHERE token_hash=$1 AND app_id=$2`, codeHash(token), appID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return ErrTransferInvalid
+	}
+	return tx.Commit()
+}
+
 // ConfirmTransfer executes the transfer atomically after the sender clicks the link.
 // On success it sends a notification email to the recipient (non-critical).
 func (s *Service) ConfirmTransfer(ctx context.Context, token string) error {
@@ -349,6 +366,9 @@ func (s *Service) ConfirmTransfer(ctx context.Context, token string) error {
 	}
 	senderBalance, _ := decimal.NewFromString(senderBalanceStr)
 	if senderBalance.LessThan(amount) {
+		if err = cancelPendingTransfer(ctx, tx, c.AppID, token); err != nil {
+			return errors.New("转账取消失败，请稍后重试。")
+		}
 		return errors.New("余额不足，转账已取消。")
 	}
 
@@ -358,6 +378,9 @@ func (s *Service) ConfirmTransfer(ctx context.Context, token string) error {
 		`SELECT id FROM users WHERE id=$1 AND status='active' AND deleted_at IS NULL FOR UPDATE`,
 		toUID).Scan(&recipientID)
 	if errors.Is(err, sql.ErrNoRows) {
+		if err = cancelPendingTransfer(ctx, tx, c.AppID, token); err != nil {
+			return errors.New("转账取消失败，请稍后重试。")
+		}
 		return errors.New("收款方账号不存在，转账已取消。")
 	}
 	if err != nil {
