@@ -32,6 +32,8 @@ type oneBotConnection struct {
 	since           time.Time
 	bot, credential string
 	cancel          context.CancelFunc
+	health          oneBotHealth
+	heartbeatSlot   string
 }
 type oneBotAck struct {
 	Echo    string          `json:"echo"`
@@ -219,6 +221,10 @@ func (s *Service) ServeOneBot(w http.ResponseWriter, r *http.Request) {
 				conn.write.Lock()
 				_ = ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(5*time.Second))
 				conn.write.Unlock()
+				conn.probeHealth(ctx, time.Now())
+				if ctx.Err() == nil {
+					s.sendQQHeartbeat(ctx, current, conn, time.Now())
+				}
 			}
 		}
 	}()
@@ -242,7 +248,13 @@ func (s *Service) ServeOneBot(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		var e obEvent
-		if json.Unmarshal(raw, &e) != nil || string(e.SelfID) != cfg.AppID || e.UserID == e.SelfID {
+		if json.Unmarshal(raw, &e) != nil || string(e.SelfID) != cfg.AppID {
+			continue
+		}
+		if e.PostType != "message" || e.UserID != e.SelfID {
+			conn.observeHealth(raw, time.Now())
+		}
+		if e.UserID == e.SelfID {
 			continue
 		}
 		if e.PostType != "message" && e.PostType != "notice" {

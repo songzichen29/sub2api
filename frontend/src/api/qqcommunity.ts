@@ -46,12 +46,14 @@ export function defaultAutonomousConfig(): QQAutonomousConfig {
     media_enabled: false, media_sample_percent: 10, media_daily_calls: 100 }
 }
 export interface QQHealthNotificationConfig {
+	heartbeat_enabled?: boolean; heartbeat_group?: string; heartbeat_minutes?: number
   enabled: boolean; groups: string[]; minimum_samples: number; error_percent: number
   recovery_percent: number; ttft_seconds: number; failure_minutes: number; recovery_minutes: number; cooldown_minutes: number
 }
 export function defaultHealthNotificationConfig(): QQHealthNotificationConfig {
   return { enabled: false, groups: [], minimum_samples: 50, error_percent: 20, recovery_percent: 5,
-    ttft_seconds: 10, failure_minutes: 3, recovery_minutes: 2, cooldown_minutes: 30 }
+    ttft_seconds: 10, failure_minutes: 3, recovery_minutes: 2, cooldown_minutes: 30,
+    heartbeat_enabled: false, heartbeat_group: '', heartbeat_minutes: 5 }
 }
 export interface QQGroupPolicy {
   group_id: string; label: string; disable_chat: boolean; disable_images: boolean
@@ -221,6 +223,11 @@ export interface QQNapCatLogin {
   configured: boolean; online: boolean; connected: boolean; offline: boolean; phase: string
   scan_accepted: boolean; expected_qq: string; logged_in_qq: string; account_mismatch: boolean
   qr_code?: string; login_failed: boolean; auto_recovery?: boolean
+  session_health?: {
+    state: 'unknown' | 'disconnected' | 'offline_reported' | 'stale' | 'degraded' | 'probe_ok'
+    probe: string; checked_at?: string; last_success_at?: string; heartbeat_at?: string
+    last_message_at?: string; failures: number; alert: boolean
+  }
 }
 export const qqbotAPI = {
  login: async (signal?: AbortSignal) => (await apiClient.get<QQNapCatLogin>('/admin/qqbot/login', { signal, timeout: 15000 })).data,

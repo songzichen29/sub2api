@@ -16,18 +16,19 @@ import (
 )
 
 type NapCatLoginStatus struct {
-	Configured   bool   `json:"configured"`
-	Online       bool   `json:"online"`
-	Connected    bool   `json:"connected"`
-	Offline      bool   `json:"offline"`
-	Phase        string `json:"phase"`
-	ScanAccepted bool   `json:"scan_accepted"`
-	ExpectedQQ   string `json:"expected_qq"`
-	LoggedInQQ   string `json:"logged_in_qq"`
-	Mismatch     bool   `json:"account_mismatch"`
-	QRCode       string `json:"qr_code,omitempty"`
-	LoginFailed  bool   `json:"login_failed"`
-	AutoRecovery bool   `json:"auto_recovery"`
+	Configured    bool            `json:"configured"`
+	Online        bool            `json:"online"`
+	Connected     bool            `json:"connected"`
+	Offline       bool            `json:"offline"`
+	Phase         string          `json:"phase"`
+	ScanAccepted  bool            `json:"scan_accepted"`
+	ExpectedQQ    string          `json:"expected_qq"`
+	LoggedInQQ    string          `json:"logged_in_qq"`
+	Mismatch      bool            `json:"account_mismatch"`
+	QRCode        string          `json:"qr_code,omitempty"`
+	LoginFailed   bool            `json:"login_failed"`
+	AutoRecovery  bool            `json:"auto_recovery"`
+	SessionHealth QQSessionHealth `json:"session_health"`
 }
 
 type napcatLoginClient struct {
@@ -149,6 +150,7 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 		return nil, errors.New("读取机器人配置失败")
 	}
 	result := &NapCatLoginStatus{ExpectedQQ: c.AppID, Connected: s.ConnectionStatus()["connected"] == true}
+	result.SessionHealth = s.sessionHealth(c.AppID)
 	n := s.napcatLogin
 	if n == nil {
 		return result, nil

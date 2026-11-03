@@ -12,7 +12,12 @@
         <dl class="grid gap-2 text-sm sm:grid-cols-2">
           <div><dt class="text-gray-500">{{ t('qqbot.login.expected') }}</dt><dd>{{ status.expected_qq || '—' }}</dd></div>
           <div><dt class="text-gray-500">{{ t('qqbot.login.state') }}</dt><dd role="status">{{ stateLabel }}</dd></div>
+          <div><dt class="text-gray-500">{{ t('qqbot.login.sessionState') }}</dt><dd data-testid="qq-session-health">{{ sessionLabel }}</dd></div>
+          <div><dt class="text-gray-500">{{ t('qqbot.login.lastMessage') }}</dt><dd>{{ displayTime(status.session_health?.last_message_at) }}</dd></div>
+          <div><dt class="text-gray-500">{{ t('qqbot.login.lastProbe') }}</dt><dd>{{ displayTime(status.session_health?.checked_at) }}</dd></div>
         </dl>
+        <p v-if="sessionUnhealthy" role="alert" class="text-sm text-red-600 dark:text-red-400" data-testid="qq-session-alert">{{ t('qqbot.login.sessionAlert') }}</p>
+        <p class="text-xs text-gray-500">{{ t('qqbot.login.receptionHelp') }}</p>
         <p v-if="status.account_mismatch" role="alert" class="text-sm text-red-600">{{ t('qqbot.login.mismatch', { qq: status.logged_in_qq }) }}</p>
         <p v-if="status.auto_recovery" class="text-sm text-gray-600 dark:text-gray-300" data-testid="login-auto-recovery">{{ t('qqbot.login.autoRecovery') }}</p>
         <p v-if="status.online && !status.connected && !status.account_mismatch" class="text-sm text-amber-700 dark:text-amber-300">{{ t('qqbot.login.connectionHelp') }}</p>
@@ -39,10 +44,17 @@ const status = ref<QQNapCatLogin | null>(null), error = ref(''), busy = ref(fals
 let timer: ReturnType<typeof setTimeout> | undefined
 let active = true
 const controller = new AbortController()
+const sessionUnhealthy = computed(() => ['degraded', 'stale', 'offline_reported'].includes(status.value?.session_health?.state || ''))
+const sessionLabel = computed(() => t(`qqbot.login.session.${status.value?.session_health?.state || 'unknown'}`))
+function displayTime(value?: string) { return value ? new Date(value).toLocaleString() : t('qqbot.login.noEvidence') }
 const stateLabel = computed(() => {
   const s = status.value
   if (!s) return ''
-  if (s.online) return t(s.account_mismatch ? 'qqbot.login.wrongAccount' : s.connected ? 'qqbot.login.online' : 'qqbot.login.waitConnection')
+  if (s.online) {
+    if (s.account_mismatch) return t('qqbot.login.wrongAccount')
+    if (sessionUnhealthy.value) return t('qqbot.login.sessionProblem')
+    return t(s.connected ? 'qqbot.login.online' : 'qqbot.login.waitConnection')
+  }
   if (s.scan_accepted || s.phase === 'initializing') return t('qqbot.login.confirming')
   if (s.phase === 'reconnecting') return t('qqbot.login.reconnecting')
   if (s.login_failed) return t('qqbot.login.failed')

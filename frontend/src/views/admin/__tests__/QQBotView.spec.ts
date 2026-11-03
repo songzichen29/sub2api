@@ -148,6 +148,18 @@ describe('QQ module settings', () => {
   expect(w.find('[data-testid="health-enabled"]').exists()).toBe(true)
   w.unmount()
  })
+ it('saves real QQ heartbeat independently from channel alerts and chat', async () => {
+  server.allowed_groups = ['1025362951', '1093968528']
+  const w = await mountView(); await category(w, '通知与额度'); await w.get('#qqbot-settings-tab-notifications').trigger('click')
+  expect((w.get('[data-testid="qq-heartbeat-enabled"]').element as HTMLInputElement).checked).toBe(false)
+  expect((w.get('[data-testid="qq-heartbeat-minutes"]').element as HTMLInputElement).value).toBe('5')
+  await w.get('[data-testid="qq-heartbeat-group"]').setValue('1025362951')
+  await w.get('[data-testid="qq-heartbeat-enabled"]').setValue(true)
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(api.saveSection).toHaveBeenCalledWith('notifications', 'notifications-1', expect.objectContaining({ health_notifications: expect.objectContaining({ heartbeat_enabled: true, heartbeat_group: '1025362951', heartbeat_minutes: 5, enabled: false }) }))
+  expect(server.chat_model).toBe('model')
+  expect(w.text()).toContain(zh.qqbot.heartbeat.help)
+ })
  it('presets keep autonomous participation opt-in and bounded', async () => {
   const w = await mountView(); await category(w, '对话与指令')
   await w.findAll('button').find(b => b.text() === '安静')!.trigger('click')

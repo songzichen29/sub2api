@@ -71,6 +71,13 @@
           </div>
         </section>
         <section v-show="activeTab === 'notifications'" id="qqbot-settings-panel-notifications" role="tabpanel" aria-labelledby="qqbot-settings-tab-notifications" class="card space-y-4 p-6" :aria-label="t('qqbot.health.title')">
+          <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
+            <legend class="font-medium">{{ t('qqbot.heartbeat.title') }}</legend>
+            <label class="flex items-center gap-2"><input v-model="healthNotifications.heartbeat_enabled" data-testid="qq-heartbeat-enabled" type="checkbox" />{{ t('common.enabled') }}</label>
+            <label class="block space-y-1">{{ t('qqbot.group') }}<select v-model="healthNotifications.heartbeat_group" class="input" data-testid="qq-heartbeat-group"><option value="">{{ t('qqbot.workspace.chooseGroup') }}</option><option v-for="id in allowedGroups" :key="id" :value="id">{{ groupLabels[id] || id }}</option></select></label>
+            <label class="block space-y-1">{{ t('qqbot.heartbeat.interval') }}<input v-model.number="healthNotifications.heartbeat_minutes" class="input" type="number" min="1" max="60" step="1" data-testid="qq-heartbeat-minutes" /></label>
+            <p class="text-xs text-gray-500">{{ t('qqbot.heartbeat.help') }}</p>
+          </fieldset>
           <fieldset v-if="form.notification_quiet_hours" class="space-y-3 rounded-lg border p-4 dark:border-dark-700"><legend>{{ t('qqbot.workspace.quietHours') }}</legend><label class="flex items-center gap-2"><input v-model="form.notification_quiet_hours.enabled" type="checkbox" />{{ t('common.enabled') }}</label><div class="grid gap-3 sm:grid-cols-2"><label>{{ t('qqbot.workspace.startHour') }}<input v-model.number="form.notification_quiet_hours.start_hour" class="input" type="number" min="0" max="23" required /></label><label>{{ t('qqbot.workspace.endHour') }}<input v-model.number="form.notification_quiet_hours.end_hour" class="input" type="number" min="0" max="23" required /></label></div><p class="text-xs text-gray-500">{{ t('qqbot.workspace.quietHoursHelp') }}</p></fieldset>
           <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
             <legend class="font-medium">{{ t('qqbot.health.title') }}</legend>
@@ -276,7 +283,7 @@ const healthFields = [
 ] as const
 const notificationGroupsText = ref('')
 const priceNotifications = ref({ enabled: false, scheduled: true, groups: [] as string[] })
-const notificationJobs = computed(() => runtime.value?.jobs.filter(job => job.kind === 'price_notification' || job.kind === 'health_notification' || job.kind === 'ranking_notification') ?? [])
+const notificationJobs = computed(() => runtime.value?.jobs.filter(job => job.kind === 'price_notification' || job.kind === 'health_notification' || job.kind === 'ranking_notification' || job.kind === 'heartbeat_notification') ?? [])
 const baseline = ref<QQBotConfig | null>(null)
 const history = ref<QQConfigChange[]>([])
 const parseGroups = (text: string) => [...new Set(text.split(/[\s,，]+/).filter(Boolean))]

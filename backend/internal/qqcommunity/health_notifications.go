@@ -16,23 +16,29 @@ import (
 const healthNotificationEvent = "HEALTH_CHANGE_NOTIFICATION"
 
 type HealthNotificationConfig struct {
-	Enabled         bool     `json:"enabled"`
-	Groups          []string `json:"groups"`
-	MinimumSamples  int      `json:"minimum_samples"`
-	ErrorPercent    float64  `json:"error_percent"`
-	RecoveryPercent float64  `json:"recovery_percent"`
-	TTFTSeconds     int      `json:"ttft_seconds"`
-	FailureMinutes  int      `json:"failure_minutes"`
-	RecoveryMinutes int      `json:"recovery_minutes"`
-	CooldownMinutes int      `json:"cooldown_minutes"`
+	HeartbeatEnabled bool     `json:"heartbeat_enabled"`
+	HeartbeatGroup   string   `json:"heartbeat_group"`
+	HeartbeatMinutes int      `json:"heartbeat_minutes"`
+	Enabled          bool     `json:"enabled"`
+	Groups           []string `json:"groups"`
+	MinimumSamples   int      `json:"minimum_samples"`
+	ErrorPercent     float64  `json:"error_percent"`
+	RecoveryPercent  float64  `json:"recovery_percent"`
+	TTFTSeconds      int      `json:"ttft_seconds"`
+	FailureMinutes   int      `json:"failure_minutes"`
+	RecoveryMinutes  int      `json:"recovery_minutes"`
+	CooldownMinutes  int      `json:"cooldown_minutes"`
 }
 
 func DefaultHealthNotificationConfig() HealthNotificationConfig {
-	return HealthNotificationConfig{Groups: []string{}, MinimumSamples: 50, ErrorPercent: 20, RecoveryPercent: 5, TTFTSeconds: 10, FailureMinutes: 3, RecoveryMinutes: 2, CooldownMinutes: 30}
+	return HealthNotificationConfig{HeartbeatMinutes: 5, Groups: []string{}, MinimumSamples: 50, ErrorPercent: 20, RecoveryPercent: 5, TTFTSeconds: 10, FailureMinutes: 3, RecoveryMinutes: 2, CooldownMinutes: 30}
 }
 
 func validateHealthNotifications(c Config) error {
 	h := c.HealthNotifications
+	if h.HeartbeatEnabled && (h.HeartbeatMinutes < 1 || h.HeartbeatMinutes > 60 || h.HeartbeatGroup == "" || !c.allows(h.HeartbeatGroup) || c.groupPolicy(h.HeartbeatGroup).DisableNotifications) {
+		return errors.New("QQ 在线心跳须选择允许通知的群，间隔为 1～60 分钟")
+	}
 	if len(h.Groups) > 100 {
 		return errors.New("故障通知群最多 100 个")
 	}

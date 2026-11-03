@@ -56,7 +56,7 @@ func (s *Service) ListJobs(ctx context.Context, f JobFilter) (JobPage, error) {
 	if err != nil {
 		return out, err
 	}
-	where := ` FROM qqc_jobs WHERE app_id=$1 AND ($2='' OR group_id=$2) AND ($3='' OR member_id=$3) AND ($4='' OR kind=$4 OR ($4='notifications' AND kind IN ('price_notification','health_notification','ranking_notification'))) AND ($5='' OR status=$5) AND ($6::timestamptz IS NULL OR created_at >= $6) AND ($7::timestamptz IS NULL OR created_at <= $7) AND ($8='' OR site_query->>'kind'=$8) AND ($9='' OR site_query->>'status'=$9)`
+	where := ` FROM qqc_jobs WHERE app_id=$1 AND ($2='' OR group_id=$2) AND ($3='' OR member_id=$3) AND ($4='' OR kind=$4 OR ($4='notifications' AND kind IN ('price_notification','health_notification','ranking_notification','heartbeat_notification'))) AND ($5='' OR status=$5) AND ($6::timestamptz IS NULL OR created_at >= $6) AND ($7::timestamptz IS NULL OR created_at <= $7) AND ($8='' OR site_query->>'kind'=$8) AND ($9='' OR site_query->>'status'=$9)`
 	args := []any{c.AppID, f.GroupID, f.MemberID, f.Kind, f.Status, from, to, f.QueryKind, f.QueryStatus}
 	// Count and page share one snapshot even while workers finish jobs.
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
@@ -129,7 +129,7 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 		return out, err
 	}
 	out.Checks = configChecks(c, "")
-	out.Checks = append(out.Checks, DiagnosticCheck{"onebot", s.ConnectionStatus()["connected"] == true, "NapCat / OneBot 已连接"})
+	out.Checks = append(out.Checks, DiagnosticCheck{"onebot", s.ConnectionStatus()["connected"] == true, "OneBot 传输连接（不代表 QQ 会话正常）"}, s.sessionDiagnostic(c.AppID))
 	err = s.db.QueryRowContext(ctx, `SELECT MAX(last_seen_at) FROM qqc_groups WHERE app_id=$1`, c.AppID).Scan(&out.LastEvent)
 	if err != nil {
 		return out, err
@@ -168,7 +168,7 @@ func (s *Service) Diagnose(ctx context.Context, group, member string) (Diagnosis
 		return out, err
 	}
 	out.Checks = configChecks(c, group)
-	out.Checks = append(out.Checks, DiagnosticCheck{"onebot", s.ConnectionStatus()["connected"] == true, "NapCat / OneBot 已连接"})
+	out.Checks = append(out.Checks, DiagnosticCheck{"onebot", s.ConnectionStatus()["connected"] == true, "OneBot 传输连接（不代表 QQ 会话正常）"}, s.sessionDiagnostic(c.AppID))
 	var usage, global, personal int
 	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(count) FILTER(WHERE scope=$2),0),COALESCE(SUM(count) FILTER(WHERE scope='all'),0),COALESCE(SUM(count) FILTER(WHERE scope=$3),0) FROM qqc_daily_usage WHERE app_id=$1 AND day=$4::date AND kind='chat'`, c.AppID, "group:"+group, "member:"+member, day(time.Now())).Scan(&usage, &global, &personal)
 	if err != nil {
