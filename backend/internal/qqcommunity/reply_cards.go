@@ -212,7 +212,7 @@ func renderReplyCard(f *opentype.Font, title string, page replyCardPage, index, 
 	if len(page.Bars) > 0 || len(page.Matrix) > 0 || len(page.Trend) > 0 {
 		height = max(height, 240+len(page.Matrix)*66+len(page.Bars)*75+len(wrapCardText(page.Note, small, 864))*28)
 		if len(page.Trend) > 0 {
-			height += 83
+			height += 107
 		}
 	}
 	img := image.NewRGBA(image.Rect(0, 0, 960, height))
@@ -234,7 +234,7 @@ func renderReplyCard(f *opentype.Font, title string, page replyCardPage, index, 
 			cardText(img, small, 48, y+46, first.In(zone).Format("15:04"), cardMuted)
 			cardText(img, small, 720, y+46, last.In(zone).Format("15:04")+" 北京时间", cardMuted)
 		}
-		y += 65
+		y += 89
 	}
 	for _, row := range page.Matrix {
 		cardText(img, body, 48, y, clippedCardLabel(row.Name, body, 280), cardInk)
