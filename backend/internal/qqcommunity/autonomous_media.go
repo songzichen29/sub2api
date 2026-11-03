@@ -20,7 +20,8 @@ import (
 	"time"
 
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/gofont/goregular"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
 
@@ -224,20 +225,23 @@ func visualMarker() (string, string, error) {
 	if _, err := rand.Read(random[:]); err != nil {
 		return "", "", err
 	}
-	token := "V"
+	token := ""
 	for _, b := range random {
 		token += string(rune('0' + b%10))
 	}
-	small := image.NewRGBA(image.Rect(0, 0, 60, 20))
-	draw.Draw(small, small.Bounds(), image.White, image.Point{}, draw.Src)
-	d := font.Drawer{Dst: small, Src: image.NewUniform(color.Black), Face: basicfont.Face7x13, Dot: fixed.P(4, 15)}
-	d.DrawString(token)
-	big := image.NewRGBA(image.Rect(0, 0, 300, 100))
-	for y := 0; y < 100; y++ {
-		for x := 0; x < 300; x++ {
-			big.Set(x, y, small.At(x/5, y/5))
-		}
+	f, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		return "", "", err
 	}
+	face, err := opentype.NewFace(f, &opentype.FaceOptions{Size: 64, DPI: 72, Hinting: font.HintingFull})
+	if err != nil {
+		return "", "", err
+	}
+	defer face.Close()
+	big := image.NewRGBA(image.Rect(0, 0, 360, 120))
+	draw.Draw(big, big.Bounds(), image.White, image.Point{}, draw.Src)
+	d := font.Drawer{Dst: big, Src: image.NewUniform(color.Black), Face: face, Dot: fixed.P(24, 84)}
+	d.DrawString(token)
 	var out bytes.Buffer
 	if err := png.Encode(&out, big); err != nil {
 		return "", "", err

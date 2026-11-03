@@ -106,7 +106,7 @@ func TestAutonomousMediaInputRequiresActualImageRead(t *testing.T) {
 	m, marker, err := s.autonomousMediaInput(context.Background(), e)
 	require.NoError(t, err)
 	require.Len(t, m.Images, 4)
-	require.Len(t, marker, 7)
+	require.Len(t, marker, 6)
 	require.NotContains(t, m.Content, marker, "the visual verification answer must not leak into text")
 	s.imageDownload = func(context.Context, string) ([]byte, error) { return nil, errors.New("unreadable") }
 	_, _, err = s.autonomousMediaInput(context.Background(), e)
