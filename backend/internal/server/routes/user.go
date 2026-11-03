@@ -29,6 +29,9 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/qq-bot", h.QQBot.BindingStatus)
+			if h.QQBot.Community != nil {
+				user.GET("/account/activity", h.QQBot.Community.AccountActivity)
+			}
 			user.POST("/qq-bot/code", h.QQBot.CreateCode)
 			user.POST("/qq-bot/confirm", h.QQBot.Confirm)
 			user.DELETE("/qq-bot", h.QQBot.Unbind)

@@ -727,7 +727,23 @@ export default {
     "codeRule3": "如有兑换问题，请联系客服",
     "codeRule4": "余额和并发数即时更新",
     "recentActivity": "最近活动",
-    "historyWillAppear": "您的兑换历史将显示在这里",
+    "historyWillAppear": "您的兑换和转账记录将显示在这里",
+    "transferIn": "QQ 转账收入",
+    "transferOut": "QQ 转账支出",
+    "transferFrom": "来自 {email}",
+    "transferTo": "转给 {email}",
+    "transferFee": "手续费：${amount}",
+    "qqRewardRecord": "奖励记录 #{number}",
+    "qqRewardDetail": "{record}：{detail}",
+    "qqRewards": {
+      "growth": "QQ 成长奖励",
+      "lottery": "QQ 抽奖奖励",
+      "invite": "QQ 邀请奖励",
+      "checkin": "QQ 签到奖励",
+      "streak": "QQ 连续签到奖励",
+      "ranking": "QQ 排名奖励",
+      "redemption": "QQ 兑换奖励"
+    },
     "balanceAddedRedeem": "余额充值（兑换）",
     "balanceAddedAffiliate": "余额充值（返利转入）",
     "balanceAddedAdmin": "余额充值（管理员）",
@@ -744,7 +760,7 @@ export default {
     "failedToRedeem": "兑换失败，请检查兑换码后重试。",
     "subscriptionRefreshFailed": "兑换成功，但订阅状态刷新失败。",
     "pleaseEnterCode": "请输入兑换码",
-    "historyLoadFailed": "加载兑换记录失败，请重试。",
+    "historyLoadFailed": "加载活动记录失败，请重试。",
     "userRefreshFailed": "兑换成功，但账户信息刷新失败。"
   },
   "profile": {

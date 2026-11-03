@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { getHistory } from '../redeem'
+import { getHistory, getAccountActivity } from '../redeem'
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }))
 vi.mock('../client', () => ({ apiClient: { get } }))
@@ -17,4 +17,17 @@ describe('redemption history pagination', () => {
       })
     }
   )
+})
+
+describe('account activity pagination', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('requests the authenticated combined activity endpoint', async () => {
+    const response = { items: [], total: 3, page: 2, page_size: 20, pages: 2 }
+    get.mockResolvedValue({ data: response })
+    expect(await getAccountActivity(2, 20)).toEqual(response)
+    expect(get).toHaveBeenCalledWith('/user/account/activity', {
+      params: { page: 2, page_size: 20 }
+    })
+  })
 })

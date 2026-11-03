@@ -229,7 +229,7 @@
           <div v-else-if="history.length > 0" class="space-y-3">
             <div
               v-for="item in history"
-              :key="item.id"
+              :key="item.type + '-' + item.id"
               class="flex items-center justify-between rounded-xl bg-gray-50 p-4 dark:bg-dark-800"
             >
               <div class="flex items-center gap-4">
@@ -304,21 +304,27 @@
                   {{ formatHistoryValue(item) }}
                 </p>
                 <p
-                  v-if="!isAdminAdjustment(item.type)"
+                  v-if="item.code && !isAdminAdjustment(item.type)"
                   class="font-mono text-xs text-gray-400 dark:text-dark-500"
                 >
                   {{ item.code.slice(0, 8) }}...
                 </p>
-                <p v-else class="text-xs text-gray-400 dark:text-dark-500">
+                <p v-else-if="isAdminAdjustment(item.type) && !parseQQRewardNote(item.notes)" class="text-xs text-gray-400 dark:text-dark-500">
                   {{ t('redeem.adminAdjustment') }}
+                </p>
+                <p v-if="isTransferType(item.type) && item.counterparty" class="text-xs text-gray-500 dark:text-dark-400">
+                  {{ t(item.type === 'transfer_out' ? 'redeem.transferTo' : 'redeem.transferFrom', { email: item.counterparty }) }}
+                </p>
+                <p v-if="item.type === 'transfer_out'" class="text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('redeem.transferFee', { amount: Number(item.fee || 0).toFixed(2) }) }}
                 </p>
                 <!-- Display notes for admin adjustments -->
                 <p
                   v-if="item.notes"
                   class="mt-1 text-xs text-gray-500 dark:text-dark-400 italic max-w-[200px] truncate"
-                  :title="item.notes"
+                  :title="getHistoryItemNote(item)"
                 >
-                  {{ item.notes }}
+                  {{ getHistoryItemNote(item) }}
                 </p>
               </div>
             </div>
@@ -371,10 +377,11 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
-import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
+import { redeemAPI, authAPI, type AccountActivityItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
+import { parseQQRewardNote } from '@/utils/accountActivity'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -397,7 +404,7 @@ const redeemResult = ref<{
 const errorMessage = ref('')
 
 // History data
-const history = ref<RedeemHistoryItem[]>([])
+const history = ref<AccountActivityItem[]>([])
 const loadingHistory = ref(false)
 const historyPage = ref(1)
 const historyPageSize = ref(20)
@@ -408,8 +415,10 @@ const contactInfo = ref('')
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {
-  return type === 'balance' || type === 'admin_balance'
+  return type === 'balance' || type === 'admin_balance' || isTransferType(type)
 }
+
+const isTransferType = (type: string) => type === 'transfer_in' || type === 'transfer_out'
 
 const isSubscriptionType = (type: string) => {
   return type === 'subscription'
@@ -419,7 +428,11 @@ const isAdminAdjustment = (type: string) => {
   return type === 'admin_balance' || type === 'admin_concurrency'
 }
 
-const getHistoryItemTitle = (item: RedeemHistoryItem) => {
+const getHistoryItemTitle = (item: AccountActivityItem) => {
+  const reward = item.type === 'admin_balance' ? parseQQRewardNote(item.notes) : null
+  if (reward) return t('redeem.qqRewards.' + reward.kind)
+  if (item.type === 'transfer_in') return t('redeem.transferIn')
+  if (item.type === 'transfer_out') return t('redeem.transferOut')
   if (item.type === 'balance') {
     return t('redeem.balanceAddedRedeem')
   } else if (item.type === 'admin_balance') {
@@ -434,14 +447,20 @@ const getHistoryItemTitle = (item: RedeemHistoryItem) => {
   return t('common.unknown')
 }
 
-const formatHistoryValue = (item: RedeemHistoryItem) => {
+const getHistoryItemNote = (item: AccountActivityItem) => {
+  const reward = item.type === 'admin_balance' ? parseQQRewardNote(item.notes) : null
+  if (!reward) return item.notes || ''
+  const record = t('redeem.qqRewardRecord', { number: reward.number })
+  return reward.detail ? t('redeem.qqRewardDetail', { record, detail: reward.detail }) : record
+}
+
+const formatHistoryValue = (item: AccountActivityItem) => {
   if (isBalanceType(item.type)) {
-    const sign = item.value >= 0 ? '+' : ''
-    return `${sign}$${item.value.toFixed(2)}`
+    return item.value < 0 ? '-$' + Math.abs(item.value).toFixed(2) : '+$' + item.value.toFixed(2)
   } else if (isSubscriptionType(item.type)) {
     // 订阅类型显示有效天数和分组名称
     const days = item.validity_days || Math.round(item.value)
-    const groupName = item.group?.name || ''
+    const groupName = item.group_name || item.group?.name || ''
     return groupName ? `${days}${t('redeem.days')} - ${groupName}` : `${days}${t('redeem.days')}`
   } else {
     const sign = item.value >= 0 ? '+' : ''
@@ -454,7 +473,7 @@ const fetchHistory = async (page = 1) => {
   const pageSize = historyPageSize.value
   loadingHistory.value = true
   try {
-    const result = await redeemAPI.getHistory(page, pageSize)
+    const result = await redeemAPI.getAccountActivity(page, pageSize)
     if (request !== historyRequest) return
     history.value = result.items
     historyTotal.value = result.total

@@ -25,6 +25,14 @@ export interface RedeemHistoryItem {
   }
 }
 
+export interface AccountActivityItem extends RedeemHistoryItem {
+  group_name?: string
+  counterparty?: string
+  amount?: string
+  fee?: string
+  net_amount?: string
+}
+
 /**
  * Redeem a code
  * @param code - Redeem code string
@@ -61,9 +69,18 @@ export async function getHistory(page = 1, pageSize = 20): Promise<PaginatedResp
   return data
 }
 
+/** Get the authenticated user's redemptions and completed QQ transfers. */
+export async function getAccountActivity(page = 1, pageSize = 20): Promise<PaginatedResponse<AccountActivityItem>> {
+  const { data } = await apiClient.get<PaginatedResponse<AccountActivityItem>>('/user/account/activity', {
+    params: { page, page_size: pageSize }
+  })
+  return data
+}
+
 export const redeemAPI = {
   redeem,
-  getHistory
+  getHistory,
+  getAccountActivity
 }
 
 export default redeemAPI

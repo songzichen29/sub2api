@@ -188,6 +188,37 @@ func TestCommunityMySQL(t *testing.T) {
 		require.NoError(t, err)
 		_, err = s.TransferHistory(ctx, "a@test", 1)
 		require.NoError(t, err)
+		outgoing, totalOut, err := s.AccountActivity(ctx, 990001, 1, 100)
+		require.NoError(t, err)
+		require.Greater(t, totalOut, int64(0))
+		foundOutgoing := false
+		for _, item := range outgoing {
+			if item.Type == "transfer_out" && item.Counterparty == "b@test" {
+				require.InDelta(t, -1, item.Value, 1e-8)
+				require.Equal(t, "0.01000000", item.Fee)
+				foundOutgoing = true
+			}
+		}
+		require.True(t, foundOutgoing)
+		incoming, totalIn, err := s.AccountActivity(ctx, 990002, 1, 100)
+		require.NoError(t, err)
+		require.Greater(t, totalIn, int64(0))
+		foundIncoming := false
+		for _, item := range incoming {
+			if item.Type == "transfer_in" && item.Counterparty == "a@test" {
+				require.InDelta(t, .99, item.Value, 1e-8)
+				foundIncoming = true
+			}
+		}
+		require.True(t, foundIncoming)
+		page1, total, err := s.AccountActivity(ctx, 990001, 1, 1)
+		require.NoError(t, err)
+		require.Equal(t, totalOut, total)
+		require.Len(t, page1, 1)
+		page2, _, err := s.AccountActivity(ctx, 990001, 2, 1)
+		require.NoError(t, err)
+		require.Len(t, page2, 1)
+		require.NotEqual(t, [2]any{page1[0].Type, page1[0].ID}, [2]any{page2[0].Type, page2[0].ID})
 	})
 	t.Run("transfer confirmation debits exactly once", func(t *testing.T) {
 		s.SetBindingEmailDelivery(fixtureEmail{})
