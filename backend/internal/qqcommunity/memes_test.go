@@ -29,6 +29,44 @@ func TestMemeSearchAcceptsOnlyResultImagesFromTrustedHost(t *testing.T) {
 	}
 }
 
+func TestMemeSearchUsesCanonicalResultsWithoutFollowingRedirects(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Mozilla/5.0", r.UserAgent())
+		if strings.HasPrefix(r.URL.Path, "/search/search/") {
+			http.Redirect(w, r, "/search/bqb/keyword/%E7%8C%AB%E7%8C%AB%20%E5%BC%80%E5%BF%83/type/bq/page/1.html", http.StatusFound)
+			return
+		}
+		require.Equal(t, "/search/bqb/keyword/猫猫 开心/type/bq/page/1.html", r.URL.Path)
+		_, _ = w.Write([]byte(`<img class="bqppsearch" data-original="https://img.soutula.com/happy.gif">`))
+	}))
+	defer server.Close()
+	s := New(nil, nil, false, nil)
+	transport := &http.Transport{Proxy: nil}
+	defer transport.CloseIdleConnections()
+	s.http.Transport = memeSearchTestTransport{target: server.URL, transport: transport}
+	items, err := s.searchMemes(context.Background(), "猫猫 开心")
+	require.NoError(t, err)
+	require.Equal(t, []memeCandidate{{URL: "https://img.soutula.com/happy.gif"}}, items)
+}
+
+type memeSearchTestTransport struct {
+	target    string
+	transport http.RoundTripper
+}
+
+func (t memeSearchTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	// Keep the production URL construction and no-redirect behavior, only
+	// route the fixed search host to this test's HTTP server.
+	if req.URL.Scheme != "https" || req.URL.Host != "fabiaoqing.com" {
+		return nil, errors.New("unexpected search origin")
+	}
+	copy := req.Clone(req.Context())
+	u := *req.URL
+	u.Scheme, u.Host = "http", strings.TrimPrefix(t.target, "http://")
+	copy.URL = &u
+	return t.transport.RoundTrip(copy)
+}
+
 func TestMemeArgumentsRejectPrivateDataAndUnknownFields(t *testing.T) {
 	for _, raw := range []string{`{"keyword":"","text":""}`, `{"keyword":"2904566522","text":""}`, `{"keyword":"a@example.com","text":""}`, `{"keyword":"https://qq.com","text":""}`, `{"keyword":"绑定码 abcd","text":""}`, `{"keyword":"开心","text":"","url":"https://evil.test"}`, `{"keyword":"开心","text":""}{}`} {
 		_, err := parseMemeRequest(raw)

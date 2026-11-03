@@ -105,7 +105,9 @@ func (s *Service) searchMemes(ctx context.Context, keyword string) ([]memeCandid
 	if s.memeSearch != nil {
 		return s.memeSearch(ctx, keyword)
 	}
-	endpoint := "https://fabiaoqing.com/search/search/keyword/" + url.PathEscape(keyword)
+	// The legacy /search/search entry point responds with a redirect. Request
+	// the actual results page so the client's no-redirect policy stays intact.
+	endpoint := "https://fabiaoqing.com/search/bqb/keyword/" + url.PathEscape(keyword) + "/type/bq/page/1.html"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
