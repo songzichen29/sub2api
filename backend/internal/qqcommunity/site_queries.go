@@ -70,6 +70,7 @@ type SiteQueryDecision struct {
 	DurationMS int64  `json:"duration_ms"`
 }
 type SiteQueryResult struct {
+	Page     *ReplyPage        `json:"-"`
 	Text     string            `json:"text"`
 	Decision SiteQueryDecision `json:"decision"`
 }
@@ -96,7 +97,19 @@ func (s *Service) querySiteInfoDetailed(ctx context.Context, c Config, j Job, q 
 	case "model_price":
 		result = s.querySiteModelPrice(queryCtx, c, j, q, now)
 	case "channel_status":
-		result = s.querySiteChannelStatus(queryCtx, q)
+		if s.monitorPages != nil {
+			page, e := s.prepareMonitorPage(queryCtx, c, j)
+			if e == nil {
+				result = siteQueryOutcome("渠道状态 · 查看完整监控页面", "succeeded", "")
+				result.Page = page
+			} else if errors.Is(e, ErrChannelStatusDisabled) {
+				result = siteQueryOutcome("渠道监控未开启，请管理员在系统设置中开启渠道监控。", "unavailable", "monitor_disabled")
+			} else {
+				result = siteQueryOutcome("渠道状态查询失败，请稍后重试。", "failed", "provider_failed")
+			}
+		} else {
+			result = s.querySiteChannelStatus(queryCtx, q)
+		}
 	case "activity_rules":
 		result = s.querySiteActivityRules(queryCtx, c, j, q)
 	case "account_balance", "today_usage", "lottery_chances":
@@ -123,7 +136,10 @@ func (s *Service) querySiteModelPrice(ctx context.Context, c Config, j Job, q si
 	if len(blocks) == 0 {
 		return siteQueryOutcome("未找到该模型价格，请核对名称或查看网站。", "not_found", "model_not_found")
 	}
-	return siteQueryPageResult(blocks, q.Page, "价格 "+replyPlainLabel(q.Model))
+	result := siteQueryPageResult(blocks, q.Page, "价格 "+replyPlainLabel(q.Model))
+	result.Page = priceReplyPage(q.Model, "", blocks)
+	result.Page.BoundUserID = uid
+	return result
 }
 
 func (s *Service) querySiteChannelStatus(ctx context.Context, q siteQuery) SiteQueryResult {

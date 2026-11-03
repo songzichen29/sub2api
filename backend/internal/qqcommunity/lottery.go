@@ -207,7 +207,9 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 		return "抽奖活动未开启。", nil
 	}
 	var uid int64
-	err = tx.QueryRowContext(ctx, `SELECT b.user_id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.status='active' AND u.deleted_at IS NULL FOR UPDATE OF u`, c.AppID, j.MemberID).Scan(&uid)
+	// This is a read-only snapshot. Locking users here fails in MySQL read-only
+	// transactions and is unnecessary: only the draw transaction spends chances.
+	err = tx.QueryRowContext(ctx, `SELECT b.user_id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.status='active' AND u.deleted_at IS NULL`, c.AppID, j.MemberID).Scan(&uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "请先发送“绑定 邮箱或绑定码”绑定网站账号。", nil
 	}
@@ -232,7 +234,11 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 	if err != nil {
 		return "", err
 	}
-	result := fmt.Sprintf("🎟 **抽奖次数**\n剩余抽奖次数：%d 次\n再充值 USD %.2f 获赠", state.Remaining, state.NextRecharge)
+	var wins int64
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0`, uid).Scan(&wins); err != nil {
+		return "", err
+	}
+	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n再充值 USD %.2f 获赠", state.Used, wins, state.Remaining, state.NextRecharge)
 	if state.DrawsUntilGuarantee > 0 {
 		result += fmt.Sprintf("\n距保底 %d 次", state.DrawsUntilGuarantee)
 	}

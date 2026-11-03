@@ -53,42 +53,36 @@ func (s *Service) todayUsageDocument(ctx context.Context, c Config, j Job, now t
 	}
 	local := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
-	var count, input, output, write, read int64
-	var cost, wallet, subscription float64
-	err = tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_creation_tokens),0),COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(actual_cost),0),COALESCE(SUM(actual_cost) FILTER(WHERE billing_type=0),0),COALESCE(SUM(actual_cost) FILTER(WHERE billing_type=1),0) FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at <= $3`, uid, start, now).Scan(&count, &input, &output, &write, &read, &cost, &wallet, &subscription)
-	if err != nil {
-		return "", nil, err
-	}
-	text := fmt.Sprintf("📊 **今日用量**\n%s（北京时间）\n\n请求：%d 次\n费用：USD %.4f\n余额扣费：USD %.4f\n套餐消耗：USD %.4f\n\n**Token 明细**\n输入：%s\n输出：%s\n缓存读取：%s\n缓存写入：%s", local.Format("2006-01-02"), count, cost, wallet, subscription, formatUsageTokens(input), formatUsageTokens(output), formatUsageTokens(read), formatUsageTokens(write))
-	doc := &replyDocument{Title: "今日用量 · " + local.Format("2006-01-02"), ChartNote: "北京时间 · 数据来自本人绑定账号。Token 与费用分别使用独立比例。"}
-	for _, b := range []struct {
-		name  string
-		value int64
-	}{{"输入 Token", input}, {"输出 Token", output}, {"缓存读取 Token", read}, {"缓存写入 Token", write}} {
-		doc.Bars = append(doc.Bars, replyBar{Label: b.name, Value: float64(b.value), Display: formatUsageTokens(b.value)})
-	}
-	if count == 0 {
-		return text, doc, nil
-	}
-	rows, err := tx.QueryContext(ctx, `SELECT model,COUNT(*),SUM(actual_cost) FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at <= $3 GROUP BY model ORDER BY SUM(actual_cost) DESC,COUNT(*) DESC,model LIMIT 5`, uid, start, now)
+	rows, err := tx.QueryContext(ctx, `SELECT model,COUNT(*),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_creation_tokens),0),COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(actual_cost),0) FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at <= $3 GROUP BY model ORDER BY SUM(actual_cost) DESC,COUNT(*) DESC,model`, uid, start, now)
 	if err != nil {
 		return "", nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	text += "\n\n**费用前 5 模型**"
-	rank := 0
+	doc := &replyDocument{UserID: uid, Title: "模型用量 · " + local.Format("2006-01-02"), ChartNote: "北京时间 · 本人绑定账号 · 按模型汇总"}
+	text := "📊 **" + doc.Title + "**"
 	for rows.Next() {
-		var model string
-		var requests int64
-		var amount float64
-		if err = rows.Scan(&model, &requests, &amount); err != nil {
+		var m ModelUsageStat
+		if err = rows.Scan(&m.Model, &m.Requests, &m.Input, &m.Output, &m.CacheCreation, &m.CacheRead, &m.Cost); err != nil {
 			return "", nil, err
 		}
-		rank++
-		doc.CostBars = append(doc.CostBars, replyBar{Label: model, Value: amount, Display: fmt.Sprintf("$%.4f", amount)})
-		text += fmt.Sprintf("\n\n**%d. %s**\nUSD %.4f（%d 次）", rank, replyPlainLabel(limitText(model, 100)), amount, requests)
+		m.Total = m.Input + m.Output + m.CacheCreation + m.CacheRead
+		doc.Models = append(doc.Models, m)
+		doc.CostBars = append(doc.CostBars, replyBar{Label: m.Model, Value: m.Cost, Display: fmt.Sprintf("$%.4f", m.Cost)})
+		text += fmt.Sprintf("\n\n%s：%d 次 · %s Token · USD %.4f", replyPlainLabel(m.Model), m.Requests, formatUsageTokens(m.Total), m.Cost)
 	}
-	return text, doc, rows.Err()
+	if err = rows.Err(); err != nil {
+		return "", nil, err
+	}
+	if err = rows.Close(); err != nil {
+		return "", nil, err
+	}
+	if len(doc.Models) == 0 {
+		text += "\n今日暂无模型用量。"
+	}
+	if err = tx.Commit(); err != nil {
+		return "", nil, err
+	}
+	return text, doc, nil
 }
 
 type ModelPriceProvider interface {
@@ -100,15 +94,11 @@ func (s *Service) SetModelPriceProvider(p ModelPriceProvider) { s.modelPrices = 
 func (s *Service) sendModelPrice(ctx context.Context, c Config, j Job, arg string) error {
 	parts := strings.Fields(arg)
 	if len(parts) < 1 || len(parts) > 2 || len(parts[0]) > 200 {
-		return s.send(ctx, c, j, "用法：价格 模型名 [页码]", nil, 1)
+		return s.send(ctx, c, j, "用法：价格 模型名 [分组关键词]；按筛选结果返回一个页面。", nil, 1)
 	}
-	page := 1
+	filter := ""
 	if len(parts) == 2 {
-		var err error
-		page, err = strconv.Atoi(parts[1])
-		if err != nil || page < 1 || strconv.Itoa(page) != parts[1] {
-			return s.send(ctx, c, j, "页码须为正整数。", nil, 1)
-		}
+		filter = parts[1]
 	}
 	uid, err := boundUser(ctx, s.db, c.AppID, j.MemberID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -123,25 +113,7 @@ func (s *Service) sendModelPrice(ctx context.Context, c Config, j Job, arg strin
 	if err != nil {
 		return s.send(ctx, c, j, "价格查询失败，请稍后重试。", nil, 1)
 	}
-	if len(blocks) == 0 {
-		return s.send(ctx, c, j, "未找到该模型价格，请核对名称或查看网站。", nil, 1)
-	}
-	// One complete group per message; do not truncate pricing tiers.
-	pages := (len(blocks) + 4) / 5
-	if page > pages {
-		return s.send(ctx, c, j, fmt.Sprintf("价格查询共 %d 页。", pages), nil, 1)
-	}
-	for i := (page - 1) * 5; i < min(page*5, len(blocks)); i++ {
-		body := blocks[i]
-		if pages > 1 {
-			body += fmt.Sprintf("\n\n第 %d/%d 页", page, pages)
-			if page < pages {
-				body += fmt.Sprintf("\n下一页：价格 %s %d", replyPlainLabel(parts[0]), page+1)
-			}
-		}
-		if err = s.send(ctx, c, j, body, nil, i-(page-1)*5+1); err != nil {
-			return err
-		}
-	}
-	return nil
+	j.ReplyPage = priceReplyPage(parts[0], filter, blocks)
+	j.ReplyPage.BoundUserID = uid
+	return s.send(ctx, c, j, "模型价格 · "+parts[0]+" · 打开页面可继续筛选分组", nil, 1)
 }

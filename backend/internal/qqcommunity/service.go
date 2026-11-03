@@ -25,6 +25,10 @@ type Service struct {
 	invalidate            func(context.Context, int64)
 	bindingEmail          BindingEmailDelivery
 	channelStatus         ChannelStatusProvider
+	monitorPages          MonitorPageProvider
+	pageOrigin            string
+	pageGate              chan struct{}
+	pages                 replyPageStore
 	modelPrices           ModelPriceProvider
 	healthSource          HealthSnapshotProvider
 	priceSource           PriceSnapshotProvider
@@ -57,7 +61,6 @@ func (s *Service) Start() {
 	s.startModeration(ctx)
 	s.startPriceMonitor(ctx)
 	s.startHealthMonitor(ctx)
-	s.startRankingMonitor(ctx)
 	s.startGrowthMonitor(ctx)
 	for i := 0; i < 2; i++ {
 		s.wg.Add(1)
@@ -151,7 +154,7 @@ func (s *Service) runOne(parent context.Context) {
 		return
 	}
 	if j.EventType == rankingNotificationEvent {
-		s.deliverRankingNotification(ctx, c, j)
+		s.finish(j, "cancelled", "排行榜功能已移除")
 		return
 	}
 	if j.EventType == priceNotificationEvent || j.EventType == healthNotificationEvent {
@@ -514,17 +517,22 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		return s.sendModelPrice(ctx, c, *j, arg)
 	case "我的余额":
 		var balance float64
-		err := s.db.QueryRowContext(ctx, `SELECT u.balance FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'`, c.AppID, j.MemberID).Scan(&balance)
+		var uid int64
+		err := s.db.QueryRowContext(ctx, `SELECT u.balance,u.id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'`, c.AppID, j.MemberID).Scan(&balance, &uid)
 		if errors.Is(err, sql.ErrNoRows) {
 			text = bindFirst
 		} else if err != nil {
 			text = "账户信息查询失败，请稍后重试。"
 		} else {
 			text = fmt.Sprintf("💳 **我的余额**\n余额：USD %.2f", balance)
+			j.ReplyPage = balanceReplyPage(balance, uid)
 		}
 	case "今日用量":
 		var err error
 		text, j.ReplyCard, err = s.todayUsageDocument(ctx, c, *j, time.Now())
+		if err == nil {
+			j.ReplyPage = usageReplyPage(j.ReplyCard)
+		}
 		if err != nil {
 			text = "用量查询失败，请稍后重试。"
 		}
@@ -577,15 +585,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			text = "邀请信息查询失败，请稍后重试。"
 		}
 	case "今日排行榜", "今日排行版":
-		if arg != "" {
-			text = "用法：今日排行榜"
-			break
-		}
-		var err error
-		text, err = s.todayRankings(ctx, c, time.Now())
-		if err != nil {
-			text = "排行榜查询失败，请稍后重试。"
-		}
+		text = "排行榜功能已移除。"
 	case "渠道状态":
 		return s.sendChannelStatus(ctx, c, *j, arg)
 	case "绑定":
@@ -647,6 +647,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 		kind := "chat"
 		prompt := strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), ""))
+		if cmd != "生图" && !hasImages && isLiveXLookup(prompt) {
+			text = "当前机器人没有联网或 X 检索能力，无法核实最新推文。你可以贴出推文正文，我可以帮你总结或翻译。"
+			break
+		}
 		if prompt == "" && (hasImages || parts != "" || e.referenceID() != "") {
 			prompt = "请分析这条消息的内容。"
 		}
@@ -733,6 +737,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 					result, err = s.querySiteInfoDetailed(ctx, c, *j, *turn.SiteQuery)
 					if err == nil {
 						turn.Text = result.Text
+						j.ReplyPage = result.Page
+						if result.Page != nil {
+							j.CommandReply = true
+						}
 						err = s.recordSiteQuery(ctx, j, result.Decision)
 					}
 				}
@@ -813,14 +821,13 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 	}
 	if len(img) > 0 {
-		notice := "图片已生成。"
-		if imageEdited {
-			notice = "图片已修改。"
+		if text == "" {
+			text = "图片已生成。"
+			if imageEdited {
+				text = "图片已修改。"
+			}
 		}
-		if err := s.send(ctx, c, *j, notice, nil, seq); err != nil {
-			return err
-		}
-		return s.send(ctx, c, *j, text, img, seq+1)
+		return s.send(ctx, c, *j, text, img, seq)
 	}
 	if j.CommandReply && c.CommandReplyFormat != "text" {
 		return s.send(ctx, c, *j, text, nil, seq)

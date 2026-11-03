@@ -15,6 +15,7 @@ var naturalAccountRequests = []struct {
 	{"今日用量", naturalAccountPattern(`(?:今天|今日)(?:的)?(?:用量|使用量|使用情况|消耗|消费|花费)(?:(?:有|是|了)?多少)?`)},
 	{"抽奖次数", naturalAccountPattern(`(?:剩余|剩下|剩)?(?:的)?抽奖(?:次数|机会)(?:(?:还有|还剩|剩下|剩|有|是)?多少(?:次)?|剩多少(?:次)?)?`)},
 	{"抽奖次数", naturalAccountPattern(`(?:还有|还剩|剩下|剩|有)多少(?:次)?抽奖(?:次数|机会)?`)},
+	{"抽奖次数", naturalAccountPattern(`(?:累计)?(?:抽过|抽了|抽中了|中奖了|中奖)(?:多少|几)次(?:奖)?`)},
 }
 
 func naturalAccountPattern(subject string) *regexp.Regexp {

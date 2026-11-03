@@ -26,6 +26,8 @@ import (
 // Cards are deterministic views of the same safe command output, independent
 // of paid image generation, its feature switch and its quotas.
 type replyDocument struct {
+	UserID    int64
+	Models    []ModelUsageStat
 	Title     string
 	Bars      []replyBar
 	CostBars  []replyBar

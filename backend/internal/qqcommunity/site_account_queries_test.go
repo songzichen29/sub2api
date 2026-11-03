@@ -32,14 +32,14 @@ func TestSiteAccountBalanceUsesTrustedIdentityAndNeverWrites(t *testing.T) {
 			defer func() { _ = db.Close() }()
 			c := accountQueryConfig()
 			expectAccountQueryConfig(t, mock, c)
-			query := mock.ExpectQuery(regexp.QuoteMeta("SELECT u.balance FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'")).WithArgs("trusted-app", "trusted-member")
+			query := mock.ExpectQuery(regexp.QuoteMeta("SELECT u.balance,u.id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'")).WithArgs("trusted-app", "trusted-member")
 			switch scenario {
 			case "bound":
-				query.WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(12.50))
+				query.WillReturnRows(sqlmock.NewRows([]string{"balance", "user_id"}).AddRow(12.50, 42))
 			case "lookup failure":
 				query.WillReturnError(errors.New("secret-database-detail"))
 			default:
-				query.WillReturnRows(sqlmock.NewRows([]string{"balance"}))
+				query.WillReturnRows(sqlmock.NewRows([]string{"balance", "user_id"}))
 			}
 			result, err := New(db, nil, false, nil).querySiteInfoDetailed(context.Background(), c, Job{AppID: c.AppID, GroupID: "group", MemberID: "trusted-member"}, siteQuery{Kind: "account_balance"})
 			require.NoError(t, err)
@@ -125,13 +125,15 @@ func TestSiteAccountTodayUsageNeverWrites(t *testing.T) {
 	expectAccountQueryConfig(t, mock, c)
 	mock.ExpectBegin()
 	mock.ExpectQuery("SELECT b.user_id FROM qqc_bindings").WithArgs(c.AppID, "trusted-member").WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(42))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*),COALESCE(SUM(input_tokens)")).WithArgs(42, sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"count", "input", "output", "write", "read", "cost", "wallet", "subscription"}).AddRow(0, 0, 0, 0, 0, 0, 0, 0))
-	mock.ExpectRollback()
+	mock.ExpectQuery("SELECT model,COUNT").WithArgs(42, sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"model", "requests", "input", "output", "write", "read", "cost"}).AddRow("model-a", 2, 10, 20, 5, 6, 0.25))
+	mock.ExpectCommit()
 	result, err := New(db, nil, false, nil).querySiteInfoDetailed(context.Background(), c, Job{AppID: c.AppID, GroupID: "group", MemberID: "trusted-member"}, siteQuery{Kind: "today_usage"})
 	require.NoError(t, err)
 	require.Equal(t, "succeeded", result.Decision.Status)
-	require.Contains(t, result.Text, "请求：0 次")
-	require.Contains(t, result.Text, "今日用量")
+	require.Contains(t, result.Text, "model-a：2 次")
+	require.NotNil(t, result.Page)
+	require.Equal(t, "usage", result.Page.Kind)
+	require.Contains(t, result.Text, "模型用量")
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -147,11 +149,12 @@ func TestSiteAccountLotteryChancesNeverSettlesEligibleRewards(t *testing.T) {
 	raw, err := json.Marshal(lottery)
 	require.NoError(t, err)
 	mock.ExpectQuery("SELECT value FROM settings").WithArgs(lotteryConfigKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
-	mock.ExpectQuery("SELECT b.user_id FROM qqc_bindings").WithArgs(c.AppID, "trusted-member").WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(42))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT b.user_id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.status='active' AND u.deleted_at IS NULL")+"$").WithArgs(c.AppID, "trusted-member").WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(42))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COALESCE(SUM(CASE")).WithArgs(42).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow("0"))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COALESCE(SUM(value),0)::text")).WithArgs(42).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow("0"))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM qqc_lottery_draws")).WithArgs(42).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants")).WithArgs(42).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow(3))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0")).WithArgs(42).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
 	mock.ExpectCommit()
 	result, err := New(db, nil, false, nil).querySiteInfoDetailed(context.Background(), c, Job{AppID: c.AppID, GroupID: "group", MemberID: "trusted-member"}, siteQuery{Kind: "lottery_chances"})
 	require.NoError(t, err)

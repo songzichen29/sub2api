@@ -187,6 +187,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 
 type Job struct {
 	ReplyCard       *replyDocument  `json:"-"`
+	ReplyPage       *ReplyPage      `json:"-"`
 	CommandReply    bool            `json:"-"`
 	SiteQuery       json.RawMessage `json:"site_query,omitempty"`
 	ImageDecision   json.RawMessage `json:"image_decision,omitempty"`

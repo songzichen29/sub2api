@@ -84,13 +84,7 @@ func (s *Service) processGrowthTasks(ctx context.Context, c Config, j Job, at ti
 	if err != nil {
 		return "", 0, err
 	}
-	if render {
-		periodic, e := rankingGrowthTasks(ctx, tx, current.AppID, uid)
-		if e != nil {
-			return "", 0, e
-		}
-		text += "\n\n" + periodic
-	}
+
 	if err = tx.Commit(); err != nil {
 		return "", 0, err
 	}

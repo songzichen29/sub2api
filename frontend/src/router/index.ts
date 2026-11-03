@@ -138,6 +138,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/qq/report',
+    name: 'QQReport',
+    component: () => import('@/views/QQReportView.vue'),
+    meta: { requiresAuth: false, title: 'QQ 查询页面' }
+  },
+  {
     path: '/key-usage',
     name: 'KeyUsage',
     component: () => import('@/views/KeyUsageView.vue'),
@@ -767,7 +773,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/account-import', '/setup', '/payment/result']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/qq/report', '/account-import', '/setup', '/payment/result']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

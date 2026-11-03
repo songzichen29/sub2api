@@ -58,6 +58,18 @@ func (s *Service) SetChannelStatusProvider(provider ChannelStatusProvider) {
 }
 
 func (s *Service) sendChannelStatus(ctx context.Context, c Config, j Job, arg string) error {
+	if s.monitorPages != nil {
+		var err error
+		j.ReplyPage, err = s.prepareMonitorPage(ctx, c, j)
+		if err != nil {
+			text := "渠道状态查询失败，请稍后重试。"
+			if errors.Is(err, ErrChannelStatusDisabled) {
+				text = "渠道监控未开启，请管理员在系统设置中开启渠道监控。"
+			}
+			return s.send(ctx, c, j, text, nil, 1)
+		}
+		return s.send(ctx, c, j, "渠道状态 · 查看完整监控页面", nil, 1)
+	}
 	page := 1
 	if arg != "" {
 		var err error

@@ -52,7 +52,6 @@ import QQBotCheckinSettings from '@/components/admin/qqbot/QQBotCheckinSettings.
 import QQBotGrowthSettings from '@/components/admin/qqbot/QQBotGrowthSettings.vue'
 import QQBotLotterySettings from '@/components/admin/qqbot/QQBotLotterySettings.vue'
 import QQBotInviteSettings from '@/components/admin/qqbot/QQBotInviteSettings.vue'
-import QQBotRankingSettings from '@/components/admin/qqbot/QQBotRankingSettings.vue'
 import QQActivityPreview from '@/components/admin/qqbot/QQActivityPreview.vue'
 import QQBotRewardCodes from '@/components/admin/qqbot/QQBotRewardCodes.vue'
 
@@ -63,7 +62,6 @@ onMounted(() => { if (route.query.tab === 'transfer') void router.replace({ path
 const tabs = [
   { key: 'checkin', label: 'qqbot.checkinTitle', component: QQBotCheckinSettings },
   { key: 'growth', label: 'qqbot.growth.tab', component: QQBotGrowthSettings },
-  { key: 'rankings', label: 'qqbot.rankings.tab', component: QQBotRankingSettings },
   { key: 'lottery', label: 'qqbot.lotteryTitle', component: QQBotLotterySettings },
   { key: 'invite', label: 'qqbot.inviteTitle', component: QQBotInviteSettings },
   { key: 'preview', label: 'qqbot.workspace.preview', component: QQActivityPreview },

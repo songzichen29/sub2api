@@ -521,7 +521,9 @@ func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job
 	var raw []byte
 	var err error
 	hasImage := len(img) > 0
-	if j.CommandReply && !j.TransientReply && !hasImage && c.CommandReplyFormat != "text" {
+	if j.ReplyPage != nil && !j.TransientReply && !hasImage && s.pageOrigin != "" {
+		raw, hasImage, err = s.sendReplyPage(ctx, c, j, text)
+	} else if j.CommandReply && !j.TransientReply && !hasImage && c.CommandReplyFormat != "text" {
 		raw, hasImage, err = s.sendCommandCards(ctx, c, j, text)
 	} else {
 		raw, err = s.sendOneBot(ctx, c, j, text, img)

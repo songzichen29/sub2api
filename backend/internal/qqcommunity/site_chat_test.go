@@ -83,6 +83,7 @@ func TestSiteChatPlainTextUsesSingleRequest(t *testing.T) {
 			}))
 			defer server.Close()
 			c := DefaultConfig()
+			c.ImageEnabled = true
 			c.BaseURL, c.ChatProtocol = server.URL, protocol
 			s := New(nil, nil, false, nil)
 			turn, err := s.siteChatTurn(context.Background(), c, []Message{{Role: "user", Content: "你好"}})

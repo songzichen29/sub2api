@@ -51,8 +51,6 @@ func RegisterAdminRoutes(
 		bot.GET("/records/:kind", h.QQBot.Community.ListActivityRecords)
 		bot.GET("/checkin", h.QQBot.Community.GetCheckinConfig)
 		bot.PUT("/checkin", h.QQBot.Community.SaveCheckinConfig)
-		bot.GET("/rankings", h.QQBot.Community.GetRankingConfig)
-		bot.PUT("/rankings", h.QQBot.Community.SaveRankingConfig)
 		bot.GET("/invite", h.QQBot.Community.GetInviteConfig)
 		bot.PUT("/invite", h.QQBot.Community.SaveInviteConfig)
 		bot.GET("/transfer", h.QQBot.Community.GetTransferConfig)
@@ -68,6 +66,7 @@ func RegisterAdminRoutes(
 		bot.DELETE("/bindings/:user_id", h.QQBot.Community.Unbind)
 		bot.POST("/test/:kind", panelRateLimiter.Heavy(), h.QQBot.Community.Probe)
 		bot.POST("/chat-preview", panelRateLimiter.Heavy(), h.QQBot.Community.PreviewChat)
+		bot.POST("/page-preview", panelRateLimiter.Heavy(), h.QQBot.Community.PreviewReplyPage)
 		bot.POST("/models/:kind", panelRateLimiter.Heavy(), h.QQBot.Community.Models)
 	}
 	bot := admin.Group("/qq-bot")

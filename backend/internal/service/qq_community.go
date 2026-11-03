@@ -12,7 +12,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/qqcommunity"
 )
 
-func provideQQCommunityService(db *sql.DB, encryptor SecretEncryptor, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, billing *BillingCacheService, email *EmailService, settings *SettingService, users UserRepository, monitor *ChannelMonitorV2Service, groups GroupRepository, channels ChannelRepository, channelService *ChannelService, priceResolver *ModelPricingResolver, billingService *BillingService, rates UserGroupRateRepository) (*qqcommunity.Service, error) {
+func provideQQCommunityService(db *sql.DB, encryptor SecretEncryptor, cfg *config.Config, invalidator APIKeyAuthCacheInvalidator, billing *BillingCacheService, email *EmailService, settings *SettingService, users UserRepository, monitor *ChannelMonitorV2Service, groups GroupRepository, channels ChannelRepository, channelService *ChannelService, priceResolver *ModelPricingResolver, billingService *BillingService, rates UserGroupRateRepository, active *ChannelMonitorService, quality *ModelQualityService) (*qqcommunity.Service, error) {
 	s := qqcommunity.New(db, encryptor, cfg.Totp.EncryptionKeyConfigured, func(ctx context.Context, user int64) {
 		if invalidator != nil {
 			invalidator.InvalidateAuthCacheByUserID(ctx, user)
@@ -35,6 +35,9 @@ func provideQQCommunityService(db *sql.DB, encryptor SecretEncryptor, cfg *confi
 	}
 	status := &qqBotChannelStatus{monitor: monitor, settings: settings, groups: groups}
 	s.SetChannelStatusProvider(status)
+	if err := s.ConfigureReplyPages(fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port), &qqBotMonitorPages{active: active, quality: quality, status: status}); err != nil {
+		return nil, err
+	}
 	s.SetHealthSnapshotProvider(status)
 	s.SetModelPriceProvider(&qqBotModelPrices{groups: groups, users: users, rates: rates, channels: channelService, billing: billingService, resolver: priceResolver})
 	s.SetPriceSnapshotProvider(&qqBotPriceSource{channels: channels, groups: groups})

@@ -27,16 +27,21 @@ func (s *Service) querySiteAccount(ctx context.Context, c Config, j Job, q siteQ
 		return siteQueryOutcome("当前群未启用机器人，账户查询暂时不可用。", "unavailable", "group_disabled")
 	}
 	var text string
+	var page *ReplyPage
 	switch q.Kind {
 	case "account_balance":
 		var balance float64
-		err = s.db.QueryRowContext(ctx, `SELECT u.balance FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'`, j.AppID, j.MemberID).Scan(&balance)
+		var uid int64
+		err = s.db.QueryRowContext(ctx, `SELECT u.balance,u.id FROM qqc_bindings b JOIN users u ON u.id=b.user_id WHERE b.app_id=$1 AND b.member_id=$2 AND u.deleted_at IS NULL AND u.status='active'`, j.AppID, j.MemberID).Scan(&balance, &uid)
 		if errors.Is(err, sql.ErrNoRows) {
 			return siteQueryOutcome(bindFirst, "unavailable", "binding_required")
 		}
 		text = fmt.Sprintf("💳 **我的余额**\n余额：USD %.2f", balance)
+		page = balanceReplyPage(balance, uid)
 	case "today_usage":
-		text, err = s.todayUsage(ctx, current, j, at)
+		var doc *replyDocument
+		text, doc, err = s.todayUsageDocument(ctx, current, j, at)
+		page = usageReplyPage(doc)
 	case "lottery_chances":
 		if current.groupPolicy(j.GroupID).DisableActivities {
 			return siteQueryOutcome("当前群未开启活动。", "unavailable", "activities_disabled")
@@ -52,5 +57,7 @@ func (s *Service) querySiteAccount(ctx context.Context, c Config, j Job, q siteQ
 	if q.Kind == "lottery_chances" && text == "抽奖活动未开启。" {
 		return siteQueryOutcome(text, "unavailable", "lottery_disabled")
 	}
-	return siteQueryOutcome(text, "succeeded", "")
+	result := siteQueryOutcome(text, "succeeded", "")
+	result.Page = page
+	return result
 }

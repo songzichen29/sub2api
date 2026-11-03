@@ -58,7 +58,6 @@ func helpSystemItems() []helpItem {
 		{action: "growth", label: "成长任务", description: "查看成长进度和奖励", command: "成长任务"},
 		{action: "invite_rewards", label: "邀请奖励", description: "查看邀请奖励规则", command: "邀请奖励"},
 		{action: "invites", label: "我的邀请", description: "查看邀请状态", command: "我的邀请"},
-		{action: "rankings", label: "今日排行榜", description: "查看今日排行榜", command: "今日排行榜"},
 		{action: "channels", label: "渠道状态", description: "查看渠道状态（别名：监控、渠道监控）", command: "渠道状态"},
 		{action: "image", label: "生成图片", description: "根据描述生成图片", command: "生图", usage: "生图 图片描述", input: true},
 		{action: "prices", label: "模型价格", description: "查询模型价格", command: "价格", usage: "价格 模型名", input: true},

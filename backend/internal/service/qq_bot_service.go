@@ -81,10 +81,10 @@ func (h *qqBotHost) ChannelStatus(ctx context.Context, id int64) (string, error)
 	}
 	return out.String(), nil
 }
-func ProvideQQBotService(repo qqbot.Repository, encryptor SecretEncryptor, keys *APIKeyService, billing *BillingCacheService, monitor *ChannelMonitorV2Service, settings *SettingService, cfg *config.Config, db *sql.DB, email *EmailService, users UserRepository, groups GroupRepository, channels ChannelRepository, channelService *ChannelService, priceResolver *ModelPricingResolver, billingService *BillingService, rates UserGroupRateRepository) (*qqbot.Service, error) {
+func ProvideQQBotService(repo qqbot.Repository, encryptor SecretEncryptor, keys *APIKeyService, billing *BillingCacheService, monitor *ChannelMonitorV2Service, settings *SettingService, cfg *config.Config, db *sql.DB, email *EmailService, users UserRepository, groups GroupRepository, channels ChannelRepository, channelService *ChannelService, priceResolver *ModelPricingResolver, billingService *BillingService, rates UserGroupRateRepository, active *ChannelMonitorService, quality *ModelQualityService) (*qqbot.Service, error) {
 	host := &qqBotHost{keys: keys, billing: billing, monitor: monitor, settings: settings}
 	s := qqbot.NewService(repo, encryptor, host, fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port))
-	community, err := provideQQCommunityService(db, encryptor, cfg, keys, billing, email, settings, users, monitor, groups, channels, channelService, priceResolver, billingService, rates)
+	community, err := provideQQCommunityService(db, encryptor, cfg, keys, billing, email, settings, users, monitor, groups, channels, channelService, priceResolver, billingService, rates, active, quality)
 	if err != nil {
 		return nil, err
 	}

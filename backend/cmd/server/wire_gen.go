@@ -86,7 +86,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelService := service.NewChannelService(channelRepository, groupRepository, apiKeyAuthCacheInvalidator, pricingService, channelCachePubSub)
 	billingService := service.NewBillingService(configConfig, pricingService)
 	modelPricingResolver := service.NewModelPricingResolver(channelService, billingService)
-	qqbotService, err := service.ProvideQQBotService(qqbotRepository, secretEncryptor, apiKeyService, billingCacheService, channelMonitorV2Service, settingService, configConfig, db, emailService, userRepository, groupRepository, channelRepository, channelService, modelPricingResolver, billingService, userGroupRateRepository)
+	channelMonitorRepository := repository.NewChannelMonitorRepository(client, db)
+	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService)
+	modelQualityRepository := repository.NewModelQualityRepository(db)
+	modelQualityService := service.ProvideModelQualityService(modelQualityRepository, apiKeyRepository, groupRepository, channelService, apiKeyService, channelMonitorService, configConfig)
+	qqbotService, err := service.ProvideQQBotService(qqbotRepository, secretEncryptor, apiKeyService, billingCacheService, channelMonitorV2Service, settingService, configConfig, db, emailService, userRepository, groupRepository, channelRepository, channelService, modelPricingResolver, billingService, userGroupRateRepository, channelMonitorService, modelQualityService)
 	if err != nil {
 		return nil, err
 	}
@@ -185,12 +189,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	announcementReadRepository := repository.NewAnnouncementReadRepository(client)
 	announcementService := service.NewAnnouncementService(announcementRepository, announcementReadRepository, userRepository, userSubscriptionRepository)
 	announcementHandler := handler.NewAnnouncementHandler(announcementService)
-	channelMonitorRepository := repository.NewChannelMonitorRepository(client, db)
-	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor, settingService)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
 	channelMonitorV2Handler := handler.NewChannelMonitorV2Handler(channelMonitorV2Service, apiKeyService)
-	modelQualityRepository := repository.NewModelQualityRepository(db)
-	modelQualityService := service.ProvideModelQualityService(modelQualityRepository, apiKeyRepository, groupRepository, channelService, apiKeyService, channelMonitorService, configConfig)
 	modelQualityHandler := handler.NewModelQualityHandler(modelQualityService)
 	dashboardAggregationRepository := repository.NewDashboardAggregationRepository(db)
 	dashboardStatsCache := repository.NewDashboardCache(redisClient, configConfig)
