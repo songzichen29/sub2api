@@ -44,6 +44,11 @@
           </div>
 
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-800"><span>NapCat Universal 反向 WebSocket</span><code class="mt-1 block break-all select-all">{{ onebotURL }}</code><p class="mt-2 text-gray-500">与 NapCat 配置使用相同 Token；机器人 QQ 必须与登录账号一致。</p></div>
+          <label class="block space-y-1 text-sm">{{ t('qqbot.commandReplyFormat') }}
+            <select v-model="form.command_reply_format" class="input"><option value="image">{{ t('qqbot.commandReplyImage') }}</option><option value="text">{{ t('qqbot.commandReplyText') }}</option></select>
+          </label>
+          <p class="text-xs text-gray-500">{{ t('qqbot.commandReplyHelp') }}</p>
+          <QQBotLoginPanel v-if="activeTab === 'connection'" />
         </section>
         <section v-show="activeTab === 'groups'" id="qqbot-settings-panel-groups" role="tabpanel" aria-labelledby="qqbot-settings-tab-groups" class="card space-y-4 p-6">
           <QQGroupPicker v-model="selectedGroups" :groups="knownGroups" :policies="groupPolicies" :names="groupNames" :label="t('qqbot.allowedGroups')" />
@@ -192,6 +197,7 @@ import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useQQGroupNames } from '@/composables/useQQGroupNames'
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import QQCommandInventory from '@/components/admin/qqbot/QQCommandInventory.vue'
+import QQBotLoginPanel from '@/components/admin/qqbot/QQBotLoginPanel.vue'
 import QQGroupPicker from '@/components/admin/qqbot/QQGroupPicker.vue'
 import QQGroupPolicies from '@/components/admin/qqbot/QQGroupPolicies.vue'
 import { configSections, pickSection, cloneConfig, type ConfigSection } from '@/components/admin/qqbot/configSections'
@@ -330,7 +336,7 @@ function apply(c: QQBotConfig, updateBaseline = true) {
     savedAppId.value = c.app_id
     savedGroupNameSource.value = { appID: c.app_id, sandbox: c.sandbox, revision: c.section_versions?.connection || '', groups: [...c.allowed_groups] }
   }
-  form.value = cloneConfig({ ...c, notification_quiet_hours: c.notification_quiet_hours ?? { enabled: false, start_hour: 23, end_hour: 8 }, chat_disabled: c.chat_disabled ?? false, group_policies: c.group_policies ?? [], reward_alert_daily: c.reward_alert_daily ?? 0, custom_commands: (c.custom_commands ?? []).map(command => ({ ...command, command: command.command.replace(/^\//, '') })), site_knowledge: { ...defaultSiteKnowledgeConfig(), ...c.site_knowledge } })
+  form.value = cloneConfig({ ...c, command_reply_format: c.command_reply_format || 'image', notification_quiet_hours: c.notification_quiet_hours ?? { enabled: false, start_hour: 23, end_hour: 8 }, chat_disabled: c.chat_disabled ?? false, group_policies: c.group_policies ?? [], reward_alert_daily: c.reward_alert_daily ?? 0, custom_commands: (c.custom_commands ?? []).map(command => ({ ...command, command: command.command.replace(/^\//, '') })), site_knowledge: { ...defaultSiteKnowledgeConfig(), ...c.site_knowledge } })
   autonomous.value = { ...defaultAutonomousConfig(), ...c.autonomous }
   moderation.value = { ...defaultModerationConfig(), ...c.moderation }
   healthNotifications.value = { ...defaultHealthNotificationConfig(), ...c.health_notifications }

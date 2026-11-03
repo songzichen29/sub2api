@@ -82,6 +82,7 @@ func (p *qqBotChannelStatus) ChannelStatus(ctx context.Context) (*qqcommunity.Ch
 		(matrix.Coverage.Bootstrap != nil && matrix.Coverage.Bootstrap.Active)
 	minimumSample := NormalizeChannelMonitorV2HealthThresholds(cfg.HealthThresholds).MinimumSample
 	report.Overall = qqBotChannelStatusMetric(snapshot.Metrics, report.ShowThroughput, minimumSample)
+	report.Trend = qqBotChannelStatusPoints(snapshot.Trend, report.ShowThroughput, minimumSample)
 	counts := make(map[int64]int, len(matrix.Items))
 	for _, row := range matrix.Items {
 		if row.GroupID != nil {
@@ -104,9 +105,17 @@ func (p *qqBotChannelStatus) ChannelStatus(ctx context.Context) (*qqcommunity.Ch
 		if counts[*row.GroupID] > 1 {
 			name += "（" + row.Platform + "）"
 		}
-		report.Groups = append(report.Groups, qqcommunity.ChannelStatusGroup{Name: name, Metrics: qqBotChannelStatusMetric(row.Metrics, report.ShowThroughput, minimumSample)})
+		report.Groups = append(report.Groups, qqcommunity.ChannelStatusGroup{Name: name, Metrics: qqBotChannelStatusMetric(row.Metrics, report.ShowThroughput, minimumSample), Buckets: qqBotChannelStatusPoints(row.Buckets, report.ShowThroughput, minimumSample)})
 	}
 	return report, nil
+}
+
+func qqBotChannelStatusPoints(points []ChannelMonitorV2TrendPoint, throughput bool, minimumSample int64) []qqcommunity.ChannelStatusPoint {
+	result := make([]qqcommunity.ChannelStatusPoint, 0, len(points))
+	for _, point := range points {
+		result = append(result, qqcommunity.ChannelStatusPoint{At: point.BucketStart, Metrics: qqBotChannelStatusMetric(point.Metrics, throughput, minimumSample), Health: point.Health.Overall})
+	}
+	return result
 }
 
 func qqBotChannelStatusMetric(metric ChannelMonitorV2Metric, throughput bool, minimumSample int64) qqcommunity.ChannelStatusMetric {

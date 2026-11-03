@@ -3,7 +3,7 @@ FROM golang:1.27.2-alpine
 WORKDIR /app
 
 # 安装必要的工具（tzdata 提供 zoneinfo，配合 ENV TZ 让容器时区与宿主机一致）
-RUN apk add --no-cache git tzdata
+RUN apk add --no-cache git tzdata font-wqy-zenhei
 
 # 复制go.mod和go.sum
 COPY go.mod go.sum ./

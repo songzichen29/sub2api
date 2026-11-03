@@ -41,6 +41,17 @@ type oneBotAck struct {
 }
 type obID string
 
+// A negative acknowledgement is safe to fall back from. A timeout, lost
+// connection or missing receipt has uncertain delivery and must never resend.
+type oneBotRejected struct {
+	Action  string
+	Retcode int
+}
+
+func (e *oneBotRejected) Error() string {
+	return fmt.Sprintf("OneBot %s failed (retcode %d)", e.Action, e.Retcode)
+}
+
 func (v *obID) UnmarshalJSON(b []byte) error {
 	if len(b) > 0 && b[0] == '"' {
 		var s string
@@ -101,7 +112,10 @@ func (c *oneBotConnection) call(ctx context.Context, action string, params any) 
 	select {
 	case a := <-ch:
 		if a.Status != "ok" || a.Retcode != 0 {
-			return nil, fmt.Errorf("OneBot %s failed (retcode %d)", action, a.Retcode)
+			if a.Status == "failed" && a.Retcode != 0 {
+				return nil, &oneBotRejected{Action: action, Retcode: a.Retcode}
+			}
+			return nil, fmt.Errorf("OneBot %s acknowledgement invalid; delivery unconfirmed", action)
 		}
 		return a.Data, nil
 	case <-ctx.Done():
@@ -300,6 +314,7 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 		cmd, arg := command(e.Content, c.CustomCommands...)
 		// Retain the existing /聊天 and /画图 aliases from the initial release.
 		if strings.HasPrefix(e.Content, "/聊天 ") || strings.HasPrefix(e.Content, "聊天 ") {
+			e.CommandReply = true
 			e.Content = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(e.Content, "/"), "聊天"))
 			kind = groupAtMessageCreate
 		}

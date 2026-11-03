@@ -32,19 +32,24 @@ func boundUser(ctx context.Context, db queryRower, app, member string) (int64, e
 }
 
 func (s *Service) todayUsage(ctx context.Context, c Config, j Job, now time.Time) (string, error) {
+	text, _, err := s.todayUsageDocument(ctx, c, j, now)
+	return text, err
+}
+
+func (s *Service) todayUsageDocument(ctx context.Context, c Config, j Job, now time.Time) (string, *replyDocument, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true, Isolation: sql.LevelRepeatableRead})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	uid, err := boundUser(ctx, tx, c.AppID, j.MemberID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return bindFirst, nil
+		return bindFirst, nil, nil
 	}
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	local := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
 	start := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
@@ -52,15 +57,22 @@ func (s *Service) todayUsage(ctx context.Context, c Config, j Job, now time.Time
 	var cost, wallet, subscription float64
 	err = tx.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COALESCE(SUM(cache_creation_tokens),0),COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(actual_cost),0),COALESCE(SUM(actual_cost) FILTER(WHERE billing_type=0),0),COALESCE(SUM(actual_cost) FILTER(WHERE billing_type=1),0) FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at <= $3`, uid, start, now).Scan(&count, &input, &output, &write, &read, &cost, &wallet, &subscription)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	text := fmt.Sprintf("📊 **今日用量**\n%s（北京时间）\n\n请求：%d 次\n费用：USD %.4f\n余额扣费：USD %.4f\n套餐消耗：USD %.4f\n\n**Token 明细**\n输入：%s\n输出：%s\n缓存读取：%s\n缓存写入：%s", local.Format("2006-01-02"), count, cost, wallet, subscription, formatUsageTokens(input), formatUsageTokens(output), formatUsageTokens(read), formatUsageTokens(write))
+	doc := &replyDocument{Title: "今日用量 · " + local.Format("2006-01-02"), ChartNote: "北京时间 · 数据来自本人绑定账号。Token 与费用分别使用独立比例。"}
+	for _, b := range []struct {
+		name  string
+		value int64
+	}{{"输入 Token", input}, {"输出 Token", output}, {"缓存读取 Token", read}, {"缓存写入 Token", write}} {
+		doc.Bars = append(doc.Bars, replyBar{Label: b.name, Value: float64(b.value), Display: formatUsageTokens(b.value)})
+	}
 	if count == 0 {
-		return text, nil
+		return text, doc, nil
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT model,COUNT(*),SUM(actual_cost) FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at <= $3 GROUP BY model ORDER BY SUM(actual_cost) DESC,COUNT(*) DESC,model LIMIT 5`, uid, start, now)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	text += "\n\n**费用前 5 模型**"
@@ -70,12 +82,13 @@ func (s *Service) todayUsage(ctx context.Context, c Config, j Job, now time.Time
 		var requests int64
 		var amount float64
 		if err = rows.Scan(&model, &requests, &amount); err != nil {
-			return "", err
+			return "", nil, err
 		}
 		rank++
+		doc.CostBars = append(doc.CostBars, replyBar{Label: model, Value: amount, Display: fmt.Sprintf("$%.4f", amount)})
 		text += fmt.Sprintf("\n\n**%d. %s**\nUSD %.4f（%d 次）", rank, replyPlainLabel(limitText(model, 100)), amount, requests)
 	}
-	return text, rows.Err()
+	return text, doc, rows.Err()
 }
 
 type ModelPriceProvider interface {

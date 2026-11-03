@@ -79,11 +79,11 @@ describe('QQ module settings', () => {
   expect(server.group_policies?.[0]?.label).toBe('更新的昵称')
   expect(server.group_policies).toHaveLength(1)
  })
- it('explains missing QQ permissions while allowing manual nicknames', async () => {
+ it('explains unavailable NapCat group information while allowing manual nicknames', async () => {
   api.groupInfo.mockImplementation(async (appID: string, groupID: string) => ({ app_id: appID, sandbox: false, group_id: groupID, name: '', status: 'permission_required' }))
   const w = await mountView('zh', '/admin/qqbot/groups')
   const panel = w.get('#qqbot-settings-panel-groups')
-  expect(panel.text()).toContain('QQ 尚未授予')
+  expect(panel.text()).toContain('NapCat 暂时无法获取群资料')
   expect(api.groupInfo).toHaveBeenCalledTimes(1)
   await panel.findAll('article')[0]!.get('input[maxlength="60"]').setValue('手填群昵称')
   await w.get('form').trigger('submit'); await flushPromises()

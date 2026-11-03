@@ -20,6 +20,7 @@ const configKey = "qqc_config"
 func (c *Config) UnmarshalJSON(data []byte) error {
 	type configJSON Config
 	decoded := configJSON(*c)
+	decoded.CommandReplyFormat = "image"
 	decoded.Moderation = DefaultModerationConfig()
 	decoded.Autonomous = DefaultAutonomousConfig()
 	decoded.HealthNotifications = DefaultHealthNotificationConfig()
@@ -101,6 +102,9 @@ func validateURL(raw string) error {
 	return nil
 }
 func validateConfig(c Config) error {
+	if c.CommandReplyFormat != "" && c.CommandReplyFormat != "image" && c.CommandReplyFormat != "text" {
+		return errors.New("指令回复方式必须为图片或文字")
+	}
 	q := c.NotificationQuietHours
 	if q.StartHour < 0 || q.StartHour > 23 || q.EndHour < 0 || q.EndHour > 23 || (q.Enabled && q.StartHour == q.EndHour) {
 		return errors.New("通知静默开始与结束小时须在 0～23 之间且不能相同")

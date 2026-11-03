@@ -1,4 +1,16 @@
 export default { qqbot: {
+  commandReplyFormat: '指令回复格式',
+  commandReplyImage: '图片（优先）',
+  commandReplyText: '纯文字',
+  commandReplyHelp: '指令（含 /聊天）结果在服务内生成图片，长内容自动分页；链接另附文字，图片不可用时回退文字。普通聊天使用文字。',
+  login: {
+    title: 'QQ 登录', refreshStatus: '刷新状态', unconfigured: '未配置 NapCat 登录连接，请在服务器配置 WebUI 地址和凭据。',
+    expected: '机器人 QQ', state: '登录状态', mismatch: '当前登录 QQ 为 {qq}，与配置不一致，请核对服务器登录账号。',
+    scanHelp: '使用机器人 QQ 扫描二维码，并在手机上确认登录。', qrAlt: 'NapCat QQ 登录二维码', waitQR: '正在等待二维码，可稍后刷新。',
+    refreshQR: '刷新二维码', pollHelp: '此页面每 5 秒更新一次登录状态。', wrongAccount: '登录账号不一致', online: '已登录，OneBot 已连接',
+    waitConnection: '已登录，等待 OneBot 连接', confirming: '已扫码，等待确认或初始化', reconnecting: '正在重连', failed: '登录失败，请重新扫码',
+    offline: '已离线', waitScan: '等待扫码登录', loadFailed: '读取登录状态失败，请检查 NapCat 服务和服务器配置。'
+  },
   fetchModels: '获取 Key 模型列表',
   modelsFetched: '已获取 {count} 个模型',
   modelsFailed: '获取模型列表失败，请检查地址和 Key。',

@@ -35,6 +35,8 @@ func RegisterAdminRoutes(
 		bot.GET("/config", h.QQBot.Community.GetConfig)
 		bot.PUT("/config", h.QQBot.Community.SaveConfig)
 		bot.GET("/runtime", h.QQBot.Community.Runtime)
+		bot.GET("/login", h.QQBot.Community.NapCatLogin)
+		bot.POST("/login/refresh", panelRateLimiter.Heavy(), h.QQBot.Community.NapCatLogin)
 		bot.GET("/members", h.QQBot.Community.ListMembers)
 		bot.PUT("/config/:section", h.QQBot.Community.SaveConfigSection)
 		bot.GET("/config-history", h.QQBot.Community.ConfigHistory)

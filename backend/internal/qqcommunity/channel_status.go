@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -32,6 +33,13 @@ type ChannelStatusMetric struct {
 type ChannelStatusGroup struct {
 	Name    string
 	Metrics ChannelStatusMetric
+	Buckets []ChannelStatusPoint
+}
+
+type ChannelStatusPoint struct {
+	At      time.Time
+	Metrics ChannelStatusMetric
+	Health  string
 }
 
 type ChannelStatusReport struct {
@@ -41,6 +49,7 @@ type ChannelStatusReport struct {
 	ShowThroughput  bool
 	Overall         ChannelStatusMetric
 	Groups          []ChannelStatusGroup
+	Trend           []ChannelStatusPoint
 }
 
 // SetChannelStatusProvider must be called before Start.
@@ -74,6 +83,10 @@ func (s *Service) sendChannelStatus(ctx context.Context, c Config, j Job, arg st
 		return s.send(ctx, c, j, text, nil, 1)
 	}
 	chunks := formatChannelStatus(report)
+	if j.CommandReply && c.CommandReplyFormat != "text" && page == 1 {
+		j.ReplyCard = channelReplyDocument(report)
+		return s.send(ctx, c, j, strings.Join(chunks, "\n\n"), nil, 1)
+	}
 	// The existing passive reply path allows five messages for one source message.
 	// Keep every group intact and make overflow accessible through explicit pages.
 	const perPage = 5
@@ -95,6 +108,14 @@ func (s *Service) sendChannelStatus(ctx context.Context, c Config, j Job, arg st
 		}
 	}
 	return nil
+}
+
+func channelReplyDocument(report *ChannelStatusReport) *replyDocument {
+	doc := &replyDocument{Title: "渠道监控", Trend: report.Trend, ChartNote: "从左到右为时间趋势，与站点综合健康评分一致。\n绿：健康；黄：警告；红：异常；灰：无请求或样本不足。\n精确指标、更新时间与覆盖范围见详细数据页。"}
+	for _, g := range report.Groups {
+		doc.Matrix = append(doc.Matrix, replyMatrixRow{Name: g.Name, Points: g.Buckets})
+	}
+	return doc
 }
 
 func formatChannelStatus(report *ChannelStatusReport) []string {

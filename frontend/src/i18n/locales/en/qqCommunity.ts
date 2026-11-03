@@ -1,4 +1,16 @@
 export default { qqbot: {
+  commandReplyFormat: 'Command reply format',
+  commandReplyImage: 'Prefer images',
+  commandReplyText: 'Text only',
+  commandReplyHelp: 'Commands, including /聊天, use locally rendered, paginated images. Links are also sent as text. Falls back to text when images are unavailable. Regular chat uses text.',
+  login: {
+    title: 'QQ login', refreshStatus: 'Refresh status', unconfigured: 'NapCat login is not configured. Set the WebUI URL and credentials on the server.',
+    expected: 'Bot QQ', state: 'Login status', mismatch: 'Logged in as QQ {qq}, which differs from the configured account. Check the server login.',
+    scanHelp: 'Scan with the bot QQ account and confirm on your phone.', qrAlt: 'NapCat QQ login QR code', waitQR: 'Waiting for a QR code. Refresh shortly.',
+    refreshQR: 'Refresh QR code', pollHelp: 'Login status updates every 5 seconds on this page.', wrongAccount: 'Account mismatch', online: 'Logged in, OneBot connected',
+    waitConnection: 'Logged in, waiting for OneBot', confirming: 'Scanned, awaiting confirmation or initialization', reconnecting: 'Reconnecting', failed: 'Login failed. Scan again.',
+    offline: 'Offline', waitScan: 'Waiting for scan', loadFailed: 'Unable to read login status. Check NapCat and the server configuration.'
+  },
   fetchModels: 'Get models available to this key',
   modelsFetched: 'Loaded {count} models',
   modelsFailed: 'Could not load models. Check the address and key.',

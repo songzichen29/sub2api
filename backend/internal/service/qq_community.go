@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -20,6 +22,17 @@ func provideQQCommunityService(db *sql.DB, encryptor SecretEncryptor, cfg *confi
 		}
 	})
 	s.SetBindingEmailDelivery(&qqBotBindingEmail{email: email, settings: settings, users: users})
+	napcatToken := cfg.QQBotNapCat.WebUIToken
+	if cfg.QQBotNapCat.WebUITokenFile != "" {
+		raw, err := os.ReadFile(cfg.QQBotNapCat.WebUITokenFile)
+		if err != nil {
+			return nil, fmt.Errorf("read NapCat WebUI credential file: %w", err)
+		}
+		napcatToken = strings.TrimSpace(string(raw))
+	}
+	if err := s.ConfigureNapCatLogin(cfg.QQBotNapCat.WebUIURL, napcatToken); err != nil {
+		return nil, err
+	}
 	status := &qqBotChannelStatus{monitor: monitor, settings: settings, groups: groups}
 	s.SetChannelStatusProvider(status)
 	s.SetHealthSnapshotProvider(status)

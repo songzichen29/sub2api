@@ -19,6 +19,7 @@ import (
 type Service struct {
 	db                    *database
 	onebot                oneBotTransport
+	napcatLogin           *napcatLoginClient
 	encryptor             Encryptor
 	encryptionReady       bool
 	invalidate            func(context.Context, int64)
@@ -410,8 +411,10 @@ func command(content string, customCommands ...CustomCommand) (string, string) {
 	switch name {
 	case "余额":
 		name = "我的余额"
-	case "渠道":
+	case "渠道", "监控", "渠道监控":
 		name = "渠道状态"
+	case "用量":
+		name = "今日用量"
 	case "画图":
 		name = "生图"
 	case "清空对话":
@@ -467,6 +470,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	if strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), "")) == "" && !hasImages && parts == "" && e.referenceID() == "" {
 		cmd = "帮助"
 	}
+	j.CommandReply = cmd != "" || e.CommandReply
 	if arg != "" {
 		switch cmd {
 		case "签到", "我的余额", "今日用量", "我的奖励", "抽奖次数", "我的抽奖", "邀请奖励", "邀请活动", "我的邀请":
@@ -520,7 +524,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		}
 	case "今日用量":
 		var err error
-		text, err = s.todayUsage(ctx, c, *j, time.Now())
+		text, j.ReplyCard, err = s.todayUsageDocument(ctx, c, *j, time.Now())
 		if err != nil {
 			text = "用量查询失败，请稍后重试。"
 		}
@@ -817,6 +821,9 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			return err
 		}
 		return s.send(ctx, c, *j, text, img, seq+1)
+	}
+	if j.CommandReply && c.CommandReplyFormat != "text" {
+		return s.send(ctx, c, *j, text, nil, seq)
 	}
 	chunks := splitReply(normalizeReplyLineBreaks(text))
 	for i, chunk := range chunks {

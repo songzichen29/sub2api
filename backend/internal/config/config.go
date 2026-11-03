@@ -69,6 +69,7 @@ const DefaultModelsListReadMaxBytes int64 = 8 * 1024 * 1024
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
 	ModelQuality            ModelQualityConfig            `mapstructure:"model_quality"`
+	QQBotNapCat             QQBotNapCatConfig             `mapstructure:"qqbot_napcat"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
 	Security                SecurityConfig                `mapstructure:"security"`
@@ -2053,6 +2054,9 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 }
 
 func setDefaults() {
+	viper.SetDefault("qqbot_napcat.webui_url", "")
+	viper.SetDefault("qqbot_napcat.webui_token", "")
+	viper.SetDefault("qqbot_napcat.webui_token_file", "")
 	viper.SetDefault("run_mode", RunModeStandard)
 	viper.SetDefault("gateway.min_output_tokens", 128)
 	viper.SetDefault("simple_mode.auto_create_default_groups", true)

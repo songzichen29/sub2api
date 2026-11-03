@@ -518,7 +518,14 @@ func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job
 	if time.Since(j.CreatedAt) >= passiveReplyWindow {
 		return errReplyWindow
 	}
-	raw, err := s.sendOneBot(ctx, c, j, text, img)
+	var raw []byte
+	var err error
+	hasImage := len(img) > 0
+	if j.CommandReply && !j.TransientReply && !hasImage && c.CommandReplyFormat != "text" {
+		raw, hasImage, err = s.sendCommandCards(ctx, c, j, text)
+	} else {
+		raw, err = s.sendOneBot(ctx, c, j, text, img)
+	}
 	if err != nil {
 		return err
 	}
@@ -529,7 +536,7 @@ func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job
 		return errors.New("消息已发送，但自主接话状态保存失败")
 	}
 	shareable := (j.Kind == "chat" || j.Kind == "ambient_chat" || j.Kind == "image") && j.ShareHistory && j.Error == ""
-	return s.rememberSentMessage(ctx, c, j, raw, text, len(img) > 0, shareable)
+	return s.rememberSentMessage(ctx, c, j, raw, text, hasImage, shareable)
 }
 
 func limitText(s string, n int) string {

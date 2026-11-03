@@ -56,6 +56,7 @@ export interface QQGroupPolicy {
   disable_activities: boolean; disable_notifications: boolean; chat_daily_limit: number | null; image_daily_limit: number | null
 }
 export interface QQBotConfig {
+	command_reply_format?: 'image' | 'text'
   _version?: string
   notification_quiet_hours?: { enabled: boolean; start_hour: number; end_hour: number }
   section_versions?: Record<string, string>
@@ -213,7 +214,14 @@ export interface QQActivityPreview {
 }
 export interface QQTransferHistory { items: { id: number; from_user_id: number; to_user_id: number; from_email: string; to_email: string; amount: string; fee: string; net_amount: string; created_at: string }[]; total: number; page: number; page_size: number }
 export interface QQGroupInfo { app_id: string; sandbox: boolean; group_id: string; name: string; status: 'available' | 'permission_required' | 'unavailable' | 'unconfigured' | 'rate_limited'; retry_after_seconds?: number }
+export interface QQNapCatLogin {
+  configured: boolean; online: boolean; connected: boolean; offline: boolean; phase: string
+  scan_accepted: boolean; expected_qq: string; logged_in_qq: string; account_mismatch: boolean
+  qr_code?: string; login_failed: boolean
+}
 export const qqbotAPI = {
+ login: async (signal?: AbortSignal) => (await apiClient.get<QQNapCatLogin>('/admin/qqbot/login', { signal, timeout: 15000 })).data,
+ refreshLoginQR: async (signal?: AbortSignal) => (await apiClient.post<QQNapCatLogin>('/admin/qqbot/login/refresh', {}, { signal, timeout: 15000 })).data,
  models: async (kind: 'chat' | 'image', config: QQBotConfig) => (await apiClient.post<{models:string[]}>(`/admin/qqbot/models/${kind}`, config, {timeout:35000})).data,
  groupInfo: async (appID: string, groupID: string, signal?: AbortSignal) => (await apiClient.get<QQGroupInfo>(`/admin/qqbot/groups/${encodeURIComponent(groupID)}/info`, { params: { app_id: appID }, signal, timeout: 10000 })).data,
  chatPreview: async (params: QQChatPreviewRequest) => (await apiClient.post<QQChatPreviewResult>('/admin/qqbot/chat-preview', params, { timeout: 180000 })).data,

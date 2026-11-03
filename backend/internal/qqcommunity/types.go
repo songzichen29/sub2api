@@ -11,6 +11,7 @@ import (
 var ErrDisabled = errors.New("QQ 机器人尚未启用")
 
 type Config struct {
+	CommandReplyFormat       string                   `json:"command_reply_format"`
 	NotificationQuietHours   QuietHours               `json:"notification_quiet_hours"`
 	SectionVersions          map[string]string        `json:"section_versions,omitempty"`
 	ChatDisabled             bool                     `json:"chat_disabled"`
@@ -65,8 +66,9 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{NotificationQuietHours: QuietHours{StartHour: 23, EndHour: 8}, Moderation: DefaultModerationConfig(), HealthNotifications: DefaultHealthNotificationConfig(), Autonomous: DefaultAutonomousConfig(), PriceNotifications: PriceNotificationConfig{Scheduled: true, Groups: []string{}}, AllowedGroups: []string{}, CustomCommands: []CustomCommand{}, GroupAdmins: []GroupAdmin{}, ChatProtocol: "chat_completions", ImageSize: "1024x1024",
-		SystemPrompt:    "你是 CTAV 群助手。用简洁、友好的中文回答。签到、绑定和奖励由固定指令处理，你不能修改账户或余额。",
-		MaxOutputTokens: 2048, HistoryMessages: 12, DailyChatLimit: 30, DailyImageLimit: 2,
+		CommandReplyFormat: "image",
+		SystemPrompt:       "你是 CTAV 群助手。用简洁、友好的中文回答。签到、绑定和奖励由固定指令处理，你不能修改账户或余额。",
+		MaxOutputTokens:    2048, HistoryMessages: 12, DailyChatLimit: 30, DailyImageLimit: 2,
 		TotalDailyChatLimit: 500, TotalDailyImageLimit: 20, CooldownSeconds: 5, InviteDailyLimit: 10,
 		InviteRechargeWindowDays: DefaultRechargeWindowDays}
 }
@@ -97,6 +99,7 @@ type Payload struct {
 	Data json.RawMessage `json:"d"`
 }
 type Event struct {
+	CommandReply     bool             `json:"command_reply,omitempty"`
 	HelpAction       string           `json:"help_action,omitempty"`
 	ID               string           `json:"id"`
 	GroupID          string           `json:"group_openid"`
@@ -183,6 +186,8 @@ func (m Message) MarshalJSON() ([]byte, error) {
 }
 
 type Job struct {
+	ReplyCard       *replyDocument  `json:"-"`
+	CommandReply    bool            `json:"-"`
 	SiteQuery       json.RawMessage `json:"site_query,omitempty"`
 	ImageDecision   json.RawMessage `json:"image_decision,omitempty"`
 	ChatExecution   json.RawMessage `json:"chat_execution,omitempty"`
