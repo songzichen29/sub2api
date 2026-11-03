@@ -223,6 +223,7 @@ export interface QQNapCatLogin {
   configured: boolean; online: boolean; connected: boolean; offline: boolean; phase: string
   scan_accepted: boolean; expected_qq: string; logged_in_qq: string; account_mismatch: boolean
   qr_code?: string; login_failed: boolean; auto_recovery?: boolean
+  restart_available_at?: string
   session_health?: {
     state: 'unknown' | 'disconnected' | 'offline_reported' | 'stale' | 'degraded' | 'probe_ok'
     probe: string; checked_at?: string; last_success_at?: string; heartbeat_at?: string
@@ -232,6 +233,7 @@ export interface QQNapCatLogin {
 export const qqbotAPI = {
  login: async (signal?: AbortSignal) => (await apiClient.get<QQNapCatLogin>('/admin/qqbot/login', { signal, timeout: 15000 })).data,
  refreshLoginQR: async (signal?: AbortSignal) => (await apiClient.post<QQNapCatLogin>('/admin/qqbot/login/refresh', {}, { signal, timeout: 15000 })).data,
+ restartLogin: async (expectedQQ: string, signal?: AbortSignal) => (await apiClient.post<{ accepted: boolean; restart_available_at: string }>('/admin/qqbot/login/restart', { expected_qq: expectedQQ, confirmed: true }, { signal, timeout: 15000 })).data,
  models: async (kind: 'chat' | 'image', config: QQBotConfig) => (await apiClient.post<{models:string[]}>(`/admin/qqbot/models/${kind}`, config, {timeout:35000})).data,
  groupInfo: async (appID: string, groupID: string, signal?: AbortSignal) => (await apiClient.get<QQGroupInfo>(`/admin/qqbot/groups/${encodeURIComponent(groupID)}/info`, { params: { app_id: appID }, signal, timeout: 10000 })).data,
  chatPreview: async (params: QQChatPreviewRequest) => (await apiClient.post<QQChatPreviewResult>('/admin/qqbot/chat-preview', params, { timeout: 180000 })).data,

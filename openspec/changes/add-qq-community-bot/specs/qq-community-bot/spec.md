@@ -107,11 +107,22 @@ The system SHALL provide an administrator-controlled tool to search existing mem
 - **THEN** the backend searches and sends an actual image through OneBot, even if image generation is disabled
 
 ### Requirement: Automatic offline login QR recovery
-The system SHALL monitor configured NapCat login state without requiring an open admin browser. It SHALL request a QR code when an idle offline login has no code, refresh stale unscanned codes with backoff, and replace codes left over after logout. It MUST NOT refresh or restart an online, scanned, initializing or reconnecting login. An online QQ account with a disconnected OneBot transport SHALL be displayed separately and MUST NOT trigger QR regeneration. QR login still requires phone confirmation.
+The system SHALL monitor configured NapCat login state without requiring an open admin browser. It SHALL request a QR code when an idle offline login has no code, refresh stale unscanned codes with backoff, and replace codes left over after logout. Automatic recovery MUST NOT refresh or restart an online, scanned, initializing or reconnecting login. An online QQ account with a disconnected OneBot transport SHALL be displayed separately and MUST NOT trigger QR regeneration. QR login still requires phone confirmation.
 
 #### Scenario: Offline recovery and scan confirmation
 - **WHEN** an online bot loses its login and NapCat finishes its own reconnect attempt
 - **THEN** a fresh QR is requested and shown in the admin login panel, and subsequent phone confirmation is never interrupted by automatic refresh
+
+### Requirement: Administrator-confirmed QQ sign-in restart
+An authenticated administrator SHALL be able to restart the configured NapCat login worker from the login panel after confirming the expected bot account and temporary interruption to all groups. The action SHALL preserve site bindings, balances and configuration, use the fixed authenticated WebUI endpoint, and reject requests during scan confirmation, initialization or reconnection. A reported online session MAY be restarted explicitly. The server SHALL serialize requests and enforce a 60-second cooldown, including uncertain delivery. Background probes and page polling MUST NOT invoke this action.
+
+#### Scenario: Explicit restart followed by login status
+- **WHEN** the administrator confirms the restart for the current bot QQ
+- **THEN** one restart request is sent, its acknowledgement is shown as accepted rather than logged in, and polling displays automatic login or a QR requiring phone confirmation
+
+#### Scenario: Cancelled, concurrent or uncertain restart
+- **WHEN** confirmation is cancelled, requests overlap, or the restart response is lost
+- **THEN** cancellation sends no restart, concurrent submissions send at most one, and uncertain delivery is not automatically retried
 
 
 ### Requirement: Sampled autonomous image and sticker participation

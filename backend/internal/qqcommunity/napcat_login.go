@@ -16,19 +16,20 @@ import (
 )
 
 type NapCatLoginStatus struct {
-	Configured    bool            `json:"configured"`
-	Online        bool            `json:"online"`
-	Connected     bool            `json:"connected"`
-	Offline       bool            `json:"offline"`
-	Phase         string          `json:"phase"`
-	ScanAccepted  bool            `json:"scan_accepted"`
-	ExpectedQQ    string          `json:"expected_qq"`
-	LoggedInQQ    string          `json:"logged_in_qq"`
-	Mismatch      bool            `json:"account_mismatch"`
-	QRCode        string          `json:"qr_code,omitempty"`
-	LoginFailed   bool            `json:"login_failed"`
-	AutoRecovery  bool            `json:"auto_recovery"`
-	SessionHealth QQSessionHealth `json:"session_health"`
+	Configured         bool            `json:"configured"`
+	Online             bool            `json:"online"`
+	Connected          bool            `json:"connected"`
+	Offline            bool            `json:"offline"`
+	Phase              string          `json:"phase"`
+	ScanAccepted       bool            `json:"scan_accepted"`
+	ExpectedQQ         string          `json:"expected_qq"`
+	LoggedInQQ         string          `json:"logged_in_qq"`
+	Mismatch           bool            `json:"account_mismatch"`
+	QRCode             string          `json:"qr_code,omitempty"`
+	LoginFailed        bool            `json:"login_failed"`
+	AutoRecovery       bool            `json:"auto_recovery"`
+	SessionHealth      QQSessionHealth `json:"session_health"`
+	RestartAvailableAt *time.Time      `json:"restart_available_at,omitempty"`
 }
 
 type napcatLoginClient struct {
@@ -43,6 +44,7 @@ type napcatLoginClient struct {
 	qrObserved  time.Time
 	wasOnline   bool
 	recoverQR   bool
+	lastRestart time.Time
 }
 
 // ConfigureNapCatLogin only accepts the operator's fixed server configuration.
@@ -161,6 +163,10 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 	defer cancel()
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if !n.lastRestart.IsZero() {
+		available := n.lastRestart.Add(time.Minute)
+		result.RestartAvailableAt = &available
+	}
 	var status struct {
 		Online       bool   `json:"isLogin"`
 		Offline      bool   `json:"isOffline"`
@@ -174,7 +180,7 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 	}
 	// Refreshing a QR must never log out a working bot or invalidate a scan that
 	// is waiting for confirmation or core initialization.
-	if refresh && !status.Online && !status.ScanAccepted && status.Phase != "reconnecting" && status.Phase != "initializing" {
+	if refresh && !status.Online && !napcatLoginInProgress(status.ScanAccepted, status.Phase) {
 		if time.Since(n.lastRefresh) < 5*time.Second {
 			return nil, errors.New("刷新过于频繁，请稍后重试")
 		}
@@ -195,7 +201,7 @@ func (s *Service) NapCatLogin(ctx context.Context, refresh bool) (*NapCatLoginSt
 	}
 	result.Online, result.Offline, result.Phase, result.ScanAccepted = status.Online, status.Offline, status.Phase, status.ScanAccepted
 	result.LoginFailed = status.LoginError != ""
-	if !status.Online && !status.ScanAccepted && status.Phase != "initializing" && status.Phase != "reconnecting" {
+	if !status.Online && !napcatLoginInProgress(status.ScanAccepted, status.Phase) {
 		result.QRCode = safeLoginQRCode(status.QRCode)
 	}
 	if status.Online {
@@ -265,7 +271,7 @@ func (n *napcatLoginClient) shouldRefreshQR(status NapCatLoginStatus, now time.T
 		n.recoverQR, n.lastQRCode, n.qrObserved = false, "", time.Time{}
 		return false
 	}
-	if status.ScanAccepted || status.Phase == "initializing" || status.Phase == "reconnecting" {
+	if napcatLoginInProgress(status.ScanAccepted, status.Phase) {
 		return false
 	}
 	if status.QRCode != n.lastQRCode || n.qrObserved.IsZero() {
@@ -277,4 +283,9 @@ func (n *napcatLoginClient) shouldRefreshQR(status NapCatLoginStatus, now time.T
 	// Refresh stable, unscanned QR codes periodically instead of leaving an
 	// expired code on screen indefinitely. Back off requests when no QR exists.
 	return n.recoverQR || status.QRCode == "" || (now.Sub(n.qrObserved) >= 110*time.Second && now.Sub(n.lastRefresh) >= 110*time.Second)
+}
+
+// Some NapCat versions expose qrcode_scanned before qrLoginAccepted becomes true.
+func napcatLoginInProgress(accepted bool, phase string) bool {
+	return accepted || phase == "initializing" || phase == "reconnecting" || phase == "qrcode_scanned" || phase == "logging_in"
 }

@@ -7,6 +7,11 @@ export default { qqbot: {
   commandReplyText: 'Text only',
   commandReplyHelp: 'Commands, including /聊天, use locally rendered, paginated images. Links are also sent as text. Falls back to text when images are unavailable. Regular chat uses text.',
   login: {
+    restart: 'Sign in again', restartConfirmButton: 'Confirm sign-in restart',
+    restartConfirm: 'Disconnect bot QQ {qq} and restart its QQ login process? Bot service in all groups will pause briefly. Login will be attempted automatically; if scanning is required, a QR code will appear here for phone confirmation. Bindings, balances and settings are preserved.',
+    restartAccepted: 'Sign-in restart requested. Waiting for status updates. A QR code will appear here if needed; automatic login may succeed without scanning.',
+    restartFailed: 'The restart request was not confirmed. Check the login status first and wait 60 seconds before trying again.',
+    restartCooldown: 'Waiting for login status updates. Another restart cannot be requested within 60 seconds.',
     autoRecovery: 'Automatic recovery is enabled: reconnect first; fetch and refresh a QR code when login is required. Phone confirmation is still needed.',
     connectionHelp: 'NapCat reports a login but OneBot is disconnected. Check the reverse WebSocket configuration; a transport failure alone must not force a new QR login.',
     sessionState: 'Live session check', lastMessage: 'Last message on this connection', lastProbe: 'Last probe', noEvidence: 'No evidence yet',

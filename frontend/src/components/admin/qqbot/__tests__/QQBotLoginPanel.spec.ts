@@ -4,8 +4,9 @@ import { createI18n } from 'vue-i18n'
 import QQBotLoginPanel from '../QQBotLoginPanel.vue'
 import zh from '@/i18n/locales/zh'
 import en from '@/i18n/locales/en'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 
-const api = vi.hoisted(() => ({ login: vi.fn(), refreshLoginQR: vi.fn() }))
+const api = vi.hoisted(() => ({ login: vi.fn(), refreshLoginQR: vi.fn(), restartLogin: vi.fn() }))
 const qr = vi.hoisted(() => ({ toDataURL: vi.fn() }))
 vi.mock('@/api/qqcommunity', () => ({ qqbotAPI: api }))
 vi.mock('qrcode', () => ({ default: qr }))
@@ -20,7 +21,7 @@ describe('NapCat login panel', () => {
     const w = show(); await flushPromises()
     expect(w.get('img').attributes('src')).toBe('data:image/png;base64,test')
     api.refreshLoginQR.mockResolvedValue({ ...base, qr_code: 'https://qq.com/new' })
-    await w.findAll('button')[1]!.trigger('click'); await flushPromises()
+    await w.findAll('button').find(b => b.text() === zh.qqbot.login.refreshQR)!.trigger('click'); await flushPromises()
     expect(api.refreshLoginQR).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(5000); await flushPromises(); expect(api.login).toHaveBeenCalledTimes(2)
     const signal = api.login.mock.calls[0]![0] as AbortSignal
@@ -32,11 +33,15 @@ describe('NapCat login panel', () => {
     { ...base, online: true, connected: true },
     { ...base, scan_accepted: true },
     { ...base, phase: 'initializing' },
-    { ...base, phase: 'reconnecting' }
+    { ...base, phase: 'reconnecting' },
+    { ...base, phase: 'qrcode_scanned' }
   ])('hides QR while online or confirming', async status => {
     api.login.mockResolvedValue(status); const w = show(); await flushPromises()
     expect(w.find('img').exists()).toBe(false); expect(qr.toDataURL).not.toHaveBeenCalled()
-    if (!status.online) expect(w.findAll('button')[1]!.attributes('disabled')).toBeDefined()
+    if (!status.online) {
+      expect(w.findAll('button').find(b => b.text() === zh.qqbot.login.refreshQR)!.attributes('disabled')).toBeDefined()
+      expect(w.get('[data-testid="qq-restart-login"]').attributes('disabled')).toBeDefined()
+    }
   })
   it('clears stale login state on failure and retries', async () => {
     const w = show(); await flushPromises(); api.login.mockRejectedValueOnce(new Error('private failure'))
@@ -84,5 +89,40 @@ describe('NapCat login panel', () => {
     const w = show(); await flushPromises()
     expect(w.get('[data-testid="qq-session-health"]').text()).toBe(zh.qqbot.login.session.unknown)
     expect(w.text()).toContain(zh.qqbot.login.receptionHelp)
+  })
+  it('requires confirmation, then follows a new QR without repeating the restart', async () => {
+    api.login.mockResolvedValue({ ...base, online: true, connected: true })
+    const w = show(); await flushPromises()
+    await w.get('[data-testid="qq-restart-login"]').trigger('click')
+    expect(w.getComponent(ConfirmDialog).props('message')).toContain('1849138657')
+    expect(api.restartLogin).not.toHaveBeenCalled()
+    w.getComponent(ConfirmDialog).vm.$emit('cancel'); await flushPromises()
+    expect(api.restartLogin).not.toHaveBeenCalled()
+    await w.get('[data-testid="qq-restart-login"]').trigger('click')
+    api.restartLogin.mockResolvedValue({ accepted: true, restart_available_at: new Date(Date.now() + 60000).toISOString() })
+    w.getComponent(ConfirmDialog).vm.$emit('confirm'); await flushPromises()
+    expect(api.restartLogin).toHaveBeenCalledOnce()
+    expect(api.restartLogin).toHaveBeenCalledWith('1849138657', expect.any(AbortSignal))
+    expect(w.text()).toContain(zh.qqbot.login.restartAccepted)
+    api.login.mockRejectedValueOnce(new Error('worker restarting'))
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    api.login.mockResolvedValue({ ...base, qr_code: 'https://qq.com/restarted' })
+    await vi.advanceTimersByTimeAsync(5000); await flushPromises()
+    expect(qr.toDataURL).toHaveBeenLastCalledWith('https://qq.com/restarted', expect.any(Object))
+    expect(w.get('[data-testid="qq-restart-login"]').attributes('disabled')).toBeDefined()
+    expect(api.restartLogin).toHaveBeenCalledOnce()
+    expect(api.refreshLoginQR).not.toHaveBeenCalled()
+  })
+  it('does not retry an uncertain restart or claim success', async () => {
+    const w = show(); await flushPromises()
+    api.restartLogin.mockRejectedValue(new Error('timeout private-token'))
+    await w.get('[data-testid="qq-restart-login"]').trigger('click')
+    w.getComponent(ConfirmDialog).vm.$emit('confirm'); await flushPromises()
+    expect(w.text()).toContain(zh.qqbot.login.restartFailed)
+    expect(w.text()).not.toContain('private-token')
+    expect(w.find('[data-testid="qq-restart-notice"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(15000); await flushPromises()
+    expect(api.restartLogin).toHaveBeenCalledOnce()
+    expect(w.get('[data-testid="qq-restart-login"]').attributes('disabled')).toBeDefined()
   })
 })

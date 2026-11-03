@@ -26,6 +26,7 @@ func TestNapCatLoginStatesAndRefreshSafety(t *testing.T) {
 		{name: "accepted scan never refreshes", phase: "logging_in", accepted: true, refresh: true, qr: "https://qq.com/old"},
 		{name: "initializing never refreshes", phase: "initializing", refresh: true, qr: "https://qq.com/old"},
 		{name: "reconnecting never refreshes", phase: "reconnecting", refresh: true, qr: "https://qq.com/old"},
+		{name: "scanned phase never refreshes", phase: "qrcode_scanned", refresh: true, qr: "https://qq.com/old"},
 		{name: "account mismatch", phase: "ready", qq: "222222", online: true},
 		{name: "unsafe QR rejected", qr: "https://qq.com.evil.test/secret"},
 		{name: "refresh gets new QR", refresh: true, refreshCalls: 1, qr: "https://qq.com/new"},
@@ -71,7 +72,7 @@ func TestNapCatLoginStatesAndRefreshSafety(t *testing.T) {
 				require.True(t, out.Configured)
 				require.Equal(t, tc.online, out.Online)
 				require.Equal(t, tc.online && tc.qq != "1849138657", out.Mismatch)
-				if tc.online || tc.accepted || tc.phase == "initializing" || tc.phase == "reconnecting" || strings.Contains(tc.name, "unsafe") {
+				if tc.online || tc.accepted || tc.phase == "initializing" || tc.phase == "reconnecting" || tc.phase == "qrcode_scanned" || strings.Contains(tc.name, "unsafe") {
 					require.Empty(t, out.QRCode)
 				} else {
 					require.Equal(t, tc.qr, out.QRCode)
@@ -101,6 +102,7 @@ func TestAutomaticLoginQRRecoveryProtectsActiveFlowsAndExpiresIdleCodes(t *testi
 		{ScanAccepted: true},
 		{Phase: "initializing"},
 		{Phase: "reconnecting"},
+		{Phase: "qrcode_scanned"},
 	} {
 		require.False(t, n.shouldRefreshQR(status, now.Add(300*time.Second)), "never log out or disrupt a pending login")
 	}

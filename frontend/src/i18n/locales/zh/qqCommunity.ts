@@ -7,6 +7,11 @@ export default { qqbot: {
   commandReplyText: '纯文字',
   commandReplyHelp: '指令（含 /聊天）结果在服务内生成图片，长内容自动分页；链接另附文字，图片不可用时回退文字。普通聊天使用文字。',
   login: {
+    restart: '重新登录', restartConfirmButton: '确认重新登录',
+    restartConfirm: '将断开机器人 QQ {qq} 当前会话并重启 QQ 登录进程，期间所有群的机器人服务会暂时中断。随后自动尝试登录，需要扫码时会在本页显示二维码；请用机器人 QQ 扫码并在手机确认。保留绑定、余额和配置。是否继续？',
+    restartAccepted: '已提交重新登录请求，正在等待状态更新。若需要扫码，二维码会显示在本页；若自动登录成功则无需扫码。',
+    restartFailed: '未确认重新登录请求是否成功，请先观察状态变化，等待 60 秒后再重试。',
+    restartCooldown: '请等待登录状态更新，60 秒内不能重复提交重新登录请求。',
     autoRecovery: '已启用自动恢复：断线后先重连；需要扫码时自动获取并定期刷新二维码，仍需在手机确认。',
     connectionHelp: 'NapCat 上报已登录，但 OneBot 未连接。请检查反向 WebSocket 配置；仅凭传输断开不应强制重新扫码。',
     sessionState: '实时会话检测', lastMessage: '本次连接最后收信', lastProbe: '最后探测', noEvidence: '暂无记录',
