@@ -415,14 +415,20 @@ func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text str
 	return json.Marshal(map[string]string{"id": string(ack.ID)})
 }
 
-func (s *Service) sendOneBotPrivate(ctx context.Context, c Config, memberID, text string) error {
+func (s *Service) sendOneBotPrivate(ctx context.Context, c Config, memberID, groupID, text string) error {
 	if memberID == "" || text == "" {
 		return errors.New("private message recipient or text missing")
 	}
-	raw, err := s.oneBotCall(ctx, c, "send_private_msg", map[string]any{
+	params := map[string]any{
 		"user_id": memberID,
 		"message": []map[string]any{{"type": "text", "data": map[string]string{"text": text}}},
-	})
+	}
+	if groupID != "" {
+		// NapCat needs the originating group to start a temporary private
+		// conversation with a member who is not the bot's friend.
+		params["group_id"] = groupID
+	}
+	raw, err := s.oneBotCall(ctx, c, "send_private_msg", params)
 	if err != nil {
 		return err
 	}

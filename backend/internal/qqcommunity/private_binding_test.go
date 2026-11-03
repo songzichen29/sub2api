@@ -107,6 +107,13 @@ func TestGroupBindingStartsPrivateChatAndPrivateCodeRequiresWebsiteApproval(t *t
 	first := <-requests
 	require.JSONEq(t, `"send_private_msg"`, string(first["action"]))
 	require.Contains(t, string(first["params"]), "sender-qq")
+	var target struct {
+		UserID  string `json:"user_id"`
+		GroupID string `json:"group_id"`
+	}
+	require.NoError(t, json.Unmarshal(first["params"], &target))
+	require.Equal(t, "sender-qq", target.UserID)
+	require.Equal(t, group.GroupID, target.GroupID)
 
 	code := randomID()
 	mock.ExpectQuery("SELECT request_id,group_id,nickname FROM qqc_private_bind_sessions").WithArgs(c.AppID, "sender-qq").

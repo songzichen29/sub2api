@@ -510,7 +510,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		} else if bound {
 			text = "当前 QQ 已绑定账号。"
 		} else if err := s.beginPrivateBinding(ctx, c, e); err != nil {
-			text = "私聊消息未确认送达。请检查是否允许机器人私聊，再在群里重发 /绑定。"
+			text = "私聊消息未确认送达。请添加机器人为好友或开启群临时会话，再在群里重发 /绑定。"
 		} else {
 			text = "已发送私聊，请在私聊提交网站绑定码；网站账号持有人还需核对 QQ 号并确认。"
 		}
