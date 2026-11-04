@@ -138,6 +138,15 @@ func (s *Service) chat(ctx context.Context, c Config, messages []Message) (strin
 	return parseChat(raw, ct)
 }
 
+// Autonomous replies are decisions consumed by the application, not prose.
+func (s *Service) chatJSON(ctx context.Context, c Config, messages []Message) (string, int64, int64, error) {
+	raw, ct, err := s.chatRequestWithFormat(ctx, c, messages, nil, "", true)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	return parseChat(raw, ct)
+}
+
 func (s *Service) chatRequest(ctx context.Context, c Config, messages []Message, imageTool bool) ([]byte, string, error) {
 	var tools []any
 	if imageTool {
@@ -155,6 +164,10 @@ func (s *Service) chatRequestWithTools(ctx context.Context, c Config, messages [
 }
 
 func (s *Service) chatRequestWithToolChoice(ctx context.Context, c Config, messages []Message, tools []any, choice string) ([]byte, string, error) {
+	return s.chatRequestWithFormat(ctx, c, messages, tools, choice, false)
+}
+
+func (s *Service) chatRequestWithFormat(ctx context.Context, c Config, messages []Message, tools []any, choice string, jsonOutput bool) ([]byte, string, error) {
 	ctx, cancel, err := modelContext(ctx)
 	if err != nil {
 		return nil, "", err
@@ -165,6 +178,13 @@ func (s *Service) chatRequestWithToolChoice(ctx context.Context, c Config, messa
 	if c.ChatProtocol == "responses" {
 		path = "/responses"
 		body = map[string]any{"model": c.ChatModel, "input": responsesMessages(messages), "stream": false, "store": false, "max_output_tokens": c.MaxOutputTokens}
+	}
+	if jsonOutput {
+		if c.ChatProtocol == "responses" {
+			body["text"] = map[string]any{"format": map[string]string{"type": "json_object"}}
+		} else {
+			body["response_format"] = map[string]string{"type": "json_object"}
+		}
 	}
 	if len(tools) > 0 {
 		body["tools"] = tools

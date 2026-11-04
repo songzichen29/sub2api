@@ -13,7 +13,6 @@ import (
 	"image/draw"
 	"image/gif"
 	"image/png"
-	"io"
 	"net/url"
 	"sort"
 	"strings"
@@ -311,11 +310,8 @@ type autonomousMediaReply struct {
 
 func parseAutonomousMediaReply(raw, marker string, maxChars int) (autonomousMediaReply, error) {
 	var out autonomousMediaReply
-	d := json.NewDecoder(strings.NewReader(raw))
-	d.DisallowUnknownFields()
-	var extra any
-	if d.Decode(&out) != nil || d.Decode(&extra) != io.EOF {
-		return out, errors.New("invalid media output")
+	if err := decodeAutonomousJSON(raw, &out); err != nil {
+		return out, fmt.Errorf("图片接话模型格式无效：%w", err)
 	}
 	if out.Action == "skip" || !out.Understood || (marker != "" && out.VisualToken != marker) {
 		out.Action = "skip"

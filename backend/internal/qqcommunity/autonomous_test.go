@@ -1,7 +1,10 @@
 package qqcommunity
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -107,5 +110,110 @@ func TestAutonomousStrictOutput(t *testing.T) {
 	for _, raw := range []string{`{"action":"reply","text":"@大家"}`, `{"action":"reply","text":"<qqbot-at-everyone />"}`, `{"action":"reply","text":""}`, `{"action":"reply","text":"answer","other":true}`, `{"action":"skip"} {}`, "普通回复", `{"action":"reply","text":"` + strings.Repeat("字", 101) + `"}`} {
 		_, err = parseAutonomousReply(raw, 100)
 		require.Error(t, err, raw)
+	}
+}
+
+func TestAutonomousJSONWrappersKeepStrictValidation(t *testing.T) {
+	for _, raw := range []string{
+		"```json\n{\"action\":\"reply\",\"text\":\"可以先看看日志。\"}\n```",
+		"```JSON\r\n{\"action\":\"reply\",\"text\":\"可以先看看日志。\"}\r\n```",
+		"~~~\n{\"action\":\"reply\",\"text\":\"可以先看看日志。\"}\n~~~",
+		"\uFEFF {\"action\":\"reply\",\"text\":\"可以先看看日志。\"}",
+	} {
+		text, err := parseAutonomousReply(raw, 100)
+		require.NoError(t, err)
+		require.Equal(t, "可以先看看日志。", text)
+	}
+	for _, raw := range []string{
+		"```json\n{\"action\":\"reply\",\"text\":\"@所有人\"}\n```",
+		"```json\n{\"action\":\"skip\"} {}\n```",
+		"```json\n{\"action\":\"skip\"}\n```\n额外文字",
+		"说明如下：{\"action\":\"skip\"}",
+		"```javascript\n{\"action\":\"skip\"}\n```",
+		`{"action":"reply","text":"a","private_secret_field":"sensitive-value"}`,
+		`{"action":"reply","text":`, `[]`, `null`,
+	} {
+		_, err := parseAutonomousReply(raw, 100)
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), "private_secret_field")
+		require.NotContains(t, err.Error(), "sensitive-value")
+	}
+	wrapped := "```json\n{\"action\":\"reply\",\"understood\":true,\"visual_token\":\"V123456\",\"text\":\"好可爱\"}\n```"
+	media, err := parseAutonomousMediaReply(wrapped, "V123456", 100)
+	require.NoError(t, err)
+	require.Equal(t, "reply", media.Action)
+	media, err = parseAutonomousMediaReply(wrapped, "V654321", 100)
+	require.NoError(t, err)
+	require.Equal(t, "skip", media.Action, "wrappers must never bypass actual vision verification")
+}
+
+func TestAutonomousHistoryHasOneOutputContract(t *testing.T) {
+	s := New(nil, nil, false, nil)
+	c := DefaultConfig()
+	c.HistoryMessages = 0
+	for _, shared := range []bool{false, true} {
+		for _, instructions := range []string{autonomousInstructions, autonomousMediaInstructions} {
+			messages := s.loadHistoryWithReplyInstructions(context.Background(), c, Job{}, shared, instructions)
+			require.Len(t, messages, 2)
+			require.Contains(t, messages[1].Content, historyContextInstructions)
+			require.Contains(t, messages[1].Content, instructions)
+			require.NotContains(t, messages[1].Content, naturalChatInstructions)
+			if shared {
+				require.Contains(t, messages[1].Content, sharedGroupHistoryScopeInstructions)
+			} else {
+				require.Contains(t, messages[1].Content, groupHistoryScopeInstructions)
+			}
+		}
+	}
+	ordinary := s.history(context.Background(), c, Job{})
+	require.Contains(t, ordinary[1].Content, naturalChatInstructions)
+}
+
+func TestAutonomousJSONRequestProtocolsAndOrdinaryChat(t *testing.T) {
+	for _, protocol := range []string{"chat_completions", "responses"} {
+		for _, structured := range []bool{false, true} {
+			t.Run(protocol+"/structured="+map[bool]string{true: "yes", false: "no"}[structured], func(t *testing.T) {
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					var body map[string]any
+					require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+					require.Equal(t, "test-model", body["model"])
+					require.Equal(t, false, body["stream"])
+					require.NotContains(t, body, "tools")
+					if protocol == "responses" {
+						require.Equal(t, "/responses", r.URL.Path)
+						require.NotContains(t, body, "response_format")
+						if structured {
+							require.Equal(t, map[string]any{"format": map[string]any{"type": "json_object"}}, body["text"])
+						} else {
+							require.NotContains(t, body, "text")
+						}
+						_ = json.NewEncoder(w).Encode(map[string]any{"status": "completed", "output_text": `{"action":"reply","text":"你好"}`, "usage": map[string]int{"input_tokens": 10, "output_tokens": 5}})
+					} else {
+						require.Equal(t, "/chat/completions", r.URL.Path)
+						if structured {
+							require.Equal(t, map[string]any{"type": "json_object"}, body["response_format"])
+						} else {
+							require.NotContains(t, body, "response_format")
+						}
+						_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": `{"action":"reply","text":"你好"}`}}}, "usage": map[string]int{"prompt_tokens": 10, "completion_tokens": 5}})
+					}
+				}))
+				defer server.Close()
+				s := New(nil, nil, false, nil)
+				c := DefaultConfig()
+				c.BaseURL, c.ChatProtocol, c.ChatModel = server.URL, protocol, "test-model"
+				call := s.chat
+				if structured {
+					call = s.chatJSON
+				}
+				raw, in, out, err := call(context.Background(), c, []Message{{Role: "system", Content: autonomousInstructions}, {Role: "user", Content: "你好"}})
+				require.NoError(t, err)
+				reply, err := parseAutonomousReply(raw, 100)
+				require.NoError(t, err)
+				require.Equal(t, "你好", reply)
+				require.Equal(t, int64(10), in)
+				require.Equal(t, int64(5), out)
+			})
+		}
 	}
 }
