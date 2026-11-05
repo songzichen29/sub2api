@@ -16,6 +16,13 @@ class PluginMediaTests(unittest.TestCase):
         self.assertEqual(media.image_mime(b'GIF89a000'), 'image/gif')
         self.assertIsNone(media.image_mime(b'<html>error</html>'))
 
+    def test_onebot_base64_image_payload_is_decoded_and_validated(self):
+        png = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg=='
+        self.assertEqual(media.image_mime(media.decode_image_base64(png)), 'image/png')
+        self.assertEqual(media.image_mime(media.decode_image_base64('data:image/png;base64,' + png)), 'image/png')
+        self.assertIsNone(media.decode_image_base64('not-base64'))
+        self.assertIsNone(media.decode_image_base64('aGVsbG8='))
+
     def test_meme_is_sent_as_image_and_requires_receipt(self):
         packets = media.message_packets({'text': '给你一张', 'media': [{'mimeType':'image/gif', 'data':'R0lGODlhMDAw'}]})
         self.assertEqual(packets[0][1]['type'], 'image')

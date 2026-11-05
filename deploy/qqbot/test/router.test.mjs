@@ -36,6 +36,10 @@ test('isolated OneBot routing and colliding API echoes retain one destination', 
     assert.deepEqual(received.filter(e => e.sub2api_observe_only).map(e => e.message_id), [2, 4, 9], 'chat and mentions of others still reach moderation');
     assert.deepEqual(frames[1].filter(e => e.post_type === 'message').map(e => e.message_id), [2, 9]);
     assert.equal(frames[1].find(e => e.message_id === 2).sub2api_observe_only, undefined);
+    const largeImage = { ...event(10, ''), message: [{ type: 'image', data: { file: 'x'.repeat(2 * 1024 * 1024) } }] };
+    gateway.send(JSON.stringify(largeImage));
+    for (let n = 0; n < 100 && !frames[1].some(e => e.message_id === 10); n++) await delay(10);
+    assert.equal(frames[1].find(e => e.message_id === 10)?.message[0].data.file.length, 2 * 1024 * 1024, 'OneBot image payloads larger than the old 2 MiB limit reach chat');
     const actions = [];
     gateway.on('message', raw => { const a = JSON.parse(raw); actions.push(a); gateway.send(JSON.stringify({ status: 'ok', retcode: 0, data: { origin: a.params.origin }, echo: a.echo })); });
     for (const [i, peer] of peers.entries()) peer.send(JSON.stringify({ action: 'get_status', params: { origin: i }, echo: 'identical-echo' }));

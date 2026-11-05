@@ -1,4 +1,5 @@
 import base64
+import binascii
 import re
 from urllib.parse import urlparse, urlunparse
 
@@ -29,6 +30,24 @@ def image_mime(data):
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
     return None
+
+
+def decode_image_base64(value):
+    """Decode OneBot's optional local-file payload and accept only real images."""
+    if not isinstance(value, str):
+        return None
+    encoded = value.strip()
+    if encoded.startswith("data:"):
+        _, separator, encoded = encoded.partition(",")
+        if not separator:
+            return None
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        return None
+    if len(data) > 6 * 1024 * 1024 or image_mime(data) is None:
+        return None
+    return data
 
 
 def image_segments(raw):

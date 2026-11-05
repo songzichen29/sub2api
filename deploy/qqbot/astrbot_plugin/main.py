@@ -11,7 +11,7 @@ import aiohttp
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from .media_helpers import image_url, image_mime, image_segments, is_sticker, requests_tool, message_packets, receipt_id, should_load_images
+from .media_helpers import decode_image_base64, image_url, image_mime, image_segments, is_sticker, requests_tool, message_packets, receipt_id, should_load_images
 
 
 @register("sub2api_dsh_bridge", "songzichen29", "QQ DSH 会话桥", "0.1.0")
@@ -54,26 +54,36 @@ class DSHBridge(Star):
     async def images(self, raw, event):
         output = []
         segments = image_segments(raw)
+
+        async def download(url):
+            if not url:
+                return None
+            async with self.http.get(url, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=15)) as response:
+                if response.status != 200:
+                    return None
+                data = bytearray()
+                async for chunk in response.content.iter_chunked(65536):
+                    data.extend(chunk)
+                    if len(data) > 6 * 1024 * 1024:
+                        raise ValueError("image_too_large")
+                return bytes(data)
+
         for segment in segments[:2]:
             info = segment.get("data", {})
-            url = image_url(info.get("url") or info.get("file", ""))
+            url = image_url(info.get("url")) or image_url(info.get("file", ""))
             try:
-                if not url and info.get("file"):
+                data = await download(url)
+                details = None
+                if data is None and info.get("file"):
                     details = await event.bot.api.call_action("get_image", file=info["file"])
-                    url = image_url(details.get("url", ""))
-                if not url:
+                    data = decode_image_base64(details.get("base64"))
+                    if data is None:
+                        data = await download(image_url(details.get("url", "")))
+                if data is None:
                     continue
-                async with self.http.get(url, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=15)) as response:
-                    if response.status != 200:
-                        continue
-                    data = bytearray()
-                    async for chunk in response.content.iter_chunked(65536):
-                        data.extend(chunk)
-                        if len(data) > 6 * 1024 * 1024:
-                            raise ValueError("image_too_large")
-                    mime = image_mime(data)
-                    if mime:
-                        output.append({"mimeType": mime, "data": base64.b64encode(data).decode("ascii"), "is_meme": is_sticker(segment), "label": str(info.get("summary", ""))[:60]})
+                mime = image_mime(data)
+                if mime:
+                    output.append({"mimeType": mime, "data": base64.b64encode(data).decode("ascii"), "is_meme": is_sticker(segment), "label": str(info.get("summary", ""))[:60]})
             except Exception:
                 logger.warning("QQ DSH image attachment could not be loaded")
         return output, len(segments)

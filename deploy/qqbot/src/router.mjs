@@ -7,6 +7,9 @@ import { authorized, routeEvent, shouldObserveGroup } from './policy.mjs';
 import { bridgeClient } from './runtime-config.mjs';
 
 export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000, observe }) {
+  // A 6 MiB image becomes roughly 8 MiB when OneBot carries it as base64 JSON.
+  // Keep the limit bounded while allowing the configured image input size through.
+  const onebotMaxPayload = 12 * 1024 * 1024;
   const peers = new Map(), pending = new Map(), timers = new Set();
   let gateway, closing = false;
   let observations = Promise.resolve();
@@ -16,7 +19,7 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ gateway: gateway?.readyState === WebSocket.OPEN, business: peers.get('business')?.readyState === WebSocket.OPEN, chat: peers.get('chat')?.readyState === WebSocket.OPEN, counts }));
   });
-  const listener = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
+  const listener = new WebSocketServer({ noServer: true, maxPayload: onebotMaxPayload });
   server.on('upgrade', (req, socket, head) => {
     if (req.url !== '/onebot/ws' || !authorized(req.headers.authorization, 'Bearer ' + onebotToken) || String(req.headers['x-self-id']) !== config.bot_id || req.headers['x-client-role']?.toLowerCase() !== 'universal' || gateway || closing) {
       socket.end('HTTP/1.1 401 Unauthorized\r\n\r\n'); return;
