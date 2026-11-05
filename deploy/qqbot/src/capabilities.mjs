@@ -7,8 +7,11 @@ export function capabilityReply(text,c) {
   const categories=[/生图|画图|生成图片/u,/看图|识图|图片/u,/表情包/u,/联网|上网/u,/余额|用量|抽奖/u];
   const count=categories.filter(p=>p.test(text)).length;
   const tools=/(?:你|机器人|小碗).{0,16}(?:什么|哪些|几个|有哪些|有什么).{0,8}(?:工具|功能|能力)/u.test(text);
-  const question=/^你(?:现在|目前)?(?:能|可以|是否能|是否可以|支持).{0,100}(?:吗|么)[？?。！!\s]*$/u.test(text);
-  if(!tools && !(question && count>=1)) return;
+  const question=/^你(?:现在|目前)?(?:能|可以|是否能|是否可以|支持).{0,100}?(?:吗|么)(.*)$/u.exec(text);
+  const styleOnly=/^(?:(?:请)?(?:简短|简单|准确|简要)+(?:地)?(?:回答|说|介绍|说明)(?:一下)?|(?:不要|不用|无需)(?:实际)?(?:查询|执行|调用|任何|操作|工具|或|和)+|[？?。！!，,；;\s])*$/u;
+  const why=/^你(?:为什么|为啥|怎么)(?:不能|无法|不可以|不支持).{0,40}(?:生图|生成图片|发图|看图|联网|查余额)[？?。！!\s]*$/u.test(text);
+  const task=/(?:吗|么|[？?。！!，,])\s*(?:帮我|给我|替我|请|画|生成|发送|发一|查)/u.test(text);
+  if(task || (!tools && !(count>=1 && (why || (question && styleOnly.test(question[1])))))) return;
   const enabled=[];
   if(c.image_generation_enabled) enabled.push('自然语言生图（已开放群）');
   if(c.image_input_enabled) enabled.push('直接识别发来或引用的图片');

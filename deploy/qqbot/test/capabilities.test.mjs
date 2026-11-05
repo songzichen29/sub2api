@@ -10,12 +10,14 @@ const png={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO
 
 test('capability questions report actual switches without executing a task or denying the account service',()=>{
  const c={image_generation_enabled:true,image_input_enabled:true,web_enabled:true,memes_enabled:true,collect_memes:true};
- for(const text of ['你手上有什么工具调用','你现在能生图、看图、发和收藏表情包、联网、查我的余额吗？']) {
+ for(const text of ['你手上有什么工具调用','你现在能生图、看图、发和收藏表情包、联网、查我的余额吗？','你现在能生图、看图、发和收藏表情包、联网、查我的余额吗？简短准确说，不要实际查询或执行任何操作。','你为什么不能生成图片']) {
   const reply=capabilityReply(text,c);assert.match(reply,/直接识别/u);assert.match(reply,/余额/u);assert.match(reply,/联网搜索/u);
  }
  assert.equal(capabilityReply('画一张疯狂水世界启动的图片',c),undefined);
  assert.equal(capabilityReply('图片你看不看得懂',c),undefined);
  assert.equal(capabilityReply('帮我查余额',c),undefined);
+ assert.equal(capabilityReply('你能收集表情包吗？或者发送表情包吗 给我随便发一个表情包',c),undefined);
+ assert.equal(capabilityReply('你手上有什么工具调用？给我发一个表情包',c),undefined);
  const off=capabilityReply('你手上有什么工具调用',{});assert.ok(!off.includes('联网搜索'));assert.ok(!off.includes('自然语言生图'));
 });
 test('media tool effects bind to the verified sender, persist assets, isolate collections and honor toggles',async t=>{
