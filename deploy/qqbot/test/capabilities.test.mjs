@@ -4,9 +4,20 @@ import { mkdtempSync,rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../src/store.mjs';
-import { validateImages,executeCapability } from '../src/capabilities.mjs';
+import { validateImages,executeCapability,capabilityReply } from '../src/capabilities.mjs';
 
 const png={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg=='};
+
+test('capability questions report actual switches without executing a task or denying the account service',()=>{
+ const c={image_generation_enabled:true,image_input_enabled:true,web_enabled:true,memes_enabled:true,collect_memes:true};
+ for(const text of ['你手上有什么工具调用','你现在能生图、看图、发和收藏表情包、联网、查我的余额吗？']) {
+  const reply=capabilityReply(text,c);assert.match(reply,/直接识别/u);assert.match(reply,/余额/u);assert.match(reply,/联网搜索/u);
+ }
+ assert.equal(capabilityReply('画一张疯狂水世界启动的图片',c),undefined);
+ assert.equal(capabilityReply('图片你看不看得懂',c),undefined);
+ assert.equal(capabilityReply('帮我查余额',c),undefined);
+ const off=capabilityReply('你手上有什么工具调用',{});assert.ok(!off.includes('联网搜索'));assert.ok(!off.includes('自然语言生图'));
+});
 test('media tool effects bind to the verified sender, persist assets, isolate collections and honor toggles',async t=>{
  const root=mkdtempSync(join(tmpdir(),'qq-tools-')),store=new Store(join(root,'db'),join(root,'raw'));
  t.after(()=>{store.db.close();rmSync(root,{recursive:true,force:true});});

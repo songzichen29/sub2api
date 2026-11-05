@@ -13,6 +13,7 @@
     includeHarnessIdentity: false
     includeRuntimeContext: false
     personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT
+    personaSuffix: !!js process.env.QQBOT_TOOL_GUIDANCE || ''
 - insert:
     - id: qqbot-capabilities
       name: ./src/dsh-tools-plugin.mjs

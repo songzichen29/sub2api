@@ -1,6 +1,22 @@
 import { boundedText } from './policy.mjs';
 import { sensitiveText } from './memory.mjs';
 
+// Capability descriptions come from the live configuration. A language model
+// must not turn an old "I have no tools" answer into the current product state.
+export function capabilityReply(text,c) {
+  const categories=[/生图|画图|生成图片/u,/看图|识图|图片/u,/表情包/u,/联网|上网/u,/余额|用量|抽奖/u];
+  const count=categories.filter(p=>p.test(text)).length;
+  const tools=/(?:你|机器人|小碗).{0,16}(?:什么|哪些|几个|有哪些|有什么).{0,8}(?:工具|功能|能力)/u.test(text);
+  const question=/^你(?:现在|目前)?(?:能|可以|是否能|是否可以|支持).{0,100}(?:吗|么)[？?。！!\s]*$/u.test(text);
+  if(!tools && !(question && count>=1)) return;
+  const enabled=[];
+  if(c.image_generation_enabled) enabled.push('自然语言生图（已开放群）');
+  if(c.image_input_enabled) enabled.push('直接识别发来或引用的图片');
+  if(c.web_enabled) enabled.push('联网搜索和读取网页');
+  if(c.memes_enabled) enabled.push(c.collect_memes?'发送、收藏表情包':'发送表情包');
+  return '当前支持：'+[...enabled,'用自然语言查询你本人绑定账号的余额、今日用量和抽奖次数'].join('；')+'。直接说要做什么即可，实际查询和图片投递以系统结果为准。';
+}
+
 export function validateImages(images=[]) {
   if (!Array.isArray(images) || images.length>2) throw new Error('invalid_image');
   return images.map(image=>{
