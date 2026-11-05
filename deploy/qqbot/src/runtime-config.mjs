@@ -37,7 +37,7 @@ export class RuntimeConfig {
     if (!this.bootstrap.site_config_url) throw new Error('站点工具尚未配置');
     const response=await this.fetcher(new URL('tools',this.bootstrap.site_config_url),{
       method:'POST',headers:{Authorization:'Bearer '+this.token,'X-Self-ID':this.bootstrap.bot_id,'Content-Type':'application/json'},
-      body:JSON.stringify(body),signal:AbortSignal.timeout(30000),redirect:'error'
+      body:JSON.stringify(body),signal:AbortSignal.timeout(body.tool==='search_meme'?65000:30000),redirect:'error'
     });
     const value=await response.json();
     if(!response.ok) throw new Error(String(value.error || '站点工具暂不可用').slice(0,300));

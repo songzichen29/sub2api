@@ -111,6 +111,18 @@ func TestMemeLiveSource(t *testing.T) {
 	defer s.memeHTTP.CloseIdleConnections()
 	c := DefaultConfig()
 	c.MemeEnabled = true
+	// Include stages so a live failure distinguishes a slow origin from an
+	// invalid candidate or a rejected image, without logging private chat data.
+	items, searchErr := s.searchMemes(context.Background(), "开心")
+	t.Logf("source candidates=%d error=%v", len(items), searchErr)
+	require.NoError(t, searchErr)
+	require.NotEmpty(t, items)
+	imageCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	raw, downloadErr := s.imageDownload(imageCtx, items[0].URL)
+	cancel()
+	t.Logf("first candidate bytes=%d error=%v", len(raw), downloadErr)
+	require.NoError(t, downloadErr)
+	require.NotEmpty(t, raw)
 	for _, keyword := range []string{"开心", "开心 大笑"} {
 		t.Run(keyword, func(t *testing.T) {
 			started := time.Now()

@@ -27,8 +27,10 @@ const memeSearchInstructions = `本轮还提供 search_meme：根据简短关键
 // default suites, certificates are verified, and TLS 1.2 remains the minimum.
 func newMemeSearchHTTPClient() *http.Client {
 	return &http.Client{
-		Timeout: 6 * time.Second,
-		Transport: &http.Transport{Proxy: nil, TLSHandshakeTimeout: 5 * time.Second, TLSClientConfig: &tls.Config{
+		// The production origin can take 20-30 seconds to serve a results page.
+		// The overall reply deadline below still bounds retries and downloads.
+		Timeout: 32 * time.Second,
+		Transport: &http.Transport{Proxy: nil, TLSHandshakeTimeout: 12 * time.Second, TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			CipherSuites: []uint16{
 				tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
@@ -155,7 +157,7 @@ func (s *Service) resolveMemeReply(ctx context.Context, c Config, request memeRe
 	if !c.MemeEnabled {
 		return "表情搜索尚未启用。", nil, ""
 	}
-	ctx, cancel := context.WithTimeout(ctx, 18*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
 	items, err := s.searchMemes(ctx, request.Keyword)
 	// Space-separated themes can return no matches or a redirect at this source.
@@ -171,7 +173,7 @@ func (s *Service) resolveMemeReply(ctx context.Context, c Config, request memeRe
 			if !trustedMemeURL(item.URL) {
 				continue
 			}
-			downloadCtx, done := context.WithTimeout(ctx, 5*time.Second)
+			downloadCtx, done := context.WithTimeout(ctx, 7*time.Second)
 			data, downloadErr := s.imageDownload(downloadCtx, item.URL)
 			done()
 			if downloadErr != nil || len(data) > 6<<20 {

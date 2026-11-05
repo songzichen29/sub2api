@@ -81,7 +81,11 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 		fail(400, "工具参数或会话范围无效")
 		return
 	}
-	ctx, cancel := context.WithTimeout(req.Context(), 25*time.Second)
+	timeout := 25 * time.Second
+	if in.Tool == "search_meme" {
+		timeout = 60 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(req.Context(), timeout)
 	defer cancel()
 	var out any
 	switch in.Tool {
