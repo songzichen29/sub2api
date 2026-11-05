@@ -26,7 +26,7 @@ class PluginMediaTests(unittest.TestCase):
                 media.receipt_id(response)
 
     def test_natural_tool_requests_and_stickers(self):
-        for text in ('画一张 疯狂水世界启动的图片', '给我随便发一个表情包', '帮我收集这个表情包', '查一下最新消息'):
+        for text in ('画一张 疯狂水世界启动的图片', '给我随便发一个表情包', '帮我收集这个表情包', '查一下最新消息', '图片你看不看得懂', '你帮我看下这张图', '这张图是什么意思', '描述一下这张照片'):
             self.assertTrue(media.requests_tool(text))
         self.assertFalse(media.requests_tool('这个表情包真有意思'))
         self.assertTrue(media.is_sticker({'type':'image','data':{'sub_type':1}}))
