@@ -410,10 +410,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	if cmd == "" && (addressed || named || ref != nil) && !hasImages && parts == "" && len(attachments) == 0 && naturalHelpRequest(e.Content) {
 		cmd = "帮助"
 	}
-	// Common personal queries are read-only and need neither a model call nor
-	// chat quota. Match only this member's current, explicitly addressed text.
-	if cmd == "" && addressed && !hasImages && parts == "" && len(attachments) == 0 && e.referenceID() == "" {
-		cmd = naturalAccountCommand(e.Content)
+	// Plain read-only personal requests work without an @, like /我的余额.
+	// Never infer identity or operations from quoted text or attachments.
+	if cmd == "" && (addressed || unmentionedGroupCommand(e, c.CustomCommands...)) {
+		cmd = naturalAccountMessageCommand(e)
 	}
 	if strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), "")) == "" && !hasImages && parts == "" && len(e.Faces) == 0 && !e.UnsupportedMedia && e.referenceID() == "" {
 		cmd = "帮助"

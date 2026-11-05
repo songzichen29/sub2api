@@ -28,6 +28,9 @@ func unmentionedGroupCommand(e Event, customCommands ...CustomCommand) bool {
 	if isBuiltinCommand(cmd) {
 		return true
 	}
+	if naturalAccountMessageCommand(e) != "" {
+		return true
+	}
 	_, ok := customCommandReply(customCommands, cmd, arg)
 	return ok
 }
