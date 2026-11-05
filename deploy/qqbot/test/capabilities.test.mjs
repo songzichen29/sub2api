@@ -41,3 +41,26 @@ test('media tool effects bind to the verified sender, persist assets, isolate co
  c.memes_enabled=false;await assert.rejects(executeCapability({name:'send_meme',args:{keyword:'开心'}},context,deps),/关闭/);
  c.enabled=false;await assert.rejects(executeCapability({name:'collect_meme',args:{image_index:1,tags:'开心'}},context,deps),/停用/);
 });
+
+test('random meme requests retry two safe theme fallbacks; specific searches stay exact',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'qqbot-meme-fallback-')),store=new Store(join(root,'db'),join(root,'raw'));
+ t.after(()=>{store.db.close();rmSync(root,{recursive:true,force:true});});
+ const c={enabled:true,bot_id:'123',groups:['456'],web_enabled:true,memes_enabled:true,collect_memes:true};
+ const input={bot:'123',sender:'789',chat:'456',message_id:'900',group:true,text:'给我随便发一个表情包'};
+ const context={input,id:'random-meme',scope:'123:group:456'},calls=[];
+ const image={...png,description:'开心'};
+ const deps={config:{snapshot:()=>c},store,siteTool:async body=>{
+  calls.push(body);
+  if(calls.length===1)throw new Error('search temporarily unavailable');
+  return image;
+ }};
+ const result=await executeCapability({name:'send_meme',args:{keyword:'嘲讽笑'}},context,deps);
+ assert.equal(result.status,'prepared');
+ assert.deepEqual(calls.map(x=>x.keyword),['嘲讽笑','开心']);
+ assert.ok(calls.every(x=>x.group_id==='456' && x.member_id==='789' && x.message_id==='900'));
+ assert.equal(store.media(context.id)[0].data,png.data);
+
+ const exactCalls=[],exact={...deps,siteTool:async body=>{exactCalls.push(body);throw new Error('not found');}};
+ await assert.rejects(executeCapability({name:'send_meme',args:{keyword:'猫猫'}},{...context,id:'exact-meme',input:{...input,text:'发一张猫猫表情包'}},exact),/not found/);
+ assert.deepEqual(exactCalls.map(x=>x.keyword),['猫猫']);
+});

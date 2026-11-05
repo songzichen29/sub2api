@@ -63,7 +63,18 @@ export async function executeCapability({name,args}, context, {config,store,site
     if(store.media(id).length>=2) throw new Error('本轮最多发送两张表情包');
     const keyword=boundedText(args.keyword,40);
     if(sensitiveText(keyword) || /\d{5,}|https?:|@/u.test(keyword)) throw new Error('表情关键词不能包含账号或私人资料');
-    const image=store.findMeme(scope,keyword) || await call({tool:'search_meme',keyword:/^(随便|随机|表情包?)$/u.test(keyword)?'开心':keyword});
+    let image=store.findMeme(scope,keyword);
+    if(!image) {
+      const randomRequest=/(?:随便|随机|随意).{0,8}(?:表情|发|来)|(?:发|来).{0,4}(?:任意|随便|随机|一个表情包|个表情包)/u.test(input.text);
+      const primary=/^(?:随便|随机|表情包?)$/u.test(keyword)?'开心':keyword;
+      const keywords=randomRequest?[primary,'开心','猫猫']: [primary];
+      let lastError;
+      for(const candidate of [...new Set(keywords)].slice(0,3)) {
+        try {image=await call({tool:'search_meme',keyword:candidate});break;}
+        catch(error) {lastError=error;}
+      }
+      if(!image) throw lastError || new Error('表情搜索暂时不可用');
+    }
     validateImages([image]);store.addMedia(id,image);
     return {status:'prepared',description:image.description || keyword,notice:'图片已准备，由系统随回复发送，不要声称QQ回执已成功，也不要凭标签编造图片具体内容。'};
   }
