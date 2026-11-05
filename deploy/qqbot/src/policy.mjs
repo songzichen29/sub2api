@@ -36,6 +36,14 @@ export function routeEvent(event, config) {
   return 'chat';
 }
 
+export function shouldObserveGroup(event, config) {
+  return config.business_observation === true && event?.post_type === 'message' &&
+    event.message_type === 'group' && String(event.self_id) === config.bot_id &&
+    config.groups.includes(String(event.group_id)) && String(event.user_id) !== config.bot_id &&
+    /^\d{1,24}$/u.test(String(event.user_id)) && /^-?\d{1,24}$/u.test(String(event.message_id)) &&
+    Array.isArray(event.message) && event.message.every(s => s && typeof s === 'object' && typeof s.type === 'string');
+}
+
 export function scopeKey(input) {
   for (const field of ['bot', 'sender', 'message_id']) {
     if (typeof input[field] !== 'string' || !/^[a-zA-Z0-9_.:-]{1,128}$/u.test(input[field])) throw new Error('invalid_identity');

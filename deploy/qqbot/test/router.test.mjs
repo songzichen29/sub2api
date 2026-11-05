@@ -8,7 +8,7 @@ import { createRouter } from '../src/router.mjs';
 test('isolated OneBot routing and colliding API echoes retain one destination', { timeout: 12000 }, async () => {
   const business = new WebSocketServer({ port: 0 }), chat = new WebSocketServer({ port: 0 });
   await Promise.all([once(business, 'listening'), once(chat, 'listening')]);
-  const config = { bot_id: '123', groups: ['456'], private_users: ['789'], business_commands: ['签到'], business_ws_url: `ws://127.0.0.1:${business.address().port}` };
+  const config = { bot_id: '123', groups: ['456'], private_users: ['789'], business_commands: ['签到'], business_observation: true, business_ws_url: `ws://127.0.0.1:${business.address().port}` };
   const router = createRouter({ config, onebotToken: 'site', astrbotToken: 'chat', chatUrl: `ws://127.0.0.1:${chat.address().port}` });
   router.server.listen(0, '127.0.0.1'); await once(router.server, 'listening');
   const frames = [[], []], peers = [];
@@ -23,9 +23,16 @@ test('isolated OneBot routing and colliding API echoes retain one destination', 
     const event = (id, text) => ({ self_id: 123, user_id: 789, group_id: 456, message_id: id, post_type: 'message', message_type: 'group', message: [{ type: 'text', data: { text } }] });
     gateway.send(JSON.stringify(event(1, '签到'))); gateway.send(JSON.stringify(event(2, '你好')));
     gateway.send('null'); gateway.send(JSON.stringify({ ...event(3, 'bad'), message: 'bad' }));
-    for (let n = 0; n < 100 && frames.flat().filter(e => e.post_type === 'message').length < 2; n++) await delay(10);
-    assert.deepEqual(frames[0].filter(e => e.post_type === 'message').map(e => e.message_id), [1]);
+    gateway.send(JSON.stringify({ ...event(4, '给其他人的消息'), message: [{ type: 'at', data: { qq: '999' } }, ...event(4, '给其他人的消息').message] }));
+    gateway.send(JSON.stringify({ ...event(5, '外群'), group_id: 999 }));
+    gateway.send(JSON.stringify({ ...event(6, '机器人自身'), user_id: 123 }));
+    for (let n = 0; n < 100 && frames.flat().filter(e => e.post_type === 'message').length < 4; n++) await delay(10);
+    const received = frames[0].filter(e => e.post_type === 'message');
+    assert.deepEqual(received.map(e => e.message_id), [1, 2, 4]);
+    assert.equal(received[0].sub2api_observe_only, undefined, 'the command must execute exactly once');
+    assert.ok(received.slice(1).every(e => e.sub2api_observe_only === true), 'chat and mentions of others still reach moderation');
     assert.deepEqual(frames[1].filter(e => e.post_type === 'message').map(e => e.message_id), [2]);
+    assert.equal(frames[1].find(e => e.message_id === 2).sub2api_observe_only, undefined);
     const actions = [];
     gateway.on('message', raw => { const a = JSON.parse(raw); actions.push(a); gateway.send(JSON.stringify({ status: 'ok', retcode: 0, data: { origin: a.params.origin }, echo: a.echo })); });
     for (const [i, peer] of peers.entries()) peer.send(JSON.stringify({ action: 'get_status', params: { origin: i }, echo: 'identical-echo' }));

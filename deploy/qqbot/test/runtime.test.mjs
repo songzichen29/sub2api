@@ -15,9 +15,17 @@ test('the pinned DSH profile makes tool-free model calls and restores session hi
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks)); requests.push(body);
     res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    const frame = (delta, finish_reason = null) => ({ id: 'smoke', object: 'chat.completion.chunk', created: 1, model: 'qqbot-test', choices: [{ index: 0, delta, finish_reason }] });
-    for (const value of [frame({ role: 'assistant', content: 'profile-ok' }), frame({}, 'stop')]) res.write('data: ' + JSON.stringify(value) + '\n\n');
-    res.end('data: [DONE]\n\n');
+    assert.equal(req.url, '/v1/responses');
+    const item = { type: 'message', id: 'msg_smoke', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'profile-ok', annotations: [] }] };
+    const events = [
+      { type: 'response.output_item.added', output_index: 0, item: { ...item, status: 'in_progress', content: [] } },
+      { type: 'response.content_part.added', output_index: 0, content_index: 0, item_id: item.id, part: { type: 'output_text', text: '', annotations: [] } },
+      { type: 'response.output_text.delta', output_index: 0, content_index: 0, item_id: item.id, delta: 'profile-ok' },
+      { type: 'response.output_item.done', output_index: 0, item },
+      { type: 'response.completed', response: { id: 'smoke', status: 'completed', output: [item], usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13 } } }
+    ];
+    for (const value of events) res.write('event: ' + value.type + '\ndata: ' + JSON.stringify(value) + '\n\n');
+    res.end();
   });
   endpoint.listen(0, '127.0.0.1'); await once(endpoint, 'listening');
   const options = {
@@ -40,8 +48,8 @@ test('the pinned DSH profile makes tool-free model calls and restores session hi
     assert.equal(second.finalResponse, 'profile-ok');
     assert.equal(requests.length, 2);
     assert.ok(requests.every(r => !r.tools?.length), 'no shell, file, plugin, or agent tools may be exposed');
-    assert.ok(JSON.stringify(requests[1].messages).includes('qqbot-smoke-marker'));
-    assert.ok(requests.every(r => r.max_tokens === 128 || r.max_completion_tokens === 128));
+    assert.ok(JSON.stringify(requests[1].input).includes('qqbot-smoke-marker'));
+    assert.ok(requests.every(r => r.max_output_tokens === 128));
   } finally {
     await h.close(); await new Promise(resolve => endpoint.close(resolve)); rmSync(dir, { recursive: true, force: true });
   }

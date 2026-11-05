@@ -78,6 +78,8 @@ type obSegment struct {
 	Data map[string]json.RawMessage `json:"data"`
 }
 type obEvent struct {
+	// Trusted only on the authenticated OneBot transport, never from message text.
+	ObserveOnly bool        `json:"sub2api_observe_only,omitempty"`
 	PostType    string      `json:"post_type"`
 	MessageType string      `json:"message_type"`
 	NoticeType  string      `json:"notice_type"`
@@ -95,6 +97,8 @@ type obEvent struct {
 		Role     string `json:"role"`
 	} `json:"sender"`
 }
+
+type oneBotObserveOnlyKey struct{}
 
 func obValue(b json.RawMessage) string { var v obID; _ = json.Unmarshal(b, &v); return string(v) }
 func (c *oneBotConnection) call(ctx context.Context, action string, params any) (json.RawMessage, error) {
@@ -340,12 +344,12 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 		e.Content = strings.TrimSpace(text.String())
 		cmd, arg := command(e.Content, c.CustomCommands...)
 		// Retain the existing /聊天 and /画图 aliases from the initial release.
-		if strings.HasPrefix(e.Content, "/聊天 ") || strings.HasPrefix(e.Content, "聊天 ") {
+		if !in.ObserveOnly && (strings.HasPrefix(e.Content, "/聊天 ") || strings.HasPrefix(e.Content, "聊天 ")) {
 			e.CommandReply = true
 			e.Content = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(e.Content, "/"), "聊天"))
 			kind = groupAtMessageCreate
 		}
-		if strings.HasPrefix(e.Content, "/画图 ") {
+		if !in.ObserveOnly && strings.HasPrefix(e.Content, "/画图 ") {
 			e.Content = "/生图 " + strings.TrimSpace(strings.TrimPrefix(e.Content, "/画图"))
 		}
 		if cmd == "" && arg == "" && e.Content == "" && len(e.Attachments) == 0 && len(e.Faces) == 0 && !e.UnsupportedMedia {
@@ -376,6 +380,9 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 	raw, err := json.Marshal(e)
 	if err != nil {
 		return err
+	}
+	if in.ObserveOnly && in.PostType == "message" && in.MessageType == "group" {
+		ctx = context.WithValue(ctx, oneBotObserveOnlyKey{}, true)
 	}
 	return s.Enqueue(ctx, c, Payload{ID: e.ID, Type: kind, Data: raw})
 }

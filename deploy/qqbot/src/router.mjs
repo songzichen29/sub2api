@@ -3,12 +3,12 @@ import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { authorized, routeEvent } from './policy.mjs';
+import { authorized, routeEvent, shouldObserveGroup } from './policy.mjs';
 
 export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000 }) {
   const peers = new Map(), pending = new Map(), timers = new Set();
   let gateway, closing = false;
-  const counts = { business: 0, chat: 0, drop: 0, unavailable: 0 };
+  const counts = { business: 0, chat: 0, drop: 0, observed: 0, unavailable: 0 };
   const server = http.createServer((req, res) => {
     if (req.url !== '/health') { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -66,13 +66,22 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
         return;
       }
       if (String(event.self_id) !== config.bot_id) return;
+      // Only this router decides whether an event may execute business logic.
+      delete event.sub2api_observe_only;
+      const clean = JSON.stringify(event);
       if (event.post_type === 'meta_event') {
-        for (const peer of peers.values()) if (peer.readyState === WebSocket.OPEN) peer.send(raw);
+        for (const peer of peers.values()) if (peer.readyState === WebSocket.OPEN) peer.send(clean);
         return;
       }
       const route = routeEvent(event, config); counts[route]++;
+      if (route !== 'business' && shouldObserveGroup(event, config)) {
+        const business = peers.get('business');
+        if (business?.readyState === WebSocket.OPEN) {
+          business.send(JSON.stringify({ ...event, sub2api_observe_only: true })); counts.observed++;
+        } else { counts.unavailable++; console.error(JSON.stringify({ event: 'observation_not_forwarded', message_id: event.message_id })); }
+      }
       const peer = peers.get(route);
-      if (peer?.readyState === WebSocket.OPEN) peer.send(raw);
+      if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
       else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
     });
     ws.on('close', () => {

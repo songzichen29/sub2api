@@ -10,6 +10,10 @@
 
 模型密钥挂载到 `/run/secrets/model-api-key`；DSH 子进程只得到模型密钥及必要启动变量。QQ 专用 profile 使用同版本 SDK、持久化会话，没有命令、文件、插件管理和子 Agent 工具。模型地址和型号由 `config/config.json` 提供，白名单按机器人、群和私聊身份检查。模型列表可见不代表视觉能力可用，必须单独验证图片输入。
 
+`model_api` 默认 `openai-responses`，兼容渠道可显式设为 `openai-completions`。站点 DeepSeek 使用 `deepseek-v4.1-flash`；渠道可用性须通过真实 DSH 请求核验。
+
+先部署支持 `sub2api_observe_only` 的 Sub2API，再启用 `business_observation: true`。开启后白名单群的聊天及仅 @ 其他人的消息也送给原站点，保留防刷、群记录和图片引用；观察消息不创建聊天或业务任务。业务指令仅执行一次。旧版站点未支持此标记时禁止开启。
+
 ## 会话和投递
 
 群会话按机器人、群、发言人隔离；私聊按机器人和用户隔离。人格共用 `config/SOUL.md`，raw 记忆分文件追加。记忆是同一 scope 的历史检索，不自动将聊天原话改写成可信人格规则。`/清空` 清理当前发言人的活动会话及检索记忆，审计原文仍保留在 raw 文件和 DSH 历史中，不能当作彻底删除数据。

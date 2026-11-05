@@ -20,7 +20,7 @@
         providers:
           qqbot-site:
             apiKeyEnv: QQBOT_MODEL_API_KEY
-            api: openai-completions
+            api: !!js process.env.QQBOT_MODEL_API || 'openai-responses'
             baseURL: !!js process.env.QQBOT_MODEL_BASE_URL
             retryPolicy:
               mode: normal

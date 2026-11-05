@@ -243,6 +243,12 @@ func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) 
 		if err = s.rememberIncomingImages(ctx, c, e); err != nil {
 			return err
 		}
+		// The external chat runtime owns the reply. Preserve moderation, history
+		// and image references, then stop before model or business jobs are created.
+		if ctx.Value(oneBotObserveOnlyKey{}) == true {
+			outcome, reason = "ignored", "external_chat_observed"
+			return nil
+		}
 		if p.Type == groupMessageCreate && c.autonomousGroup(e.GroupID) && botNameCall(c.Autonomous, e) {
 			return s.routeAutonomous(ctx, c, p, e, true)
 		}
