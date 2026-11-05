@@ -1,0 +1,6 @@
+name: sub2api_dsh_bridge
+display_name: 小碗 DSH 桥
+desc: 将 QQ 聊天交给独立 DSH，会话隔离和站点业务分流由专用桥管理。
+version: v0.1.0
+author: songzichen29
+repo: https://github.com/songzichen29/sub2api

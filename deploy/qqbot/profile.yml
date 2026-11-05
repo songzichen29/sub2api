@@ -1,0 +1,33 @@
+- id: llm-deepseek
+  disabled: true
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: system-prompt
+  config:
+    includeHarnessIdentity: false
+    includeRuntimeContext: false
+    personaPrefix: !!js process.env.DSH_SYSTEM_PROMPT
+- insert:
+    - id: qqbot-model
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          qqbot-site:
+            apiKeyEnv: QQBOT_MODEL_API_KEY
+            api: openai-completions
+            baseURL: !!js process.env.QQBOT_MODEL_BASE_URL
+            retryPolicy:
+              mode: normal
+              maxRetries: 0
+            models:
+              - id: !!js process.env.QQBOT_MODEL
+                name: QQBot site model
+                contextWindow: 65536
+                maxTokens: 4096
+                input: [text, image]
