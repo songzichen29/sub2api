@@ -185,7 +185,11 @@ func validateConfig(c Config) error {
 	if c.TransferMaxAmount > 0 && c.TransferMaxAmount < c.TransferMinAmount {
 		return errors.New("最大转账金额不能小于最小转账金额")
 	}
-	if len(c.SystemPrompt) > 8000 || len(c.ChatModel) > 200 || len(c.ImageModel) > 200 || len(c.AllowedGroups) > 100 {
+	promptLimit := 8000
+	if c.RuntimeChat.Enabled {
+		promptLimit = 64000
+	}
+	if len(c.SystemPrompt) > promptLimit || len(c.ChatModel) > 200 || len(c.ImageModel) > 200 || len(c.AllowedGroups) > 100 {
 		return errors.New("配置内容过长")
 	}
 	for _, g := range c.AllowedGroups {

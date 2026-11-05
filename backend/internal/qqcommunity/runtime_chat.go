@@ -178,7 +178,7 @@ func (s *Service) ServeRuntime(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	provided := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
-	if c.AppSecret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(c.AppSecret)) != 1 || req.Header.Get("X-Self-ID") != c.AppID {
+	if !strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") || c.AppSecret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(c.AppSecret)) != 1 || req.Header.Get("X-Self-ID") != c.AppID {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

@@ -76,6 +76,16 @@ func TestRuntimeRejectsNativeModelEntrypoints(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestRuntimeAcceptsExistingDSHPersona(t *testing.T) {
+	c := DefaultConfig()
+	c.RuntimeChat = DefaultRuntimeChatConfig()
+	c.RuntimeChat.Enabled = true
+	c.SystemPrompt = strings.Repeat("人设", 2200)
+	require.NoError(t, validateConfig(c))
+	c.RuntimeChat.Enabled = false
+	require.Error(t, validateConfig(c))
+}
+
 func TestRuntimeMemberWelcomeRequiresFreshAllowedJoinAndOneBotReceipt(t *testing.T) {
 	for _, name := range []string{"welcome", "duplicate", "expired", "disabled", "other-group", "self", "muted-notifications", "missing-receipt"} {
 		t.Run(name, func(t *testing.T) {
