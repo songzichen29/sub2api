@@ -76,11 +76,26 @@ class DSHBridge(Star):
                 logger.warning("QQ DSH image attachment could not be loaded")
         return output
 
+    async def policy(self):
+        if self.http is None:
+            self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=170))
+        async with self.http.get("http://bridge:8787/policy", headers={"x-bridge-token": self.token}, timeout=aiohttp.ClientTimeout(total=8)) as response:
+            if response.status != 200:
+                raise RuntimeError("configuration_not_synchronized")
+            self.cfg = await response.json()
+
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def on_message(self, event: AstrMessageEvent):
         # Own the event before any await so AstrBot never calls a second model.
         event.should_call_llm(False)
         event.stop_event()
+        try:
+            await self.policy()
+        except Exception:
+            logger.warning("QQ DSH policy unavailable")
+            return
+        if not self.cfg.get("enabled", False) or self.cfg.get("chat_disabled", False):
+            return
         raw = event.message_obj.raw_message
         if not isinstance(raw, dict):
             try:
@@ -124,6 +139,7 @@ class DSHBridge(Star):
                     "bot": self.cfg["bot_id"], "sender": sender, "chat": chat, "group": is_group,
                     "message_id": str(raw.get("message_id", event.message_obj.message_id)),
                     "name": event.get_sender_name(), "text": text,
+                    "role": str(raw.get("sender", {}).get("role", "")),
                     "ambient": not direct, "images": await self.images(raw) if load_images else [],
                 }
                 result = await self.call("/turn", payload)

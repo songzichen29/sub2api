@@ -249,6 +249,10 @@ func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) 
 			outcome, reason = "ignored", "external_chat_observed"
 			return nil
 		}
+		if c.RuntimeChat.Enabled && !isBuiltinOrCustomCommand(e, c.CustomCommands) && naturalAccountMessageCommand(e) == "" {
+			outcome, reason = "ignored", "external_chat_runtime"
+			return nil
+		}
 		if p.Type == groupMessageCreate && c.autonomousGroup(e.GroupID) && botNameCall(c.Autonomous, e) {
 			return s.routeAutonomous(ctx, c, p, e, true)
 		}
@@ -652,6 +656,7 @@ func (s *Service) reward(ctx context.Context, c Config, j Job, kind string) (str
 
 func (s *Service) Runtime(ctx context.Context, c Config) (Runtime, error) {
 	out := Runtime{Groups: []Group{}, Jobs: []Job{}, Rewards: []Reward{}, EncryptionReady: s.encryptionReady}
+	out.ChatRuntime = s.ChatRuntimeStatus(c)
 	var err error
 	out.RecentMembers, err = s.recentMembers(ctx, c)
 	if err != nil {

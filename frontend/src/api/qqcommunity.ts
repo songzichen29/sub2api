@@ -59,7 +59,25 @@ export interface QQGroupPolicy {
   group_id: string; label: string; disable_chat: boolean; disable_images: boolean
   disable_activities: boolean; disable_notifications: boolean; chat_daily_limit: number | null; image_daily_limit: number | null
 }
+export interface QQRuntimeChatConfig {
+  enabled: boolean; names: string[]; ambient_enabled: boolean; ambient_groups: string[]
+  sample_percent: number; start_hour: number; end_hour: number
+  daily_calls: number; hourly_replies: number; daily_replies: number
+  image_input_enabled: boolean; media_sample_percent: number; media_daily_calls: number
+  context_window_tokens: number; welcome_enabled: boolean; welcome_message: string
+}
+export function defaultRuntimeChatConfig(): QQRuntimeChatConfig {
+  return { enabled: true, names: ['小碗', '大碗'], ambient_enabled: false, ambient_groups: [],
+    sample_percent: 100, start_hour: 8, end_hour: 2, daily_calls: 1800, hourly_replies: 100, daily_replies: 1000,
+    image_input_enabled: true, media_sample_percent: 10, media_daily_calls: 100, context_window_tokens: 65536,
+    welcome_enabled: true, welcome_message: '欢迎 {name} 加入本群！我是小碗，可以陪大家聊天，也能查询余额和今日用量。发送“帮助”查看功能，账户查询需要先绑定。' }
+}
+export interface QQChatRuntimeStatus {
+  enabled: boolean; connected: boolean; revision: string; expected_revision: string; last_seen_at?: string
+  sessions: number; messages: number; summaries: number
+}
 export interface QQBotConfig {
+	runtime_chat?: QQRuntimeChatConfig
 	command_reply_format?: 'image' | 'text'
   _version?: string
   notification_quiet_hours?: { enabled: boolean; start_hour: number; end_hour: number }
@@ -80,7 +98,7 @@ export interface QQBotConfig {
   chat_model: string; chat_protocol: 'chat_completions' | 'responses'
   image_enabled: boolean; image_base_url: string; image_api_key: string; image_api_key_set: boolean
   image_model: string; image_size: string; system_prompt: string; max_output_tokens: number
-  history_messages: number; daily_chat_limit: number; daily_image_limit: number
+  history_messages?: number; daily_chat_limit: number; daily_image_limit: number
   total_daily_chat_limit: number; total_daily_image_limit: number; cooldown_seconds: number
   checkin_reward: number; invite_reward: number; invite_daily_limit: number
   invite_min_recharge_total?: number; invite_min_recharge_30d?: number; invite_recharge_window_days?: number
@@ -112,6 +130,7 @@ export interface QQChatPreviewResult {
   chat_execution?: QQChatExecution
 }
 export interface QQBotRuntime {
+  chat_runtime?: QQChatRuntimeStatus
   recent_members?: QQRecentMember[]
   moderation_records?: QQModerationRecord[]
   autonomous_stats?: { group_id: string; reason: string; count: number }[]

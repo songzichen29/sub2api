@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import QQBotView from '../QQBotView.vue'
-import QQBotChatPreview from '@/components/admin/qqbot/QQBotChatPreview.vue'
 import zh from '@/i18n/locales/zh'
 import en from '@/i18n/locales/en'
 import { configSections, pickSection, cloneConfig } from '@/components/admin/qqbot/configSections'
@@ -95,10 +94,9 @@ describe('QQ module settings', () => {
   expect(w.get('#qqbot-settings-panel-connection').isVisible()).toBe(true)
   await w.get('#qqbot-settings-panel-connection input[autocomplete="off"]').setValue('unsaved-app')
   await w.get('#qqbot-settings-tab-chat').trigger('click')
-  await w.get('[data-testid="history-messages"]').setValue(25)
-  await w.get('[data-testid="meme-enabled"]').setValue(true)
+  await w.get('[data-testid="max-output-tokens"]').setValue(256)
   await w.get('form').trigger('submit'); await flushPromises()
-  expect(api.saveSection).toHaveBeenCalledWith('chat', 'chat-1', expect.objectContaining({ history_messages: 25, meme_enabled: true }))
+  expect(api.saveSection).toHaveBeenCalledWith('chat', 'chat-1', expect.objectContaining({ max_output_tokens: 256 }))
   expect(server.app_id).toBe('app')
   await w.get('#qqbot-settings-tab-connection').trigger('click')
   expect((w.get('#qqbot-settings-panel-connection input[autocomplete="off"]').element as HTMLInputElement).value).toBe('unsaved-app')
@@ -107,40 +105,41 @@ describe('QQ module settings', () => {
  it('does not validate unrelated drafts and keeps original revisions for unsaved modules', async () => {
   const w = await mountView()
   await w.get('#qqbot-settings-tab-chat').trigger('click')
-  await w.get('[data-testid="history-messages"]').setValue(101)
+  await w.get('[data-testid="max-output-tokens"]').setValue(9999)
   server.chat_model = 'changed-elsewhere'; server.section_versions!.chat = 'chat-2'
   await w.get('#qqbot-settings-tab-connection').trigger('click')
   await w.get('#qqbot-settings-panel-connection input[type="checkbox"]').setValue(true)
   await w.get('form').trigger('submit'); await flushPromises()
   expect(api.saveSection).toHaveBeenCalledWith('connection', 'connection-1', expect.anything())
   await w.get('#qqbot-settings-tab-chat').trigger('click')
-  await w.get('[data-testid="history-messages"]').setValue(30)
+  await w.get('[data-testid="max-output-tokens"]').setValue(512)
   api.saveSection.mockRejectedValueOnce(new Error('此模块已被其他页面更新'))
   await w.get('form').trigger('submit'); await flushPromises()
   expect(api.saveSection).toHaveBeenLastCalledWith('chat', 'chat-1', expect.objectContaining({ chat_model: 'model' }))
   expect(w.get('[role="alert"]').text()).toContain('其他页面')
-  expect((w.get('[data-testid="history-messages"]').element as HTMLInputElement).value).toBe('30')
+  expect((w.get('[data-testid="max-output-tokens"]').element as HTMLInputElement).value).toBe('512')
  })
  it('validates the active module and protects drafts on refresh and navigation', async () => {
   const w = await mountView()
   await w.get('#qqbot-settings-tab-chat').trigger('click')
-  await w.get('[data-testid="history-messages"]').setValue(101)
-  const input = w.get('[data-testid="history-messages"]').element as HTMLInputElement
+  await w.get('[data-testid="max-output-tokens"]').setValue(9999)
+  const input = w.get('[data-testid="max-output-tokens"]').element as HTMLInputElement
   const validity = vi.spyOn(input, 'reportValidity')
   await w.get('form').trigger('submit'); expect(validity).toHaveBeenCalledOnce(); expect(api.saveSection).not.toHaveBeenCalled()
   const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); expect(event.defaultPrevented).toBe(true)
   vi.spyOn(window, 'confirm').mockReturnValue(false)
   await w.findAll('button').find(b => b.text() === '重新加载本模块')!.trigger('click'); await flushPromises()
-  expect((input).value).toBe('101')
+  expect((input).value).toBe('9999')
   await w.vm.$router.push('/other'); expect(w.vm.$route.path).toBe('/admin/qqbot/config')
  })
- it('saves an independent chat switch and retains zero shared history', async () => {
+ it('saves the chat switch without retired history controls', async () => {
   const w = await mountView()
   await w.get('#qqbot-settings-tab-chat').trigger('click')
   await w.get('#qqbot-settings-panel-chat input[type="checkbox"]').setValue(true)
-  await w.get('[data-testid="history-messages"]').setValue(0)
+  expect(w.find('[data-testid="history-messages"]').exists()).toBe(false)
+  expect(w.find('[data-testid="meme-enabled"]').exists()).toBe(false)
   await w.get('form').trigger('submit'); await flushPromises()
-  expect(server.chat_disabled).toBe(true); expect(server.history_messages).toBe(0)
+  expect(server.chat_disabled).toBe(true); expect(server.history_messages).toBe(12)
  })
  it('keeps health notification scope and removes retired price controls', async () => {
   const w = await mountView(); await category(w, '通知与额度'); await w.get('#qqbot-settings-tab-notifications').trigger('click')
@@ -160,32 +159,27 @@ describe('QQ module settings', () => {
   expect(server.chat_model).toBe('model')
   expect(w.text()).toContain(zh.qqbot.heartbeat.help)
  })
- it('presets keep autonomous participation opt-in and bounded', async () => {
+ it('saves shared runtime memory and welcomes without enabling new groups', async () => {
   const w = await mountView(); await category(w, '对话与指令')
-  await w.findAll('button').find(b => b.text() === '安静')!.trigger('click')
+  await w.get('[data-testid="runtime-names"]').setValue('小碗\n大碗')
+  await w.get('[data-testid="runtime-ambient-enabled"]').setValue(true)
+  await w.get('[data-testid="welcome-message"]').setValue('欢迎 {name} 加入！')
   await w.get('form').trigger('submit'); await flushPromises()
-  expect(server.autonomous).toMatchObject({ enabled: false, groups: [], sample_percent: 5, daily_calls: 15, daily_replies: 8 })
+  expect(api.saveSection).toHaveBeenCalledWith('runtime-chat', 'runtime-chat-1', expect.objectContaining({ runtime_chat: expect.objectContaining({ enabled: true, ambient_enabled: true, welcome_enabled: true, welcome_message: '欢迎 {name} 加入！' }) }))
+  expect(server.allowed_groups).toEqual(['group', 'other-group'])
+  expect(w.find('[data-testid="history-messages"]').exists()).toBe(false)
+  expect(w.find('[data-testid="autonomous-sample_percent"]').exists()).toBe(false)
  })
- it('saves image interjection controls independently of image generation', async () => {
+ it('reports synchronized DSH memory and validates runtime capacity', async () => {
+  api.runtime.mockResolvedValue({ groups: [], jobs: [], rewards: [], bindings: 0, encryption_ready: true, chat_runtime: { connected: true, last_seen_at: '2026-11-05T00:00:00Z', sessions: 2, messages: 150, summaries: 1 } })
   const w = await mountView(); await category(w, '对话与指令')
-  expect((w.get('[data-testid="autonomous-media_enabled"]').element as HTMLInputElement).checked).toBe(false)
-  expect((w.get('[data-testid="autonomous-media_sample_percent"]').element as HTMLInputElement).value).toBe('10')
-  await w.get('[data-testid="autonomous-media_enabled"]').setValue(true)
-  await w.get('[data-testid="autonomous-media_daily_calls"]').setValue(50)
+  expect(w.get('[data-testid="dsh-runtime-status"]').text()).toContain(zh.qqbot.runtimeChat.connected)
+  expect(w.text()).toContain('150')
+  await w.get('[data-testid="runtime-sample_percent"]').setValue(101)
+  const input = w.get('[data-testid="runtime-sample_percent"]').element as HTMLInputElement
+  expect(input.checkValidity()).toBe(false)
   await w.get('form').trigger('submit'); await flushPromises()
-  expect(server.autonomous).toMatchObject({ media_enabled: true, media_sample_percent: 10, media_daily_calls: 50 })
-  expect(server.image_enabled).toBe(false)
- })
- it('saves five-second group and member cooldowns for conversation', async () => {
-  const w = await mountView(); await category(w, '对话与指令')
-  await w.get('[data-testid="autonomous-cooldown_seconds"]').setValue(5)
-  await w.get('[data-testid="autonomous-member_cooldown_seconds"]').setValue(5)
-  await w.get('[data-testid="autonomous-sample_percent"]').setValue(100)
-  const input = w.get('[data-testid="autonomous-cooldown_seconds"]').element as HTMLInputElement
-  expect(input.checkValidity()).toBe(true)
-  await w.get('form').trigger('submit'); await flushPromises()
-  expect(api.saveSection).toHaveBeenCalledWith('autonomous', expect.any(String), expect.objectContaining({ autonomous: expect.objectContaining({ cooldown_seconds: 5, member_cooldown_seconds: 5, sample_percent: 100 }) }))
-  expect(server.autonomous).toMatchObject({ cooldown_seconds: 5, member_cooldown_seconds: 5, sample_percent: 100 })
+  expect(api.saveSection).not.toHaveBeenCalled()
  })
  it('saves custom replies and preserves drafts on validation failure', async () => {
   const w = await mountView(); await category(w, '对话与指令'); await w.get('#qqbot-settings-tab-commands').trigger('click')
@@ -235,20 +229,13 @@ describe('QQ module settings', () => {
   await w.get('form').trigger('submit'); await flushPromises()
   expect(server.site_knowledge?.content).toBe('𠮷'.repeat(12000))
  })
- it('tries questions independently with saved configuration and retains knowledge drafts', async () => {
-  server.site_knowledge = { enabled: true, content: 'Saved knowledge' }
-  api.chatPreview.mockResolvedValue({ text: '试问回答', action: 'chat', input_tokens: 1, output_tokens: 1, duration_ms: 1, knowledge_sources: [] })
+ it('removes native chat probes and preserves knowledge drafts', async () => {
   const w = await mountView('zh', '/admin/qqbot/config?tab=knowledge')
   await w.get('[data-testid="knowledge-content"]').setValue('Unsaved knowledge')
-  const preview = w.getComponent(QQBotChatPreview)
-  expect(preview.props('config').site_knowledge.content).toBe('Saved knowledge')
-  await w.get('[data-testid="qq-preview-group"]').setValue('group')
-  await w.get('[data-testid="qq-preview-question"]').setValue('API 怎么接入？')
-  await w.get('[data-testid="qq-preview-run"]').trigger('click'); await flushPromises()
-  expect(api.chatPreview).toHaveBeenCalledWith({ group_id: 'group', member_id: undefined, question: 'API 怎么接入？' })
+  expect(w.find('[data-testid="qq-preview-run"]').exists()).toBe(false)
+  expect(api.chatPreview).not.toHaveBeenCalled()
   expect(api.saveSection).not.toHaveBeenCalled()
   expect((w.get('[data-testid="knowledge-content"]').element as HTMLTextAreaElement).value).toBe('Unsaved knowledge')
-  expect(w.get('[data-testid="qq-preview-result"]').text()).toContain('试问回答')
  })
  it('retains knowledge text when disabled and keeps the draft on version conflicts', async () => {
   server.site_knowledge = { enabled: true, content: 'Existing site guide' }

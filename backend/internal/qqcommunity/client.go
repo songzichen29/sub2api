@@ -595,6 +595,9 @@ func (s *Service) Probe(ctx context.Context, kind string) (string, error) {
 		_, err = s.token(ctx, c)
 		return "NapCat 已连接；请在测试群验证指令与管理员权限。", err
 	}
+	if c.RuntimeChat.Enabled && (kind == "chat" || kind == "vision" || kind == "tools") {
+		return "", errors.New("旧聊天模型测试已停用，请查看 DSH 配置同步状态并通过 QQ 验证")
+	}
 	if kind == "image" || kind == "image_edit" {
 		base, key := imageConnection(c)
 		if base == "" || key == "" || c.ImageModel == "" {

@@ -31,6 +31,13 @@ func (h *QQBotHandler) OneBot(c *gin.Context) {
 	}
 	h.service.ServeOneBot(c.Writer, c.Request)
 }
+func (h *QQBotHandler) ChatRuntime(c *gin.Context) {
+	if h.Community == nil || h.service.Community == nil {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	h.service.Community.ServeRuntime(c.Writer, c.Request)
+}
 func (h *QQBotHandler) GetConfig(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	cfg, err := h.service.Config(c.Request.Context())

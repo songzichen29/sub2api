@@ -15,6 +15,8 @@ import (
 )
 
 type Service struct {
+	chatRuntimeMu         sync.Mutex
+	chatRuntimeStatus     ChatRuntimeStatus
 	db                    *database
 	onebot                oneBotTransport
 	napcatLogin           *napcatLoginClient
@@ -159,6 +161,10 @@ func (s *Service) runOne(parent context.Context) {
 	}
 	if j.EventType == rankingNotificationEvent {
 		s.finish(j, "cancelled", "排行榜功能已移除")
+		return
+	}
+	if c.RuntimeChat.Enabled && (j.Kind == "ambient_chat" || j.Kind == "chat") {
+		s.finish(j, "cancelled", "聊天已迁移至 DSH，旧任务未重放")
 		return
 	}
 	if j.EventType == priceNotificationEvent || j.EventType == healthNotificationEvent {
@@ -312,6 +318,19 @@ func (s *Service) memberEvent(ctx context.Context, c Config, j Job, e Event) err
 			outcome, reason = "recorded", "member_join_recorded"
 			if n == 0 {
 				outcome, reason = "ignored", "stale_membership_event"
+			} else if c.RuntimeChat.Enabled && c.RuntimeChat.WelcomeEnabled && c.Enabled && c.allows(j.GroupID) &&
+				!c.groupPolicy(j.GroupID).DisableNotifications && e.MemberID != c.AppID && time.Since(at) < 10*time.Minute && !at.After(time.Now().Add(time.Minute)) {
+				j.MemberID = e.MemberID
+				name := strings.TrimSpace(e.Author.Username)
+				if name == "" {
+					name = e.MemberID
+				}
+				text := strings.NewReplacer("{name}", limitText(name, 80), "{qq}", e.MemberID, "{group}", j.GroupID).Replace(c.RuntimeChat.WelcomeMessage)
+				if err = s.send(ctx, c, j, text, nil, 1); err != nil {
+					outcome, reason = "failed", "welcome_delivery_unconfirmed"
+					return err
+				}
+				outcome, reason = "welcomed", "member_welcome_sent"
 			}
 			return err
 		}

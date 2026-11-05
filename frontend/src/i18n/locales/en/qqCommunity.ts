@@ -1,4 +1,17 @@
 export default { qqbot: {
+  runtimeChat: {
+    title: 'Group chat, memory and welcome', model: 'DSH chat model', names: 'Bot names (one per line)',
+    memoryHelp: 'Public messages share context within each group, with identified speakers. Private chats and different groups remain isolated. Original records have no message-count limit; older context is summarized and searchable. Saved settings synchronize automatically.',
+    connected: 'Chat service has applied the current settings', pending: 'Waiting for chat service to synchronize',
+    memoryStats: 'Sessions {sessions} · Saved messages {messages} · Memory summaries {summaries}',
+    ambient: 'Allow natural participation', ambientGroups: 'Groups for natural participation',
+    sample_percent: 'Participation sample (%)', start_hour: 'Active start hour', end_hour: 'Active end hour',
+    hourly_replies: 'Group replies per hour', daily_replies: 'Group replies per day', daily_calls: 'Group model calls per day',
+    images: 'Understand chat images', contextCapacity: 'Model context capacity (tokens)',
+    media_sample_percent: 'Ambient image sample (%)', media_daily_calls: 'Group image calls per day',
+    welcomeTitle: 'New member welcome', welcomeEnabled: 'Welcome new members in enabled groups', welcomeText: 'Welcome message',
+    welcomeHelp: 'Use name, qq and group inside braces as placeholders. New members are mentioned automatically. No model call; duplicate or stale join events are not replayed. Disabled group notifications also disable welcome messages.'
+  },
   heartbeat: { title: 'QQ online check-in message', interval: 'Interval (minutes)', help: 'Sends a real QQ group message with the current time only after a live session probe passes. Success requires a QQ message receipt. Disabled by default, with a five-minute interval. When enabled it runs around the clock, ignoring channel-alert quiet hours. Failed checks do not announce online status. Missed messages are never replayed; no model calls. Sending does not prove inbound reception.' },
   memeEnabled: 'Allow meme search in chat',
   memeHelp: 'Search and send existing memes with GIF animation preserved. Uses chat quota, not image-generation quota. Falls back to text when search is unavailable.',

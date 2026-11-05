@@ -74,6 +74,9 @@ func (s *Service) PreviewChat(ctx context.Context, req ChatPreviewRequest) (Chat
 	if !c.Enabled {
 		return out, ErrDisabled
 	}
+	if c.RuntimeChat.Enabled {
+		return out, errors.New("旧聊天试问已停用，请通过 QQ 验证 DSH 群聊与记忆")
+	}
 	if !c.allows(req.GroupID) {
 		return out, errors.New("试问群未在允许名单中")
 	}

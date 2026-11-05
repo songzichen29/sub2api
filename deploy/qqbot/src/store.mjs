@@ -16,7 +16,23 @@ export class Store {
       CREATE INDEX IF NOT EXISTS memory_scope ON memory(scope,id);
       CREATE TABLE IF NOT EXISTS delivery(id TEXT PRIMARY KEY,status TEXT NOT NULL,updated INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS meters(key TEXT PRIMARY KEY,used INTEGER NOT NULL,updated INTEGER NOT NULL);`);
+	this.db.exec(`
+      CREATE TABLE IF NOT EXISTS history(seq INTEGER PRIMARY KEY,scope TEXT NOT NULL,event_id TEXT NOT NULL,sender TEXT NOT NULL,name TEXT NOT NULL,role TEXT NOT NULL,text TEXT NOT NULL,at TEXT NOT NULL,UNIQUE(scope,event_id));
+      CREATE INDEX IF NOT EXISTS history_scope ON history(scope,seq);
+      CREATE TABLE IF NOT EXISTS summaries(scope TEXT PRIMARY KEY,through_seq INTEGER NOT NULL,text TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS conversations(scope TEXT PRIMARY KEY,session_id TEXT NOT NULL,cursor INTEGER NOT NULL,bytes INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS resets(scope TEXT PRIMARY KEY,after_seq INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS turn_context(id TEXT PRIMARY KEY,scope TEXT NOT NULL,event_id TEXT NOT NULL,sender TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS runtime_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
     this.db.exec("UPDATE turns SET status='interrupted' WHERE status='running'");
+    // A crash between generation and the QQ receipt must not restore an
+    // assistant answer whose delivery is unknown into a model session.
+    this.db.exec(`DELETE FROM conversations WHERE scope IN (
+      SELECT t.scope FROM turns t LEFT JOIN delivery d ON d.id=t.id
+      WHERE t.rowid=(SELECT MAX(latest.rowid) FROM turns latest WHERE latest.scope=t.scope)
+      AND (t.status<>'completed' OR (t.reply<>'[跳过]' AND COALESCE(d.status,'')<>'sent'))
+    )`);
   }
   turn(id) { return this.db.prepare('SELECT * FROM turns WHERE id=?').get(id); }
   begin(id, scope, deliveryLimits = []) { this.db.prepare("INSERT INTO turns VALUES(?,?,'running',NULL,?,?)").run(id, scope, Date.now(), JSON.stringify(deliveryLimits)); }
@@ -26,13 +42,51 @@ export class Store {
   clear(scope) {
     this.db.prepare('DELETE FROM sessions WHERE scope=?').run(scope);
     this.db.prepare('DELETE FROM memory WHERE scope=?').run(scope);
+    this.db.prepare('INSERT INTO resets VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET after_seq=excluded.after_seq').run(scope, this.latest(scope));
+    this.db.prepare('DELETE FROM summaries WHERE scope=?').run(scope);
+    this.dropConversation(scope);
   }
-  recent(scope) { return this.db.prepare('SELECT entry FROM memory WHERE scope=? ORDER BY id DESC LIMIT 8').all(scope).reverse().map(r => JSON.parse(r.entry)); }
+  recent(scope) { return this.db.prepare('SELECT entry FROM memory WHERE scope=? ORDER BY id').all(scope).map(r => JSON.parse(r.entry)); }
   remember(scope, value) {
     const entry = JSON.stringify(value);
     this.db.prepare('INSERT INTO memory(scope,entry) VALUES(?,?)').run(scope, entry);
     // Every scope gets its own file; private text never enters another group's raw log.
     appendFileSync(join(this.rawDirectory, opaqueKey(scope) + '.jsonl'), entry + '\n', { mode: 0o600 });
+  }
+  observe(scope, { event_id, sender, name = '', role = 'user', text, at = new Date().toISOString() }) {
+    const result = this.db.prepare('INSERT INTO history(scope,event_id,sender,name,role,text,at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,event_id) DO NOTHING').run(scope, event_id, sender, name, role, text, at);
+    if (result.changes) appendFileSync(join(this.rawDirectory, opaqueKey(scope) + '.jsonl'), JSON.stringify({ event_id, sender, name, role, text, at }) + '\n', { mode: 0o600 });
+    return this.db.prepare('SELECT seq FROM history WHERE scope=? AND event_id=?').get(scope, event_id).seq;
+  }
+  resetAt(scope) { return this.db.prepare('SELECT after_seq FROM resets WHERE scope=?').get(scope)?.after_seq || 0; }
+  latest(scope) { return this.db.prepare('SELECT MAX(seq) AS seq FROM history WHERE scope=?').get(scope)?.seq || 0; }
+  history(scope, after = 0, through = Number.MAX_SAFE_INTEGER) {
+    return this.db.prepare('SELECT * FROM history WHERE scope=? AND seq>? AND seq<=? ORDER BY seq').all(scope, Math.max(after, this.resetAt(scope)), through);
+  }
+  summary(scope) { return this.db.prepare('SELECT through_seq,text FROM summaries WHERE scope=?').get(scope) || { through_seq: this.resetAt(scope), text: '' }; }
+  setSummary(scope, through, text) { this.db.prepare('INSERT INTO summaries VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET through_seq=excluded.through_seq,text=excluded.text').run(scope, through, text); }
+  conversation(scope) { return this.db.prepare('SELECT session_id,cursor,bytes FROM conversations WHERE scope=?').get(scope); }
+  setConversation(scope, id, cursor, bytes) { this.db.prepare('INSERT INTO conversations VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET session_id=excluded.session_id,cursor=excluded.cursor,bytes=excluded.bytes').run(scope, id, cursor, bytes); }
+  dropConversation(scope) { this.db.prepare('DELETE FROM conversations WHERE scope=?').run(scope); this.db.prepare('DELETE FROM sessions WHERE scope=?').run(scope); }
+  ensureRuntime(signature) {
+    const prior = this.db.prepare("SELECT value FROM runtime_settings WHERE key='identity'").get()?.value;
+    if (prior === signature) return;
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.exec('DELETE FROM conversations; DELETE FROM sessions;');
+      this.db.prepare("INSERT INTO runtime_settings VALUES('identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(signature);
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  setTurnContext(id, scope, event, sender) { this.db.prepare('INSERT INTO turn_context VALUES(?,?,?,?)').run(id, scope, event, sender); }
+  commitReply(id, bot) {
+    if (this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status !== 'sent') return;
+    const context = this.db.prepare('SELECT * FROM turn_context WHERE id=?').get(id), turn = this.turn(id);
+    if (context && turn?.reply && turn.reply !== '[跳过]') this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply });
+  }
+  stats() {
+    const count = table => this.db.prepare('SELECT COUNT(*) AS n FROM ' + table).get().n;
+    return { sessions: count('conversations'), messages: count('history'), summaries: count('summaries') };
   }
   seedMeters(rows) {
     const put = this.db.prepare('INSERT INTO meters VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET used=MAX(used,excluded.used)');
@@ -62,5 +116,9 @@ export class Store {
       this.db.exec('COMMIT'); return true;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
-  finishDelivery(id, status) { this.db.prepare('UPDATE delivery SET status=?,updated=? WHERE id=?').run(status, Date.now(), id); }
+  finishDelivery(id, status) {
+    const prior = this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status;
+    if (!prior || (prior !== 'sending' && prior !== status)) throw new Error('invalid_delivery_transition');
+    this.db.prepare('UPDATE delivery SET status=?,updated=? WHERE id=?').run(status, Date.now(), id);
+  }
 }

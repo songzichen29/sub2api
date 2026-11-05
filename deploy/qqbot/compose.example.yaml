@@ -13,7 +13,7 @@ services:
       - ./data/bridge:/data
       - ./config:/run/qqbot:ro
       - ./secrets/bridge-token:/run/secrets/bridge-token:ro
-      - ./secrets/model-api-key:/run/secrets/model-api-key:ro
+      - ./secrets/onebot-token:/run/secrets/onebot-token:ro
     ports: ['127.0.0.1:8787:8787']
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -50,6 +50,7 @@ services:
       - ./config:/run/qqbot:ro
       - ./secrets/onebot-token:/run/secrets/onebot-token:ro
       - ./secrets/astrbot-token:/run/secrets/astrbot-token:ro
+      - ./secrets/bridge-token:/run/secrets/bridge-token:ro
     ports: ['127.0.0.1:6200:6200']
     networks: [default, napcat]
     logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}

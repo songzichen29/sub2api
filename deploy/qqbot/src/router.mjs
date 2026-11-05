@@ -4,10 +4,12 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { authorized, routeEvent, shouldObserveGroup } from './policy.mjs';
+import { bridgeClient } from './runtime-config.mjs';
 
-export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000 }) {
+export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000, observe }) {
   const peers = new Map(), pending = new Map(), timers = new Set();
   let gateway, closing = false;
+  let observations = Promise.resolve();
   const counts = { business: 0, chat: 0, drop: 0, observed: 0, unavailable: 0 };
   const server = http.createServer((req, res) => {
     if (req.url !== '/health') { res.writeHead(404); return res.end(); }
@@ -81,8 +83,18 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
         } else { counts.unavailable++; console.error(JSON.stringify({ event: 'observation_not_forwarded', message_id: event.message_id })); }
       }
       const peer = peers.get(route);
-      if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
-      else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
+      const forward = () => {
+        if (gateway !== ws) return;
+        if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
+        else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
+      };
+      if (observe && route !== 'business' && shouldObserveGroup(event, config)) {
+        observations = observations.then(async () => {
+          try { await observe(event); }
+          catch { console.error(JSON.stringify({ event: 'group_history_not_persisted', message_id: event.message_id })); }
+          forward();
+        }).catch(() => {});
+      } else forward();
     });
     ws.on('close', () => {
       if (gateway !== ws) return;
@@ -115,11 +127,15 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const config = JSON.parse(readFileSync('/run/qqbot/config.json', 'utf8'));
+  const client = bridgeClient('http://bridge:8787', readFileSync('/run/secrets/bridge-token', 'utf8').trim());
+  Object.assign(config, await client.policy());
+  const policyTimer = setInterval(() => client.policy().then(policy => Object.assign(config, policy)).catch(() => console.error(JSON.stringify({ event: 'policy_sync_failed' }))), 5000).unref();
   const router = createRouter({
-    config: JSON.parse(readFileSync('/run/qqbot/config.json', 'utf8')),
+    config,
     onebotToken: readFileSync('/run/secrets/onebot-token', 'utf8').trim(),
-    astrbotToken: readFileSync('/run/secrets/astrbot-token', 'utf8').trim()
+    astrbotToken: readFileSync('/run/secrets/astrbot-token', 'utf8').trim(), observe: event => client.observe(event)
   });
   router.server.listen(6200, '0.0.0.0', () => console.log('QQBot OneBot router listening on 6200'));
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { await router.close(); process.exit(); });
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { clearInterval(policyTimer); await router.close(); process.exit(); });
 }

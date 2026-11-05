@@ -11,6 +11,7 @@ import (
 var ErrDisabled = errors.New("QQ 机器人尚未启用")
 
 type Config struct {
+	RuntimeChat              RuntimeChatConfig        `json:"runtime_chat"`
 	CommandReplyFormat       string                   `json:"command_reply_format"`
 	NotificationQuietHours   QuietHours               `json:"notification_quiet_hours"`
 	SectionVersions          map[string]string        `json:"section_versions,omitempty"`
@@ -251,6 +252,7 @@ type Group struct {
 	LastSeenAt time.Time `json:"last_seen_at"`
 }
 type Runtime struct {
+	ChatRuntime       ChatRuntimeStatus  `json:"chat_runtime"`
 	RecentMembers     []RecentMember     `json:"recent_members"`
 	ModerationRecords []ModerationRecord `json:"moderation_records"`
 	AutonomousStats   []AutonomousStat   `json:"autonomous_stats"`

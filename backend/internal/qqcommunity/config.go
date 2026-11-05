@@ -24,6 +24,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	decoded.Moderation = DefaultModerationConfig()
 	decoded.Autonomous = DefaultAutonomousConfig()
 	decoded.HealthNotifications = DefaultHealthNotificationConfig()
+	decoded.RuntimeChat = DefaultRuntimeChatConfig()
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
@@ -49,6 +50,7 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 		decoded.HistoryMessages = 12
 	}
 	*c = Config(decoded)
+	c.retireNativeChat()
 	return nil
 }
 
@@ -102,6 +104,9 @@ func validateURL(raw string) error {
 	return nil
 }
 func validateConfig(c Config) error {
+	if err := validateRuntimeChat(c); err != nil {
+		return err
+	}
 	if c.CommandReplyFormat != "" && c.CommandReplyFormat != "image" && c.CommandReplyFormat != "text" {
 		return errors.New("指令回复方式必须为图片或文字")
 	}
@@ -255,6 +260,10 @@ func (s *Service) saveConfigChecked(ctx context.Context, update func(Config) (Co
 	if err != nil {
 		return c, err
 	}
+	if old.RuntimeChat.Enabled && !c.RuntimeChat.Enabled {
+		c.RuntimeChat = old.RuntimeChat
+	}
+	c.retireNativeChat()
 	c.SectionVersions = nil
 	c.Moderation.ReportEnabled = false
 	c.CustomCommands = normalizeCustomCommands(c.CustomCommands)

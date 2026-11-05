@@ -1,4 +1,17 @@
 export default { qqbot: {
+  runtimeChat: {
+    title: '群聊、记忆与欢迎', model: 'DSH 聊天模型', names: '机器人称呼（每行一个）',
+    memoryHelp: '同群公开聊天按说话人共享上下文，私聊和不同群相互隔离。原始记录持续保存，不按条数截断；接近模型容量时自动生成摘要，并可检索较早记录。配置保存后自动同步。',
+    connected: '聊天服务已同步当前配置', pending: '等待聊天服务同步配置',
+    memoryStats: '会话 {sessions} · 已保存消息 {messages} · 记忆摘要 {summaries}',
+    ambient: '允许自然接话', ambientGroups: '自然接话的群',
+    sample_percent: '普通消息接话比例（%）', start_hour: '接话开始小时', end_hour: '接话结束小时',
+    hourly_replies: '每群每小时接话回复上限', daily_replies: '每群每日接话回复上限', daily_calls: '每群每日接话调用上限',
+    images: '允许理解聊天图片', contextCapacity: '模型上下文容量（tokens）',
+    media_sample_percent: '普通图片理解比例（%）', media_daily_calls: '每群每日图片理解调用上限',
+    welcomeTitle: '新人入群欢迎', welcomeEnabled: '已开放群有新成员加入时自动欢迎', welcomeText: '欢迎语',
+    welcomeHelp: '支持占位符：昵称、QQ 和群号分别使用花括号中的 name、qq、group。自动提及新成员，不调用模型；重复或过期入群事件不补发。关闭群通知的群不发送欢迎。'
+  },
   heartbeat: { title: 'QQ 在线报平安心跳', interval: '发送间隔（分钟）', help: '实时 QQ 会话探测通过后，才向所选群发送“小碗在线”和当前时间，收到 QQ 消息回执才记为成功。默认关闭、间隔 5 分钟；启用后全天发送，不受渠道通知静默时段影响。检测或发送失败不报在线，旧心跳不补发，也不调用模型。能发消息不等于收信链路正常。' },
   memeEnabled: '允许聊天搜索表情包',
   memeHelp: '小碗可按话题搜索现成表情包并发送，保留 GIF 动画；使用聊天额度，不消耗生图次数。搜索来源暂不可用时回复文字。',

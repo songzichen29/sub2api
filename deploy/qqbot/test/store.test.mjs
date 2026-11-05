@@ -32,3 +32,21 @@ test('daily quotas and failed multi-scope reservations survive restart atomicall
   assert.throws(() => s.reserve([{ key: 'member', limit: 1 }]), /rate_limited/);
   s.db.close(); rmSync(dir, { recursive: true });
 });
+
+test('restart drops model sessions with uncertain delivery and retains confirmed sessions', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qqbot-crash-'));
+  let s = new Store(join(dir, 'db'), join(dir, 'raw'));
+  for (const id of ['confirmed', 'uncertain']) {
+    s.begin(id, id); s.finish(id, 'completed', 'reply');
+    s.setConversation(id, 'session-' + id, 1, 500);
+    assert.equal(s.claimDelivery(id), true);
+  }
+  s.finishDelivery('confirmed', 'sent');
+  assert.throws(() => s.finishDelivery('unknown', 'sent'), /invalid_delivery_transition/);
+  s.db.close();
+  s = new Store(join(dir, 'db'), join(dir, 'raw'));
+  assert.equal(s.conversation('uncertain'), undefined);
+  assert.equal(s.conversation('confirmed').session_id, 'session-confirmed');
+  assert.throws(() => s.finishDelivery('confirmed', 'unconfirmed'), /invalid_delivery_transition/);
+  s.db.close(); rmSync(dir, { recursive: true });
+});

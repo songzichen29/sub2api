@@ -70,6 +70,9 @@ func validateAutonomous(c Config) error {
 	return nil
 }
 func (c Config) autonomousGroup(group string) bool {
+	if c.RuntimeChat.Enabled {
+		return false
+	}
 	if c.groupLimit(group, "chat") == 0 {
 		return false
 	}

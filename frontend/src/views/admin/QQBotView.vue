@@ -118,11 +118,9 @@
           </fieldset>
         </section>
         <section v-show="activeTab === 'chat'" id="qqbot-settings-panel-chat" role="tabpanel" aria-labelledby="qqbot-settings-tab-chat" class="card space-y-4 p-6">
-          <h2 class="text-lg font-semibold">{{ t('qqbot.ai') }}</h2>
+          <h2 class="text-lg font-semibold">{{ t('qqbot.runtimeChat.model') }}</h2>
           <label class="flex items-center gap-2"><input v-model="form.chat_disabled" type="checkbox" />{{ t('qqbot.workspace.chatDisabled') }}</label>
           <p class="text-xs text-gray-500">{{ t('qqbot.workspace.chatDisabledHelp') }}</p>
-          <label class="flex items-center gap-2"><input v-model="form.meme_enabled" type="checkbox" data-testid="meme-enabled" />{{ t('qqbot.memeEnabled') }}</label>
-          <p class="text-xs text-gray-500">{{ t('qqbot.memeHelp') }}</p>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-1">Base URL<input v-model.trim="form.base_url" class="input" placeholder="https://api.example.com/v1" /><span class="text-xs text-gray-500">{{ t('qqbot.baseHelp') }}</span></label>
             <label class="space-y-1">API Key<input v-model="form.api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.api_key_set)" /><span class="flex gap-2 text-xs"><input v-model="form.clear_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</span></label>
@@ -131,17 +129,15 @@
           </div>
           <details><summary class="cursor-pointer text-sm">{{ t('qqbot.workspace.advanced') }}</summary><label class="mt-3 block space-y-1">{{ t('qqbot.systemPrompt') }}<textarea v-model="form.system_prompt" rows="3" class="input" /></label>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="space-y-1">{{ t('qqbot.maxTokens') }}<input v-model.number="form.max_output_tokens" class="input" type="number" min="64" max="8192" /></label>
-            <label class="space-y-1">{{ t('qqbot.history') }}<input v-model.number="form.history_messages" data-testid="history-messages" aria-describedby="qq-history-help" class="input" type="number" min="0" max="100" step="1" required /></label>
+            <label class="space-y-1">{{ t('qqbot.maxTokens') }}<input v-model.number="form.max_output_tokens" data-testid="max-output-tokens" class="input" type="number" min="64" max="8192" /></label>
           </div>
-          <p id="qq-history-help" class="text-xs text-gray-500">{{ t('qqbot.historyHelp') }}</p></details>
+          </details>
         </section>
-        <div v-show="activeTab === 'autonomous'" id="qqbot-settings-panel-autonomous" role="tabpanel" aria-labelledby="qqbot-settings-tab-autonomous">
-          <QQBotAutonomousSettings v-model="autonomous" :runtime="runtime" :groups="allowedGroups" :policies="groupPolicies" :names="groupNames" />
+        <div v-show="activeTab === 'runtime-chat'" id="qqbot-settings-panel-runtime-chat" role="tabpanel" aria-labelledby="qqbot-settings-tab-runtime-chat">
+          <QQBotRuntimeSettings v-model="runtimeChat" :status="runtime?.chat_runtime" :groups="allowedGroups" :policies="groupPolicies" :group-names="groupNames" />
         </div>
         <div v-show="activeTab === 'knowledge'" id="qqbot-settings-panel-knowledge" role="tabpanel" aria-labelledby="qqbot-settings-tab-knowledge">
           <QQBotKnowledgeSettings v-model="siteKnowledge" />
-          <QQBotChatPreview v-if="baseline && activeTab === 'knowledge'" :config="baseline" />
         </div>
         <div v-show="activeTab === 'moderation'" id="qqbot-settings-panel-moderation" role="tabpanel" aria-labelledby="qqbot-settings-tab-moderation">
           <QQBotModerationSettings v-model="moderation" :app-id="form.app_id" :group-labels="groupLabels" :groups="allowedGroups" :runtime="form.app_id === savedAppId ? runtime : null" :disabled="busy" />
@@ -207,22 +203,21 @@ import { configSections, pickSection, cloneConfig, type ConfigSection } from '@/
 import type { QQConfigChange } from '@/api/qqcommunity'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import QQBotAutonomousSettings from '@/components/admin/qqbot/QQBotAutonomousSettings.vue'
+import QQBotRuntimeSettings from '@/components/admin/qqbot/QQBotRuntimeSettings.vue'
 import QQBotKnowledgeSettings from '@/components/admin/qqbot/QQBotKnowledgeSettings.vue'
-import QQBotChatPreview from '@/components/admin/qqbot/QQBotChatPreview.vue'
 import QQBotGroupAdminSettings from '@/components/admin/qqbot/QQBotGroupAdminSettings.vue'
 import QQBotModerationSettings from '@/components/admin/qqbot/QQBotModerationSettings.vue'
 import { defaultModerationConfig } from '@/api/qqcommunity'
-import { defaultAutonomousConfig } from '@/api/qqcommunity'
+import { defaultRuntimeChatConfig } from '@/api/qqcommunity'
 import { defaultHealthNotificationConfig, defaultSiteKnowledgeConfig, qqbotAPI, type QQBotConfig, type QQBotRuntime } from '@/api/qqcommunity'
 const { t } = useI18n()
 const tabs = [
   { key: 'connection', label: 'qqbot.connection' },
   { key: 'groups', label: 'qqbot.workspace.groups' },
-  { key: 'chat', label: 'qqbot.ai' },
+  { key: 'chat', label: 'qqbot.runtimeChat.model' },
   { key: 'group-admins', label: 'qqbot.groupAdmins.title' },
   { key: 'moderation', label: 'qqbot.moderation.title' },
-  { key: 'autonomous', label: 'qqbot.autonomous.title' },
+  { key: 'runtime-chat', label: 'qqbot.runtimeChat.title' },
   { key: 'images', label: 'qqbot.images' },
   { key: 'commands', label: 'qqbot.customCommands' },
   { key: 'knowledge', label: 'qqbot.knowledge.title' },
@@ -236,7 +231,7 @@ const groupMode = computed(() => route?.path === '/admin/qqbot/groups')
 const activeTab = ref<SettingsTab>((tabs.find(tab => tab.key === route?.query.tab)?.key) || (groupMode.value ? 'groups' : 'connection'))
 const categories = computed(() => groupMode.value ? [{ key: 'groups', label: 'qqbot.workspace.groups', tabs: ['groups', 'group-admins', 'moderation'] }] : [
   { key: 'connect', label: 'qqbot.workspace.connectCategory', tabs: ['connection', 'chat', 'images'] },
-  { key: 'behavior', label: 'qqbot.workspace.behaviorCategory', tabs: ['autonomous', 'commands', 'knowledge'] },
+  { key: 'behavior', label: 'qqbot.workspace.behaviorCategory', tabs: ['runtime-chat', 'commands', 'knowledge'] },
   { key: 'operations', label: 'qqbot.workspace.operationsCategory', tabs: ['notifications', 'limits'] }
 ])
 const activeCategory = computed(() => categories.value.find(c => c.tabs.includes(activeTab.value))?.key || categories.value[0]!.key)
@@ -268,7 +263,7 @@ const { names: groupNames, status: groupNamesStatus, loading: groupNamesLoading,
 const groupsText = ref('')
 const allowedGroups = computed(() => [...new Set(groupsText.value.split(/[\s,，]+/).filter(Boolean))])
 const groupLabels = computed(() => ({ ...groupNames.value, ...Object.fromEntries((form.value?.group_policies ?? []).filter(policy => policy.label).map(policy => [policy.group_id, policy.label])) }))
-const autonomous = ref(defaultAutonomousConfig())
+const runtimeChat = ref(defaultRuntimeChatConfig())
 const moderation = ref(defaultModerationConfig())
 const healthNotifications = ref(defaultHealthNotificationConfig())
 const healthGroupsText = ref('')
@@ -298,7 +293,7 @@ const error = ref('')
 const notice = ref('')
 type ProbeKind = 'qq' | 'chat' | 'vision' | 'tools' | 'image' | 'image_edit'
 const probeLabels: Record<ProbeKind, string> = { qq: 'qqbot.test_qq', chat: 'qqbot.test_chat', vision: 'qqbot.test_vision', tools: 'qqbot.test_tools', image: 'qqbot.test_image', image_edit: 'qqbot.test_image_edit' }
-const visibleProbeKinds = computed<ProbeKind[]>(() => activeTab.value === 'connection' ? ['qq'] : activeTab.value === 'chat' ? ['chat', 'vision', 'tools'] : activeTab.value === 'images' ? ['image', 'image_edit'] : [])
+const visibleProbeKinds = computed<ProbeKind[]>(() => activeTab.value === 'connection' ? ['qq'] : activeTab.value === 'images' ? ['image', 'image_edit'] : [])
 const limitFields = [
   { key: 'daily_chat_limit', label: 'dailyChat', max: 100000 },
   { key: 'daily_image_limit', label: 'dailyImage', max: 100000 },
@@ -307,7 +302,7 @@ const limitFields = [
   { key: 'cooldown_seconds', label: 'cooldown', max: 3600 }
 ] as const
 function draft(): QQBotConfig {
- return { ...form.value!, custom_commands: form.value!.custom_commands.map(command => ({ ...command, command: command.command && !command.command.startsWith('/') ? `/${command.command}` : command.command })), allowed_groups: allowedGroups.value, group_policies: groupPolicies.value.filter(p => allowedGroups.value.includes(p.group_id)), autonomous: autonomous.value, moderation: moderation.value, price_notifications: { ...priceNotifications.value, groups: notificationGroups.value }, health_notifications: { ...healthNotifications.value, groups: healthGroups.value } }
+ return { ...form.value!, custom_commands: form.value!.custom_commands.map(command => ({ ...command, command: command.command && !command.command.startsWith('/') ? `/${command.command}` : command.command })), allowed_groups: allowedGroups.value, group_policies: groupPolicies.value.filter(p => allowedGroups.value.includes(p.group_id)), runtime_chat: runtimeChat.value, moderation: moderation.value, price_notifications: { ...priceNotifications.value, groups: notificationGroups.value }, health_notifications: { ...healthNotifications.value, groups: healthGroups.value } }
 }
 const dirtySections = computed(() => !baseline.value || !form.value ? [] : (Object.keys(configSections) as ConfigSection[]).filter(section => JSON.stringify(pickSection(draft(), section)) !== JSON.stringify(pickSection(baseline.value!, section))))
 const dirty = computed(() => dirtySections.value.length > 0)
@@ -340,7 +335,7 @@ function apply(c: QQBotConfig, updateBaseline = true) {
     savedGroupNameSource.value = { appID: c.app_id, sandbox: c.sandbox, revision: c.section_versions?.connection || '', groups: [...c.allowed_groups] }
   }
   form.value = cloneConfig({ ...c, command_reply_format: c.command_reply_format || 'image', notification_quiet_hours: c.notification_quiet_hours ?? { enabled: false, start_hour: 23, end_hour: 8 }, chat_disabled: c.chat_disabled ?? false, group_policies: c.group_policies ?? [], reward_alert_daily: c.reward_alert_daily ?? 0, custom_commands: (c.custom_commands ?? []).map(command => ({ ...command, command: command.command.replace(/^\//, '') })), site_knowledge: { ...defaultSiteKnowledgeConfig(), ...c.site_knowledge } })
-  autonomous.value = { ...defaultAutonomousConfig(), ...c.autonomous }
+  runtimeChat.value = { ...defaultRuntimeChatConfig(), ...c.runtime_chat, enabled: true }
   moderation.value = { ...defaultModerationConfig(), ...c.moderation }
   healthNotifications.value = { ...defaultHealthNotificationConfig(), ...c.health_notifications }
   healthGroupsText.value = healthNotifications.value.groups.join('\n')
