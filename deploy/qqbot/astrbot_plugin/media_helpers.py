@@ -35,6 +35,10 @@ def image_segments(raw):
     return [s for s in raw.get("message", []) if s.get("type") in ("image", "mface")]
 
 
+def should_load_images(enabled, direct, received_images):
+    return bool(enabled and (direct or received_images))
+
+
 def is_sticker(segment):
     return segment.get("type") == "mface" or str(segment.get("data", {}).get("sub_type", "")) == "1"
 

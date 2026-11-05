@@ -32,6 +32,12 @@ class PluginMediaTests(unittest.TestCase):
         self.assertTrue(media.is_sticker({'type':'image','data':{'sub_type':1}}))
         self.assertFalse(media.is_sticker({'type':'image','data':{}}))
 
+    def test_ambient_messages_with_images_always_load_vision_input(self):
+        self.assertTrue(media.should_load_images(True, False, [{'type': 'image'}]))
+        self.assertFalse(media.should_load_images(True, False, []))
+        self.assertTrue(media.should_load_images(True, True, []))
+        self.assertFalse(media.should_load_images(False, False, [{'type': 'image'}]))
+
 
 if __name__ == '__main__':
     unittest.main()

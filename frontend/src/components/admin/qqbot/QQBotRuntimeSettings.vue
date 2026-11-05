@@ -25,7 +25,6 @@
       <summary class="cursor-pointer text-sm">{{ t('qqbot.workspace.advanced') }}</summary>
       <div class="mt-3 grid gap-4 md:grid-cols-2">
         <label class="space-y-1">{{ t('qqbot.runtimeChat.contextCapacity') }}<input v-model.number="value.context_window_tokens" class="input" type="number" min="8192" max="262144" required /></label>
-        <label class="space-y-1">{{ t('qqbot.runtimeChat.media_sample_percent') }}<input v-model.number="value.media_sample_percent" class="input" type="number" min="0" max="100" required /></label>
         <label class="space-y-1">{{ t('qqbot.runtimeChat.media_daily_calls') }}<input v-model.number="value.media_daily_calls" class="input" type="number" min="0" max="100000" required /></label>
       </div>
     </details>

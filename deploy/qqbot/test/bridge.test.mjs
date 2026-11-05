@@ -13,12 +13,13 @@ test('shared bridge context, confirmed memory, restart recovery, configuration c
   const store = new Store(join(dir, 'db'), join(dir, 'raw'));
   const c = { enabled: true, bot_id: '123', groups: ['456'], private_users: ['789'], owners: ['789'], business_commands: ['绑定', '余额'],
     model: 'test', model_base_url: 'https://example.invalid/v1', model_api_key: 'test-key', persona: 'persona1',
-    total_daily_chat_limit: 500, daily_chat_limit: 100, cooldown_seconds: 0, context_window_tokens: 8192, max_output_tokens: 128 };
+    total_daily_chat_limit: 500, daily_chat_limit: 100, cooldown_seconds: 0, context_window_tokens: 8192, max_output_tokens: 128,
+    ambient_daily_calls: 500, ambient_daily_replies: 100, ambient_hourly_replies: 100, ambient_media_daily_calls: 100 };
   const config = { snapshot: () => c, policy: () => ({ ...c, model_api_key: undefined }) };
-  const calls = [], resumed = []; let n = 0, started = 0;
+  const calls = [], modelBlocks = [], resumed = []; let n = 0, started = 0;
   const makeHarness = async () => ({ start: async () => { started++; }, close: async () => {},
-    session: () => ({ id: 'session-' + ++n, run: async blocks => { calls.push(JSON.parse(blocks[0].text)); return { finalResponse: '回答' + n }; } }),
-    resumeSession: async id => { resumed.push(id); return { id, run: async blocks => { calls.push(JSON.parse(blocks[0].text)); return { finalResponse: '恢复回答' }; } }; } });
+    session: () => ({ id: 'session-' + ++n, run: async blocks => { calls.push(JSON.parse(blocks[0].text)); modelBlocks.push(blocks); return { finalResponse: '回答' + n }; } }),
+    resumeSession: async id => { resumed.push(id); return { id, run: async blocks => { calls.push(JSON.parse(blocks[0].text)); modelBlocks.push(blocks); return { finalResponse: '恢复回答' }; } }; } });
   let bridge;
   const start = async () => { bridge = createBridge({ config, token: 'bridge-test', store, root: dir, makeHarness }); bridge.server.listen(0, '127.0.0.1'); await once(bridge.server, 'listening'); };
   await start();
@@ -48,6 +49,15 @@ test('shared bridge context, confirmed memory, restart recovery, configuration c
   assert.equal(started, 3);
   assert.notEqual(third.body.session, first.body.session);
   assert.ok(JSON.stringify(calls[2]).includes('我约好周五爬山'), 'public memory survives persona change');
+  const image = { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg==' };
+  const vision = await post('/turn', { ...input, message_id: 'vision', text: '刚躺着弹出个窗口，[图片]', ambient: true, image_count: 1, image_loaded_count: 1, images: [image] });
+  assert.equal(vision.status, 200);
+  assert.deepEqual(calls.at(-1).attachments, { received: 1, loaded: 1, forwarded: 1, note: '图片已作为原生图像内容随本条消息附上，直接观察图像，不需要读图工具，不要因为没有读图工具就否认可见的图片。', tools: {} });
+  assert.equal(modelBlocks.at(-1).filter(block => block.type === 'image').length, 1, 'the image is sent in the same DSH turn as the caption');
+  const missing = await post('/turn', { ...input, message_id: 'vision-missing', text: '这图是什么？', ambient: true, image_count: 1, image_loaded_count: 0, images: [] });
+  assert.equal(missing.status, 200);
+  assert.match(calls.at(-1).attachments.note, /图片内容没有成功传递给模型/u);
+  assert.equal(modelBlocks.at(-1).filter(block => block.type === 'image').length, 0);
   assert.equal((await post('/turn', { ...input, chat: '999', message_id: '6' })).status, 400);
   c.enabled = false;
   assert.equal((await post('/turn', { ...input, message_id: '7' })).status, 400);

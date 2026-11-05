@@ -142,7 +142,7 @@ func runtimePolicy(c Config) map[string]any {
 		"names": r.Names, "ambient_enabled": r.AmbientEnabled, "ambient_groups": r.AmbientGroups,
 		"ambient_sample_percent": r.SamplePercent, "active_start_hour": r.StartHour, "active_end_hour": r.EndHour,
 		"ambient_daily_calls": r.DailyCalls, "ambient_hourly_replies": r.HourlyReplies, "ambient_daily_replies": r.DailyReplies,
-		"image_input_enabled": r.ImageInputEnabled, "ambient_media_sample_percent": r.MediaSamplePercent, "ambient_media_daily_calls": r.MediaDailyCalls,
+		"image_input_enabled": r.ImageInputEnabled, "ambient_media_daily_calls": r.MediaDailyCalls,
 		"web_enabled": r.WebEnabled, "memes_enabled": r.MemesEnabled, "collect_memes": r.CollectMemes, "image_generation_enabled": c.ImageEnabled,
 		"proactive_enabled": false, "welcome_enabled": r.WelcomeEnabled,
 	}

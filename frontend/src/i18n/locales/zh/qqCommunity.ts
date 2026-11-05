@@ -10,7 +10,7 @@ export default { qqbot: {
     images: '允许理解聊天图片', contextCapacity: '模型上下文容量（tokens）',
     web: '允许主动联网查询公开信息', memes: '允许搜索和发送表情包', collectMemes: '允许收藏表情包，并自动收集 QQ 标记的表情图片',
     toolsHelp: '自然语言画图沿用站点生图开关和额度。联网回答引用来源；收藏按群与私聊隔离，普通图片只在用户要求收藏时保存为表情包。',
-    media_sample_percent: '普通图片理解比例（%）', media_daily_calls: '每群每日图片理解调用上限',
+    media_daily_calls: '每群每日图片理解调用上限',
     welcomeTitle: '新人入群欢迎', welcomeEnabled: '已开放群有新成员加入时自动欢迎', welcomeText: '欢迎语',
     welcomeHelp: '支持占位符：昵称、QQ 和群号分别使用花括号中的 name、qq、group。自动提及新成员，不调用模型；重复或过期入群事件不补发。关闭群通知的群不发送欢迎。'
   },

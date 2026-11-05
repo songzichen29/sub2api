@@ -11,7 +11,7 @@ import aiohttp
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from .media_helpers import image_url, image_mime, image_segments, is_sticker, requests_tool, message_packets, receipt_id
+from .media_helpers import image_url, image_mime, image_segments, is_sticker, requests_tool, message_packets, receipt_id, should_load_images
 
 
 @register("sub2api_dsh_bridge", "songzichen29", "QQ DSH 会话桥", "0.1.0")
@@ -138,6 +138,7 @@ class DSHBridge(Star):
         if not is_group and sender not in self.cfg["private_users"]:
             return
         text = "".join(str(s.get("data", {}).get("text", "")) for s in raw.get("message", []) if s.get("type") == "text").strip()
+        received_images = image_segments(raw)
         mentioned = any(s.get("type") == "at" and str(s.get("data", {}).get("qq")) == self.cfg["bot_id"] for s in raw.get("message", []))
         quote = await self.quoted(raw, event)
         direct = not is_group or mentioned or requests_tool(text) or (quote and str(quote.get("user_id")) == self.cfg["bot_id"]) or text.startswith(("/聊天", "/分身", "/清空")) or text in ("清空", "清空对话") or any(name in text for name in self.cfg.get("names", ["小碗"]))
@@ -168,20 +169,22 @@ class DSHBridge(Star):
             return
         async with lock:
             try:
-                load_images = self.cfg.get("image_input_enabled", False) and (direct or random.random() * 100 < self.cfg.get("ambient_media_sample_percent", 10))
-                images, count = (loaded, len(image_segments(raw))) if loaded is not None else ([], len(image_segments(raw)))
+                load_images = should_load_images(self.cfg.get("image_input_enabled", False), direct, received_images)
+                images, count = (loaded, len(received_images)) if loaded is not None else ([], len(received_images))
                 if load_images and loaded is None:
                     images, count = await self.images(raw, event)
                 if load_images and not images and quote and image_segments(quote):
                     images, count = await self.images(quote, event)
                 if not text and not load_images:
                     return
+                forwarded_images = images if load_images else []
                 payload = {
                     "bot": self.cfg["bot_id"], "sender": sender, "chat": chat, "group": is_group,
                     "message_id": str(raw.get("message_id", event.message_obj.message_id)),
                     "name": event.get_sender_name(), "text": text,
                     "role": str(raw.get("sender", {}).get("role", "")),
-                    "ambient": not direct, "images": images if load_images else [], "image_count": count,
+                    "ambient": not direct, "images": forwarded_images, "image_count": max(len(received_images), count),
+                    "image_loaded_count": len(images),
                     "image_note": ("GIF只能依据所提供画面判断，不得声称理解完整动画。" if any(i["mimeType"] == "image/gif" for i in images) else "") + ("引用内容暂无法读取。" if quote is None and any(s.get("type") == "reply" for s in raw.get("message", [])) else ""),
                 }
                 result = await self.call("/turn", payload)

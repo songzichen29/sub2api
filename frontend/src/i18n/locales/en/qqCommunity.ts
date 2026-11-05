@@ -10,7 +10,7 @@ export default { qqbot: {
     images: 'Understand chat images', contextCapacity: 'Model context capacity (tokens)',
     web: 'Allow public web searches', memes: 'Allow searching and sending memes', collectMemes: 'Allow collecting memes and automatically save QQ sticker images',
     toolsHelp: 'Natural language image requests use the site image settings and quotas. Web answers cite sources. Collections are isolated by group and private chat; ordinary images become memes only when requested.',
-    media_sample_percent: 'Ambient image sample (%)', media_daily_calls: 'Group image calls per day',
+    media_daily_calls: 'Group image calls per day',
     welcomeTitle: 'New member welcome', welcomeEnabled: 'Welcome new members in enabled groups', welcomeText: 'Welcome message',
     welcomeHelp: 'Use name, qq and group inside braces as placeholders. New members are mentioned automatically. No model call; duplicate or stale join events are not replayed. Disabled group notifications also disable welcome messages.'
   },

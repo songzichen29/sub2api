@@ -19,6 +19,7 @@ func TestRuntimeConfigurationAuthenticationAndRetirement(t *testing.T) {
 	c.AppSecret, c.APIKey = "onebot-test-token", "model-test-secret"
 	c.RuntimeChat = DefaultRuntimeChatConfig()
 	c.RuntimeChat.Enabled = true
+	require.NotContains(t, runtimePolicy(c), "ambient_media_sample_percent", "the DSH image path always forwards images after ambient reply selection")
 	raw, err := json.Marshal(c.Public())
 	require.NoError(t, err)
 	for _, key := range []string{"\"autonomous\"", "\"history_messages\"", "\"meme_enabled\"", c.APIKey, c.AppSecret} {

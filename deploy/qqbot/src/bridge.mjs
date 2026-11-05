@@ -68,6 +68,8 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     const callerScope = scopeKey(input), scope = conversationScope(input);
       if (c.enabled === false || c.chat_disabled || input.bot !== c.bot_id || (input.group ? !c.groups.includes(input.chat) : input.chat !== input.sender || !c.private_users.includes(input.sender))) throw new Error('scope_denied');
     const images=validateImages(input.images || []);
+    const receivedImages=Number.isSafeInteger(input.image_count) && input.image_count >= 0 ? input.image_count : images.length;
+    const loadedImages=Number.isSafeInteger(input.image_loaded_count) && input.image_loaded_count >= 0 ? input.image_loaded_count : images.length;
     const imageCutoff=Date.now();
     const text = boundedText(input.text || (images.length ? '用户发来图片，请根据实际附件理解内容并自然回应。' : input.image_count || input.image_note ? '用户发来图片或引用内容，但附件读取失败。请说明无法读取图片，不要编造看到的内容。' : '有人 @ 了你，请简短回应。'));
     const id = opaqueKey(callerScope + ':' + input.message_id), prior = store.turn(id);
@@ -124,11 +126,16 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
         mode: input.ambient ? '自主接话。结合群里多人的上下文；不适合参与就只输出[跳过]。' : '结合上下文回复 verified_sender 的当前提问',
         text: text.replace(/^\/?(?:聊天|分身)\s*/u, '')
       };
-      context.attachments={received:input.image_count || images.length,loaded:images.length,note:(images.length?'图片已作为原生图像内容随本条消息附上，直接观察图像，不需要读图工具，不要因为没有读图工具就否认可见的图片。':'')+(input.image_note || ''),tools:{web:c.web_enabled,memes:c.memes_enabled,image_generation:c.image_generation_enabled}};
+      const imageNote=(images.length?'图片已作为原生图像内容随本条消息附上，直接观察图像，不需要读图工具，不要因为没有读图工具就否认可见的图片。':'')+
+        (receivedImages>images.length?'QQ 收到图片，但图片内容没有成功传递给模型。本条图片不可见；请明确说明无法读取图片内容，不要根据配文猜测图中细节。':'')+(input.image_note || '');
+      context.attachments={received:receivedImages,loaded:loadedImages,forwarded:images.length,note:imageNote,tools:{web:c.web_enabled,memes:c.memes_enabled,image_generation:c.image_generation_enabled}};
       if (bytes(context) > budget) throw new Error('message_exceeds_model_capacity');
       const blocks = [{ type: 'text', text: JSON.stringify(context) }, { type: 'text', text: '当前用户的问题：' + context.text }];
       for (const image of images) {
         blocks.push({ type: 'image', mimeType: image.mimeType, data: image.data });
+      }
+      if (receivedImages || loadedImages || images.length) {
+        console.info(JSON.stringify({event:'image_input',mode:input.ambient?'ambient':'direct',received:receivedImages,loaded:loadedImages,forwarded:images.length}));
       }
       toolContext={input,id,scope,imageCutoff,session:session.id,calls:new Map()};
       let answer = await runSession(session, blocks);
