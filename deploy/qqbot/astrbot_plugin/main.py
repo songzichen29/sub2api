@@ -5,13 +5,13 @@ import random
 import time
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 import aiohttp
 from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
+from .media_helpers import image_url, image_mime, image_segments, is_sticker, requests_tool, message_packets, receipt_id
 
 
 @register("sub2api_dsh_bridge", "songzichen29", "QQ DSH 会话桥", "0.1.0")
@@ -28,7 +28,7 @@ class DSHBridge(Star):
         self.proactive_task = None
 
     async def initialize(self):
-        self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=170))
+        self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=235))
         if self.cfg.get("proactive_enabled", False):
             self.proactive_task = asyncio.create_task(self.proactive())
 
@@ -41,7 +41,7 @@ class DSHBridge(Star):
 
     async def call(self, path, body):
         if self.http is None:
-            self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=170))
+            self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=235))
         async with self.http.post(
             "http://bridge:8787" + path, json=body,
             headers={"x-bridge-token": self.token},
@@ -51,34 +51,59 @@ class DSHBridge(Star):
                 raise RuntimeError(value.get("error", "bridge_rejected"))
             return value
 
-    async def images(self, raw):
+    async def images(self, raw, event):
         output = []
-        for segment in raw.get("message", []):
-            if segment.get("type") != "image" or len(output) >= 2:
-                continue
-            url = segment.get("data", {}).get("url", "")
-            parsed = urlparse(url)
-            host = parsed.hostname or ""
-            if parsed.scheme != "https" or not any(host == d or host.endswith("." + d) for d in ("qpic.cn", "qq.com", "qlogo.cn")):
-                continue
+        segments = image_segments(raw)
+        for segment in segments[:2]:
+            info = segment.get("data", {})
+            url = image_url(info.get("url") or info.get("file", ""))
             try:
+                if not url and info.get("file"):
+                    details = await event.bot.api.call_action("get_image", file=info["file"])
+                    url = image_url(details.get("url", ""))
+                if not url:
+                    continue
                 async with self.http.get(url, allow_redirects=False, timeout=aiohttp.ClientTimeout(total=15)) as response:
-                    mime = response.headers.get("Content-Type", "").split(";")[0]
-                    if response.status != 200 or mime not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
+                    if response.status != 200:
                         continue
                     data = bytearray()
                     async for chunk in response.content.iter_chunked(65536):
                         data.extend(chunk)
                         if len(data) > 6 * 1024 * 1024:
                             raise ValueError("image_too_large")
-                    output.append({"mimeType": mime, "data": base64.b64encode(data).decode("ascii")})
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                    mime = image_mime(data)
+                    if mime:
+                        output.append({"mimeType": mime, "data": base64.b64encode(data).decode("ascii"), "is_meme": is_sticker(segment), "label": str(info.get("summary", ""))[:60]})
+            except Exception:
                 logger.warning("QQ DSH image attachment could not be loaded")
-        return output
+        return output, len(segments)
+
+    async def quoted(self, raw, event):
+        for segment in raw.get("message", []):
+            if segment.get("type") != "reply":
+                continue
+            try:
+                quoted = await event.bot.api.call_action("get_msg", message_id=segment["data"]["id"])
+                # A quote cannot make us load another group or a private chat.
+                if raw.get("message_type") == "group" and str(quoted.get("group_id")) == str(raw.get("group_id")):
+                    return quoted
+            except Exception:
+                logger.warning("QQ DSH quoted message could not be loaded")
+        return None
+
+    async def deliver(self, event, result, chat, is_group):
+        receipts = []
+        for packet in message_packets(result):
+            target = {"group_id": int(chat)} if is_group else {"user_id": int(chat)}
+            response = await event.bot.api.call_action("send_group_msg" if is_group else "send_private_msg", message=packet, **target)
+            receipts.append(receipt_id(response))
+        if not receipts:
+            raise RuntimeError("QQ_delivery_unconfirmed")
+        return receipts
 
     async def policy(self):
         if self.http is None:
-            self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=170))
+            self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=235))
         async with self.http.get("http://bridge:8787/policy", headers={"x-bridge-token": self.token}, timeout=aiohttp.ClientTimeout(total=8)) as response:
             if response.status != 200:
                 raise RuntimeError("configuration_not_synchronized")
@@ -112,9 +137,18 @@ class DSHBridge(Star):
             return
         if not is_group and sender not in self.cfg["private_users"]:
             return
-        text = event.message_str.strip()
+        text = "".join(str(s.get("data", {}).get("text", "")) for s in raw.get("message", []) if s.get("type") == "text").strip()
         mentioned = any(s.get("type") == "at" and str(s.get("data", {}).get("qq")) == self.cfg["bot_id"] for s in raw.get("message", []))
-        direct = not is_group or mentioned or text.startswith(("/聊天", "/分身", "/清空")) or text in ("清空", "清空对话") or any(name in text for name in self.cfg.get("names", ["小碗"]))
+        quote = await self.quoted(raw, event)
+        direct = not is_group or mentioned or requests_tool(text) or (quote and str(quote.get("user_id")) == self.cfg["bot_id"]) or text.startswith(("/聊天", "/分身", "/清空")) or text in ("清空", "清空对话") or any(name in text for name in self.cfg.get("names", ["小碗"]))
+        loaded = None
+        if self.cfg.get("collect_memes", False) and any(is_sticker(s) for s in image_segments(raw)):
+            loaded, _ = await self.images(raw, event)
+            if loaded:
+                try:
+                    await self.call("/attachments", {"bot": self.cfg["bot_id"], "sender": sender, "chat": chat, "group": is_group, "message_id": str(raw.get("message_id")), "images": loaded})
+                except Exception:
+                    logger.warning("QQ DSH sticker collection unavailable")
         now = time.time()
         self.last_seen[chat] = now
         self.origins[chat] = (event.unified_msg_origin, sender, is_group)
@@ -135,12 +169,20 @@ class DSHBridge(Star):
         async with lock:
             try:
                 load_images = self.cfg.get("image_input_enabled", False) and (direct or random.random() * 100 < self.cfg.get("ambient_media_sample_percent", 10))
+                images, count = (loaded, len(image_segments(raw))) if loaded is not None else ([], len(image_segments(raw)))
+                if load_images and loaded is None:
+                    images, count = await self.images(raw, event)
+                if load_images and not images and quote and image_segments(quote):
+                    images, count = await self.images(quote, event)
+                if not text and not load_images:
+                    return
                 payload = {
                     "bot": self.cfg["bot_id"], "sender": sender, "chat": chat, "group": is_group,
                     "message_id": str(raw.get("message_id", event.message_obj.message_id)),
                     "name": event.get_sender_name(), "text": text,
                     "role": str(raw.get("sender", {}).get("role", "")),
-                    "ambient": not direct, "images": await self.images(raw) if load_images else [],
+                    "ambient": not direct, "images": images if load_images else [], "image_count": count,
+                    "image_note": ("GIF只能依据所提供画面判断，不得声称理解完整动画。" if any(i["mimeType"] == "image/gif" for i in images) else "") + ("引用内容暂无法读取。" if quote is None and any(s.get("type") == "reply" for s in raw.get("message", [])) else ""),
                 }
                 result = await self.call("/turn", payload)
                 answer = result.get("text", "").strip()
@@ -152,12 +194,11 @@ class DSHBridge(Star):
                 status = "unconfirmed"
                 try:
                     # Full output is split; an ambiguous send is never replayed.
-                    for offset in range(0, len(answer), 1200):
-                        await event.send(MessageChain().message(answer[offset:offset + 1200]))
+                    receipts = await self.deliver(event, result, chat, is_group)
                     status = "sent"
                     self.last_reply[chat] = time.time()
                 finally:
-                    await self.call("/delivery/finish", {"id": result["id"], "status": status})
+                    await self.call("/delivery/finish", {"id": result["id"], "status": status, "message_ids": receipts if status == "sent" else []})
             except Exception as error:
                 logger.warning("QQ DSH bridge turn failed: %s", type(error).__name__)
                 if direct:

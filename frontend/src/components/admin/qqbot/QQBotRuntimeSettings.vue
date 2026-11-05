@@ -11,6 +11,10 @@
       <label v-for="field in fields" :key="field.key" class="space-y-1">{{ t('qqbot.runtimeChat.' + field.key) }}<input v-model.number="value[field.key]" class="input" type="number" :min="field.min" :max="field.max" step="1" required :data-testid="'runtime-' + field.key" /></label>
     </div>
     <label class="flex items-center gap-2"><input v-model="value.image_input_enabled" type="checkbox" />{{ t('qqbot.runtimeChat.images') }}</label>
+    <label class="flex items-center gap-2"><input v-model="value.web_enabled" type="checkbox" data-testid="runtime-web-enabled" />{{ t('qqbot.runtimeChat.web') }}</label>
+    <label class="flex items-center gap-2"><input v-model="value.memes_enabled" type="checkbox" data-testid="runtime-memes-enabled" />{{ t('qqbot.runtimeChat.memes') }}</label>
+    <label class="flex items-center gap-2"><input v-model="value.collect_memes" type="checkbox" :disabled="!value.memes_enabled" />{{ t('qqbot.runtimeChat.collectMemes') }}</label>
+    <p class="text-xs text-gray-500">{{ t('qqbot.runtimeChat.toolsHelp') }}</p>
     <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
       <legend>{{ t('qqbot.runtimeChat.welcomeTitle') }}</legend>
       <label class="flex items-center gap-2"><input v-model="value.welcome_enabled" type="checkbox" data-testid="welcome-enabled" />{{ t('qqbot.runtimeChat.welcomeEnabled') }}</label>

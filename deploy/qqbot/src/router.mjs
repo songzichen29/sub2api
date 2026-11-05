@@ -29,7 +29,7 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
   }
   function connect(name, url, token, owner) {
     if (closing || gateway !== owner || owner.readyState !== WebSocket.OPEN) return;
-    const peer = new WebSocket(url, { headers: { Authorization: 'Bearer ' + token, 'X-Self-ID': config.bot_id, 'X-Client-Role': 'Universal' }, handshakeTimeout: 15000, maxPayload: 2 * 1024 * 1024 });
+    const peer = new WebSocket(url, { headers: { Authorization: 'Bearer ' + token, 'X-Self-ID': config.bot_id, 'X-Client-Role': 'Universal' }, handshakeTimeout: 15000, maxPayload: 12 * 1024 * 1024 });
     peers.set(name, peer);
     peer.on('open', () => {
       if (gateway !== owner || closing) return peer.close();

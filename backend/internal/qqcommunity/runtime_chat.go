@@ -26,6 +26,9 @@ type RuntimeChatConfig struct {
 	HourlyReplies       int      `json:"hourly_replies"`
 	DailyReplies        int      `json:"daily_replies"`
 	ImageInputEnabled   bool     `json:"image_input_enabled"`
+	WebEnabled          bool     `json:"web_enabled"`
+	MemesEnabled        bool     `json:"memes_enabled"`
+	CollectMemes        bool     `json:"collect_memes"`
 	MediaSamplePercent  int      `json:"media_sample_percent"`
 	MediaDailyCalls     int      `json:"media_daily_calls"`
 	ContextWindowTokens int      `json:"context_window_tokens"`
@@ -36,7 +39,8 @@ type RuntimeChatConfig struct {
 func DefaultRuntimeChatConfig() RuntimeChatConfig {
 	return RuntimeChatConfig{Names: []string{"小碗", "大碗"}, AmbientGroups: []string{}, SamplePercent: 100,
 		StartHour: 8, EndHour: 2, DailyCalls: 1800, HourlyReplies: 100, DailyReplies: 1000,
-		ImageInputEnabled: true, MediaSamplePercent: 10, MediaDailyCalls: 100, ContextWindowTokens: 65536,
+		ImageInputEnabled: true, WebEnabled: true, MemesEnabled: true, CollectMemes: true,
+		MediaSamplePercent: 10, MediaDailyCalls: 100, ContextWindowTokens: 65536,
 		WelcomeEnabled: true, WelcomeMessage: "欢迎 {name} 加入本群！我是小碗，可以陪大家聊天，也能查询余额和今日用量。发送“帮助”查看功能，账户查询需要先绑定。"}
 }
 
@@ -139,6 +143,7 @@ func runtimePolicy(c Config) map[string]any {
 		"ambient_sample_percent": r.SamplePercent, "active_start_hour": r.StartHour, "active_end_hour": r.EndHour,
 		"ambient_daily_calls": r.DailyCalls, "ambient_hourly_replies": r.HourlyReplies, "ambient_daily_replies": r.DailyReplies,
 		"image_input_enabled": r.ImageInputEnabled, "ambient_media_sample_percent": r.MediaSamplePercent, "ambient_media_daily_calls": r.MediaDailyCalls,
+		"web_enabled": r.WebEnabled, "memes_enabled": r.MemesEnabled, "collect_memes": r.CollectMemes, "image_generation_enabled": c.ImageEnabled,
 		"proactive_enabled": false, "welcome_enabled": r.WelcomeEnabled,
 	}
 }
@@ -178,7 +183,7 @@ func (s *Service) ServeRuntime(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	provided := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
-	if !strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") || c.AppSecret == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(c.AppSecret)) != 1 || req.Header.Get("X-Self-ID") != c.AppID {
+	if !runtimeAuthorized(c, req, provided) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -206,4 +211,9 @@ func (s *Service) ServeRuntime(w http.ResponseWriter, req *http.Request) {
 	s.chatRuntimeStatus = report
 	s.chatRuntimeMu.Unlock()
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func runtimeAuthorized(c Config, req *http.Request, provided string) bool {
+	return strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") && c.AppSecret != "" &&
+		subtle.ConstantTimeCompare([]byte(provided), []byte(c.AppSecret)) == 1 && req.Header.Get("X-Self-ID") == c.AppID
 }

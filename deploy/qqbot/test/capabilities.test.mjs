@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync,rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Store } from '../src/store.mjs';
+import { validateImages,executeCapability } from '../src/capabilities.mjs';
+
+const png={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg=='};
+test('media tool effects bind to the verified sender, persist assets, isolate collections and honor toggles',async t=>{
+ const root=mkdtempSync(join(tmpdir(),'qq-tools-')),store=new Store(join(root,'db'),join(root,'raw'));
+ t.after(()=>{store.db.close();rmSync(root,{recursive:true,force:true});});
+ const c={enabled:true,bot_id:'123',groups:['456','457'],web_enabled:true,memes_enabled:true,collect_memes:true,image_generation_enabled:true};
+ const input={bot:'123',sender:'789',chat:'456',message_id:'42',group:true,text:'帮我画一张疯狂水世界启动的图片'};
+ const context={input,id:'turn',scope:'123:group:456'},calls=[];
+ const deps={config:{snapshot:()=>c},store,siteTool:async body=>{calls.push(body);return body.tool==='search_meme'?{...png,description:'开心'}:{status:'queued'};}};
+ assert.equal(validateImages([png]).length,1);assert.throws(()=>validateImages([{...png,mimeType:'image/gif'}]));
+ assert.equal((await executeCapability({name:'generate_image',args:{prompt:'疯狂水世界启动',group_id:'999'}},context,deps)).status,'queued');
+ assert.equal(calls[0].group_id,'456');assert.equal(calls[0].member_id,'789');assert.equal(calls[0].message_id,'42');
+ await assert.rejects(executeCapability({name:'generate_image',args:{prompt:'第二次'}},context,deps),/不重复/);
+ store.cacheImages(context.scope,'42',[png]);
+ await executeCapability({name:'collect_meme',args:{image_index:1,tags:'猫猫 开心'}},context,deps);
+ assert.ok(store.findMeme(context.scope,'开心'));assert.equal(store.findMeme('123:group:457','开心'),undefined);assert.equal(store.findMeme('123:private:789','开心'),undefined);
+ await executeCapability({name:'send_meme',args:{keyword:'开心'}},context,deps);
+ assert.equal(calls.length,1,'local collection avoids an external search');assert.equal(store.media('turn')[0].data,png.data);
+ await executeCapability({name:'send_meme',args:{keyword:'困'}},context,deps);assert.equal(calls.at(-1).tool,'search_meme');
+ c.web_enabled=false;await assert.rejects(executeCapability({name:'web_search',args:{query:'天气'}},context,deps),/关闭/);
+ c.memes_enabled=false;await assert.rejects(executeCapability({name:'send_meme',args:{keyword:'开心'}},context,deps),/关闭/);
+ c.enabled=false;await assert.rejects(executeCapability({name:'collect_meme',args:{image_index:1,tags:'开心'}},context,deps),/停用/);
+});

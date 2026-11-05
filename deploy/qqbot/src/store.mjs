@@ -25,6 +25,11 @@ export class Store {
       CREATE TABLE IF NOT EXISTS turn_context(id TEXT PRIMARY KEY,scope TEXT NOT NULL,event_id TEXT NOT NULL,sender TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS migrations(name TEXT PRIMARY KEY);
       CREATE TABLE IF NOT EXISTS runtime_settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
+	this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cached_images(scope TEXT NOT NULL,event_id TEXT NOT NULL,ordinal INTEGER NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,event_id,ordinal));
+      CREATE TABLE IF NOT EXISTS memes(scope TEXT NOT NULL,hash TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,tags TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,hash));
+      CREATE TABLE IF NOT EXISTS outgoing_media(id TEXT NOT NULL,ordinal INTEGER NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,label TEXT NOT NULL,PRIMARY KEY(id,ordinal));`);
+    this.db.exec('CREATE TABLE IF NOT EXISTS delivery_receipts(id TEXT NOT NULL,message_id TEXT NOT NULL,PRIMARY KEY(id,message_id));');
     this.db.exec("UPDATE turns SET status='interrupted' WHERE status='running'");
     // A crash between generation and the QQ receipt must not restore an
     // assistant answer whose delivery is unknown into a model session.
@@ -37,6 +42,29 @@ export class Store {
   turn(id) { return this.db.prepare('SELECT * FROM turns WHERE id=?').get(id); }
   begin(id, scope, deliveryLimits = []) { this.db.prepare("INSERT INTO turns VALUES(?,?,'running',NULL,?,?)").run(id, scope, Date.now(), JSON.stringify(deliveryLimits)); }
   finish(id, status, reply = '') { this.db.prepare('UPDATE turns SET status=?,reply=? WHERE id=?').run(status, reply, id); }
+  cacheImages(scope, event, images) {
+    for (const [i, image] of images.entries()) this.db.prepare('INSERT OR IGNORE INTO cached_images VALUES(?,?,?,?,?,?)').run(scope,event,i,image.mimeType,Buffer.from(image.data,'base64'),Date.now());
+  }
+  cachedImages(scope, event, before=Date.now()) {
+    const rows = event ? this.db.prepare('SELECT * FROM cached_images WHERE scope=? AND event_id=? ORDER BY ordinal').all(scope,event)
+      : this.db.prepare('SELECT * FROM cached_images WHERE scope=? AND event_id=(SELECT event_id FROM cached_images WHERE scope=? AND at<=? ORDER BY at DESC LIMIT 1) ORDER BY ordinal').all(scope,scope,before);
+    return rows.map(r => ({ mimeType:r.mime, data:Buffer.from(r.data).toString('base64') }));
+  }
+  collectMeme(scope, image, tags) {
+    const data=Buffer.from(image.data,'base64'), hash=opaqueKey(data);
+    this.db.prepare('INSERT INTO memes VALUES(?,?,?,?,?,?) ON CONFLICT(scope,hash) DO UPDATE SET tags=excluded.tags').run(scope,hash,image.mimeType,data,tags,Date.now());
+    return hash;
+  }
+  findMeme(scope, keyword='') {
+    let rows=this.db.prepare('SELECT * FROM memes WHERE scope=? AND tags LIKE ? ORDER BY RANDOM() LIMIT 1').all(scope,'%'+keyword.replaceAll('%','').replaceAll('_','')+'%');
+    if (!rows.length && /^(?:随机|随便|表情包?)?$/u.test(keyword)) rows=this.db.prepare('SELECT * FROM memes WHERE scope=? ORDER BY RANDOM() LIMIT 1').all(scope);
+    return rows[0] ? { mimeType:rows[0].mime,data:Buffer.from(rows[0].data).toString('base64'),description:rows[0].tags } : undefined;
+  }
+  addMedia(id, image) {
+    const ordinal=this.db.prepare('SELECT COUNT(*) AS n FROM outgoing_media WHERE id=?').get(id).n;
+    this.db.prepare('INSERT INTO outgoing_media VALUES(?,?,?,?,?)').run(id,ordinal,image.mimeType,Buffer.from(image.data,'base64'),image.description || '表情包');
+  }
+  media(id) { return this.db.prepare('SELECT * FROM outgoing_media WHERE id=? ORDER BY ordinal').all(id).map(r => ({mimeType:r.mime,data:Buffer.from(r.data).toString('base64'),description:r.label})); }
   session(scope) { return this.db.prepare('SELECT id FROM sessions WHERE scope=?').get(scope)?.id; }
   setSession(scope, id) { this.db.prepare('INSERT INTO sessions VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET id=excluded.id').run(scope, id); }
   clear(scope) {
@@ -82,7 +110,7 @@ export class Store {
   commitReply(id, bot) {
     if (this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status !== 'sent') return;
     const context = this.db.prepare('SELECT * FROM turn_context WHERE id=?').get(id), turn = this.turn(id);
-    if (context && turn?.reply && turn.reply !== '[跳过]') this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply });
+    if (context && turn?.reply && turn.reply !== '[跳过]') this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply + (this.media(id).length ? '\n[已发送表情包图片]' : '') });
   }
   stats() {
     const count = table => this.db.prepare('SELECT COUNT(*) AS n FROM ' + table).get().n;
@@ -120,5 +148,9 @@ export class Store {
     const prior = this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status;
     if (!prior || (prior !== 'sending' && prior !== status)) throw new Error('invalid_delivery_transition');
     this.db.prepare('UPDATE delivery SET status=?,updated=? WHERE id=?').run(status, Date.now(), id);
+  }
+  recordReceipts(id, ids=[]) {
+    if(!Array.isArray(ids) || ids.length>20 || ids.some(value=>typeof value!=='string' || !/^-?\d{1,24}$/u.test(value))) throw new Error('invalid_receipts');
+    for(const value of ids) this.db.prepare('INSERT OR IGNORE INTO delivery_receipts VALUES(?,?)').run(id,value);
   }
 }
