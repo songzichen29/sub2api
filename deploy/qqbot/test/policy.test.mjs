@@ -22,7 +22,7 @@ test('malformed gateway messages are rejected without crashing the router', () =
   for (const value of [null, [], 'hello', { ...event('你好'), message: '你好' }, { ...event('你好'), message: [null] }]) assert.equal(routeEvent(value, c), 'drop');
 });
 test('complete personal queries reach the site; keyword discussions stay in chat', () => {
-  for (const text of ['查下我的余额', '我让你查下我的余额', '帮我查一下余额', '我今天用了多少用量', '我还有多少次抽奖']) assert.equal(routeEvent(event(text), c), 'business');
+  for (const text of ['查下我的余额', '我让你查下我的余额', '帮我查一下余额', '查看我的用量', '我的用量', '我今天用了多少用量', '我还有多少次抽奖', '我还有几次抽奖']) assert.equal(routeEvent(event(text), c), 'business');
   for (const text of ['余额是什么', '余额不足该怎么办', '帮我看一下他的余额', '我没让你查下我的余额', '不要查询我的余额', '“查下我的余额”是什么意思', '查下我的余额再转账', '帮我修改余额', '今天的用量怎么统计']) assert.equal(routeEvent(event(text), c), 'chat', text);
   assert.equal(routeEvent({...event('查下我的余额'), message:[{type:'at',data:{qq:'999'}},...event('查下我的余额').message]},c),'drop');
 });
