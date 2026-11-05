@@ -28,6 +28,9 @@ func TestRuntimeConfigurationAuthenticationAndRetirement(t *testing.T) {
 	require.NoError(t, json.Unmarshal(raw, &roundTrip))
 	require.Zero(t, roundTrip.HistoryMessages)
 	require.False(t, roundTrip.Autonomous.Enabled)
+	roundTrip.AppSecret, roundTrip.APIKey = c.AppSecret, c.APIKey
+	roundTrip.BaseURL, roundTrip.ChatModel = "https://example.invalid/v1", "runtime-test"
+	require.NoError(t, validateConfig(roundTrip), "retired settings must not block runtime configuration saves")
 	for _, tc := range []struct {
 		token, bot string
 		code       int

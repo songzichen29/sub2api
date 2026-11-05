@@ -40,6 +40,9 @@ func DefaultAutonomousConfig() AutonomousConfig {
 	return AutonomousConfig{Groups: []string{}, Names: []string{"CTAV"}, Topics: []string{}, SamplePercent: 15, CooldownSeconds: 120, MinMessages: 6, MemberCooldownSeconds: 600, HourlyReplies: 3, DailyReplies: 20, DailyCalls: 40, StartHour: 9, EndHour: 23, FollowupSeconds: 60, MaxChars: 100, MediaSamplePercent: 10, MediaDailyCalls: 100}
 }
 func validateAutonomous(c Config) error {
+	if c.RuntimeChat.Enabled {
+		return nil
+	}
 	a := c.Autonomous
 	if a.MediaSamplePercent < 0 || a.MediaSamplePercent > 100 || a.MediaDailyCalls < 0 || a.MediaDailyCalls > 2000 {
 		return errors.New("图片表情接话抽样率或每日识别上限超出范围")
