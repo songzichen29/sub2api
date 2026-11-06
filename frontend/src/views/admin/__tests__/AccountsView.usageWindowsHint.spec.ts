@@ -97,7 +97,7 @@ const ImportDataModalStub = {
   template: '<div data-test="import-data-modal"></div>'
 }
 
-function mountView() {
+function mountView(renderDataTable = false) {
   return mount(AccountsView, {
     global: {
       stubs: {
@@ -105,7 +105,7 @@ function mountView() {
         TablePageLayout: {
           template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
         },
-        DataTable: DataTableStub,
+        DataTable: renderDataTable ? false : DataTableStub,
         HelpTooltip: HelpTooltipStub,
         Pagination: true,
         ConfirmDialog: true,
@@ -195,6 +195,53 @@ describe('admin AccountsView usage windows hint', () => {
     expect(importModal.props('proxies')).toEqual(proxies)
     expect(importModal.props('groups')).toEqual(groups)
     expect(importModal.props('availableTags')).toEqual(tags)
+  })
+
+  it.each(['desktop', 'mobile'])('renders account tags in the real %s list and preserves them on reload', async (viewport) => {
+    const matchMedia = window.matchMedia.bind(window)
+    const mediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+      ...matchMedia(query), matches: viewport === 'desktop'
+    }))
+    const account = {
+      id: 501, name: 'tagged-account', platform: 'openai', type: 'apikey',
+      status: 'active', schedulable: true, concurrency: 1, priority: 1,
+      rate_multiplier: 1, group_ids: [], tags: ['vip', '生产'],
+      created_at: '2026-11-07T00:00:00Z', updated_at: '2026-11-07T00:00:00Z'
+    }
+    listAccounts.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView(true)
+    const tagCell = () => {
+      if (viewport === 'mobile') return wrapper.get('[data-field="tags"]')
+      const columnIndex = wrapper.findAll('thead th').findIndex(th => th.text() === 'admin.accounts.columns.tags')
+      expect(columnIndex).toBeGreaterThan(-1)
+      return wrapper.findAll('tbody tr')[0].findAll('td')[columnIndex]
+    }
+    try {
+      await flushPromises()
+      expect(listAccounts.mock.calls[0][2]).toMatchObject({ lite: '1' })
+      expect(tagCell().text()).toContain('vip')
+      expect(tagCell().text()).toContain('生产')
+
+      wrapper.getComponent({ name: 'ImportDataModal' }).vm.$emit('imported')
+      await flushPromises()
+      expect(listAccounts).toHaveBeenCalledTimes(2)
+      expect(tagCell().text()).toContain('vip')
+      expect(tagCell().text()).toContain('生产')
+
+      wrapper.getComponent({ name: 'EditAccountModal' }).vm.$emit('updated', { ...account, tags: ['updated'] })
+      await flushPromises()
+      expect(tagCell().text()).toContain('updated')
+      expect(tagCell().text()).not.toContain('vip')
+
+      listAccounts.mockResolvedValue({ items: [{ ...account, tags: [] }], total: 1, page: 1, page_size: 20, pages: 1 })
+      wrapper.getComponent({ name: 'BulkEditAccountModal' }).vm.$emit('updated')
+      await flushPromises()
+      expect(tagCell().text()).not.toContain('updated')
+      expect(tagCell().text()).toContain('-')
+    } finally {
+      wrapper.unmount()
+      mediaSpy.mockRestore()
+    }
   })
 
   it.each([

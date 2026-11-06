@@ -430,6 +430,9 @@ type AccountListItem struct {
 
 	Proxy    *Proxy  `json:"proxy,omitempty"`
 	GroupIDs []int64 `json:"group_ids,omitempty"`
+
+	// Tags must also be present in lite responses used by the account table.
+	Tags []string `json:"tags"`
 }
 
 type AccountGroup struct {
