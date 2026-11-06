@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import RedeemView from '../RedeemView.vue'
 
+vi.mock('@/components/user/LotteryNotice.vue', () => ({ default: { template: '<div data-testid="lottery-notice" />' } }))
+
 const { redeem, getAccountActivity, refreshUser, fetchActiveSubscriptions, showError, showWarning, showSuccess } = vi.hoisted(() => ({
   redeem: vi.fn(),
   getAccountActivity: vi.fn(),

@@ -36,6 +36,7 @@
             </div>
           </div>
           <button class="btn btn-primary" @click="handleDone">{{ t('common.confirm') }}</button>
+          <LotteryNotice v-if="props.orderType === 'balance'" />
         </div>
       </div>
     </template>
@@ -223,6 +224,7 @@
 </template>
 
 <script setup lang="ts">
+import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePaymentStore } from '@/stores/payment'

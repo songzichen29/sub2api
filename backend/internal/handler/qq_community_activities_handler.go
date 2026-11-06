@@ -142,7 +142,7 @@ func (h *QQCommunityHandler) SaveLotteryConfig(c *gin.Context) {
 	if !requireQQBotAdmin(c) {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16384)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 65536)
 	var cfg qqcommunity.LotteryConfig
 	if c.ShouldBindJSON(&cfg) != nil {
 		response.BadRequest(c, "抽奖配置格式不正确")

@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
+vi.mock('@/components/user/LotteryNotice.vue', () => ({ default: { template: '<div data-testid="lottery-notice" />' } }))
+const authState = vi.hoisted(() => ({ isAuthenticated: true }))
+
 const routeState = vi.hoisted(() => ({
   query: {} as Record<string, unknown>,
 }))
@@ -40,6 +43,7 @@ vi.mock('@/stores/payment', () => ({
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     refreshUser,
+    isAuthenticated: authState.isAuthenticated,
   }),
 }))
 
@@ -92,6 +96,7 @@ const recoverySnapshotFactory = (resumeToken: string) => ({
 
 describe('PaymentResultView', () => {
   beforeEach(() => {
+    authState.isAuthenticated = true
     routeState.query = {}
     routerPush.mockReset()
     pollOrderStatus.mockReset()
@@ -105,6 +110,27 @@ describe('PaymentResultView', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it.each(['balance', 'subscription', 'daily_limit_reset'])('only shows lottery counts for a successful balance order: %s', async (orderType) => {
+    routeState.query = { order_id: '42' }
+    pollOrderStatus.mockResolvedValue({ ...orderFactory('COMPLETED'), order_type: orderType })
+    const wrapper = mount(PaymentResultView, { global: { stubs: { OrderStatusBadge: true } } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="lottery-notice"]').exists()).toBe(orderType === 'balance')
+    wrapper.unmount()
+  })
+
+  it('offers a login-protected lottery link without fetching counts on a public payment result', async () => {
+    authState.isAuthenticated = false
+    routeState.query = { resume_token: 'public-result' }
+    resolveOrderPublicByResumeToken.mockResolvedValue({ data: { status: 'COMPLETED', out_trade_no: 'public-order', paid: true } })
+    const wrapper = mount(PaymentResultView, { global: { stubs: { OrderStatusBadge: true } } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="lottery-notice"]').exists()).toBe(false)
+    await wrapper.findAll('button').find(button => button.text() === 'lotteryPortal.view')!.trigger('click')
+    expect(routerPush).toHaveBeenCalledWith('/lottery')
+    wrapper.unmount()
   })
 
   it('renders a pending state instead of a failure state when the restored order is still pending', async () => {

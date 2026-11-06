@@ -44,7 +44,8 @@
       />
 
       <ProfileTotpCard />
-      <ProfileQQBotCard />
+      <ProfileQQBotCard @changed="lotteryRefreshKey++" />
+      <LotteryNotice :refresh-key="lotteryRefreshKey" />
       <ProfilePasskeyCard :enabled="passkeyEnabled" />
     </div>
   </AppLayout>
@@ -61,6 +62,7 @@ import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.v
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
 import ProfilePasskeyCard from '@/components/user/profile/ProfilePasskeyCard.vue'
 import ProfileQQBotCard from '@/components/user/profile/ProfileQQBotCard.vue'
+import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import { isWeChatWebOAuthEnabled } from '@/api/auth'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -69,6 +71,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
+const lotteryRefreshKey = ref(0)
 
 const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)

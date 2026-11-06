@@ -305,6 +305,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/lottery',
+    name: 'MyLottery',
+    component: () => import('@/views/user/LotteryView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'My lottery', titleKey: 'lotteryPortal.title', descriptionKey: 'lotteryPortal.description' }
+  },
+  {
     path: '/orders',
     name: 'OrderList',
     component: () => import('@/views/user/UserOrdersView.vue'),

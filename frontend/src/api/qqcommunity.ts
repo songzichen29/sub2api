@@ -196,10 +196,12 @@ export interface QQTransferPreview {
 }
 export interface QQLotteryPrize { name: string; amount: number; probability_bps: number }
 export interface QQLotteryConfig {
+  public_groups?: QQLotteryPublicGroup[]
   _version?: string
   enabled: boolean; title: string; recharge_step: number; chances_per_step: number; prizes: QQLotteryPrize[]
   guarantee_enabled: boolean; guarantee_every: number; guarantee_prizes: QQLotteryPrize[]
 }
+export interface QQLotteryPublicGroup { group_id: string; name: string; join_url: string }
 export interface QQLotteryState { user_id: number; recharge_total: number; earned: number; bonus_chances?: number; used: number; remaining: number; next_recharge: number; guarantee_every: number; draws_until_guarantee: number }
 export interface QQLotteryDraw { id: number; user_id: number; email: string; member_id: string; prize_name: string; amount: number; remaining: number; created_at: string; is_guaranteed: boolean }
 export interface QQLotteryDrawsPage { items: QQLotteryDraw[]; total: number; page: number; page_size: number }

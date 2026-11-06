@@ -41,6 +41,7 @@ import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
+const emit = defineEmits<{ changed: [] }>()
 const app = useAppStore()
 const status = ref<QQBindingStatus | null>(null)
 const busy = ref(false)
@@ -71,6 +72,7 @@ async function confirm() {
     code.value = ''
     status.value = await qqbotApi.binding()
     app.showSuccess(t('qqBot.confirmed'))
+    emit('changed')
   })
 }
 async function unbind() {
@@ -80,6 +82,7 @@ async function unbind() {
     code.value = ''
     status.value = await qqbotApi.binding()
     app.showSuccess(t('qqBot.unbound'))
+    emit('changed')
   })
 }
 onMounted(load)

@@ -40,14 +40,15 @@ type LotteryPrize struct {
 	ProbabilityBPS int     `json:"probability_bps"`
 }
 type LotteryConfig struct {
-	Enabled          bool           `json:"enabled"`
-	Title            string         `json:"title"`
-	RechargeStep     float64        `json:"recharge_step"`
-	ChancesPerStep   int64          `json:"chances_per_step"`
-	Prizes           []LotteryPrize `json:"prizes"`
-	GuaranteeEnabled bool           `json:"guarantee_enabled"`
-	GuaranteeEvery   int64          `json:"guarantee_every"`
-	GuaranteePrizes  []LotteryPrize `json:"guarantee_prizes"`
+	PublicGroups     []LotteryPublicGroup `json:"public_groups,omitempty"`
+	Enabled          bool                 `json:"enabled"`
+	Title            string               `json:"title"`
+	RechargeStep     float64              `json:"recharge_step"`
+	ChancesPerStep   int64                `json:"chances_per_step"`
+	Prizes           []LotteryPrize       `json:"prizes"`
+	GuaranteeEnabled bool                 `json:"guarantee_enabled"`
+	GuaranteeEvery   int64                `json:"guarantee_every"`
+	GuaranteePrizes  []LotteryPrize       `json:"guarantee_prizes"`
 }
 
 func defaultLotteryConfig() LotteryConfig {
@@ -141,6 +142,9 @@ func validateCheckin(c CheckinConfig) error {
 	return validateRechargeRequirement(c.RechargeRequirement)
 }
 func validateLottery(c LotteryConfig) error {
+	if err := validateLotteryPublicGroups(c.PublicGroups); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.Title) == "" || len([]rune(c.Title)) > 60 {
 		return errors.New("活动名称需为 1 到 60 个字符")
 	}
@@ -235,6 +239,21 @@ func (s *Service) saveActivityConfig(ctx context.Context, key string, lock int64
 		}
 		if e = checkConfigVersion(ctx, current); e != nil {
 			return e
+		}
+		next, ok := c.(LotteryConfig)
+		if !ok {
+			return errors.New("invalid lottery configuration")
+		}
+		if len(next.PublicGroups) > 0 {
+			bot, e := s.loadConfig(ctx, tx)
+			if e != nil {
+				return e
+			}
+			for _, group := range next.PublicGroups {
+				if !lotteryGroupAllowed(bot, group.GroupID) {
+					return errors.New("公开活动群必须是已开放活动的群")
+				}
+			}
 		}
 	}
 	raw, err := json.Marshal(c)

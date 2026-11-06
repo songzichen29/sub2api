@@ -20,6 +20,7 @@
       </div>
 
       <!-- Redeem Form -->
+      <LotteryNotice :refresh-key="lotteryRefresh" />
       <div class="card">
         <div class="p-6">
           <form @submit.prevent="handleRedeem" class="space-y-5">
@@ -379,6 +380,7 @@ import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type AccountActivityItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 import { parseQQRewardNote } from '@/utils/accountActivity'
@@ -391,6 +393,7 @@ const subscriptionStore = useSubscriptionStore()
 const user = computed(() => authStore.user)
 
 const redeemCode = ref('')
+const lotteryRefresh = ref(0)
 const submitting = ref(false)
 const redeemResult = ref<{
   message: string
@@ -504,6 +507,7 @@ const handleRedeem = async () => {
     const result = await redeemAPI.redeem(redeemCode.value.trim())
 
     redeemResult.value = result
+    lotteryRefresh.value++
 
     // Refresh user data to get updated balance/concurrency
     try {

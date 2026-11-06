@@ -99,6 +99,8 @@
           </div>
         </div>
         <!-- Actions -->
+        <LotteryNotice v-if="isSuccess && isBalanceOrder && authStore.isAuthenticated" />
+        <button v-else-if="isSuccess && !authStore.isAuthenticated" type="button" class="block w-full text-center text-primary-600 hover:underline" @click="router.push('/lottery')">{{ t('lotteryPortal.view') }}</button>
         <div class="flex gap-3">
           <button class="btn btn-secondary flex-1" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
           <button class="btn btn-primary flex-1" @click="router.push('/orders')">{{ t('payment.result.viewOrders') }}</button>
@@ -113,6 +115,7 @@ import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
+import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
   clearPaymentRecoverySnapshot,
@@ -183,6 +186,10 @@ const localeCode = computed(() => {
 
 const isSuccess = computed(() => {
   return isSuccessStatus(order.value?.status)
+})
+
+const isBalanceOrder = computed(() => {
+  return hasDetailedOrder(order.value) && order.value.order_type === 'balance'
 })
 
 const isPending = computed(() => {

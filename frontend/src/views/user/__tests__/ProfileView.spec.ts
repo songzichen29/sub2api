@@ -84,6 +84,7 @@ describe('ProfileView', () => {
           ProfilePasswordForm: { template: '<div data-testid="profile-password-form" />' },
           ProfileTotpCard: { template: '<div data-testid="profile-totp-card" />' },
           ProfileQQBotCard: true,
+          LotteryNotice: true,
           Icon: true
         }
       }
@@ -96,5 +97,10 @@ describe('ProfileView', () => {
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-info-card')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-password-form')
     expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-totp-card')
+    expect(wrapper.findComponent({ name: 'LotteryNotice' }).props('refreshKey')).toBe(0)
+    wrapper.findComponent({ name: 'ProfileQQBotCard' }).vm.$emit('changed')
+    await flushPromises()
+    expect(wrapper.findComponent({ name: 'LotteryNotice' }).props('refreshKey')).toBe(1)
+    wrapper.unmount()
   })
 })

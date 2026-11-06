@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
+vi.mock('@/components/user/LotteryNotice.vue', () => ({ default: { template: '<div data-testid="lottery-notice" />' } }))
+
 const pollOrderStatus = vi.hoisted(() => vi.fn())
 const cancelOrder = vi.hoisted(() => vi.fn())
 const verifyOrder = vi.hoisted(() => vi.fn())

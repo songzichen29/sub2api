@@ -21,14 +21,14 @@ describe('ProfileQQBotCard', () => {
     expect(api.code).not.toHaveBeenCalled()
   })
 
-  it('shows a one-time command and confirms the QQ shown by the server', async () => {
+  it('shows the one-time binding code and notifies its parent after confirmation', async () => {
     const wrapper = mount(ProfileQQBotCard)
     await flushPromises()
     api.code.mockResolvedValue({ code: 'testcode', expires_at: '2026-11-03T01:00:00Z' })
     api.binding.mockResolvedValue({ enabled: true, bot_qq: '123456', binding: null, pending_qq: '777777' })
     await button(wrapper, 'qqBot.createCode').trigger('click')
     await flushPromises()
-    expect(wrapper.get('code').text()).toBe('/绑定 testcode')
+    expect(wrapper.get('code').text()).toBe('testcode')
     expect(wrapper.text()).toContain('qqBot.pending:777777')
     api.confirm.mockResolvedValue({})
     api.binding.mockResolvedValue({ enabled: true, binding: { qq: '777777' }, pending_qq: '' })
@@ -37,6 +37,7 @@ describe('ProfileQQBotCard', () => {
     expect(api.confirm).toHaveBeenCalledWith('777777')
     expect(wrapper.text()).toContain('qqBot.bound:777777')
     expect(wrapper.find('code').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
   })
 
   it('does not make duplicate requests while generating a code', async () => {

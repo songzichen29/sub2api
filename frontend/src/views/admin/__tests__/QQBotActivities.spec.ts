@@ -11,7 +11,7 @@ import QQBotInviteSettings from '@/components/admin/qqbot/QQBotInviteSettings.vu
 import QQBotTransferSettings from '@/components/admin/qqbot/QQBotTransferSettings.vue'
 import QQBotActivitiesView from '../QQBotActivitiesView.vue'
 
-const api = vi.hoisted(() => ({ rankingConfig: vi.fn(), saveRankings: vi.fn(), rewardCodes: vi.fn(), checkinConfig: vi.fn(), saveCheckin: vi.fn(), inviteConfig: vi.fn(), saveInvite: vi.fn(), transferConfig: vi.fn(), saveTransfer: vi.fn(), lotteryConfig: vi.fn(), saveLottery: vi.fn(), lotteryDraws: vi.fn(), lotteryState: vi.fn() }))
+const api = vi.hoisted(() => ({ config: vi.fn(), rankingConfig: vi.fn(), saveRankings: vi.fn(), rewardCodes: vi.fn(), checkinConfig: vi.fn(), saveCheckin: vi.fn(), inviteConfig: vi.fn(), saveInvite: vi.fn(), transferConfig: vi.fn(), saveTransfer: vi.fn(), lotteryConfig: vi.fn(), saveLottery: vi.fn(), lotteryDraws: vi.fn(), lotteryState: vi.fn() }))
 vi.mock('@/api/qqcommunity', () => ({ qqbotAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 function i18n(locale: 'zh' | 'en') { return createI18n({ legacy: false, locale, messages: { zh, en } }) }
@@ -27,6 +27,7 @@ function growthConfig(chances = [0, 0, 0]) {
 describe('QQ activity pages with real translations', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    api.config.mockResolvedValue({ allowed_groups: ['1025362951'], group_policies: [{ group_id: '1025362951', label: '活动群', disable_activities: false }] })
     vi.spyOn(console, 'error').mockImplementation(() => {})
     api.rankingConfig.mockResolvedValue({ enabled: true, rewards_enabled: false, effective_day: '', token_rewards: [], amount_rewards: [] })
     api.saveRankings.mockImplementation(async c => c)
@@ -292,6 +293,27 @@ describe('QQ activity pages with real translations', () => {
     expect(w.get('[data-testid="add-periodic-task"]').attributes('disabled')).toBeDefined()
     await w.get('[data-testid="periodic-growth-form"]').trigger('submit'); await flushPromises()
     expect(api.saveCheckin.mock.lastCall![0].growth.periodic_tasks).toHaveLength(12)
+    w.unmount()
+  })
+  it('publishes only chosen active groups and saves their display order without changing the lottery rule', async () => {
+    api.config.mockResolvedValue({ allowed_groups: ['10001', '10002', '10003'], group_policies: [{ group_id: '10002', disable_activities: true }] })
+    const w = mount(QQBotLotterySettings, { global: { plugins: [i18n('zh')] } })
+    await flushPromises()
+    const editor = w.get('fieldset')
+    const button = (text: string) => editor.findAll('button').find(b => b.text() === text)!
+    await button('添加活动群').trigger('click')
+    expect(editor.get('select').findAll('option').map(option => option.attributes('value'))).toEqual(['', '10001', '10003'])
+    await editor.get('select').setValue('10001')
+    await editor.get('input[type="url"]').setValue('https://qun.qq.com/a')
+    await button('添加活动群').trigger('click')
+    await editor.findAll('select')[1]!.setValue('10003')
+    expect(editor.findAll('select')[1]!.get('option[value="10001"]').attributes('disabled')).toBeDefined()
+    await editor.findAll('button').filter(b => b.text() === '上移')[1]!.trigger('click')
+    await w.findAll('form')[0]!.trigger('submit'); await flushPromises()
+    expect(api.saveLottery).toHaveBeenCalledWith(expect.objectContaining({
+      recharge_step: 10, chances_per_step: 1,
+      public_groups: [{ group_id: '10003', name: '10003', join_url: '' }, { group_id: '10001', name: '10001', join_url: 'https://qun.qq.com/a' }]
+    }))
     w.unmount()
   })
   it.each(['zh', 'en'] as const)('%s validates prize probability totals and saves the cumulative rule', async locale => {

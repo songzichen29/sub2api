@@ -7,6 +7,7 @@
     <form v-if="form" class="card space-y-5 p-6" @submit.prevent="save">
       <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-lg font-semibold">{{ t('qqbot.lotteryRules') }}</h2><label class="flex items-center gap-2"><input v-model="form.enabled" type="checkbox" />{{ t('common.enabled') }}</label></div>
       <label class="block space-y-1">{{ t('qqbot.activityName') }}<input v-model.trim="form.title" class="input" maxlength="60" required /></label>
+      <QQLotteryGroupsEditor v-model="form.public_groups" />
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1">{{ t('qqbot.rechargeStep') }}<input v-model.number="form.recharge_step" data-testid="recharge-step" class="input" type="number" min="0.01" max="1000000000" step="0.01" required /></label>
         <label class="space-y-1">{{ t('qqbot.chancesPerStep') }}<input v-model.number="form.chances_per_step" data-testid="chances-per-step" class="input" type="number" min="1" max="1000" step="1" required /></label>
@@ -67,6 +68,7 @@
 </template>
 <script setup lang="ts">
 import { useQQDraft } from './useQQDraft'
+import QQLotteryGroupsEditor from './QQLotteryGroupsEditor.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { qqbotAPI, type QQLotteryConfig, type QQLotteryState } from '@/api/qqcommunity'
@@ -100,6 +102,7 @@ function addGuaranteePrize() { form.value?.guarantee_prizes.push({ name: '', amo
 function normalizeConfig(config: QQLotteryConfig): QQLotteryConfig {
   return {
     ...config,
+    public_groups: config.public_groups || [],
     guarantee_enabled: config.guarantee_enabled ?? false,
     guarantee_every: config.guarantee_every || 10,
     guarantee_prizes: config.guarantee_prizes?.length ? config.guarantee_prizes : [{ name: t('qqbot.defaultGuaranteePrize'), amount: 1, probability_bps: 10000 }]

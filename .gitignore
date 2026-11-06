@@ -142,6 +142,7 @@ docs/*
 !docs/PLUGIN_DEVELOPMENT.md
 !docs/channel-monitor-v2-safe-defaults.md
 !docs/qq-community-bot.md
+!docs/qq-lottery-portal.md
 !docs/codex-credits.md
 !docs/legal/
 !docs/legal/*.md

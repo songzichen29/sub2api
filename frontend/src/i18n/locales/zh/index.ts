@@ -9,6 +9,7 @@ import invoice from './invoice'
 import modelQuality from './modelQuality'
 import qqBot from './qqBot'
 import qqCommunity from './qqCommunity'
+import lottery from './lottery'
 
 export default {
   ...landing,
@@ -22,4 +23,5 @@ export default {
   ...modelQuality,
   ...qqBot,
   ...qqCommunity,
+  ...lottery,
 }
