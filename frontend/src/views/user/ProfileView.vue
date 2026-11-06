@@ -2,7 +2,7 @@
   <AppLayout>
     <div
       data-testid="profile-shell"
-      class="mx-auto max-w-[950px] space-y-6"
+      class="workspace-page space-y-6"
     >
       <ProfileInfoCard
         :user="user"

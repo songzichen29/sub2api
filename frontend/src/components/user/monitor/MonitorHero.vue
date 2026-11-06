@@ -1,6 +1,7 @@
 <template>
-  <section class="py-3 md:py-4">
-    <div class="flex items-center justify-end gap-3 flex-wrap">
+  <section class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b dark:border-dark-700">
+    <h1>{{ t('nav.channelStatus') }}</h1>
+    <div class="flex items-center gap-3 flex-wrap">
       <div
         role="tablist"
         class="inline-flex p-0.5 rounded-xl bg-gray-100 dark:bg-dark-800 border border-gray-200/60 dark:border-dark-700/60 text-xs"
@@ -22,7 +23,7 @@
       </div>
 
       <span
-        class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold tracking-wider uppercase"
+        class="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium"
         :class="overallChipClass"
       >
         <span

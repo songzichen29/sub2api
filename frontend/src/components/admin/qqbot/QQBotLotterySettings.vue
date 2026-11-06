@@ -1,13 +1,13 @@
 <template>
   <div class="space-y-6">
-    <p class="text-sm text-gray-500">{{ t('qqbot.lotteryHelp') }}</p>
+    <div class="flex flex-wrap items-center justify-between gap-3"><p class="text-sm text-gray-500">{{ t('lotteryPortal.sharedChances') }}</p><a href="/lottery" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">{{ t('lotteryPortal.openWheel') }}</a></div>
     <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-950">{{ error }}</p>
     <p v-if="notice" role="status" class="rounded-lg bg-green-50 p-4 text-green-700 dark:bg-green-950">{{ notice }}</p>
     <p v-if="dirty" class="text-sm text-amber-700">{{ t('qqbot.workspace.unsaved') }}</p>
     <form v-if="form" class="card space-y-5 p-6" @submit.prevent="save">
       <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-lg font-semibold">{{ t('qqbot.lotteryRules') }}</h2><label class="flex items-center gap-2"><input v-model="form.enabled" type="checkbox" />{{ t('common.enabled') }}</label></div>
       <label class="block space-y-1">{{ t('qqbot.activityName') }}<input v-model.trim="form.title" class="input" maxlength="60" required /></label>
-      <QQLotteryGroupsEditor v-model="form.public_groups" />
+      <details class="rounded-lg border p-4"><summary class="cursor-pointer">{{ t('lotteryPortal.publicGroups') }}</summary><QQLotteryGroupsEditor v-model="form.public_groups" class="mt-4" /></details>
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="space-y-1">{{ t('qqbot.rechargeStep') }}<input v-model.number="form.recharge_step" data-testid="recharge-step" class="input" type="number" min="0.01" max="1000000000" step="0.01" required /></label>
         <label class="space-y-1">{{ t('qqbot.chancesPerStep') }}<input v-model.number="form.chances_per_step" data-testid="chances-per-step" class="input" type="number" min="1" max="1000" step="1" required /></label>

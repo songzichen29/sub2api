@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="true" :title="t(plan ? 'modelQuality.edit' : 'modelQuality.create')" width="wide" @close="close">
+  <BaseDialog :show="true" :title="t(plan ? 'modelQuality.edit' : 'modelQuality.create')" width="wide" panel-class="workspace-page" @close="close">
     <form id="quality-form" class="space-y-4" @submit.prevent="save">
       <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
       <fieldset :disabled="saving" class="space-y-4" :aria-busy="saving">

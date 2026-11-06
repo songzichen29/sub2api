@@ -1,11 +1,11 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-7xl space-y-6">
+    <div class="workspace-page qq-workspace space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div><h1 class="text-2xl font-semibold">{{ t('qqbot.workspace.records') }}</h1><p class="mt-2 text-sm text-gray-500">{{ t('qqbot.recordsHelp') }}</p></div>
         <div class="flex gap-2"><button v-if="recordMode !== 'activities'" class="btn btn-secondary" :disabled="appLoading" data-testid="qq-records-refresh-app" @click="loadApp">{{ t('common.refresh') }}</button><RouterLink class="btn btn-secondary" :to="{ path: '/admin/qqbot/activities', query: { tab: activeTab } }">{{ t('qqbot.activitiesTitle') }}</RouterLink></div>
       </div>
-      <div class="flex flex-wrap gap-2"><RouterLink v-for="mode in recordModes" :key="mode" :to="{ query: { tab: mode } }" class="btn" :class="recordMode === mode ? 'btn-primary' : 'btn-secondary'">{{ t(`qqbot.workspace.${mode}`) }}</RouterLink></div>
+      <nav class="workspace-tabs"><RouterLink v-for="mode in recordModes" :key="mode" :to="{ query: { tab: mode } }" :aria-current="recordMode === mode ? 'page' : undefined">{{ t(`qqbot.workspace.${mode}`) }}</RouterLink></nav>
       <p v-if="appError && recordMode !== 'activities'" role="alert" class="text-red-600">{{ appError }}</p>
       <QQJobRecords v-if="recordMode === 'tasks' || recordMode === 'notifications'" :notifications="recordMode === 'notifications'" :app-id="appId" />
       <QQModerationRecords v-else-if="recordMode === 'moderation'" :app-id="appId" />
@@ -41,7 +41,7 @@
               <p v-if="activeTab === 'lottery' && record.is_guaranteed" class="text-sm font-medium text-primary-600 dark:text-primary-400">{{ t('qqbot.guaranteedDraw') }}</p>
               <p v-if="record.rewarded_at" class="break-all text-xs text-gray-500">{{ t('qqbot.recordRewardAccount') }}：{{ record.reward_email || record.reward_user_id }} · ID: {{ record.reward_user_id }}</p>
               <dl class="space-y-1 text-xs text-gray-500">
-                <div class="break-all">{{ t('qqbot.group') }}：{{ record.group_id }}</div>
+                <div class="break-all">{{ t('qqbot.group') }}：{{ record.group_id || (activeTab === 'lottery' ? t('lotteryPortal.siteSource') : '—') }}</div>
                 <template v-if="activeTab === 'invite'">
                   <div>{{ t('qqbot.recordMembership') }}：{{ membership(record) }}</div>
                   <div>{{ t('qqbot.recordInvitedAt') }}：{{ formatDate(record.invited_at) }}</div>
@@ -67,7 +67,7 @@
               <tbody><tr v-for="record in state.data.items" :key="record.id" class="border-t align-top dark:border-dark-700">
                 <td v-if="record.inviter" class="py-4 pr-5"><QQBotRecordParticipant :person="record.inviter" /></td>
                 <td class="py-4 pr-5"><QQBotRecordParticipant :person="record.participant" /></td>
-                <td class="py-4 pr-5"><code class="block max-w-36 break-all text-xs text-gray-500">{{ record.group_id }}</code></td>
+                <td class="py-4 pr-5"><span class="block max-w-36 break-all text-sm text-gray-500">{{ record.group_id || (activeTab === 'lottery' ? t('lotteryPortal.siteSource') : '—') }}</span></td>
                 <td class="py-4 pr-5"><span class="inline-block whitespace-nowrap rounded-md bg-gray-100 px-2 py-1 text-xs dark:bg-dark-700">{{ t(`qqbot.recordStatus.${record.status}`) }}</span><p v-if="activeTab === 'invite'" class="mt-2 text-xs text-gray-500">{{ membership(record) }}</p></td>
                 <td v-if="activeTab === 'lottery'" class="py-4 pr-5"><p class="max-w-40 break-words">{{ record.prize_name }}</p><p v-if="record.is_guaranteed" class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">{{ t('qqbot.guaranteedDraw') }}</p><p class="mt-1 text-xs text-gray-500">{{ t('qqbot.remainingAtDraw') }}：{{ record.remaining }}</p></td>
                 <td class="py-4 pr-5"><p class="font-medium tabular-nums">{{ activeTab === 'invite' && !record.rewarded_at ? '—' : `$${record.amount.toFixed(2)}` }}</p><p v-if="record.rewarded_at" class="mt-1 max-w-48 break-all text-xs text-gray-500">{{ t('qqbot.recordRewardAccount') }}：{{ record.reward_email || record.reward_user_id }} · ID: {{ record.reward_user_id }}</p></td>

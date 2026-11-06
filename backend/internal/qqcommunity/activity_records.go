@@ -89,7 +89,11 @@ func listParticipationRecords(ctx context.Context, tx *transaction, appID, kind,
 	}
 	from := ` FROM ` + table + ` r JOIN users u ON u.id=r.user_id
  LEFT JOIN qqc_bindings b ON b.app_id=r.app_id AND b.member_id=r.member_id AND b.user_id=r.user_id`
-	filter := ` WHERE r.app_id=$1` + extraFilter + ` AND ($2='' OR r.user_id::text=$2
+	appFilter := `r.app_id=$1`
+	if kind == "lottery" {
+		appFilter = `(r.app_id=$1 OR r.app_id='website')`
+	}
+	filter := ` WHERE ` + appFilter + extraFilter + ` AND ($2='' OR r.user_id::text=$2
  OR strpos(lower(u.email),lower($2))>0 OR strpos(lower(r.member_id),lower($2))>0
  OR strpos(lower(r.group_id),lower($2))>0 OR strpos(lower(COALESCE(b.nickname,'')),lower($2))>0)`
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*)`+from+filter, appID, search).Scan(&out.Total); err != nil {

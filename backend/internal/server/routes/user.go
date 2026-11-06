@@ -33,6 +33,7 @@ func RegisterUserRoutes(
 				user.GET("/account/activity", h.QQBot.Community.AccountActivity)
 				user.GET("/qqbot/lottery", panelRateLimiter.Heavy(), h.QQBot.Community.UserLottery)
 				user.GET("/qqbot/lottery/draws", panelRateLimiter.Heavy(), h.QQBot.Community.UserLotteryDraws)
+				user.POST("/qqbot/lottery/spin", panelRateLimiter.Heavy(), h.QQBot.Community.UserLotterySpin)
 				user.POST("/qqbot/lottery/membership", panelRateLimiter.Heavy(), h.QQBot.Community.UserLotteryMembership)
 			}
 			user.POST("/qq-bot/code", h.QQBot.CreateCode)

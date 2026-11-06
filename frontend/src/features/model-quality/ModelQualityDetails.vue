@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="!!selection" :title="dialogTitle" width="full" @close="emit('close')">
+  <BaseDialog :show="!!selection" :title="dialogTitle" width="full" panel-class="workspace-page" @close="emit('close')">
     <div class="flex h-[min(76dvh,850px)] max-h-[calc(90dvh-8rem)] min-h-0 flex-col gap-3">
       <div class="flex shrink-0 flex-wrap items-start gap-x-6 gap-y-1 border-b border-gray-200 text-sm dark:border-dark-700">
         <div class="flex shrink-0 gap-4" role="tablist" :aria-label="t('modelQuality.resultScope')">

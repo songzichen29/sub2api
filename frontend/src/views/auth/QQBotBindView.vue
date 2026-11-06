@@ -1,6 +1,6 @@
 <template>
   <AuthLayout>
-    <div class="space-y-5">
+    <div class="workspace-page space-y-5">
       <h2 class="text-center text-2xl font-bold text-gray-900 dark:text-white">{{ t('qqbot.emailBindTitle') }}</h2>
       <p v-if="loading" role="status" class="text-center text-sm text-gray-500">{{ t('common.loading') }}</p>
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-200">{{ error }}</p>

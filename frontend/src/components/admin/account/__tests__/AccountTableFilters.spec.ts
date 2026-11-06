@@ -23,6 +23,12 @@ const filters = {
 }
 
 describe('AccountTableFilters', () => {
+  it('renders each account filter only once', () => {
+    const wrapper = mount(AccountTableFilters, { props: { searchQuery: '', filters, groups: [], availableTags: [] } })
+    expect(wrapper.findAllComponents(Select)).toHaveLength(5)
+    const groups = wrapper.findAllComponents(Select).filter(select => select.props('options').some((option: { value: string }) => option.value === 'ungrouped'))
+    expect(groups).toHaveLength(1)
+  })
   it('暂停筛选与列表文案一致，并发送后端支持的 unschedulable 状态', async () => {
     const wrapper = mount(AccountTableFilters, {
       props: {

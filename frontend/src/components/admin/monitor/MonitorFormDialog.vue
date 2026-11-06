@@ -3,6 +3,7 @@
     :show="show"
     :title="editing ? t('admin.channelMonitor.editTitle') : t('admin.channelMonitor.createTitle')"
     width="wide"
+    panel-class="workspace-page"
     @close="$emit('close')"
   >
     <form id="channel-monitor-form" @submit.prevent="handleSubmit" class="space-y-5">

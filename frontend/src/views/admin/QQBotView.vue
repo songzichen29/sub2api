@@ -1,16 +1,15 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-5xl space-y-6">
+    <div class="workspace-page qq-workspace space-y-5">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 class="text-2xl font-semibold">{{ t(groupMode ? 'qqbot.workspace.groups' : 'qqbot.basicConfig') }}</h1><p class="mt-1 text-sm text-gray-500">{{ t('qqbot.description') }}</p></div>
+        <h1>{{ t(groupMode ? 'qqbot.workspace.groups' : 'qqbot.basicConfig') }}</h1>
         <button class="btn btn-secondary" :disabled="busy || refreshingRuntime" @click="refreshStatus">{{ t('common.refresh') }}</button>
       </div>
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-950">{{ error }}</p>
       <p v-if="notice" role="status" class="rounded-lg bg-green-50 p-4 text-green-700 dark:bg-green-950">{{ notice }}</p>
       <p v-if="!form" class="text-gray-500">{{ t('common.loading') }}</p>
       <form v-else ref="settingsForm" novalidate @submit.prevent="save"><fieldset :disabled="busy" class="min-w-0 space-y-6">
-        <p class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{{ t('qqbot.workspace.scopedSaveHelp') }}</p>
-        <div v-if="!groupMode" class="flex flex-wrap gap-2"><button v-for="category in categories" :key="category.key" type="button" class="btn" :class="activeCategory === category.key ? 'btn-primary' : 'btn-secondary'" @click="selectCategory(category.key)">{{ t(category.label) }}</button></div>
+        <div v-if="!groupMode" class="workspace-tabs"><button v-for="category in categories" :key="category.key" type="button" :aria-pressed="activeCategory === category.key" @click="selectCategory(category.key)">{{ t(category.label) }}</button></div>
         <nav
           role="tablist"
           :aria-label="t('qqbot.basicConfig')"
@@ -163,7 +162,7 @@
             <label v-for="field in limitFields" :key="field.key" class="space-y-1">{{ t(`qqbot.${field.label}`) }}<input v-model.number="form[field.key]" type="number" min="0" :max="field.max" class="input" /></label>
           </div>
         </section>
-        <div class="flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+        <div class="qq-save-bar flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
           <span class="text-sm">{{ t(dirtySections.includes(activeTab) ? 'qqbot.workspace.unsaved' : 'qqbot.workspace.saved') }}</span>
           <button type="submit" :disabled="busy || !dirtySections.includes(activeTab)" class="btn btn-primary">{{ t('qqbot.workspace.saveModule', { name: t(tabs.find(tab => tab.key === activeTab)!.label) }) }}</button>
           <button type="button" :disabled="busy" class="btn btn-secondary" @click="reloadModule">{{ t('qqbot.workspace.reloadModule') }}</button>

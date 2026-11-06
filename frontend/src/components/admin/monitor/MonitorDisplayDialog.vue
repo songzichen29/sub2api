@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="show" :title="t('monitorDisplay.title')" width="wide" :close-on-escape="!saving" :show-close-button="!saving" @close="emit('close')">
+  <BaseDialog :show="show" :title="t('monitorDisplay.title')" width="wide" panel-class="workspace-page" :close-on-escape="!saving" :show-close-button="!saving" @close="emit('close')">
     <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">{{ t('monitorDisplay.description') }}</p>
     <p v-if="loading" role="status">{{ t('common.loading') }}</p>
     <div v-else-if="loaded" class="space-y-4">

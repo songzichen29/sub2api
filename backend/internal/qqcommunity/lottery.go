@@ -347,52 +347,8 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 		draws[i] = lotteryOutcome{prize: lotteryPrizeAt(pool, n.Int64()), guaranteed: guaranteed}
 	}
 	result = lotteryResult(cfg, state, draws)
-	for i, draw := range draws {
-		prize, guaranteed := draw.prize, draw.guaranteed
-		// Keep the draw's classification alongside its immutable configuration snapshot.
-		// Older records without this field remain ordinary draws, without a migration.
-		snapshot, err := json.Marshal(struct {
-			LotteryConfig
-			IsGuaranteed bool  `json:"is_guaranteed"`
-			DrawNumber   int64 `json:"draw_number"`
-		}{cfg, guaranteed, state.Used + int64(i) + 1})
-		if err != nil {
-			return "", err
-		}
-		var drawID int64
-		// The first draw retains the original key for replaying the whole result.
-		// Additional draws use a separate namespace from incoming message/job IDs.
-		drawKey := requestKey
-		if i > 0 {
-			drawKey = fmt.Sprintf("%s:lottery-batch:%s:%d", c.AppID, codeHash(requestKey), i+1)
-		}
-		err = tx.QueryRowContext(ctx, `INSERT INTO qqc_lottery_draws(request_key,app_id,member_id,group_id,user_id,prize_name,amount,config_snapshot,recharge_total,earned,remaining,result_text) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, drawKey, c.AppID, j.MemberID, j.GroupID, uid, prize.Name, prize.Amount, string(snapshot), state.RechargeTotal, state.Earned, state.Remaining-int64(i)-1, result).Scan(&drawID)
-		if err != nil {
-			return "", err
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_rewards(reward_key,app_id,group_id,member_id,user_id,kind,amount) VALUES($1,$2,$3,$4,$5,'lottery',$6)`, fmt.Sprintf("lottery:%d", drawID), c.AppID, j.GroupID, j.MemberID, uid, prize.Amount); err != nil {
-			return "", err
-		}
-		// Zero-value prizes still consume a draw. The active account is locked
-		// above; MySQL reports zero changed rows for an unchanged balance.
-		if prize.Amount > 0 {
-			updated, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE id=$2 AND status='active' AND deleted_at IS NULL`, prize.Amount, uid)
-			if err != nil {
-				return "", err
-			}
-			updatedCount, err := updated.RowsAffected()
-			if err != nil {
-				return "", err
-			}
-			if updatedCount != 1 {
-				return "", errors.New("账户不可用")
-			}
-		}
-		if prize.Amount > 0 {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO redeem_codes(code,type,value,status,used_by,used_at,notes,created_at) VALUES($1,'admin_balance',$2,'used',$3,NOW(),$4,NOW())`, "QQ"+randomID(), prize.Amount, uid, fmt.Sprintf("QQ lottery reward #%d: %s", drawID, prize.Name)); err != nil {
-				return "", err
-			}
-		}
+	if err = settleLotteryDraws(ctx, tx, c, j, uid, cfg, state, draws, requestKey, result); err != nil {
+		return "", err
 	}
 	// Persist the result before delivery for auditing and message deduplication.
 	if _, err = tx.ExecContext(ctx, `UPDATE qqc_jobs SET kind='lottery',result_text=$2 WHERE id=$1`, j.ID, result); err != nil {
@@ -403,4 +359,57 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 	}
 	s.invalidate(ctx, uid)
 	return result, nil
+}
+
+// Both entry points settle against the same ledger in the caller's transaction.
+// The caller must hold the lottery configuration and user (274) locks.
+func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, uid int64, cfg LotteryConfig, state LotteryState, draws []lotteryOutcome, requestKey, result string) error {
+	for i, draw := range draws {
+		prize, guaranteed := draw.prize, draw.guaranteed
+		// Keep the draw's classification alongside its immutable configuration snapshot.
+		// Older records without this field remain ordinary draws, without a migration.
+		snapshot, err := json.Marshal(struct {
+			LotteryConfig
+			IsGuaranteed bool  `json:"is_guaranteed"`
+			DrawNumber   int64 `json:"draw_number"`
+		}{cfg, guaranteed, state.Used + int64(i) + 1})
+		if err != nil {
+			return err
+		}
+		var drawID int64
+		// The first draw retains the original key for replaying the whole result.
+		// Additional draws use a separate namespace from incoming message/job IDs.
+		drawKey := requestKey
+		if i > 0 {
+			drawKey = fmt.Sprintf("%s:lottery-batch:%s:%d", c.AppID, codeHash(requestKey), i+1)
+		}
+		err = tx.QueryRowContext(ctx, `INSERT INTO qqc_lottery_draws(request_key,app_id,member_id,group_id,user_id,prize_name,amount,config_snapshot,recharge_total,earned,remaining,result_text) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, drawKey, c.AppID, j.MemberID, j.GroupID, uid, prize.Name, prize.Amount, string(snapshot), state.RechargeTotal, state.Earned, state.Remaining-int64(i)-1, result).Scan(&drawID)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_rewards(reward_key,app_id,group_id,member_id,user_id,kind,amount) VALUES($1,$2,$3,$4,$5,'lottery',$6)`, fmt.Sprintf("lottery:%d", drawID), c.AppID, j.GroupID, j.MemberID, uid, prize.Amount); err != nil {
+			return err
+		}
+		// Zero-value prizes still consume a draw. The active account is locked
+		// above; MySQL reports zero changed rows for an unchanged balance.
+		if prize.Amount > 0 {
+			updated, err := tx.ExecContext(ctx, `UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE id=$2 AND status='active' AND deleted_at IS NULL`, prize.Amount, uid)
+			if err != nil {
+				return err
+			}
+			updatedCount, err := updated.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if updatedCount != 1 {
+				return errors.New("账户不可用")
+			}
+		}
+		if prize.Amount > 0 {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO redeem_codes(code,type,value,status,used_by,used_at,notes,created_at) VALUES($1,'admin_balance',$2,'used',$3,NOW(),$4,NOW())`, "QQ"+randomID(), prize.Amount, uid, fmt.Sprintf("QQ lottery reward #%d: %s", drawID, prize.Name)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

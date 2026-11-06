@@ -7,7 +7,7 @@ import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import type { UserLottery } from '@/api/lottery'
 import { safeJoinURL } from '@/utils/lottery'
 
-const api = vi.hoisted(() => ({ overview: vi.fn(), membership: vi.fn(), draws: vi.fn() }))
+const api = vi.hoisted(() => ({ overview: vi.fn(), membership: vi.fn(), draws: vi.fn(), spin: vi.fn() }))
 vi.mock('@/api/lottery', () => ({ lotteryAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
 vi.mock('@/components/user/profile/ProfileQQBotCard.vue', () => ({ default: { emits: ['changed'], template: '<button data-testid="bind" @click="$emit(\'changed\')">bind</button>' } }))
@@ -21,6 +21,7 @@ function render(component: typeof LotteryView | typeof LotteryNotice) {
   wrappers.push(wrapper); return wrapper
 }
 beforeEach(() => {
+  sessionStorage.clear()
   vi.resetAllMocks()
   api.overview.mockResolvedValue(fixture())
   api.draws.mockResolvedValue({ items: [], page: 1, page_size: 20, total: 0 })
@@ -129,5 +130,55 @@ describe('user lottery journey', () => {
   it('blocks unsafe join URLs even if supplied by older settings', () => {
     expect(safeJoinURL('https://qm.qq.com/q/abc')).toBe(true)
     for (const link of ['javascript:alert(1)', 'https://qun.qq.com.evil.test/a', 'https://user@qun.qq.com/a', 'http://qun.qq.com/a']) expect(safeJoinURL(link)).toBe(false)
+  })
+  it('draws without QQ binding and prevents duplicate clicks', async () => {
+    vi.useFakeTimers()
+    const w = render(LotteryView); await flushPromises()
+    let resolve!: (value: unknown) => void
+    api.spin.mockImplementation(() => new Promise(done => { resolve = done }))
+    const button = w.get('[data-testid="lottery-spin"]')
+    expect(button.attributes('disabled')).toBeUndefined()
+    await button.trigger('click'); await button.trigger('click')
+    expect(api.spin).toHaveBeenCalledTimes(1)
+    const request = api.spin.mock.calls[0]![0]
+    expect(request).toMatch(/^[a-zA-Z0-9-]{16,64}$/)
+    resolve({ request_id: request, prize: { name: '奖励', amount: 1, probability_bps: 10000 }, prize_index: 0, prizes: [{ name: '奖励', amount: 1, probability_bps: 10000 }], is_guaranteed: true, remaining: 1 })
+    await flushPromises()
+    expect(w.find('[data-testid="lottery-result"]').exists()).toBe(false)
+    api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 1 } })
+    await vi.advanceTimersByTimeAsync(4100); await flushPromises()
+    expect(w.get('[data-testid="lottery-result"]').text()).toContain('奖励已到账')
+    expect(w.get('[data-testid="lottery-remaining"]').text()).toBe('1')
+    expect(sessionStorage.getItem('lottery-pending:42')).toBeNull()
+  })
+  it('reuses the pending request after a timeout and a remount', async () => {
+    api.spin.mockRejectedValue({ status: 0 })
+    const w = render(LotteryView); await flushPromises()
+    await w.get('[data-testid="lottery-spin"]').trigger('click'); await flushPromises()
+    const request = api.spin.mock.calls[0]![0]
+    expect(w.text()).toContain('不会重复扣除次数')
+    w.unmount()
+    api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 0 } })
+    const restored = render(LotteryView); await flushPromises()
+    expect(restored.get('[data-testid="lottery-spin"]').text()).toBe('查询本次结果')
+    await restored.get('[data-testid="lottery-spin"]').trigger('click'); await flushPromises()
+    expect(api.spin).toHaveBeenLastCalledWith(request)
+  })
+  it('disables a fresh draw with no remaining chances', async () => {
+    api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 0 } })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.get('[data-testid="lottery-spin"]').attributes('disabled')).toBeDefined()
+    expect(w.get('.wheel-trigger').attributes('disabled')).toBeDefined()
+    expect(api.spin).not.toHaveBeenCalled()
+  })
+  it('starts from the wheel center and locks both entry points during settlement', async () => {
+    const w = render(LotteryView); await flushPromises()
+    api.spin.mockReturnValue(new Promise(() => {}))
+    await w.get('.wheel-trigger').trigger('click')
+    expect(api.spin).toHaveBeenCalledTimes(1)
+    expect(w.get('.wheel-trigger').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="lottery-spin"]').attributes('disabled')).toBeDefined()
+    await w.get('[data-testid="lottery-spin"]').trigger('click')
+    expect(api.spin).toHaveBeenCalledTimes(1)
   })
 })

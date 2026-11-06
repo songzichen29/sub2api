@@ -1,13 +1,10 @@
 <template>
-  <section class="mx-auto w-full max-w-6xl space-y-5 px-1 py-2 sm:px-2">
+  <section class="workspace-page space-y-5">
     <header
-      class="page-header mb-0 flex flex-wrap items-center justify-between gap-3 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6"
+      class="flex flex-wrap items-center justify-between gap-3"
     >
       <div class="min-w-0">
-        <h2 class="page-title flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-          <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400">
-            <Icon name="chart" size="sm" />
-          </span>
+        <h2 class="text-gray-900 dark:text-white">
           {{ t('channelMonitorV2.settings.title') }}
         </h2>
       </div>
@@ -38,13 +35,13 @@
 
     <div
       v-if="loading"
-      class="card flex min-h-[200px] items-center justify-center !rounded-3xl !border-0 text-sm text-gray-400 shadow-sm ring-1 ring-gray-900/5 dark:ring-dark-700"
+      class="card flex min-h-[200px] items-center justify-center rounded-lg border text-sm text-gray-400 shadow-none dark:ring-dark-700"
     >
       <span class="animate-pulse">{{ t('channelMonitorV2.settings.loading') }}</span>
     </div>
 
-    <template v-else-if="draft">
-      <div class="card divide-y divide-gray-100 !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:divide-dark-700 dark:!bg-dark-800 dark:ring-dark-700">
+    <div v-else-if="draft" class="monitor-settings-grid">
+      <div class="card divide-y divide-gray-100 rounded-lg border shadow-none dark:divide-dark-700 dark:bg-dark-800 dark:border-dark-700">
         <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
             <strong class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.enableTitle') }}</strong>
@@ -76,7 +73,7 @@
         </div>
       </div>
 
-      <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
+      <div class="card overflow-hidden rounded-lg border shadow-none dark:bg-dark-800 dark:border-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.platformsTitle') }}</h3>
           <div v-if="availablePlatforms.length" class="mt-3 flex flex-wrap items-center gap-2">
@@ -123,7 +120,7 @@
         </div>
       </div>
 
-      <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
+      <div class="card overflow-hidden rounded-lg border shadow-none dark:bg-dark-800 dark:border-dark-700">
         <div class="card-header flex flex-wrap items-center justify-between gap-2 !py-3">
           <div>
             <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.groupsTitle') }}</h3>
@@ -165,7 +162,7 @@
         </div>
       </div>
 
-      <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
+      <div class="card overflow-hidden rounded-lg border shadow-none dark:bg-dark-800 dark:border-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.errorsTitle') }}</h3>
         </div>
@@ -199,7 +196,7 @@
         </div>
       </div>
 
-      <div class="card overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
+      <div class="card overflow-hidden rounded-lg border shadow-none dark:bg-dark-800 dark:border-dark-700">
         <div class="card-header !py-3">
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.healthTitle') }}</h3>
         </div>
@@ -258,7 +255,7 @@
           </ul>
         </div>
       </div>
-    </template>
+    </div>
   </section>
 </template>
 

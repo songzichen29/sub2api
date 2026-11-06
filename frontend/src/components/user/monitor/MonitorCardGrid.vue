@@ -31,10 +31,27 @@
       :description="t('channelStatus.empty.description')"
     />
 
-    <div v-else class="space-y-6">
-      <section v-for="section in sections" :key="section.provider" :aria-label="providerLabel(section.provider)">
+    <div v-else class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <section
+        v-for="section in sections"
+        :key="section.provider"
+        :aria-label="providerLabel(section.provider)"
+        class="min-w-0"
+        :class="{
+          'md:col-span-2': section.items.length > 1,
+          'xl:col-span-3': section.items.length > 2,
+          '2xl:col-span-4': section.items.length > 3,
+        }"
+      >
         <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-gray-100">{{ providerLabel(section.provider) }}</h2>
-        <div class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div
+          class="grid grid-cols-1 gap-5"
+          :class="{
+            'md:grid-cols-2': section.items.length > 1,
+            'xl:grid-cols-3': section.items.length > 2,
+            '2xl:grid-cols-4': section.items.length > 3,
+          }"
+        >
           <MonitorCard
             v-for="item in section.items"
             :key="item.id"

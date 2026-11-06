@@ -1,11 +1,11 @@
 <template>
-  <article class="group flex min-h-[280px] w-full flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 text-left shadow-card dark:border-dark-700/70 dark:bg-dark-800/60">
+  <article class="card group flex w-full min-w-0 flex-col p-5 text-left">
     <button type="button" class="w-full text-left focus-visible:outline focus-visible:outline-primary-500" :aria-label="item.name" @click="emit('click')">
     <!-- Header: icon + name/model + status chip -->
     <div class="flex items-start gap-3">
       <span
-        class="w-9 h-9 rounded-xl ring-1 ring-black/5 dark:ring-white/10 grid place-items-center flex-shrink-0"
-        :class="[providerGradient(item.provider), providerTintClass]"
+        class="w-8 h-8 grid place-items-center flex-shrink-0"
+        :class="providerTintClass"
       >
         <ProviderIcon :provider="item.provider" :size="20" />
       </span>
@@ -43,7 +43,7 @@
         </div>
       </div>
       <span
-        class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
+        class="px-2 py-1 rounded-md text-xs font-medium flex-shrink-0"
         :class="statusBadgeClass(item.primary_status)"
       >
         {{ statusLabel(item.primary_status) }}
@@ -92,7 +92,6 @@ import { useI18n } from 'vue-i18n'
 import type { UserMonitorView, MonitorTimelinePoint } from '@/api/channelMonitor'
 import {
   useChannelMonitorFormat,
-  providerGradient,
 } from '@/composables/useChannelMonitorFormat'
 import { isChannelMonitorQuotaVisible } from '@/utils/featureFlags'
 import ProviderIcon from './ProviderIcon.vue'

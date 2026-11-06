@@ -85,7 +85,7 @@ func (s *Service) UserLottery(ctx context.Context, uid int64) (UserLottery, erro
 	if err != nil {
 		return out, err
 	}
-	out.Enabled, out.Title, out.PeriodStart = c.Enabled && l.Enabled, l.Title, lotteryPeriodStart
+	out.Enabled, out.Title, out.PeriodStart = l.Enabled, l.Title, lotteryPeriodStart
 	out.RechargeStep, out.ChancesPerStep, out.Prizes = l.RechargeStep, l.ChancesPerStep, l.Prizes
 	if l.GuaranteeEnabled {
 		out.GuaranteePrizes = l.GuaranteePrizes

@@ -1,5 +1,6 @@
 <template>
   <AppLayout>
+    <div class="workspace-page space-y-5">
     <MonitorHero
       :overall-status="overallStatus"
       :interval-seconds="DEFAULT_INTERVAL_SECONDS"
@@ -31,6 +32,7 @@
       :title="detailTitle"
       @close="closeDetail"
     />
+    </div>
   </AppLayout>
 </template>
 

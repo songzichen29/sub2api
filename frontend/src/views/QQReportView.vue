@@ -1,6 +1,6 @@
 <template>
   <main class="report-page min-h-screen bg-gray-50 px-6 py-8 text-gray-900 dark:bg-dark-950 dark:text-gray-100" :class="{ capturing }">
-    <div class="mx-auto max-w-6xl space-y-6">
+    <div class="workspace-page qq-workspace space-y-5">
       <header class="flex flex-wrap items-start justify-between gap-4 border-b border-gray-200 pb-5 dark:border-dark-700">
         <div>
           <h1 class="text-2xl font-semibold">{{ report?.title || 'QQ 查询页面' }}</h1>

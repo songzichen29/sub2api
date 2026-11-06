@@ -1,6 +1,6 @@
 <template>
   <div
-    class="stat-card !min-h-[6.5rem] !rounded-3xl !border-0 !p-4 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700"
+    class="card stat-card !min-h-[6.5rem] rounded-lg border !p-4 shadow-none dark:bg-dark-800 dark:border-dark-700"
     :title="title || undefined"
   >
     <div
@@ -10,7 +10,7 @@
       aria-hidden="true"
     ></div>
     <div class="min-w-0 flex-1">
-      <span class="stat-label text-[10px] font-bold uppercase tracking-wider text-gray-400">{{ label }}</span>
+      <span class="stat-label text-xs font-medium text-gray-400">{{ label }}</span>
       <strong
         class="stat-value mt-1 block overflow-visible text-xl tabular-nums leading-tight !text-clip !whitespace-normal"
         :class="stateClass"

@@ -50,6 +50,10 @@ export default {
       },
       fontFamily: {
         sans: [
+          'PingFang SC',
+          'Microsoft YaHei UI',
+          'Microsoft YaHei',
+          'Noto Sans CJK SC',
           'system-ui',
           '-apple-system',
           'BlinkMacSystemFont',

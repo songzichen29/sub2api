@@ -1,18 +1,15 @@
 <template>
   <AppLayout>
-    <div class="w-full min-w-0 space-y-6 pb-8">
+    <div class="workspace-page space-y-5 pb-6">
       <header
-        class="page-header mb-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-900/5 dark:bg-dark-800 dark:ring-dark-700 sm:p-6"
+        class="mb-0"
       >
-        <h1 class="page-title flex items-center gap-2 text-xl font-black text-gray-900 dark:text-white">
-          <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-900/30 dark:text-blue-400">
-            <Icon name="chart" size="sm" />
-          </span>
+        <h1 class="page-title text-gray-900 dark:text-white">
           {{ t('admin.channelMonitor.title') }}
         </h1>
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
-          <div
-            class="tabs inline-flex w-full max-w-xl flex-wrap sm:w-auto"
+          <nav
+            class="workspace-tabs"
             role="tablist"
             :aria-label="t('channelMonitorV2.admin.tabAria')"
           >
@@ -39,7 +36,7 @@
             >
               {{ isV1Mode ? t('channelMonitorV2.admin.tabV1Active') : t('channelMonitorV2.admin.tabV1History') }}
             </button>
-          </div>
+          </nav>
         </div>
       </header>
 

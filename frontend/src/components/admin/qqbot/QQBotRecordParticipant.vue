@@ -2,7 +2,7 @@
   <div class="min-w-0 space-y-1 text-sm">
     <p v-if="person.nickname" class="break-all font-medium">{{ person.nickname }}</p>
     <code class="block break-all text-xs text-gray-500">{{ person.member_id }}</code>
-    <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium"
+    <span v-if="person.member_id" class="inline-flex rounded-md px-2 py-0.5 text-xs font-medium"
       :class="person.bound ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'">
       {{ person.bound ? t('qqbot.recordBound') : t('qqbot.recordUnbound') }}
     </span>

@@ -1,12 +1,12 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-6xl space-y-6">
+    <div class="workspace-page qq-workspace space-y-5">
       <div class="flex items-center justify-between gap-3"><h1 class="text-2xl font-semibold">{{ t('qqbot.workspace.overview') }}</h1><button class="btn btn-secondary" :disabled="loading" @click="load">{{ t('common.refresh') }}</button></div>
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700">{{ error }}</p>
       <template v-if="overview && config">
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.overviewHelp', { day: overview.day }) }}</p>
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article v-for="stat in stats" :key="stat.label" class="card p-5"><p class="text-sm text-gray-500 dark:text-gray-400">{{ t(stat.label) }}</p><p class="mt-2 text-2xl font-semibold">{{ stat.value }}</p></article>
+        <div class="qq-stats">
+          <article v-for="stat in stats" :key="stat.label"><p class="text-sm text-gray-500 dark:text-gray-400">{{ t(stat.label) }}</p><p class="font-semibold">{{ stat.value }}</p></article>
         </div>
         <p v-if="overview.reward_alert" role="alert" class="rounded-lg bg-amber-50 p-4 text-amber-800">{{ t('qqbot.workspace.budgetExceeded') }}</p>
         <section class="card space-y-4 p-5">

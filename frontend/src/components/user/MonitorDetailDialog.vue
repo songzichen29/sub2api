@@ -3,6 +3,7 @@
     :show="show"
     :title="title"
     width="wide"
+    panel-class="workspace-page"
     @close="$emit('close')"
   >
     <div v-if="loading" class="py-8 text-center text-sm text-gray-500">
