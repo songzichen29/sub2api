@@ -59,7 +59,13 @@ def should_load_images(enabled, direct, received_images):
 
 
 def is_sticker(segment):
-    return segment.get("type") == "mface" or str(segment.get("data", {}).get("sub_type", "")) == "1"
+    if segment.get("type") == "mface":
+        return True
+    if segment.get("type") != "image":
+        return False
+    data = segment.get("data", {})
+    # NapCat also converts marketplace faces to image segments with emoji_id.
+    return str(data.get("sub_type", "")) == "1" or data.get("emoji_id") not in (None, "", 0, "0")
 
 
 def requests_tool(text):

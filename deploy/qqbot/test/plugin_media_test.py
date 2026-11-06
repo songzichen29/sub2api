@@ -45,6 +45,26 @@ class PluginMediaTests(unittest.TestCase):
         self.assertTrue(media.should_load_images(True, True, []))
         self.assertFalse(media.should_load_images(False, False, [{'type': 'image'}]))
 
+    def test_marketplace_stickers_converted_to_images_are_collected(self):
+        for segment in (
+            {'type': 'mface', 'data': {'url': 'https://qq.com/sticker.gif'}},
+            {'type': 'image', 'data': {'sub_type': 1}},
+            {'type': 'image', 'data': {'sub_type': '1'}},
+            {'type': 'image', 'data': {'sub_type': 0, 'emoji_id': '123456', 'emoji_package_id': 123}},
+            {'type': 'image', 'data': {'emoji_id': 'marketplace-face'}},
+        ):
+            with self.subTest(segment=segment):
+                self.assertTrue(media.is_sticker(segment))
+
+    def test_ordinary_images_and_empty_emoji_metadata_are_not_collected(self):
+        for segment in (
+            {'type': 'image', 'data': {'url': 'https://qq.com/photo.gif', 'summary': '[动画表情]'}},
+            *({'type': 'image', 'data': {'sub_type': 0, 'emoji_id': value}} for value in (None, '', 0, '0')),
+            {'type': 'video', 'data': {'sub_type': 1}},
+        ):
+            with self.subTest(segment=segment):
+                self.assertFalse(media.is_sticker(segment))
+
 
 if __name__ == '__main__':
     unittest.main()
