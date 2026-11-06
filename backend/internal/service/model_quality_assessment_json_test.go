@@ -29,7 +29,7 @@ func TestQualityAssessmentLosslessFormatting(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "normal", verdict)
 		require.Equal(t, "gpt-6.1-sol", out.Model)
-		require.Equal(t, qualityBenchmarkVersion+":"+qualityJudgeFormatVersion, out.Version)
+		require.Equal(t, qualityBenchmarkVersion+":"+qualityJudgeFormatVersion+":"+qualityVerdictVersion, out.Version)
 		stored, err := json.Marshal(out)
 		require.NoError(t, err)
 		for _, extra := range []string{"account_id", "account_available", "provider_note", "do-not-persist"} {

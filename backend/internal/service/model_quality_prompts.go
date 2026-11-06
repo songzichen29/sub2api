@@ -61,7 +61,7 @@ func qualityRubric(benchmark string) map[string]string {
 			"motion":       "追踪至少四分之一和半圈时的关系：轮子绕固定轴，脚随踏板，左右踏板反相，腿保持连接。关注CSS变换覆盖SVG原有translate、transform-origin坐标系错误等导致部件漂移的实证；不强制逆运动学算法。",
 			"completeness": "完整自包含HTML、核心元素可达且未严重遮挡/裁切；动画有实现，不依赖被禁的外部资源；不奖励装饰多少。",
 		}
-	default:
+	case "creative":
 		return map[string]string{
 			"subject":      "具有明确且实际绘制的原创主题和主体，非占位文字/空画布。",
 			"composition":  "场景主体与环境空间关系、尺寸、层级协调，没有明显几何矛盾。",
@@ -69,5 +69,7 @@ func qualityRubric(benchmark string) map[string]string {
 			"interaction":  "暂停/继续控件确实绑定动画状态，并能停止/继续相关动画，不是只改变按钮文案。",
 			"completeness": "完整可独立运行的HTML，无外部依赖、核心语法/引用错误或未完成占位。",
 		}
+	default:
+		return nil
 	}
 }

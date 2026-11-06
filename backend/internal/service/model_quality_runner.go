@@ -310,15 +310,17 @@ func parseQualityAssessment(text, benchmark, model string) (*ModelQualityAssessm
 		return nil, "", "", errors.New("reason 缺失、为空或超过长度上限")
 	}
 	rubric := qualityRubric(benchmark)
+	if len(rubric) == 0 {
+		return nil, "", "", errors.New("不支持的检测模式")
+	}
 	if len(raw.Checks) != len(rubric) {
 		return nil, "", "", errors.New("checks 评分项数量与检测规则不符")
 	}
-	out := &ModelQualityAssessment{Version: qualityBenchmarkVersion + ":" + qualityJudgeFormatVersion, Basis: "html_source", Model: model, Confidence: *raw.Confidence}
+	out := &ModelQualityAssessment{Version: qualityBenchmarkVersion + ":" + qualityJudgeFormatVersion + ":" + qualityVerdictVersion, Basis: "html_source", Model: model, Confidence: *raw.Confidence}
 	if benchmark == "candy" {
 		out.Basis = "answer_reasoning"
 	}
 	seen := map[string]bool{}
-	sum, failures := 0, 0
 	for _, c := range raw.Checks {
 		if _, ok := rubric[c.ID]; !ok || seen[c.ID] {
 			return nil, "", "", errors.New("评分项 ID 缺失、重复或不在检测规则内")
@@ -330,25 +332,10 @@ func parseQualityAssessment(text, benchmark, model string) (*ModelQualityAssessm
 			return nil, "", "", errors.New("evidence 缺失、为空或超过长度上限")
 		}
 		seen[c.ID] = true
-		sum += *c.Score
-		if *c.Score == 0 {
-			failures++
-		}
 		out.Checks = append(out.Checks, ModelQualityCheck{ID: c.ID, Score: *c.Score, Evidence: c.Evidence})
 	}
-	verdict := "unknown"
-	if out.Confidence >= 0.8 {
-		if failures > 0 {
-			verdict = "degraded"
-		} else if sum*10 >= len(rubric)*16 {
-			verdict = "normal"
-		}
-		// A correct number without both proofs is not a confirmed candy pass.
-		if benchmark == "candy" && failures == 0 && sum != 6 {
-			verdict = "unknown"
-		}
-	}
-	reason := raw.Reason + "；仅反映本次测试，不能证明模型身份或整体能力"
+	verdict, decision := qualityAssessmentVerdict(benchmark, out)
+	reason := decision + "；裁判说明：" + raw.Reason + "；仅反映本次测试，不能证明模型身份或整体能力"
 	if verdict == "unknown" {
 		reason = "证据不足，无法判定：" + reason
 	}
