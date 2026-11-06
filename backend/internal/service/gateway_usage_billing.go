@@ -432,6 +432,12 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
 			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
+	} else if p.ImageBalanceHold != nil && p.User != nil && deps.billingCacheService != nil {
+		// Reservation already reduced the available balance. Settlement returns
+		// the unused hold, even for zero-cost results; do not deduct it again in Redis.
+		if err := deps.billingCacheService.InvalidateUserBalance(ctx, p.User.ID); err != nil {
+			logger.LegacyPrintf("service.gateway", "invalidate balance cache after image hold settlement failed for user %d: %v", p.User.ID, err)
+		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		syncBalanceCacheAfterDeduction(ctx, p, deps, result)
 	}

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"strings"
@@ -31,7 +33,11 @@ func (h *OpenAIImageBalanceHold) settlementFingerprint(outcome string) string {
 	if h == nil {
 		return ""
 	}
-	return "openai-image-hold:" + strings.TrimSpace(outcome) + ":" + strings.TrimSpace(h.ID) + ":" + strconv.FormatFloat(h.Amount, 'f', 10, 64)
+	raw := "openai-image-hold:" + strings.TrimSpace(outcome) + ":" + strings.TrimSpace(h.ID) + ":" + strconv.FormatFloat(h.Amount, 'f', 10, 64)
+	// The dedup ledger stores SHA-256 fingerprints in VARCHAR(64); a UUID-based
+	// settlement identity exceeds that limit if stored as the raw payload.
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }
 
 // ReserveOpenAIImageBalance freezes the maximum known per-image charge for a
