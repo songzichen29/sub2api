@@ -9,7 +9,8 @@ test('isolated OneBot routing and colliding API echoes retain one destination', 
   const business = new WebSocketServer({ port: 0 }), chat = new WebSocketServer({ port: 0 });
   await Promise.all([once(business, 'listening'), once(chat, 'listening')]);
   const config = { bot_id: '123', groups: ['456'], private_users: ['789'], business_commands: ['签到'], business_observation: true, business_ws_url: `ws://127.0.0.1:${business.address().port}` };
-  const router = createRouter({ config, onebotToken: 'site', astrbotToken: 'chat', chatUrl: `ws://127.0.0.1:${chat.address().port}` });
+  const observed = [];
+  const router = createRouter({ config, onebotToken: 'site', astrbotToken: 'chat', chatUrl: `ws://127.0.0.1:${chat.address().port}`, observe: async e => { observed.push(e.message_id); } });
   router.server.listen(0, '127.0.0.1'); await once(router.server, 'listening');
   const frames = [[], []], peers = [];
   for (const [i, upstream] of [business, chat].entries()) upstream.on('connection', ws => { peers[i] = ws; ws.on('message', raw => frames[i].push(JSON.parse(raw))); });
@@ -35,6 +36,7 @@ test('isolated OneBot routing and colliding API echoes retain one destination', 
     assert.equal(received.find(e => e.message_id === 7).message[0].data.text, '查下我的余额');
     assert.deepEqual(received.filter(e => e.sub2api_observe_only).map(e => e.message_id), [2, 4, 9], 'chat and mentions of others still reach moderation');
     assert.deepEqual(frames[1].filter(e => e.post_type === 'message').map(e => e.message_id), [2, 9]);
+    assert.deepEqual(observed, [1, 2, 4, 7, 8, 9], 'all allowed human traffic suppresses stale proactive topics, including business commands');
     assert.equal(frames[1].find(e => e.message_id === 2).sub2api_observe_only, undefined);
     const largeImage = { ...event(10, ''), message: [{ type: 'image', data: { file: 'x'.repeat(2 * 1024 * 1024) } }] };
     gateway.send(JSON.stringify(largeImage));

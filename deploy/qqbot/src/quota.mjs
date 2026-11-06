@@ -9,6 +9,8 @@ export function quotaLimits(input, config, now = Date.now()) {
   ];
   if (input.group) calls.push({ key: `chat:group:${input.chat}:${day}`, limit: policy.disable_chat ? 0 : (policy.chat_daily_limit ?? config.total_daily_chat_limit) });
   const delivery = [];
+  // A scheduled group topic has no member principal and spends no user's quota.
+  if (input.proactive) calls.splice(1, 2);
   if (input.ambient) {
     calls.push({ key: `ambient:group:${input.chat}:${day}`, limit: config.ambient_daily_calls });
     if (input.images?.length) calls.push({ key: `ambient_media:group:${input.chat}:${day}`, limit: config.ambient_media_daily_calls });

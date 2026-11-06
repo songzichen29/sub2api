@@ -11,6 +11,10 @@ export default { qqbot: {
     web: 'Allow public web searches', memes: 'Allow searching and sending memes', collectMemes: 'Allow collecting memes and automatically save QQ sticker images',
     toolsHelp: 'Natural language image requests use the site image settings and quotas. Web answers cite sources. Collections are isolated by group and private chat; ordinary images become memes only when requested.',
     media_daily_calls: 'Group image calls per day',
+    proactiveTitle: 'Group conversation moments', proactiveEnabled: 'Start a group topic at selected Beijing times', proactiveGroups: 'Enabled groups for proactive topics',
+    proactiveTimes: 'Daily Beijing times (HH:MM, comma or newline separated)', proactiveIdle: 'Required group silence in minutes (0 disables the check)',
+    timezoneHelp: 'All participation hours, proactive moments and model-visible message times use Beijing time, Asia/Shanghai (UTC+8).',
+    proactiveHelp: 'Starts a short topic based on this group and the time of day. Skips active groups and cancels if chat resumes during generation. At most once per group and moment; missed moments are not replayed after restart. Disabled chat or notifications prevent sending. Uses group chat quotas, not any member quota.',
     welcomeTitle: 'New member welcome', welcomeEnabled: 'Welcome new members in enabled groups', welcomeText: 'Welcome message',
     welcomeHelp: 'Use name, qq and group inside braces as placeholders. New members are mentioned automatically. No model call; duplicate or stale join events are not replayed. Disabled group notifications also disable welcome messages.'
   },

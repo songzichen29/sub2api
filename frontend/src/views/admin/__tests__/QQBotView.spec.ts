@@ -171,6 +171,17 @@ describe('QQ module settings', () => {
   expect(w.find('[data-testid="history-messages"]').exists()).toBe(false)
   expect(w.find('[data-testid="autonomous-sample_percent"]').exists()).toBe(false)
  })
+ it('saves Beijing hot-group moments only in the runtime module', async () => {
+  const w = await mountView('zh'); await category(w, '对话与指令')
+  await w.get('[data-testid="proactive-enabled"]').setValue(true)
+  await w.get('[data-testid="proactive-times"]').setValue('12:00\n14:00,18:00')
+  await w.get('[data-testid="proactive-idle"]').setValue(15)
+  const panel = w.get('#qqbot-settings-panel-runtime-chat')
+  expect(panel.text()).toContain('Asia/Shanghai')
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(api.saveSection).toHaveBeenCalledWith('runtime-chat', 'runtime-chat-1', expect.objectContaining({ runtime_chat: expect.objectContaining({ proactive_enabled: true, proactive_times: ['12:00', '14:00', '18:00'], proactive_idle_minutes: 15 }) }))
+  expect(server.allowed_groups).toEqual(['group', 'other-group'])
+ })
  it('reports synchronized DSH memory and validates runtime capacity', async () => {
   api.runtime.mockResolvedValue({ groups: [], jobs: [], rewards: [], bindings: 0, encryption_ready: true, chat_runtime: { connected: true, last_seen_at: '2026-11-05T00:00:00Z', sessions: 2, messages: 150, summaries: 1 } })
   const w = await mountView(); await category(w, '对话与指令')

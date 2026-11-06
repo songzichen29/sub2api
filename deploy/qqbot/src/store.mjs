@@ -30,6 +30,9 @@ export class Store {
       CREATE TABLE IF NOT EXISTS memes(scope TEXT NOT NULL,hash TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,tags TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,hash));
       CREATE TABLE IF NOT EXISTS outgoing_media(id TEXT NOT NULL,ordinal INTEGER NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,label TEXT NOT NULL,PRIMARY KEY(id,ordinal));`);
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_receipts(id TEXT NOT NULL,message_id TEXT NOT NULL,PRIMARY KEY(id,message_id));');
+    this.db.exec(`CREATE TABLE IF NOT EXISTS group_activity(scope TEXT PRIMARY KEY,event_id TEXT NOT NULL,at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS proactive_slots(id TEXT PRIMARY KEY,scope TEXT NOT NULL,slot_at INTEGER NOT NULL,activity TEXT NOT NULL,status TEXT NOT NULL,turn_id TEXT,updated INTEGER NOT NULL);
+      CREATE UNIQUE INDEX IF NOT EXISTS proactive_turn ON proactive_slots(turn_id);`);
     this.db.exec("UPDATE turns SET status='interrupted' WHERE status='running'");
     // A crash between generation and the QQ receipt must not restore an
     // assistant answer whose delivery is unknown into a model session.
@@ -40,6 +43,21 @@ export class Store {
     )`);
   }
   turn(id) { return this.db.prepare('SELECT * FROM turns WHERE id=?').get(id); }
+  noteActivity(scope, event, at = Date.now()) {
+    this.db.prepare('INSERT INTO group_activity VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET event_id=excluded.event_id,at=excluded.at WHERE group_activity.event_id<>excluded.event_id').run(scope, event, at);
+  }
+  groupActivity(scope) {
+    const activity = this.db.prepare('SELECT event_id,at FROM group_activity WHERE scope=?').get(scope);
+    if (activity) return activity;
+    const prior = this.db.prepare("SELECT event_id,at FROM history WHERE scope=? AND role='user' ORDER BY seq DESC LIMIT 1").get(scope);
+    const at = Date.parse(prior?.at);
+    return Number.isFinite(at) ? { event_id: prior.event_id.replace(/^msg:/u, ''), at } : undefined;
+  }
+  claimProactive(id, scope, at, activity, status, now) {
+    return this.db.prepare('INSERT OR IGNORE INTO proactive_slots VALUES(?,?,?,?,?,NULL,?)').run(id, scope, at, activity, status, now).changes > 0;
+  }
+  finishProactive(id, status, turn = null) { this.db.prepare('UPDATE proactive_slots SET status=?,turn_id=COALESCE(?,turn_id),updated=? WHERE id=?').run(status, turn, Date.now(), id); }
+  proactiveTurn(id) { return this.db.prepare('SELECT * FROM proactive_slots WHERE turn_id=?').get(id); }
   begin(id, scope, deliveryLimits = []) { this.db.prepare("INSERT INTO turns VALUES(?,?,'running',NULL,?,?)").run(id, scope, Date.now(), JSON.stringify(deliveryLimits)); }
   finish(id, status, reply = '') { this.db.prepare('UPDATE turns SET status=?,reply=? WHERE id=?').run(status, reply, id); }
   cacheImages(scope, event, images) {

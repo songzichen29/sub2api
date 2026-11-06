@@ -22,15 +22,14 @@ class DSHBridge(Star):
         self.token = Path("/run/secrets/bridge-token").read_text().strip()
         self.http = None
         self.last_reply = {}
-        self.last_seen = {}
-        self.origins = {}
         self.locks = {}
         self.proactive_task = None
 
     async def initialize(self):
         self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=235))
-        if self.cfg.get("proactive_enabled", False):
-            self.proactive_task = asyncio.create_task(self.proactive())
+        # Always poll so enabling hot-group moments in the site takes effect
+        # without a plugin restart or a new incoming QQ message.
+        self.proactive_task = asyncio.create_task(self.proactive())
 
     async def terminate(self):
         if self.proactive_task:
@@ -101,11 +100,11 @@ class DSHBridge(Star):
                 logger.warning("QQ DSH quoted message could not be loaded")
         return None
 
-    async def deliver(self, event, result, chat, is_group):
+    async def deliver(self, bot, result, chat, is_group):
         receipts = []
         for packet in message_packets(result):
             target = {"group_id": int(chat)} if is_group else {"user_id": int(chat)}
-            response = await event.bot.api.call_action("send_group_msg" if is_group else "send_private_msg", message=packet, **target)
+            response = await bot.api.call_action("send_group_msg" if is_group else "send_private_msg", message=packet, **target)
             receipts.append(receipt_id(response))
         if not receipts:
             raise RuntimeError("QQ_delivery_unconfirmed")
@@ -161,8 +160,6 @@ class DSHBridge(Star):
                 except Exception:
                     logger.warning("QQ DSH sticker collection unavailable")
         now = time.time()
-        self.last_seen[chat] = now
-        self.origins[chat] = (event.unified_msg_origin, sender, is_group)
         if not direct:
             if not self.cfg.get("ambient_enabled", False) or group not in self.cfg.get("ambient_groups", self.cfg["groups"]):
                 return
@@ -207,7 +204,7 @@ class DSHBridge(Star):
                 status = "unconfirmed"
                 try:
                     # Full output is split; an ambiguous send is never replayed.
-                    receipts = await self.deliver(event, result, chat, is_group)
+                    receipts = await self.deliver(event.bot, result, chat, is_group)
                     status = "sent"
                     self.last_reply[chat] = time.time()
                 finally:
@@ -220,27 +217,39 @@ class DSHBridge(Star):
 
     async def proactive(self):
         while True:
-            await asyncio.sleep(random.randint(20 * 60, 60 * 60))
-            hour = datetime.now(ZoneInfo("Asia/Shanghai")).hour
-            if 2 <= hour < 8:
-                continue
-            for chat, (origin, sender, is_group) in list(self.origins.items()):
-                # No repeated prompts into an inactive group; owner private chat is separate.
-                if is_group and time.time() - self.last_seen.get(chat, 0) > 3600:
-                    continue
-                if time.time() - self.last_reply.get(chat, 0) < 1200:
-                    continue
-                try:
-                    result = await self.call("/turn", {
-                        "bot": self.cfg["bot_id"], "chat": chat, "sender": sender, "group": is_group,
-                        "message_id": "proactive-" + str(int(time.time())), "name": "",
-                        "ambient": True, "text": "根据本会话上下文决定是否自然开口；没有适合的新话题就输出[跳过]。",
-                    })
-                    if result.get("text") and result["text"].strip() != "[跳过]":
-                        claim = await self.call("/delivery/claim", {"id": result["id"]})
-                        if claim.get("claimed"):
-                            await self.context.send_message(origin, MessageChain().message(result["text"]))
-                            self.last_reply[chat] = time.time()
-                            await self.call("/delivery/finish", {"id": result["id"], "status": "sent"})
-                except Exception as error:
-                    logger.warning("QQ DSH proactive turn failed: %s", type(error).__name__)
+            await asyncio.sleep(15)
+            try:
+                await self.proactive_tick()
+            except Exception as error:
+                logger.warning("QQ DSH hot-group turn failed: %s", type(error).__name__)
+
+    async def proactive_tick(self):
+        await self.policy()
+        if not self.cfg.get("enabled") or self.cfg.get("chat_disabled") or not self.cfg.get("proactive_enabled"):
+            return
+        # The adapter is available after restart even without cached origins.
+        platform = self.context.get_platform("aiocqhttp")
+        if platform is None:
+            return
+        bot = platform.get_client()
+        login = await bot.api.call_action("get_login_info")
+        if str(login.get("user_id")) != self.cfg["bot_id"]:
+            return
+        result = await self.call("/proactive/next", {})
+        if not result.get("text") or result["text"].strip() == "[跳过]":
+            return
+        chat = result["chat"]
+        lock = self.locks.setdefault(chat, asyncio.Lock())
+        if lock.locked():
+            return
+        async with lock:
+            claim = await self.call("/delivery/claim", {"id": result["id"]})
+            if not claim.get("claimed"):
+                return
+            status, receipts = "unconfirmed", []
+            try:
+                receipts = await self.deliver(bot, result, chat, True)
+                status = "sent"
+                self.last_reply[chat] = time.time()
+            finally:
+                await self.call("/delivery/finish", {"id": result["id"], "status": status, "message_ids": receipts if status == "sent" else []})

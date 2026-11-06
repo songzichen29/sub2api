@@ -36,6 +36,7 @@ export function validateImages(images=[]) {
 
 export async function executeCapability({name,args}, context, {config,store,siteTool}) {
   const c=config.snapshot(), {input,id,scope}=context;
+  if (input.proactive) throw new Error('主动热群没有用户授权，不执行账户或图片工具');
   if(!c.enabled || c.chat_disabled || (input.group && (!c.groups.includes(input.chat) || c.group_policies?.some(p=>p.group_id===input.chat && p.disable_chat)))) throw new Error('本会话已停用');
   const call=body=>siteTool({...body,group_id:input.group?input.chat:'',member_id:input.sender,message_id:input.message_id});
   if(name==='generate_image') {

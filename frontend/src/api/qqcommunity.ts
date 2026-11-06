@@ -66,12 +66,14 @@ export interface QQRuntimeChatConfig {
   image_input_enabled: boolean; media_daily_calls: number
   web_enabled: boolean; memes_enabled: boolean; collect_memes: boolean
   context_window_tokens: number; welcome_enabled: boolean; welcome_message: string
+  proactive_enabled: boolean; proactive_groups: string[]; proactive_times: string[]; proactive_idle_minutes: number
 }
 export function defaultRuntimeChatConfig(): QQRuntimeChatConfig {
   return { enabled: true, names: ['小碗', '大碗'], ambient_enabled: false, ambient_groups: [],
     sample_percent: 100, start_hour: 8, end_hour: 2, daily_calls: 1800, hourly_replies: 100, daily_replies: 1000,
     image_input_enabled: true, web_enabled: true, memes_enabled: true, collect_memes: true,
     media_daily_calls: 100, context_window_tokens: 65536,
+    proactive_enabled: false, proactive_groups: [], proactive_times: ['12:00', '14:00', '18:00', '21:00'], proactive_idle_minutes: 10,
     welcome_enabled: true, welcome_message: '欢迎 {name} 加入本群！我是小碗，可以陪大家聊天，也能查询余额和今日用量。发送“帮助”查看功能，账户查询需要先绑定。' }
 }
 export interface QQChatRuntimeStatus {

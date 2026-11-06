@@ -90,6 +90,33 @@ func TestRuntimeAcceptsExistingDSHPersona(t *testing.T) {
 	require.Error(t, validateConfig(c))
 }
 
+func TestRuntimeProactiveConfigurationUsesBeijingAndAllowedGroups(t *testing.T) {
+	c := DefaultConfig()
+	c.AllowedGroups = []string{"456"}
+	c.RuntimeChat = DefaultRuntimeChatConfig()
+	c.RuntimeChat.Enabled, c.RuntimeChat.ProactiveEnabled = true, true
+	c.RuntimeChat.ProactiveGroups = []string{"456"}
+	require.NoError(t, validateRuntimeChat(c))
+	policy := runtimePolicy(c)
+	require.Equal(t, "Asia/Shanghai", policy["timezone"])
+	require.Equal(t, true, policy["proactive_enabled"])
+	require.Equal(t, []string{"456"}, policy["proactive_groups"])
+	for _, slots := range [][]string{{"2:00"}, {"24:00"}, {"12:60"}, {"12:00", "12:00"}, {}} {
+		c.RuntimeChat.ProactiveTimes = slots
+		require.Error(t, validateRuntimeChat(c), "%v", slots)
+	}
+	c.RuntimeChat.ProactiveTimes = []string{"00:00", "12:00", "23:59"}
+	c.RuntimeChat.ProactiveGroups = []string{"999"}
+	require.Error(t, validateRuntimeChat(c))
+	c.RuntimeChat.ProactiveGroups = []string{"456"}
+	c.RuntimeChat.ProactiveIdleMinutes = -1
+	require.Error(t, validateRuntimeChat(c))
+	var legacy Config
+	require.NoError(t, json.Unmarshal([]byte(`{"runtime_chat":{"enabled":true}}`), &legacy))
+	require.False(t, legacy.RuntimeChat.ProactiveEnabled, "existing deployments must not start talking just because they upgrade")
+	require.Equal(t, 10, legacy.RuntimeChat.ProactiveIdleMinutes)
+}
+
 func TestRuntimeMemberWelcomeRequiresFreshAllowedJoinAndOneBotReceipt(t *testing.T) {
 	for _, name := range []string{"welcome", "duplicate", "expired", "disabled", "other-group", "self", "muted-notifications", "missing-receipt"} {
 		t.Run(name, func(t *testing.T) {

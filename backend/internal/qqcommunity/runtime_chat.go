@@ -15,25 +15,29 @@ import (
 // RuntimeChatConfig is owned by the DSH runtime. Native model settings are
 // retired when this is enabled; account, image and moderation services remain.
 type RuntimeChatConfig struct {
-	Enabled             bool     `json:"enabled"`
-	Names               []string `json:"names"`
-	AmbientEnabled      bool     `json:"ambient_enabled"`
-	AmbientGroups       []string `json:"ambient_groups"`
-	SamplePercent       int      `json:"sample_percent"`
-	StartHour           int      `json:"start_hour"`
-	EndHour             int      `json:"end_hour"`
-	DailyCalls          int      `json:"daily_calls"`
-	HourlyReplies       int      `json:"hourly_replies"`
-	DailyReplies        int      `json:"daily_replies"`
-	ImageInputEnabled   bool     `json:"image_input_enabled"`
-	WebEnabled          bool     `json:"web_enabled"`
-	MemesEnabled        bool     `json:"memes_enabled"`
-	CollectMemes        bool     `json:"collect_memes"`
-	MediaSamplePercent  int      `json:"media_sample_percent"`
-	MediaDailyCalls     int      `json:"media_daily_calls"`
-	ContextWindowTokens int      `json:"context_window_tokens"`
-	WelcomeEnabled      bool     `json:"welcome_enabled"`
-	WelcomeMessage      string   `json:"welcome_message"`
+	Enabled              bool     `json:"enabled"`
+	Names                []string `json:"names"`
+	AmbientEnabled       bool     `json:"ambient_enabled"`
+	AmbientGroups        []string `json:"ambient_groups"`
+	SamplePercent        int      `json:"sample_percent"`
+	StartHour            int      `json:"start_hour"`
+	EndHour              int      `json:"end_hour"`
+	DailyCalls           int      `json:"daily_calls"`
+	HourlyReplies        int      `json:"hourly_replies"`
+	DailyReplies         int      `json:"daily_replies"`
+	ImageInputEnabled    bool     `json:"image_input_enabled"`
+	WebEnabled           bool     `json:"web_enabled"`
+	MemesEnabled         bool     `json:"memes_enabled"`
+	CollectMemes         bool     `json:"collect_memes"`
+	MediaSamplePercent   int      `json:"media_sample_percent"`
+	MediaDailyCalls      int      `json:"media_daily_calls"`
+	ContextWindowTokens  int      `json:"context_window_tokens"`
+	WelcomeEnabled       bool     `json:"welcome_enabled"`
+	WelcomeMessage       string   `json:"welcome_message"`
+	ProactiveEnabled     bool     `json:"proactive_enabled"`
+	ProactiveGroups      []string `json:"proactive_groups"`
+	ProactiveTimes       []string `json:"proactive_times"`
+	ProactiveIdleMinutes int      `json:"proactive_idle_minutes"`
 }
 
 func DefaultRuntimeChatConfig() RuntimeChatConfig {
@@ -41,6 +45,7 @@ func DefaultRuntimeChatConfig() RuntimeChatConfig {
 		StartHour: 8, EndHour: 2, DailyCalls: 1800, HourlyReplies: 100, DailyReplies: 1000,
 		ImageInputEnabled: true, WebEnabled: true, MemesEnabled: true, CollectMemes: true,
 		MediaSamplePercent: 10, MediaDailyCalls: 100, ContextWindowTokens: 65536,
+		ProactiveGroups: []string{}, ProactiveTimes: []string{"12:00", "14:00", "18:00", "21:00"}, ProactiveIdleMinutes: 10,
 		WelcomeEnabled: true, WelcomeMessage: "欢迎 {name} 加入本群！我是小碗，可以陪大家聊天，也能查询余额和今日用量。发送“帮助”查看功能，账户查询需要先绑定。"}
 }
 
@@ -48,6 +53,24 @@ func validateRuntimeChat(c Config) error {
 	r := c.RuntimeChat
 	if !r.Enabled {
 		return nil
+	}
+	if len(r.ProactiveGroups) > 100 || len(r.ProactiveTimes) > 24 || r.ProactiveIdleMinutes < 0 || r.ProactiveIdleMinutes > 1440 {
+		return errors.New("热群最多配置 100 个群、24 个时间点，安静时长须为 0～1440 分钟")
+	}
+	if r.ProactiveEnabled && (len(r.ProactiveGroups) == 0 || len(r.ProactiveTimes) == 0) {
+		return errors.New("启用指定时点热群时请选择已开放群并填写北京时间点")
+	}
+	seenTimes := map[string]bool{}
+	for _, slot := range r.ProactiveTimes {
+		if parsed, err := time.Parse("15:04", slot); err != nil || parsed.Format("15:04") != slot || seenTimes[slot] {
+			return errors.New("热群时间须为不重复的北京时间 HH:MM，例如 12:00")
+		}
+		seenTimes[slot] = true
+	}
+	for _, group := range r.ProactiveGroups {
+		if !c.allows(group) {
+			return errors.New("热群只能选择已开放群")
+		}
 	}
 	if len(r.Names) == 0 || len(r.Names) > 12 || len(r.AmbientGroups) > 100 {
 		return errors.New("机器人称呼须为 1～12 个，接话群最多 100 个")
@@ -144,7 +167,9 @@ func runtimePolicy(c Config) map[string]any {
 		"ambient_daily_calls": r.DailyCalls, "ambient_hourly_replies": r.HourlyReplies, "ambient_daily_replies": r.DailyReplies,
 		"image_input_enabled": r.ImageInputEnabled, "ambient_media_daily_calls": r.MediaDailyCalls,
 		"web_enabled": r.WebEnabled, "memes_enabled": r.MemesEnabled, "collect_memes": r.CollectMemes, "image_generation_enabled": c.ImageEnabled,
-		"proactive_enabled": false, "welcome_enabled": r.WelcomeEnabled,
+		"timezone": "Asia/Shanghai", "proactive_enabled": r.ProactiveEnabled,
+		"proactive_groups": r.ProactiveGroups, "proactive_times": r.ProactiveTimes,
+		"proactive_idle_minutes": r.ProactiveIdleMinutes, "welcome_enabled": r.WelcomeEnabled,
 	}
 }
 

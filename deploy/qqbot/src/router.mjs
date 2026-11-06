@@ -91,7 +91,7 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
         if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
         else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
       };
-      if (observe && route !== 'business' && shouldObserveGroup(event, config)) {
+      if (observe && shouldObserveGroup(event, config)) {
         observations = observations.then(async () => {
           try { await observe(event); }
           catch { console.error(JSON.stringify({ event: 'group_history_not_persisted', message_id: event.message_id })); }

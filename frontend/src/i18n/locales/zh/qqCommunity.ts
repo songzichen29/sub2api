@@ -11,6 +11,10 @@ export default { qqbot: {
     web: '允许主动联网查询公开信息', memes: '允许搜索和发送表情包', collectMemes: '允许收藏表情包，并自动收集 QQ 标记的表情图片',
     toolsHelp: '自然语言画图沿用站点生图开关和额度。联网回答引用来源；收藏按群与私聊隔离，普通图片只在用户要求收藏时保存为表情包。',
     media_daily_calls: '每群每日图片理解调用上限',
+    proactiveTitle: '指定时点热群', proactiveEnabled: '到指定北京时间点主动热群', proactiveGroups: '主动热群的已开放群',
+    proactiveTimes: '每天的北京时间点（HH:MM，逗号或换行分隔）', proactiveIdle: '群内安静多少分钟才热群（0 表示不检查）',
+    timezoneHelp: '统一使用北京时间 Asia/Shanghai（UTC+8）。接话时段、热群时间点和提供给模型的消息时间使用相同时区。',
+    proactiveHelp: '到点结合本群上下文和时段自然开话题，不是固定公告。群内正在聊天则跳过该时点；生成期间恢复聊天也取消。每群每时点最多一次，重启不补发已错过的时点；关闭聊天或通知的群不发送。沿用群聊额度，不占用任何成员个人额度。',
     welcomeTitle: '新人入群欢迎', welcomeEnabled: '已开放群有新成员加入时自动欢迎', welcomeText: '欢迎语',
     welcomeHelp: '支持占位符：昵称、QQ 和群号分别使用花括号中的 name、qq、group。自动提及新成员，不调用模型；重复或过期入群事件不补发。关闭群通知的群不发送欢迎。'
   },
