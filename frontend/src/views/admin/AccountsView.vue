@@ -477,8 +477,8 @@
       </template>
       <template #pagination><Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" /></template>
     </TablePageLayout>
-    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" @close="showCreate = false" @created="reload" />
-    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" :available-tags="availableTags" @close="showCreate = false" @created="reload" />
+    <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" :available-tags="availableTags" @close="showEdit = false" @updated="handleAccountUpdated" />
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -501,6 +501,7 @@
       :target="bulkEditTarget ?? undefined"
       :proxies="proxies"
       :groups="groups"
+      :available-tags="availableTags"
       @close="showBulkEdit = false"
       @updated="handleBulkUpdated"
     />
@@ -576,6 +577,17 @@ const authStore = useAuthStore()
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const availableTags = ref<string[]>([])
+let tagsRequestId = 0
+const refreshAvailableTags = async () => {
+  const requestId = ++tagsRequestId
+  try {
+    const tags = await adminAPI.accounts.listTags()
+    if (requestId === tagsRequestId) availableTags.value = tags
+  } catch (error) {
+    // 保留上次成功的候选，避免一次请求失败清空所有表单的标签字典。
+    console.error('Failed to load account tags:', error)
+  }
+}
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []
@@ -1213,7 +1225,7 @@ const reload = async () => {
   hasPendingListSync.value = false
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
-  await baseReload()
+  await Promise.all([baseReload(), refreshAvailableTags()])
   await refreshTodayStatsBatch()
 }
 
@@ -2348,6 +2360,7 @@ const handleProbeUpstreamBilling = async (account: Account) => {
 const handleAccountUpdated = (updatedAccount: Account) => {
   patchAccountInList(updatedAccount)
   enterAutoRefreshSilentWindow()
+  void refreshAvailableTags()
 }
 const formatExportTimestamp = () => {
   const now = new Date()
@@ -2631,13 +2644,10 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  const listTagsPromise = typeof adminAPI.accounts.listTags === 'function'
-    ? adminAPI.accounts.listTags()
-    : Promise.resolve([] as string[])
-  const [proxiesResult, groupsResult, tagsResult] = await Promise.allSettled([
+  const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
     adminAPI.groups.getAll(),
-    listTagsPromise
+    refreshAvailableTags()
   ])
   if (proxiesResult.status === 'fulfilled') {
     proxies.value = proxiesResult.value
@@ -2648,11 +2658,6 @@ onMounted(async () => {
     groups.value = groupsResult.value
   } else {
     console.error('Failed to load groups:', groupsResult.reason)
-  }
-  if (tagsResult.status === 'fulfilled') {
-    availableTags.value = tagsResult.value
-  } else {
-    console.error('Failed to load account tags:', tagsResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)

@@ -141,6 +141,7 @@
               :class="!enableTags && 'pointer-events-none opacity-50'"
             >
               <AccountTagsInput
+                ref="tagsInput"
                 v-model="applyTags"
                 :suggestions="availableTags"
                 :disabled="!enableTags"
@@ -514,6 +515,7 @@ const enablePriority = ref(false)
 const enableModelRestriction = ref(false)
 
 const applyTags = ref<string[]>([])
+const tagsInput = ref<InstanceType<typeof AccountTagsInput> | null>(null)
 const applyGroupIds = ref<number[]>([])
 const availableGroupIdSet = computed(() => new Set(props.groups.map((group) => group.id)))
 const sanitizeGroupIds = (ids: number[] | undefined | null): number[] => {
@@ -656,6 +658,7 @@ const cancelSaveTemplate = () => {
 const confirmSaveTemplate = () => {
   const name = pendingTemplateName.value.trim()
   if (!name) return
+  if (enableTags.value && tagsInput.value?.commit() === false) return
   const template: ImportApplyTemplate = {
     id: `tpl_${Date.now()}`,
     name,
@@ -819,6 +822,7 @@ const buildApplyPayload = (): AdminDataImportApply | undefined => {
 }
 
 const handleImport = async () => {
+  if (enableTags.value && tagsInput.value?.commit() === false) return
   if (files.value.length === 0) {
     appStore.showError(t('admin.accounts.dataImportSelectFile'))
     return

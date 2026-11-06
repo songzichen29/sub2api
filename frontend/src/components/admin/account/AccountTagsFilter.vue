@@ -100,9 +100,11 @@ onClickOutside(rootEl, () => {
 })
 
 const filteredTags = computed(() => {
+  // 字典刷新后，仍保留已经选中的标签，允许逐个取消失效的筛选条件。
+  const tags = [...new Set([...props.availableTags, ...props.modelValue])].sort()
   const kw = search.value.trim().toLowerCase()
-  if (kw === '') return props.availableTags
-  return props.availableTags.filter(tag => tag.includes(kw))
+  if (kw === '') return tags
+  return tags.filter(tag => tag.includes(kw))
 })
 
 const triggerLabel = computed(() => {

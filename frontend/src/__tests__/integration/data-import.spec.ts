@@ -40,8 +40,7 @@ vi.mock('vue-i18n', async (importOriginal) => {
   }
 })
 
-// 子组件全部 stub 成空 div + 透传 props/emits，让我们能用 findComponent + vm.$emit
-// 直接模拟"用户在子组件里输入并触发 update:modelValue"。
+// 非标签子组件透传 props/emits；标签组件保留真实输入与提交校验。
 const stubChild = (name: string, props: string[]) => ({
   name,
   template: `<div data-stub="${name}" />`,
@@ -114,7 +113,6 @@ const mountModal = (props: Record<string, unknown> = {}) =>
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
         ProxySelector: stubChild('ProxySelector', ['modelValue', 'proxies', 'disabled']),
         GroupSelector: stubChild('GroupSelector', ['modelValue', 'groups']),
-        AccountTagsInput: stubChild('AccountTagsInput', ['modelValue', 'suggestions', 'disabled', 'placeholder']),
         ModelWhitelistSelector: stubChild('ModelWhitelistSelector', ['modelValue']),
         Select: stubChild('Select', ['modelValue', 'options', 'placeholder']),
         Icon: true
@@ -406,6 +404,44 @@ describe('ImportDataModal', () => {
     expect(importDataMock).toHaveBeenCalledTimes(1)
     const arg = importDataMock.mock.calls[0][0] as { apply?: Record<string, unknown> }
     expect(arg.apply).toEqual({ tags: ['vip'] })
+  })
+
+  it('validates and commits a pending tag draft before importing', async () => {
+    const wrapper = mountModal()
+    await attachJsonFile(wrapper, sampleData)
+    await wrapper.get('#import-apply-tags-enabled').setValue(true)
+    const input = wrapper.get('#import-apply-tags-body input[type="text"]')
+    await input.setValue('vip!')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(importDataMock).not.toHaveBeenCalled()
+
+    await input.setValue('VIP')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(importDataMock).toHaveBeenCalledWith(expect.objectContaining({ apply: { tags: ['vip'] } }))
+  })
+
+  it('validates and commits a pending tag draft before saving a template', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    await wrapper.get('#import-apply-tags-enabled').setValue(true)
+    const input = wrapper.get('#import-apply-tags-body input[type="text"]')
+    const saveButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.dataImportTemplateSave')!
+    await saveButton.trigger('click')
+    await wrapper.get('input[placeholder="admin.accounts.dataImportTemplateNamePlaceholder"]').setValue('tag template')
+    const confirmButton = wrapper.findAll('button').find(button => button.text() === 'common.confirm')!
+    await input.setValue('vip!')
+    await confirmButton.trigger('click')
+    await flushPromises()
+    expect(updateTemplatesMock).not.toHaveBeenCalled()
+
+    await input.setValue('VIP')
+    await confirmButton.trigger('click')
+    await flushPromises()
+    expect(updateTemplatesMock).toHaveBeenCalledWith([
+      expect.objectContaining({ name: 'tag template', enableTags: true, applyTags: ['vip'] })
+    ])
   })
 
   it('勾选 proxy 但未选具体代理时，payload.apply 不含 proxy_id', async () => {

@@ -36,6 +36,9 @@
         :placeholder="modelValue.length === 0 ? placeholder : ''"
         class="min-w-[6rem] flex-1 bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400 dark:text-white"
         @keydown="onKeydown"
+        @input="error = null"
+        @compositionstart="composing = true"
+        @compositionend="onCompositionEnd"
         @focus="onFocus"
         @blur="onBlur"
       />
@@ -100,6 +103,7 @@ const { t } = useI18n()
 
 const draft = ref('')
 const focused = ref(false)
+const composing = ref(false)
 const error = ref<AccountTagError | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
 
@@ -138,14 +142,19 @@ function onFocus() {
 }
 
 function onBlur() {
-  // delay：让 dropdown 中的 click 事件能在 dropdown 消失前生效
-  setTimeout(() => {
-    focused.value = false
-  }, 120)
+  focused.value = false
+  // 候选列表的 mousedown.prevent 会保留焦点，不会在点击候选前提交前缀。
+  if (!composing.value) addTag(draft.value)
+}
+
+function onCompositionEnd(event: CompositionEvent) {
+  composing.value = false
+  draft.value = (event.target as HTMLInputElement).value
+  if (!focused.value) addTag(draft.value)
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (props.disabled) return
+  if (props.disabled || composing.value || event.isComposing || event.keyCode === 229) return
   if (event.key === 'Enter' || event.key === ',' || event.key === ' ') {
     event.preventDefault()
     if (draft.value.trim() === '') return
@@ -160,37 +169,49 @@ function onKeydown(event: KeyboardEvent) {
  * 把单个原始输入加到 modelValue。
  *
  * 流程：trim+lower 规范化 → 字符集/长度校验 → 去重 → 数量上限校验 → 排序后 emit。
- * 校验失败时 emit invalid 事件不修改 modelValue；上层应根据 invalid 事件做更
- * 显式的反馈（如 toast），而本组件内联的错误提示作为最低限度兜底。
+ * 校验失败时保留输入并返回 false；父表单通过 commit() 阻止非法草稿被静默丢弃。
  */
-function addTag(input: string) {
+function addTag(input: string): boolean {
+  if (props.disabled) return true
   const tag = normalizeAccountTag(input)
   if (tag === null) {
     draft.value = ''
-    return
+    error.value = null
+    return true
   }
   const validationError = validateAccountTag(tag)
   if (validationError) {
     error.value = validationError
     emit('invalid', validationError)
-    return
+    return false
   }
   if (props.modelValue.includes(tag)) {
     draft.value = ''
     error.value = null
-    return
+    return true
   }
   if (props.modelValue.length >= ACCOUNT_TAG_MAX_COUNT) {
     const countError: AccountTagError = { code: 'TOO_MANY_ACCOUNT_TAGS', tag: '' }
     error.value = countError
     emit('invalid', countError)
-    return
+    return false
   }
   const next = [...props.modelValue, tag].sort()
   draft.value = ''
   error.value = null
   emit('update:modelValue', next)
+  return true
 }
+
+// 提交前同步写入 v-model；即使未失焦或未按分隔键，也不会漏掉最后一个标签。
+function commit(): boolean {
+  if (props.disabled) return true
+  const valid = !composing.value && addTag(draft.value)
+  if (!valid) focusInput()
+  return valid
+}
+
+defineExpose({ commit })
 
 function removeTag(tag: string) {
   if (props.disabled) return

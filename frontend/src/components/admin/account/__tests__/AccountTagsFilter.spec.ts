@@ -14,6 +14,20 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('AccountTagsFilter', () => {
+  it('keeps selected tags removable when they disappear from the refreshed dictionary', async () => {
+    const wrapper = mount(AccountTagsFilter, {
+      props: { modelValue: ['old'], availableTags: ['old', 'prod'] }
+    })
+    await wrapper.find('button').trigger('click')
+    await wrapper.setProps({ availableTags: ['new', 'prod'] })
+
+    const items = wrapper.findAll('ul li button')
+    expect(items.map(item => item.text())).toEqual(['new', 'old', 'prod'])
+    await items[1].trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[[]]])
+    expect(wrapper.emitted('change')).toHaveLength(1)
+  })
+
   it('点击 trigger 后展开 dropdown，列出候选标签', async () => {
     const wrapper = mount(AccountTagsFilter, {
       props: {

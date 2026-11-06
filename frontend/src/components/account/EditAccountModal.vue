@@ -29,8 +29,9 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
         <AccountTagsInput
+          ref="tagsInput"
           v-model="form.tags"
-          :suggestions="tagSuggestions"
+          :suggestions="availableTags ?? []"
           :placeholder="t('admin.accounts.tags.placeholder')"
           @update:model-value="tagsTouched = true"
         />
@@ -3398,6 +3399,7 @@ interface Props {
   account: Account | null
   proxies: Proxy[]
   groups: AdminGroup[]
+  availableTags?: string[]
 }
 
 const props = defineProps<Props>()
@@ -4254,12 +4256,7 @@ const form = reactive({
   tags: [] as string[]
 })
 
-const tagSuggestions = ref<string[]>([])
-void (typeof adminAPI.accounts.listTags === 'function'
-  ? adminAPI.accounts.listTags()
-  : Promise.resolve([] as string[]))
-  .then((tags) => { tagSuggestions.value = tags })
-  .catch(() => { tagSuggestions.value = [] })
+const tagsInput = ref<InstanceType<typeof AccountTagsInput> | null>(null)
 
 const usageQueryEnabled = ref(false)
 const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
@@ -5415,6 +5412,7 @@ const submitUpdateAccount = async (accountID: number, updatePayload: Record<stri
 
 const handleSubmit = async () => {
   if (!props.account) return
+  if (tagsInput.value?.commit() === false) return
   const accountID = props.account.id
 
   if (form.status !== 'active' && form.status !== 'inactive' && form.status !== 'error') {

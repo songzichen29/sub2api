@@ -21,6 +21,99 @@ function getInput(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('AccountTagsInput', () => {
+  it('commits a normalized draft on blur without requiring a separator', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: ['prod'] } })
+    const input = getInput(wrapper)
+    await input.setValue(' VIP ')
+    await input.trigger('blur')
+
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['prod', 'vip']]])
+    expect((input.element as HTMLInputElement).value).toBe('')
+  })
+
+  it('exposes synchronous validation that preserves invalid drafts and accepts corrections', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: [] } })
+    const input = getInput(wrapper)
+    await input.setValue('vip!')
+    expect(wrapper.vm.commit()).toBe(false)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect((input.element as HTMLInputElement).value).toBe('vip!')
+    await nextTick()
+    expect(wrapper.text()).toContain('admin.accounts.tags.errors.charset')
+
+    await input.setValue('VIP')
+    expect(wrapper.vm.commit()).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['vip']]])
+    await nextTick()
+    expect(wrapper.text()).not.toContain('admin.accounts.tags.errors.charset')
+  })
+
+  it('clears a validation error when the invalid draft is discarded', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: [] } })
+    const input = getInput(wrapper)
+    await input.setValue('vip!')
+    expect(wrapper.vm.commit()).toBe(false)
+    await input.setValue('')
+    expect(wrapper.vm.commit()).toBe(true)
+    await nextTick()
+    expect(wrapper.find('p').exists()).toBe(false)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it.each(['Enter', ' ', ',', 'Backspace'])('leaves IME %s key events to the input method', async (key) => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: ['prod'] } })
+    const input = getInput(wrapper)
+    if (key !== 'Backspace') await input.setValue('zhong')
+
+    for (const ime of [{ isComposing: true }, { keyCode: 229 }]) {
+      const event = new KeyboardEvent('keydown', { key, cancelable: true, ...ime })
+      input.element.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
+  it('blocks save during composition and commits the completed Chinese text afterwards', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: [] } })
+    const input = getInput(wrapper)
+    await input.trigger('focus')
+    await input.trigger('compositionstart')
+    await input.setValue('zhong')
+    await input.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.vm.commit()).toBe(false)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    ;(input.element as HTMLInputElement).value = '中文'
+    await input.trigger('compositionend')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.vm.commit()).toBe(true)
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['中文']]])
+  })
+
+  it('defers a blur commit until composition ends', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: [] } })
+    const input = getInput(wrapper)
+    await input.trigger('focus')
+    await input.trigger('compositionstart')
+    await input.setValue('zhong')
+    await input.trigger('blur')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    ;(input.element as HTMLInputElement).value = '中文'
+    await input.trigger('compositionend')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['中文']]])
+  })
+
+  it('does not commit or reject a disabled field', async () => {
+    const wrapper = mount(AccountTagsInput, { props: { modelValue: [] } })
+    await getInput(wrapper).setValue('vip!')
+    await wrapper.setProps({ disabled: true })
+    expect(wrapper.vm.commit()).toBe(true)
+    await getInput(wrapper).trigger('blur')
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('invalid')).toBeUndefined()
+  })
+
   // 覆盖 design checklist 退出条件之一："输入 'VIP ' 回车 emit ['vip']"
   // 验证：1) 大写规范化为小写  2) 回车键提交  3) emit update:modelValue 含新标签
   it("输入 'VIP' 回车后 emit update:modelValue=['vip']（小写规范化）", async () => {

@@ -1438,8 +1438,9 @@
         </div>
         <div id="bulk-edit-tags" :class="!enableTags && 'pointer-events-none opacity-50'">
           <AccountTagsInput
+            ref="tagsInput"
             v-model="tags"
-            :suggestions="tagSuggestions"
+            :suggestions="availableTags ?? []"
             :disabled="!enableTags"
             :placeholder="t('admin.accounts.tags.placeholder')"
           />
@@ -1557,6 +1558,7 @@ interface Props {
   }
   proxies: ProxyConfig[]
   groups: AdminGroup[]
+  availableTags?: string[]
 }
 
 const props = defineProps<Props>()
@@ -1695,13 +1697,7 @@ const enableTags = ref(false)
 
 // 账号标签：enableTags 不勾=不改；勾选传空数组=清空；勾选传非空=全量替换（后端 *[]string 语义）。
 const tags = ref<string[]>([])
-// 账号标签字典：批量编辑 AccountTagsInput 的 autocomplete 候选；失败兜底为空数组。
-const tagSuggestions = ref<string[]>([])
-void (typeof adminAPI.accounts.listTags === 'function'
-  ? adminAPI.accounts.listTags()
-  : Promise.resolve([] as string[]))
-  .then(list => { tagSuggestions.value = list })
-  .catch(() => { tagSuggestions.value = [] })
+const tagsInput = ref<InstanceType<typeof AccountTagsInput> | null>(null)
 
 // State - field values
 const submitting = ref(false)
@@ -2232,6 +2228,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
 }
 
 const handleSubmit = async () => {
+  if (enableTags.value && tagsInput.value?.commit() === false) return
   if (targetMode.value === 'selected' && props.accountIds.length === 0) {
     appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
     return

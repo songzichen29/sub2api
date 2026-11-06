@@ -70,8 +70,9 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.tags.label') }}</label>
         <AccountTagsInput
+          ref="tagsInput"
           v-model="form.tags"
-          :suggestions="tagSuggestions"
+          :suggestions="availableTags ?? []"
           :placeholder="t('admin.accounts.tags.placeholder')"
         />
         <p class="input-hint">{{ t('admin.accounts.tags.hint') }}</p>
@@ -4364,6 +4365,7 @@ interface Props {
   show: boolean
   proxies: Proxy[]
   groups: AdminGroup[]
+  availableTags?: string[]
 }
 
 const props = defineProps<Props>()
@@ -5083,12 +5085,7 @@ const form = reactive({
   tags: [] as string[]
 })
 
-const tagSuggestions = ref<string[]>([])
-void (typeof adminAPI.accounts.listTags === 'function'
-  ? adminAPI.accounts.listTags()
-  : Promise.resolve([] as string[]))
-  .then((tags) => { tagSuggestions.value = tags })
-  .catch(() => { tagSuggestions.value = [] })
+const tagsInput = ref<InstanceType<typeof AccountTagsInput> | null>(null)
 const usageQueryEnabled = ref(false)
 const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
 const usageQueryBaseUrl = ref('')
@@ -6011,6 +6008,7 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  if (tagsInput.value?.commit() === false) return
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {

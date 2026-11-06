@@ -898,6 +898,31 @@ describe('BulkEditAccountModal', () => {
   // 覆盖 step 7 退出条件 + 测试约束 "Bulk replace tags 测试" 的前端版：
   //   不勾 enableTags 时不带 tags 字段；勾选时带 tags（即使 tags 为空数组也带）。
   describe('tags 批量编辑（step 7）', () => {
+    it('saves the pending tag draft without Enter or blur', async () => {
+      const wrapper = mountModal()
+      await wrapper.get('#bulk-edit-tags-enabled').setValue(true)
+      await wrapper.get('#bulk-edit-tags input[type="text"]').setValue('VIP')
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], { tags: ['vip'] })
+    })
+
+    it('blocks invalid tag drafts without blocking an explicitly disabled tag field', async () => {
+      const wrapper = mountModal()
+      await wrapper.get('#bulk-edit-tags-enabled').setValue(true)
+      await wrapper.get('#bulk-edit-tags input[type="text"]').setValue('vip!')
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(adminAPI.accounts.bulkUpdate).not.toHaveBeenCalled()
+
+      await wrapper.get('#bulk-edit-tags-enabled').setValue(false)
+      await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(adminAPI.accounts.bulkUpdate).mock.calls[0][1]).not.toHaveProperty('tags')
+    })
+
     it('勾选 enableTags 并输入 ["test"] 后 bulkUpdate payload 含 tags=["test"]', async () => {
       const wrapper = mountModal()
 

@@ -80,8 +80,8 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
 	"codex_usage_updated_at":     {},
-	"codex_credits_snapshot":    {},
-	"codex_referral_snapshot":   {},
+	"codex_credits_snapshot":     {},
+	"codex_referral_snapshot":    {},
 	"grok_billing_snapshot":      {},
 	"session_window_utilization": {},
 }
@@ -1471,33 +1471,15 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		}))
 	}
 
-	// Tags：MySQL JSON 数组包含语义。OR 语义——只要包含任意一个传入标签即命中。
-	// MySQL 8 用 `JSON_CONTAINS(tags, '["x"]')`；多个标签时按标签拆成多条单标签谓词，再用 OR 连接。
+	// Match any requested tag. sqljson emits JSON_CONTAINS for MySQL and
+	// JSONB containment (@>) for PostgreSQL, with bound JSON arguments.
 	if len(tags) > 0 {
-		// 预先把每个标签序列化为 JSON_CONTAINS candidate payload。
-		perTagPayloads := make([]string, 0, len(tags))
-		for _, tag := range tags {
-			payload, marshalErr := json.Marshal([]string{tag})
-			if marshalErr != nil {
-				return nil, nil, marshalErr
-			}
-			perTagPayloads = append(perTagPayloads, string(payload))
-		}
 		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
-			s.Where(entsql.P(func(b *entsql.Builder) {
-				b.WriteString("(")
-				for i, payload := range perTagPayloads {
-					if i > 0 {
-						b.WriteString(" OR ")
-					}
-					b.WriteString("JSON_CONTAINS(").
-						Ident(s.C(dbaccount.FieldTags)).
-						WriteString(", ").
-						Arg(payload).
-						WriteString(")")
-				}
-				b.WriteString(")")
-			}))
+			predicates := make([]*entsql.Predicate, 0, len(tags))
+			for _, tag := range tags {
+				predicates = append(predicates, sqljson.ValueContains(s.C(dbaccount.FieldTags), []string{tag}))
+			}
+			s.Where(entsql.Or(predicates...))
 		}))
 	}
 
@@ -3189,6 +3171,17 @@ func (r *accountRepository) bulkUpdatePostgres(ctx context.Context, ids []int64,
 			extraExpression = ensureCodexFingerprintSeedSQL(extraExpression)
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
+	}
+
+	// nil leaves tags unchanged; an empty array explicitly clears them.
+	if updates.Tags != nil {
+		payload, err := json.Marshal(normalizeJSONStringSlice(*updates.Tags))
+		if err != nil {
+			return 0, err
+		}
+		setClauses = append(setClauses, "tags = $"+itoa(idx)+"::jsonb")
+		args = append(args, payload)
+		idx++
 	}
 
 	if len(setClauses) == 0 {

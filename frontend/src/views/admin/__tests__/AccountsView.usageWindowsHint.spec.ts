@@ -111,7 +111,8 @@ function mountView() {
         ConfirmDialog: true,
         AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
         AccountTableFilters: {
-          props: ['groups'],
+          name: 'AccountTableFilters',
+          props: ['groups', 'availableTags'],
           template: '<div data-test="account-filters" :data-group-count="groups.length"></div>'
         },
         AccountBulkActionsBar: true,
@@ -194,6 +195,54 @@ describe('admin AccountsView usage windows hint', () => {
     expect(importModal.props('proxies')).toEqual(proxies)
     expect(importModal.props('groups')).toEqual(groups)
     expect(importModal.props('availableTags')).toEqual(tags)
+  })
+
+  it.each([
+    ['CreateAccountModal', 'created'],
+    ['EditAccountModal', 'updated'],
+    ['BulkEditAccountModal', 'updated'],
+    ['ImportDataModal', 'imported'],
+    ['SyncFromCrsModal', 'synced']
+  ])('refreshes shared tag candidates after %s emits %s', async (component, event) => {
+    listTags.mockResolvedValueOnce(['old']).mockResolvedValue(['new', 'vip'])
+    const wrapper = mountView()
+    await flushPromises()
+    expect(listTags).toHaveBeenCalledTimes(1)
+
+    wrapper.getComponent({ name: component }).vm.$emit(event, { id: 1, tags: ['new'] })
+    await flushPromises()
+    expect(listTags).toHaveBeenCalledTimes(2)
+    for (const name of ['AccountTableFilters', 'CreateAccountModal', 'EditAccountModal', 'BulkEditAccountModal', 'ImportDataModal']) {
+      expect(wrapper.getComponent({ name }).props('availableTags')).toEqual(['new', 'vip'])
+    }
+    wrapper.unmount()
+  })
+
+  it('keeps the latest tag dictionary when older requests finish later', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    let resolveOlder!: (tags: string[]) => void
+    listTags.mockImplementationOnce(() => new Promise<string[]>((resolve) => { resolveOlder = resolve }))
+    const editModal = wrapper.getComponent({ name: 'EditAccountModal' })
+    editModal.vm.$emit('updated', { id: 1, tags: ['old'] })
+
+    listTags.mockResolvedValueOnce(['new'])
+    editModal.vm.$emit('updated', { id: 1, tags: ['new'] })
+    await flushPromises()
+    resolveOlder(['old'])
+    await flushPromises()
+    expect(wrapper.getComponent(ImportDataModalStub).props('availableTags')).toEqual(['new'])
+    wrapper.unmount()
+  })
+
+  it('retains the last successful dictionary after a refresh failure', async () => {
+    listTags.mockResolvedValueOnce(['vip']).mockRejectedValueOnce(new Error('unavailable'))
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.getComponent({ name: 'EditAccountModal' }).vm.$emit('updated', { id: 1 })
+    await flushPromises()
+    expect(wrapper.getComponent(ImportDataModalStub).props('availableTags')).toEqual(['vip'])
+    wrapper.unmount()
   })
 
   it('renders an explanatory tooltip next to the usage windows column header', async () => {
