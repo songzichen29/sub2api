@@ -1,7 +1,7 @@
 export default {
   monitorDisplay: {
     title: 'V1 user display settings',
-    description: 'Move categories and channels using the arrows. Saved order applies when the user status page refreshes. Link a billing group to show its current token multiplier when available to the viewer. These settings do not change billing prices.',
+    description: 'Move categories and channels using the arrows. Saved order applies when the user status page refreshes. Linked channels show half of the current token multiplier beside the provider label. This does not change the actual billing multiplier.',
     moveUp: 'Move {name} up',
     moveDown: 'Move {name} down',
     billingGroup: 'Linked billing group',
@@ -12,7 +12,7 @@ export default {
     loadFailed: 'Failed to load display settings',
     saveFailed: 'Failed to save display settings',
     saved: 'Display settings saved; changes apply on the next user status refresh',
-    currentRate: 'Current token multiplier {rate}×',
-    rateHint: 'Uses the linked billing group, including your custom rate and the current peak factor. Separately priced images, videos and other products follow their billing settings.',
+    userRate: 'User rate {rate}x',
+    rateHint: 'This shows half of the linked billing group current token multiplier. The actual billing multiplier is unchanged. Separately priced images, videos and other products follow their billing settings.',
   },
 }

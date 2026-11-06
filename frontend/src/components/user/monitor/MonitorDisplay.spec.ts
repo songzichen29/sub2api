@@ -6,7 +6,7 @@ import type { UserMonitorView } from '@/api/channelMonitor'
 
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
-  useI18n: () => ({ t: (key: string, args?: { rate?: number }) => args?.rate != null ? `${key} ${args.rate}×` : key }),
+  useI18n: () => ({ t: (key: string, args?: { rate?: number | string }) => args?.rate != null ? `${key} ${args.rate}x` : key }),
 }))
 vi.mock('@/utils/featureFlags', () => ({ isChannelMonitorQuotaVisible: () => false }))
 
@@ -28,13 +28,18 @@ describe('V1 configured monitor display', () => {
     wrapper.unmount()
   })
 
-  it('shows zero multipliers and hides rates absent from the authenticated response', async () => {
+  it('shows half the multiplier inline and hides the rate when it is absent', async () => {
     const wrapper = shallowMount(MonitorCard, { props: {
-      item: { ...item(1, 'openai'), billing_group_name: 'My group', rate_multiplier: 0 }, window: '7d', availabilityValue: 100, countdownSeconds: 30,
+      item: { ...item(1, 'openai'), billing_group_name: 'My group', rate_multiplier: 0.15 }, window: '7d', availabilityValue: 100, countdownSeconds: 30,
     } })
-    expect(wrapper.get('[data-testid="monitor-rate"]').text()).toContain('My group · monitorDisplay.currentRate 0×')
+    expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('monitorDisplay.userRate 0.07x')
+    expect(wrapper.text()).not.toContain('My group')
+    expect(wrapper.props('item').rate_multiplier).toBe(0.15)
+    await wrapper.setProps({ item: { ...item(1, 'openai'), rate_multiplier: 0 } })
+    expect(wrapper.get('[data-testid="monitor-rate"]').text()).toBe('monitorDisplay.userRate 0.00x')
     await wrapper.setProps({ item: item(1, 'openai') })
     expect(wrapper.find('[data-testid="monitor-rate"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('model')
     wrapper.unmount()
   })
 })

@@ -20,16 +20,26 @@
           >
             {{ providerLabel(item.provider) }}
           </span>
-          <!-- 纯配额模式主模型是占位符 "quota"，展示层替换为本地化「配额」标签 -->
-          <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
-            {{ formatMonitorModel(item.primary_model) }}
-          </span>
           <span
-            v-if="item.group_name"
-            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
+            v-if="item.rate_multiplier != null"
+            class="truncate text-[10px] leading-5 text-teal-700 dark:text-teal-300"
+            :title="t('monitorDisplay.rateHint')"
+            data-testid="monitor-rate"
           >
-            {{ item.group_name }}
+            {{ t('monitorDisplay.userRate', { rate: displayedRateMultiplier }) }}
           </span>
+          <template v-else>
+            <!-- 纯配额模式主模型是占位符 "quota"，展示层替换为本地化「配额」标签 -->
+            <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
+              {{ formatMonitorModel(item.primary_model) }}
+            </span>
+            <span
+              v-if="item.group_name"
+              class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
+            >
+              {{ item.group_name }}
+            </span>
+          </template>
         </div>
       </div>
       <span
@@ -39,10 +49,6 @@
         {{ statusLabel(item.primary_status) }}
       </span>
     </div>
-
-    <p v-if="item.rate_multiplier != null" class="mt-3 text-sm text-gray-600 dark:text-gray-300" :title="t('monitorDisplay.rateHint')" data-testid="monitor-rate">
-      {{ item.billing_group_name }} · {{ t('monitorDisplay.currentRate', { rate: item.rate_multiplier }) }}
-    </p>
 
     <!-- Metrics -->
     <MonitorMetricPair
@@ -142,6 +148,12 @@ const providerTintClass = computed(() =>
 const quotaVisible = computed(
   () => isChannelMonitorQuotaVisible() && !!props.item.latest_quota
 )
+
+const displayedRateMultiplier = computed(() => {
+  const multiplier = props.item.rate_multiplier
+  if (multiplier == null) return ''
+  return (Math.trunc(multiplier * 50) / 100).toFixed(2)
+})
 
 const availabilityLabel = computed(() => {
   const win = t(`channelStatus.windowTab.${props.window}`)
