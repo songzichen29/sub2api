@@ -496,6 +496,12 @@ const BellIcon = {
     )
 }
 
+const CalendarCheckIcon = {
+  render: () => h('svg', { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', d: 'M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm3 10 3 3 5-5' })
+  ])
+}
+
 const TicketIcon = {
   render: () =>
     h(
@@ -734,6 +740,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/lottery', label: t('lotteryPortal.title'), icon: TicketIcon, hideInSimpleMode: true },
+    { path: '/checkin', label: t('checkin.title'), icon: CalendarCheckIcon, hideInSimpleMode: true },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({

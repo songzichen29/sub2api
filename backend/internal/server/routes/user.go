@@ -31,6 +31,8 @@ func RegisterUserRoutes(
 			user.GET("/qq-bot", h.QQBot.BindingStatus)
 			if h.QQBot.Community != nil {
 				user.GET("/account/activity", h.QQBot.Community.AccountActivity)
+				user.GET("/checkin", panelRateLimiter.Heavy(), h.QQBot.Community.UserCheckin)
+				user.POST("/checkin", panelRateLimiter.Heavy(), h.QQBot.Community.ClaimUserCheckin)
 				user.GET("/qqbot/lottery", panelRateLimiter.Heavy(), h.QQBot.Community.UserLottery)
 				user.GET("/qqbot/lottery/draws", panelRateLimiter.Heavy(), h.QQBot.Community.UserLotteryDraws)
 				user.POST("/qqbot/lottery/spin", panelRateLimiter.Heavy(), h.QQBot.Community.UserLotterySpin)

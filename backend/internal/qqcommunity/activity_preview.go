@@ -89,8 +89,8 @@ func (s *Service) PreviewActivities(ctx context.Context, uid int64) (ActivityPre
 		return out, err
 	}
 	out.CheckinRule = checkin.describe()
-	out.CheckinEligible = out.Bound && c.Enabled && checkin.Enabled && checkin.satisfied(eligible)
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM qqc_rewards WHERE app_id=$1 AND user_id=$2 AND kind='checkin' AND (created_at AT TIME ZONE 'Asia/Shanghai')::date=$3::date)`, c.AppID, uid, day(time.Now())).Scan(&out.CheckinDone)
+	out.CheckinEligible = checkin.Enabled && checkin.satisfied(eligible)
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM qqc_rewards WHERE user_id=$1 AND kind='checkin' AND (created_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date)`, uid, day(time.Now())).Scan(&out.CheckinDone)
 	if err != nil {
 		return out, err
 	}

@@ -305,6 +305,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/checkin',
+    name: 'DailyCheckin',
+    component: () => import('@/views/user/CheckinView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Daily check-in', titleKey: 'checkin.title', descriptionKey: 'checkin.description' }
+  },
+  {
     path: '/lottery',
     name: 'MyLottery',
     component: () => import('@/views/user/LotteryView.vue'),
