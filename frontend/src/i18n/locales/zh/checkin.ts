@@ -3,7 +3,7 @@ export default {
     title: '每日签到', description: '在站点签到，领取每日奖励。',
     reset: '北京时间每日 00:00 更新', refresh: '刷新', today: '今日',
     calendar: '签到日历', previousMonth: '上个月', nextMonth: '下个月', currentMonth: '回到本月',
-    weekdays: ['一', '二', '三', '四', '五', '六', '日'],
+    weekdays: { monday: '一', tuesday: '二', wednesday: '三', thursday: '四', friday: '五', saturday: '六', sunday: '日' },
     monthCount: '本月已签到 {count} 天', signed: '已签到', missed: '未签到', future: '尚未到来',
     dailyReward: '今日签到奖励', rewardRange: '随机余额奖励 · USD', fixedReward: '余额奖励 · USD',
     earnedToday: '今日获得 · USD', claim: '立即签到', claiming: '签到中…', done: '今日已签到',

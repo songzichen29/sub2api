@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import messages from '@/i18n/locales/zh/checkin'
+import enMessages from '@/i18n/locales/en/checkin'
 import CheckinView from '../CheckinView.vue'
 import type { UserCheckin } from '@/api/checkin'
 
@@ -18,8 +19,8 @@ const fixture = (): UserCheckin => ({
   days: Array.from({ length: 6 }, (_, index) => ({ date: `2026-11-0${index + 1}`, amount: 0.05, source: index % 2 ? 'qq' : 'website' })),
 })
 const wrappers: VueWrapper[] = []
-function render() {
-  const w = mount(CheckinView, { global: { plugins: [createI18n({ legacy: false, locale: 'zh', messages: { zh: messages } })], stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
+function render(locale = 'zh') {
+  const w = mount(CheckinView, { global: { plugins: [createI18n({ legacy: false, locale, messages: { zh: messages, en: enMessages } })], stubs: { RouterLink: { template: '<a><slot /></a>' } } } })
   wrappers.push(w); return w
 }
 beforeEach(() => { vi.resetAllMocks(); api.overview.mockResolvedValue(fixture()); api.refreshUser.mockResolvedValue({ balance: 1 }) })
@@ -28,6 +29,14 @@ const claimButton = (w: VueWrapper) => w.get('[data-testid="checkin-claim"]')
 const deferred = <T,>() => { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 
 describe('website daily check-in', () => {
+  it.each([
+    { locale: 'zh', weekdays: ['一', '二', '三', '四', '五', '六', '日'] },
+    { locale: 'en', weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] },
+  ])('renders Monday-first weekday messages in $locale', async ({ locale, weekdays }) => {
+    const w = render(locale); await flushPromises()
+    expect(w.findAll('.calendar-week span').map(day => day.text())).toEqual(weekdays)
+  })
+
   it('uses server dates, Monday-first calendar and shared QQ/site records without binding', async () => {
     const w = render(); await flushPromises()
     expect(api.overview).toHaveBeenCalledWith('')

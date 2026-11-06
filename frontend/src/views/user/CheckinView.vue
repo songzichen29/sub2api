@@ -85,13 +85,16 @@ import { checkinAPI, type CheckinDay, type UserCheckin } from '@/api/checkin'
 import type { QQGrowthReward } from '@/api/qqcommunity'
 import { useAuthStore } from '@/stores/auth'
 
-const { t, tm, locale } = useI18n()
+const { t, locale } = useI18n()
 const auth = useAuthStore()
 const data = ref<UserCheckin | null>(null)
 const loading = ref(false), claiming = ref(false)
 const error = ref(''), claimError = ref(''), selectedMonth = ref(''), pendingDay = ref('')
 let version = 0, stopped = false, resetTimer: ReturnType<typeof setTimeout> | undefined
-const weekdays = computed(() => tm('checkin.weekdays') as string[])
+const weekdays = computed(() => [
+  t('checkin.weekdays.monday'), t('checkin.weekdays.tuesday'), t('checkin.weekdays.wednesday'),
+  t('checkin.weekdays.thursday'), t('checkin.weekdays.friday'), t('checkin.weekdays.saturday'), t('checkin.weekdays.sunday'),
+])
 const monthLabel = computed(() => data.value ? new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${data.value.month}-01T00:00:00Z`)) : '')
 const amount = (value: number) => new Intl.NumberFormat(locale.value, { minimumFractionDigits: 2, maximumFractionDigits: 8 }).format(value)
 const rewardRange = computed(() => !data.value ? '' : data.value.min_amount === data.value.max_amount ? amount(data.value.min_amount) : `${amount(data.value.min_amount)} – ${amount(data.value.max_amount)}`)

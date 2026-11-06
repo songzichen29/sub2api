@@ -3,7 +3,7 @@ export default {
     title: 'Daily check-in', description: 'Check in on the website and collect your daily reward.',
     reset: 'Resets at 00:00 Beijing time', refresh: 'Refresh', today: 'Today',
     calendar: 'Check-in calendar', previousMonth: 'Previous month', nextMonth: 'Next month', currentMonth: 'This month',
-    weekdays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    weekdays: { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri', saturday: 'Sat', sunday: 'Sun' },
     monthCount: '{count} check-ins this month', signed: 'Checked in', missed: 'Not checked in', future: 'Upcoming',
     dailyReward: 'Daily check-in reward', rewardRange: 'Random balance reward · USD', fixedReward: 'Balance reward · USD',
     earnedToday: 'Received today · USD', claim: 'Check in now', claiming: 'Checking in…', done: 'Checked in today',
