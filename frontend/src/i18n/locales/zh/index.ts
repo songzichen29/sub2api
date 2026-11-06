@@ -10,6 +10,7 @@ import modelQuality from './modelQuality'
 import qqBot from './qqBot'
 import qqCommunity from './qqCommunity'
 import lottery from './lottery'
+import monitorDisplay from './monitorDisplay'
 
 export default {
   ...landing,
@@ -24,4 +25,5 @@ export default {
   ...qqBot,
   ...qqCommunity,
   ...lottery,
+  ...monitorDisplay,
 }

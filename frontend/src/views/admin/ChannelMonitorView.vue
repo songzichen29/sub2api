@@ -48,6 +48,9 @@
 
       <TablePageLayout v-else>
       <template #filters>
+        <div class="mb-3 flex justify-end">
+          <button type="button" class="btn btn-secondary" @click="showDisplayDialog = true">{{ t('monitorDisplay.title') }}</button>
+        </div>
         <MonitorFiltersBar
           v-model:search="searchQuery"
           v-model:provider="providerFilter"
@@ -133,6 +136,8 @@
       </TablePageLayout>
     </div>
 
+    <MonitorDisplayDialog :show="showDisplayDialog" @close="showDisplayDialog = false" />
+
     <MonitorFormDialog
       :show="showDialog"
       :monitor="editing"
@@ -196,6 +201,7 @@ import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vu
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import MonitorSettingsPanel from '@/features/channel-monitor-v2/MonitorSettingsPanel.vue'
+import MonitorDisplayDialog from '@/components/admin/monitor/MonitorDisplayDialog.vue'
 import ModelQualityPanel from '@/features/model-quality/ModelQualityPanel.vue'
 import { isChannelMonitorV1Mode } from '@/utils/featureFlags'
 
@@ -221,6 +227,7 @@ const enabledFilter = ref<'' | 'true' | 'false'>('')
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 
 const showDialog = ref(false)
+const showDisplayDialog = ref(false)
 const showTemplateManager = ref(false)
 const editing = ref<ChannelMonitor | null>(null)
 const showDeleteDialog = ref(false)

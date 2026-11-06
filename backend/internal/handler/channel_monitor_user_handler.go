@@ -1,12 +1,14 @@
 package handler
 
 import (
+	"context"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,6 +18,12 @@ import (
 type ChannelMonitorUserHandler struct {
 	monitorService *service.ChannelMonitorService
 	settingService *service.SettingService
+	groupReader    channelMonitorBillingReader
+}
+
+type channelMonitorBillingReader interface {
+	GetAvailableGroups(context.Context, int64) ([]service.Group, error)
+	GetUserGroupRates(context.Context, int64) (map[int64]float64, error)
 }
 
 // NewChannelMonitorUserHandler 创建 handler。
@@ -23,10 +31,12 @@ type ChannelMonitorUserHandler struct {
 func NewChannelMonitorUserHandler(
 	monitorService *service.ChannelMonitorService,
 	settingService *service.SettingService,
+	apiKeyService *service.APIKeyService,
 ) *ChannelMonitorUserHandler {
 	return &ChannelMonitorUserHandler{
 		monitorService: monitorService,
 		settingService: settingService,
+		groupReader:    apiKeyService,
 	}
 }
 
@@ -56,6 +66,8 @@ type channelMonitorUserListItem struct {
 	Name                 string                               `json:"name"`
 	Provider             string                               `json:"provider"`
 	GroupName            string                               `json:"group_name"`
+	BillingGroupName     string                               `json:"billing_group_name,omitempty"`
+	RateMultiplier       *float64                             `json:"rate_multiplier,omitempty"`
 	PrimaryModel         string                               `json:"primary_model"`
 	PrimaryStatus        string                               `json:"primary_status"`
 	PrimaryLatencyMs     *int                                 `json:"primary_latency_ms"`
@@ -168,11 +180,76 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 		return
 	}
 	includeQuota := h.quotaVisible(c)
+	cfg, err := h.settingService.GetChannelMonitorDisplayConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	cfg.SortUserViews(views)
 	items := make([]channelMonitorUserListItem, 0, len(views))
 	for _, v := range views {
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
+	if !h.addBillingRates(c, items, cfg) {
+		return
+	}
 	response.Success(c, gin.H{"items": items})
+}
+
+func (h *ChannelMonitorUserHandler) addBillingRates(c *gin.Context, items []channelMonitorUserListItem, cfg *service.ChannelMonitorDisplayConfig) bool {
+	mapping := make(map[int64]int64, len(cfg.GroupMappings))
+	for _, link := range cfg.GroupMappings {
+		mapping[link.MonitorID] = link.GroupID
+	}
+	hasVisibleLink := false
+	for _, item := range items {
+		if mapping[item.ID] > 0 {
+			hasVisibleLink = true
+			break
+		}
+	}
+	if !hasVisibleLink {
+		return true
+	}
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return false
+	}
+	if h.groupReader == nil {
+		response.InternalError(c, "Billing group reader unavailable")
+		return false
+	}
+	groups, err := h.groupReader.GetAvailableGroups(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	rates, err := h.groupReader.GetUserGroupRates(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return false
+	}
+	allowed := make(map[int64]service.Group, len(groups))
+	for _, group := range groups {
+		allowed[group.ID] = group
+	}
+	now := time.Now()
+	for i := range items {
+		group, ok := allowed[mapping[items[i].ID]]
+		// Do not expose unavailable/private/deleted group names or prices.
+		if !ok {
+			continue
+		}
+		rate := group.RateMultiplier
+		if custom, ok := rates[group.ID]; ok {
+			rate = custom
+		}
+		rate *= group.PeakMultiplierAt(now)
+		items[i].RateMultiplier = &rate
+		items[i].BillingGroupName = dto.GroupFromService(&group).Localized(c.GetHeader("Accept-Language")).Name
+	}
+	return true
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

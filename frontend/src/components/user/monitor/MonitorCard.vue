@@ -40,6 +40,10 @@
       </span>
     </div>
 
+    <p v-if="item.rate_multiplier != null" class="mt-3 text-sm text-gray-600 dark:text-gray-300" :title="t('monitorDisplay.rateHint')" data-testid="monitor-rate">
+      {{ item.billing_group_name }} · {{ t('monitorDisplay.currentRate', { rate: item.rate_multiplier }) }}
+    </p>
+
     <!-- Metrics -->
     <MonitorMetricPair
       primary-icon="bolt"

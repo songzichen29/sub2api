@@ -31,33 +31,37 @@
       :description="t('channelStatus.empty.description')"
     />
 
-    <div
-      v-else
-      class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
-    >
-      <MonitorCard
-        v-for="item in items"
-        :key="item.id"
-        :item="item"
-        :window="window"
-        :availability-value="resolveAvailability(item)"
-        :countdown-seconds="countdownSeconds"
-        :quality-plans="qualityPlans.filter(plan => plan.monitor_ids?.includes(item.id))"
-        @click="emit('cardClick', item)"
-        @quality-select="emit('qualitySelect', $event)"
-        @point-select="emit('pointSelect', item, $event)"
-      />
+    <div v-else class="space-y-6">
+      <section v-for="section in sections" :key="section.provider" :aria-label="providerLabel(section.provider)">
+        <h2 class="mb-3 text-base font-semibold text-gray-900 dark:text-gray-100">{{ providerLabel(section.provider) }}</h2>
+        <div class="grid gap-5 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <MonitorCard
+            v-for="item in section.items"
+            :key="item.id"
+            :item="item"
+            :window="window"
+            :availability-value="resolveAvailability(item)"
+            :countdown-seconds="countdownSeconds"
+            :quality-plans="qualityPlans.filter(plan => plan.monitor_ids?.includes(item.id))"
+            @click="emit('cardClick', item)"
+            @quality-select="emit('qualitySelect', $event)"
+            @point-select="emit('pointSelect', item, $event)"
+          />
+        </div>
+      </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UserMonitorView, UserMonitorDetail, MonitorTimelinePoint } from '@/api/channelMonitor'
 import EmptyState from '@/components/common/EmptyState.vue'
 import MonitorCard from './MonitorCard.vue'
 import type { QualityPlan } from '@/api/modelQuality'
 import type { QualitySelection } from '@/features/model-quality/qualityPresentation'
+import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 
 const props = withDefaults(defineProps<{
   items: UserMonitorView[]
@@ -75,6 +79,17 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const { providerLabel } = useChannelMonitorFormat()
+// Preserve the persisted backend order, including order within each category.
+const sections = computed(() => {
+  const grouped = new Map<string, UserMonitorView[]>()
+  for (const item of props.items) {
+    const items = grouped.get(item.provider) || []
+    items.push(item)
+    grouped.set(item.provider, items)
+  }
+  return [...grouped].map(([provider, items]) => ({ provider, items }))
+})
 
 function resolveAvailability(item: UserMonitorView): number | null {
   if (props.window === '7d') {

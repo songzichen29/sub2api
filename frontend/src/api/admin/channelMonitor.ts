@@ -345,7 +345,25 @@ export async function listHistory(
   return data
 }
 
+export interface MonitorDisplayConfig {
+  provider_order: string[]
+  monitor_order: number[]
+  group_mappings: Array<{ monitor_id: number; group_id: number }>
+}
+
+export async function getDisplayConfig(): Promise<MonitorDisplayConfig> {
+  const { data } = await apiClient.get<MonitorDisplayConfig>('/admin/channel-monitors/display-config')
+  return data
+}
+
+export async function updateDisplayConfig(config: MonitorDisplayConfig): Promise<MonitorDisplayConfig> {
+  const { data } = await apiClient.put<MonitorDisplayConfig>('/admin/channel-monitors/display-config', config)
+  return data
+}
+
 export const channelMonitorAPI = {
+  getDisplayConfig,
+  updateDisplayConfig,
   list,
   get,
   create,
