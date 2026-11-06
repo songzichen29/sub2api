@@ -3,7 +3,7 @@
     <button
       type="button"
       data-testid="referral-count"
-      class="rounded px-1.5 py-0.5 text-[10px] font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
+      class="min-h-7 rounded px-1.5 py-0.5 text-xs font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
       :disabled="loading || sending"
       :title="countTitle"
       @click="refresh()"
@@ -13,7 +13,7 @@
     <button
       type="button"
       data-testid="referral-open"
-      class="rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+      class="min-h-7 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
       :disabled="sending || isShadow"
       :title="isShadow ? t('admin.accounts.openaiReferral.shadowHint') : undefined"
       @click="openDialog"

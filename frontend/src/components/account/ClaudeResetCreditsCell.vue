@@ -15,13 +15,13 @@
         v-if="visible"
         type="button"
         data-testid="claude-reset-count"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading || redeeming"
         :title="countButtonTitle"
         @click="refresh"
       >
         <svg
-          class="h-2.5 w-2.5"
+          class="h-3 w-3"
           :class="{ 'animate-spin': loading }"
           fill="none"
           stroke="currentColor"
@@ -41,13 +41,13 @@
         v-if="visible"
         type="button"
         data-testid="claude-reset-redeem"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
+        class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="redeeming || loading || !canRedeem"
         :title="redeemButtonTitle"
         @click="openRedeemConfirm"
       >
         <svg
-          class="h-2.5 w-2.5"
+          class="h-3 w-3"
           :class="{ 'animate-spin': redeeming }"
           fill="none"
           stroke="currentColor"
@@ -68,7 +68,7 @@
       <span
         v-if="primaryCredit?.expires_at"
         data-testid="claude-reset-expiry"
-        class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] leading-4 text-gray-600 tabular-nums dark:bg-dark-800 dark:text-gray-300"
+        class="inline-flex max-w-full items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs leading-4 text-gray-600 tabular-nums dark:bg-dark-800 dark:text-gray-300"
         :title="creditTitle"
       >
         {{ t('admin.accounts.claudeResetCredits.expiresAt', { time: formatTime(primaryCredit.expires_at, 'short') }) }}
@@ -76,26 +76,26 @@
       <span
         v-if="status.eligible && totalResets > 0 && status.available_count === 0"
         data-testid="claude-reset-not-usable"
-        class="text-[10px] text-gray-500 dark:text-gray-400"
+        class="text-xs text-gray-500 dark:text-gray-400"
       >
         {{ t('admin.accounts.claudeResetCredits.notUsableNow') }}
       </span>
-      <span v-if="!status.eligible" class="text-[10px] text-amber-600 dark:text-amber-400">
+      <span v-if="!status.eligible" class="text-xs text-amber-600 dark:text-amber-400">
         {{ t('admin.accounts.claudeResetCredits.ineligible') }}
       </span>
-      <span v-if="cooldownActive" data-testid="claude-reset-cooldown" class="text-[10px] text-amber-600 dark:text-amber-400">
+      <span v-if="cooldownActive" data-testid="claude-reset-cooldown" class="text-xs text-amber-600 dark:text-amber-400">
         {{ t('admin.accounts.claudeResetCredits.cooldown', { time: formatTime(status.cooldown_until!, 'short') }) }}
       </span>
     </div>
 
-    <div v-if="visible && error" role="alert" class="text-[10px] text-red-600 dark:text-red-400">
+    <div v-if="visible && error" role="alert" class="text-xs text-red-600 dark:text-red-400">
       {{ t('admin.accounts.claudeResetCredits.error') }}
     </div>
     <div
       v-if="visible && redeemFeedback"
       data-testid="claude-reset-feedback"
       :role="redeemFeedback.kind === 'success' ? 'status' : 'alert'"
-      class="text-[10px]"
+      class="text-xs"
       :class="feedbackClass"
       :title="redeemFeedback.text"
     >

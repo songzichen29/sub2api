@@ -59,6 +59,53 @@ const billingData = {
 }
 
 describe('UpstreamBillingRateCell', () => {
+  it.each([[0.6, 0.9, '↑'], [0.9, 0, '↓'], [0.000125, 0.00025, '↑']] as const)(
+    'renders persisted rate history %s → %s with %s after remount', (previous, current, arrow) => {
+      const account = makeAccount({ extra: { upstream_billing_probe: {
+        status: 'ok', data: billingData,
+        received_at: '2026-07-13T00:00:00Z', fresh_until: '2026-07-14T00:00:00Z',
+        last_attempt_at: '2026-07-13T00:00:00Z', next_probe_at: '2026-07-13T01:00:00Z',
+        rate_change: { previous_rate_multiplier: previous, current_rate_multiplier: current, detected_at: '2026-07-13T00:00:00Z' }
+      } } })
+      for (let render = 0; render < 2; render++) {
+        const wrapper = mount(UpstreamBillingRateCell, { props: { account: JSON.parse(JSON.stringify(account)), now: Date.now() } })
+        const change = wrapper.get('[data-testid="upstream-billing-rate-change"]')
+        expect(change.text()).toContain('→')
+        expect(change.text()).toContain(arrow)
+        expect(change.findAll('span')[1].text()).toBe(`${previous.toLocaleString('en-US', { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 12 })}x`)
+        expect(change.findAll('span')[3].text()).toBe(`${current.toLocaleString('en-US', { useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 12 })}x`)
+        expect(change.attributes('title')).toContain('admin.accounts.upstreamBilling.lastChangeHint')
+        wrapper.unmount()
+      }
+    }
+  )
+
+  it('keeps detected history separate from scheduled current rates and stale status', async () => {
+    const account = makeAccount({ extra: { upstream_billing_probe: {
+      status: 'failed', data: billingData,
+      received_at: '2026-07-13T00:00:00Z', fresh_until: '2026-07-14T00:00:00Z',
+      last_attempt_at: '2026-07-13T00:00:00Z', next_probe_at: '2026-07-13T01:00:00Z',
+      rate_change: { previous_rate_multiplier: 0.8, current_rate_multiplier: 0.9, detected_at: '2026-07-13T00:00:00Z' }
+    } } })
+    const wrapper = mount(UpstreamBillingRateCell, { props: { account, now: Date.now() } })
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('0.60x')
+    expect(wrapper.get('[data-testid="upstream-billing-rate-change"]').text()).toContain('0.80x→0.90x↑')
+    await wrapper.setProps({ now: Date.parse('2026-07-15T00:00:00Z') })
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toContain('stale')
+    expect(wrapper.get('[data-testid="upstream-billing-rate-change"]').text()).toContain('0.80x→0.90x↑')
+    wrapper.unmount()
+  })
+
+  it.each([undefined, { previous_rate_multiplier: -1, current_rate_multiplier: 1 }, { previous_rate_multiplier: 1, current_rate_multiplier: 1 }, { previous_rate_multiplier: 0.5, current_rate_multiplier: 1, detected_at: 'invalid' }])(
+    'does not fabricate a trend from missing or invalid history', (change) => {
+      const wrapper = mount(UpstreamBillingRateCell, { props: {
+        account: makeAccount({ extra: { upstream_billing_probe: { status: 'ok', data: billingData, rate_change: change } } }), now: Date.now()
+      } })
+      expect(wrapper.find('[data-testid="upstream-billing-rate-change"]').exists()).toBe(false)
+      wrapper.unmount()
+    }
+  )
+
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-13T00:30:00Z'))

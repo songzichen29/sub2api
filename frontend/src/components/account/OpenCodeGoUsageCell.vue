@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="state?.eligible"
-    class="min-w-0 max-w-full space-y-1"
+    class="min-w-0 max-w-full space-y-2"
     data-testid="opencode-go-usage-cell"
   >
     <UsageProgressBar
@@ -30,7 +30,7 @@
     />
     <span
       v-if="snapshot && snapshot.status !== 'ok'"
-      class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium"
+      class="inline-block rounded px-1.5 py-0.5 text-xs font-medium"
       :class="snapshot.status === 'unauthorized'
         ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
         : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'"
@@ -41,13 +41,13 @@
     <div class="flex items-center pt-0.5">
       <button
         type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="refreshing"
         data-testid="opencode-go-usage-query"
         @click="refreshUsage"
       >
         <svg
-          class="h-2.5 w-2.5"
+          class="h-3 w-3"
           :class="{ 'animate-spin': refreshing }"
           fill="none"
           stroke="currentColor"

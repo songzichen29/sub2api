@@ -11,8 +11,7 @@
           :key="amt"
           type="button"
           :class="[
-            'flex min-h-[86px] flex-col justify-center rounded-lg border-2 px-4 py-3 text-center transition-colors',
-            'relative rounded-lg border-2 px-3 py-3 text-center font-medium transition-colors',
+            'relative flex min-h-[86px] flex-col justify-center rounded-lg border-2 px-3 py-3 text-center font-medium transition-colors',
             modelValue === amt
               ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
               : quoteFor(amt).percent > 0
@@ -23,7 +22,7 @@
           @click="selectAmount(amt)"
         >
           <span class="flex items-center justify-center gap-2 font-semibold">
-            <span>{{ formatAmountValue(amt) }}</span>
+            <span data-testid="quick-amount-value">{{ formatAmountValue(amt) }}</span>
             <span
               v-if="amountPreview(amt).discountLabel"
               class="rounded-md bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300"
@@ -51,7 +50,6 @@
               <span class="h-1 w-1 shrink-0 rounded-full bg-white"></span>
             </span>
           </span>
-          <span class="block">{{ amt }}</span>
           <!-- 配置了优惠阶梯时，所有按钮都显示第二行，保持高度一致：赠金显示到账 USD，折扣显示折后实付 -->
           <span
             v-if="showSecondLine"

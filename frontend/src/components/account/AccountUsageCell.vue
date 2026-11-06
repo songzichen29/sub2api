@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" v-if="showUsageWindows && !showThirdPartyUsage">
+  <div ref="rootRef" v-if="showUsageWindows && !showThirdPartyUsage" class="account-usage-cell space-y-2 text-xs leading-5">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -92,18 +92,18 @@
         <template v-if="usageInfo" #pre-actions>
           <span
             v-if="usageInfo.source === 'passive'"
-            class="text-[9px] text-gray-400 dark:text-gray-500 italic"
+            class="text-xs text-gray-400 dark:text-gray-500 italic"
           >
             {{ t('admin.accounts.usageWindow.passiveSampled') }}
           </span>
           <button
             type="button"
-            class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="activeQueryLoading"
             @click="loadActiveUsage"
           >
             <svg
-              class="h-2.5 w-2.5"
+              class="h-3 w-3"
               :class="{ 'animate-spin': activeQueryLoading }"
               fill="none"
               stroke="currentColor"
@@ -153,12 +153,12 @@
           <template #pre-actions>
             <button
               type="button"
-              class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               :disabled="activeQueryLoading"
               @click="loadActiveUsage"
             >
               <svg
-                class="h-2.5 w-2.5"
+                class="h-3 w-3"
                 :class="{ 'animate-spin': activeQueryLoading }"
                 fill="none"
                 stroke="currentColor"
@@ -205,7 +205,7 @@
       <div v-if="antigravityTierLabel" class="mb-1 flex items-center gap-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
             antigravityTierClass
           ]"
         >
@@ -228,7 +228,7 @@
             />
           </svg>
           <span
-            class="pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+            class="usage-help-popover pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
           >
             {{ t('admin.accounts.ineligibleWarning') }}
           </span>
@@ -239,7 +239,7 @@
       <div v-if="isForbidden" class="space-y-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
             forbiddenBadgeClass
           ]"
         >
@@ -250,14 +250,14 @@
             :href="validationURL"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-[10px] text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
+            class="text-xs text-blue-600 hover:text-blue-800 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
             :title="t('admin.accounts.openVerification')"
           >
             {{ t('admin.accounts.openVerification') }}
           </a>
           <button
             type="button"
-            class="text-[10px] text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            class="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             :title="t('admin.accounts.copyLink')"
             @click="copyValidationURL"
           >
@@ -268,14 +268,14 @@
 
       <!-- Needs reauth (401) -->
       <div v-else-if="needsReauth" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
           {{ t('admin.accounts.needsReauth') }}
         </span>
       </div>
 
       <!-- Degraded error (non-403, non-401) -->
       <div v-else-if="usageInfo?.error" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
           {{ usageErrorLabel }}
         </span>
       </div>
@@ -332,11 +332,11 @@
           color="amber"
         />
 
-        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+        <div v-if="aiCreditsDisplay" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
-      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
+      <div v-else-if="aiCreditsDisplay" class="text-xs text-gray-500 dark:text-gray-400">
         💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
@@ -355,12 +355,12 @@
         {{ error }}
       </div>
       <div v-else-if="needsReauth" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
           {{ t('admin.accounts.needsReauth') }}
         </span>
       </div>
       <div v-else-if="isForbidden" class="space-y-1">
-        <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+        <span class="inline-block rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
           {{ usageInfo?.grok_entitlement_status || t('admin.accounts.forbidden') }}
         </span>
       </div>
@@ -376,7 +376,7 @@
             :show-now-when-idle="true"
             color="emerald"
           />
-          <div v-else-if="grokQuotaUnknown" class="text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-else-if="grokQuotaUnknown" class="text-xs text-gray-500 dark:text-gray-400">
             {{ grokQuotaUnknownLabel }}
           </div>
         </template>
@@ -401,7 +401,7 @@
           />
           <div
             v-if="grokPrepaidMoneyLine"
-            class="flex flex-wrap items-center gap-1 text-[10px] text-gray-500 dark:text-gray-400"
+            class="flex flex-wrap items-center gap-1 text-xs text-gray-500 dark:text-gray-400"
           >
             <span
               v-if="grokPrepaidMoneyLine.showPrepaid"
@@ -418,14 +418,14 @@
               {{ grokPrepaidMoneyLine.used }}/{{ grokPrepaidMoneyLine.limit }}
             </span>
           </div>
-          <div v-if="grokQuotaUnknown" class="text-[10px] text-gray-500 dark:text-gray-400">
+          <div v-if="grokQuotaUnknown" class="text-xs text-gray-500 dark:text-gray-400">
             {{ grokQuotaUnknownLabel }}
           </div>
         </template>
         <div v-if="usageInfo.error" class="truncate text-xs text-amber-600 dark:text-amber-400 max-w-[200px]" :title="usageInfo.error">
           {{ usageErrorLabel }}
         </div>
-        <div v-if="grokRetryAfterLabel" class="text-[10px] text-amber-600 dark:text-amber-400">
+        <div v-if="grokRetryAfterLabel" class="text-xs text-amber-600 dark:text-amber-400">
           {{ t('admin.accounts.usageWindow.grokRetryAfter', { time: grokRetryAfterLabel }) }}
         </div>
         <GrokQuotaProbeCell :account="account" compact @probed="handleGrokProbed" />
@@ -481,7 +481,7 @@
       <div v-if="geminiAuthTypeLabel" class="mb-1 flex items-center gap-1">
         <span
           :class="[
-            'inline-block rounded px-1.5 py-0.5 text-[10px] font-medium',
+            'inline-block rounded px-1.5 py-0.5 text-xs font-medium',
             geminiTierClass
           ]"
         >
@@ -504,7 +504,7 @@
             />
           </svg>
           <span
-            class="pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+            class="usage-help-popover pointer-events-none absolute left-0 top-full z-50 mt-1 w-80 whitespace-normal break-words rounded bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-gray-700"
           >
             <div class="font-semibold mb-1">{{ t('admin.accounts.gemini.quotaPolicy.title') }}</div>
             <div class="mb-2 text-gray-300">{{ t('admin.accounts.gemini.quotaPolicy.note') }}</div>
@@ -527,7 +527,7 @@
           v-if="showGeminiTodayStats && todayStats"
           class="mb-0.5 flex items-center"
         >
-          <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+          <div class="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
             <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
               {{ formatKeyRequests }} req
             </span>
@@ -575,7 +575,7 @@
             :window-stats="bar.windowStats"
             :color="bar.color"
           />
-          <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
+          <p class="mt-1 text-xs leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' }}
           </p>
         </div>
@@ -593,7 +593,7 @@
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
-  <div ref="rootRef" v-else>
+  <div ref="rootRef" v-else class="account-usage-cell space-y-2 text-xs leading-5">
     <!-- Third-party panel usage (for example newapi-backed API keys). -->
     <template v-if="showThirdPartyUsage">
       <div v-if="loading" class="space-y-1">
@@ -607,32 +607,26 @@
       >
         {{ usageInfo.error }}
       </div>
-      <div v-else-if="usageInfo?.third_party_quota" class="flex items-center gap-2">
-        <div class="min-w-0 flex-1 space-y-1">
-          <div v-if="thirdPartyTotalKnown" class="flex items-center gap-2">
-            <div class="relative h-2 flex-1 overflow-hidden rounded-full bg-gray-200/80 dark:bg-gray-700/80">
-              <div
-                class="h-full rounded-full transition-all duration-300"
-                :class="thirdPartyBarClass"
-                :style="{ width: thirdPartyBarWidth }"
-              ></div>
-            </div>
-            <span class="shrink-0 text-[11px] font-semibold tabular-nums" :class="thirdPartyTextClass">
-              {{ thirdPartyDisplayPercent }}
-            </span>
-          </div>
-          <div class="text-[11px] tabular-nums">
-            <span :class="['font-semibold', thirdPartyAmountClass]">
-              ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
-            </span>
-            <span v-if="thirdPartyTotalKnown" class="text-gray-400 dark:text-gray-500">
-              / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}
-            </span>
-          </div>
+      <div v-else-if="usageInfo?.third_party_quota" class="space-y-2">
+        <UsageProgressBar
+          v-if="thirdPartyTotalKnown"
+          :label="t('admin.accounts.usageWindow.used')"
+          :utilization="thirdPartyPercentRaw"
+          color="indigo"
+          data-testid="third-party-usage-bar"
+        />
+        <div class="text-xs tabular-nums" data-testid="third-party-remaining">
+          <span class="mr-1 text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageWindow.remaining') }}</span>
+          <span :class="['font-semibold', thirdPartyAmountClass]">
+            ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
+          </span>
+          <span v-if="thirdPartyTotalKnown" class="text-gray-400 dark:text-gray-500">
+            / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}
+          </span>
         </div>
         <button
           type="button"
-          class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+          class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
           :title="t('admin.accounts.usageWindow.activeQuery')"
           :aria-label="t('admin.accounts.usageWindow.activeQuery')"
           :disabled="activeQueryLoading"
@@ -641,6 +635,7 @@
           <svg class="h-3 w-3" :class="{ 'animate-spin': activeQueryLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
+          {{ t('admin.accounts.usageWindow.activeQuery') }}
         </button>
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
@@ -648,7 +643,7 @@
     <!-- Gemini API Key accounts: show quota info -->
     <div v-else-if="account.platform === 'gemini' && !isGeminiThirdPartyApiKey">
       <AccountQuotaInfo :account="account" />
-      <div v-if="showUsageQueryPlaceholder" class="mt-1 text-[11px] italic text-gray-400 dark:text-gray-500">
+      <div v-if="showUsageQueryPlaceholder" class="mt-1 text-xs italic text-gray-400 dark:text-gray-500">
         {{ t('admin.accounts.usageQuery.notEnabledHint') }}
       </div>
     </div>
@@ -671,7 +666,7 @@
         v-if="todayStats && !(showUsageQueryPlaceholder && isZeroTodayStats)"
         class="mb-0.5 flex items-center"
       >
-        <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+        <div class="flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
           <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
             {{ formatKeyRequests }} req
           </span>
@@ -725,7 +720,7 @@
       <!-- No data at all -->
       <div
         v-if="showUsageQueryPlaceholder"
-        class="text-[11px] italic text-gray-400 dark:text-gray-500"
+        class="text-xs italic text-gray-400 dark:text-gray-500"
       >
         {{ t('admin.accounts.usageQuery.notEnabledHint') }}
       </div>
@@ -871,24 +866,6 @@ const thirdPartyPercentRaw = computed(() => {
 })
 
 const thirdPartyTotalKnown = computed(() => usageInfo.value?.third_party_quota?.total_known !== false)
-const thirdPartyBarWidth = computed(() => `${Math.max(0, Math.min(thirdPartyPercentRaw.value, 100))}%`)
-const thirdPartyDisplayPercent = computed(() => {
-  const percent = Math.round(thirdPartyPercentRaw.value)
-  return percent > 999 ? '>999%' : `${Math.max(0, percent)}%`
-})
-const thirdPartyBarClass = computed(() => {
-  const percent = thirdPartyPercentRaw.value
-  if (percent >= 100) return 'bg-red-500'
-  if (percent >= 80) return 'bg-amber-500'
-  if (percent >= 50) return 'bg-yellow-400'
-  return 'bg-emerald-500'
-})
-const thirdPartyTextClass = computed(() => {
-  const percent = thirdPartyPercentRaw.value
-  if (percent >= 100) return 'text-red-600 dark:text-red-400'
-  if (percent >= 80) return 'text-amber-600 dark:text-amber-400'
-  return 'text-gray-600 dark:text-gray-300'
-})
 const thirdPartyAmountClass = computed(() => {
   const remaining = usageInfo.value?.third_party_quota?.remaining
   if (typeof remaining === 'number' && remaining <= 0) return 'text-red-600 dark:text-red-400'
@@ -1885,3 +1862,72 @@ onUnmounted(() => {
   desktopViewportMediaQuery = null
 })
 </script>
+
+<style scoped>
+/* All account platforms share this layout; monitor views keep their compact bars. */
+.account-usage-cell {
+  min-width: 14rem;
+  width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
+.account-usage-cell :deep(.usage-progress-row) {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(3rem, 1fr) 3rem;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+
+.account-usage-cell :deep(.usage-progress-label) {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.account-usage-cell :deep(.usage-progress-track) {
+  width: 100%;
+  height: 0.375rem;
+}
+
+.account-usage-cell :deep(.usage-progress-value) {
+  width: auto;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+.account-usage-cell :deep(.usage-progress-reset) {
+  grid-column: 2 / -1;
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.account-usage-cell :deep(.usage-progress-stats) {
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  row-gap: 0.25rem;
+}
+
+@media (max-width: 767px) {
+  .account-usage-cell {
+    min-width: 0;
+    width: min(14rem, calc(100vw - 9rem));
+    max-width: 100%;
+  }
+
+  .account-usage-cell :deep(.usage-progress-row) {
+    grid-template-columns: 4.5rem minmax(2rem, 1fr) 3rem;
+  }
+
+  .account-usage-cell .usage-help-popover {
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 4rem);
+  }
+}
+</style>

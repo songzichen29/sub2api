@@ -15,6 +15,15 @@ function mountInput(value: number | null = null) {
 }
 
 describe('recharge amount input', () => {
+  it('renders the selected base amount only once and still selects its numeric value', async () => {
+    const wrapper = mount(AmountInput, { props: { modelValue: null, amounts: [50, 100] } })
+    const button = wrapper.get('[data-testid="quick-amount-100"]')
+    expect(button.text()).toBe('100')
+    expect(button.findAll('[data-testid="quick-amount-value"]')).toHaveLength(1)
+    await button.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[100]])
+  })
+
   it.each(['10abc', '10.555', '-10', '1e2'])('restores the accepted amount after rejecting %s', async (value) => {
     const wrapper = mountInput(10)
     const input = wrapper.get('input')

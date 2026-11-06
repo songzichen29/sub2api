@@ -56,7 +56,7 @@ describe('CNProviderQuotaCell', () => {
     const wrapper = mount(CNProviderQuotaCell, { props: { account } })
 
     const root = wrapper.get('[data-test="cn-provider-quota"]')
-    expect(root.classes()).toContain('min-w-[220px]')
+    expect(root.classes()).toContain('min-w-0')
 
     // 新鲜快照：挂载即渲染条形图，不触发探测
     await flushPromises()

@@ -1122,6 +1122,11 @@ export interface UpstreamBillingProbeSnapshot {
   // Value this probe wrote into the account rate multiplier; absent when the
   // probe did not sync a rate.
   synced_rate_multiplier?: number
+  rate_change?: {
+    previous_rate_multiplier: number
+    current_rate_multiplier: number
+    detected_at: string
+  }
 }
 
 export interface UpstreamBillingProbeSettings {

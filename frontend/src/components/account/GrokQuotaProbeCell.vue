@@ -3,13 +3,13 @@
     <div class="flex flex-wrap items-center gap-1.5">
       <button
         type="button"
-        class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 transition-colors hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
+        class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-cyan-700 transition-colors hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
         :disabled="loading"
         :title="t('admin.accounts.usageWindow.grokProbeTooltip')"
         @click="handleProbe"
       >
         <svg
-          class="h-2.5 w-2.5"
+          class="h-3 w-3"
           :class="{ 'animate-spin': loading }"
           fill="none"
           stroke="currentColor"
@@ -29,11 +29,11 @@
     <!-- Compact mode: parent already shows 7d/30d/prepaid or 24h — only surface errors. -->
     <div
       v-if="!compact && summary"
-      class="text-[10px] text-gray-600 dark:text-gray-300"
+      class="text-xs text-gray-600 dark:text-gray-300"
     >
       {{ summary }}
     </div>
-    <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
+    <div v-if="error" class="truncate text-xs text-red-600 dark:text-red-400" :title="error">
       {{ truncatedError }}
     </div>
   </div>

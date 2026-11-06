@@ -146,6 +146,10 @@ export default {
       "updatedAt": "更新时间：{value}",
       "nextProbeAt": "下一次探测：{value}",
       "lastDetectedRate": "上次探测倍率：{value}x",
+      "lastChange": "最近",
+      "lastChangeHint": "最近一次探测到的有效倍率变化（含当时高峰系数）：{time}。当前倍率按当前时段另行计算。",
+      "increased": "倍率上涨",
+      "decreased": "倍率下降",
       "lastDetectedAt": "上次探测时间：{value}",
       "elapsedSince": "已过去：{value}",
       "justNow": "不足 1 分钟",
@@ -358,6 +362,8 @@ export default {
       "scopeHint": "无法识别请求模型时，模型级规则按账户级处理。"
     },
     "usageWindow": {
+      "used": "已用",
+      "remaining": "剩余",
       "statsTitle": "5小时窗口用量统计",
       "statsTitleDaily": "每日用量统计",
       "geminiProDaily": "Pro",

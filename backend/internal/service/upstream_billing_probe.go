@@ -120,6 +120,15 @@ type UpstreamBillingProbeSnapshot struct {
 	// stored snapshot always answers "did this probe move the account rate, and
 	// to what" without a separate history table.
 	SyncedRateMultiplier *float64 `json:"synced_rate_multiplier,omitempty"`
+	// RateChange retains the latest change between successful upstream observations,
+	// independently of the local account rate and automatic rate write-back.
+	RateChange *UpstreamBillingRateChange `json:"rate_change,omitempty"`
+}
+
+type UpstreamBillingRateChange struct {
+	PreviousRateMultiplier float64   `json:"previous_rate_multiplier"`
+	CurrentRateMultiplier  float64   `json:"current_rate_multiplier"`
+	DetectedAt             time.Time `json:"detected_at"`
 }
 
 // UpstreamBillingProbeResult is returned by manual probe endpoints.
@@ -711,6 +720,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, 0)),
 		HTTPStatus:    resp.StatusCode,
 	}
+	snapshot.RateChange = upstreamBillingRateChange(decodeUpstreamBillingProbeSnapshot(account.Extra), data, now)
 	// 账号级值域与精度只在真要写回时才有影响：只观察上游声明、未开启同步的
 	// 账号不因声明值不适配 accounts.rate_multiplier 而被记成探测失败并进入
 	// 指数退避——探测本身成功了，原始声明照常存进快照供展示。
@@ -779,6 +789,7 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 		snapshot.Data = previous.Data
 		snapshot.ReceivedAt = previous.ReceivedAt
 		snapshot.FreshUntil = previous.FreshUntil
+		snapshot.RateChange = previous.RateChange
 		if snapshot.FreshUntil == nil && previous.Status == UpstreamBillingProbeStatusOK && previous.ReceivedAt != nil {
 			snapshot.FreshUntil = probeTimePtr(previous.ReceivedAt.Add(2 * time.Duration(intervalMinutes) * time.Minute))
 		}
@@ -880,6 +891,29 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 		return nil, fmt.Errorf("inconsistent effective billing multiplier")
 	}
 	return data, nil
+}
+
+// Compare observed effective rates, including the peak coefficient at each
+// observation. Recomputing the old snapshot at the new time would erase real
+// peak-window changes. Repeated identical probes keep the latest change visible.
+func upstreamBillingRateChange(previous *UpstreamBillingProbeSnapshot, data map[string]any, now time.Time) *UpstreamBillingRateChange {
+	if previous == nil || previous.ReceivedAt == nil || previous.ReceivedAt.IsZero() {
+		return nil
+	}
+	oldRate, oldOK := resolveAccountExtraNumber(previous.Data, "effective_rate_multiplier")
+	newRate, newOK := resolveAccountExtraNumber(data, "effective_rate_multiplier")
+	if !oldOK || !newOK || oldRate < 0 || newRate < 0 ||
+		math.IsNaN(oldRate) || math.IsNaN(newRate) || math.IsInf(oldRate, 0) || math.IsInf(newRate, 0) {
+		return nil
+	}
+	if equalBillingMultiplier(oldRate, newRate) {
+		return previous.RateChange
+	}
+	return &UpstreamBillingRateChange{
+		PreviousRateMultiplier: oldRate,
+		CurrentRateMultiplier:  newRate,
+		DetectedAt:             now,
+	}
 }
 
 func upstreamBillingRateAt(data map[string]any, now time.Time) (float64, bool) {

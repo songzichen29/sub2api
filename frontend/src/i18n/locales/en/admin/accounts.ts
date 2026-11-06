@@ -202,6 +202,10 @@ export default {
       "updatedAt": "Updated: {value}",
       "nextProbeAt": "Next probe: {value}",
       "lastDetectedRate": "Last detected rate: {value}x",
+      "lastChange": "Latest",
+      "lastChangeHint": "Latest detected effective-rate change, including the peak factor at each observation: {time}. The current rate is calculated for the current time window.",
+      "increased": "Rate increased",
+      "decreased": "Rate decreased",
       "lastDetectedAt": "Last detected: {value}",
       "elapsedSince": "Elapsed: {value}",
       "justNow": "less than 1 minute",
@@ -1281,6 +1285,8 @@ export default {
       "noData": "No usage data available for this account"
     },
     "usageWindow": {
+      "used": "Used",
+      "remaining": "Remaining",
       "statsTitle": "5-Hour Window Usage Statistics",
       "statsTitleDaily": "Daily Usage Statistics",
       "geminiProDaily": "Pro",

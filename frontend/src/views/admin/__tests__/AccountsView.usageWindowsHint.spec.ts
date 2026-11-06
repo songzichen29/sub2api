@@ -244,6 +244,37 @@ describe('admin AccountsView usage windows hint', () => {
     }
   })
 
+  it.each(['desktop', 'mobile'])('renders upstream history in the real %s list after reload', async (viewport) => {
+    const matchMedia = window.matchMedia.bind(window)
+    const mediaSpy = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
+      ...matchMedia(query), matches: viewport === 'desktop'
+    }))
+    const account = {
+      id: 502, name: 'rate-history-account', platform: 'openai', type: 'apikey',
+      status: 'active', schedulable: true, concurrency: 1, priority: 1,
+      rate_multiplier: 9, group_ids: [], tags: [],
+      extra: { upstream_billing_probe: {
+        status: 'ok',
+        data: { billing_scope: 'token', resolved_rate_multiplier: 1.2, effective_rate_multiplier: 1.2, peak_rate_enabled: false },
+        received_at: new Date().toISOString(), fresh_until: new Date(Date.now() + 3600000).toISOString(),
+        rate_change: { previous_rate_multiplier: 0.8, current_rate_multiplier: 1.2, detected_at: new Date().toISOString() }
+      } },
+      created_at: '2026-11-07T00:00:00Z', updated_at: '2026-11-07T00:00:00Z'
+    }
+    listAccounts.mockResolvedValue({ items: [account], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView(true)
+    try {
+      await flushPromises()
+      expect(wrapper.get('[data-testid="upstream-billing-rate-change"]').text()).toContain('0.80x→1.20x↑')
+      wrapper.getComponent({ name: 'ImportDataModal' }).vm.$emit('imported')
+      await flushPromises()
+      expect(wrapper.get('[data-testid="upstream-billing-rate-change"]').text()).toContain('0.80x→1.20x↑')
+    } finally {
+      wrapper.unmount()
+      mediaSpy.mockRestore()
+    }
+  })
+
   it.each([
     ['CreateAccountModal', 'created'],
     ['EditAccountModal', 'updated'],

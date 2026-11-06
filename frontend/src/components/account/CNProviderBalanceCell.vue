@@ -4,7 +4,7 @@
     <div class="flex flex-wrap items-center gap-1.5">
       <span
         data-test="cn-provider-balance-value"
-        :class="['text-[10px] font-medium leading-4', platformTextClass(account.platform)]"
+        :class="['text-xs font-medium leading-4', platformTextClass(account.platform)]"
         :title="t('admin.accounts.cnProviders.balanceProbeTooltip')"
       >
         {{ balanceLabel }}
@@ -13,7 +13,7 @@
       <!-- Low balance badge (reactive 402/429 marker or probe-detected) -->
       <span
         v-if="balanceLow"
-        class="inline-flex items-center rounded bg-red-100 px-1 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300"
+        class="inline-flex items-center rounded bg-red-100 px-1 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300"
       >
         {{ t('admin.accounts.cnProviders.balanceLow') }}
       </span>
@@ -27,13 +27,13 @@
       <button
         type="button"
         data-test="cn-provider-balance-probe"
-        class="inline-flex items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        class="inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium leading-4 text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading"
         :title="t('admin.accounts.cnProviders.balanceProbeTooltip')"
         @click="handleProbe"
       >
         <svg
-          class="h-2.5 w-2.5"
+          class="h-3 w-3"
           :class="{ 'animate-spin': loading }"
           fill="none"
           stroke="currentColor"
@@ -50,7 +50,7 @@
       </button>
     </div>
 
-    <div v-if="error" class="truncate text-[10px] text-red-600 dark:text-red-400" :title="error">
+    <div v-if="error" class="truncate text-xs text-red-600 dark:text-red-400" :title="error">
       {{ truncatedError }}
     </div>
   </div>
