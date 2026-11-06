@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -126,15 +127,15 @@ func (c Config) MarshalJSON() ([]byte, error) {
 
 func runtimePolicy(c Config) map[string]any {
 	r := c.RuntimeChat
-	owners := []string{}
+	privateUsers := []string{}
 	seen := map[string]bool{}
 	for _, admin := range c.GroupAdmins {
-		if admin.MemberID != "" && !seen[admin.MemberID] {
-			owners = append(owners, admin.MemberID)
+		if admin.AppID == c.AppID && admin.MemberID != "" && !seen[admin.MemberID] {
+			privateUsers = append(privateUsers, admin.MemberID)
 			seen[admin.MemberID] = true
 		}
 	}
-	sort.Strings(owners)
+	sort.Strings(privateUsers)
 	commands := []string{"帮助", "签到", "我的余额", "余额", "今日用量", "用量", "成长任务", "邀请奖励", "邀请活动", "我的邀请", "我的奖励", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "渠道状态", "渠道", "监控", "渠道监控", "生图", "画图", "价格", "绑定", "确认", "解绑", "转账"}
 	for _, command := range c.CustomCommands {
 		if command.Enabled {
@@ -157,7 +158,8 @@ func runtimePolicy(c Config) map[string]any {
 	return map[string]any{
 		"enabled": c.Enabled && r.Enabled, "chat_disabled": c.ChatDisabled,
 		"bot_id": c.AppID, "groups": c.AllowedGroups, "group_policies": c.GroupPolicies,
-		"owners": owners, "private_users": owners, "business_commands": commands, "business_observation": true,
+		// Group administrators are not global owners. Keep the exact bot/group scope.
+		"owners": []string{}, "group_admins": c.GroupAdmins, "private_users": privateUsers, "business_commands": commands, "business_observation": true,
 		"model": c.ChatModel, "model_base_url": c.BaseURL, "model_api": api, "model_api_key": c.APIKey,
 		"persona": persona, "max_output_tokens": c.MaxOutputTokens, "context_window_tokens": r.ContextWindowTokens,
 		"daily_chat_limit": c.DailyChatLimit, "total_daily_chat_limit": c.TotalDailyChatLimit,
@@ -180,14 +182,35 @@ func runtimeRevision(policy map[string]any) string {
 }
 
 type ChatRuntimeStatus struct {
-	Enabled          bool       `json:"enabled"`
-	Connected        bool       `json:"connected"`
-	Revision         string     `json:"revision"`
-	ExpectedRevision string     `json:"expected_revision"`
-	LastSeenAt       *time.Time `json:"last_seen_at,omitempty"`
-	Sessions         int64      `json:"sessions"`
-	Messages         int64      `json:"messages"`
-	Summaries        int64      `json:"summaries"`
+	Enabled          bool                `json:"enabled"`
+	Connected        bool                `json:"connected"`
+	Revision         string              `json:"revision"`
+	ExpectedRevision string              `json:"expected_revision"`
+	LastSeenAt       *time.Time          `json:"last_seen_at,omitempty"`
+	Sessions         int64               `json:"sessions"`
+	Messages         int64               `json:"messages"`
+	Summaries        int64               `json:"summaries"`
+	Day              string              `json:"day"`
+	DailyCalls       int64               `json:"daily_calls"`
+	DailySent        int64               `json:"daily_sent"`
+	DailyFailed      int64               `json:"daily_failed"`
+	Unconfirmed      int64               `json:"unconfirmed"`
+	Queued           int64               `json:"queued"`
+	Active           int64               `json:"active"`
+	MetricsAvailable bool                `json:"metrics_available"`
+	Recent           []ChatRuntimeRecord `json:"recent"`
+}
+
+// Deliberately excludes message contents, model output and credentials.
+type ChatRuntimeRecord struct {
+	ID        string `json:"id"`
+	Scope     string `json:"scope"`
+	Sender    string `json:"sender"`
+	MessageID string `json:"message_id"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason"`
+	Created   int64  `json:"created"`
+	Updated   int64  `json:"updated"`
 }
 
 func (s *Service) ChatRuntimeStatus(c Config) ChatRuntimeStatus {
@@ -197,6 +220,7 @@ func (s *Service) ChatRuntimeStatus(c Config) ChatRuntimeStatus {
 	out.Enabled = c.RuntimeChat.Enabled
 	out.ExpectedRevision = runtimeRevision(runtimePolicy(c))
 	out.Connected = out.Enabled && out.LastSeenAt != nil && time.Since(*out.LastSeenAt) < 45*time.Second && out.Revision == out.ExpectedRevision
+	out.MetricsAvailable = out.Connected && out.Day == day(time.Now())
 	return out
 }
 
@@ -224,9 +248,10 @@ func (s *Service) ServeRuntime(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	var report ChatRuntimeStatus
-	decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, 4096))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, req.Body, 32<<10))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&report) != nil || len(report.Revision) != 64 || report.Sessions < 0 || report.Messages < 0 || report.Summaries < 0 {
+	var extra any
+	if decoder.Decode(&report) != nil || decoder.Decode(&extra) != io.EOF || !validRuntimeReport(report) {
 		http.Error(w, "invalid runtime report", http.StatusBadRequest)
 		return
 	}
@@ -236,6 +261,33 @@ func (s *Service) ServeRuntime(w http.ResponseWriter, req *http.Request) {
 	s.chatRuntimeStatus = report
 	s.chatRuntimeMu.Unlock()
 	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
+
+func validRuntimeReport(r ChatRuntimeStatus) bool {
+	if len(r.Revision) != 64 || len(r.Recent) > 20 {
+		return false
+	}
+	if r.Day != "" {
+		if _, err := time.Parse("2006-01-02", r.Day); err != nil {
+			return false
+		}
+	}
+	for _, n := range []int64{r.Sessions, r.Messages, r.Summaries, r.DailyCalls, r.DailySent, r.DailyFailed, r.Unconfirmed, r.Queued, r.Active} {
+		if n < 0 {
+			return false
+		}
+	}
+	for _, item := range r.Recent {
+		if len(item.ID) > 128 || len(item.Scope) > 128 || len(item.Sender) > 128 || len(item.MessageID) > 128 || len(item.Reason) > 100 || item.Created < 0 || item.Updated < item.Created {
+			return false
+		}
+		switch item.Status {
+		case "queued", "running", "generated", "skipped", "sent", "sending", "unconfirmed", "partial", "failed", "interrupted", "expired", "rejected", "cancelled":
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func runtimeAuthorized(c Config, req *http.Request, provided string) bool {

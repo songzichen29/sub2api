@@ -79,6 +79,12 @@ export function defaultRuntimeChatConfig(): QQRuntimeChatConfig {
 export interface QQChatRuntimeStatus {
   enabled: boolean; connected: boolean; revision: string; expected_revision: string; last_seen_at?: string
   sessions: number; messages: number; summaries: number
+  day?: string; daily_calls?: number; daily_sent?: number; daily_failed?: number; unconfirmed?: number
+  queued?: number; active?: number; metrics_available?: boolean; recent?: QQChatRuntimeRecord[]
+}
+export interface QQChatRuntimeRecord {
+  id: string; scope: string; sender: string; message_id: string; status: string; reason: string
+  created: number; updated: number
 }
 export interface QQBotConfig {
 	runtime_chat?: QQRuntimeChatConfig
@@ -229,6 +235,7 @@ export interface QQRewardCode {
 export interface QQRewardCodesPage { items: QQRewardCode[]; total: number; page: number; page_size: number }
 export interface QQDiagnosticCheck { code: string; ok: boolean; message: string }
 export interface QQOverview {
+  chat_runtime?: QQChatRuntimeStatus
   day: string; last_event: string | null; queued: number; running: number; failed: number
   chat_used: number; image_used: number; chat_remaining: number; image_remaining: number
   reward_amount: number; pending_rewards: number; reward_alert: boolean; checks: QQDiagnosticCheck[]

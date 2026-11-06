@@ -36,8 +36,8 @@ test('shared bridge context, confirmed memory, restart recovery, configuration c
   assert.deepEqual(calls[0].conversation_memory.messages.map(r => r.sender), ['888', '789', '789']);
   assert.equal(store.history('123:group:456').filter(r => r.role === 'assistant').length, 0);
   assert.equal((await post('/delivery/claim', { id: first.body.id })).body.claimed, true);
-  await post('/delivery/finish', { id: first.body.id, status: 'sent' });
-  await post('/delivery/finish', { id: first.body.id, status: 'sent' });
+  await post('/delivery/finish', { id: first.body.id, status: 'sent', message_ids: ['-101'] });
+  await post('/delivery/finish', { id: first.body.id, status: 'sent', message_ids: ['-101'] });
   assert.equal(store.history('123:group:456').filter(r => r.role === 'assistant').length, 1);
   await bridge.close(); await start();
   await post('/turn', { ...input, sender: '888', message_id: '4', text: '我带什么' });
@@ -52,7 +52,7 @@ test('shared bridge context, confirmed memory, restart recovery, configuration c
   const image = { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg==' };
   const vision = await post('/turn', { ...input, message_id: 'vision', text: '刚躺着弹出个窗口，[图片]', ambient: true, image_count: 1, image_loaded_count: 1, images: [image] });
   assert.equal(vision.status, 200);
-  assert.deepEqual(calls.at(-1).attachments, { received: 1, loaded: 1, forwarded: 1, note: '图片已作为原生图像内容随本条消息附上，直接观察图像，不需要读图工具，不要因为没有读图工具就否认可见的图片。', tools: {} });
+  assert.deepEqual(calls.at(-1).attachments, { received: 1, loaded: 1, forwarded: 1, sources: [{source_index:1,source:'current_message',visible:true}], note: '图片已作为原生图像内容随本条消息附上，直接观察图像，不需要读图工具，不要因为没有读图工具就否认可见的图片。', tools: {} });
   assert.equal(modelBlocks.at(-1).filter(block => block.type === 'image').length, 1, 'the image is sent in the same DSH turn as the caption');
   const missing = await post('/turn', { ...input, message_id: 'vision-missing', text: '这图是什么？', ambient: true, image_count: 1, image_loaded_count: 0, images: [] });
   assert.equal(missing.status, 200);

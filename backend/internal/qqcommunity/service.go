@@ -670,13 +670,21 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		j.Kind = kind
 		var err error
 		if kind == "image" {
+			tool, reason := chatImageToolName, "slash_command"
+			if e.RuntimeEditImage != "" {
+				tool, reason = chatEditImageToolName, "runtime_edit"
+			}
 			err = s.clearPendingImagePlan(ctx, c, *j)
 			if err == nil {
-				err = s.saveImageDecision(ctx, j, imageDecision{Tool: chatImageToolName, Review: "command", Basis: "explicit", Reason: "slash_command", Execution: "started", MessageRef: groupHistoryID(c.AppID, j.GroupID, e.ID)})
+				err = s.saveImageDecision(ctx, j, imageDecision{Tool: tool, Review: "command", Basis: "explicit", Reason: reason, Execution: "started", MessageRef: groupHistoryID(c.AppID, j.GroupID, e.ID)})
 			}
 			if err == nil {
-				sendImageProgress("正在生成图片，请稍候。")
-				img, err = s.generateImage(ctx, c, prompt)
+				if e.RuntimeEditImage != "" {
+					sendImageProgress("正在编辑原图，请稍候。")
+				} else {
+					sendImageProgress("正在生成图片，请稍候。")
+				}
+				img, err = s.runtimeImage(ctx, c, e, prompt)
 				status := "succeeded"
 				if err != nil {
 					status = "failed"

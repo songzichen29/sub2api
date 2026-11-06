@@ -88,6 +88,7 @@ func (s *Service) ListJobs(ctx context.Context, f JobFilter) (JobPage, error) {
 }
 
 type Overview struct {
+	ChatRuntime    ChatRuntimeStatus `json:"chat_runtime"`
 	Day            string            `json:"day"`
 	LastEvent      *time.Time        `json:"last_event"`
 	Queued         int               `json:"queued"`
@@ -143,6 +144,14 @@ func (s *Service) Overview(ctx context.Context) (Overview, error) {
 		return out, err
 	}
 	out.ChatRemaining = max(0, c.TotalDailyChatLimit-out.ChatUsed)
+	out.ChatRuntime = s.ChatRuntimeStatus(c)
+	if out.ChatRuntime.MetricsAvailable {
+		out.ChatUsed = int(out.ChatRuntime.DailyCalls)
+		out.ChatRemaining = max(0, c.TotalDailyChatLimit-out.ChatUsed)
+		out.Queued += int(out.ChatRuntime.Queued)
+		out.Running += int(out.ChatRuntime.Active)
+		out.Failed += int(out.ChatRuntime.DailyFailed)
+	}
 	out.ImageRemaining = max(0, c.TotalDailyImageLimit-out.ImageUsed)
 	err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM qqc_rewards WHERE app_id=$1 AND (created_at AT TIME ZONE 'Asia/Shanghai')::date=$2::date`, c.AppID, out.Day).Scan(&out.RewardAmount)
 	if err != nil {

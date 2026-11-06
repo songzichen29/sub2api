@@ -1,5 +1,11 @@
 export default { qqbot: {
   runtimeChat: {
+    diagnostics: '实际聊天运行记录', metricsPending: '聊天指标未同步或已过期，请刷新；此时不把未知用量显示为零。', syncedAt: '最后同步：{time}',
+    metrics: { daily_calls: '今日聊天调用', daily_sent: '今日确认送达', daily_failed: '今日失败或取消', unconfirmed: '今日发送中或未确认', queued: '排队中', active: '处理中' },
+    recentHelp: '最近20条运行记录，含跳过原因；仅展示会话标识和状态，不展示聊天正文。历史记录可能来自上次同步。',
+    conversation: '会话', messageId: '消息ID', reason: '原因',
+    states: { queued: '排队中', running: '处理中', generated: '已生成，待发送', skipped: '已跳过', sending: '发送中', sent: '已确认送达', unconfirmed: '发送未确认', partial: '部分送达', failed: '失败', interrupted: '已中断', expired: '已超时', rejected: '被限制', cancelled: '已取消' },
+    reasons: { outside_active_hours: '不在接话时段', sampled_out: '未被接话比例选中', cooldown: '冷却未结束', ambient_disabled: '自然接话未开启', chat_disabled: '聊天已关闭', queue_full: '队列已满', turn_expired: '等待或处理超时', model_skip: '模型选择不参与', delivery_disabled: '发送权限关闭或已过期', rate_limited: '调用或回复额度用尽', runtime_restarted: '服务重启，执行或送达未确认', qq_delivery_unconfirmed: '未收到完整QQ回执', delivery_not_claimed: '生成后未在期限内发送', model_unavailable: '模型调用失败', empty_model_response: '模型未返回文字或图片', group_activity_changed: '群内已恢复聊天', image_limit: '图片超出本轮限制', media_storage_full: '图片存储已满' },
     title: '群聊、记忆与欢迎', model: 'DSH 聊天模型', names: '机器人称呼（每行一个）',
     memoryHelp: '同群公开聊天按说话人共享上下文，私聊和不同群相互隔离。原始记录持续保存，不按条数截断；接近模型容量时自动生成摘要，并可检索较早记录。配置保存后自动同步。',
     connected: '聊天服务已同步当前配置', pending: '等待聊天服务同步配置',
@@ -131,7 +137,7 @@ export default { qqbot: {
     entryTooLong: '标题最多120字、分类60字、正文8000字；关键词最多12个，每个60字。',
     invalidURL: '来源链接须为不含账号密码的有效 HTTP 或 HTTPS 网址。'
   },
-  workspace: {"imageDecision": "图片操作复核","imageReason": "判断依据","imageMessageRef": "关联消息","imagePlanRef": "待确认方案","capabilityTests": "连接与能力测试","credentialsTestHelp": "使用已保存的 QQ 配置验证凭据，不向群发送消息。","quietHours": "通知静默时段（北京时间）","startHour": "开始小时","endHour": "结束小时","quietHoursHelp": "时段内价格、故障与排行奖励通知会记录为跳过，不发送、也不在结束后补发过期提醒；跨午夜有效。开始和结束不能相同。",
+  workspace: {chat: '聊天记录',"imageDecision": "图片操作复核","imageReason": "判断依据","imageMessageRef": "关联消息","imagePlanRef": "待确认方案","capabilityTests": "连接与能力测试","credentialsTestHelp": "使用已保存的 QQ 配置验证凭据，不向群发送消息。","quietHours": "通知静默时段（北京时间）","startHour": "开始小时","endHour": "结束小时","quietHoursHelp": "时段内价格、故障与排行奖励通知会记录为跳过，不发送、也不在结束后补发过期提醒；跨午夜有效。开始和结束不能相同。",
 "transferHistory": "已完成转账","transferHistoryHelp": "记录本次升级后经邮件确认完成的转账，可核对转出金额、手续费与实际到账金额。升级前的转账不在此列表中。","transferSearch": "邮箱或网站用户 ID","transferFee": "手续费","transferNet": "到账",
   "overview": "运行总览",
   "groups": "群管理",

@@ -8,6 +8,7 @@
         <div class="qq-stats">
           <article v-for="stat in stats" :key="stat.label"><p class="text-sm text-gray-500 dark:text-gray-400">{{ t(stat.label) }}</p><p class="font-semibold">{{ stat.value }}</p></article>
         </div>
+        <QQChatDiagnostics v-if="config.runtime_chat?.enabled" class="card p-5" :status="overview.chat_runtime" />
         <p v-if="overview.reward_alert" role="alert" class="rounded-lg bg-amber-50 p-4 text-amber-800">{{ t('qqbot.workspace.budgetExceeded') }}</p>
         <section class="card space-y-4 p-5">
           <h2 class="text-lg font-semibold">{{ t('qqbot.workspace.effectiveStatus') }}</h2>
@@ -36,6 +37,8 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { qqbotAPI, type QQBotConfig, type QQBotRuntime, type QQOverview, type QQDiagnosticCheck, type QQMemberOption } from '@/api/qqcommunity'
 import QQMemberPicker from '@/components/admin/qqbot/QQMemberPicker.vue'
+import QQChatDiagnostics from '@/components/admin/qqbot/QQChatDiagnostics.vue'
+import { runtimeMetricsFresh } from '@/utils/qqRuntime'
 const { t } = useI18n()
 const config = ref<QQBotConfig>(), overview = ref<QQOverview>(), runtime = ref<QQBotRuntime>()
 const loading = ref(false), error = ref(''), diagnosing = ref(false), group = ref(''), member = ref('')
@@ -48,14 +51,17 @@ watch(() => config.value?.app_id, (current, previous) => {
 })
 function selectMember(selected: QQMemberOption) { group.value = selected.group_id; member.value = selected.member_id }
 const groups = computed(() => [...new Set([...(config.value?.allowed_groups || []), ...(runtime.value?.groups.map(g => g.id) || [])])])
+const now = ref(Date.now())
+let freshnessTimer: ReturnType<typeof setInterval> | undefined
+const metricsUnknown = computed(() => config.value?.runtime_chat?.enabled && !runtimeMetricsFresh(overview.value?.chat_runtime, now.value))
 const stats = computed(() => overview.value ? [
- { label: 'qqbot.workspace.chatRemaining', value: `${overview.value.chat_remaining} / ${config.value?.total_daily_chat_limit}` },
+ { label: 'qqbot.workspace.chatRemaining', value: metricsUnknown.value ? '—' : `${overview.value.chat_remaining} / ${config.value?.total_daily_chat_limit}` },
  { label: 'qqbot.workspace.imageRemaining', value: `${overview.value.image_remaining} / ${config.value?.total_daily_image_limit}` },
- { label: 'qqbot.workspace.todayFailures', value: overview.value.failed },
+ { label: 'qqbot.workspace.todayFailures', value: metricsUnknown.value ? '—' : overview.value.failed },
  { label: 'qqbot.workspace.pendingRewards', value: overview.value.pending_rewards },
  { label: 'qqbot.workspace.todayRewards', value: `$${overview.value.reward_amount.toFixed(2)}` },
- { label: 'qqbot.workspace.queue', value: `${overview.value.queued} / ${overview.value.running}` },
- { label: 'qqbot.workspace.chatUsed', value: overview.value.chat_used },
+ { label: 'qqbot.workspace.queue', value: metricsUnknown.value ? '—' : `${overview.value.queued} / ${overview.value.running}` },
+ { label: 'qqbot.workspace.chatUsed', value: metricsUnknown.value ? '—' : overview.value.chat_used },
  { label: 'qqbot.workspace.imageUsed', value: overview.value.image_used }
 ] : [])
 async function load() { loading.value = true; error.value = ''; try { [config.value, overview.value, runtime.value] = await Promise.all([qqbotAPI.config(), qqbotAPI.overview(), qqbotAPI.runtime()]) } catch (e) { error.value = (e as Error).message } finally { loading.value = false } }
@@ -69,6 +75,6 @@ async function diagnose() {
  catch (e) { if (current()) error.value = (e as Error).message }
  finally { if (current()) diagnosing.value = false }
 }
-onBeforeUnmount(() => { ++diagnosisRequest })
-onMounted(load)
+onBeforeUnmount(() => { ++diagnosisRequest; clearInterval(freshnessTimer) })
+onMounted(() => { void load(); freshnessTimer = setInterval(() => { now.value = Date.now() }, 5000) })
 </script>

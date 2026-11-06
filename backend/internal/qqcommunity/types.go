@@ -101,6 +101,9 @@ type Payload struct {
 	Data json.RawMessage `json:"d"`
 }
 type Event struct {
+	// Only the authenticated runtime tools endpoint populates this validated
+	// data URL; OneBot events are reconstructed and cannot supply this field.
+	RuntimeEditImage string           `json:"runtime_edit_image,omitempty"`
 	CommandReply     bool             `json:"command_reply,omitempty"`
 	HelpAction       string           `json:"help_action,omitempty"`
 	ID               string           `json:"id"`

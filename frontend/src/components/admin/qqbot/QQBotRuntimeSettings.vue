@@ -4,6 +4,7 @@
     <p class="text-sm text-gray-500">{{ t('qqbot.runtimeChat.memoryHelp') }}</p>
     <p class="text-sm" role="status" data-testid="dsh-runtime-status">{{ t(status?.connected ? 'qqbot.runtimeChat.connected' : 'qqbot.runtimeChat.pending') }}</p>
     <p v-if="status?.last_seen_at" class="text-xs text-gray-500">{{ t('qqbot.runtimeChat.memoryStats', { sessions: status.sessions, messages: status.messages, summaries: status.summaries }) }}</p>
+    <QQChatDiagnostics :status="status" :show-records="false" />
     <label class="block space-y-1">{{ t('qqbot.runtimeChat.names') }}<textarea v-model="names" class="input" rows="2" data-testid="runtime-names" /></label>
     <label class="flex items-center gap-2"><input v-model="value.ambient_enabled" type="checkbox" data-testid="runtime-ambient-enabled" />{{ t('qqbot.runtimeChat.ambient') }}</label>
     <QQGroupPicker v-model="value.ambient_groups" :groups="groups" :policies="policies" :names="groupNames" :label="t('qqbot.runtimeChat.ambientGroups')" />
@@ -43,6 +44,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import QQGroupPicker from './QQGroupPicker.vue'
+import QQChatDiagnostics from './QQChatDiagnostics.vue'
 import type { QQRuntimeChatConfig, QQChatRuntimeStatus, QQGroupPolicy } from '@/api/qqcommunity'
 const value = defineModel<QQRuntimeChatConfig>({ required: true })
 defineProps<{ status?: QQChatRuntimeStatus; groups: string[]; policies?: QQGroupPolicy[]; groupNames?: Record<string, string> }>()

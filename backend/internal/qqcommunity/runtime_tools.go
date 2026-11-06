@@ -14,14 +14,20 @@ import (
 
 // Identities are supplied by the authenticated bridge, never by model arguments.
 type runtimeToolRequest struct {
-	Tool      string `json:"tool"`
-	GroupID   string `json:"group_id"`
-	MemberID  string `json:"member_id"`
-	MessageID string `json:"message_id"`
-	Prompt    string `json:"prompt,omitempty"`
-	Keyword   string `json:"keyword,omitempty"`
-	Query     string `json:"query,omitempty"`
-	URL       string `json:"url,omitempty"`
+	Tool        string              `json:"tool"`
+	GroupID     string              `json:"group_id"`
+	MemberID    string              `json:"member_id"`
+	MessageID   string              `json:"message_id"`
+	Prompt      string              `json:"prompt,omitempty"`
+	Keyword     string              `json:"keyword,omitempty"`
+	Query       string              `json:"query,omitempty"`
+	URL         string              `json:"url,omitempty"`
+	SourceImage *runtimeSourceImage `json:"source_image,omitempty"`
+}
+
+type runtimeSourceImage struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
 }
 
 var runtimeNumericID = regexp.MustCompile(`^[1-9][0-9]{0,23}$`)
@@ -35,7 +41,7 @@ func runtimeToolScope(c Config, in runtimeToolRequest) bool {
 		return c.allows(in.GroupID) && !c.groupPolicy(in.GroupID).DisableChat
 	}
 	for _, admin := range c.GroupAdmins {
-		if admin.MemberID == in.MemberID {
+		if admin.AppID == c.AppID && admin.MemberID == in.MemberID {
 			return true
 		}
 	}
@@ -48,9 +54,32 @@ func runtimeImageEvent(in runtimeToolRequest) (Event, error) {
 		return Event{}, errors.New("请在已开放群描述要画的图片，最多6000字")
 	}
 	e := Event{ID: in.MessageID, GroupID: in.GroupID, MemberID: in.MemberID, Content: "/生图 " + prompt}
+	if in.Tool == "edit_image" {
+		if in.SourceImage == nil || len(in.SourceImage.Data) > 8<<20 {
+			return Event{}, errors.New("改图必须提供有效原图，单张最多6MB")
+		}
+		data, err := base64.StdEncoding.Strict().DecodeString(in.SourceImage.Data)
+		if err != nil || len(data) > 6<<20 || base64.StdEncoding.EncodeToString(data) != in.SourceImage.Data {
+			return Event{}, errors.New("原图编码或大小无效")
+		}
+		dataURL, err := inputImageDataURL(data)
+		if err != nil || !strings.HasPrefix(dataURL, "data:"+in.SourceImage.MimeType+";base64,") {
+			return Event{}, errors.New("原图格式或内容无效")
+		}
+		e.RuntimeEditImage = dataURL
+	} else if in.SourceImage != nil {
+		return Event{}, errors.New("带原图的请求必须使用改图工具")
+	}
 	e.Author.MemberID = in.MemberID
 	e.Timestamp, _ = json.Marshal(time.Now().UTC().Format(time.RFC3339))
 	return e, nil
+}
+
+func (s *Service) runtimeImage(ctx context.Context, c Config, e Event, prompt string) ([]byte, error) {
+	if e.RuntimeEditImage != "" {
+		return s.editImage(ctx, c, prompt, e.RuntimeEditImage)
+	}
+	return s.generateImage(ctx, c, prompt)
 }
 
 func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
@@ -74,7 +103,7 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	var in runtimeToolRequest
-	d := json.NewDecoder(http.MaxBytesReader(w, req.Body, 32<<10))
+	d := json.NewDecoder(http.MaxBytesReader(w, req.Body, (8<<20)+(32<<10)))
 	d.DisallowUnknownFields()
 	var extra any
 	if d.Decode(&in) != nil || d.Decode(&extra) != io.EOF || !runtimeToolScope(c, in) {
@@ -89,7 +118,7 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 	defer cancel()
 	var out any
 	switch in.Tool {
-	case "generate_image":
+	case "generate_image", "edit_image":
 		if !c.ImageEnabled || c.groupPolicy(in.GroupID).DisableImages {
 			fail(400, "本群未启用生图")
 			return
@@ -113,7 +142,7 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 		}
 		out = map[string]string{"status": "queued", "job_id": jobID, "job_status": jobStatus, "message": "生图请求已交给站点，稍后由站点发送图片或失败说明。当前仅已提交，不能声称画好或发送成功。"}
 	case "search_meme":
-		if !c.RuntimeChat.MemesEnabled {
+		if !c.RuntimeChat.MemesEnabled || c.groupPolicy(in.GroupID).DisableImages {
 			fail(400, "表情包功能已关闭")
 			return
 		}

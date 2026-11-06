@@ -58,6 +58,14 @@ def should_load_images(enabled, direct, received_images):
     return bool(enabled and (direct or received_images))
 
 
+def requests_collection(text):
+    return bool(re.search(r"(?:收藏|收集|存下|保存).{0,16}(?:表情|图片|照片|这张|那张)|(?:这张|那张).{0,8}(?:收藏|收集|保存)", text))
+
+
+def requests_image_edit(text):
+    return bool(re.search(r"修图|改图|编辑.{0,12}(?:图|照片)|(?:修改|换|改).{0,16}(?:背景|颜色|图|照片)|(?:图|照片).{0,16}(?:修改|改成|换成)", text))
+
+
 def is_sticker(segment):
     if segment.get("type") == "mface":
         return True
@@ -69,7 +77,7 @@ def is_sticker(segment):
 
 
 def requests_tool(text):
-    return bool(re.search(r"画一张|画个|画只|帮我画|生成.{0,8}(?:图片|图像|照片)|发.{0,12}表情|(?:收藏|收集|存下).{0,12}(?:表情|图片)|(?:看|识别|分析|描述|读).{0,12}(?:图|照片)|(?:图片|照片|这张图|那张图).{0,12}(?:看|懂|识别|分析|描述|读|什么|内容|颜色)|上网|查一下|查下|搜一下|搜下|最新.{0,12}(?:新闻|消息)|实时", text))
+    return requests_collection(text) or requests_image_edit(text) or bool(re.search(r"画一张|画个|画只|帮我画|生成.{0,8}(?:图片|图像|照片)|发.{0,12}表情|(?:看|识别|分析|描述|读).{0,12}(?:图|照片)|(?:图片|照片|这张图|那张图).{0,12}(?:看|懂|识别|分析|描述|读|什么|内容|颜色)|上网|查一下|查下|搜一下|搜下|最新.{0,12}(?:新闻|消息)|实时", text))
 
 
 def message_packets(result):
@@ -84,6 +92,9 @@ def message_packets(result):
             packets[-1].append(segment)
         else:
             packets.append([segment])
+    reply = str(result.get("reply_to", ""))
+    if packets and re.fullmatch(r"-?\d{1,24}", reply):
+        packets[0].insert(0, {"type": "reply", "data": {"id": reply}})
     return packets
 
 

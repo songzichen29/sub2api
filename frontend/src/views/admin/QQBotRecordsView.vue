@@ -7,7 +7,8 @@
       </div>
       <nav class="workspace-tabs"><RouterLink v-for="mode in recordModes" :key="mode" :to="{ query: { tab: mode } }" :aria-current="recordMode === mode ? 'page' : undefined">{{ t(`qqbot.workspace.${mode}`) }}</RouterLink></nav>
       <p v-if="appError && recordMode !== 'activities'" role="alert" class="text-red-600">{{ appError }}</p>
-      <QQJobRecords v-if="recordMode === 'tasks' || recordMode === 'notifications'" :notifications="recordMode === 'notifications'" :app-id="appId" />
+      <QQChatDiagnostics v-if="recordMode === 'chat'" class="card p-5" :status="chatStatus" />
+      <QQJobRecords v-else-if="recordMode === 'tasks' || recordMode === 'notifications'" :notifications="recordMode === 'notifications'" :app-id="appId" />
       <QQModerationRecords v-else-if="recordMode === 'moderation'" :app-id="appId" />
       <template v-else>
       <nav role="tablist" :aria-label="t('qqbot.recordsTitle')" class="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-dark-700 dark:bg-dark-800">
@@ -101,23 +102,31 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import QQJobRecords from '@/components/admin/qqbot/QQJobRecords.vue'
+import QQChatDiagnostics from '@/components/admin/qqbot/QQChatDiagnostics.vue'
 import QQModerationRecords from '@/components/admin/qqbot/QQModerationRecords.vue'
 import QQBotRecordParticipant from '@/components/admin/qqbot/QQBotRecordParticipant.vue'
-import { qqbotAPI, type QQActivityKind, type QQActivityRecord, type QQActivityRecordsPage } from '@/api/qqcommunity'
+import { qqbotAPI, type QQActivityKind, type QQActivityRecord, type QQActivityRecordsPage, type QQChatRuntimeStatus } from '@/api/qqcommunity'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const recordModes = ['tasks', 'notifications', 'moderation', 'activities'] as const
-const recordMode = computed(() => ['tasks', 'notifications', 'moderation'].includes(String(route.query.tab || 'tasks')) ? String(route.query.tab || 'tasks') : 'activities')
+const recordModes = ['tasks', 'chat', 'notifications', 'moderation', 'activities'] as const
+const recordMode = computed(() => ['tasks', 'chat', 'notifications', 'moderation'].includes(String(route.query.tab || 'tasks')) ? String(route.query.tab || 'tasks') : 'activities')
 const appId = ref(''), appLoading = ref(false), appError = ref('')
+const chatStatus = ref<QQChatRuntimeStatus>()
 let appRequest = 0
 async function loadApp() {
   const seq = ++appRequest
   // Reload both the identity scope and its records, even when AppID is unchanged.
   appId.value = ''
+  chatStatus.value = undefined
   appLoading.value = true; appError.value = ''
-  try { const config = await qqbotAPI.config(); if (seq === appRequest) appId.value = config.app_id }
+  try {
+    const config = await qqbotAPI.config()
+    if (seq !== appRequest) return
+    appId.value = config.app_id
+    if (recordMode.value === 'chat') { const runtime = await qqbotAPI.runtime(); if (seq === appRequest) chatStatus.value = runtime.chat_runtime }
+  }
   catch (e) { if (seq === appRequest) { appId.value = ''; appError.value = (e as Error).message } }
   finally { if (seq === appRequest) appLoading.value = false }
 }

@@ -33,7 +33,18 @@ export class Store {
     this.db.exec(`CREATE TABLE IF NOT EXISTS group_activity(scope TEXT PRIMARY KEY,event_id TEXT NOT NULL,at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS proactive_slots(id TEXT PRIMARY KEY,scope TEXT NOT NULL,slot_at INTEGER NOT NULL,activity TEXT NOT NULL,status TEXT NOT NULL,turn_id TEXT,updated INTEGER NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS proactive_turn ON proactive_slots(turn_id);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS pending_conversations(id TEXT PRIMARY KEY,scope TEXT NOT NULL,session_id TEXT NOT NULL,cursor INTEGER NOT NULL,bytes INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS diagnostics(id TEXT PRIMARY KEY,scope TEXT NOT NULL,sender TEXT NOT NULL,message_id TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,created INTEGER NOT NULL,updated INTEGER NOT NULL,deadline INTEGER NOT NULL);
+      CREATE INDEX IF NOT EXISTS diagnostics_created ON diagnostics(created);
+      CREATE TABLE IF NOT EXISTS meme_search_cache(scope TEXT NOT NULL,keyword TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,description TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,keyword));`);
+    // Additive, idempotent SQLite migration: preserve previously saved assets.
+    if (!this.db.prepare('PRAGMA table_info(cached_images)').all().some(c => c.name === 'sender')) this.db.exec("ALTER TABLE cached_images ADD COLUMN sender TEXT NOT NULL DEFAULT ''");
+    if (!this.db.prepare('PRAGMA table_info(memes)').all().some(c => c.name === 'manual_tags')) {
+      this.db.exec("ALTER TABLE memes ADD COLUMN manual_tags TEXT NOT NULL DEFAULT ''; UPDATE memes SET manual_tags=tags");
+    }
     this.db.exec("UPDATE turns SET status='interrupted' WHERE status='running'");
+    this.db.exec("UPDATE diagnostics SET status='interrupted',reason='runtime_restarted' WHERE status IN ('queued','running'); DELETE FROM pending_conversations");
+    this.db.exec("UPDATE delivery SET status='unconfirmed' WHERE status='sending'; UPDATE diagnostics SET status='unconfirmed',reason='runtime_restarted' WHERE status='sending'");
     // A crash between generation and the QQ receipt must not restore an
     // assistant answer whose delivery is unknown into a model session.
     this.db.exec(`DELETE FROM conversations WHERE scope IN (
@@ -60,17 +71,30 @@ export class Store {
   proactiveTurn(id) { return this.db.prepare('SELECT * FROM proactive_slots WHERE turn_id=?').get(id); }
   begin(id, scope, deliveryLimits = []) { this.db.prepare("INSERT INTO turns VALUES(?,?,'running',NULL,?,?)").run(id, scope, Date.now(), JSON.stringify(deliveryLimits)); }
   finish(id, status, reply = '') { this.db.prepare('UPDATE turns SET status=?,reply=? WHERE id=?').run(status, reply, id); }
-  cacheImages(scope, event, images) {
-    for (const [i, image] of images.entries()) this.db.prepare('INSERT OR IGNORE INTO cached_images VALUES(?,?,?,?,?,?)').run(scope,event,i,image.mimeType,Buffer.from(image.data,'base64'),Date.now());
+  cacheImages(scope, event, images, sender = '') {
+    this.pruneMedia();
+    for (const [i, image] of images.entries()) this.db.prepare('INSERT OR IGNORE INTO cached_images(scope,event_id,ordinal,mime,data,at,sender) VALUES(?,?,?,?,?,?,?)').run(scope,event,(image.source_index || i + 1)-1,image.mimeType,Buffer.from(image.data,'base64'),Date.now(),sender);
+    this.pruneMedia();
   }
   cachedImages(scope, event, before=Date.now()) {
     const rows = event ? this.db.prepare('SELECT * FROM cached_images WHERE scope=? AND event_id=? ORDER BY ordinal').all(scope,event)
       : this.db.prepare('SELECT * FROM cached_images WHERE scope=? AND event_id=(SELECT event_id FROM cached_images WHERE scope=? AND at<=? ORDER BY at DESC LIMIT 1) ORDER BY ordinal').all(scope,scope,before);
-    return rows.map(r => ({ mimeType:r.mime, data:Buffer.from(r.data).toString('base64') }));
+    return rows.map(r => ({ mimeType:r.mime, data:Buffer.from(r.data).toString('base64'), source_index:r.ordinal+1 }));
   }
-  collectMeme(scope, image, tags) {
+  recentSenderImages(scope, sender, before = Date.now()) {
+    const row = this.db.prepare('SELECT event_id FROM cached_images WHERE scope=? AND sender=? AND at<=? AND at>=? ORDER BY at DESC,rowid DESC LIMIT 1').get(scope,sender,before,before-10*60000);
+    return row ? this.cachedImages(scope,row.event_id) : [];
+  }
+  collectMeme(scope, image, tags, { automatic = false } = {}) {
     const data=Buffer.from(image.data,'base64'), hash=opaqueKey(data);
-    this.db.prepare('INSERT INTO memes VALUES(?,?,?,?,?,?) ON CONFLICT(scope,hash) DO UPDATE SET tags=excluded.tags').run(scope,hash,image.mimeType,data,tags,Date.now());
+    const existing=this.db.prepare('SELECT hash FROM memes WHERE scope=? AND hash=?').get(scope,hash);
+    if (!existing && this.db.prepare('SELECT COALESCE(SUM(length(data)),0) AS size FROM memes').get().size + data.length > 1024*1024*1024) {
+      if (automatic) return undefined;
+      throw new Error('media_storage_full');
+    }
+    this.db.prepare(`INSERT INTO memes(scope,hash,mime,data,tags,at,manual_tags) VALUES(?,?,?,?,?,?,?) ON CONFLICT(scope,hash) DO UPDATE SET
+      tags=CASE WHEN excluded.manual_tags='' AND memes.manual_tags<>'' THEN memes.tags ELSE excluded.tags END,
+      manual_tags=CASE WHEN excluded.manual_tags='' THEN memes.manual_tags ELSE excluded.manual_tags END`).run(scope,hash,image.mimeType,data,tags,Date.now(),automatic?'':tags);
     return hash;
   }
   findMeme(scope, keyword='') {
@@ -78,9 +102,35 @@ export class Store {
     if (!rows.length && /^(?:随机|随便|表情包?)?$/u.test(keyword)) rows=this.db.prepare('SELECT * FROM memes WHERE scope=? ORDER BY RANDOM() LIMIT 1').all(scope);
     return rows[0] ? { mimeType:rows[0].mime,data:Buffer.from(rows[0].data).toString('base64'),description:rows[0].tags } : undefined;
   }
+  cachedMeme(scope, keyword) {
+    const row=this.db.prepare('SELECT * FROM meme_search_cache WHERE scope=? AND keyword=? AND at>?').get(scope,keyword,Date.now()-86400000);
+    return row ? {mimeType:row.mime,data:Buffer.from(row.data).toString('base64'),description:row.description} : undefined;
+  }
+  cacheMeme(scope, keyword, image) {
+    this.db.prepare('INSERT INTO meme_search_cache VALUES(?,?,?,?,?,?) ON CONFLICT(scope,keyword) DO UPDATE SET mime=excluded.mime,data=excluded.data,description=excluded.description,at=excluded.at').run(scope,keyword,image.mimeType,Buffer.from(image.data,'base64'),image.description || keyword,Date.now());
+    this.pruneMedia();
+  }
+  pruneMedia(now = Date.now(), maxBytes = 128*1024*1024) {
+    this.db.prepare('DELETE FROM cached_images WHERE at<?').run(now-86400000);
+    this.db.prepare('DELETE FROM meme_search_cache WHERE at<?').run(now-86400000);
+    // Keep in-flight/ambiguous sends for inspection; clean only old terminal media.
+    this.db.prepare("DELETE FROM outgoing_media WHERE id IN (SELECT t.id FROM turns t LEFT JOIN delivery d ON d.id=t.id WHERE t.created<? AND COALESCE(d.status,'')<>'sending' AND t.status<>'running')").run(now-7*86400000);
+    for (const table of ['cached_images','meme_search_cache']) {
+      this.db.exec(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM (SELECT rowid,SUM(length(data)) OVER (ORDER BY at DESC,rowid DESC) AS total FROM ${table}) WHERE total>${maxBytes})`);
+    }
+    this.db.prepare('DELETE FROM diagnostics WHERE updated<?').run(now-30*86400000);
+  }
   addMedia(id, image) {
+    this.pruneMedia();
+    const data=Buffer.from(image.data,'base64'), capacity=256*1024*1024;
+    let size=this.db.prepare('SELECT COALESCE(SUM(length(data)),0) AS n FROM outgoing_media').get().n;
+    if(size+data.length>capacity) {
+      const terminal=this.db.prepare("SELECT m.rowid,length(m.data) AS n FROM outgoing_media m JOIN turns t ON t.id=m.id LEFT JOIN delivery d ON d.id=m.id WHERE t.status IN ('failed','interrupted') OR d.status IN ('sent','unconfirmed','partial') ORDER BY t.created,m.rowid").all();
+      for(const row of terminal) {if(size+data.length<=capacity)break;this.db.prepare('DELETE FROM outgoing_media WHERE rowid=?').run(row.rowid);size-=row.n;}
+    }
+    if(size+data.length>capacity)throw new Error('media_storage_full');
     const ordinal=this.db.prepare('SELECT COUNT(*) AS n FROM outgoing_media WHERE id=?').get(id).n;
-    this.db.prepare('INSERT INTO outgoing_media VALUES(?,?,?,?,?)').run(id,ordinal,image.mimeType,Buffer.from(image.data,'base64'),image.description || '表情包');
+    this.db.prepare('INSERT INTO outgoing_media VALUES(?,?,?,?,?)').run(id,ordinal,image.mimeType,data,image.description || '表情包');
   }
   media(id) { return this.db.prepare('SELECT * FROM outgoing_media WHERE id=? ORDER BY ordinal').all(id).map(r => ({mimeType:r.mime,data:Buffer.from(r.data).toString('base64'),description:r.label})); }
   session(scope) { return this.db.prepare('SELECT id FROM sessions WHERE scope=?').get(scope)?.id; }
@@ -90,6 +140,8 @@ export class Store {
     this.db.prepare('DELETE FROM memory WHERE scope=?').run(scope);
     this.db.prepare('INSERT INTO resets VALUES(?,?) ON CONFLICT(scope) DO UPDATE SET after_seq=excluded.after_seq').run(scope, this.latest(scope));
     this.db.prepare('DELETE FROM summaries WHERE scope=?').run(scope);
+    this.db.prepare('DELETE FROM pending_conversations WHERE scope=?').run(scope);
+    this.db.prepare('DELETE FROM cached_images WHERE scope=?').run(scope);
     this.dropConversation(scope);
   }
   recent(scope) { return this.db.prepare('SELECT entry FROM memory WHERE scope=? ORDER BY id').all(scope).map(r => JSON.parse(r.entry)); }
@@ -113,6 +165,26 @@ export class Store {
   setSummary(scope, through, text) { this.db.prepare('INSERT INTO summaries VALUES(?,?,?) ON CONFLICT(scope) DO UPDATE SET through_seq=excluded.through_seq,text=excluded.text').run(scope, through, text); }
   conversation(scope) { return this.db.prepare('SELECT session_id,cursor,bytes FROM conversations WHERE scope=?').get(scope); }
   setConversation(scope, id, cursor, bytes) { this.db.prepare('INSERT INTO conversations VALUES(?,?,?,?) ON CONFLICT(scope) DO UPDATE SET session_id=excluded.session_id,cursor=excluded.cursor,bytes=excluded.bytes').run(scope, id, cursor, bytes); }
+  stageConversation(id, scope, session, cursor, bytes) {
+    this.dropConversation(scope);
+    this.db.prepare('DELETE FROM pending_conversations WHERE scope=?').run(scope);
+    this.db.prepare('INSERT INTO pending_conversations VALUES(?,?,?,?,?)').run(id,scope,session,cursor,bytes);
+  }
+  confirmConversation(id) {
+    const pending=this.db.prepare('SELECT * FROM pending_conversations WHERE id=?').get(id);
+    if (!pending) return;
+    const latest=this.db.prepare('SELECT id FROM turns WHERE scope=? ORDER BY rowid DESC LIMIT 1').get(pending.scope);
+    if (latest?.id===id && this.delivery(id)?.status==='sent') this.setConversation(pending.scope,pending.session_id,pending.cursor,pending.bytes);
+    this.db.prepare('DELETE FROM pending_conversations WHERE id=?').run(id);
+  }
+  discardPending(id) { this.db.prepare('DELETE FROM pending_conversations WHERE id=?').run(id); }
+  ensureScopeRuntime(scope, signature) {
+    const key='scope:'+scope;
+    if (this.db.prepare('SELECT value FROM runtime_settings WHERE key=?').get(key)?.value===signature) return;
+    this.dropConversation(scope);
+    this.db.prepare('DELETE FROM pending_conversations WHERE scope=?').run(scope);
+    this.db.prepare('INSERT INTO runtime_settings VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,signature);
+  }
   dropConversation(scope) { this.db.prepare('DELETE FROM conversations WHERE scope=?').run(scope); this.db.prepare('DELETE FROM sessions WHERE scope=?').run(scope); }
   ensureRuntime(signature) {
     const prior = this.db.prepare("SELECT value FROM runtime_settings WHERE key='identity'").get()?.value;
@@ -128,7 +200,33 @@ export class Store {
   commitReply(id, bot) {
     if (this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status !== 'sent') return;
     const context = this.db.prepare('SELECT * FROM turn_context WHERE id=?').get(id), turn = this.turn(id);
-    if (context && turn?.reply && turn.reply !== '[跳过]') this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply + (this.media(id).length ? '\n[已发送表情包图片]' : '') });
+    if (context && turn && turn.reply !== '[跳过]' && (turn.reply || this.media(id).length)) this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply + (this.media(id).length ? '\n[已发送表情包图片]' : '') });
+  }
+  diagnostic(id) { return this.db.prepare('SELECT * FROM diagnostics WHERE id=?').get(id); }
+  recordTurn(id, scope, sender, message, deadline) {
+    const now=Date.now();
+    this.db.prepare("INSERT OR IGNORE INTO diagnostics VALUES(?,?,?,?,'queued','',?,?,?)").run(id,scope,sender,message,now,now,deadline);
+  }
+  recordStatus(id, status, reason = '') {
+    this.db.prepare('UPDATE diagnostics SET status=?,reason=?,updated=? WHERE id=?').run(status,reason.slice(0,100),Date.now(),id);
+  }
+  runtimeStats(now = Date.now()) {
+    // Allow a short receipt-report grace period, then classify abandoned sends
+    // as uncertain so their binary assets can eventually expire as well.
+    this.db.prepare("UPDATE delivery SET status='unconfirmed',updated=? WHERE status='sending' AND id IN (SELECT id FROM diagnostics WHERE deadline<?)").run(now,now-60000);
+    this.pruneMedia(now);
+    this.db.prepare("UPDATE diagnostics SET status='expired',reason='delivery_not_claimed',updated=? WHERE status='generated' AND deadline<?").run(now,now);
+    this.db.prepare("UPDATE diagnostics SET status='unconfirmed',reason='qq_delivery_unconfirmed',updated=? WHERE status='sending' AND deadline<?").run(now,now);
+    this.db.exec("DELETE FROM pending_conversations WHERE id IN (SELECT id FROM diagnostics WHERE status IN ('expired','cancelled','rejected','failed','interrupted','unconfirmed','partial'))");
+    const day=new Date(now+8*3600000).toISOString().slice(0,10), start=Date.parse(day+'T00:00:00+08:00');
+    const count=(statuses)=>this.db.prepare(`SELECT COUNT(*) AS n FROM diagnostics WHERE created>=? AND status IN (${statuses.map(()=>'?').join(',')})`).get(start,...statuses).n;
+    return {day,daily_calls:this.db.prepare('SELECT used FROM meters WHERE key=?').get('chat:all:'+day)?.used || 0,
+      daily_sent:count(['sent']),daily_failed:count(['failed','interrupted','expired','rejected','cancelled']),unconfirmed:count(['sending','unconfirmed','partial']),
+      recent:this.db.prepare('SELECT id,scope,sender,message_id,status,reason,created,updated FROM diagnostics ORDER BY updated DESC,rowid DESC LIMIT 20').all()};
+  }
+  delivery(id) { return this.db.prepare('SELECT * FROM delivery WHERE id=?').get(id); }
+  referenceInScope(scope, message) {
+    return Boolean(this.db.prepare('SELECT 1 FROM delivery_receipts r JOIN turns t ON t.id=r.id WHERE t.scope=? AND r.message_id=?').get(scope,message));
   }
   stats() {
     const count = table => this.db.prepare('SELECT COUNT(*) AS n FROM ' + table).get().n;
@@ -141,7 +239,8 @@ export class Store {
   _reserve(limits, now) {
     for (const item of limits) {
       const current = this.db.prepare('SELECT used,updated FROM meters WHERE key=?').get(item.key);
-      if (!Number.isSafeInteger(item.limit) || item.limit <= 0 || (current?.used || 0) >= item.limit || (item.cooldown && current && now - current.updated < item.cooldown)) throw new Error('rate_limited');
+      if (!Number.isSafeInteger(item.limit) || item.limit <= 0 || (current?.used || 0) >= item.limit) throw new Error('rate_limited');
+      if (item.cooldown && current && now-current.updated<item.cooldown) throw new Error('cooldown');
     }
     const put = this.db.prepare('INSERT INTO meters VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET used=used+1,updated=excluded.updated');
     for (const item of limits) put.run(item.key, now);
@@ -168,7 +267,7 @@ export class Store {
     this.db.prepare('UPDATE delivery SET status=?,updated=? WHERE id=?').run(status, Date.now(), id);
   }
   recordReceipts(id, ids=[]) {
-    if(!Array.isArray(ids) || ids.length>20 || ids.some(value=>typeof value!=='string' || !/^-?\d{1,24}$/u.test(value))) throw new Error('invalid_receipts');
+    if(!Array.isArray(ids) || ids.length>128 || ids.some(value=>typeof value!=='string' || !/^-?\d{1,24}$/u.test(value) || value==='0')) throw new Error('invalid_receipts');
     for(const value of ids) this.db.prepare('INSERT OR IGNORE INTO delivery_receipts VALUES(?,?)').run(id,value);
   }
 }

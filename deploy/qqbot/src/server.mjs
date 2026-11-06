@@ -10,11 +10,12 @@ const bootstrap = JSON.parse(readFileSync(process.env.QQBOT_CONFIG || '/run/qqbo
 const token = readFileSync('/run/secrets/bridge-token', 'utf8').trim();
 const onebotToken = readFileSync('/run/secrets/onebot-token', 'utf8').trim();
 const store = new Store(join(root, 'state.sqlite'), join(root, 'memory/raw'));
-const config = new RuntimeConfig(bootstrap, onebotToken, { stats: () => store.stats() });
+let bridge;
+const config = new RuntimeConfig(bootstrap, onebotToken, { stats: () => bridge ? bridge.stats() : {...store.stats(),...store.runtimeStats(),queued:0,active:0} });
 await config.start();
 migrateMemory(store, config.snapshot());
 store.seedMeters(bootstrap.initial_usage || []);
-const bridge = createBridge({ config, token, store, root, makeHarness: async options => {
+bridge = createBridge({ config, token, store, root, makeHarness: async options => {
   const { DeepSeekHarness } = await import('@deepseek-ai/dsh-sdk-client');
   return new DeepSeekHarness(options);
 } });

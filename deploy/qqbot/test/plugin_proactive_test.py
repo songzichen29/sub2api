@@ -43,7 +43,7 @@ class ProactiveTests(unittest.IsolatedAsyncioTestCase):
         bot = types.SimpleNamespace(api=types.SimpleNamespace(call_action=AsyncMock(side_effect=[{'user_id': 123}, receipt or {}])))
         platform = types.SimpleNamespace(get_client=lambda: bot)
         instance.context = types.SimpleNamespace(get_platform=lambda name: platform)
-        instance.call = AsyncMock(side_effect=[{'id': 'moment', 'chat': '456', 'text': '午饭吃什么？'}, {'claimed': True}, {'ok': True}])
+        instance.call = AsyncMock(side_effect=[{'id': 'moment', 'chat': '456', 'text': '午饭吃什么？'}, {'claimed': True}, {'ok': True}, {'ok': True}])
         return instance, bot
 
     async def test_no_incoming_event_needed_and_real_message_receipt_is_reported(self):
