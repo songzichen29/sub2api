@@ -91,6 +91,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		OIDCOAuthEnabled:                    settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:               settings.OIDCOAuthProviderName,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
+		MCPEnabled:                          settings.MCPEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
 		PaymentBalanceDisabled:              settings.PaymentBalanceDisabled,
 		Version:                             h.version,

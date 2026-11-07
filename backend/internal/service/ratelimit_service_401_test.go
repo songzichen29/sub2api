@@ -20,6 +20,7 @@ type rateLimitAccountRepoStub struct {
 	rateLimitedCalls       int
 	updateCredentialsCalls int
 	lastCredentials        map[string]any
+	lastExtraUpdates       map[string]any
 	lastErrorMsg           string
 	lastTempReason         string
 	lastErrorID            int64
@@ -54,6 +55,11 @@ func (r *rateLimitAccountRepoStub) UpdateCredentials(ctx context.Context, id int
 	r.updateCredentialsCalls++
 	r.lastCredentials = shallowCopyMap(credentials)
 	return nil
+}
+
+func (r *rateLimitAccountRepoStub) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	r.lastExtraUpdates = shallowCopyMap(updates)
+	return r.mockAccountRepoForGemini.UpdateExtra(ctx, id, updates)
 }
 
 type tokenCacheInvalidatorRecorder struct {

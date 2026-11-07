@@ -148,6 +148,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
+		SetImageCountBilling(groupIn.ImageCountBilling).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).
@@ -341,6 +342,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetAllowWeekendSkip(groupIn.AllowWeekendSkip).
 		SetAllowImageGeneration(groupIn.AllowImageGeneration).
 		SetAllowBatchImageGeneration(groupIn.AllowBatchImageGeneration).
+		SetImageCountBilling(groupIn.ImageCountBilling).
 		SetImageRateIndependent(groupIn.ImageRateIndependent).
 		SetImageRateMultiplier(groupIn.ImageRateMultiplier).
 		SetPeakRateEnabled(groupIn.PeakRateEnabled).

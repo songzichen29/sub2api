@@ -18,7 +18,7 @@ func TestRegisterSettingsRoutesIncludesAccountImportTemplates(t *testing.T) {
 			Setting: &adminhandler.SettingHandler{},
 		},
 	}
-	registerSettingsRoutes(router.Group("/api/v1/admin"), handlers)
+	registerSettingsRoutes(router.Group("/api/v1/admin"), handlers, func(c *gin.Context) { c.Next() })
 
 	wantPath := "/api/v1/admin/settings/account-import-templates"
 	registered := map[string]bool{}

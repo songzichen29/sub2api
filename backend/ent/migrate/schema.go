@@ -1034,6 +1034,7 @@ var (
 		{Name: "default_validity_days", Type: field.TypeInt, Default: 30},
 		{Name: "allow_image_generation", Type: field.TypeBool, Default: false},
 		{Name: "allow_batch_image_generation", Type: field.TypeBool, Default: false},
+		{Name: "image_count_billing", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_independent", Type: field.TypeBool, Default: false},
 		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"mysql": "decimal(10,4)", "postgres": "decimal(10,4)"}},
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"mysql": "decimal(20,8)", "postgres": "decimal(20,8)"}},
@@ -1114,7 +1115,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[53]},
+				Columns: []*schema.Column{GroupsColumns[54]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",

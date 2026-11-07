@@ -103,7 +103,7 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 	for i := range subscriptions {
 		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 	}
-	response.PaginatedWithResult(c, out, toResponsePagination(pagination))
+	response.PaginatedWithResult(c, adminSubscriptionResponse(c, out), toResponsePagination(pagination))
 }
 
 // GetByID handles getting a subscription by ID
@@ -129,7 +129,7 @@ func (h *SubscriptionHandler) GetByID(c *gin.Context) {
 		subscription = &subs[0]
 	}
 
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+	response.Success(c, adminSubscriptionResponse(c, dto.UserSubscriptionFromServiceAdmin(subscription)))
 }
 
 // GetProgress handles getting subscription usage progress
@@ -215,7 +215,7 @@ func (h *SubscriptionHandler) Assign(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
+	response.Success(c, adminSubscriptionResponse(c, dto.UserSubscriptionFromServiceAdmin(subscription)))
 }
 
 // BulkAssign handles bulk assigning subscriptions to multiple users
@@ -243,7 +243,7 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.BulkAssignResultFromService(result))
+	response.Success(c, adminSubscriptionResponse(c, dto.BulkAssignResultFromService(result)))
 }
 
 // BulkAction applies one operation to selected subscriptions, returning each outcome.
@@ -319,7 +319,7 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 		SubscriptionID: subscriptionID,
 		Body:           req,
 	}
-	executeAdminIdempotentJSON(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+	executeAdminIdempotentJSONWithResponse(c, "admin.subscriptions.extend", idempotencyPayload, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		var (
 			subscription *service.UserSubscription
 			execErr      error
@@ -333,7 +333,7 @@ func (h *SubscriptionHandler) Extend(c *gin.Context) {
 			return nil, execErr
 		}
 		return dto.UserSubscriptionFromServiceAdmin(subscription), nil
-	})
+	}, func(data any) any { return adminSubscriptionResponse(c, data) })
 }
 
 // ResetSubscriptionQuotaRequest represents the reset quota request
@@ -369,7 +369,7 @@ func (h *SubscriptionHandler) ResetQuota(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+	response.Success(c, adminSubscriptionResponse(c, dto.UserSubscriptionFromServiceAdmin(sub)))
 }
 
 // SetWeekendSkip lets an admin enable or disable weekend skip for a subscription.
@@ -462,7 +462,8 @@ func (h *SubscriptionHandler) Restore(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, dto.UserSubscriptionFromServiceAdmin(sub))
+
+	response.Success(c, adminSubscriptionResponse(c, dto.UserSubscriptionFromServiceAdmin(sub)))
 }
 
 // ListByGroup handles listing subscriptions for a specific group
@@ -490,7 +491,7 @@ func (h *SubscriptionHandler) ListByGroup(c *gin.Context) {
 	for i := range subscriptions {
 		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 	}
-	response.PaginatedWithResult(c, out, toResponsePagination(pagination))
+	response.PaginatedWithResult(c, adminSubscriptionResponse(c, out), toResponsePagination(pagination))
 }
 
 // ListByUser handles listing subscriptions for a specific user
@@ -516,7 +517,7 @@ func (h *SubscriptionHandler) ListByUser(c *gin.Context) {
 	for i := range subscriptions {
 		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subscriptions[i]))
 	}
-	response.Success(c, out)
+	response.Success(c, adminSubscriptionResponse(c, out))
 }
 
 // Helper function to get admin ID from context

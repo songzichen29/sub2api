@@ -240,9 +240,10 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		}
 	}
 
-	if cmd.AccountQuotaCost > 0 && (strings.EqualFold(cmd.AccountType, service.AccountTypeAPIKey) || strings.EqualFold(cmd.AccountType, service.AccountTypeBedrock)) {
-		quotaState, err := incrementUsageBillingAccountQuota(ctx, tx, cmd.AccountID, cmd.AccountQuotaCost)
-		if err != nil {
+	// 账号已不存在时跳过其配额计数，其余结算项不受影响。
+	if cmd.AccountQuotaCost > 0 && service.AccountTypeSupportsQuota(cmd.AccountType) {
+		quotaState, err := incrementUsageBillingAccountQuota(ctx, tx, cmd.AccountID, cmd.AccountQuotaCost, cmd.AccountQuotaHasDailyLimit, cmd.AccountQuotaHasWeeklyLimit)
+		if err != nil && !errors.Is(err, service.ErrAccountNotFound) {
 			return err
 		}
 		result.QuotaState = quotaState
@@ -791,7 +792,9 @@ func incrementUsageBillingAPIKeyRateLimit(ctx context.Context, tx *sql.Tx, apiKe
 	return nil
 }
 
-func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64) (*service.AccountQuotaState, error) {
+// The MySQL path locks and reads the current limits, so stale caller hints never
+// skip a newly enabled quota period.
+func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountID int64, amount float64, _, _ bool) (*service.AccountQuotaState, error) {
 	var extraRaw sql.NullString
 	if err := tx.QueryRowContext(ctx, `
 		SELECT extra FROM accounts
@@ -809,6 +812,9 @@ func incrementUsageBillingAccountQuota(ctx context.Context, tx *sql.Tx, accountI
 		if err := json.Unmarshal([]byte(extraRaw.String), &extra); err != nil {
 			return nil, fmt.Errorf("parse account extra: %w", err)
 		}
+	}
+	if extra == nil {
+		extra = map[string]any{}
 	}
 
 	now := time.Now().UTC()

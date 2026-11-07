@@ -24,23 +24,6 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 			AddRow("2026-03-08", time.Date(2026, 3, 1, 5, 0, 0, 0, time.UTC), "America/New_York"))
 	mock.ExpectQuery(`(?s)WITH historical AS.*usage_group_daily_rollups.*ul\.created_at >= \?`).
 		WithArgs("2026-03-07", true, "2026-03-01", "2026-03-08", todayStart, tomorrowStart, yesterdayStart, todayStart, todayStart).
-		// 水位有效：closed_before = 2026-03-07（≤ today），时区与配置一致。
-		mock.ExpectQuery(`(?s)COUNT\(\*\).*usage_group_rollup_state.*WHERE id = 1`).
-		WillReturnRows(sqlmock.NewRows([]string{"count", "closed_before", "retained_from", "timezone_name"}).
-			AddRow(1, "2026-03-07", time.Date(2026, 2, 1, 5, 0, 0, 0, time.UTC), "America/New_York"))
-
-	// 尾段起点必须以参数形式进 WHERE —— 这正是把 usage_logs 全表扫换回
-	// idx_usage_logs_created_at 索引扫的那一步。
-	mock.ExpectQuery(`(?s)usage_group_daily_rollups.*FROM usage_logs ul\s+WHERE ul\.created_at >= \$7`).
-		WithArgs(
-			todayStart,
-			yesterdayStart,
-			"2026-03-08", // yesterdayDate
-			true,         // 水位有效
-			"2026-02-01", // retained_from 在配置时区内的日期
-			"2026-03-07", // closed_before
-			time.Date(2026, 3, 7, 5, 0, 0, 0, time.UTC), // tail_start = closed_before 在配置时区的零点
-		).
 		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}).
 			AddRow(int64(7), 12.5, 1.25, 2.5))
 

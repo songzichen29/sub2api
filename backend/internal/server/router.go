@@ -138,6 +138,8 @@ func registerRoutes(
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	routes.RegisterAccountImportRoutes(v1, h, redisClient)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
+	routes.RegisterMCPRoutes(v1, h, auditLog, stepUpAuth, settingService, panelRateLimiter, cfg.CORS.AllowedOrigins, redisClient)
+	routes.RegisterMCPOAuthRoutes(r, v1, h, redisClient)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.Invoice, h.PaymentWebhook, h.Admin.Payment, h.Admin.Invoice, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 

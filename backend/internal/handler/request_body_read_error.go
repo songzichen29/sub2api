@@ -34,6 +34,12 @@ func requestBodyReadErrorMessage(err error) string {
 	}
 }
 
+func extractMaxBytesError(err error) (*http.MaxBytesError, bool) {
+	var maxErr *http.MaxBytesError
+	ok := errors.As(err, &maxErr)
+	return maxErr, ok
+}
+
 func logRequestBodyReadError(c *gin.Context, component string, err error) {
 	fields := []zap.Field{
 		zap.Error(err),

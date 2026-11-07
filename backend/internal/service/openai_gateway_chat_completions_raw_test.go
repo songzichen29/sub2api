@@ -1245,12 +1245,6 @@ func TestBufferRawChatCompletions_RejectsOversizedResponse(t *testing.T) {
 	require.Equal(t, http.StatusBadGateway, rec.Code)
 }
 
-func largeRawChatCompletionsBody() []byte {
-	return []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"` +
-		strings.Repeat("x", openAISilentRefusalMinRequestBodyBytes) +
-		`"}],"stream":true}`)
-}
-
 func rawChatCompletionsTestConfig() *config.Config {
 	return &config.Config{
 		Security: config.SecurityConfig{

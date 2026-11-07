@@ -115,6 +115,7 @@ type Group struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
 	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageCountBilling            bool    `json:"image_count_billing"`
 	ImageRateIndependent         bool    `json:"image_rate_independent"`
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
@@ -333,6 +334,8 @@ type Account struct {
 	// Tags 管理员维度的轻量标签集合（已规范化）。序列化时空数组写为 []，
 	// 不要让前端拿到 null —— mapper 层做兜底。
 	Tags []string `json:"tags"`
+	// 仅账号详情填充。列表和公共 mapper 不计算，避免把目录诊断扩散到调度响应。
+	GrokModelDiagnostics *service.GrokModelDiagnostics `json:"grok_model_diagnostics,omitempty"`
 }
 
 // AccountListItem is the compact representation returned by the admin account

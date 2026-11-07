@@ -9,8 +9,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
@@ -151,132 +154,216 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 // normalizeDeepSeekResponsesRequestBody 适配无状态 CN Responses 端点：
 // 强制 store=false 并清除 previous_response_id（DeepSeek / Kimi 官方
 // Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
-// 非原生 Responses 协议账号原样返回。
+//
+// DeepSeek 另需把兼容格式的图片输入归一化为官方 image_url 字段；openai
+// 平台但 base_url 指向 api.deepseek.com 的映射账号同样走这条出站改写。
+// 非 CN / 非 DeepSeek 上游原样返回。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
 	if account == nil {
 		return body
 	}
-	deepseekNative := account.Platform == PlatformDeepseek
-	deepseekMapped := account.Platform == PlatformOpenAI && strings.Contains(strings.ToLower(account.GetOpenAIBaseURL()), "deepseek")
-	if !deepseekNative && !deepseekMapped {
+	applyStateless := account.UsesNativeCNResponses()
+	applyImages := shouldAliasDeepSeekResponsesInputImages(account)
+	if !applyStateless && !applyImages {
 		return body
 	}
+
 	normalized := body
-	if deepseekNative {
-		var err error
-		normalized, err = sjson.SetBytes(normalized, "store", false)
+	if applyStateless {
+		patched, err := sjson.SetBytes(normalized, "store", false)
 		if err != nil {
 			return body
 		}
+		normalized = patched
 		if stripped, err := sjson.DeleteBytes(normalized, "previous_response_id"); err == nil {
 			normalized = stripped
 		}
 	}
-	// DeepSeek/Kimi accept the Responses image shape but require a flat URL
-	// alias for input_image parts. Preserve the original image_url value and
-	// add url when it is a string; flatten the common {url: ...} form too.
-	var root any
-	if json.Unmarshal(normalized, &root) == nil {
-		_, changed := normalizeDeepSeekImageAliases(root)
-		if rootMap, ok := root.(map[string]any); ok {
-			if input, ok := rootMap["input"].([]any); ok {
-				for _, raw := range input {
-					item, ok := raw.(map[string]any)
-					if !ok || item["type"] != "function_call_output" {
-						continue
-					}
-					output, ok := item["output"].([]any)
-					if !ok || len(output) == 0 {
-						continue
-					}
-					containsImage := false
-					for _, child := range output {
-						if childMap, ok := child.(map[string]any); ok && childMap["type"] == "input_image" {
-							containsImage = true
-						}
-					}
-					if !containsImage {
-						continue
-					}
-					if encoded, err := json.Marshal(output); err == nil {
-						item["output"] = string(encoded)
-					}
-					content := []any{map[string]any{"type": "input_text", "text": ""}}
-					content = append(content, output...)
-					rootMap["input"] = append(input, map[string]any{
-						"type": "message", "role": "user", "content": content,
-					})
-					changed = true
-					break
-				}
-			}
-		}
-		if changed {
-			if encoded, marshalErr := json.Marshal(root); marshalErr == nil {
-				normalized = encoded
-			}
-		}
-	}
-	return normalized
-}
 
-func normalizeDeepSeekImageAliases(value any) (any, bool) {
+	var requestBody map[string]any
+	if err := decodeOpenAIJSONUseNumber(normalized, &requestBody); err != nil {
+		return normalized
+	}
+	input, exists := requestBody["input"]
+	if !exists {
+		return normalized
+	}
+
 	changed := false
-	switch item := value.(type) {
-	case map[string]any:
-		if typ, _ := item["type"].(string); typ == "image_url" {
-			item["type"] = "input_image"
+	if liftedInput, lifted := apicompat.LiftResponsesToolOutputMedia(input); lifted {
+		requestBody["input"] = liftedInput
+		input = liftedInput
+		changed = true
+	}
+	if applyImages {
+		if aliased, aliasedChanged := aliasDeepSeekResponsesInputImages(input); aliasedChanged {
+			requestBody["input"] = aliased
 			changed = true
 		}
-		if typ, _ := item["type"].(string); typ == "image" {
-			if source, ok := item["source"].(map[string]any); ok && source["type"] == "base64" {
-				media, _ := source["media_type"].(string)
-				data, _ := source["data"].(string)
-				if media != "" && data != "" {
-					url := "data:" + media + ";base64," + data
-					item["type"], item["image_url"], item["url"] = "input_image", url, url
-					changed = true
-				}
-			}
+	}
+	if !changed {
+		return normalized
+	}
+	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
+	if err != nil {
+		return normalized
+	}
+	return rebuilt
+}
+
+func shouldAliasDeepSeekResponsesInputImages(account *Account) bool {
+	return targetsDeepSeekAPIHost(account)
+}
+
+// aliasDeepSeekResponsesInputImages 把图片 part 改写成 DeepSeek 官方形状：
+// type=input_image，同时只保留字符串字段 image_url。仅有 file_id、没有可用
+// URL 的 part 原样保留。
+func aliasDeepSeekResponsesInputImages(input any) (any, bool) {
+	items, ok := asDeepSeekResponsesSlice(input)
+	if !ok {
+		return input, false
+	}
+	changed := false
+	for i, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
 		}
-		if typ, _ := item["type"].(string); typ == "input_image" {
-			switch image := item["image_url"].(type) {
-			case string:
-				if image != "" && item["url"] == nil {
-					item["url"] = image
-					changed = true
-				}
-			case map[string]any:
-				if url, _ := image["url"].(string); url != "" {
-					item["image_url"] = url
-					if item["url"] == nil {
-						item["url"] = url
-					}
-					changed = true
-				}
-			}
-		}
-		if typ, _ := item["type"].(string); typ == "function_call_output" {
-			if output, ok := item["output"].([]any); ok {
-				for _, child := range output {
-					if childMap, ok := child.(map[string]any); ok {
-						_, childChanged := normalizeDeepSeekImageAliases(childMap)
-						changed = changed || childChanged
-					}
-				}
-			}
-		}
-		for _, child := range item {
-			_, childChanged := normalizeDeepSeekImageAliases(child)
-			changed = changed || childChanged
-		}
-	case []any:
-		for _, child := range item {
-			_, childChanged := normalizeDeepSeekImageAliases(child)
-			changed = changed || childChanged
+		if aliasDeepSeekResponsesInputItem(item) {
+			items[i] = item
+			changed = true
 		}
 	}
-	return value, changed
+	if !changed {
+		return input, false
+	}
+	return items, true
+}
+
+func aliasDeepSeekResponsesInputItem(item map[string]any) bool {
+	changed := aliasDeepSeekResponsesImagePart(item)
+	if content, exists := item["content"]; exists {
+		if rewritten, did := aliasDeepSeekResponsesContent(content); did {
+			item["content"] = rewritten
+			changed = true
+		}
+	}
+	if output, exists := item["output"]; exists {
+		if rewritten, did := aliasDeepSeekResponsesContent(output); did {
+			item["output"] = rewritten
+			changed = true
+		}
+	}
+	return changed
+}
+
+func aliasDeepSeekResponsesContent(content any) (any, bool) {
+	parts, ok := asDeepSeekResponsesSlice(content)
+	if !ok {
+		return content, false
+	}
+	changed := false
+	for i, raw := range parts {
+		part, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if aliasDeepSeekResponsesImagePart(part) {
+			parts[i] = part
+			changed = true
+		}
+	}
+	if !changed {
+		return content, false
+	}
+	return parts, true
+}
+
+func aliasDeepSeekResponsesImagePart(part map[string]any) bool {
+	partType := strings.TrimSpace(stringValue(part["type"]))
+	switch partType {
+	case "input_image", "image_url", "image":
+	default:
+		return false
+	}
+	imageURL := extractDeepSeekResponsesImageURL(part)
+	if imageURL == "" {
+		return false
+	}
+	changed := false
+	if partType != "input_image" {
+		part["type"] = "input_image"
+		changed = true
+	}
+	if current, ok := part["image_url"].(string); !ok || strings.TrimSpace(current) != imageURL {
+		part["image_url"] = imageURL
+		changed = true
+	}
+	if _, exists := part["url"]; exists {
+		delete(part, "url")
+		changed = true
+	}
+	return changed
+}
+
+func extractDeepSeekResponsesImageURL(part map[string]any) string {
+	if imageURL := deepSeekResponsesURLValue(part["image_url"]); imageURL != "" {
+		return imageURL
+	}
+	if imageURL := deepSeekResponsesURLValue(part["url"]); imageURL != "" {
+		return imageURL
+	}
+	if imageURL := deepSeekResponsesURLValue(part["image"]); imageURL != "" {
+		return imageURL
+	}
+	source, ok := part["source"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if imageURL := deepSeekResponsesURLValue(source["url"]); imageURL != "" {
+		return imageURL
+	}
+	data := strings.TrimSpace(stringValue(source["data"]))
+	if data == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(data), "data:") {
+		return data
+	}
+	mediaType := strings.TrimSpace(stringValue(source["media_type"]))
+	if mediaType == "" {
+		mediaType = "image/png"
+	}
+	return "data:" + mediaType + ";base64," + data
+}
+
+func deepSeekResponsesURLValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		if imageURL := strings.TrimSpace(stringValue(typed["url"])); imageURL != "" {
+			return imageURL
+		}
+		return strings.TrimSpace(stringValue(typed["image_url"]))
+	default:
+		return ""
+	}
+}
+
+func asDeepSeekResponsesSlice(value any) ([]any, bool) {
+	switch items := value.(type) {
+	case []any:
+		return items, true
+	case []map[string]any:
+		out := make([]any, len(items))
+		for i := range items {
+			out[i] = items[i]
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func trimOpenAIEncryptedReasoningItems(reqBody map[string]any) bool {
@@ -1033,14 +1120,177 @@ func (v *openAIRequestView) DisablePatches() {
 	v.patches = nil
 }
 
+// MovePatchesTo replays pending raw patches onto reqBody, decoded from the same
+// unpatched body, when they cannot be applied as raw edits. Later edits must go
+// to reqBody directly, so patching is disabled afterwards.
+func (v *openAIRequestView) MovePatchesTo(reqBody map[string]any) {
+	if v == nil {
+		return
+	}
+	for _, patch := range v.patches {
+		if patch.delete {
+			deleteOpenAIRequestMapPath(reqBody, patch.path)
+		} else {
+			setOpenAIRequestMapPath(reqBody, patch.path, patch.value)
+		}
+	}
+	v.DisablePatches()
+}
+
 func (v openAIRequestView) HasPatches() bool {
 	return !v.patchesDisabled && len(v.patches) > 0
 }
 
-func (v openAIRequestView) ApplyPatches() ([]byte, error) {
+func (v openAIRequestView) ApplyPatches(ctx context.Context) ([]byte, error) {
 	if v.patchesDisabled || len(v.patches) == 0 {
 		return nil, errors.New("openai request patches disabled")
 	}
+	// Every strategy materializes one full output. Reserve the input size before
+	// editing so an exhausted budget rejects without wasted work, then settle the
+	// reservation to the exact output length.
+	reserved := int64(len(v.body))
+	if err := httputil.ReserveRequestBodyMemory(ctx, reserved); err != nil {
+		return nil, err
+	}
+	out, err := v.materializePatches()
+	if err != nil {
+		httputil.ReleaseRequestBodyMemory(ctx, reserved)
+		return nil, err
+	}
+	if extra := int64(len(out)) - reserved; extra > 0 {
+		if err := httputil.ReserveRequestBodyMemory(ctx, extra); err != nil {
+			httputil.ReleaseRequestBodyMemory(ctx, reserved)
+			return nil, err
+		}
+	} else {
+		httputil.ReleaseRequestBodyMemory(ctx, -extra)
+	}
+	return out, nil
+}
+
+func (v openAIRequestView) materializePatches() ([]byte, error) {
+	// A single edit already needs only one output buffer. Keep sjson's exact
+	// behavior for it and for inputs outside ojson's compatibility contract.
+	if len(v.patches) == 1 || !v.canBatchPatches() {
+		return v.applyPatchesSequential()
+	}
+
+	// Doc borrows the immutable request body only within this call. Materialize
+	// once into owned storage; neither Doc nor its borrowed results escape.
+	doc := ojson.NewDoc(v.body)
+	for _, patch := range v.patches {
+		var err error
+		if patch.delete {
+			err = doc.Delete(patch.path)
+		} else {
+			err = doc.Set(patch.path, patch.value)
+		}
+		if err != nil {
+			// Doc rejects some edits sjson accepts (e.g. a key under an array).
+			// Only scalar values reach here, so retrying runs no marshaler twice.
+			return v.applyPatchesSequential()
+		}
+	}
+	return doc.Bytes(), nil
+}
+
+func (v openAIRequestView) canBatchPatches() bool {
+	// Doc indexes members of containers traversed by edits. Bound that scratch
+	// metadata independently of body size; a large opaque input is fine, but a
+	// dense object must not amplify memory before the output reservation.
+	const maxBatchPatches = 16
+	if len(v.patches) > maxBatchPatches {
+		return false
+	}
+	for _, patch := range v.patches {
+		if !patch.delete {
+			switch patch.value.(type) {
+			case nil, bool, string, json.Number, int, int8, int16, int32, int64,
+				uint, uint8, uint16, uint32, uint64, float32, float64:
+			default:
+				// Container/custom values could introduce an unbounded object
+				// for a later child edit, or run a marshaler twice on fallback.
+				return false
+			}
+		}
+		if !isOpenAIBatchPatchPath(patch.path) {
+			return false
+		}
+	}
+	for _, ancestor := range v.patches {
+		for _, patch := range v.patches {
+			// An ancestor edit can replace the checked object or expose a second
+			// duplicate key. Keep those batches on the existing path.
+			if len(patch.path) > len(ancestor.path) && patch.path[len(ancestor.path)] == '.' &&
+				strings.HasPrefix(patch.path, ancestor.path) {
+				return false
+			}
+		}
+	}
+	body := bytes.TrimSpace(v.body)
+	if len(body) == 0 || body[0] != '{' {
+		return false
+	}
+	// Borrow the body rather than copying it into a string. The scans below do
+	// not retain results or materialize member maps.
+	root := ojson.Parse(openAIWSPayloadStringView(body))
+	for _, patch := range v.patches {
+		for i := 0; i < len(patch.path); i++ {
+			if patch.path[i] != '.' {
+				continue
+			}
+			parent := root.Get(patch.path[:i])
+			// sjson edits inside string parents differently. Inspect only the
+			// original raw input: Doc.Get can copy an already edited container.
+			if parent.Type == ojson.String || !openAIRequestPatchObjectIsSmall(parent) {
+				return false
+			}
+		}
+	}
+	// Reject unsuitable shapes before paying for full validation. Only a valid
+	// document reaches Doc; both borrowed readers tolerate malformed input.
+	return openAIRequestPatchObjectIsSmall(root) && ojson.ValidBytes(body)
+}
+
+// isOpenAIBatchPatchPath narrows isSimpleOpenAIRequestPatchPath to what ojson
+// and sjson address identically. Production paths are host-owned identifiers;
+// queries, array indices, modifiers and non-ASCII keys retain sjson semantics.
+func isOpenAIBatchPatchPath(path string) bool {
+	start := true
+	depth := 1
+	for i := 0; i < len(path); i++ {
+		c := path[i]
+		if c == '.' && !start {
+			depth++
+			if depth > 4 {
+				return false
+			}
+			start = true
+			continue
+		}
+		if c != '_' && (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') &&
+			(start || c < '0' || c > '9') {
+			return false
+		}
+		start = false
+	}
+	return !start
+}
+
+func openAIRequestPatchObjectIsSmall(value ojson.Result) bool {
+	const maxMembers = 64
+	if !value.IsObject() {
+		return true
+	}
+	members := 0
+	value.ForEach(func(_, _ ojson.Result) bool {
+		members++
+		return members <= maxMembers
+	})
+	return members <= maxMembers
+}
+
+func (v openAIRequestView) applyPatchesSequential() ([]byte, error) {
 	body := v.body
 	for _, patch := range v.patches {
 		var err error
@@ -1399,7 +1649,7 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBodyLegacy(body []byte, accou
 		}
 	}
 	needsOrphanCleanup := account != nil && account.IsOpenAIOAuthLike() &&
-		gjson.GetBytes(normalized, "input").IsArray()
+		openAIResponsesInputMayNeedOrphanCleanup(normalized)
 	if needsOrphanCleanup || openAIResponsesInputMayNeedTruncation(normalized) {
 		var reqBody map[string]any
 		if err := decodeOpenAIJSONUseNumber(normalized, &reqBody); err != nil {
@@ -1588,24 +1838,6 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
-}
-
-func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
-	if !isOpenAICodexModel(reqModel) {
-		return ""
-	}
-
-	instructions := gjson.GetBytes(body, "instructions")
-	if !instructions.Exists() {
-		return ""
-	}
-	if instructions.Type != gjson.String {
-		return "instructions_not_string"
-	}
-	if strings.TrimSpace(instructions.String()) == "" {
-		return "instructions_empty"
-	}
-	return ""
 }
 
 func isOpenAICodexModel(model string) bool {
@@ -2520,4 +2752,27 @@ func supportsOpenAIReasoningEffortMax(model string) bool {
 	default:
 		return false
 	}
+}
+
+// validateGPT61CompatRequest runs after model mapping, before conversion can
+// discard unsupported explicit effort selections or disabled thinking.
+func validateGPT61CompatRequest(body []byte, model string) error {
+	if !openai.IsGPT61SolModelSpelling(model) && !openai.IsGPT61TerraModelSpelling(model) {
+		return nil
+	}
+	for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+		if err := openai.ValidateGPT61ReasoningEffort(model, gjson.GetBytes(body, path).String()); err != nil {
+			return err
+		}
+	}
+	if gjson.GetBytes(body, "thinking.type").String() == "disabled" {
+		return openai.ValidateGPT61ReasoningEffort(model, "none")
+	}
+	requestedModel := gjson.GetBytes(body, "model").String()
+	for _, effort := range []string{"none", "minimal"} {
+		if strings.HasSuffix(strings.ToLower(requestedModel), "-"+effort) {
+			return openai.ValidateGPT61ReasoningEffort(model, effort)
+		}
+	}
+	return nil
 }

@@ -30,7 +30,7 @@ func TestStructuredOutputsBetaOAuthMimic(t *testing.T) {
 		{"filtered", beta, map[string]struct{}{beta: {}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := newTestGatewayServiceForBeta(false)
+			s := &GatewayService{cfg: &config.Config{}}
 			header := http.Header{}
 			header.Set("anthropic-beta", tc.header)
 			body := []byte(`{"output_format":{"type":"json_schema","schema":{"type":"object"}}}`)

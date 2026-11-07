@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -404,7 +406,6 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 		OpenAILowUpstreamRatePriorityEnabled:               true,
 		OpenAIAdvancedSchedulerEnabled:                     true,
 		OpenAIOAuthSchedulingRateMultiplier:                testPtrFloat64(0.05),
-		OpenAIAdvancedSchedulerEnabled:                     true,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:       true,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled: true,
 		OpenAIAdvancedSchedulerLBTopK:                      " 3 ",

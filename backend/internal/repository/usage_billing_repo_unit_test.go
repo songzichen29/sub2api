@@ -22,14 +22,9 @@ const (
 	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \?,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \?,\s+updated_at = NOW\(\)\s+WHERE id = \? AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \?`
 	selectBalanceFrozenSQL      = `(?s)SELECT balance, COALESCE\(frozen_balance, 0\)\s+FROM users\s+WHERE id = \?`
 	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \? AND deleted_at IS NULL`
-	conditionalBalanceDeductSQL = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance`
-	overdraftBalanceDeductSQL   = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING balance`
-	reserveBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance - \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) \+ \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND balance >= \$1\s+RETURNING balance, frozen_balance`
-	captureBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance\s+\+ CASE WHEN \$1 > \$2 THEN \$1 - \$2 ELSE 0 END\s+- CASE WHEN \$2 > \$1 THEN \$2 - \$1 ELSE 0 END,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$3 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
-	releaseBatchImageHoldSQL    = `(?s)UPDATE users\s+SET balance = balance \+ \$1,\s+frozen_balance = COALESCE\(frozen_balance, 0\) - \$1,\s+updated_at = NOW\(\)\s+WHERE id = \$2 AND deleted_at IS NULL AND COALESCE\(frozen_balance, 0\) >= \$1\s+RETURNING balance, frozen_balance`
-	userExistsForBillingSQL     = `(?s)SELECT 1\s+FROM users\s+WHERE id = \$1 AND deleted_at IS NULL`
-	apiKeyQuotaIncrementSQL     = `(?s)UPDATE api_keys\s+SET quota_used = quota_used \+ \$1,.*WHERE id = \$2 AND deleted_at IS NULL\s+RETURNING`
-	apiKeyRateLimitIncrementSQL = `(?s)UPDATE api_keys SET\s+usage_5h = .*WHERE id = \$2 AND deleted_at IS NULL`
+	apiKeyQuotaIncrementSQL     = `(?s)SELECT quota, quota_used\s+FROM api_keys.*WHERE id = \? AND deleted_at IS NULL.*FOR UPDATE`
+	apiKeyRateLimitIncrementSQL = `(?s)UPDATE api_keys SET.*WHERE id = \? AND deleted_at IS NULL`
+	accountQuotaIncrementSQL    = `(?s)SELECT extra FROM accounts.*WHERE id = \? AND deleted_at IS NULL.*FOR UPDATE`
 )
 
 func TestDeductUsageBillingBalance_UsesSufficientBalanceGuard(t *testing.T) {
@@ -127,14 +122,17 @@ func TestApplyUsageBillingEffects_DeletedAPIKeyStillBillsBalance(t *testing.T) {
 	mock.ExpectBegin()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	mock.ExpectQuery(conditionalBalanceDeductSQL).
-		WithArgs(10.0, int64(42)).
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42), 10.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceSQL).
+		WithArgs(int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(90.0))
 	mock.ExpectQuery(apiKeyQuotaIncrementSQL).
-		WithArgs(10.0, int64(7), service.StatusAPIKeyActive, service.StatusAPIKeyQuotaExhausted).
+		WithArgs(int64(7)).
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectExec(apiKeyRateLimitIncrementSQL).
-		WithArgs(10.0, int64(7)).
+		WithArgs(10.0, 10.0, 10.0, 10.0, 10.0, 10.0, int64(7)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectCommit()
 
@@ -154,6 +152,42 @@ func TestApplyUsageBillingEffects_DeletedAPIKeyStillBillsBalance(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestApplyUsageBillingEffects_DeletedAccountStillBillsBalance(t *testing.T) {
+	ctx := context.Background()
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	mock.ExpectExec(conditionalBalanceDeductSQL).
+		WithArgs(10.0, int64(42), 10.0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceSQL).
+		WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow(90.0))
+	mock.ExpectQuery(accountQuotaIncrementSQL).
+		WithArgs(int64(9)).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectCommit()
+
+	result := &service.UsageBillingApplyResult{Applied: true}
+	err = (&usageBillingRepository{}).applyUsageBillingEffects(ctx, tx, &service.UsageBillingCommand{
+		UserID:           42,
+		AccountID:        9,
+		AccountType:      service.AccountTypeServiceAccount,
+		BalanceCost:      10,
+		AccountQuotaCost: 4,
+	}, result)
+	require.NoError(t, err)
+	require.NotNil(t, result.NewBalance)
+	require.InDelta(t, 90.0, *result.NewBalance, 0.000001)
+	require.Nil(t, result.QuotaState)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyUsageBillingEffects_APIKeyCounterErrorStillFails(t *testing.T) {
 	ctx := context.Background()
 	db, mock, err := sqlmock.New()
@@ -164,7 +198,7 @@ func TestApplyUsageBillingEffects_APIKeyCounterErrorStillFails(t *testing.T) {
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
 	mock.ExpectExec(apiKeyRateLimitIncrementSQL).
-		WithArgs(10.0, int64(7)).
+		WithArgs(10.0, 10.0, 10.0, 10.0, 10.0, 10.0, int64(7)).
 		WillReturnError(sql.ErrConnDone)
 	mock.ExpectRollback()
 

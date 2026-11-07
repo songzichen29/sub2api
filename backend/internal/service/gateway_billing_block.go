@@ -20,8 +20,9 @@ const fingerprintSalt = "59cf53e54c78"
 // computeClaudeCodeFingerprint 复刻真实 Claude Code CLI 的 cc_version 指纹算法：
 //
 //  1. 取 messages 中第一条 role=user 的纯文本（首块 text）
-//  2. 按 JS 字符串索引语义取第 4、7、20 个 UTF-16 code unit（不足以 '0' 补齐）
-//  3. SHA256(SALT + chars + cc_version) 取 hex 前 3 字符
+//  2. 按 JavaScript UTF-16 码元取零基下标 4、7、20（不足以 '0' 补齐）
+//  3. 拼接采样码元后按 JavaScript UTF-8 语义编码，再对 SALT + chars + cc_version
+//     计算 SHA256，取 hex 前 3 字符
 //
 // 算法来自 Claude Code src/utils/fingerprint.ts:computeFingerprint。注意 JS 的
 // messageText[i] 是 UTF-16 code unit 索引，不是 UTF-8 byte 或 Unicode code point；
@@ -29,21 +30,28 @@ const fingerprintSalt = "59cf53e54c78"
 // lone surrogate 编码为 U+FFFD。任何偏差都会导致 cc_version=X.Y.Z.{fp} 不一致。
 func computeClaudeCodeFingerprint(body []byte, version string) string {
 	firstText := extractFirstUserText(body)
-	indices := []int{4, 7, 20}
-	units := utf16.Encode([]rune(firstText))
-
-	h := sha256.New()
-	_, _ = h.Write([]byte(fingerprintSalt))
-	for _, i := range indices {
-		cu := uint16('0')
-		if i < len(units) {
-			cu = units[i]
+	indices := [...]int{4, 7, 20}
+	// Only the prefix through index 20 is needed, even for very long prompts.
+	textUnits := make([]uint16, 0, 22)
+	for _, r := range firstText {
+		textUnits = utf16.AppendRune(textUnits, r)
+		if len(textUnits) > indices[len(indices)-1] {
+			break
 		}
-		_, _ = h.Write(jsUTF8BytesForCodeUnit(cu))
 	}
-	_, _ = h.Write([]byte(version))
-	sum := h.Sum(nil)
-	return hex.EncodeToString(sum)[:3]
+	chars := make([]uint16, 0, len(indices))
+	for _, i := range indices {
+		if i < len(textUnits) {
+			chars = append(chars, textUnits[i])
+		} else {
+			chars = append(chars, '0')
+		}
+	}
+	// Decode after joining: sampled halves can form a new surrogate pair.
+	// Unpaired halves become U+FFFD, matching JS UTF-8 encoding for the hash.
+	sample := string(utf16.Decode(chars))
+	sum := sha256.Sum256([]byte(fingerprintSalt + sample + version))
+	return hex.EncodeToString(sum[:])[:3]
 }
 
 // jsUTF8BytesForCodeUnit returns the bytes Node's crypto.update(string) sees

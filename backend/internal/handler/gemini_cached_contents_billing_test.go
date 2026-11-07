@@ -617,6 +617,10 @@ func (c *cachedBillingReservationCache) GetUserBalance(context.Context, int64) (
 	return c.balance, nil
 }
 
+func (c *cachedBillingReservationCache) GetAPIKeyRateLimit(context.Context, int64) (*service.APIKeyRateLimitCacheData, error) {
+	return nil, nil
+}
+
 func (c *cachedBillingReservationCache) GetSubscriptionCache(context.Context, int64, int64) (*service.SubscriptionCacheData, error) {
 	return c.sub, nil
 }

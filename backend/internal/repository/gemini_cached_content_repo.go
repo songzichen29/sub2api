@@ -51,6 +51,10 @@ func (r *geminiCachedContentRepository) geminiCachedContentQueryArgs(query strin
 		return query, args
 	}
 	query = strings.ReplaceAll(query, "NOW() + make_interval(secs => $3::double precision)", "DATE_ADD(NOW(), INTERVAL $3 SECOND)")
+	return bindNumberedSQL(query, args...)
+}
+
+func bindNumberedSQL(query string, args ...any) (string, []any) {
 	var b strings.Builder
 	order := make([]int, 0, len(args))
 	for i := 0; i < len(query); i++ {

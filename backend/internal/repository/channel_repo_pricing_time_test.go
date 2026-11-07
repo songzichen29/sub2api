@@ -105,8 +105,7 @@ func TestChannelModelPricingTimePricingCreateAndUpdateRoundTrip(t *testing.T) {
 
 	t.Run("create writes JSON", func(t *testing.T) {
 		repo, mock := newChannelModelPricingTimePricingRepo(t)
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, max_reasoning_effort_multiplier, image_input_price, image_output_price, per_request_price, time_pricing)")).
-			mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)")).
 			WithArgs(
 				int64(7), "openai", []byte(`["gpt-5"]`), service.BillingModeToken,
 				nil, nil, nil, nil, nil, nil, nil, "{}", nil, nil, nil, channelModelPricingTimePricingJSON,
@@ -157,8 +156,7 @@ func TestChannelModelPricingTimePricingCreateAndUpdateWriteNullWhenDisabled(t *t
 
 			t.Run("create writes SQL NULL", func(t *testing.T) {
 				repo, mock := newChannelModelPricingTimePricingRepo(t)
-				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, max_reasoning_effort_multiplier, image_input_price, image_output_price, per_request_price, time_pricing)")).
-					mock.ExpectQuery(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)")).
+				mock.ExpectExec(regexp.QuoteMeta("INSERT INTO channel_model_pricing (channel_id, platform, models, billing_mode, input_price, output_price, cache_write_price, cache_write_1h_price, cache_read_price, fast_multiplier, flex_multiplier, reasoning_effort_multipliers, image_input_price, image_output_price, per_request_price, time_pricing)")).
 					WithArgs(
 						int64(7), "openai", []byte(`["gpt-5"]`), service.BillingModeToken,
 						nil, nil, nil, nil, nil, nil, nil, "{}", nil, nil, nil, nil,

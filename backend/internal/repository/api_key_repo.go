@@ -183,6 +183,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldAllowWeekendSkip,
 				group.FieldAllowImageGeneration,
 				group.FieldAllowBatchImageGeneration,
+				group.FieldImageCountBilling,
 				group.FieldImageRateIndependent,
 				group.FieldImageRateMultiplier,
 				group.FieldImagePrice1k,
@@ -230,6 +231,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitControlEnabled,
 				group.FieldProfitMinMargin,
 				group.FieldProfitSafetyBuffer,
+				// OpenAI 选号从 ctx 分组读取隐私门，漏选会放行未设置隐私的账号。
+				group.FieldRequirePrivacySet,
 			)
 		}).
 		Only(ctx)
@@ -995,6 +998,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		AllowWeekendSkip:                g.AllowWeekendSkip,
 		AllowImageGeneration:            g.AllowImageGeneration,
 		AllowBatchImageGeneration:       g.AllowBatchImageGeneration,
+		ImageCountBilling:               g.ImageCountBilling,
 		ImageRateIndependent:            g.ImageRateIndependent,
 		ImageRateMultiplier:             g.ImageRateMultiplier,
 		ImagePrice1K:                    g.ImagePrice1k,
