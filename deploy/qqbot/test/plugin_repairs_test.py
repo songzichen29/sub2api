@@ -73,7 +73,7 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(payload['own_images'])
         bridge.images.assert_awaited()
 
-    async def test_media_only_delivery_and_first_packet_reply_anchor(self):
+    async def test_media_only_and_split_text_delivery_do_not_add_quotes(self):
         bridge, event = self.fixture('发一个表情包')
 
         async def call(path, body):
@@ -84,11 +84,31 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         bridge.call.side_effect = call
         await bridge.on_message(event)
         packet = event.bot.api.call_action.await_args.kwargs['message']
-        self.assertEqual([p['type'] for p in packet], ['reply', 'image'])
+        self.assertEqual([p['type'] for p in packet], ['image'])
         self.assertEqual(bridge.call.await_args.args, ('/delivery/finish', {'id': 'turn', 'status': 'sent', 'message_ids': ['-100']}))
         packets = media.message_packets({'text': '字' * 2500, 'reply_to': '-44'})
-        self.assertEqual(packets[0][0]['type'], 'reply')
-        self.assertFalse(any(s['type'] == 'reply' for p in packets[1:] for s in p))
+        self.assertEqual(len(packets), 3)
+        self.assertFalse(any(s['type'] == 'reply' for p in packets for s in p))
+        self.assertEqual(''.join(s['data']['text'] for p in packets for s in p), '字' * 2500)
+
+    async def test_group_and_private_chat_send_plain_text_without_quoting(self):
+        for private in (False, True):
+            with self.subTest(private=private):
+                bridge, event = self.fixture('小碗你好', private=private)
+
+                async def call(path, body):
+                    if path == '/turn':
+                        return {'id': 'turn', 'text': '你好呀', 'reply_to': '1'}
+                    return {'claimed': True, 'ok': True}
+
+                bridge.call.side_effect = call
+                await bridge.on_message(event)
+                target = {'user_id': 789} if private else {'group_id': 456}
+                event.bot.api.call_action.assert_awaited_once_with(
+                    'send_private_msg' if private else 'send_group_msg',
+                    message=[{'type': 'text', 'data': {'text': '你好呀'}}], **target)
+                self.assertEqual(bridge.call.await_args.args,
+                                 ('/delivery/finish', {'id': 'turn', 'status': 'sent', 'message_ids': ['-100']}))
 
     async def test_partial_send_and_cancellation_keep_confirmed_packet_receipts(self):
         for cancel in (False, True):

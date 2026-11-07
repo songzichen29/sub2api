@@ -92,9 +92,6 @@ def message_packets(result):
             packets[-1].append(segment)
         else:
             packets.append([segment])
-    reply = str(result.get("reply_to", ""))
-    if packets and re.fullmatch(r"-?\d{1,24}", reply):
-        packets[0].insert(0, {"type": "reply", "data": {"id": reply}})
     return packets
 
 

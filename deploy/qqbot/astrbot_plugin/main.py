@@ -310,7 +310,7 @@ class DSHBridge(Star):
             status, receipts = "unconfirmed", []
             try:
                 # Full output is split; an ambiguous send is never replayed.
-                await self.deliver(event.bot, {**result, "reply_to": payload["message_id"]}, chat, is_group, receipts)
+                await self.deliver(event.bot, result, chat, is_group, receipts)
                 status = "sent"
                 self.last_reply[chat] = time.time()
             except PartialDelivery as error:
