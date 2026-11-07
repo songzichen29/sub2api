@@ -30,6 +30,6 @@ th { font-weight: 500; }
 th:first-child { padding-left: 0; text-align: left; }
 thead { color: #6b7280; font-size: 12px; }
 p { margin-top: 10px; color: #6b7280; font-size: 12px; line-height: 1.6; }
-:global(.dark) th, :global(.dark) td { border-color: #374151; }
-:global(.dark) thead, :global(.dark) p { color: #9ca3af; }
+.dark th, .dark td { border-color: #374151; }
+.dark thead, .dark p { color: #9ca3af; }
 </style>
