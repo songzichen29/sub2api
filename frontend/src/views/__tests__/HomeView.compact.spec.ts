@@ -56,7 +56,8 @@ function mountHome(settings: Record<string, unknown> = {}) {
 }
 
 function compactDestination(wrapper: ReturnType<typeof mountHome>) {
-  return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
+  return wrapper.get('[data-testid="compact-home"]').findAllComponents(RouterLinkStub)
+    .find(link => ['/login', '/dashboard', '/admin/dashboard'].includes(link.props('to')))?.props('to')
 }
 
 function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
@@ -67,6 +68,16 @@ function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
 }
 
 describe('HomeView compact mode', () => {
+  it('opens the built-in guide when no external documentation is configured', () => {
+    const wrapper = mountHome({ compact_home_enabled: true, doc_url: '' })
+    expect(wrapper.findAllComponents(RouterLinkStub).some(link => link.props('to') === '/docs')).toBe(true)
+  })
+
+  it('preserves the configured external documentation destination', () => {
+    const wrapper = mountHome({ compact_home_enabled: true, doc_url: 'https://docs.example.com/guide' })
+    expect(wrapper.get('a[href="https://docs.example.com/guide"]').attributes('target')).toBe('_blank')
+    expect(wrapper.findAllComponents(RouterLinkStub).some(link => link.props('to') === '/docs')).toBe(false)
+  })
   beforeEach(() => {
     authStore.isAuthenticated = false
     authStore.isAdmin = false

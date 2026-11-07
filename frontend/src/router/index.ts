@@ -172,6 +172,17 @@ const routes: RouteRecordRaw[] = [
       titleKey: 'modelPlaza.title'
     }
   },
+  {
+    path: '/docs',
+    name: 'IntegrationDocs',
+    component: () => import('@/views/public/IntegrationDocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: '接入文档',
+      titleKey: 'docs.title',
+      descriptionKey: 'docs.description'
+    }
+  },
 
   // ==================== User Routes ====================
   {
@@ -766,10 +777,14 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, _from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
       return savedPosition
+    }
+    if (to.path === '/docs' && to.hash) {
+      const section = document.getElementById(to.hash.slice(1))
+      if (section) return { el: section, top: 88 }
     }
     // Scroll to top for new routes
     return { top: 0 }
@@ -785,7 +800,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/qq/report', '/account-import', '/setup', '/payment/result']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/qq/report', '/account-import', '/setup', '/payment/result', '/docs']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

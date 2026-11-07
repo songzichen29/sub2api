@@ -481,6 +481,10 @@ const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
 
+const DocsIcon = {
+  render: () => h(Icon, { name: 'book' })
+}
+
 const BellIcon = {
   render: () =>
     h(
@@ -730,6 +734,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
+    { path: '/docs', label: t('nav.integrationDocs'), icon: DocsIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: GlobeIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
