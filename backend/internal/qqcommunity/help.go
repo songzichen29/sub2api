@@ -47,20 +47,20 @@ type helpItem struct {
 
 func helpSystemItems() []helpItem {
 	return []helpItem{
-		{action: "clear", label: "清空聊天", description: "清空自己在当前群的聊天历史", command: "清空"},
 		{action: "checkin", label: "每日签到", description: "每日签到", command: "签到"},
+		{action: "claim_code", label: "领取兑换码", description: "领取当前活动码，私聊接收后到网站兑换；重复发送补发原码", command: "领码", usage: "/领码"},
+		{action: "lottery", label: "抽奖一次", description: "默认抽1次，可填1–10；次数不足不扣次数", command: "抽奖", usage: "/抽奖 [次数]"},
+		{action: "lottery_count", label: "抽奖次数", description: "查询网站与QQ共用的剩余次数", command: "抽奖次数"},
 		{action: "balance", label: "我的余额", description: "查询账户余额", command: "我的余额"},
 		{action: "today_usage", label: "今日用量", description: "查看今日用量", command: "今日用量"},
-		{action: "rewards", label: "我的奖励", description: "查看累计奖励", command: "我的奖励"},
-		{action: "lottery", label: "抽奖一次", description: "省略次数抽 1 次；可填 1–10 连抽，次数不足整批不抽", command: "抽奖", usage: "抽奖 [次数]"},
-		{action: "lottery_count", label: "抽奖次数", description: "查询剩余抽奖次数", command: "抽奖次数"},
-		{action: "lottery_info", label: "抽奖活动", description: "查看抽奖活动规则", command: "抽奖活动"},
 		{action: "growth", label: "成长任务", description: "查看成长进度和奖励", command: "成长任务"},
-		{action: "claim_code", label: "领取兑换码", description: "领取本群当前活动兑换码，机器人私聊发送", command: "领码", usage: "/领码"},
+		{action: "bind", label: "绑定账号", description: "群内发起，按私聊指引绑定站点账号", command: "绑定"},
+		{action: "rewards", label: "我的奖励", description: "查看累计奖励", command: "我的奖励"},
+		{action: "lottery_info", label: "抽奖活动", description: "查看抽奖活动规则", command: "抽奖活动"},
 		{action: "channels", label: "渠道状态", description: "查看渠道状态（别名：监控、渠道监控）", command: "渠道状态"},
 		{action: "image", label: "生成图片", description: "根据描述生成图片", command: "生图", usage: "生图 图片描述", input: true},
-		{action: "bind", label: "绑定账号", description: "群内发起，私聊提交绑定码，网站确认", command: "绑定"},
 		{action: "transfer", label: "余额转账", description: "申请余额转账", command: "转账", usage: "转账 金额 邮箱", input: true},
+		{action: "clear", label: "清空聊天", description: "清空自己在当前群的聊天历史", command: "清空"},
 	}
 }
 
@@ -101,9 +101,9 @@ func helpActionCommand(c Config, action string) (string, bool) {
 
 func (s *Service) sendHelp(ctx context.Context, c Config, j Job, arg string) error {
 	if arg != "" {
-		return s.send(ctx, c, j, "用法：帮助", nil, 1)
+		return s.send(ctx, c, j, "用法：/帮助。", nil, 1)
 	}
-	text := "📖 **指令帮助**"
+	text := "📖 **指令帮助**\n群内直接发送，无需重复 @机器人。\n\n**常用功能**"
 	keyboard := &messageKeyboard{}
 	customHeading := false
 	for i, item := range helpItems(c) {
@@ -112,18 +112,21 @@ func (s *Service) sendHelp(ctx context.Context, c Config, j Job, arg string) err
 				text += "\n\n**自定义指令**"
 				customHeading = true
 			}
-			text += "\n" + replyPlainLabel(item.command) + "：" + replyPlainLabel(item.description)
+			text += "\n/" + replyPlainLabel(item.command) + "：" + replyPlainLabel(item.description)
 		} else {
+			if i == helpQuickActions {
+				text += "\n\n**更多功能**"
+			}
 			usage := item.command
 			if item.usage != "" {
 				usage = item.usage
 			}
 			// Built-in usages are trusted literals. Escaping their optional-argument
 			// brackets makes QQ display the backslashes in the help message.
-			text += "\n" + usage + "：" + item.description
+			text += "\n/" + strings.TrimPrefix(usage, "/") + "：" + item.description
 		}
 		if i < helpQuickActions {
-			button := helpCommandButton(item.label, item.action, item.command)
+			button := helpCommandButton(item.label, item.action, "/"+item.command)
 			if i%helpColumns == 0 {
 				keyboard.Content.Rows = append(keyboard.Content.Rows, keyboardRow{})
 			}
@@ -131,6 +134,6 @@ func (s *Service) sendHelp(ctx context.Context, c Config, j Job, arg string) err
 			row.Buttons = append(row.Buttons, button)
 		}
 	}
-	text += "\n\n聊天请 @机器人 + 问题，或 /聊天 问题；生图请 /生图 描述。"
+	text += "\n\n未绑定时会私聊引导绑定。领码后需自行兑换，领取不直接到账。\n聊天可直接发消息，或 /聊天 问题；生成图片请 /生图 描述。"
 	return s.sendFormattedWithKeyboard(ctx, c, j, text, nil, 1, keyboard)
 }

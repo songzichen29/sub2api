@@ -29,6 +29,8 @@ func TestCodeCampaignMySQL(t *testing.T) {
 	db.SetMaxOpenConns(10)
 	ctx := context.Background()
 	s := New(db, fixtureEncryptor{}, true, nil)
+	s.SetBindingEmailDelivery(fixtureEmail{})
+	require.NoError(t, s.ConfigureReplyPages("http://127.0.0.1:8080", nil))
 	c := DefaultConfig()
 	c.Enabled = true
 	c.AppID = randomID()
@@ -160,6 +162,8 @@ func TestCodeCampaignMySQL(t *testing.T) {
 	request := bindingTestRequest(t, requests)
 	require.Equal(t, `"send_private_msg"`, string(request["action"]))
 	require.Contains(t, string(request["params"]), claim.Code)
+	require.Contains(t, string(request["params"]), "https://example.test/redeem")
+	require.NotContains(t, string(request["params"]), "127.0.0.1")
 	msg, err = s.sendCampaignClaim(ctx, c, claim.ID)
 	require.NoError(t, err)
 	require.Contains(t, msg, "30秒")

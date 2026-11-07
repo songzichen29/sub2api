@@ -734,12 +734,14 @@ export default {
     "transferTo": "转给 {email}",
     "transferFee": "手续费：${amount}",
     "qqRewardRecord": "奖励记录 #{number}",
+    "qqCampaignRecord": "QQ 群领码活动兑换",
     "qqRewardDetail": "{record}：{detail}",
     "qqRewards": {
       "growth": "QQ 成长奖励",
       "lottery": "QQ 抽奖奖励",
       "invite": "QQ 邀请奖励",
       "checkin": "QQ 签到奖励",
+      "website_checkin": "网站签到奖励",
       "streak": "QQ 连续签到奖励",
       "ranking": "QQ 排名奖励",
       "redemption": "QQ 兑换奖励"

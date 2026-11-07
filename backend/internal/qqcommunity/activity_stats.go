@@ -201,9 +201,19 @@ func (s *Service) ActivityStats(ctx context.Context, f ActivityStatsFilter, expo
 	}
 	out.Summary.CheckinAmount = checkinTotal.InexactFloat64()
 	out.Summary.DrawAmount = drawTotal.InexactFloat64()
+	bonusUsage := map[int64]int64{}
+	for _, u := range users {
+		if u.BonusChances > 0 && u.Used > 0 {
+			bonusUsage, err = lotteryBonusUsage(ctx, tx, 0)
+			if err != nil {
+				return out, err
+			}
+			break
+		}
+	}
 	search := strings.ToLower(strings.TrimSpace(f.Search))
 	for id, u := range users {
-		state, e := calculateLotteryState(c, id, totals[id], u.Used, u.BonusChances)
+		state, e := calculateLotteryState(c, id, totals[id], u.Used, u.BonusChances, bonusUsage[id])
 		if e != nil {
 			return out, e
 		}

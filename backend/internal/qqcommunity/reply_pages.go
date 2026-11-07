@@ -197,11 +197,8 @@ func (s *Service) sendReplyPage(ctx context.Context, c Config, j Job, text strin
 		return s.sendPageFallback(ctx, c, j, text, "", "report_unavailable")
 	}
 	link := ""
-	if s.bindingEmail != nil {
-		base := strings.TrimRight(s.bindingEmail.FrontendURL(ctx), "/")
-		if u, e := url.Parse(base); e == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" {
-			link = base + "/qq/report#" + token
-		}
+	if base := s.publicSiteURL(ctx, "/qq/report"); base != "" {
+		link = base + "#" + token
 	}
 	caption := "打开页面（10分钟内有效，持链接可查看本次查询）：" + link
 	if link == "" {

@@ -443,7 +443,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		case "领码":
 			return s.send(ctx, c, *j, "用法：/领码。", nil, 1)
 		case "签到", "我的余额", "今日用量", "我的奖励", "抽奖次数", "我的抽奖", "邀请奖励", "邀请活动", "我的邀请":
-			return s.send(ctx, c, *j, "用法："+cmd+"。", nil, 1)
+			return s.send(ctx, c, *j, "用法：/"+cmd+"。", nil, 1)
 		}
 	}
 	if cmd == "成长任务" || cmd == "抽奖活动" {
@@ -643,7 +643,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			break
 		}
 		if cmd != "" && cmd != "生图" {
-			text = "未知指令，请发送 帮助。"
+			text = "未识别这个指令。常用指令：/签到、/领码、/抽奖、/抽奖次数。发送 /帮助 查看完整列表。"
 			break
 		}
 		kind := "chat"

@@ -137,6 +137,9 @@ func TestLotteryStateCorrectsEntitlementAndPreservesUsageAndGrants(t *testing.T)
 			WillReturnRows(lotteryRechargeRows().AddRow(tc.paid, "0.6", "60", "0", "COMPLETED", "alipay", "alipay", nil))
 		m.ExpectQuery(`SELECT COUNT\(\*\) FROM qqc_lottery_draws`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(tc.used))
 		m.ExpectQuery(`SELECT COALESCE\(SUM\(chances\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow(tc.grants))
+		if tc.grants > 0 && tc.used > 0 {
+			m.ExpectQuery("SELECT user_id,chance_delta FROM").WithArgs(lotteryPeriodStart, int64(42)).WillReturnRows(sqlmock.NewRows([]string{"user_id", "chance_delta"}).AddRow(42, tc.grants).AddRow(42, -1))
+		}
 		state, err := lotteryState(context.Background(), New(db, nil, false, nil).db, defaultLotteryConfig(), 42, false)
 		require.NoError(t, err)
 		require.Equal(t, tc.earned, state.Earned)

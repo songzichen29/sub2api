@@ -387,7 +387,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import LotteryNotice from '@/components/user/LotteryNotice.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
-import { parseQQRewardNote } from '@/utils/accountActivity'
+import { parseQQCampaignNote, parseQQRewardNote } from '@/utils/accountActivity'
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -456,6 +456,7 @@ const getHistoryItemTitle = (item: AccountActivityItem) => {
 }
 
 const getHistoryItemNote = (item: AccountActivityItem) => {
+  if (parseQQCampaignNote(item.notes)) return t('redeem.qqCampaignRecord')
   const reward = item.type === 'admin_balance' ? parseQQRewardNote(item.notes) : null
   if (!reward) return item.notes || ''
   const record = t('redeem.qqRewardRecord', { number: reward.number })

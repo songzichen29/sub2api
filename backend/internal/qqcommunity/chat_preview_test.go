@@ -62,7 +62,7 @@ func TestCommandInventoryExcludesRetiredCustomCommands(t *testing.T) {
 		byCommand[item.Command] = item
 	}
 	require.NotContains(t, byCommand, "举报垃圾信息")
-	require.Equal(t, "抽奖 [次数]", byCommand["抽奖"].Usage)
+	require.Equal(t, "/抽奖 [次数]", byCommand["抽奖"].Usage)
 	require.Equal(t, "current", byCommand["faq"].Reply)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

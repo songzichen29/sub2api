@@ -734,12 +734,14 @@ export default {
     "transferTo": "To {email}",
     "transferFee": "Fee: ${amount}",
     "qqRewardRecord": "Reward record #{number}",
+    "qqCampaignRecord": "QQ group campaign redemption",
     "qqRewardDetail": "{record}: {detail}",
     "qqRewards": {
       "growth": "QQ Growth Reward",
       "lottery": "QQ Lottery Reward",
       "invite": "QQ Invite Reward",
       "checkin": "QQ Check-in Reward",
+      "website_checkin": "Website Check-in Reward",
       "streak": "QQ Streak Reward",
       "ranking": "QQ Ranking Reward",
       "redemption": "QQ Redemption Reward"

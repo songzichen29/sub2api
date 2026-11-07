@@ -125,10 +125,18 @@ func lotteryState(ctx context.Context, db lotteryQuerier, c LotteryConfig, uid i
 	if err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants WHERE user_id=$1 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&out.BonusChances); err != nil {
 		return out, err
 	}
-	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances)
+	var bonusUsed int64
+	if out.BonusChances > 0 && out.Used > 0 {
+		usage, err := lotteryBonusUsage(ctx, db, uid)
+		if err != nil {
+			return out, err
+		}
+		bonusUsed = usage[uid]
+	}
+	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances, bonusUsed)
 }
 
-func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus int64) (LotteryState, error) {
+func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus, bonusUsed int64) (LotteryState, error) {
 	out := LotteryState{UserID: uid, Used: used, BonusChances: bonus}
 	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(out.Used)
 	if out.DrawsUntilGuarantee > 0 {
@@ -145,10 +153,12 @@ func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, us
 	}
 	out.RechargeTotal = total.InexactFloat64()
 	out.Earned = earned.IntPart()
-	out.Remaining = max(out.Earned-out.Used, 0)
+	bonusUsed = min(max(bonusUsed, 0), min(used, bonus))
+	rechargeUsed := used - bonusUsed
+	out.Remaining = max(quotient.IntPart()*c.ChancesPerStep-rechargeUsed, 0) + bonus - bonusUsed
 	// When refunds/rule changes put usage ahead of entitlement, new recharge
 	// must cover that deficit before another draw becomes available.
-	nextTier := max(quotient.IntPart()+1, max(out.Used-out.BonusChances, 0)/c.ChancesPerStep+1)
+	nextTier := max(quotient.IntPart()+1, rechargeUsed/c.ChancesPerStep+1)
 	out.NextRecharge = decimal.NewFromInt(nextTier).Mul(step).Sub(total).InexactFloat64()
 	return out, nil
 }

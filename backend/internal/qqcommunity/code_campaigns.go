@@ -513,8 +513,10 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 		content += "有效期至：" + claim.ExpiresAt.In(time.FixedZone("Asia/Shanghai", 8*3600)).Format("2006-01-02 15:04") + "（北京时间）\n"
 	}
 	content += "请使用领取时绑定的站点账号，到兑换码页面自行兑换。"
-	if s.pageOrigin != "" {
-		content += "\n" + strings.TrimRight(s.pageOrigin, "/") + "/redeem"
+	if link := s.publicSiteURL(ctx, "/redeem"); link != "" {
+		content += "\n兑换入口：" + link
+	} else {
+		content += "\n请从你常用的站点入口进入「兑换码」页面。"
 	}
 	deliveryErr := s.sendOneBotPrivate(ctx, c, claim.MemberID, claim.GroupID, content)
 	status := "sent"
