@@ -264,6 +264,14 @@ export interface QQNapCatLogin {
   }
 }
 export const qqbotAPI = {
+ activityStats: async (params: QQActivityStatsFilter) => (await apiClient.get<QQActivityStatsPage>('/admin/qqbot/activity-stats', { params })).data,
+ exportActivityStats: async (params: QQActivityStatsFilter) => (await apiClient.get<Blob>('/admin/qqbot/activity-stats/export', { params, responseType: 'blob' })).data,
+ codeCampaigns: async () => (await apiClient.get<QQCodeCampaign[]>('/admin/qqbot/code-campaigns')).data,
+ saveCodeCampaign: async (data: QQCodeCampaign) => (await apiClient.post<QQCodeCampaign>('/admin/qqbot/code-campaigns', data)).data,
+ codeClaims: async (params: QQCodeClaimsFilter) => (await apiClient.get<QQCodeClaimsPage>('/admin/qqbot/code-claims', { params })).data,
+ exportCodeClaims: async (params: QQCodeClaimsFilter) => (await apiClient.get<Blob>('/admin/qqbot/code-claims/export', { params, responseType: 'blob' })).data,
+ resendCodeClaim: async (id: string) => (await apiClient.post<{message: string}>(`/admin/qqbot/code-claims/${encodeURIComponent(id)}/resend`, {}, { timeout: 35000 })).data,
+ disableCodeClaim: async (id: string) => (await apiClient.post(`/admin/qqbot/code-claims/${encodeURIComponent(id)}/disable`)).data,
  login: async (signal?: AbortSignal) => (await apiClient.get<QQNapCatLogin>('/admin/qqbot/login', { signal, timeout: 15000 })).data,
  refreshLoginQR: async (signal?: AbortSignal) => (await apiClient.post<QQNapCatLogin>('/admin/qqbot/login/refresh', {}, { signal, timeout: 15000 })).data,
  restartLogin: async (expectedQQ: string, signal?: AbortSignal) => (await apiClient.post<{ accepted: boolean; restart_available_at: string }>('/admin/qqbot/login/restart', { expected_qq: expectedQQ, confirmed: true }, { signal, timeout: 15000 })).data,
@@ -310,3 +318,23 @@ export const qqbotAPI = {
   previewTransfer: async (token: string) => (await apiClient.post<QQTransferPreview>('/qqbot/transfer/preview', { token })).data,
   confirmTransfer: async (token: string) => (await apiClient.post('/qqbot/transfer/confirm', { token })).data
 }
+
+export interface QQActivityStatsFilter { date?: string; search?: string; filter?: string; page?: number; page_size?: number }
+export interface QQActivityStatsUser extends QQLotteryState { email: string; status: string; deleted: boolean; members: string[]; checked_in: boolean; checkin_amount: number; day_draws: number; day_draw_amount: number }
+export interface QQActivityStatsPage {
+ date: string; refreshed_at: string; items: QQActivityStatsUser[]; total: number; page: number; page_size: number
+ summary: { checkin_users: number; chance_users: number; remaining_chances: number; draw_users: number; draw_count: number; checkin_amount: number; draw_amount: number }
+}
+export interface QQCodeCampaign {
+ id: string; name: string; type: 'balance' | 'lottery_chances' | 'subscription' | 'concurrency'; value: number
+ subscription_group_id: number | null; validity_days: number; enabled: boolean; groups: string[]; claim_mode: 'once' | 'daily'
+ stock_limit: number; code_valid_hours: number; starts_at: string | null; ends_at: string | null; version: number
+ claimed: number; sent: number; redeemed: number
+}
+export interface QQCodeClaim {
+ id: string; campaign_id: string; campaign_name: string; user_id: number; email: string; member_id: string; group_id: string
+ code_id: number; code_hint: string; type: string; value: number; validity_days: number; status: string; delivery_status: string
+ attempts: number; created_at: string; expires_at: string | null; used_at: string | null; sent_at: string | null
+}
+export interface QQCodeClaimsFilter { campaign_id?: string; search?: string; page?: number; page_size?: number }
+export interface QQCodeClaimsPage { items: QQCodeClaim[]; total: number; page: number; page_size: number }

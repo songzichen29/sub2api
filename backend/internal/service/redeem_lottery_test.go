@@ -108,6 +108,7 @@ func TestRedeemLotteryAtomicGrantBothDialects(t *testing.T) {
 				r := &lotteryTransactionalRedeemRepo{redeemRejectRepo: redeemRejectRepo{code: RedeemCode{ID: 7, Code: "CHANCE-CODE", Type: RedeemTypeLotteryChances, Value: 5, Status: StatusUnused}}}
 				s := NewRedeemService(r, &lotteryRedeemUserStub{}, nil, nil, nil, client, nil)
 				m.ExpectBegin()
+				m.ExpectQuery("SELECT .*user_id.* FROM .*qqc_code_claims").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"user_id"}))
 				if scenario == "already consumed" {
 					r.useError = ErrRedeemCodeUsed
 				} else {

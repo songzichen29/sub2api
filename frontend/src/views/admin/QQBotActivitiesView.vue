@@ -3,7 +3,7 @@
     <div class="workspace-page qq-workspace space-y-5">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <h1>{{ t('qqbot.activitiesTitle') }}</h1>
-        <RouterLink v-if="!['rewards', 'growth', 'rankings', 'preview'].includes(activeTab.key)" class="btn btn-secondary" :to="{ path: '/admin/qqbot/records', query: { tab: activeTab.key } }">{{ t('qqbot.recordsTitle') }}</RouterLink>
+        <RouterLink v-if="!['rewards', 'growth', 'rankings', 'preview', 'codes'].includes(activeTab.key)" class="btn btn-secondary" :to="{ path: '/admin/qqbot/records', query: { tab: activeTab.key } }">{{ t('qqbot.recordsTitle') }}</RouterLink>
       </div>
       <nav
         role="tablist"
@@ -52,6 +52,7 @@ import QQBotGrowthSettings from '@/components/admin/qqbot/QQBotGrowthSettings.vu
 import QQBotLotterySettings from '@/components/admin/qqbot/QQBotLotterySettings.vue'
 import QQActivityPreview from '@/components/admin/qqbot/QQActivityPreview.vue'
 import QQBotRewardCodes from '@/components/admin/qqbot/QQBotRewardCodes.vue'
+import QQBotCodeCampaigns from '@/components/admin/qqbot/QQBotCodeCampaigns.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -61,6 +62,7 @@ const tabs = [
   { key: 'checkin', label: 'qqbot.checkinTitle', component: QQBotCheckinSettings },
   { key: 'growth', label: 'qqbot.growth.tab', component: QQBotGrowthSettings },
   { key: 'lottery', label: 'qqbot.lotteryTitle', component: QQBotLotterySettings },
+  { key: 'codes', label: 'qqbot.codeCampaigns.title', component: QQBotCodeCampaigns },
   { key: 'preview', label: 'qqbot.workspace.preview', component: QQActivityPreview },
   { key: 'rewards', label: 'qqbot.redemption.title', component: QQBotRewardCodes }
 ] as const

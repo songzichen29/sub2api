@@ -56,6 +56,7 @@ func helpSystemItems() []helpItem {
 		{action: "lottery_count", label: "抽奖次数", description: "查询剩余抽奖次数", command: "抽奖次数"},
 		{action: "lottery_info", label: "抽奖活动", description: "查看抽奖活动规则", command: "抽奖活动"},
 		{action: "growth", label: "成长任务", description: "查看成长进度和奖励", command: "成长任务"},
+		{action: "claim_code", label: "领取兑换码", description: "领取本群当前活动兑换码，机器人私聊发送", command: "领码", usage: "/领码"},
 		{action: "channels", label: "渠道状态", description: "查看渠道状态（别名：监控、渠道监控）", command: "渠道状态"},
 		{action: "image", label: "生成图片", description: "根据描述生成图片", command: "生图", usage: "生图 图片描述", input: true},
 		{action: "bind", label: "绑定账号", description: "群内发起，私聊提交绑定码，网站确认", command: "绑定"},

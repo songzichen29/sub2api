@@ -15,6 +15,7 @@ import QQBotRecordsView from '@/views/admin/QQBotRecordsView.vue'
 const api = vi.hoisted(() => ({ members: vi.fn(), jobs: vi.fn(), moderationRecords: vi.fn(), config: vi.fn(), runtime: vi.fn(), overview: vi.fn(), diagnose: vi.fn() }))
 vi.mock('@/api/qqcommunity', async original => ({ ...await original<typeof import('@/api/qqcommunity')>(), qqbotAPI: api }))
 vi.mock('@/components/layout/AppLayout.vue', () => ({ default: { template: '<main><slot /></main>' } }))
+vi.mock('../QQActivityStats.vue', () => ({ default: { template: '<section />' } }))
 const members: QQMemberOption[] = [
   { group_id: 'first', member_id: 'first-member', nickname: 'Alice', email: 'alice@example.com', message_preview: '确认身份 4826', last_seen_at: '2026-10-24T01:00:00Z', group_label: 'First group' },
   { group_id: 'second', member_id: 'second-member', nickname: '', email: 'bob@example.com', message_preview: '确认身份 9921', last_seen_at: '2026-10-24T01:00:00Z', group_label: 'Second group' },

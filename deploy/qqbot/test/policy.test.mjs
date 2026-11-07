@@ -4,6 +4,8 @@ import { routeEvent, scopeKey, authorized } from '../src/policy.mjs';
 const c = { bot_id: '123', groups: ['456'], private_users: ['789'], business_commands: ['签到', '余额', '绑定', '转账', '画图', '生图'] };
 const event = text => ({ self_id: 123, post_type: 'message', message_type: 'group', group_id: 456, user_id: 789, message: [{ type: 'text', data: { text } }] });
 test('financial commands have exactly one business destination', () => {
+	assert.equal(routeEvent(event('/领码'), c), 'business');
+	assert.equal(routeEvent(event('/领码 余额'), c), 'business');
   for (const text of ['签到', '/签到', '余额', '/转账 123 1', '@nickname', '/未来业务']) assert.equal(routeEvent(event(text), c), text === '@nickname' ? 'chat' : 'business');
 });
 test('chat and clear use DSH; foreign identities and groups are dropped', () => {

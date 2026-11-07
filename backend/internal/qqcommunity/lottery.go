@@ -125,6 +125,11 @@ func lotteryState(ctx context.Context, db lotteryQuerier, c LotteryConfig, uid i
 	if err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants WHERE user_id=$1 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&out.BonusChances); err != nil {
 		return out, err
 	}
+	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances)
+}
+
+func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus int64) (LotteryState, error) {
+	out := LotteryState{UserID: uid, Used: used, BonusChances: bonus}
 	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(out.Used)
 	if out.DrawsUntilGuarantee > 0 {
 		out.GuaranteeEvery = c.GuaranteeEvery

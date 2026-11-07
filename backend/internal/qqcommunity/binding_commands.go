@@ -17,7 +17,7 @@ const privateBindingFailed = "私聊消息未确认送达，请开启群临时�
 // commands and raw private messages must never become deferred mutations.
 func requiresBinding(cmd string) bool {
 	switch cmd {
-	case "签到", "我的余额", "今日用量", "我的奖励", "成长任务", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "转账":
+	case "签到", "我的余额", "今日用量", "我的奖励", "成长任务", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "转账", "领码":
 		return true
 	}
 	return false

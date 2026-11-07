@@ -440,6 +440,8 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 	j.CommandReply = cmd != "" || e.CommandReply
 	if arg != "" {
 		switch cmd {
+		case "领码":
+			return s.send(ctx, c, *j, "用法：/领码。", nil, 1)
 		case "签到", "我的余额", "今日用量", "我的奖励", "抽奖次数", "我的抽奖", "邀请奖励", "邀请活动", "我的邀请":
 			return s.send(ctx, c, *j, "用法："+cmd+"。", nil, 1)
 		}
@@ -511,6 +513,15 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		seq++
 	}
 	switch cmd {
+	case "领码":
+		var err error
+		text, err = s.ClaimCampaignCode(ctx, c, *j)
+		if err != nil {
+			text = campaignErrorMessage(err)
+		}
+		notice := *j
+		notice.TransientReply = true
+		return s.send(ctx, c, notice, text, nil, 1)
 	case "清空":
 		_, err := s.db.ExecContext(ctx, `DELETE FROM qqc_group_messages WHERE app_id=$1 AND group_id=$2 AND member_id=$3`, c.AppID, j.GroupID, j.MemberID)
 		if err != nil {

@@ -136,7 +136,7 @@ func runtimePolicy(c Config) map[string]any {
 		}
 	}
 	sort.Strings(privateUsers)
-	commands := []string{"帮助", "签到", "我的余额", "余额", "今日用量", "用量", "成长任务", "邀请奖励", "邀请活动", "我的邀请", "我的奖励", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "渠道状态", "渠道", "监控", "渠道监控", "生图", "画图", "价格", "绑定", "确认", "解绑", "转账"}
+	commands := []string{"帮助", "签到", "我的余额", "余额", "今日用量", "用量", "成长任务", "邀请奖励", "邀请活动", "我的邀请", "我的奖励", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "渠道状态", "渠道", "监控", "渠道监控", "生图", "画图", "价格", "绑定", "确认", "解绑", "转账", "领码"}
 	for _, command := range c.CustomCommands {
 		if command.Enabled {
 			commands = append(commands, strings.TrimPrefix(command.Command, "/"))

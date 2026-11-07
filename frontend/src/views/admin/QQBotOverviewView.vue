@@ -3,6 +3,7 @@
     <div class="workspace-page qq-workspace space-y-5">
       <div class="flex items-center justify-between gap-3"><h1 class="text-2xl font-semibold">{{ t('qqbot.workspace.overview') }}</h1><button class="btn btn-secondary" :disabled="loading" @click="load">{{ t('common.refresh') }}</button></div>
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700">{{ error }}</p>
+	  <QQActivityStats />
       <template v-if="overview && config">
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.overviewHelp', { day: overview.day }) }}</p>
         <div class="qq-stats">
@@ -38,6 +39,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { qqbotAPI, type QQBotConfig, type QQBotRuntime, type QQOverview, type QQDiagnosticCheck, type QQMemberOption } from '@/api/qqcommunity'
 import QQMemberPicker from '@/components/admin/qqbot/QQMemberPicker.vue'
 import QQChatDiagnostics from '@/components/admin/qqbot/QQChatDiagnostics.vue'
+import QQActivityStats from '@/components/admin/qqbot/QQActivityStats.vue'
 import { runtimeMetricsFresh } from '@/utils/qqRuntime'
 const { t } = useI18n()
 const config = ref<QQBotConfig>(), overview = ref<QQOverview>(), runtime = ref<QQBotRuntime>()
