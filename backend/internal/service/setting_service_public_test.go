@@ -84,6 +84,34 @@ func TestSettingService_GetPublicSettings_ExposesTablePreferences(t *testing.T) 
 	require.Equal(t, []int{20, 50, 100}, settings.TablePageSizeOptions)
 }
 
+func TestSettingService_UserInvoiceEnabledDefaultsAndProjections(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{"missing", map[string]string{}, true},
+		{"enabled", map[string]string{SettingKeyUserInvoiceEnabled: "true"}, true},
+		{"disabled", map[string]string{SettingKeyUserInvoiceEnabled: "false"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.values}, &config.Config{})
+			public, err := svc.GetPublicSettings(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, public.UserInvoiceEnabled)
+
+			injected, err := svc.GetPublicSettingsForInjection(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, injected.(*PublicSettingsInjectionPayload).UserInvoiceEnabled)
+
+			admin, err := NewSettingService(&settingGetAllRepoStub{values: tc.values}, &config.Config{}).GetAllSettings(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, admin.UserInvoiceEnabled)
+		})
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesCompactHomeEnabled(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

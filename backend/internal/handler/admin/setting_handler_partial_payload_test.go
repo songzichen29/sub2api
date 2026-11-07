@@ -17,6 +17,31 @@ import (
 // getStringOrDefault rendered the empty value as the built-in default and the
 // login page silently changed name.
 
+func TestUpdateSettingsUserInvoiceEnabledIsWritableAndKeptWhenOmitted(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+
+	// Old clients omitting the new setting must preserve the default-on behavior.
+	rec := doUpdateSettings(t, h, map[string]any{"site_name": "Example Gateway"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"user_invoice_enabled":true`)
+
+	for _, value := range []bool{false, true} {
+		rec = doUpdateSettings(t, h, map[string]any{"user_invoice_enabled": value}, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		want := "false"
+		if value {
+			want = "true"
+		}
+		require.Equal(t, want, repo.values[service.SettingKeyUserInvoiceEnabled])
+		require.Contains(t, rec.Body.String(), `"user_invoice_enabled":`+want)
+
+		rec = doUpdateSettings(t, h, map[string]any{"site_name": "Example Gateway"}, nil)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, want, repo.values[service.SettingKeyUserInvoiceEnabled])
+		require.Contains(t, rec.Body.String(), `"user_invoice_enabled":`+want)
+	}
+}
+
 func TestUpdateSettingsPartialPayloadKeepsUnsentKeys(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{
 		service.SettingKeySiteName:         "Example Gateway",

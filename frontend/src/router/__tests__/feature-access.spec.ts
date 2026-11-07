@@ -26,6 +26,7 @@ const appStore = vi.hoisted(() => ({
     payment_enabled?: boolean
     risk_control_enabled?: boolean
     subscription_enabled?: boolean
+    user_invoice_enabled?: boolean
     custom_menu_items?: []
   },
   fetchPublicSettings: vi.fn(),
@@ -153,6 +154,7 @@ describe('feature route guard', () => {
     ['payment', { requiresPayment: true }, '/purchase'],
     ['risk control', { requiresRiskControl: true }, '/admin/risk-control'],
     ['subscription', { requiresSubscription: true }, '/subscriptions'],
+    ['user invoices', { requiresUserInvoice: true }, '/invoices'],
   ])('does not treat a failed %s settings load as explicitly disabled', async (_name, meta, path) => {
     authStore.isAdmin = meta.requiresRiskControl === true
     appStore.fetchPublicSettings.mockResolvedValue(null)
@@ -174,6 +176,7 @@ describe('feature route guard', () => {
       '/admin/settings',
     ],
     ['subscription', { requiresSubscription: true }, { subscription_enabled: false }, '/dashboard'],
+    ['user invoices', { requiresUserInvoice: true }, { user_invoice_enabled: false }, '/dashboard'],
   ])('redirects when loaded settings explicitly disable %s', async (_name, meta, settings, target) => {
     authStore.isAdmin = meta.requiresRiskControl === true
     appStore.cachedPublicSettings = settings
@@ -185,6 +188,49 @@ describe('feature route guard', () => {
     expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
     expect(next).toHaveBeenCalledOnce()
     expect(next).toHaveBeenCalledWith(target)
+  })
+})
+
+describe('user invoice route guard', () => {
+  beforeEach(() => {
+    authStore.isAuthenticated = true
+    authStore.isAdmin = false
+    authStore.isSimpleMode = false
+    appStore.publicSettingsLoaded = true
+    appStore.fetchPublicSettings.mockReset()
+  })
+
+  it.each([{}, { user_invoice_enabled: true }])('allows invoices when enabled or unconfigured: %j', async (settings) => {
+    appStore.cachedPublicSettings = settings
+    const { navigation, next } = runGuard({ requiresUserInvoice: true }, '/invoices')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('waits for settings before handling a direct invoice link', async () => {
+    appStore.publicSettingsLoaded = false
+    appStore.cachedPublicSettings = null
+    const deferred = createDeferred<{ user_invoice_enabled: boolean }>()
+    appStore.fetchPublicSettings.mockImplementation(async () => {
+      const settings = await deferred.promise
+      appStore.cachedPublicSettings = settings
+      appStore.publicSettingsLoaded = true
+      return settings
+    })
+    const { navigation, next } = runGuard({ requiresUserInvoice: true }, '/invoices')
+    await vi.waitFor(() => expect(appStore.fetchPublicSettings).toHaveBeenCalledOnce())
+    expect(next).not.toHaveBeenCalled()
+    deferred.resolve({ user_invoice_enabled: false })
+    await navigation
+    expect(next).toHaveBeenCalledWith('/dashboard')
+  })
+
+  it('preserves admin invoice access when user invoices are hidden', async () => {
+    authStore.isAdmin = true
+    appStore.cachedPublicSettings = { user_invoice_enabled: false }
+    const { navigation, next } = runGuard({ requiresAdmin: true }, '/admin/orders/invoices')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
   })
 })
 

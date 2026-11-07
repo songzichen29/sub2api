@@ -162,6 +162,7 @@ type UpdateSettingsRequest struct {
 	HomeContent                  string                `json:"home_content"`
 	CompactHomeEnabled           bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton          bool                  `json:"hide_ccs_import_button"`
+	UserInvoiceEnabled           *bool                 `json:"user_invoice_enabled"`
 	PurchaseSubscriptionEnabled  *bool                 `json:"purchase_subscription_enabled"`
 	PurchaseSubscriptionURL      *string               `json:"purchase_subscription_url"`
 	TableDefaultPageSize         int                   `json:"table_default_page_size"`
@@ -1724,36 +1725,42 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		HomeContent:                            req.HomeContent,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
-		PurchaseSubscriptionEnabled:            purchaseEnabled,
-		PurchaseSubscriptionURL:                purchaseURL,
-		TableDefaultPageSize:                   req.TableDefaultPageSize,
-		TablePageSizeOptions:                   req.TablePageSizeOptions,
-		CustomMenuItems:                        customMenuJSON,
-		CustomEndpoints:                        customEndpointsJSON,
-		DefaultConcurrency:                     req.DefaultConcurrency,
-		DefaultBalance:                         req.DefaultBalance,
-		AffiliateRebateRate:                    affiliateRebateRate,
-		AffiliateRechargeEnabled:               affiliateRechargeEnabled,
-		AffiliateSubscriptionEnabled:           affiliateSubscriptionEnabled,
-		AffiliateRechargeRebateRate:            affiliateRechargeRebateRate,
-		AffiliateSubscriptionRebateRate:        affiliateSubscriptionRebateRate,
-		AffiliateRebateFreezeHours:             affiliateRebateFreezeHours,
-		AffiliateRebateDurationDays:            affiliateRebateDurationDays,
-		AffiliateRebatePerInviteeCap:           affiliateRebatePerInviteeCap,
-		AdminRechargeRebateEnabled:             adminRechargeRebateEnabled,
-		DefaultUserRPMLimit:                    req.DefaultUserRPMLimit,
-		DefaultSubscriptions:                   defaultSubscriptions,
-		EnableModelFallback:                    req.EnableModelFallback,
-		FallbackModelAnthropic:                 req.FallbackModelAnthropic,
-		FallbackModelOpenAI:                    req.FallbackModelOpenAI,
-		FallbackModelGemini:                    req.FallbackModelGemini,
-		FallbackModelAntigravity:               req.FallbackModelAntigravity,
-		EnableIdentityPatch:                    req.EnableIdentityPatch,
-		IdentityPatchPrompt:                    req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:                   req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:                     req.BackendModeEnabled,
+		UserInvoiceEnabled: func() bool {
+			if req.UserInvoiceEnabled != nil {
+				return *req.UserInvoiceEnabled
+			}
+			return previousSettings.UserInvoiceEnabled
+		}(),
+		PurchaseSubscriptionEnabled:     purchaseEnabled,
+		PurchaseSubscriptionURL:         purchaseURL,
+		TableDefaultPageSize:            req.TableDefaultPageSize,
+		TablePageSizeOptions:            req.TablePageSizeOptions,
+		CustomMenuItems:                 customMenuJSON,
+		CustomEndpoints:                 customEndpointsJSON,
+		DefaultConcurrency:              req.DefaultConcurrency,
+		DefaultBalance:                  req.DefaultBalance,
+		AffiliateRebateRate:             affiliateRebateRate,
+		AffiliateRechargeEnabled:        affiliateRechargeEnabled,
+		AffiliateSubscriptionEnabled:    affiliateSubscriptionEnabled,
+		AffiliateRechargeRebateRate:     affiliateRechargeRebateRate,
+		AffiliateSubscriptionRebateRate: affiliateSubscriptionRebateRate,
+		AffiliateRebateFreezeHours:      affiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:     affiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:    affiliateRebatePerInviteeCap,
+		AdminRechargeRebateEnabled:      adminRechargeRebateEnabled,
+		DefaultUserRPMLimit:             req.DefaultUserRPMLimit,
+		DefaultSubscriptions:            defaultSubscriptions,
+		EnableModelFallback:             req.EnableModelFallback,
+		FallbackModelAnthropic:          req.FallbackModelAnthropic,
+		FallbackModelOpenAI:             req.FallbackModelOpenAI,
+		FallbackModelGemini:             req.FallbackModelGemini,
+		FallbackModelAntigravity:        req.FallbackModelAntigravity,
+		EnableIdentityPatch:             req.EnableIdentityPatch,
+		IdentityPatchPrompt:             req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:            req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:            req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling:     req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:              req.BackendModeEnabled,
 		AllowUserViewErrorRequests: func() bool {
 			if req.AllowUserViewErrorRequests != nil {
 				return *req.AllowUserViewErrorRequests
@@ -2402,6 +2409,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		HomeContent:                                            updatedSettings.HomeContent,
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
+		UserInvoiceEnabled:                                     updatedSettings.UserInvoiceEnabled,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,
 		PurchaseSubscriptionURL:                                updatedSettings.PurchaseSubscriptionURL,
 		TableDefaultPageSize:                                   updatedSettings.TableDefaultPageSize,

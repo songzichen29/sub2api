@@ -109,6 +109,11 @@ export const FeatureFlags = {
     mode: 'opt-out',
     label: 'Subscription',
   }),
+  userInvoice: defineFlag({
+    key: 'user_invoice_enabled',
+    mode: 'opt-out',
+    label: 'User Invoices',
+  }),
   modelPlaza: defineFlag({
     key: 'model_plaza_enabled',
     mode: 'opt-in',

@@ -73,5 +73,6 @@ describe('router invoice routes', () => {
 
     expect(route?.path).toBe(path)
     expect(route?.meta.requiresPayment).not.toBe(true)
+    expect(route?.meta.requiresUserInvoice === true).toBe(name === 'InvoiceList')
   })
 })

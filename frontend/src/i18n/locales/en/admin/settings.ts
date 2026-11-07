@@ -682,6 +682,8 @@ export default {
       "compactHome": "Compact Home Page",
       "compactHomeHint": "Show a restrained site identity page when no custom home page content is set.",
       "hideCcsImportButton": "Hide CCS Import Button",
+      "userInvoiceEnabled": "Show User Invoice Management",
+      "userInvoiceEnabledHint": "When disabled, hides My Invoices and order invoice actions and blocks access to the user invoice page. Admins can still manage existing applications.",
       "hideCcsImportButtonHint": "When enabled, the \"Import to CCS\" button will be hidden on the API Keys page",
       "openaiFreeImageBridgeUrl": "OpenAI Free Image Bridge URL",
       "openaiFreeImageBridgeUrlHint": "Only used to bridge OpenAI OAuth Free image requests to chatgpt2api. Other request paths are unaffected.",

@@ -158,6 +158,7 @@ type SystemSettings struct {
 	HomeContent                 string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
+	UserInvoiceEnabled          bool
 	PurchaseSubscriptionEnabled bool
 	SubscriptionEnabled         bool `json:"subscription_enabled"`
 	PurchaseSubscriptionURL     string
@@ -365,6 +366,7 @@ type PublicSettings struct {
 	HomeContent                         string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
+	UserInvoiceEnabled                  bool
 
 	PurchaseSubscriptionEnabled bool
 	PaymentBalanceDisabled      bool `json:"payment_balance_disabled"`

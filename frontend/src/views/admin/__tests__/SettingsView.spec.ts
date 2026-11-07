@@ -786,6 +786,22 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it.each([undefined, false, true])("loads and saves user invoice visibility: %s", async (enabled) => {
+    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse, user_invoice_enabled: enabled });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get<HTMLInputElement>('#user-invoice-toggle');
+    expect(toggle.element.checked).toBe(enabled !== false);
+    await toggle.setValue(enabled === false);
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ user_invoice_enabled: enabled === false }),
+    );
+    expect(fetchPublicSettings).toHaveBeenCalledWith(true);
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();

@@ -76,8 +76,9 @@ describe('AppSidebar payment coupons navigation', () => {
 })
 
 describe('AppSidebar invoice navigation', () => {
-  it('keeps user and admin invoice routes visible independently of payment and simple mode', () => {
-    expect(componentSource).toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon }")
+  it('gates user invoices independently of payment and keeps admin invoice management visible', () => {
+    expect(componentSource).toContain('const flagUserInvoice = makeSidebarFlag(FeatureFlags.userInvoice)')
+    expect(componentSource).toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, featureFlag: flagUserInvoice }")
     expect(componentSource).toContain("{ path: '/admin/orders/invoices', label: t('nav.invoiceManagement'), icon: OrderListIcon }")
     expect(componentSource).not.toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, hideInSimpleMode: true")
     expect(componentSource).not.toContain("{ path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, featureFlag: flagPayment")

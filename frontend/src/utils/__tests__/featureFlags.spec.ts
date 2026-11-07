@@ -40,6 +40,24 @@ describe('FeatureFlags.subscription', () => {
   })
 })
 
+describe('FeatureFlags.userInvoice', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+  })
+
+  it('shows invoices by default and responds to administrator changes', () => {
+    const store = useAppStore()
+    const visible = makeSidebarFlag(FeatureFlags.userInvoice)
+    expect(visible()).toBe(true)
+    store.cachedPublicSettings = { user_invoice_enabled: false } as PublicSettings
+    expect(visible()).toBe(false)
+    store.cachedPublicSettings = { user_invoice_enabled: true } as PublicSettings
+    expect(visible()).toBe(true)
+    store.cachedPublicSettings = {} as PublicSettings
+    expect(visible()).toBe(true)
+  })
+})
+
 describe('resolveFeatureFlag', () => {
   beforeEach(() => {
     setActivePinia(createPinia())

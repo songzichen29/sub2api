@@ -682,6 +682,8 @@ export default {
       "compactHome": "简洁首页",
       "compactHomeHint": "未设置自定义首页内容时，展示简洁的站点信息页面。",
       "hideCcsImportButton": "隐藏 CCS 导入按钮",
+      "userInvoiceEnabled": "展示用户端发票管理",
+      "userInvoiceEnabledHint": "关闭后隐藏用户的“我的发票”和订单开票入口，用户将无法打开开票页面。管理员仍可处理已有发票申请。",
       "hideCcsImportButtonHint": "启用后将在 API Keys 页面隐藏\"导入 CCS\"按钮",
       "openaiFreeImageBridgeUrl": "OpenAI Free 生图桥接地址",
       "openaiFreeImageBridgeUrlHint": "仅用于将 OpenAI OAuth Free 图片请求桥接到 chatgpt2api，不影响其他链路。",

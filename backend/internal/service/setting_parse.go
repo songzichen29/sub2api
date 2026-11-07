@@ -211,6 +211,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Subscription feature (default enabled; opt-out)
 		SettingKeySubscriptionEnabled: "true",
+		SettingKeyUserInvoiceEnabled:  "true",
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
 		SettingKeyModelPlazaEnabled:       "false",
@@ -377,6 +378,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		HomeContent:                            settings[SettingKeyHomeContent],
 		CompactHomeEnabled:                     settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:                    settings[SettingKeyHideCcsImportButton] == "true",
+		UserInvoiceEnabled:                     !isFalseSettingValue(settings[SettingKeyUserInvoiceEnabled]),
 		PurchaseSubscriptionEnabled:            settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
 		PurchaseSubscriptionURL:                strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                        settings[SettingKeyCustomMenuItems],

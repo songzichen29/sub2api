@@ -26,7 +26,7 @@
               <Icon name="dollar" size="sm" />
               <span>{{ t('payment.orders.requestRefund') }}</span>
             </button>
-            <button v-if="canRequestInvoice(row)" @click="router.push({ path: '/invoices', query: { order_id: row.id } })" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20">
+            <button v-if="userInvoiceEnabled && canRequestInvoice(row)" @click="router.push({ path: '/invoices', query: { order_id: row.id } })" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/20">
               <Icon name="document" size="sm" />
               <span>{{ t('invoice.tabs.apply') }}</span>
             </button>
@@ -91,6 +91,7 @@ import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
+import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -102,6 +103,7 @@ import OrderTable from '@/components/payment/OrderTable.vue'
 const { t } = useI18n()
 const router = useRouter()
 const appStore = useAppStore()
+const userInvoiceEnabled = computed(() => resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.userInvoice))
 
 const loading = ref(false)
 const actionLoading = ref(false)

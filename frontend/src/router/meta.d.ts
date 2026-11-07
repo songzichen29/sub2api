@@ -61,6 +61,9 @@ declare module 'vue-router' {
      */
     requiresSubscription?: boolean
 
+    /** Whether the user invoice visibility switch must be enabled. */
+    requiresUserInvoice?: boolean
+
     /**
      * i18n key for the page title
      */

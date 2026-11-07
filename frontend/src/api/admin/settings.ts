@@ -557,6 +557,7 @@ export interface SystemSettings {
   home_content: string;
   compact_home_enabled: boolean;
   hide_ccs_import_button: boolean;
+  user_invoice_enabled: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
   backend_mode_enabled: boolean;
@@ -924,6 +925,7 @@ export interface UpdateSettingsRequest {
   home_content?: string;
   compact_home_enabled?: boolean;
   hide_ccs_import_button?: boolean;
+  user_invoice_enabled?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];
   backend_mode_enabled?: boolean;

@@ -707,6 +707,7 @@ const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
+const flagUserInvoice = makeSidebarFlag(FeatureFlags.userInvoice)
 
 // 购买入口文案随站点计费模式切换：仅充值 → 「充值」，仅订阅 → 「订阅」，否则「充值/订阅」。
 const purchaseNavLabel = computed(() => {
@@ -752,7 +753,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon },
+    { path: '/invoices', label: t('nav.myInvoices'), icon: OrderListIcon, featureFlag: flagUserInvoice },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/lottery', label: t('lotteryPortal.title'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/checkin', label: t('checkin.title'), icon: CalendarCheckIcon, hideInSimpleMode: true },

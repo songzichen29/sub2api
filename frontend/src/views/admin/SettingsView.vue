@@ -6046,6 +6046,24 @@
                 <Toggle v-model="form.compact_home_enabled" data-testid="compact-home-toggle" />
               </div>
 
+              <!-- User Invoice Visibility -->
+              <div class="flex items-center justify-between gap-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div>
+                  <label for="user-invoice-toggle" class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.site.userInvoiceEnabled") }}
+                  </label>
+                  <p id="user-invoice-hint" class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.site.userInvoiceEnabledHint") }}
+                  </p>
+                </div>
+                <Toggle
+                  id="user-invoice-toggle"
+                  v-model="form.user_invoice_enabled"
+                  :aria-label="t('admin.settings.site.userInvoiceEnabled')"
+                  aria-describedby="user-invoice-hint"
+                />
+              </div>
+
               <!-- Hide CCS Import Button -->
               <div
                 class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -9265,6 +9283,7 @@ const form = reactive<SettingsForm>({
   compact_home_enabled: false,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
+  user_invoice_enabled: true,
   payment_enabled: false,
   risk_control_enabled: false,
   cyber_policy_user_allowlist: "",
@@ -11049,6 +11068,7 @@ async function saveSettings() {
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
       hide_ccs_import_button: form.hide_ccs_import_button,
+      user_invoice_enabled: form.user_invoice_enabled,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
       custom_menu_items: form.custom_menu_items,

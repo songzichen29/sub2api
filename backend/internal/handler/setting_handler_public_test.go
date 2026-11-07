@@ -58,6 +58,27 @@ func (s *settingHandlerPublicRepoStub) Delete(ctx context.Context, key string) e
 	panic("unexpected Delete call")
 }
 
+func TestSettingHandler_GetPublicSettings_UserInvoiceEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, value := range []string{"", "false", "true"} {
+		t.Run(value, func(t *testing.T) {
+			h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{
+				values: map[string]string{service.SettingKeyUserInvoiceEnabled: value},
+			}, &config.Config{}), "test-version")
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+			h.GetPublicSettings(c)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var resp struct {
+				Data map[string]any `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+			require.Equal(t, value != "false", resp.Data["user_invoice_enabled"])
+		})
+	}
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
