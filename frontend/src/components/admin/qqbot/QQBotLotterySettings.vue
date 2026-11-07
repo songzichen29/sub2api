@@ -55,11 +55,10 @@
       <p v-if="lookupError" role="alert" class="text-red-600">{{ lookupError }}</p>
       <dl v-if="state" class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
         <div><dt class="text-gray-500">{{ t('qqbot.eligibleRecharge') }}</dt><dd class="mt-1 font-semibold">CNY {{ state.recharge_total.toFixed(2) }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('qqbot.earnedChances') }}</dt><dd class="mt-1 font-semibold">{{ state.earned }}</dd></div>
-        <div><dt class="text-gray-500">{{ t('qqbot.directRechargeChances') }}</dt><dd class="mt-1 font-semibold">{{ state.bonus_chances || 0 }}</dd></div>
         <div><dt class="text-gray-500">{{ t('qqbot.usedChances') }}</dt><dd class="mt-1 font-semibold">{{ state.used }}</dd></div>
         <div><dt class="text-gray-500">{{ t('qqbot.remainingChances') }}</dt><dd class="mt-1 font-semibold">{{ state.remaining }}</dd></div>
       </dl>
+      <LotteryChanceBreakdown v-if="state" :state="state" />
       <p v-if="state" class="text-sm text-gray-500">{{ t('qqbot.nextRecharge', { amount: state.next_recharge.toFixed(2) }) }}</p>
       <p v-if="state && state.draws_until_guarantee > 0" class="text-sm text-primary-600 dark:text-primary-400">{{ t('qqbot.guaranteeProgress', { every: state.guarantee_every, count: state.draws_until_guarantee }) }}</p>
     </section>
@@ -69,6 +68,7 @@
 <script setup lang="ts">
 import { useQQDraft } from './useQQDraft'
 import QQLotteryGroupsEditor from './QQLotteryGroupsEditor.vue'
+import LotteryChanceBreakdown from '@/components/user/LotteryChanceBreakdown.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { qqbotAPI, type QQLotteryConfig, type QQLotteryState } from '@/api/qqcommunity'

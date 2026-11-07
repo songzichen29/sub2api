@@ -201,10 +201,10 @@ func (s *Service) ActivityStats(ctx context.Context, f ActivityStatsFilter, expo
 	}
 	out.Summary.CheckinAmount = checkinTotal.InexactFloat64()
 	out.Summary.DrawAmount = drawTotal.InexactFloat64()
-	bonusUsage := map[int64]int64{}
+	bonusUsage := map[int64]lotterySourceUsage{}
 	for _, u := range users {
-		if u.BonusChances > 0 && u.Used > 0 {
-			bonusUsage, err = lotteryBonusUsage(ctx, tx, 0)
+		if u.Used > 0 {
+			bonusUsage, err = lotteryUsageBySource(ctx, tx, 0)
 			if err != nil {
 				return out, err
 			}

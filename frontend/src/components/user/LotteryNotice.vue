@@ -2,6 +2,7 @@
   <section v-if="data?.enabled || error" class="card space-y-2 p-4 text-sm" aria-live="polite">
     <template v-if="data?.enabled">
       <p class="font-medium">{{ t('lotteryPortal.remainingText', { count: data.state.remaining }) }}</p>
+      <p v-if="data.state.recharge_remaining !== undefined && data.state.bonus_remaining !== undefined">{{ t('lotteryPortal.remainingSources', { recharge: data.state.recharge_remaining, activity: data.state.bonus_remaining }) }}</p>
       <p v-if="data.pending_recharge">{{ t(attempts >= 12 ? 'lotteryPortal.pendingLater' : 'lotteryPortal.pending') }}</p>
       <p v-else>{{ t('lotteryPortal.next', { amount: data.state.next_recharge.toFixed(2), count: data.chances_per_step }) }}</p>
       <p v-if="!data.bound_qq">{{ t('lotteryPortal.unbound', { count: data.state.remaining }) }}</p>

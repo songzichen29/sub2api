@@ -336,10 +336,10 @@ describe('QQ activity pages with real translations', () => {
     const lookup = w.findAll('form')[1]!
     await lookup.get('input').setValue('7'); await lookup.trigger('submit'); await flushPromises()
     expect(api.lotteryState).toHaveBeenCalledWith(7)
-    expect(w.get('dd').text()).toBe('$35.00')
+    expect(w.get('dd').text()).toBe('CNY 35.00')
     api.lotteryState.mockRejectedValueOnce(new Error('User not found'))
     await lookup.trigger('submit'); await flushPromises()
-    expect(w.text()).not.toContain('$35.00000000')
+    expect(w.text()).not.toContain('CNY 35.00')
     expect(w.text()).toContain('User not found')
   })
   it.each(['zh', 'en'] as const)('%s configures an independent guaranteed pool and displays progress', async locale => {

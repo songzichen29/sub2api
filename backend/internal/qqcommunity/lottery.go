@@ -20,6 +20,12 @@ type LotteryState struct {
 	RechargeTotal       float64 `json:"recharge_total"`
 	Earned              int64   `json:"earned"`
 	BonusChances        int64   `json:"bonus_chances"`
+	RechargeEarned      int64   `json:"recharge_earned"`
+	RechargeUsed        int64   `json:"recharge_used"`
+	RechargeRemaining   int64   `json:"recharge_remaining"`
+	BonusUsed           int64   `json:"bonus_used"`
+	BonusRemaining      int64   `json:"bonus_remaining"`
+	LegacyUsed          int64   `json:"legacy_used"`
 	Used                int64   `json:"used"`
 	Remaining           int64   `json:"remaining"`
 	NextRecharge        float64 `json:"next_recharge"`
@@ -125,18 +131,18 @@ func lotteryState(ctx context.Context, db lotteryQuerier, c LotteryConfig, uid i
 	if err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(chances),0) FROM qqc_lottery_chance_grants WHERE user_id=$1 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&out.BonusChances); err != nil {
 		return out, err
 	}
-	var bonusUsed int64
-	if out.BonusChances > 0 && out.Used > 0 {
-		usage, err := lotteryBonusUsage(ctx, db, uid)
+	var sourceUsage lotterySourceUsage
+	if out.Used > 0 {
+		usage, err := lotteryUsageBySource(ctx, db, uid)
 		if err != nil {
 			return out, err
 		}
-		bonusUsed = usage[uid]
+		sourceUsage = usage[uid]
 	}
-	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances, bonusUsed)
+	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances, sourceUsage)
 }
 
-func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus, bonusUsed int64) (LotteryState, error) {
+func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus int64, usage lotterySourceUsage) (LotteryState, error) {
 	out := LotteryState{UserID: uid, Used: used, BonusChances: bonus}
 	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(out.Used)
 	if out.DrawsUntilGuarantee > 0 {
@@ -153,12 +159,18 @@ func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, us
 	}
 	out.RechargeTotal = total.InexactFloat64()
 	out.Earned = earned.IntPart()
-	bonusUsed = min(max(bonusUsed, 0), min(used, bonus))
-	rechargeUsed := used - bonusUsed
-	out.Remaining = max(quotient.IntPart()*c.ChancesPerStep-rechargeUsed, 0) + bonus - bonusUsed
+	if usage.bonusUsed < 0 || usage.bonusUsed > min(used, bonus) || usage.legacyUsed < 0 || usage.legacyUsed > used-usage.bonusUsed {
+		return out, errors.New("lottery chance ledger is inconsistent")
+	}
+	out.RechargeEarned = quotient.IntPart() * c.ChancesPerStep
+	out.BonusUsed, out.LegacyUsed = usage.bonusUsed, usage.legacyUsed
+	out.RechargeUsed = used - out.BonusUsed - out.LegacyUsed
+	out.RechargeRemaining = max(out.RechargeEarned-out.RechargeUsed, 0)
+	out.BonusRemaining = bonus - out.BonusUsed
+	out.Remaining = out.RechargeRemaining + out.BonusRemaining
 	// When refunds/rule changes put usage ahead of entitlement, new recharge
 	// must cover that deficit before another draw becomes available.
-	nextTier := max(quotient.IntPart()+1, rechargeUsed/c.ChancesPerStep+1)
+	nextTier := max(quotient.IntPart()+1, out.RechargeUsed/c.ChancesPerStep+1)
 	out.NextRecharge = decimal.NewFromInt(nextTier).Mul(step).Sub(total).InexactFloat64()
 	return out, nil
 }
@@ -258,7 +270,10 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&wins); err != nil {
 		return "", err
 	}
-	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n再充值人民币 %.2f 元获赠", state.Used, wins, state.Remaining, state.NextRecharge)
+	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n充值次数：获得 %d / 已用 %d / 剩余 %d\n活动赠送：获得 %d / 已用 %d / 剩余 %d\n再充值人民币 %.2f 元获赠", state.Used, wins, state.Remaining, state.RechargeEarned, state.RechargeUsed, state.RechargeRemaining, state.BonusChances, state.BonusUsed, state.BonusRemaining, state.NextRecharge)
+	if state.LegacyUsed > 0 {
+		result += fmt.Sprintf("\n旧规则非充值抽奖：%d 次（不扣充值次数）", state.LegacyUsed)
+	}
 	if state.DrawsUntilGuarantee > 0 {
 		result += fmt.Sprintf("\n距保底 %d 次", state.DrawsUntilGuarantee)
 	}
@@ -380,14 +395,19 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, uid int64, cfg LotteryConfig, state LotteryState, draws []lotteryOutcome, requestKey, result string) error {
 	for i, draw := range draws {
 		prize, guaranteed := draw.prize, draw.guaranteed
-		// Keep the draw's classification alongside its immutable configuration snapshot.
-		// Older records without this field remain ordinary draws, without a migration.
+		source := "recharge"
+		if int64(i) < state.BonusRemaining {
+			source = "activity"
+		}
+		// Store both the prize classification and the chance source. Historical
+		// records are read compatibly; their rewards and snapshots stay untouched.
 		snapshot, err := json.Marshal(struct {
 			LotteryConfig
 			IsGuaranteed     bool   `json:"is_guaranteed"`
 			DrawNumber       int64  `json:"draw_number"`
 			RechargeCurrency string `json:"recharge_currency"`
-		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY"})
+			ChanceSource     string `json:"chance_source"`
+		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY", source})
 		if err != nil {
 			return err
 		}

@@ -52,9 +52,9 @@
             </div>
             <dl class="lottery-account-stats">
               <div><dt>{{ t('lotteryPortal.recharge') }}</dt><dd>CNY {{ data.state.recharge_total.toFixed(2) }}</dd></div>
-              <div><dt>{{ t('lotteryPortal.earned') }}</dt><dd>{{ data.state.earned }}</dd></div>
               <div><dt>{{ t('lotteryPortal.used') }}</dt><dd>{{ data.state.used }}</dd></div>
             </dl>
+            <LotteryChanceBreakdown :state="data.state" />
           </aside>
         </div>
 
@@ -130,6 +130,7 @@ import QRCode from 'qrcode'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileQQBotCard from '@/components/user/profile/ProfileQQBotCard.vue'
 import LotteryWheel from '@/components/user/LotteryWheel.vue'
+import LotteryChanceBreakdown from '@/components/user/LotteryChanceBreakdown.vue'
 import { lotteryAPI, type UserLottery, type UserLotteryDraws, type UserLotterySpin, type LotteryMembershipStatus } from '@/api/lottery'
 import type { QQLotteryPublicGroup } from '@/api/qqcommunity'
 import { safeJoinURL } from '@/utils/lottery'

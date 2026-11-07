@@ -42,7 +42,7 @@ func TestUserLotteryIncludesUnboundEntitlementAndOnlyPublishedEnabledGroups(t *t
 	expectLotteryRecharge(m, 42, "25")
 	m.ExpectQuery(`SELECT COUNT\(\*\) FROM qqc_lottery_draws`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(1))
 	m.ExpectQuery(`SELECT COALESCE\(SUM\(chances\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"grants"}).AddRow(3))
-	m.ExpectQuery("SELECT user_id,chance_delta FROM").WithArgs(lotteryPeriodStart, int64(42)).WillReturnRows(sqlmock.NewRows([]string{"user_id", "chance_delta"}).AddRow(42, 3).AddRow(42, -1))
+	m.ExpectQuery("SELECT user_id,chance_delta,config_snapshot,legacy_credit_only FROM").WithArgs(lotteryPeriodStart, int64(42)).WillReturnRows(lotteryUsageRows().AddRow(42, 3, nil, false).AddRow(42, -1, `{}`, false))
 	m.ExpectQuery(`SELECT member_id FROM qqc_bindings`).WithArgs(c.AppID, int64(42)).WillReturnError(sql.ErrNoRows)
 	m.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM payment_orders`).WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"pending"}).AddRow(true))
 	m.ExpectCommit()

@@ -30,6 +30,36 @@ beforeEach(() => {
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); vi.useRealTimers() })
 
 describe('user lottery journey', () => {
+  it('separates code campaign gifts and legacy credit draws from recharge progress', async () => {
+    api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state,
+      recharge_total: 0, earned: 1, used: 2, remaining: 0, next_recharge: 10,
+      recharge_earned: 0, recharge_used: 0, recharge_remaining: 0,
+      bonus_chances: 1, bonus_used: 1, bonus_remaining: 0, legacy_used: 1,
+    } })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.get('[data-testid="recharge-chances"]').text()).toBe('充值获得000')
+    expect(w.get('[data-testid="activity-chances"]').text()).toBe('活动赠送110')
+    expect(w.get('[data-testid="legacy-chances"]').text()).toContain('不扣充值次数')
+    expect(w.get('.lottery-recharge').text()).toContain('人民币 10.00 元')
+    expect(w.get('[data-testid="lottery-spin"]').attributes('disabled')).toBeDefined()
+  })
+  it('keeps gift chances usable despite a real recharge deficit', async () => {
+    api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state,
+      recharge_total: 0, earned: 1, used: 1, remaining: 1, next_recharge: 20,
+      recharge_earned: 0, recharge_used: 1, recharge_remaining: 0,
+      bonus_chances: 1, bonus_used: 0, bonus_remaining: 1, legacy_used: 0,
+    } })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.get('[data-testid="activity-chances"]').text()).toBe('活动赠送101')
+    expect(w.text()).toContain('包含补足差额')
+    expect(w.get('[data-testid="lottery-spin"]').attributes('disabled')).toBeUndefined()
+    const notice = render(LotteryNotice); await flushPromises()
+    expect(notice.text()).toContain('充值剩余 0 次 · 活动赠送剩余 1 次')
+  })
+  it('does not invent a source breakdown for an older API', async () => {
+    const w = render(LotteryView); await flushPromises()
+    expect(w.find('[data-testid="lottery-chance-breakdown"]').exists()).toBe(false)
+  })
   it('shows recharge principal in CNY while prize credit stays in USD', async () => {
     api.overview.mockResolvedValue({ ...fixture(), prizes: [{ name: '余额奖', amount: 2, probability_bps: 10000 }] })
     const w = render(LotteryView); await flushPromises()
