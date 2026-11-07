@@ -1,6 +1,6 @@
 <template>
-  <div ref="pageRoot" class="integration-docs min-h-screen bg-white text-gray-900 dark:bg-dark-950 dark:text-dark-100">
-    <header class="sticky top-0 z-30 border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
+  <div ref="pageRoot" class="integration-docs min-h-screen bg-white text-gray-900 dark:bg-dark-950 dark:text-dark-100" :class="{ 'docs-embedded': embedded }">
+    <header v-if="!embedded" class="sticky top-0 z-30 border-b border-gray-200 bg-white dark:border-dark-800 dark:bg-dark-950">
       <div class="flex h-16 items-center justify-between gap-3 px-4 sm:px-6">
         <RouterLink to="/home" class="flex min-w-0 items-center gap-3" :aria-label="t('docs.home')">
           <img :src="siteLogo || '/logo.svg'" :alt="siteName" class="h-8 w-8 shrink-0 object-contain" />
@@ -82,6 +82,7 @@
               <div v-if="section.links" class="mt-5 flex flex-wrap gap-x-6 gap-y-3">
                 <template v-for="link in section.links" :key="link.to">
                   <a v-if="link.to.startsWith('#')" :href="link.to" class="doc-text-link" @click.prevent="goToSection(link.to.slice(1))">{{ link.label }}<Icon name="arrowRight" size="sm" /></a>
+                  <a v-else-if="embedded" :href="link.to" target="_top" class="doc-text-link">{{ link.label }}<Icon name="arrowRight" size="sm" /></a>
                   <RouterLink v-else :to="link.to" class="doc-text-link">{{ link.label }}<Icon name="arrowRight" size="sm" /></RouterLink>
                 </template>
               </div>
@@ -136,7 +137,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/icons/Icon.vue'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import DocsCodeBlock from '@/components/docs/DocsCodeBlock.vue'
@@ -145,7 +146,9 @@ import { useAppStore, useAuthStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 import { createIntegrationDocs, filterDocsSections, resolveDocsEndpoints, type DocsSection } from './integrationDocs'
 
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
@@ -185,7 +188,7 @@ async function goToSection(id: string) {
   searchQuery.value = ''
   if (mobileMenu.value) mobileMenu.value.open = false
   await nextTick()
-  await router.push({ path: '/docs', hash: '#' + id })
+  await router.push({ path: '/docs', query: route.query, hash: '#' + id })
   activeSection.value = id
   const element = document.getElementById(id)
   element?.scrollIntoView({ block: 'start' })
@@ -213,7 +216,7 @@ function onScroll() {
     const elements = pageRoot.value?.querySelectorAll<HTMLElement>('[data-doc-section]')
     let current = elements?.[0]?.id
     elements?.forEach(element => {
-      if (element.getBoundingClientRect().top <= 110) current = element.id
+      if (element.getBoundingClientRect().top <= (props.embedded ? 24 : 110)) current = element.id
     })
     if (current) activeSection.value = current
     scrollFrame = 0
@@ -258,6 +261,8 @@ onBeforeUnmount(() => {
 .doc-section { @apply scroll-mt-24 border-b border-gray-200 py-8 outline-none dark:border-dark-800; }
 .doc-section:first-of-type { @apply pt-0; }
 .doc-section:focus-visible { @apply outline outline-2 outline-offset-4 outline-primary-500; }
+.docs-embedded .docs-sidebar { top: 0; height: 100dvh; }
+.docs-embedded .doc-section { scroll-margin-top: 16px; }
 .doc-section-layout { display: grid; gap: 24px; }
 .doc-copy { @apply text-sm leading-7 text-gray-700 dark:text-dark-200; }
 .doc-text-link { @apply inline-flex items-center gap-2 text-sm font-medium text-primary-700 hover:underline dark:text-primary-300; }

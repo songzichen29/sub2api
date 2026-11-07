@@ -175,7 +175,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/docs',
     name: 'IntegrationDocs',
-    component: () => import('@/views/public/IntegrationDocsView.vue'),
+    component: () => import('@/views/public/IntegrationDocsPageView.vue'),
     meta: {
       requiresAuth: false,
       title: '接入文档',
@@ -784,7 +784,7 @@ const router = createRouter({
     }
     if (to.path === '/docs' && to.hash) {
       const section = document.getElementById(to.hash.slice(1))
-      if (section) return { el: section, top: 88 }
+      if (section) return { el: section, top: to.query.ui_mode === 'embedded' ? 16 : 88 }
     }
     // Scroll to top for new routes
     return { top: 0 }

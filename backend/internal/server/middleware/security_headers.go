@@ -129,6 +129,14 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("X-Frame-Options", "DENY")
+		// The public guide is embedded by the site's documentation/custom menu.
+		// Keep framing denied for all other UI and API routes.
+		if c.Request != nil && c.Request.URL != nil &&
+			(c.Request.Method == "GET" || c.Request.Method == "HEAD") &&
+			(c.Request.URL.Path == "/docs" || c.Request.URL.Path == "/docs/") {
+			c.Header("X-Frame-Options", "SAMEORIGIN")
+			finalPolicy = withSameOriginFrameAncestors(finalPolicy)
+		}
 		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
 		if isAPIRoutePath(c) {
 			c.Next()
@@ -149,6 +157,18 @@ func SecurityHeaders(cfg config.CSPConfig, getFrameSrcOrigins func() []string) g
 		}
 		c.Next()
 	}
+}
+
+func withSameOriginFrameAncestors(policy string) string {
+	directives := make([]string, 0)
+	for _, directive := range strings.Split(policy, ";") {
+		fields := strings.Fields(directive)
+		if len(fields) > 0 && fields[0] != "frame-ancestors" {
+			directives = append(directives, strings.TrimSpace(directive))
+		}
+	}
+	directives = append(directives, "frame-ancestors 'self'")
+	return strings.Join(directives, "; ") + ";"
 }
 
 func isAPIRoutePath(c *gin.Context) bool {

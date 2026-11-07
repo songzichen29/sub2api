@@ -734,7 +734,12 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/docs', label: t('nav.integrationDocs'), icon: DocsIcon },
+    ...(!customMenuItemsForUser.value.some(item => {
+      try {
+        const url = new URL(item.url, window.location.origin)
+        return url.origin === window.location.origin && url.pathname.replace(/\/+$/, '') === '/docs'
+      } catch { return false }
+    }) ? [{ path: '/docs', label: t('nav.integrationDocs'), icon: DocsIcon }] : []),
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: GlobeIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },

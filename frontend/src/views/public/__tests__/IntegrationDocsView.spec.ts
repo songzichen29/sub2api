@@ -26,7 +26,7 @@ vi.mock('@/composables/useClipboard', () => ({
 }))
 
 const mounted: ReturnType<typeof mount>[] = []
-async function mountDocs(locale = 'zh', path = '/docs') {
+async function mountDocs(locale = 'zh', path = '/docs', embedded = false) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
@@ -34,6 +34,7 @@ async function mountDocs(locale = 'zh', path = '/docs') {
   await router.push(path)
   const wrapper = mount(IntegrationDocsView, {
     attachTo: document.body,
+    props: { embedded },
     global: {
       plugins: [
         router,
@@ -74,6 +75,16 @@ describe('gateway endpoint configuration', () => {
 })
 
 describe('IntegrationDocsView', () => {
+  it('keeps chapter navigation embedded and opens site actions in the parent', async () => {
+    const { wrapper, router } = await mountDocs('zh', '/docs?ui_mode=embedded&theme=dark&lang=zh', true)
+    expect(wrapper.find('header').exists()).toBe(false)
+    expect(wrapper.get('#keys a[href="/keys"]').attributes('target')).toBe('_top')
+    await wrapper.get('#overview a[href="#models"]').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ ui_mode: 'embedded', theme: 'dark', lang: 'zh' })
+    expect(router.currentRoute.value.hash).toBe('#models')
+  })
+
   it('opens a directly linked chapter after the page has mounted', async () => {
     const { wrapper } = await mountDocs('zh', '/docs#clients')
     expect(document.activeElement).toBe(wrapper.get('#clients').element)
