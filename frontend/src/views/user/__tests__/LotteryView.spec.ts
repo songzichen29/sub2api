@@ -30,6 +30,15 @@ beforeEach(() => {
 afterEach(() => { wrappers.splice(0).forEach(w => w.unmount()); vi.useRealTimers() })
 
 describe('user lottery journey', () => {
+  it('shows recharge principal in CNY while prize credit stays in USD', async () => {
+    api.overview.mockResolvedValue({ ...fixture(), prizes: [{ name: '余额奖', amount: 2, probability_bps: 10000 }] })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.text()).toContain('CNY 35.00')
+    expect(w.text()).toContain('人民币 10.00 元')
+    expect(w.text()).toContain('人民币 5.00 元')
+    expect(w.text()).toContain('USD 2')
+    expect(w.text()).not.toContain('USD 35.00')
+  })
   it('shows earned chances and join/binding instructions without QQ binding', async () => {
     const w = render(LotteryView); await flushPromises()
     expect(w.get('[data-testid="lottery-remaining"]').text()).toBe('2')

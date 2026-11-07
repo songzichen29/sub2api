@@ -31,8 +31,7 @@ func expectWebStart(m sqlmock.Sqlmock, mysql bool) {
 func expectWebState(m sqlmock.Sqlmock, cfg LotteryConfig, used int64, recharge string) {
 	raw, _ := json.Marshal(cfg)
 	m.ExpectQuery("SELECT value FROM settings").WithArgs(lotteryConfigKey).WillReturnRows(sqlmock.NewRows([]string{"value"}).AddRow(string(raw)))
-	m.ExpectQuery(`SELECT COALESCE\(SUM\(CASE`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow(recharge))
-	m.ExpectQuery(`SELECT COALESCE\(SUM\(value\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow("0"))
+	expectLotteryRecharge(m, 42, recharge)
 	m.ExpectQuery(`SELECT COUNT\(\*\) FROM qqc_lottery_draws`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(used))
 	m.ExpectQuery(`SELECT COALESCE\(SUM\(chances\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"bonus"}).AddRow(0))
 }

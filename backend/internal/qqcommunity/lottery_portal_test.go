@@ -39,8 +39,7 @@ func TestUserLotteryIncludesUnboundEntitlementAndOnlyPublishedEnabledGroups(t *t
 	l.PublicGroups = []LotteryPublicGroup{{"10001", "visible", "https://qun.qq.com/abc"}, {"10002", "disabled", ""}, {"10003", "removed", ""}}
 	m.ExpectBegin()
 	expectPortalConfig(t, m, c, l)
-	m.ExpectQuery(`SELECT COALESCE\(SUM\(CASE`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow("19"))
-	m.ExpectQuery(`SELECT COALESCE\(SUM\(value\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"sum"}).AddRow("6"))
+	expectLotteryRecharge(m, 42, "25")
 	m.ExpectQuery(`SELECT COUNT\(\*\) FROM qqc_lottery_draws`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(1))
 	m.ExpectQuery(`SELECT COALESCE\(SUM\(chances\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"grants"}).AddRow(3))
 	m.ExpectQuery(`SELECT member_id FROM qqc_bindings`).WithArgs(c.AppID, int64(42)).WillReturnError(sql.ErrNoRows)

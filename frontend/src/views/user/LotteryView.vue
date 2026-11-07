@@ -51,7 +51,7 @@
               </ul>
             </div>
             <dl class="lottery-account-stats">
-              <div><dt>{{ t('lotteryPortal.recharge') }}</dt><dd>USD {{ data.state.recharge_total.toFixed(2) }}</dd></div>
+              <div><dt>{{ t('lotteryPortal.recharge') }}</dt><dd>CNY {{ data.state.recharge_total.toFixed(2) }}</dd></div>
               <div><dt>{{ t('lotteryPortal.earned') }}</dt><dd>{{ data.state.earned }}</dd></div>
               <div><dt>{{ t('lotteryPortal.used') }}</dt><dd>{{ data.state.used }}</dd></div>
             </dl>

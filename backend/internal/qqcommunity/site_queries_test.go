@@ -86,6 +86,8 @@ func TestSiteQueryRulesKeepRewardPrecisionAndDoNotPromiseExecution(t *testing.T)
 	lottery := defaultLotteryConfig()
 	lottery.Enabled, lottery.GuaranteeEnabled = true, true
 	text = siteLotteryRules(lottery)
+	require.Contains(t, text, "人民币 10.00 元")
+	require.NotContains(t, text, "每满 USD")
 	require.Contains(t, text, "保底奖池")
 	require.Contains(t, text, "普通中奖不重置保底进度")
 	text = siteGrowthRules(GrowthConfig{Tasks: []GrowthTask{

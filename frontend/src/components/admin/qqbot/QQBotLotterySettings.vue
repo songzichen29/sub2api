@@ -54,7 +54,7 @@
       <form class="flex flex-wrap gap-3" @submit.prevent="lookup"><label class="min-w-0 flex-1"><span class="sr-only">{{ t('qqbot.userID') }}</span><input v-model="userID" class="input" :placeholder="t('qqbot.userID')" type="number" min="1" step="1" required /></label><button class="btn btn-secondary" :disabled="lookingUp">{{ t('common.search') }}</button></form>
       <p v-if="lookupError" role="alert" class="text-red-600">{{ lookupError }}</p>
       <dl v-if="state" class="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-        <div><dt class="text-gray-500">{{ t('qqbot.eligibleRecharge') }}</dt><dd class="mt-1 font-semibold">${{ state.recharge_total.toFixed(2) }}</dd></div>
+        <div><dt class="text-gray-500">{{ t('qqbot.eligibleRecharge') }}</dt><dd class="mt-1 font-semibold">CNY {{ state.recharge_total.toFixed(2) }}</dd></div>
         <div><dt class="text-gray-500">{{ t('qqbot.earnedChances') }}</dt><dd class="mt-1 font-semibold">{{ state.earned }}</dd></div>
         <div><dt class="text-gray-500">{{ t('qqbot.directRechargeChances') }}</dt><dd class="mt-1 font-semibold">{{ state.bonus_chances || 0 }}</dd></div>
         <div><dt class="text-gray-500">{{ t('qqbot.usedChances') }}</dt><dd class="mt-1 font-semibold">{{ state.used }}</dd></div>

@@ -110,13 +110,12 @@ func lotteryResult(cfg LotteryConfig, state LotteryState, draws []lotteryOutcome
 	return b.String()
 }
 
-// Count USD principal from completed online balance orders and redeemed positive
-// balance codes in the current lottery period. Payment-generated codes only count as orders.
-// Bonus credits, subscriptions and administrative credits never create chances.
+// Count actual CNY principal from completed online balance orders in this period.
+// USD balance codes, bonuses, subscriptions and administrative credits do not count.
 // Refund-in-progress orders are suspended; partial refunds remove principal pro rata.
-func lotteryState(ctx context.Context, db queryRower, c LotteryConfig, uid int64, lockSources bool) (LotteryState, error) {
+func lotteryState(ctx context.Context, db lotteryQuerier, c LotteryConfig, uid int64, lockSources bool) (LotteryState, error) {
 	out := LotteryState{UserID: uid}
-	total, err := rechargeSum(ctx, db, uid, &lotteryPeriodStart, lockSources)
+	total, err := lotteryRechargeSum(ctx, db, uid, lockSources)
 	if err != nil {
 		return out, err
 	}
@@ -224,7 +223,7 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 	}
 	if showRules {
 		var b strings.Builder
-		fmt.Fprintf(&b, "🎉 **%s**\n统计起点：%s\n起点后累计有效充值每满 USD %.2f 送 %d 次\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), lotteryPeriodStartLabel, cfg.RechargeStep, cfg.ChancesPerStep)
+		fmt.Fprintf(&b, "🎉 **%s**\n统计起点：%s\n起点后累计实付充值本金每满人民币 %.2f 元送 %d 次（不含手续费）\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), lotteryPeriodStartLabel, cfg.RechargeStep, cfg.ChancesPerStep)
 		for _, p := range cfg.Prizes {
 			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
 		}
@@ -244,7 +243,7 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_lottery_draws WHERE user_id=$1 AND amount>0 AND created_at >= $2`, uid, lotteryPeriodStart).Scan(&wins); err != nil {
 		return "", err
 	}
-	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n再充值 USD %.2f 获赠", state.Used, wins, state.Remaining, state.NextRecharge)
+	result := fmt.Sprintf("🎟 **抽奖次数**\n累计已抽：%d 次\n中奖次数（额度奖励大于0）：%d 次\n剩余抽奖次数：%d 次\n再充值人民币 %.2f 元获赠", state.Used, wins, state.Remaining, state.NextRecharge)
 	if state.DrawsUntilGuarantee > 0 {
 		result += fmt.Sprintf("\n距保底 %d 次", state.DrawsUntilGuarantee)
 	}
@@ -329,9 +328,9 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 	}
 	if state.Remaining < int64(count) {
 		if count > 1 {
-			return fmt.Sprintf("抽奖次数不足，本次未抽奖\n需要抽奖次数：%d 次\n剩余抽奖次数：%d 次\n再充值 USD %.2f 获赠", count, state.Remaining, state.NextRecharge), nil
+			return fmt.Sprintf("抽奖次数不足，本次未抽奖\n需要抽奖次数：%d 次\n剩余抽奖次数：%d 次\n再充值人民币 %.2f 元获赠", count, state.Remaining, state.NextRecharge), nil
 		}
-		return fmt.Sprintf("抽奖次数不足\n再充值 USD %.2f 获赠", state.NextRecharge), nil
+		return fmt.Sprintf("抽奖次数不足\n再充值人民币 %.2f 元获赠", state.NextRecharge), nil
 	}
 	draws := make([]lotteryOutcome, count)
 	for i := range draws {
@@ -370,9 +369,10 @@ func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, u
 		// Older records without this field remain ordinary draws, without a migration.
 		snapshot, err := json.Marshal(struct {
 			LotteryConfig
-			IsGuaranteed bool  `json:"is_guaranteed"`
-			DrawNumber   int64 `json:"draw_number"`
-		}{cfg, guaranteed, state.Used + int64(i) + 1})
+			IsGuaranteed     bool   `json:"is_guaranteed"`
+			DrawNumber       int64  `json:"draw_number"`
+			RechargeCurrency string `json:"recharge_currency"`
+		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY"})
 		if err != nil {
 			return err
 		}
