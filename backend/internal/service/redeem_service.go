@@ -197,6 +197,9 @@ func (s *RedeemService) GenerateRandomCode() (string, error) {
 
 // GenerateCodes 批量生成兑换码
 func (s *RedeemService) GenerateCodes(ctx context.Context, req GenerateCodesRequest) ([]RedeemCode, error) {
+	if err := validateLotteryRedeemValue(req.Type, req.Value); err != nil {
+		return nil, err
+	}
 	if req.Count <= 0 {
 		return nil, errors.New("count must be greater than 0")
 	}
@@ -257,6 +260,9 @@ func (s *RedeemService) CreateCode(ctx context.Context, code *RedeemCode) error 
 	}
 	if code.Type == "" {
 		code.Type = RedeemTypeBalance
+	}
+	if err := validateLotteryRedeemValue(code.Type, code.Value); err != nil {
+		return err
 	}
 	if code.Type != RedeemTypeInvitation && code.Value == 0 {
 		return errors.New("value must not be zero")
@@ -451,6 +457,10 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 	// 验证兑换码类型的前置条件。邀请码属于注册流程，不能通过普通兑换接口使用。
 	switch redeemCode.Type {
 	case RedeemTypeBalance, RedeemTypeConcurrency:
+	case RedeemTypeLotteryChances:
+		if err := validateLotteryRedeemValue(redeemCode.Type, redeemCode.Value); err != nil {
+			return nil, err
+		}
 	case RedeemTypeSubscription:
 		if redeemCode.GroupID == nil {
 			return nil, infraerrors.BadRequest("REDEEM_CODE_INVALID", "invalid subscription redeem code: missing group_id")
@@ -486,6 +496,10 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 
 	// 执行兑换逻辑（兑换码已被锁定，此时可安全操作）
 	switch redeemCode.Type {
+	case RedeemTypeLotteryChances:
+		if err := grantRedeemLotteryChances(txCtx, redeemCode.ID, userID, int(redeemCode.Value)); err != nil {
+			return nil, err
+		}
 	case RedeemTypeBalance:
 		amount := redeemCode.Value
 		if amount < 0 {

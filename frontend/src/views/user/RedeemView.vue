@@ -102,6 +102,9 @@
                     <p v-if="redeemResult.type === 'balance'" class="font-medium">
                       {{ t('redeem.added') }}: ${{ redeemResult.value.toFixed(2) }}
                     </p>
+                    <p v-else-if="redeemResult.type === 'lottery_chances'" class="font-medium" data-testid="redeemed-lottery-chances">
+                      {{ t('redeem.lotteryChancesAdded', { count: redeemResult.value }) }}
+                    </p>
                     <p v-else-if="redeemResult.type === 'concurrency'" class="font-medium">
                       {{ t('redeem.added') }}: {{ redeemResult.value }}
                       {{ t('redeem.concurrentRequests') }}
@@ -266,6 +269,7 @@
                     size="md"
                     class="text-purple-600 dark:text-purple-400"
                   />
+                  <Icon v-else-if="item.type === 'lottery_chances'" name="gift" size="md" class="text-blue-600 dark:text-blue-400" />
                   <!-- 并发类型图标 -->
                   <Icon
                     v-else
@@ -436,6 +440,7 @@ const getHistoryItemTitle = (item: AccountActivityItem) => {
   if (reward) return t('redeem.qqRewards.' + reward.kind)
   if (item.type === 'transfer_in') return t('redeem.transferIn')
   if (item.type === 'transfer_out') return t('redeem.transferOut')
+  if (item.type === 'lottery_chances') return t('redeem.lotteryChancesRedeemed')
   if (item.type === 'balance') {
     return t('redeem.balanceAddedRedeem')
   } else if (item.type === 'admin_balance') {
@@ -458,6 +463,7 @@ const getHistoryItemNote = (item: AccountActivityItem) => {
 }
 
 const formatHistoryValue = (item: AccountActivityItem) => {
+  if (item.type === 'lottery_chances') return '+' + t('redeem.lotteryChanceCount', { count: item.value })
   if (isBalanceType(item.type)) {
     return item.value < 0 ? '-$' + Math.abs(item.value).toFixed(2) : '+$' + item.value.toFixed(2)
   } else if (isSubscriptionType(item.type)) {

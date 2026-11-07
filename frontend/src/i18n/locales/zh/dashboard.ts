@@ -706,7 +706,7 @@ export default {
   },
   "redeem": {
     "title": "兑换码",
-    "description": "输入兑换码以充值余额或增加并发数",
+    "description": "输入兑换码获取余额、并发、订阅或抽奖次数",
     "currentBalance": "当前余额",
     "concurrency": "并发数",
     "requests": "请求",
@@ -723,7 +723,7 @@ export default {
     "newConcurrency": "新并发数",
     "aboutCodes": "关于兑换码",
     "codeRule1": "每个兑换码只能使用一次",
-    "codeRule2": "兑换码可以增加余额、并发数或试用权限",
+    "codeRule2": "兑换码可以增加余额、并发数、订阅或抽奖次数",
     "codeRule3": "如有兑换问题，请联系客服",
     "codeRule4": "余额和并发数即时更新",
     "recentActivity": "最近活动",
@@ -745,6 +745,9 @@ export default {
       "redemption": "QQ 兑换奖励"
     },
     "balanceAddedRedeem": "余额充值（兑换）",
+    "lotteryChancesAdded": "已赠送 {count} 次抽奖机会",
+    "lotteryChancesRedeemed": "抽奖次数（兑换）",
+    "lotteryChanceCount": "{count} 次抽奖",
     "balanceAddedAffiliate": "余额充值（返利转入）",
     "balanceAddedAdmin": "余额充值（管理员）",
     "balanceDeductedAdmin": "余额扣除（管理员）",

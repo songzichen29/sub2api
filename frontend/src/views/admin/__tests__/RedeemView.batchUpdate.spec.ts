@@ -3,9 +3,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import RedeemView from '../RedeemView.vue'
 
-const { listRedeemCodes, batchUpdateRedeemCodes, getAllGroups, showSuccess, showError, showInfo } =
+const { listRedeemCodes, generateRedeemCodes, batchUpdateRedeemCodes, getAllGroups, showSuccess, showError, showInfo } =
   vi.hoisted(() => ({
     listRedeemCodes: vi.fn(),
+    generateRedeemCodes: vi.fn(),
     batchUpdateRedeemCodes: vi.fn(),
     getAllGroups: vi.fn(),
     showSuccess: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     redeem: {
       list: listRedeemCodes,
-      generate: vi.fn(),
+      generate: generateRedeemCodes,
       delete: vi.fn(),
       batchDelete: vi.fn(),
       batchUpdate: batchUpdateRedeemCodes,
@@ -105,6 +106,7 @@ describe('admin RedeemView batch update', () => {
     document.body.innerHTML = ''
 
     listRedeemCodes.mockReset()
+    generateRedeemCodes.mockReset()
     batchUpdateRedeemCodes.mockReset()
     getAllGroups.mockReset()
     showSuccess.mockReset()
@@ -143,6 +145,39 @@ describe('admin RedeemView batch update', () => {
     })
     batchUpdateRedeemCodes.mockResolvedValue({ updated: 1, message: 'ok' })
     getAllGroups.mockResolvedValue([])
+  })
+
+  it('generates lottery codes with integer chances and displays the new type in the list', async () => {
+    const code = { id: 3, code: 'LOTTERY-CODE', type: 'lottery_chances', value: 5, status: 'unused', created_at: '2026-11-07T00:00:00Z' }
+    listRedeemCodes.mockResolvedValue({ items: [code], total: 1, page: 1, page_size: 20, pages: 1 })
+    generateRedeemCodes.mockResolvedValue([code])
+    const wrapper = mount(RedeemView, { global: { stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
+      DataTable: DataTableStub, Pagination: true, ConfirmDialog: true, Select: SelectStub,
+      GroupBadge: true, GroupOptionItem: true, Icon: true, Teleport: true
+    } } })
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.redeem.types.lottery_chances')
+    expect(wrapper.text()).toContain('admin.redeem.lotteryChanceCount')
+    expect(wrapper.text()).not.toContain('$5.00')
+    await wrapper.findAll('button').find(b => b.text().includes('admin.redeem.generateCodes'))!.trigger('click')
+    await wrapper.get('[data-test="generate-code-type"]').setValue('lottery_chances')
+    const value = wrapper.get('[data-test="generate-code-value"]')
+    expect(value.attributes('min')).toBe('1')
+    expect(value.attributes('max')).toBe('1000')
+    expect(value.attributes('step')).toBe('1')
+    for (const invalid of ['0', '1.5', '1001']) {
+      await value.setValue(invalid)
+      await wrapper.get('[data-test="generate-codes-form"]').trigger('submit')
+      expect(generateRedeemCodes).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenLastCalledWith('admin.redeem.invalidLotteryChances')
+    }
+    await value.setValue('5')
+    await wrapper.get('[data-test="generate-codes-form"]').trigger('submit')
+    await flushPromises()
+    expect(generateRedeemCodes).toHaveBeenCalledWith(1, 'lottery_chances', 5, undefined, undefined, undefined)
+    wrapper.unmount()
   })
 
   it('submits only checked fields for selected redeem codes', async () => {

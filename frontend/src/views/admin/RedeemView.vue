@@ -131,6 +131,7 @@
           <template #cell-value="{ value, row }">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
               <template v-if="row.type === 'balance'">${{ value.toFixed(2) }}</template>
+              <template v-else-if="row.type === 'lottery_chances'">{{ t('admin.redeem.lotteryChanceCount', { count: value }) }}</template>
               <template v-else-if="row.type === 'subscription'">
                 {{ row.validity_days || 30 }} {{ t('admin.redeem.days') }}
                 <span v-if="row.group" class="ml-1 text-xs text-gray-500 dark:text-gray-400"
@@ -282,10 +283,10 @@
           <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('admin.redeem.generateCodesTitle') }}
           </h2>
-          <form @submit.prevent="handleGenerateCodes" class="space-y-4">
+          <form data-test="generate-codes-form" @submit.prevent="handleGenerateCodes" class="space-y-4">
             <div>
               <label class="input-label">{{ t('admin.redeem.codeType') }}</label>
-              <Select v-model="generateForm.type" :options="typeOptions" />
+              <Select v-model="generateForm.type" data-test="generate-code-type" :options="typeOptions" />
             </div>
             <!-- 余额/并发类型：显示数值输入 -->
             <div v-if="generateForm.type !== 'subscription' && generateForm.type !== 'invitation'">
@@ -293,17 +294,22 @@
                 {{
                   generateForm.type === 'balance'
                     ? t('admin.redeem.amount')
-                    : t('admin.redeem.columns.value')
+                    : generateForm.type === 'lottery_chances'
+                      ? t('admin.redeem.lotteryChancesPerCode')
+                      : t('admin.redeem.columns.value')
                 }}
               </label>
               <input
                 v-model.number="generateForm.value"
+                data-test="generate-code-value"
                 type="number"
                 :step="generateForm.type === 'balance' ? '0.01' : '1'"
                 :min="generateForm.type === 'balance' ? '0.01' : '1'"
+                :max="generateForm.type === 'lottery_chances' ? 1000 : undefined"
                 required
                 class="input"
               />
+              <p v-if="generateForm.type === 'lottery_chances'" class="input-hint">{{ t('admin.redeem.lotteryChancesHint') }}</p>
             </div>
             <!-- 邀请码类型：显示提示信息 -->
             <div v-if="generateForm.type === 'invitation'" class="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
@@ -741,6 +747,7 @@ const columns = computed<Column[]>(() => [
 
 const typeOptions = computed(() => [
   { value: 'balance', label: t('admin.redeem.balance') },
+  { value: 'lottery_chances', label: t('admin.redeem.lotteryChances') },
   { value: 'concurrency', label: t('admin.redeem.concurrency') },
   { value: 'subscription', label: t('admin.redeem.subscription') },
   { value: 'invitation', label: t('admin.redeem.invitation') }
@@ -749,6 +756,7 @@ const typeOptions = computed(() => [
 const filterTypeOptions = computed(() => [
   { value: '', label: t('admin.redeem.allTypes') },
   { value: 'balance', label: t('admin.redeem.balance') },
+  { value: 'lottery_chances', label: t('admin.redeem.lotteryChances') },
   { value: 'concurrency', label: t('admin.redeem.concurrency') },
   { value: 'subscription', label: t('admin.redeem.subscription') },
   { value: 'invitation', label: t('admin.redeem.invitation') }
@@ -1026,6 +1034,10 @@ const buildBatchUpdateFields = (): BatchUpdateRedeemCodeFields | null => {
 }
 
 const handleGenerateCodes = async () => {
+  if (generateForm.type === 'lottery_chances' && (!Number.isInteger(generateForm.value) || generateForm.value < 1 || generateForm.value > 1000)) {
+    appStore.showError(t('admin.redeem.invalidLotteryChances'))
+    return
+  }
   // 订阅类型必须选择分组
   if (generateForm.type === 'subscription' && !generateForm.group_id) {
     appStore.showError(t('admin.redeem.groupRequired'))

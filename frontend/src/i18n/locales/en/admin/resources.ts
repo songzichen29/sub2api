@@ -241,6 +241,11 @@ export default {
     "subscription": "Subscription",
     "invitation": "Invitation",
     "invitationHint": "Invitation codes are used to restrict user registration. They are automatically marked as used after use.",
+    "lotteryChances": "Lottery chances",
+    "lotteryChancesPerCode": "Chances per code",
+    "lotteryChanceCount": "{count} chance(s)",
+    "lotteryChancesHint": "Grant 1–1000 chances per code, redeemable once. Website and QQ share chances; balance and recharge totals stay unchanged.",
+    "invalidLotteryChances": "Lottery chances must be a whole number from 1 to 1000.",
     "unused": "Unused",
     "used": "Used",
     "columns": {
@@ -301,6 +306,7 @@ export default {
     "failedToCopy": "Failed to copy codes",
     "types": {
       "balance": "Balance",
+      "lottery_chances": "Lottery chances",
       "concurrency": "Concurrency",
       "subscription": "Subscription",
       "invitation": "Invitation",

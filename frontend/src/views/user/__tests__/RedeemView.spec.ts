@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import RedeemView from '../RedeemView.vue'
 
-vi.mock('@/components/user/LotteryNotice.vue', () => ({ default: { template: '<div data-testid="lottery-notice" />' } }))
+vi.mock('@/components/user/LotteryNotice.vue', () => ({ default: { props: ['refreshKey'], template: '<div data-testid="lottery-notice" :data-refresh="refreshKey" />' } }))
 
 const { redeem, getAccountActivity, refreshUser, fetchActiveSubscriptions, showError, showWarning, showSuccess } = vi.hoisted(() => ({
   redeem: vi.fn(),
@@ -58,7 +58,7 @@ describe('RedeemView refresh after redemption', () => {
     vi.restoreAllMocks()
   })
 
-  it.each(['balance', 'concurrency', 'subscription'])(
+  it.each(['balance', 'concurrency', 'subscription', 'lottery_chances'])(
     'keeps a successful %s redemption when profile refresh fails', async (type) => {
       redeem.mockResolvedValue({ type, value: 20, message: 'Code applied' })
       refreshUser.mockRejectedValue({ status: 503, message: 'Service unavailable' })
@@ -86,6 +86,21 @@ describe('RedeemView refresh after redemption', () => {
       wrapper.unmount()
     }
   )
+
+  it('shows granted lottery chances and history in chances, then refreshes the shared counter', async () => {
+    redeem.mockResolvedValue({ type: 'lottery_chances', value: 5 })
+    getAccountActivity.mockResolvedValueOnce({ items: [], total: 0 }).mockResolvedValueOnce({ items: [{
+      id: 1, code: 'REDEEM-CODE', type: 'lottery_chances', value: 5, used_at: '2026-11-07T00:00:00Z'
+    }], total: 1 })
+    const wrapper = await submitCode()
+    expect(wrapper.get('[data-testid="redeemed-lottery-chances"]').text()).toBe('redeem.lotteryChancesAdded 5')
+    expect(wrapper.text()).toContain('redeem.lotteryChancesRedeemed')
+    expect(wrapper.text()).toContain('+redeem.lotteryChanceCount 5')
+    expect(wrapper.text()).not.toContain('+$5.00')
+    expect(wrapper.get('[data-testid="lottery-notice"]').attributes('data-refresh')).toBe('1')
+    expect(fetchActiveSubscriptions).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 
   it('pages on the server, changes size, and resets page and total after redeeming', async () => {
     getAccountActivity.mockResolvedValue({ items: [], total: 101 })
