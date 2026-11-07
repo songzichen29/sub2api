@@ -206,6 +206,8 @@ export default {
     "recharge": "充值",
     "subscribe": "订阅",
     "docs": "文档",
+    "integrationDocs": "接入文档",
+    "externalDocs": "外部文档",
     "myOrders": "我的订单",
     "myInvoices": "我的发票",
     "orderManagement": "订单管理",

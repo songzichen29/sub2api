@@ -17,6 +17,47 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func TestSecurityHeadersDocsEmbedding(t *testing.T) {
+	for _, policy := range []string{"", "default-src 'self'; frame-ancestors 'none'; img-src https://images.example.com"} {
+		for _, path := range []string{"/docs", "/docs/?ui_mode=embedded&theme=dark"} {
+			for _, method := range []string{http.MethodGet, http.MethodHead} {
+				t.Run(method+path+policy, func(t *testing.T) {
+					w := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(w)
+					c.Request = httptest.NewRequest(method, path, nil)
+					SecurityHeaders(config.CSPConfig{Enabled: true, Policy: policy}, nil)(c)
+					assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+					csp := w.Header().Get("Content-Security-Policy")
+					assert.Equal(t, 1, countDirectiveValue(csp, "frame-ancestors", "'self'"))
+					assert.Zero(t, countDirectiveValue(csp, "frame-ancestors", "'none'"))
+					assert.Contains(t, csp, "'nonce-")
+					if policy != "" {
+						assert.Contains(t, csp, "img-src https://images.example.com")
+					}
+				})
+			}
+		}
+	}
+	for _, path := range []string{"/", "/login", "/admin/settings", "/api/v1/auth/login", "/docs/batch-image", "/docs-other"} {
+		t.Run("denies_"+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodGet, path+"?ui_mode=embedded", nil)
+			SecurityHeaders(config.CSPConfig{Enabled: true}, nil)(c)
+			assert.Equal(t, "DENY", w.Header().Get("X-Frame-Options"))
+			assert.Equal(t, 1, countDirectiveValue(w.Header().Get("Content-Security-Policy"), "frame-ancestors", "'none'"))
+		})
+	}
+	t.Run("allows_same_origin_with_csp_disabled", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodGet, "/docs", nil)
+		SecurityHeaders(config.CSPConfig{Enabled: false}, nil)(c)
+		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+		assert.Empty(t, w.Header().Get("Content-Security-Policy"))
+	})
+}
+
 func TestGenerateNonce(t *testing.T) {
 	t.Run("generates_valid_base64_string", func(t *testing.T) {
 		nonce, err := GenerateNonce()

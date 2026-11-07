@@ -115,9 +115,18 @@ describe('feature route guard', () => {
     authStore.isAuthenticated = true
     authStore.isAdmin = false
     authStore.isSimpleMode = false
+    appStore.backendModeEnabled = false
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
+  })
+
+  it('allows anonymous access to documentation in backend-only mode', async () => {
+    authStore.isAuthenticated = false
+    appStore.backendModeEnabled = true
+    const { navigation, next } = runGuard({ requiresAuth: false }, '/docs')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
   })
 
   it('waits for the first public-settings request before deciding payment access', async () => {

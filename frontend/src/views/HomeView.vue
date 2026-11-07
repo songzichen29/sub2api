@@ -41,6 +41,15 @@
             <Icon name="book" size="md" />
           </a>
           <router-link
+            v-else
+            to="/docs"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 dark:text-dark-400 dark:hover:bg-dark-800"
+            :title="t('nav.integrationDocs')"
+            :aria-label="t('nav.integrationDocs')"
+          >
+            <Icon name="book" size="md" />
+          </router-link>
+          <router-link
             v-if="showMarketplaceEntry"
             to="/available-channels"
             class="flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
@@ -157,6 +166,15 @@
           >
             <Icon name="book" size="md" />
           </a>
+          <router-link
+            v-else
+            to="/docs"
+            class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+            :title="t('nav.integrationDocs')"
+            :aria-label="t('nav.integrationDocs')"
+          >
+            <Icon name="book" size="md" />
+          </router-link>
 
           <!-- Model Plaza Link -->
           <router-link
@@ -505,6 +523,13 @@
           >
             {{ t('home.docs') }}
           </a>
+          <router-link
+            v-else
+            to="/docs"
+            class="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-dark-400 dark:hover:text-white"
+          >
+            {{ t('nav.integrationDocs') }}
+          </router-link>
           <a
             :href="githubUrl"
             target="_blank"

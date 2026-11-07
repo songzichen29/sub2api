@@ -84,7 +84,7 @@ function simulateGuard(
       return authState.isAdmin ? '/admin/dashboard' : '/dashboard'
     }
     if (authState.backendModeEnabled && !authState.isAuthenticated) {
-      const allowed = ['/login', '/key-usage', '/setup', '/payment/result']
+      const allowed = ['/login', '/key-usage', '/setup', '/payment/result', '/docs']
       const callbackPaths = [
         '/auth/callback',
         '/auth/linuxdo/callback',
@@ -369,6 +369,18 @@ describe('路由守卫逻辑', () => {
       }
       const redirect = simulateGuard('/key-usage', { requiresAuth: false }, authState)
       expect(redirect).toBeNull()
+    })
+
+    it('unauthenticated: /docs and its article anchors are allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      }
+      expect(simulateGuard('/docs', { requiresAuth: false }, authState)).toBeNull()
+      expect(simulateGuard('/docs#troubleshooting', { requiresAuth: false }, authState)).toBeNull()
     })
 
     it('unauthenticated: /setup is allowed', () => {

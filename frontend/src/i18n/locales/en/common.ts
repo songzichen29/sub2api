@@ -206,6 +206,8 @@ export default {
     "recharge": "Recharge",
     "subscribe": "Subscription",
     "docs": "Docs",
+    "integrationDocs": "Integration guide",
+    "externalDocs": "External docs",
     "myOrders": "My Orders",
     "myInvoices": "My Invoices",
     "orderManagement": "Orders",
