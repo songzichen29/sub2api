@@ -684,6 +684,34 @@ func (_c *GroupCreate) SetNillableFallbackGroupIDOnInvalidRequest(v *int64) *Gro
 	return _c
 }
 
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (_c *GroupCreate) SetFallbackGroupIDOnUnavailable(v int64) *GroupCreate {
+	_c.mutation.SetFallbackGroupIDOnUnavailable(v)
+	return _c
+}
+
+// SetNillableFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFallbackGroupIDOnUnavailable(v *int64) *GroupCreate {
+	if v != nil {
+		_c.SetFallbackGroupIDOnUnavailable(*v)
+	}
+	return _c
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (_c *GroupCreate) SetUserConcurrencyLimit(v int) *GroupCreate {
+	_c.mutation.SetUserConcurrencyLimit(v)
+	return _c
+}
+
+// SetNillableUserConcurrencyLimit sets the "user_concurrency_limit" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableUserConcurrencyLimit(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetUserConcurrencyLimit(*v)
+	}
+	return _c
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_c *GroupCreate) SetModelRouting(v map[string][]int64) *GroupCreate {
 	_c.mutation.SetModelRouting(v)
@@ -1205,6 +1233,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
 	}
+	if _, ok := _c.mutation.UserConcurrencyLimit(); !ok {
+		v := group.DefaultUserConcurrencyLimit
+		_c.mutation.SetUserConcurrencyLimit(v)
+	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		v := group.DefaultModelRoutingEnabled
 		_c.mutation.SetModelRoutingEnabled(v)
@@ -1429,6 +1461,14 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
+	}
+	if _, ok := _c.mutation.UserConcurrencyLimit(); !ok {
+		return &ValidationError{Name: "user_concurrency_limit", err: errors.New(`ent: missing required field "Group.user_concurrency_limit"`)}
+	}
+	if v, ok := _c.mutation.UserConcurrencyLimit(); ok {
+		if err := group.UserConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "user_concurrency_limit", err: fmt.Errorf(`ent: validator failed for field "Group.user_concurrency_limit": %w`, err)}
+		}
 	}
 	if _, ok := _c.mutation.ModelRoutingEnabled(); !ok {
 		return &ValidationError{Name: "model_routing_enabled", err: errors.New(`ent: missing required field "Group.model_routing_enabled"`)}
@@ -1730,6 +1770,14 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FallbackGroupIDOnInvalidRequest(); ok {
 		_spec.SetField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64, value)
 		_node.FallbackGroupIDOnInvalidRequest = &value
+	}
+	if value, ok := _c.mutation.FallbackGroupIDOnUnavailable(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64, value)
+		_node.FallbackGroupIDOnUnavailable = &value
+	}
+	if value, ok := _c.mutation.UserConcurrencyLimit(); ok {
+		_spec.SetField(group.FieldUserConcurrencyLimit, field.TypeInt, value)
+		_node.UserConcurrencyLimit = value
 	}
 	if value, ok := _c.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -2806,6 +2854,48 @@ func (u *GroupUpsert) AddFallbackGroupIDOnInvalidRequest(v int64) *GroupUpsert {
 // ClearFallbackGroupIDOnInvalidRequest clears the value of the "fallback_group_id_on_invalid_request" field.
 func (u *GroupUpsert) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsert {
 	u.SetNull(group.FieldFallbackGroupIDOnInvalidRequest)
+	return u
+}
+
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsert) SetFallbackGroupIDOnUnavailable(v int64) *GroupUpsert {
+	u.Set(group.FieldFallbackGroupIDOnUnavailable, v)
+	return u
+}
+
+// UpdateFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFallbackGroupIDOnUnavailable() *GroupUpsert {
+	u.SetExcluded(group.FieldFallbackGroupIDOnUnavailable)
+	return u
+}
+
+// AddFallbackGroupIDOnUnavailable adds v to the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsert) AddFallbackGroupIDOnUnavailable(v int64) *GroupUpsert {
+	u.Add(group.FieldFallbackGroupIDOnUnavailable, v)
+	return u
+}
+
+// ClearFallbackGroupIDOnUnavailable clears the value of the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsert) ClearFallbackGroupIDOnUnavailable() *GroupUpsert {
+	u.SetNull(group.FieldFallbackGroupIDOnUnavailable)
+	return u
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (u *GroupUpsert) SetUserConcurrencyLimit(v int) *GroupUpsert {
+	u.Set(group.FieldUserConcurrencyLimit, v)
+	return u
+}
+
+// UpdateUserConcurrencyLimit sets the "user_concurrency_limit" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateUserConcurrencyLimit() *GroupUpsert {
+	u.SetExcluded(group.FieldUserConcurrencyLimit)
+	return u
+}
+
+// AddUserConcurrencyLimit adds v to the "user_concurrency_limit" field.
+func (u *GroupUpsert) AddUserConcurrencyLimit(v int) *GroupUpsert {
+	u.Add(group.FieldUserConcurrencyLimit, v)
 	return u
 }
 
@@ -4121,6 +4211,55 @@ func (u *GroupUpsertOne) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertOne
 func (u *GroupUpsertOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertOne) SetFallbackGroupIDOnUnavailable(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupIDOnUnavailable(v)
+	})
+}
+
+// AddFallbackGroupIDOnUnavailable adds v to the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertOne) AddFallbackGroupIDOnUnavailable(v int64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupIDOnUnavailable(v)
+	})
+}
+
+// UpdateFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFallbackGroupIDOnUnavailable() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupIDOnUnavailable()
+	})
+}
+
+// ClearFallbackGroupIDOnUnavailable clears the value of the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertOne) ClearFallbackGroupIDOnUnavailable() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupIDOnUnavailable()
+	})
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (u *GroupUpsertOne) SetUserConcurrencyLimit(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUserConcurrencyLimit(v)
+	})
+}
+
+// AddUserConcurrencyLimit adds v to the "user_concurrency_limit" field.
+func (u *GroupUpsertOne) AddUserConcurrencyLimit(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddUserConcurrencyLimit(v)
+	})
+}
+
+// UpdateUserConcurrencyLimit sets the "user_concurrency_limit" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateUserConcurrencyLimit() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUserConcurrencyLimit()
 	})
 }
 
@@ -5651,6 +5790,55 @@ func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnInvalidRequest() *GroupUpsertBu
 func (u *GroupUpsertBulk) ClearFallbackGroupIDOnInvalidRequest() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearFallbackGroupIDOnInvalidRequest()
+	})
+}
+
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertBulk) SetFallbackGroupIDOnUnavailable(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFallbackGroupIDOnUnavailable(v)
+	})
+}
+
+// AddFallbackGroupIDOnUnavailable adds v to the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertBulk) AddFallbackGroupIDOnUnavailable(v int64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddFallbackGroupIDOnUnavailable(v)
+	})
+}
+
+// UpdateFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFallbackGroupIDOnUnavailable() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFallbackGroupIDOnUnavailable()
+	})
+}
+
+// ClearFallbackGroupIDOnUnavailable clears the value of the "fallback_group_id_on_unavailable" field.
+func (u *GroupUpsertBulk) ClearFallbackGroupIDOnUnavailable() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearFallbackGroupIDOnUnavailable()
+	})
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (u *GroupUpsertBulk) SetUserConcurrencyLimit(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetUserConcurrencyLimit(v)
+	})
+}
+
+// AddUserConcurrencyLimit adds v to the "user_concurrency_limit" field.
+func (u *GroupUpsertBulk) AddUserConcurrencyLimit(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddUserConcurrencyLimit(v)
+	})
+}
+
+// UpdateUserConcurrencyLimit sets the "user_concurrency_limit" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateUserConcurrencyLimit() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateUserConcurrencyLimit()
 	})
 }
 

@@ -11,6 +11,7 @@ import (
 // token requests. This keeps media, metadata, and models-list paths outside
 // the profit-control surface by construction.
 func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	groupID = fallbackPolicyGroupID(ctx, groupID)
 	if _, ok := gatewayTokenRequestPricingAtFromContext(ctx); !ok || groupID == nil || *groupID <= 0 {
 		return ctx
 	}
@@ -29,6 +30,9 @@ func (s *GatewayService) withGatewayProfitControlGate(ctx context.Context, group
 
 	pricingAt, _ := gatewayTokenRequestPricingAtFromContext(ctx)
 	billingGroup := gatewayTokenRequestBillingGroupFromContext(ctx)
+	if original := accountFallbackBillingGroup(ctx); original != nil {
+		billingGroup = original
+	}
 	if billingGroup == nil {
 		if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
 			billingGroup = ctxGroup
@@ -63,6 +67,9 @@ func (s *GatewayService) clearForeignProfitControlGate(ctx context.Context, grou
 }
 
 func (s *GatewayService) resolveProfitControlGroup(ctx context.Context, groupID int64) (*Group, error) {
+	if group := accountFallbackBillingGroup(ctx); group != nil {
+		return group, nil
+	}
 	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(group) && group.ID == groupID {
 		return group, nil
 	}

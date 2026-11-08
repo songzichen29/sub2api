@@ -330,7 +330,9 @@ type CreateGroupInput struct {
 	// CodexModelsManifestConfig 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
-	RPMLimit int
+	RPMLimit                     int
+	UserConcurrencyLimit         int
+	FallbackGroupIDOnUnavailable *int64
 	// MaxReasoningEffort Anthropic/OpenAI 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string
 	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
@@ -416,7 +418,10 @@ type UpdateGroupInput struct {
 	// CodexModelsManifestConfig nil 表示不修改；非 openai 平台会被归一化为关闭。
 	CodexModelsManifestConfig *GroupCodexModelsManifestConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
-	RPMLimit *int
+	RPMLimit             *int
+	UserConcurrencyLimit *int
+	// nil preserves the current target; zero explicitly disables fallback.
+	FallbackGroupIDOnUnavailable *int64
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
 	MaxReasoningEffort *string
 	// MaxReasoningEffortOverLimit 空字符串视为 downgrade；nil 表示未提供不改动。

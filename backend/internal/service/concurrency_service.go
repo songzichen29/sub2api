@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
@@ -351,6 +352,9 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	if maxConcurrency > 0 {
 		var err error
 		acquired, err = s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
+		if err != nil || !acquired {
+			preventGroupFallback(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -389,6 +393,9 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 // If the user is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
 func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int) (*AcquireResult, error) {
+	if group, ok := ctx.Value(ctxkey.Group).(*Group); ok && group != nil && group.ID > 0 && group.UserConcurrencyLimit > 0 {
+		return s.acquireUserGroupSlot(ctx, userID, group.ID, maxConcurrency, group.UserConcurrencyLimit)
+	}
 	// If maxConcurrency is 0 or negative, no limit
 	if maxConcurrency <= 0 {
 		return &AcquireResult{

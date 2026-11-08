@@ -157,7 +157,8 @@ type Group struct {
 	RequirePrivacySet bool `json:"require_privacy_set"`
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
-	RPMLimit int `json:"rpm_limit"`
+	RPMLimit             int `json:"rpm_limit"`
+	UserConcurrencyLimit int `json:"user_concurrency_limit"`
 	// MaxReasoningEffort Anthropic/OpenAI 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
@@ -173,6 +174,7 @@ type Group struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
+	FallbackGroupIDOnUnavailable *int64 `json:"fallback_group_id_on_unavailable"`
 	// ForceOpenAIFast 是管理端请求策略，用户侧分组 DTO 无需暴露。
 	ForceOpenAIFast bool `json:"force_openai_fast"`
 	// FreeOpenAIFast 是管理端计费策略，用户侧分组 DTO 无需暴露。

@@ -583,6 +583,7 @@ export type GroupI18n = Record<string, GroupLocaleText>
 
 // 用户侧接口返回的 name / description 已由后端按请求语言（Accept-Language）选好
 export interface Group {
+	user_concurrency_limit?: number
   id: number
   name: string
   description: string | null
@@ -649,6 +650,7 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+	fallback_group_id_on_unavailable?: number | null
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
   i18n?: GroupI18n
   force_openai_fast: boolean
@@ -815,6 +817,8 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+	user_concurrency_limit?: number
+	fallback_group_id_on_unavailable?: number | null
   name: string
   description?: string | null
   i18n?: GroupI18n
@@ -884,6 +888,8 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+	user_concurrency_limit?: number
+	fallback_group_id_on_unavailable?: number | null
   name?: string
   description?: string | null
   i18n?: GroupI18n

@@ -192,6 +192,7 @@ func OpenAIPricingAtFromContext(ctx context.Context) time.Time {
 // （门不存在，全部否决点自动放行，既有行为零变化）。ctx 已有同分组门时直接
 // 复用：同一请求的全部 failover 重入共享同一阈值。
 func (s *OpenAIGatewayService) withOpenAIProfitControlGate(ctx context.Context, groupID *int64) context.Context {
+	groupID = fallbackPolicyGroupID(ctx, groupID)
 	if _, suppressed := ctx.Value(openAIProfitControlSuppressCtxKey{}).(struct{}); suppressed {
 		return ctx
 	}
@@ -223,7 +224,9 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	// 分组等 ID 不一致场景才回源仓库读取。auth 快照的分组字段完备性由
 	// GetByKeyForAuth 投影 + 集成测试保证（防投影漏列导致门静默失效）。
 	var group *Group
-	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
+	if original := accountFallbackBillingGroup(ctx); original != nil {
+		group = original
+	} else if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
 		group = ctxGroup
 	} else if s.schedulerSnapshot != nil {
 		// Lite 读取：门只用平台/倍率/利润/高峰字段，不需要账号计数聚合。
@@ -250,7 +253,9 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	// 因此优先取认证中间件放入 ctx 的分组；ctx 中无有效分组（内部调用）时
 	// 退回调度分组组合，直连 openai 分组场景两者等价。
 	billingGroup := group
-	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
+	if original := accountFallbackBillingGroup(ctx); original != nil {
+		billingGroup = original
+	} else if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) {
 		billingGroup = ctxGroup
 	}
 	downstream := billingGroup.RateMultiplier
@@ -288,6 +293,9 @@ func attachSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult)
 // （ProfitControlVetoLatest / GatewayProfitControlVetoLatest）与准入后粘性
 // 绑定，否则这两步会因为看不到调度栈内安装的门而退化为空操作。
 func ContextWithSelectionProfitGate(ctx context.Context, sel *AccountSelectionResult) context.Context {
+	if sel != nil && sel.routedGroupID > 0 {
+		ctx = context.WithValue(ctx, accountFallbackRouteKey{}, sel.routedGroupID)
+	}
 	if sel == nil || sel.profitGate == nil {
 		return ctx
 	}
@@ -355,6 +363,7 @@ func (s *OpenAIGatewayService) bindOpenAIStickySessionDuringSelection(ctx contex
 // remains sticky and becomes eligible again automatically after its rate
 // recovers.
 func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	groupID = fallbackStickyGroupID(ctx, groupID)
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}

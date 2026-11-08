@@ -963,6 +963,54 @@ func (_u *GroupUpdate) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdate {
 	return _u
 }
 
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdate) SetFallbackGroupIDOnUnavailable(v int64) *GroupUpdate {
+	_u.mutation.ResetFallbackGroupIDOnUnavailable()
+	_u.mutation.SetFallbackGroupIDOnUnavailable(v)
+	return _u
+}
+
+// SetNillableFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFallbackGroupIDOnUnavailable(v *int64) *GroupUpdate {
+	if v != nil {
+		_u.SetFallbackGroupIDOnUnavailable(*v)
+	}
+	return _u
+}
+
+// AddFallbackGroupIDOnUnavailable adds value to the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdate) AddFallbackGroupIDOnUnavailable(v int64) *GroupUpdate {
+	_u.mutation.AddFallbackGroupIDOnUnavailable(v)
+	return _u
+}
+
+// ClearFallbackGroupIDOnUnavailable clears the value of the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdate) ClearFallbackGroupIDOnUnavailable() *GroupUpdate {
+	_u.mutation.ClearFallbackGroupIDOnUnavailable()
+	return _u
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (_u *GroupUpdate) SetUserConcurrencyLimit(v int) *GroupUpdate {
+	_u.mutation.ResetUserConcurrencyLimit()
+	_u.mutation.SetUserConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableUserConcurrencyLimit sets the "user_concurrency_limit" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUserConcurrencyLimit(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetUserConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddUserConcurrencyLimit adds value to the "user_concurrency_limit" field.
+func (_u *GroupUpdate) AddUserConcurrencyLimit(v int) *GroupUpdate {
+	_u.mutation.AddUserConcurrencyLimit(v)
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdate) SetModelRouting(v map[string][]int64) *GroupUpdate {
 	_u.mutation.SetModelRouting(v)
@@ -1608,6 +1656,11 @@ func (_u *GroupUpdate) check() error {
 			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserConcurrencyLimit(); ok {
+		if err := group.UserConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "user_concurrency_limit", err: fmt.Errorf(`ent: validator failed for field "Group.user_concurrency_limit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -1921,6 +1974,21 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.FallbackGroupIDOnUnavailable(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnUnavailable(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64, value)
+	}
+	if _u.mutation.FallbackGroupIDOnUnavailableCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.UserConcurrencyLimit(); ok {
+		_spec.SetField(group.FieldUserConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUserConcurrencyLimit(); ok {
+		_spec.AddField(group.FieldUserConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)
@@ -3253,6 +3321,54 @@ func (_u *GroupUpdateOne) ClearFallbackGroupIDOnInvalidRequest() *GroupUpdateOne
 	return _u
 }
 
+// SetFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdateOne) SetFallbackGroupIDOnUnavailable(v int64) *GroupUpdateOne {
+	_u.mutation.ResetFallbackGroupIDOnUnavailable()
+	_u.mutation.SetFallbackGroupIDOnUnavailable(v)
+	return _u
+}
+
+// SetNillableFallbackGroupIDOnUnavailable sets the "fallback_group_id_on_unavailable" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFallbackGroupIDOnUnavailable(v *int64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFallbackGroupIDOnUnavailable(*v)
+	}
+	return _u
+}
+
+// AddFallbackGroupIDOnUnavailable adds value to the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdateOne) AddFallbackGroupIDOnUnavailable(v int64) *GroupUpdateOne {
+	_u.mutation.AddFallbackGroupIDOnUnavailable(v)
+	return _u
+}
+
+// ClearFallbackGroupIDOnUnavailable clears the value of the "fallback_group_id_on_unavailable" field.
+func (_u *GroupUpdateOne) ClearFallbackGroupIDOnUnavailable() *GroupUpdateOne {
+	_u.mutation.ClearFallbackGroupIDOnUnavailable()
+	return _u
+}
+
+// SetUserConcurrencyLimit sets the "user_concurrency_limit" field.
+func (_u *GroupUpdateOne) SetUserConcurrencyLimit(v int) *GroupUpdateOne {
+	_u.mutation.ResetUserConcurrencyLimit()
+	_u.mutation.SetUserConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableUserConcurrencyLimit sets the "user_concurrency_limit" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUserConcurrencyLimit(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUserConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddUserConcurrencyLimit adds value to the "user_concurrency_limit" field.
+func (_u *GroupUpdateOne) AddUserConcurrencyLimit(v int) *GroupUpdateOne {
+	_u.mutation.AddUserConcurrencyLimit(v)
+	return _u
+}
+
 // SetModelRouting sets the "model_routing" field.
 func (_u *GroupUpdateOne) SetModelRouting(v map[string][]int64) *GroupUpdateOne {
 	_u.mutation.SetModelRouting(v)
@@ -3911,6 +4027,11 @@ func (_u *GroupUpdateOne) check() error {
 			return &ValidationError{Name: "audio_stt_price_per_hour", err: fmt.Errorf(`ent: validator failed for field "Group.audio_stt_price_per_hour": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UserConcurrencyLimit(); ok {
+		if err := group.UserConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "user_concurrency_limit", err: fmt.Errorf(`ent: validator failed for field "Group.user_concurrency_limit": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.DefaultMappedModel(); ok {
 		if err := group.DefaultMappedModelValidator(v); err != nil {
 			return &ValidationError{Name: "default_mapped_model", err: fmt.Errorf(`ent: validator failed for field "Group.default_mapped_model": %w`, err)}
@@ -4241,6 +4362,21 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.FallbackGroupIDOnInvalidRequestCleared() {
 		_spec.ClearField(group.FieldFallbackGroupIDOnInvalidRequest, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.FallbackGroupIDOnUnavailable(); ok {
+		_spec.SetField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedFallbackGroupIDOnUnavailable(); ok {
+		_spec.AddField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64, value)
+	}
+	if _u.mutation.FallbackGroupIDOnUnavailableCleared() {
+		_spec.ClearField(group.FieldFallbackGroupIDOnUnavailable, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.UserConcurrencyLimit(); ok {
+		_spec.SetField(group.FieldUserConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedUserConcurrencyLimit(); ok {
+		_spec.AddField(group.FieldUserConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.ModelRouting(); ok {
 		_spec.SetField(group.FieldModelRouting, field.TypeJSON, value)

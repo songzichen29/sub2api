@@ -177,6 +177,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetClaudeCodeOnly(groupIn.ClaudeCodeOnly).
 		SetNillableFallbackGroupID(groupIn.FallbackGroupID).
 		SetNillableFallbackGroupIDOnInvalidRequest(groupIn.FallbackGroupIDOnInvalidRequest).
+		SetNillableFallbackGroupIDOnUnavailable(groupIn.FallbackGroupIDOnUnavailable).
+		SetUserConcurrencyLimit(groupIn.UserConcurrencyLimit).
 		SetModelRoutingEnabled(groupIn.ModelRoutingEnabled).
 		SetMcpXMLInject(groupIn.MCPXMLInject).
 		SetAllowMessagesDispatch(groupIn.AllowMessagesDispatch).
@@ -463,6 +465,12 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		builder = builder.SetFallbackGroupID(*groupIn.FallbackGroupID)
 	} else {
 		builder = builder.ClearFallbackGroupID()
+	}
+	builder = builder.SetUserConcurrencyLimit(groupIn.UserConcurrencyLimit)
+	if groupIn.FallbackGroupIDOnUnavailable != nil {
+		builder = builder.SetFallbackGroupIDOnUnavailable(*groupIn.FallbackGroupIDOnUnavailable)
+	} else {
+		builder = builder.ClearFallbackGroupIDOnUnavailable()
 	}
 	// 处理 FallbackGroupIDOnInvalidRequest：nil 时清除，否则设置
 	if groupIn.FallbackGroupIDOnInvalidRequest != nil {

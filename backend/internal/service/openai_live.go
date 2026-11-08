@@ -138,6 +138,12 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	if err != nil {
 		return nil, err
 	}
+	concurrencyGroupID, groupMax := liveGroupConcurrency(ctx, identity.GroupID)
+	if concurrencyGroupID > 0 {
+		if _, ok := liveCache.(LiveUserGroupConcurrencyCache); !ok {
+			return nil, ErrLiveUnavailable
+		}
+	}
 	attestation, attestationCiphertext, err := s.prepareLiveAttestation(ctx)
 	if err != nil {
 		return nil, err
@@ -177,16 +183,16 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 
 		account := selection.Account
 		leaseID := generateRequestID()
-		acquired, acquireErr := liveCache.AcquireLiveLease(
-			ctx,
-			account.ID,
-			account.Concurrency,
-			identity.UserID,
-			userMaxConcurrency,
-			identity.APIKeyID,
-			leaseID,
-			true,
-		)
+		var acquired bool
+		var acquireErr error
+		if concurrencyGroupID > 0 {
+			acquired, acquireErr = liveCache.(LiveUserGroupConcurrencyCache).AcquireLiveLeaseForGroup(
+				ctx, account.ID, account.Concurrency, identity.UserID, userMaxConcurrency,
+				concurrencyGroupID, groupMax, identity.APIKeyID, leaseID, true)
+		} else {
+			acquired, acquireErr = liveCache.AcquireLiveLease(ctx, account.ID, account.Concurrency,
+				identity.UserID, userMaxConcurrency, identity.APIKeyID, leaseID, true)
+		}
 		if acquireErr != nil || !acquired {
 			selection.ReleaseFunc()
 			if acquireErr != nil {
@@ -198,7 +204,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
 		selection.ReleaseFunc()
 		if createErr != nil {
-			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
+			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID, concurrencyGroupID)
 			if !s.shouldFailoverLiveCreateError(account, createErr) {
 				return nil, createErr
 			}
@@ -213,6 +219,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			model = "gpt-live"
 		}
 		record := &LiveCallRecord{
+			ConcurrencyGroupID:    concurrencyGroupID,
 			CallID:                created.CallID,
 			CallHash:              hashLiveCallID(created.CallID),
 			AccountID:             account.ID,
@@ -232,7 +239,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 		}
 		mappingTTL := s.liveMaxSessionDuration() + 5*time.Minute
 		if saveErr := store.SaveLiveCall(ctx, record, mappingTTL); saveErr != nil {
-			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
+			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID, concurrencyGroupID)
 			return nil, fmt.Errorf("save live call mapping: %w", saveErr)
 		}
 		created.Account = account
@@ -780,17 +787,31 @@ func (s *OpenAIGatewayService) refreshLiveLease(record *LiveCallRecord) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), liveRedisOperationTimeout)
 	defer cancel()
+	if record.ConcurrencyGroupID > 0 {
+		groupCache, ok := cache.(LiveUserGroupConcurrencyCache)
+		if !ok {
+			return false
+		}
+		refreshed, err := groupCache.RefreshLiveLeaseForGroup(ctx, record.AccountID, record.UserID, record.ConcurrencyGroupID, record.APIKeyID, record.LeaseID)
+		return err == nil && refreshed
+	}
 	refreshed, err := cache.RefreshLiveLease(ctx, record.AccountID, record.UserID, record.APIKeyID, record.LeaseID)
 	return err == nil && refreshed
 }
 
-func (s *OpenAIGatewayService) releaseLiveLease(accountID, userID, apiKeyID int64, leaseID string) {
+func (s *OpenAIGatewayService) releaseLiveLease(accountID, userID, apiKeyID int64, leaseID string, groupIDs ...int64) {
 	cache, err := s.liveConcurrencyCache()
 	if err != nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), liveRedisOperationTimeout)
 	defer cancel()
+	if len(groupIDs) > 0 && groupIDs[0] > 0 {
+		if groupCache, ok := cache.(LiveUserGroupConcurrencyCache); ok {
+			_ = groupCache.ReleaseLiveLeaseForGroup(ctx, accountID, userID, groupIDs[0], apiKeyID, leaseID)
+		}
+		return
+	}
 	_ = cache.ReleaseLiveLease(ctx, accountID, userID, apiKeyID, leaseID)
 }
 
@@ -808,7 +829,7 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	if err != nil || !first {
 		return
 	}
-	s.releaseLiveLease(record.AccountID, record.UserID, record.APIKeyID, record.LeaseID)
+	s.releaseLiveLease(record.AccountID, record.UserID, record.APIKeyID, record.LeaseID, record.ConcurrencyGroupID)
 	if s.usageLogRepo == nil {
 		return
 	}

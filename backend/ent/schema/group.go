@@ -223,6 +223,14 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			Comment("无效请求兜底使用的分组 ID"),
+		field.Int64("fallback_group_id_on_unavailable").
+			Optional().
+			Nillable().
+			Comment("无可用账号时借用账号的分组，保持原分组计费"),
+		field.Int("user_concurrency_limit").
+			Default(0).
+			NonNegative().
+			Comment("本分组内每个用户的并发上限，0 表示不限制"),
 
 		// 模型路由配置 (added by migration 040)
 		field.JSON("model_routing", map[string][]int64{}).

@@ -934,6 +934,24 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 }
 
 func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+	type result struct {
+		provider BatchImageProvider
+		account  *Account
+	}
+	var load fallbackGroupLoader
+	if s.GroupRepo != nil {
+		load = s.GroupRepo.GetByIDLite
+	}
+	selected, err := selectWithGroupFallback(ctx, owner.GroupID, model, load, func(ctx context.Context, id *int64) (result, error) {
+		poolOwner := owner
+		poolOwner.GroupID = id
+		provider, account, err := s.selectProviderAndAccountInGroup(ctx, poolOwner, requestedProvider, model)
+		return result{provider, account}, err
+	})
+	return selected.provider, selected.account, err
+}
+
+func (s *BatchImagePublicService) selectProviderAndAccountInGroup(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)
@@ -953,7 +971,7 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		})
 		for i := range accounts {
 			account := accounts[i]
-			if !account.IsSchedulable() || !account.IsModelSupported(model) {
+			if !account.IsSchedulable() || !account.IsModelSupported(model) || !fallbackAccountAllowed(ctx, &account) {
 				continue
 			}
 			if provider.SupportsAccount(&account) {

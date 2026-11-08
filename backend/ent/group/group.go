@@ -114,6 +114,10 @@ const (
 	FieldFallbackGroupID = "fallback_group_id"
 	// FieldFallbackGroupIDOnInvalidRequest holds the string denoting the fallback_group_id_on_invalid_request field in the database.
 	FieldFallbackGroupIDOnInvalidRequest = "fallback_group_id_on_invalid_request"
+	// FieldFallbackGroupIDOnUnavailable holds the string denoting the fallback_group_id_on_unavailable field in the database.
+	FieldFallbackGroupIDOnUnavailable = "fallback_group_id_on_unavailable"
+	// FieldUserConcurrencyLimit holds the string denoting the user_concurrency_limit field in the database.
+	FieldUserConcurrencyLimit = "user_concurrency_limit"
 	// FieldModelRouting holds the string denoting the model_routing field in the database.
 	FieldModelRouting = "model_routing"
 	// FieldModelRoutingEnabled holds the string denoting the model_routing_enabled field in the database.
@@ -282,6 +286,8 @@ var Columns = []string{
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
+	FieldFallbackGroupIDOnUnavailable,
+	FieldUserConcurrencyLimit,
 	FieldModelRouting,
 	FieldModelRoutingEnabled,
 	FieldMcpXMLInject,
@@ -409,6 +415,10 @@ var (
 	DefaultLongContextPricingEnabled bool
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
+	// DefaultUserConcurrencyLimit holds the default value on creation for the "user_concurrency_limit" field.
+	DefaultUserConcurrencyLimit int
+	// UserConcurrencyLimitValidator is a validator for the "user_concurrency_limit" field. It is called by the builders before save.
+	UserConcurrencyLimitValidator func(int) error
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
 	DefaultModelRoutingEnabled bool
 	// DefaultMcpXMLInject holds the default value on creation for the "mcp_xml_inject" field.
@@ -695,6 +705,16 @@ func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByFallbackGroupIDOnInvalidRequest orders the results by the fallback_group_id_on_invalid_request field.
 func ByFallbackGroupIDOnInvalidRequest(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldFallbackGroupIDOnInvalidRequest, opts...).ToFunc()
+}
+
+// ByFallbackGroupIDOnUnavailable orders the results by the fallback_group_id_on_unavailable field.
+func ByFallbackGroupIDOnUnavailable(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackGroupIDOnUnavailable, opts...).ToFunc()
+}
+
+// ByUserConcurrencyLimit orders the results by the user_concurrency_limit field.
+func ByUserConcurrencyLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUserConcurrencyLimit, opts...).ToFunc()
 }
 
 // ByModelRoutingEnabled orders the results by the model_routing_enabled field.

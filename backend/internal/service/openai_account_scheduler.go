@@ -2215,6 +2215,17 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	var decision OpenAIAccountScheduleDecision
+	selection, err := selectWithGroupFallback(ctx, groupID, requestedModel, s.loadFallbackGroup, func(ctx context.Context, id *int64) (*AccountSelectionResult, error) {
+		var selected *AccountSelectionResult
+		var err error
+		selected, decision, err = s.selectImagesInGroup(ctx, id, sessionHash, requestedModel, excludedIDs, requiredCapability)
+		return selected, err
+	})
+	return selection, decision, err
+}
+
+func (s *OpenAIGatewayService) selectImagesInGroup(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, requiredCapability OpenAIImagesCapability) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
 	if err == nil && selection != nil && selection.Account != nil {
 		return selection, decision, nil
@@ -2248,6 +2259,22 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// A continuation may require the credentials that own its previous response.
+	// Even when input reconstruction is possible, do not expand its account pool.
+	if previousResponseID != "" {
+		ctx = context.WithValue(ctx, groupFallbackAttemptKey{}, true)
+	}
+	var decision OpenAIAccountScheduleDecision
+	selection, err := selectWithGroupFallback(ctx, groupID, requestedModel, s.loadFallbackGroup, func(ctx context.Context, id *int64) (*AccountSelectionResult, error) {
+		var selected *AccountSelectionResult
+		var err error
+		selected, decision, err = s.selectAccountWithSchedulerInGroup(ctx, id, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		return selected, err
+	})
+	return selection, decision, err
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerInGroup(ctx context.Context, groupID *int64, previousResponseID, sessionHash, requestedModel string, excludedIDs map[int64]struct{}, requiredTransport OpenAIUpstreamTransport, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability, requireCompact bool, platform string, previousResponseCanMove, useUpstreamTokenCost bool) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountWithSchedulerBySize(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err
@@ -2324,6 +2351,9 @@ func (s *OpenAIGatewayService) openAIGroupRequiresPrivacySet(ctx context.Context
 }
 
 func (s *OpenAIGatewayService) loadOpenAIGroupRequiresPrivacySet(ctx context.Context, groupID *int64) bool {
+	if original := accountFallbackBillingGroup(ctx); original != nil && original.RequirePrivacySet {
+		return true
+	}
 	if s == nil || groupID == nil {
 		return false
 	}

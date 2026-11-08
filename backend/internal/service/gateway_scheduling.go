@@ -32,6 +32,12 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	return selectWithGroupFallback(ctx, groupID, requestedModel, s.resolveGroupByID, func(ctx context.Context, id *int64) (*Account, error) {
+		return s.selectAccountForModelWithExclusionsInGroup(ctx, id, sessionHash, requestedModel, excludedIDs)
+	})
+}
+
+func (s *GatewayService) selectAccountForModelWithExclusionsInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
@@ -98,6 +104,12 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	return selectWithGroupFallback(ctx, groupID, requestedModel, s.resolveGroupByID, func(ctx context.Context, id *int64) (*AccountSelectionResult, error) {
+		return s.selectAccountWithLoadAwarenessInGroup(ctx, id, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+	})
+}
+
+func (s *GatewayService) selectAccountWithLoadAwarenessInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -872,6 +884,9 @@ func (s *GatewayService) resolveGroupByID(ctx context.Context, groupID int64) (*
 	if group := s.groupFromContext(ctx, groupID); group != nil {
 		return group, nil
 	}
+	if s.groupRepo == nil {
+		return nil, nil
+	}
 	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("get group failed: %w", err)
@@ -1030,6 +1045,11 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 }
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	accounts, mixed, err := s.listSchedulableAccountsInGroup(ctx, groupID, platform, hasForcePlatform)
+	return filterFallbackAccounts(ctx, accounts), mixed, err
+}
+
+func (s *GatewayService) listSchedulableAccountsInGroup(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -1220,7 +1240,7 @@ func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool
 }
 
 func (s *GatewayService) isAccountSchedulableForModelSelection(ctx context.Context, account *Account, requestedModel string) bool {
-	if account == nil {
+	if account == nil || !fallbackAccountAllowed(ctx, account) {
 		return false
 	}
 	return account.IsSchedulableForModelWithContext(ctx, requestedModel)
@@ -1248,7 +1268,11 @@ func (s *GatewayService) tryAcquireAccountSlot(ctx context.Context, accountID in
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
-	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	result, err := s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if err != nil || result == nil || !result.Acquired {
+		preventGroupFallback(ctx)
+	}
+	return result, err
 }
 
 type usageLogWindowStatsBatchProvider interface {
@@ -1548,6 +1572,9 @@ func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *A
 	idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
 
 	allowed, err := s.sessionLimitCache.RegisterSession(ctx, account.ID, sessionID, maxSessions, idleTimeout)
+	if err != nil || !allowed {
+		preventGroupFallback(ctx)
+	}
 	if err != nil {
 		// 失败开放：缓存错误时允许通过
 		return true
@@ -1586,9 +1613,15 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 		account, err = s.accountRepo.GetByID(ctx, accountID)
 	}
 	if err != nil || account == nil {
+		if err != nil {
+			preventGroupFallback(ctx)
+		}
 		return account, err
 	}
 	if s.isAccountBlockedBySchedulingThreshold(ctx, account) {
+		return nil, nil
+	}
+	if !fallbackAccountAllowed(ctx, account) {
 		return nil, nil
 	}
 	if account.IsGrok() {

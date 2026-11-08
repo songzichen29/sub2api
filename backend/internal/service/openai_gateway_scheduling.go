@@ -259,6 +259,7 @@ func resolveOpenAIUpstreamOriginator(c *gin.Context, isOfficialClient bool) stri
 
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *OpenAIGatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	groupID = fallbackStickyGroupID(ctx, groupID)
 	if sessionHash == "" || accountID <= 0 {
 		return nil
 	}
@@ -282,7 +283,9 @@ func (s *OpenAIGatewayService) SelectAccountForModel(ctx context.Context, groupI
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
 // SelectAccountForModelWithExclusions 选择支持指定模型的账号，同时排除指定的账号。
 func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
-	return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
+	return selectWithGroupFallback(ctx, groupID, requestedModel, s.loadFallbackGroup, func(ctx context.Context, id *int64) (*Account, error) {
+		return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(ctx), id, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, 0, "", false)
+	})
 }
 
 // SelectAccountForTokenCount selects an account for a non-billable token-count
@@ -450,6 +453,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if account == nil {
 		return "account_nil"
+	}
+	if !fallbackAccountAllowed(ctx, account) {
+		return "fallback_account_policy"
 	}
 	// account_model composite routes publish an alias that only accounts with an
 	// explicit model mapping own. Both scheduler modes (advanced and legacy) must
@@ -1207,6 +1213,12 @@ func openAIAccountWaitCandidates(accounts []*Account) []AccountWaitCandidate {
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
+	return selectWithGroupFallback(ctx, groupID, requestedModel, s.loadFallbackGroup, func(ctx context.Context, id *int64) (*AccountSelectionResult, error) {
+		return s.selectLegacyAccountInGroup(ctx, id, sessionHash, requestedModel, excludedIDs)
+	})
+}
+
+func (s *OpenAIGatewayService) selectLegacyAccountInGroup(ctx context.Context, groupID *int64, sessionHash, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
 	ctx = s.withOpenAIQuotaAutoPauseContext(ctx)
 	ctx = s.withOpenAIGroupPrivacyRequirement(ctx, groupID)
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
@@ -1613,6 +1625,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
+	accounts, err := s.listSchedulableAccountsInGroup(ctx, groupID, platform)
+	return filterFallbackAccounts(ctx, accounts), err
+}
+
+func (s *OpenAIGatewayService) listSchedulableAccountsInGroup(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
@@ -1648,7 +1665,11 @@ func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accoun
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
 	}
-	return s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	result, err := s.concurrencyService.AcquireAccountSlot(ctx, accountID, maxConcurrency)
+	if err != nil || result == nil || !result.Acquired {
+		preventGroupFallback(ctx)
+	}
+	return result, err
 }
 
 func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccount(ctx context.Context, account *Account, platform string, requestedModel string, requireCompact bool, requiredCapability OpenAIEndpointCapability) *Account {
@@ -1752,6 +1773,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 
 	latest, err := s.accountRepo.GetByID(ctx, account.ID)
 	if err != nil || latest == nil {
+		if err != nil {
+			preventGroupFallback(ctx)
+		}
 		return nil
 	}
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
@@ -1821,6 +1845,9 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 		account, err = s.accountRepo.GetByID(ctx, accountID)
 	}
 	if err != nil || account == nil {
+		if err != nil {
+			preventGroupFallback(ctx)
+		}
 		return account, err
 	}
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {

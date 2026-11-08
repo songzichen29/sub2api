@@ -868,6 +868,14 @@ export default {
     }
   },
   "groups": {
+    "operations": {
+      "concurrency": "每用户在本分组的并发上限",
+      "concurrencyHint": "0 表示不增加限制。同一用户的多个 Key 共用额度，仍受用户总并发限制。",
+      "fallback": "无可用账号时借用分组",
+      "fallbackHint": "仅在本组没有可用账号时尝试一次，继续按本组价格和订阅计费。并发满或系统错误不触发借用。",
+      "disabled": "关闭",
+      "reload": "分组加载失败，点击重试"
+    },
     "title": "分组管理",
     "description": "管理 API 密钥分组和费率配置",
     "searchGroups": "搜索分组...",

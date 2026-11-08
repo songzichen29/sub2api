@@ -868,6 +868,14 @@ export default {
     }
   },
   "groups": {
+    "operations": {
+      "concurrency": "Concurrent requests per user in this group",
+      "concurrencyHint": "0 adds no limit. A user's keys share this limit and remain subject to the global user limit.",
+      "fallback": "Borrow accounts when this group is unavailable",
+      "fallbackHint": "Try once after this group has no available accounts. Keep this group's pricing and subscription. Saturation and infrastructure errors do not trigger fallback.",
+      "disabled": "Disabled",
+      "reload": "Unable to load groups. Click to retry."
+    },
     "title": "Group Management",
     "description": "Manage API key groups and rate multipliers",
     "searchGroups": "Search groups...",

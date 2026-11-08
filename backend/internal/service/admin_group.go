@@ -527,6 +527,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		}
 	}
 	fallbackOnInvalidRequest := input.FallbackGroupIDOnInvalidRequest
+	fallbackOnUnavailable, err := s.validateGroupOperations(ctx, 0, platform, input.UserConcurrencyLimit, input.FallbackGroupIDOnUnavailable)
+	if err != nil {
+		return nil, err
+	}
 	if fallbackOnInvalidRequest != nil && *fallbackOnInvalidRequest <= 0 {
 		fallbackOnInvalidRequest = nil
 	}
@@ -634,6 +638,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ClaudeCodeOnly:                  input.ClaudeCodeOnly,
 		FallbackGroupID:                 input.FallbackGroupID,
 		FallbackGroupIDOnInvalidRequest: fallbackOnInvalidRequest,
+		FallbackGroupIDOnUnavailable:    fallbackOnUnavailable,
+		UserConcurrencyLimit:            input.UserConcurrencyLimit,
 		ModelRouting:                    input.ModelRouting,
 		MCPXMLInject:                    mcpXMLInject,
 		SupportedModelScopes:            input.SupportedModelScopes,
@@ -1029,6 +1035,17 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 	group.FallbackGroupIDOnInvalidRequest = fallbackOnInvalidRequest
+	if input.UserConcurrencyLimit != nil {
+		group.UserConcurrencyLimit = *input.UserConcurrencyLimit
+	}
+	if input.FallbackGroupIDOnUnavailable != nil {
+		group.FallbackGroupIDOnUnavailable = input.FallbackGroupIDOnUnavailable
+	}
+	fallbackOnUnavailable, err := s.validateGroupOperations(ctx, id, group.Platform, group.UserConcurrencyLimit, group.FallbackGroupIDOnUnavailable)
+	if err != nil {
+		return nil, err
+	}
+	group.FallbackGroupIDOnUnavailable = fallbackOnUnavailable
 
 	// 模型路由配置
 	if input.ModelRouting != nil {

@@ -587,10 +587,11 @@ type AccountWaitPlan struct {
 }
 
 type AccountSelectionResult struct {
-	Account     *Account
-	Acquired    bool
-	ReleaseFunc func()
-	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	routedGroupID int64 // pool-only fallback; billing identity remains in the authenticated key
+	Account       *Account
+	Acquired      bool
+	ReleaseFunc   func()
+	WaitPlan      *AccountWaitPlan // nil means no wait allowed
 	// stickySessionHit 标记账号来自会话粘性绑定命中，供非高级调度路径回填决策标签。
 	stickySessionHit bool
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
@@ -996,6 +997,7 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	groupID = fallbackStickyGroupID(ctx, groupID)
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
@@ -1020,6 +1022,7 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 // account remains bound and automatically becomes eligible again if its
 // account rate recovers.
 func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	groupID = fallbackStickyGroupID(ctx, groupID)
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
