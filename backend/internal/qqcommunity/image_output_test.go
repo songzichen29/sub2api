@@ -68,7 +68,7 @@ func TestImageFormatRoundTripThroughGenerationAndEditing(t *testing.T) {
 			if edit {
 				require.Equal(t, "/v1/images/edits", r.URL.Path)
 				require.NoError(t, r.ParseMultipartForm(1<<20))
-				defer r.MultipartForm.RemoveAll()
+				defer func() { require.NoError(t, r.MultipartForm.RemoveAll()) }()
 				require.Equal(t, "gif", r.FormValue("output_format"))
 			} else {
 				var body map[string]any
