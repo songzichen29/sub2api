@@ -7,11 +7,11 @@ import (
 )
 
 const (
-	AccountMetricDefaultCooldownSeconds = 10 * 60
+	AccountMetricDefaultCooldownSeconds = 5 * 60
 	AccountMetricDefaultRecoverySamples = 3
-	AccountMetricDefaultMinSamples      = 10
+	AccountMetricDefaultMinSamples      = 20
 	AccountMetricMaxCooldownSeconds     = 24 * 60 * 60
-	AccountMetricMaxRecoverySamples     = 30
+	AccountMetricMaxRecoverySamples     = 100
 	AccountMetricMaxMinSamples          = 5000
 	AccountMetricMaxLatencyMs           = 60 * 60 * 1000
 )
@@ -19,9 +19,55 @@ const (
 // AccountMetricThreshold configures a pause bound and an optional recovery
 // bound. Recovery defaults to the pause bound when omitted.
 type AccountMetricThreshold struct {
-	PauseThreshold    float64  `json:"pause_threshold"`
-	RecoveryThreshold *float64 `json:"recovery_threshold,omitempty"`
-	MinSamples        int      `json:"min_samples,omitempty"`
+	// A non-nil Pause selects the range format. Nil keeps legacy single-bound
+	// JSON meaningful, including a zero rate threshold. Never rewrite saved rules.
+	Pause             *AccountMetricBounds `json:"pause,omitempty"`
+	Recovery          *AccountMetricBounds `json:"recovery,omitempty"`
+	PauseThreshold    float64              `json:"pause_threshold"`
+	RecoveryThreshold *float64             `json:"recovery_threshold,omitempty"`
+	MinSamples        int                  `json:"min_samples,omitempty"`
+}
+
+type AccountMetricBounds struct {
+	Min *float64 `json:"min,omitempty"`
+	Max *float64 `json:"max,omitempty"`
+}
+
+func (b AccountMetricBounds) empty() bool { return b.Min == nil && b.Max == nil }
+func (b AccountMetricBounds) breached(v float64) bool {
+	return (b.Min != nil && v < *b.Min) || (b.Max != nil && v > *b.Max)
+}
+
+func (r AccountMetricThreshold) bounds(lower, recovery bool) AccountMetricBounds {
+	if r.Pause != nil {
+		b := *r.Pause
+		if recovery && r.Recovery != nil {
+			if r.Recovery.Min != nil {
+				b.Min = r.Recovery.Min
+			}
+			if r.Recovery.Max != nil {
+				b.Max = r.Recovery.Max
+			}
+		}
+		return b
+	}
+	v := r.PauseThreshold
+	if recovery && r.RecoveryThreshold != nil {
+		v = *r.RecoveryThreshold
+	}
+	if lower {
+		return AccountMetricBounds{Min: &v}
+	}
+	return AccountMetricBounds{Max: &v}
+}
+
+func (b AccountMetricBounds) validate(max float64) bool {
+	for _, v := range []*float64{b.Min, b.Max} {
+		if v != nil && (!finite(*v) || *v < 0 || *v > max) {
+			return false
+		}
+	}
+	return b.Min == nil || b.Max == nil || *b.Min <= *b.Max
 }
 
 // AccountMetricRecoveryConfig is opt-in for each account. The sampling window
@@ -29,6 +75,7 @@ type AccountMetricThreshold struct {
 // repository.
 type AccountMetricRecoveryConfig struct {
 	Enabled         bool                    `json:"enabled"`
+	AutoRecover     *bool                   `json:"auto_recover,omitempty"`
 	CooldownSeconds int                     `json:"cooldown_seconds,omitempty"`
 	RecoverySamples int                     `json:"recovery_samples,omitempty"`
 	SuccessRate     *AccountMetricThreshold `json:"success_rate,omitempty"`
@@ -37,14 +84,21 @@ type AccountMetricRecoveryConfig struct {
 	DurationMs      *AccountMetricThreshold `json:"duration_ms,omitempty"`
 }
 
+// Absent on legacy configurations means the previously automatic behavior.
+func (c AccountMetricRecoveryConfig) AutomaticRecoveryEnabled() bool {
+	return c.AutoRecover == nil || *c.AutoRecover
+}
+
 type AccountMetricRuleEvidence struct {
-	Metric         string  `json:"metric"`
-	Value          float64 `json:"value"`
-	Threshold      float64 `json:"threshold"`
-	Samples        int64   `json:"samples"`
-	Required       int64   `json:"required_samples"`
-	Breached       bool    `json:"breached"`
-	RecoveryPassed bool    `json:"recovery_passed"`
+	Metric         string               `json:"metric"`
+	Value          float64              `json:"value"`
+	Threshold      float64              `json:"threshold"`
+	Samples        int64                `json:"samples"`
+	Required       int64                `json:"required_samples"`
+	Breached       bool                 `json:"breached"`
+	RecoveryPassed bool                 `json:"recovery_passed"`
+	Bounds         *AccountMetricBounds `json:"bounds,omitempty"`
+	Direction      string               `json:"direction,omitempty"`
 }
 
 type AccountMetricEvaluation struct {
@@ -82,8 +136,30 @@ func NormalizeAccountMetricRecoveryConfig(config AccountMetricRecoveryConfig) (A
 		if *entry.rule == nil {
 			continue
 		}
-		configured++
 		rule := **entry.rule
+		if rule.Pause != nil {
+			pause, recovery := rule.bounds(entry.lowerBound, false), rule.bounds(entry.lowerBound, true)
+			if !pause.validate(entry.max) || !recovery.validate(entry.max) ||
+				(pause.empty() && !recovery.empty()) ||
+				(pause.Min != nil && recovery.Min != nil && *recovery.Min < *pause.Min) ||
+				(pause.Max != nil && recovery.Max != nil && *recovery.Max > *pause.Max) {
+				return config, fmt.Errorf("%w: %s invalid pause/recovery range", ErrInvalidAccountMetricConfig, entry.name)
+			}
+			if pause.empty() {
+				*entry.rule = nil
+				continue
+			}
+			if rule.MinSamples == 0 {
+				rule.MinSamples = AccountMetricDefaultMinSamples
+			}
+			if rule.MinSamples < 1 || rule.MinSamples > AccountMetricMaxMinSamples {
+				return config, fmt.Errorf("%w: %s invalid min_samples", ErrInvalidAccountMetricConfig, entry.name)
+			}
+			*entry.rule = &rule
+			configured++
+			continue
+		}
+		configured++
 		if !finite(rule.PauseThreshold) || rule.PauseThreshold < entry.min || rule.PauseThreshold > entry.max {
 			return config, fmt.Errorf("%w: %s pause_threshold must be finite and between %g and %g", ErrInvalidAccountMetricConfig, entry.name, entry.min, entry.max)
 		}
@@ -107,7 +183,7 @@ func NormalizeAccountMetricRecoveryConfig(config AccountMetricRecoveryConfig) (A
 		if !entry.lowerBound && recovery > rule.PauseThreshold {
 			return config, fmt.Errorf("%w: %s recovery_threshold must be less than or equal to pause_threshold", ErrInvalidAccountMetricConfig, entry.name)
 		}
-		**entry.rule = rule
+		*entry.rule = &rule
 	}
 	if config.Enabled && configured == 0 {
 		return config, fmt.Errorf("%w: at least one metric threshold is required when enabled", ErrInvalidAccountMetricConfig)
@@ -125,20 +201,19 @@ func EvaluateAccountMetricPause(config AccountMetricRecoveryConfig, snapshot *Ac
 		return evaluation, nil
 	}
 	for _, measurement := range accountMetricMeasurements(config, snapshot) {
-		if measurement.value == nil || !finite(*measurement.value) || measurement.samples < int64(measurement.rule.MinSamples) {
+		if !validAccountMetricValue(measurement.value) || measurement.samples < int64(measurement.rule.MinSamples) {
 			continue
 		}
-		breached := measurement.lowerBound && *measurement.value < measurement.rule.PauseThreshold
-		if !measurement.lowerBound {
-			breached = *measurement.value > measurement.rule.PauseThreshold
-		}
+		bounds := measurement.rule.bounds(measurement.lowerBound, false)
+		breached := bounds.breached(*measurement.value)
+		threshold, direction := metricEvidenceBound(bounds, *measurement.value)
 		evaluation.Evidence = append(evaluation.Evidence, AccountMetricRuleEvidence{
 			Metric:    measurement.name,
 			Value:     *measurement.value,
-			Threshold: measurement.rule.PauseThreshold,
-			Samples:   measurement.samples,
-			Required:  int64(measurement.rule.MinSamples),
-			Breached:  breached,
+			Threshold: threshold, Bounds: &bounds, Direction: direction,
+			Samples:  measurement.samples,
+			Required: int64(measurement.rule.MinSamples),
+			Breached: breached,
 		})
 		evaluation.Triggered = evaluation.Triggered || breached
 	}
@@ -158,20 +233,19 @@ func EvaluateAccountMetricTrialFailure(config AccountMetricRecoveryConfig, snaps
 	}
 	required := int64(config.RecoverySamples)
 	for _, measurement := range accountMetricMeasurements(config, snapshot) {
-		if measurement.value == nil || !finite(*measurement.value) || measurement.samples < required {
+		if !validAccountMetricValue(measurement.value) || measurement.samples < required {
 			continue
 		}
-		breached := measurement.lowerBound && *measurement.value < measurement.rule.PauseThreshold
-		if !measurement.lowerBound {
-			breached = *measurement.value > measurement.rule.PauseThreshold
-		}
+		bounds := measurement.rule.bounds(measurement.lowerBound, false)
+		breached := bounds.breached(*measurement.value)
+		threshold, direction := metricEvidenceBound(bounds, *measurement.value)
 		evaluation.Evidence = append(evaluation.Evidence, AccountMetricRuleEvidence{
 			Metric:    measurement.name,
 			Value:     *measurement.value,
-			Threshold: measurement.rule.PauseThreshold,
-			Samples:   measurement.samples,
-			Required:  required,
-			Breached:  breached,
+			Threshold: threshold, Bounds: &bounds, Direction: direction,
+			Samples:  measurement.samples,
+			Required: required,
+			Breached: breached,
 		})
 		evaluation.Triggered = evaluation.Triggered || breached
 	}
@@ -184,7 +258,7 @@ func EvaluateAccountMetricRecovery(config AccountMetricRecoveryConfig, snapshot 
 		return nil, err
 	}
 	evaluation := &AccountMetricEvaluation{Triggered: true, Evidence: make([]AccountMetricRuleEvidence, 0, 4)}
-	if !config.Enabled || snapshot == nil {
+	if !config.Enabled || !config.AutomaticRecoveryEnabled() || snapshot == nil {
 		evaluation.Triggered = false
 		return evaluation, nil
 	}
@@ -195,18 +269,14 @@ func EvaluateAccountMetricRecovery(config AccountMetricRecoveryConfig, snapshot 
 	}
 	for _, measurement := range measurements {
 		required := int64(config.RecoverySamples)
-		passed := measurement.value != nil && finiteValue(measurement.value) && measurement.samples >= required
+		bounds := measurement.rule.bounds(measurement.lowerBound, true)
+		passed := validAccountMetricValue(measurement.value) && measurement.samples >= required
 		if passed {
-			bound := *measurement.rule.RecoveryThreshold
-			if measurement.lowerBound {
-				passed = *measurement.value >= bound
-			} else {
-				passed = *measurement.value <= bound
-			}
+			passed = !bounds.breached(*measurement.value)
 		}
 		evidence := AccountMetricRuleEvidence{
 			Metric:         measurement.name,
-			Threshold:      *measurement.rule.RecoveryThreshold,
+			Bounds:         &bounds,
 			Samples:        measurement.samples,
 			Required:       required,
 			RecoveryPassed: passed,
@@ -214,6 +284,7 @@ func EvaluateAccountMetricRecovery(config AccountMetricRecoveryConfig, snapshot 
 		if measurement.value != nil && finiteValue(measurement.value) {
 			evidence.Value = *measurement.value
 		}
+		evidence.Threshold, evidence.Direction = metricEvidenceBound(bounds, evidence.Value)
 		evaluation.Evidence = append(evaluation.Evidence, evidence)
 		evaluation.Triggered = evaluation.Triggered && passed
 	}
@@ -246,6 +317,20 @@ func finiteValue(value *float64) bool {
 	return value != nil && finite(*value)
 }
 
+func validAccountMetricValue(value *float64) bool {
+	return finiteValue(value) && *value >= 0
+}
+
+func metricEvidenceBound(bounds AccountMetricBounds, value float64) (float64, string) {
+	if bounds.Min != nil && (value < *bounds.Min || bounds.Max == nil) {
+		return *bounds.Min, "below"
+	}
+	if bounds.Max != nil {
+		return *bounds.Max, "above"
+	}
+	return 0, ""
+}
+
 func finite(value float64) bool {
 	return !math.IsNaN(value) && !math.IsInf(value, 0)
 }
@@ -256,8 +341,11 @@ func AccountMetricPauseReason(evidence []AccountMetricRuleEvidence) string {
 		if !item.Breached {
 			continue
 		}
-		comparison := "above"
-		if item.Metric == "success_rate" || item.Metric == "cache_rate" {
+		comparison := item.Direction
+		if comparison == "" {
+			comparison = "above"
+		}
+		if item.Direction == "" && (item.Metric == "success_rate" || item.Metric == "cache_rate") {
 			comparison = "below"
 		}
 		parts = append(parts, fmt.Sprintf("%s %.4g %s %.4g (%d samples)", item.Metric, item.Value, comparison, item.Threshold, item.Samples))

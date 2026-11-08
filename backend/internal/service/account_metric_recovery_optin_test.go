@@ -60,7 +60,7 @@ func newMetricOptInTestService(t *testing.T, repo *metricOptInRepo) (*AccountMet
 	gate := NewAccountMetricAdmissionService(repo)
 	_, err := gate.Refresh(context.Background())
 	require.NoError(t, err)
-	return gate, NewAccountMetricRecoveryService(repo, nil, time.Minute, gate)
+	return gate, NewAccountMetricRecoveryService(repo, &OpsService{}, time.Minute, gate)
 }
 
 func TestAccountMetricOptInUnconfiguredAndDisabledDoNotQueryDatabase(t *testing.T) {
@@ -162,6 +162,7 @@ func TestAccountMetricOptInRefreshRunsWhenOpsDisabled(t *testing.T) {
 	repo := &metricOptInRepo{}
 	gate, svc := newMetricOptInTestService(t, repo)
 	// Simulate a config enabled by another instance; Ops is nil (disabled).
+	svc.ops = nil
 	repo.monitors = []*AccountPerformanceMonitor{{AccountID: 7, Config: AccountMetricRecoveryConfig{Enabled: true}}}
 	require.NoError(t, svc.RunEvaluation(context.Background(), time.Now()))
 	allowed, err := gate.AdmitAccountPerformanceRequest(context.Background(), 7, time.Now())

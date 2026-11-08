@@ -59,6 +59,18 @@ type AccountPerformanceStatus struct {
 	Metrics          *AccountMetricSnapshot     `json:"metrics,omitempty"`
 }
 
+// Bind background evidence to the configuration, pause and trial that produced
+// it. A different evaluator may have completed a cycle while SQL was running.
+type AccountMetricEvaluationToken struct {
+	Revision        int64
+	PauseGeneration int64
+	TrialStartedAt  *time.Time
+}
+
+func (m *AccountPerformanceMonitor) EvaluationToken() AccountMetricEvaluationToken {
+	return AccountMetricEvaluationToken{Revision: m.Revision, PauseGeneration: m.PauseGeneration, TrialStartedAt: m.TrialStartedAt}
+}
+
 type AccountPerformanceEvent struct {
 	ID              int64           `json:"id"`
 	AccountID       int64           `json:"account_id"`
@@ -77,6 +89,8 @@ type AccountPerformanceAdmissionRepository interface {
 }
 
 type AccountPerformanceRepository interface {
+	GetAccountMetricSnapshots(ctx context.Context, accountIDs []int64, start, end time.Time) (map[int64]*AccountMetricSnapshot, error)
+	GetAccountPerformanceMonitors(ctx context.Context, accountIDs []int64) (map[int64]*AccountPerformanceMonitor, error)
 	AccountMetricRepository
 	AccountPerformanceAdmissionRepository
 	GetAccountPerformanceMonitor(ctx context.Context, accountID int64) (*AccountPerformanceMonitor, error)
@@ -84,7 +98,7 @@ type AccountPerformanceRepository interface {
 	SaveAccountMetricRecoveryConfig(ctx context.Context, accountID, expectedRevision int64, config AccountMetricRecoveryConfig, actorID *int64, now time.Time) (*AccountPerformanceMonitor, error)
 	ReleaseAccountMetricPause(ctx context.Context, accountID, expectedRevision, expectedPauseGeneration int64, actorID *int64, now time.Time) (*AccountPerformanceMonitor, error)
 	ListAccountPerformanceEvents(ctx context.Context, accountID, beforeID int64, limit int) ([]AccountPerformanceEvent, error)
-	PauseAccountForMetricBreach(ctx context.Context, accountID, revision int64, reason string, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
-	RecoverAccountFromMetricTrial(ctx context.Context, accountID, revision int64, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
-	EndAccountMetricTrial(ctx context.Context, accountID, revision int64, outcome string, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
+	PauseAccountForMetricBreach(ctx context.Context, accountID int64, token AccountMetricEvaluationToken, reason string, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
+	RecoverAccountFromMetricTrial(ctx context.Context, accountID int64, token AccountMetricEvaluationToken, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
+	EndAccountMetricTrial(ctx context.Context, accountID int64, token AccountMetricEvaluationToken, outcome string, evidence []AccountMetricRuleEvidence, now time.Time) (bool, error)
 }

@@ -54,7 +54,7 @@ func TestAccountMetricNativeDatabases(t *testing.T) {
 				}
 			}
 			verifyAccountMetricSnapshotSQL(t, db, engine == "mysql")
-			// Permit simultaneous transactions after temporary-table metric checks.
+			// Permit simultaneous transactions after isolated metric checks.
 			db.SetMaxOpenConns(8)
 			first := &accountMetricRepository{db: db, mysql: engine == "mysql"}
 			second := &accountMetricRepository{db: db, mysql: engine == "mysql"}
@@ -68,7 +68,7 @@ func TestAccountMetricNativeDatabases(t *testing.T) {
 			require.Equal(t, int64(1), monitor.Revision)
 			_, err = second.SaveAccountMetricRecoveryConfig(ctx, 17, 0, config, nil, now)
 			require.ErrorIs(t, err, service.ErrAccountMetricRevisionConflict)
-			changed, err := first.PauseAccountForMetricBreach(ctx, 17, monitor.Revision, "test breach", nil, now)
+			changed, err := first.PauseAccountForMetricBreach(ctx, 17, monitor.EvaluationToken(), "test breach", nil, now)
 			require.NoError(t, err)
 			require.True(t, changed)
 			trialTime := now.Add(30 * time.Second)

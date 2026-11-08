@@ -485,6 +485,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.DELETE("/:id/temp-unschedulable", h.Admin.Account.ClearTempUnschedulable)
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
 		accounts.GET("/:id/metric-recovery", h.Admin.Account.GetAccountMetricRecovery)
+		accounts.POST("/metric-recovery/batch", h.Admin.Account.GetBatchAccountMetricRecovery)
 		accounts.PUT("/:id/metric-recovery", h.Admin.Account.SaveAccountMetricRecovery)
 		accounts.POST("/:id/metric-recovery/release", h.Admin.Account.ReleaseAccountMetricRecovery)
 		accounts.GET("/:id/metric-recovery/events", h.Admin.Account.ListAccountMetricRecoveryEvents)

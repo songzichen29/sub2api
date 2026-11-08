@@ -6,10 +6,11 @@ Quota-window scheduling thresholds only describe provider-reported consumption; 
 
 ## What Changes
 
-- Add per-account pause and recovery thresholds for success rate, cache rate, first-token latency, and request duration.
+- Add per-account pause and recovery minimum/maximum bounds for success rate, cache rate, first-token latency, and request duration, with an explicit automatic-recovery switch and legacy configuration compatibility.
 - Evaluate enabled rules on a bounded background cadence using existing operations telemetry.
 - Record pause/recovery state and an audit history; require revision-aware writes for configuration and release actions.
 - Add a bounded trial-admission path so a paused account can prove recovery without admitting unrestricted traffic.
+- Show recent-hour metrics and rule state in the account list, with a clickable configuration panel, paginated audit evidence and current-page batch loading.
 - Keep the capability disabled by default and preserve existing account status, quota scheduling, gateway routing, and unrelated group protections.
 
 ## Capabilities

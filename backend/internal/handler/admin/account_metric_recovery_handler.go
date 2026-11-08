@@ -66,6 +66,39 @@ func (h *AccountHandler) GetAccountMetricRecovery(c *gin.Context) {
 	response.Success(c, status)
 }
 
+// GetBatchAccountMetricRecovery reads only the requested page (two SQL queries,
+// not per-account queries). Existing scoped-key middleware denies this endpoint.
+func (h *AccountHandler) GetBatchAccountMetricRecovery(c *gin.Context) {
+	if h.metricRecoveryUnavailable(c) {
+		return
+	}
+	var request struct {
+		AccountIDs []int64 `json:"account_ids"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil || len(request.AccountIDs) == 0 || len(request.AccountIDs) > 100 {
+		response.BadRequest(c, "Provide between 1 and 100 account IDs")
+		return
+	}
+	ids := make([]int64, 0, len(request.AccountIDs))
+	seen := make(map[int64]bool)
+	for _, id := range request.AccountIDs {
+		if id <= 0 {
+			response.BadRequest(c, "Invalid account ID")
+			return
+		}
+		if !seen[id] {
+			ids = append(ids, id)
+			seen[id] = true
+		}
+	}
+	statuses, err := h.accountMetricRecovery.GetStatuses(c.Request.Context(), ids, time.Now().UTC())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"accounts": statuses})
+}
+
 // SaveAccountMetricRecovery configures per-account metric rules using a
 // revision-aware write. A disabled config remains a no-op for scheduling.
 // PUT /api/v1/admin/accounts/:id/metric-recovery

@@ -1449,13 +1449,16 @@ export interface Account {
 }
 
 export interface AccountMetricThreshold {
-  pause_threshold: number
+  pause?: { min?: number; max?: number }
+  recovery?: { min?: number; max?: number }
+  pause_threshold?: number
   recovery_threshold?: number
   min_samples?: number
 }
 
 export interface AccountMetricRecoveryConfig {
   enabled: boolean
+  auto_recover?: boolean
   cooldown_seconds?: number
   recovery_samples?: number
   success_rate?: AccountMetricThreshold

@@ -4,12 +4,15 @@ import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import AccountMetricRecoveryCell from '@/components/account/AccountMetricRecoveryCell.vue'
+import AccountMetricRecoveryPanel from '@/components/account/AccountMetricRecoveryPanel.vue'
 
 const {
   listAccounts,
   listWithEtag,
   getById,
   getBatchTodayStats,
+  getBatchMetricRecovery,
   getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
@@ -21,6 +24,7 @@ const {
   listWithEtag: vi.fn(),
   getById: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getBatchMetricRecovery: vi.fn(),
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
@@ -36,6 +40,8 @@ vi.mock('@/api/admin', () => ({
       getById,
       listWithEtag,
       getBatchTodayStats,
+      getBatchMetricRecovery,
+      listTags: vi.fn().mockResolvedValue([]),
       getUpstreamBillingProbeSettings,
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -67,6 +73,7 @@ const DataTableStub = defineComponent({
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
+        <slot name="cell-last_used_at" :row="row" :value="null" />
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -118,6 +125,7 @@ function mountView(stubActionMenu = true) {
         TLSFingerprintProfilesModal: true,
         CreateAccountModal: true,
         EditAccountModal: EditAccountModalStub,
+        AccountMetricRecoveryPanel: true,
         BulkEditAccountModal: true,
         PlatformTypeBadge: true,
         AccountCapacityCell: true,
@@ -163,6 +171,7 @@ describe('admin AccountsView lite account list', () => {
     listWithEtag.mockReset().mockResolvedValue({ notModified: true, etag: 'compact-etag', data: null })
     getById.mockReset().mockResolvedValue(fullAccount)
     getBatchTodayStats.mockReset().mockResolvedValue({ stats: {} })
+    getBatchMetricRecovery.mockReset().mockResolvedValue({ accounts: { '42': { monitor: { account_id: 42, config: { enabled: true }, paused: true, reason: 'test pause' }, metrics_available: true } } })
     getUpstreamBillingProbeSettings.mockReset().mockResolvedValue({ enabled: true })
     getAllProxies.mockReset().mockResolvedValue([])
     getAllGroups.mockReset().mockResolvedValue([{ id: 7, name: 'codex', platform: 'openai' }])
@@ -194,6 +203,21 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('opens metric configuration from the list and refreshes after changes', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(getBatchMetricRecovery).toHaveBeenCalledWith([42], expect.any(AbortSignal))
+    const cell = wrapper.getComponent(AccountMetricRecoveryCell)
+    expect(cell.text()).toContain('admin.accounts.metricRecovery.paused')
+    await cell.get('button').trigger('click'); await flushPromises()
+    const panel = wrapper.getComponent(AccountMetricRecoveryPanel)
+    expect(panel.props('accountId')).toBe(42)
+    getBatchMetricRecovery.mockClear()
+    panel.vm.$emit('updated', 42); await flushPromises()
+    expect(getBatchMetricRecovery).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 

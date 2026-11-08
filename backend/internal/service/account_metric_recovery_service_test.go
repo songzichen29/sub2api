@@ -19,28 +19,103 @@ type accountMetricRecoveryRepoStub struct {
 	ended       int
 	lastReason  string
 	lastOutcome string
+	windowStart time.Time
+	windowEnd   time.Time
+}
+
+func TestAccountMetricRecoveryServiceRejectsEnableWithoutOps(t *testing.T) {
+	svc := NewAccountMetricRecoveryService(&accountMetricRecoveryRepoStub{}, nil, time.Minute)
+	_, err := svc.SaveConfig(context.Background(), 7, 0, accountMetricConfigForTest(), nil, time.Now())
+	require.ErrorIs(t, err, ErrInvalidAccountMetricConfig)
+}
+
+func TestAccountMetricRecoveryServiceDoesNotRecoverWhenAutomaticRecoveryOff(t *testing.T) {
+	config := accountMetricConfigForTest()
+	off := false
+	config.AutoRecover = &off
+	started := time.Now().Add(-time.Minute)
+	repo := &accountMetricRecoveryRepoStub{monitors: []*AccountPerformanceMonitor{{AccountID: 7, Config: config, Paused: true, TrialStartedAt: &started, TrialRequests: 3}}}
+	svc := NewAccountMetricRecoveryService(repo, &OpsService{}, time.Minute)
+	require.NoError(t, svc.RunEvaluation(context.Background(), time.Now()))
+	require.Zero(t, repo.recovered)
+	require.Zero(t, repo.ended)
 }
 
 func (r *accountMetricRecoveryRepoStub) ListAccountPerformanceMonitors(context.Context) ([]*AccountPerformanceMonitor, error) {
 	return r.monitors, r.listErr
 }
 
-func (r *accountMetricRecoveryRepoStub) GetAccountMetricSnapshot(context.Context, int64, time.Time, time.Time) (*AccountMetricSnapshot, error) {
+func (r *accountMetricRecoveryRepoStub) GetAccountMetricSnapshot(_ context.Context, _ int64, start, end time.Time) (*AccountMetricSnapshot, error) {
+	r.windowStart, r.windowEnd = start, end
 	return r.snapshot, r.snapshotErr
 }
 
-func (r *accountMetricRecoveryRepoStub) PauseAccountForMetricBreach(_ context.Context, _ int64, _ int64, reason string, _ []AccountMetricRuleEvidence, _ time.Time) (bool, error) {
+func (r *accountMetricRecoveryRepoStub) GetAccountPerformanceMonitor(_ context.Context, id int64) (*AccountPerformanceMonitor, error) {
+	for _, monitor := range r.monitors {
+		if monitor.AccountID == id {
+			return monitor, nil
+		}
+	}
+	return &AccountPerformanceMonitor{AccountID: id}, nil
+}
+
+func (r *accountMetricRecoveryRepoStub) GetAccountPerformanceMonitors(ctx context.Context, ids []int64) (map[int64]*AccountPerformanceMonitor, error) {
+	result := make(map[int64]*AccountPerformanceMonitor, len(ids))
+	for _, id := range ids {
+		result[id], _ = r.GetAccountPerformanceMonitor(ctx, id)
+	}
+	return result, nil
+}
+
+func (r *accountMetricRecoveryRepoStub) GetAccountMetricSnapshots(_ context.Context, ids []int64, start, end time.Time) (map[int64]*AccountMetricSnapshot, error) {
+	r.windowStart, r.windowEnd = start, end
+	result := make(map[int64]*AccountMetricSnapshot, len(ids))
+	for _, id := range ids {
+		result[id] = r.snapshot
+	}
+	return result, r.snapshotErr
+}
+
+func TestAccountMetricRecoveryStatusUsesSeparateListAndEvaluationWindows(t *testing.T) {
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	configuredAt, trialAt := now.Add(-10*time.Minute), now.Add(-time.Minute)
+	monitor := &AccountPerformanceMonitor{AccountID: 7, MetricsSince: &configuredAt}
+	repo := &accountMetricRecoveryRepoStub{monitors: []*AccountPerformanceMonitor{monitor}}
+	svc := NewAccountMetricRecoveryService(repo, &OpsService{}, time.Minute)
+	ctx := context.Background()
+
+	_, err := svc.GetStatus(ctx, 7, now)
+	require.NoError(t, err)
+	require.Equal(t, configuredAt, repo.windowStart)
+	monitor.Paused, monitor.TrialStartedAt = true, &trialAt
+	_, err = svc.GetStatus(ctx, 7, now)
+	require.NoError(t, err)
+	require.Equal(t, trialAt, repo.windowStart)
+	statuses, err := svc.GetStatuses(ctx, []int64{7}, now)
+	require.NoError(t, err)
+	require.True(t, statuses[7].MetricsAvailable)
+	require.Equal(t, now.Add(-time.Hour), repo.windowStart)
+	require.Equal(t, now, repo.windowEnd)
+
+	monitor.MetricsSince = &now
+	status, err := svc.GetStatus(ctx, 7, now)
+	require.NoError(t, err)
+	require.True(t, status.MetricsAvailable, "an empty fresh window does not mean Ops is disabled")
+	require.Nil(t, status.Metrics)
+}
+
+func (r *accountMetricRecoveryRepoStub) PauseAccountForMetricBreach(_ context.Context, _ int64, _ AccountMetricEvaluationToken, reason string, _ []AccountMetricRuleEvidence, _ time.Time) (bool, error) {
 	r.paused++
 	r.lastReason = reason
 	return true, nil
 }
 
-func (r *accountMetricRecoveryRepoStub) RecoverAccountFromMetricTrial(context.Context, int64, int64, []AccountMetricRuleEvidence, time.Time) (bool, error) {
+func (r *accountMetricRecoveryRepoStub) RecoverAccountFromMetricTrial(context.Context, int64, AccountMetricEvaluationToken, []AccountMetricRuleEvidence, time.Time) (bool, error) {
 	r.recovered++
 	return true, nil
 }
 
-func (r *accountMetricRecoveryRepoStub) EndAccountMetricTrial(_ context.Context, _ int64, _ int64, outcome string, _ []AccountMetricRuleEvidence, _ time.Time) (bool, error) {
+func (r *accountMetricRecoveryRepoStub) EndAccountMetricTrial(_ context.Context, _ int64, _ AccountMetricEvaluationToken, outcome string, _ []AccountMetricRuleEvidence, _ time.Time) (bool, error) {
 	r.ended++
 	r.lastOutcome = outcome
 	return true, nil

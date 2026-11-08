@@ -313,6 +313,9 @@
             <div class="flex items-center gap-1.5">
               <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
             </div>
+            <button v-if="metricStatuses[String(row.id)]?.monitor?.config.enabled || metricStatuses[String(row.id)]?.monitor?.paused" type="button" class="mt-1 block text-xs text-primary-700 dark:text-primary-300" :title="metricStatuses[String(row.id)]?.monitor.reason" @click="metricAccount = { id: row.id, name: row.name }">
+              {{ t(metricStatuses[String(row.id)]?.monitor.paused ? (metricStatuses[String(row.id)]?.monitor.trial_started_at ? 'admin.accounts.metricRecovery.trial' : 'admin.accounts.metricRecovery.paused') : 'admin.accounts.metricRecovery.active') }}
+            </button>
           </template>
           <template #cell-schedulable="{ row }">
             <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
@@ -431,8 +434,9 @@
             </div>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
-          <template #cell-last_used_at="{ value }">
+          <template #cell-last_used_at="{ row, value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatRelativeTime(value) }}</span>
+            <AccountMetricRecoveryCell :status="metricStatuses[String(row.id)]" :loading="metricLoading" :error="metricError" class="mt-1" @configure="metricAccount = { id: row.id, name: row.name }" />
           </template>
           <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">{{ formatDateTime(value) }}</span>
@@ -479,6 +483,9 @@
     </TablePageLayout>
     <CreateAccountModal :show="showCreate" :proxies="proxies" :groups="groups" :available-tags="availableTags" @close="showCreate = false" @created="reload" />
     <EditAccountModal :show="showEdit" :account="edAcc" :proxies="proxies" :groups="groups" :available-tags="availableTags" @close="showEdit = false" @updated="handleAccountUpdated" />
+    <BaseDialog :show="metricAccount !== null" :title="`${t('admin.accounts.metricRecovery.title')} · ${metricAccount?.name ?? ''}`" width="wide" @close="metricAccount = null">
+      <AccountMetricRecoveryPanel v-if="metricAccount" :key="metricAccount.id" :account-id="metricAccount.id" @updated="refreshMetricRecovery" />
+    </BaseDialog>
     <ReAuthAccountModal :show="showReAuth" :account="reAuthAcc" @close="closeReAuthModal" @reauthorized="handleAccountUpdated" />
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
@@ -529,6 +536,7 @@ import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import { useTableLoader } from '@/composables/useTableLoader'
+import { useAccountMetricRecoveryList } from '@/composables/useAccountMetricRecoveryList'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
 import { useTableSelection } from '@/composables/useTableSelection'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
@@ -539,6 +547,9 @@ import DataTable from '@/components/common/DataTable.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import AccountMetricRecoveryCell from '@/components/account/AccountMetricRecoveryCell.vue'
+import AccountMetricRecoveryPanel from '@/components/account/AccountMetricRecoveryPanel.vue'
 import { CreateAccountModal, EditAccountModal, BulkEditAccountModal, SyncFromCrsModal, TempUnschedStatusModal } from '@/components/account'
 import AccountTableActions from '@/components/admin/account/AccountTableActions.vue'
 import AccountTableFilters from '@/components/admin/account/AccountTableFilters.vue'
@@ -576,6 +587,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
+const metricAccount = ref<{ id: number; name: string } | null>(null)
 const groups = ref<AdminGroup[]>([])
 const availableTags = ref<string[]>([])
 let tagsRequestId = 0
@@ -1169,6 +1181,10 @@ const {
   }
 })
 
+const { statuses: metricStatuses, loading: metricLoading, error: metricError, refresh: refreshMetricRecovery } = useAccountMetricRecoveryList(accounts)
+
+watch(showEdit, (open) => { if (!open) void refreshMetricRecovery() })
+
 const {
   selectedSet,
   selectedIds: selIds,
@@ -1450,6 +1466,7 @@ watch(accounts, (rows) => {
 
 const isAnyModalOpen = computed(() => {
   return (
+    metricAccount.value !== null ||
     showCreate.value ||
     showEdit.value ||
     showSync.value ||
@@ -1557,6 +1574,8 @@ const refreshAccountsIncrementally = async () => {
     if (result.etag) {
       autoRefreshETag.value = result.etag
     }
+    // Metric state changes independently from the account-list ETag.
+    if (result.notModified) await refreshMetricRecovery()
     if (!result.notModified && result.data) {
       pagination.total = result.data.total || 0
       pagination.pages = result.data.pages || 0

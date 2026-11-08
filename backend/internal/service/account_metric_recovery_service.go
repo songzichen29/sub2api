@@ -129,11 +129,11 @@ func (s *AccountMetricRecoveryService) evaluateMonitor(ctx context.Context, moni
 			return nil
 		}
 		reason := AccountMetricPauseReason(evaluation.Evidence)
-		_, err = s.repo.PauseAccountForMetricBreach(ctx, monitor.AccountID, monitor.Revision, reason, evaluation.Evidence, now)
+		_, err = s.repo.PauseAccountForMetricBreach(ctx, monitor.AccountID, monitor.EvaluationToken(), reason, evaluation.Evidence, now)
 		return err
 	}
 
-	if monitor.TrialStartedAt == nil {
+	if !config.AutomaticRecoveryEnabled() || monitor.TrialStartedAt == nil {
 		return nil
 	}
 	start := *monitor.TrialStartedAt
@@ -152,7 +152,7 @@ func (s *AccountMetricRecoveryService) evaluateMonitor(ctx context.Context, moni
 		return err
 	}
 	if failure.Triggered {
-		_, err = s.repo.EndAccountMetricTrial(ctx, monitor.AccountID, monitor.Revision, "pause_threshold_breached", failure.Evidence, now)
+		_, err = s.repo.EndAccountMetricTrial(ctx, monitor.AccountID, monitor.EvaluationToken(), "pause_threshold_breached", failure.Evidence, now)
 		return err
 	}
 	recovery, err := EvaluateAccountMetricRecovery(monitor.Config, snapshot)
@@ -160,7 +160,7 @@ func (s *AccountMetricRecoveryService) evaluateMonitor(ctx context.Context, moni
 		return err
 	}
 	if recovery.Triggered && monitor.TrialRequests >= int64(monitor.Config.RecoverySamples) {
-		_, err = s.repo.RecoverAccountFromMetricTrial(ctx, monitor.AccountID, monitor.Revision, recovery.Evidence, now)
+		_, err = s.repo.RecoverAccountFromMetricTrial(ctx, monitor.AccountID, monitor.EvaluationToken(), recovery.Evidence, now)
 		return err
 	}
 	budgetExhausted := monitor.TrialRequests >= int64(monitor.Config.RecoverySamples*3)
@@ -182,7 +182,7 @@ func (s *AccountMetricRecoveryService) evaluateMonitor(ctx context.Context, moni
 	if trialExpired {
 		outcome = "trial_window_expired"
 	}
-	_, err = s.repo.EndAccountMetricTrial(ctx, monitor.AccountID, monitor.Revision, outcome, recovery.Evidence, now)
+	_, err = s.repo.EndAccountMetricTrial(ctx, monitor.AccountID, monitor.EvaluationToken(), outcome, recovery.Evidence, now)
 	return err
 }
 
@@ -205,6 +205,7 @@ func (s *AccountMetricRecoveryService) GetStatus(ctx context.Context, accountID 
 	if monitor.Paused && monitor.TrialStartedAt != nil && monitor.TrialStartedAt.After(start) {
 		start = *monitor.TrialStartedAt
 	}
+	status.MetricsAvailable = true
 	if !start.Before(now.UTC()) {
 		return status, nil
 	}
@@ -216,9 +217,40 @@ func (s *AccountMetricRecoveryService) GetStatus(ctx context.Context, accountID 
 	return status, nil
 }
 
+// List display always uses the full rolling hour, independently of configuration
+// edits and trial resets. Detail/evaluation keep their fresh-evidence window.
+func (s *AccountMetricRecoveryService) GetStatuses(ctx context.Context, ids []int64, now time.Time) (map[int64]*AccountPerformanceStatus, error) {
+	if s == nil || s.repo == nil {
+		return nil, fmt.Errorf("account metric recovery repository is unavailable")
+	}
+	if len(ids) > 100 {
+		return nil, ErrInvalidAccountMetricConfig
+	}
+	monitors, err := s.repo.GetAccountPerformanceMonitors(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	available := s.ops != nil && s.ops.IsMonitoringEnabled(ctx)
+	var metrics map[int64]*AccountMetricSnapshot
+	if available {
+		metrics, err = s.repo.GetAccountMetricSnapshots(ctx, ids, now.UTC().Add(-accountMetricRollingWindow), now.UTC())
+		if err != nil {
+			return nil, err
+		}
+	}
+	result := make(map[int64]*AccountPerformanceStatus, len(ids))
+	for _, id := range ids {
+		result[id] = &AccountPerformanceStatus{Monitor: monitors[id], MetricsAvailable: available, Metrics: metrics[id]}
+	}
+	return result, nil
+}
+
 func (s *AccountMetricRecoveryService) SaveConfig(ctx context.Context, accountID, expectedRevision int64, config AccountMetricRecoveryConfig, actorID *int64, now time.Time) (*AccountPerformanceMonitor, error) {
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("account metric recovery repository is unavailable")
+	}
+	if config.Enabled && (s.ops == nil || !s.ops.IsMonitoringEnabled(ctx)) {
+		return nil, fmt.Errorf("%w: enable Ops monitoring before enabling metric rules", ErrInvalidAccountMetricConfig)
 	}
 	config, err := NormalizeAccountMetricRecoveryConfig(config)
 	if err != nil {

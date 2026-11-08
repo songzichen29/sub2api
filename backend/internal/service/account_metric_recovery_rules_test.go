@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -25,6 +26,65 @@ func accountMetricConfigForTest() AccountMetricRecoveryConfig {
 }
 
 func metricValue(value float64) *float64 { return &value }
+
+func TestAccountMetricRangeRulesAndLegacyJSON(t *testing.T) {
+	var legacy AccountMetricRecoveryConfig
+	require.NoError(t, json.Unmarshal([]byte(`{"enabled":true,"cooldown_seconds":600,"success_rate":{"pause_threshold":0.8,"recovery_threshold":0.9,"min_samples":10}}`), &legacy))
+	normalized, err := NormalizeAccountMetricRecoveryConfig(legacy)
+	require.NoError(t, err)
+	require.Equal(t, 600, normalized.CooldownSeconds)
+	require.Equal(t, 10, normalized.SuccessRate.MinSamples)
+	require.True(t, normalized.AutomaticRecoveryEnabled())
+	config := AccountMetricRecoveryConfig{Enabled: true, RecoverySamples: 3, TTFTMs: &AccountMetricThreshold{
+		Pause:    &AccountMetricBounds{Min: metricValue(10), Max: metricValue(100)},
+		Recovery: &AccountMetricBounds{Min: metricValue(20), Max: metricValue(80)}, MinSamples: 1,
+	}}
+	for _, tc := range []struct {
+		value          float64
+		pause, recover bool
+	}{
+		{9, true, false}, {10, false, false}, {20, false, true}, {80, false, true}, {100, false, false}, {101, true, false},
+	} {
+		snapshot := &AccountMetricSnapshot{AverageTTFTMs: metricValue(tc.value), TTFTSamples: 3}
+		pause, err := EvaluateAccountMetricPause(config, snapshot)
+		require.NoError(t, err)
+		require.Equal(t, tc.pause, pause.Triggered)
+		recovery, err := EvaluateAccountMetricRecovery(config, snapshot)
+		require.NoError(t, err)
+		require.Equal(t, tc.recover, recovery.Triggered)
+	}
+	config.TTFTMs.Recovery = &AccountMetricBounds{Min: metricValue(101)}
+	_, err = NormalizeAccountMetricRecoveryConfig(config)
+	require.ErrorIs(t, err, ErrInvalidAccountMetricConfig)
+	config.TTFTMs.Recovery = nil
+	config.TTFTMs.Pause = &AccountMetricBounds{Max: metricValue(0)}
+	result, err := EvaluateAccountMetricRecovery(config, &AccountMetricSnapshot{AverageTTFTMs: metricValue(0), TTFTSamples: 3})
+	require.NoError(t, err)
+	require.True(t, result.Triggered)
+	result, err = EvaluateAccountMetricPause(config, &AccountMetricSnapshot{AverageTTFTMs: metricValue(-1), TTFTSamples: 3})
+	require.NoError(t, err)
+	require.Empty(t, result.Evidence)
+	off := false
+	config.AutoRecover = &off
+	result, err = EvaluateAccountMetricRecovery(config, &AccountMetricSnapshot{AverageTTFTMs: metricValue(0), TTFTSamples: 3})
+	require.NoError(t, err)
+	require.False(t, result.Triggered)
+}
+
+func TestAccountMetricEmptyAndInvalidRanges(t *testing.T) {
+	for _, rule := range []*AccountMetricThreshold{
+		{Pause: &AccountMetricBounds{}, Recovery: &AccountMetricBounds{Min: metricValue(0.5)}},
+		{Pause: &AccountMetricBounds{Min: metricValue(0.8), Max: metricValue(0.5)}},
+		{Pause: &AccountMetricBounds{Max: metricValue(1.1)}},
+		{Pause: &AccountMetricBounds{Min: metricValue(0.8)}, Recovery: &AccountMetricBounds{Min: metricValue(0.7)}},
+	} {
+		_, err := NormalizeAccountMetricRecoveryConfig(AccountMetricRecoveryConfig{SuccessRate: rule})
+		require.ErrorIs(t, err, ErrInvalidAccountMetricConfig)
+	}
+	config, err := NormalizeAccountMetricRecoveryConfig(AccountMetricRecoveryConfig{SuccessRate: &AccountMetricThreshold{Pause: &AccountMetricBounds{}}})
+	require.NoError(t, err)
+	require.Nil(t, config.SuccessRate)
+}
 
 func TestEvaluateAccountMetricPauseThresholdBoundariesAndInsufficientSamples(t *testing.T) {
 	config := accountMetricConfigForTest()

@@ -12,57 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const accountMetricUsageAggregateSQL = `
-SELECT
-  COUNT(*),
-  COALESCE(SUM(CASE
-    WHEN input_tokens >= 0 AND cache_creation_tokens >= 0 AND cache_read_tokens >= 0
-      AND input_tokens + cache_creation_tokens + cache_read_tokens > 0
-    THEN cache_read_tokens ELSE 0 END), 0),
-  COALESCE(SUM(CASE
-    WHEN input_tokens >= 0 AND cache_creation_tokens >= 0 AND cache_read_tokens >= 0
-      AND input_tokens + cache_creation_tokens + cache_read_tokens > 0
-    THEN input_tokens + cache_creation_tokens + cache_read_tokens ELSE 0 END), 0),
-  COALESCE(SUM(CASE
-    WHEN input_tokens >= 0 AND cache_creation_tokens >= 0 AND cache_read_tokens >= 0
-      AND input_tokens + cache_creation_tokens + cache_read_tokens > 0
-    THEN 1 ELSE 0 END), 0),
-  AVG(CASE WHEN first_token_ms > 0 THEN first_token_ms END),
-  COALESCE(SUM(CASE WHEN first_token_ms > 0 THEN 1 ELSE 0 END), 0),
-  AVG(CASE WHEN duration_ms > 0 THEN duration_ms END),
-  COALESCE(SUM(CASE WHEN duration_ms > 0 THEN 1 ELSE 0 END), 0)
-FROM usage_logs ul
-WHERE account_id = ?
-  AND created_at >= ? AND created_at < ?
-  AND COALESCE(request_type, 0) NOT IN (4, 6)
-  AND ` + usageLogSuccessFilterUL
-
-const accountMetricTerminalErrorsSQL = `
-SELECT COUNT(*)
-FROM (
-  SELECT COALESCE(e.request_id, e.client_request_id) AS request_identity,
-         COALESCE(e.api_key_id, 0) AS api_key_identity
-  FROM ops_error_logs e
-  WHERE e.account_id = ?
-    AND e.created_at >= ? AND e.created_at < ?
-    AND COALESCE(e.is_count_tokens, FALSE) = FALSE
-    AND COALESCE(e.request_type, 0) NOT IN (4, 6)
-    AND COALESCE(e.is_business_limited, FALSE) = FALSE
-    AND e.error_owner = 'provider'
-    AND COALESCE(NULLIF(e.upstream_status_code, 0), e.status_code, 0) >= 400
-    AND COALESCE(e.request_id, e.client_request_id) IS NOT NULL
-    AND NOT EXISTS (
-      SELECT 1
-      FROM usage_logs ul
-      WHERE ul.account_id = e.account_id
-        AND ul.request_id = COALESCE(e.request_id, e.client_request_id)
-        AND (e.api_key_id IS NULL OR ul.api_key_id = e.api_key_id)
-        AND COALESCE(ul.request_type, 0) NOT IN (4, 6)
-        AND ` + usageLogSuccessFilterUL + `
-    )
-  GROUP BY COALESCE(e.request_id, e.client_request_id), COALESCE(e.api_key_id, 0)
-) terminal_errors`
-
 const accountPerformanceMonitorColumns = `
 account_id, config, revision, paused, pause_generation, paused_at, reason,
 trial_started_at, trial_requests, next_trial_at, metrics_since, created_at, updated_at`
@@ -85,75 +34,6 @@ func (r *accountMetricRepository) query(query string) string {
 		return query
 	}
 	return opsRebindQuestionPlaceholders(query)
-}
-
-func (r *accountMetricRepository) GetAccountMetricSnapshot(ctx context.Context, accountID int64, start, end time.Time) (*service.AccountMetricSnapshot, error) {
-	if r == nil || r.db == nil {
-		return nil, fmt.Errorf("nil account metric repository")
-	}
-	if accountID <= 0 {
-		return nil, fmt.Errorf("account id must be positive")
-	}
-	start, end = start.UTC(), end.UTC()
-	if start.IsZero() || end.IsZero() || !start.Before(end) {
-		return nil, fmt.Errorf("invalid account metric window")
-	}
-
-	var (
-		successSamples int64
-		cacheNumerator sql.NullFloat64
-		cacheDenom     sql.NullFloat64
-		cacheSamples   int64
-		ttftAverage    sql.NullFloat64
-		ttftSamples    int64
-		durationAvg    sql.NullFloat64
-		durationCount  int64
-	)
-	if err := r.db.QueryRowContext(ctx, r.query(accountMetricUsageAggregateSQL), accountID, start, end).Scan(
-		&successSamples,
-		&cacheNumerator,
-		&cacheDenom,
-		&cacheSamples,
-		&ttftAverage,
-		&ttftSamples,
-		&durationAvg,
-		&durationCount,
-	); err != nil {
-		return nil, fmt.Errorf("aggregate account usage metrics: %w", err)
-	}
-
-	var errorSamples int64
-	if err := r.db.QueryRowContext(ctx, r.query(accountMetricTerminalErrorsSQL), accountID, start, end).Scan(&errorSamples); err != nil {
-		return nil, fmt.Errorf("aggregate account terminal errors: %w", err)
-	}
-
-	snapshot := &service.AccountMetricSnapshot{
-		AccountID:       accountID,
-		WindowStart:     start,
-		WindowEnd:       end,
-		SuccessSamples:  successSamples,
-		ErrorSamples:    errorSamples,
-		CacheSamples:    cacheSamples,
-		TTFTSamples:     ttftSamples,
-		DurationSamples: durationCount,
-	}
-	if total := successSamples + errorSamples; total > 0 {
-		rate := float64(successSamples) / float64(total)
-		snapshot.SuccessRate = &rate
-	}
-	if cacheDenom.Valid && cacheDenom.Float64 > 0 && cacheNumerator.Valid && cacheSamples > 0 {
-		rate := cacheNumerator.Float64 / cacheDenom.Float64
-		snapshot.CacheRate = &rate
-	}
-	if ttftAverage.Valid && ttftSamples > 0 {
-		average := ttftAverage.Float64
-		snapshot.AverageTTFTMs = &average
-	}
-	if durationAvg.Valid && durationCount > 0 {
-		average := durationAvg.Float64
-		snapshot.AverageDurationMs = &average
-	}
-	return snapshot, nil
 }
 
 type accountMetricRowScanner interface {
@@ -316,7 +196,7 @@ INSERT INTO account_performance_monitors (
 			}
 			return nil, err
 		}
-		if err := r.insertEvent(ctx, tx, accountID, "configure", actorID, 1, 0, map[string]any{"enabled": config.Enabled}, now); err != nil {
+		if err := r.insertEvent(ctx, tx, accountID, "configure", actorID, 1, 0, map[string]any{"enabled": config.Enabled, "config": config}, now); err != nil {
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
@@ -356,7 +236,7 @@ WHERE account_id = ? AND revision = ?`),
 	if err != nil {
 		return nil, err
 	}
-	if err := r.insertEvent(ctx, tx, accountID, "configure", actorID, revision, generation, map[string]any{"enabled": config.Enabled}, now); err != nil {
+	if err := r.insertEvent(ctx, tx, accountID, "configure", actorID, revision, generation, map[string]any{"enabled": config.Enabled, "config": config}, now); err != nil {
 		return nil, err
 	}
 	if current.Paused && !config.Enabled {
@@ -455,7 +335,8 @@ ORDER BY id DESC LIMIT ?`), accountID, beforeID, beforeID, limit)
 	return events, rows.Err()
 }
 
-func (r *accountMetricRepository) PauseAccountForMetricBreach(ctx context.Context, accountID, revision int64, reason string, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+func (r *accountMetricRepository) PauseAccountForMetricBreach(ctx context.Context, accountID int64, token service.AccountMetricEvaluationToken, reason string, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+	revision := token.Revision
 	if r == nil || r.db == nil {
 		return false, fmt.Errorf("nil account metric repository")
 	}
@@ -469,7 +350,7 @@ func (r *accountMetricRepository) PauseAccountForMetricBreach(ctx context.Contex
 	if err != nil {
 		return false, err
 	}
-	if current == nil || current.Revision != revision || current.Paused || !current.Config.Enabled {
+	if !matchesAccountMetricEvaluation(current, token) || current.Paused || !current.Config.Enabled {
 		return false, nil
 	}
 	generation := current.PauseGeneration + 1
@@ -492,7 +373,8 @@ WHERE account_id = ? AND revision = ? AND pause_generation = ? AND paused = FALS
 	return true, nil
 }
 
-func (r *accountMetricRepository) RecoverAccountFromMetricTrial(ctx context.Context, accountID, revision int64, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+func (r *accountMetricRepository) RecoverAccountFromMetricTrial(ctx context.Context, accountID int64, token service.AccountMetricEvaluationToken, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+	revision := token.Revision
 	if r == nil || r.db == nil {
 		return false, fmt.Errorf("nil account metric repository")
 	}
@@ -506,7 +388,7 @@ func (r *accountMetricRepository) RecoverAccountFromMetricTrial(ctx context.Cont
 	if err != nil {
 		return false, err
 	}
-	if current == nil || current.Revision != revision || !current.Paused || current.TrialStartedAt == nil {
+	if !matchesAccountMetricEvaluation(current, token) || !current.Paused || current.TrialStartedAt == nil || !current.Config.AutomaticRecoveryEnabled() {
 		return false, nil
 	}
 	config, err := service.NormalizeAccountMetricRecoveryConfig(current.Config)
@@ -535,7 +417,8 @@ WHERE account_id = ? AND revision = ? AND pause_generation = ? AND paused = TRUE
 	return true, nil
 }
 
-func (r *accountMetricRepository) EndAccountMetricTrial(ctx context.Context, accountID, revision int64, outcome string, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+func (r *accountMetricRepository) EndAccountMetricTrial(ctx context.Context, accountID int64, token service.AccountMetricEvaluationToken, outcome string, evidence []service.AccountMetricRuleEvidence, now time.Time) (bool, error) {
+	revision := token.Revision
 	if r == nil || r.db == nil {
 		return false, fmt.Errorf("nil account metric repository")
 	}
@@ -549,7 +432,7 @@ func (r *accountMetricRepository) EndAccountMetricTrial(ctx context.Context, acc
 	if err != nil {
 		return false, err
 	}
-	if current == nil || current.Revision != revision || !current.Paused || current.TrialStartedAt == nil {
+	if !matchesAccountMetricEvaluation(current, token) || !current.Paused || current.TrialStartedAt == nil {
 		return false, nil
 	}
 	config, err := service.NormalizeAccountMetricRecoveryConfig(current.Config)
@@ -614,7 +497,7 @@ func (r *accountMetricRepository) AdmitAccountPerformanceRequest(ctx context.Con
 	if err != nil {
 		return false, err
 	}
-	if !config.Enabled {
+	if !config.Enabled || !config.AutomaticRecoveryEnabled() {
 		return false, nil
 	}
 	cooldownUntil := current.NextTrialAt
@@ -667,4 +550,14 @@ WHERE account_id = ? AND revision = ? AND pause_generation = ? AND paused = TRUE
 		return false, err
 	}
 	return true, nil
+}
+
+func matchesAccountMetricEvaluation(current *service.AccountPerformanceMonitor, token service.AccountMetricEvaluationToken) bool {
+	if current == nil || current.Revision != token.Revision || current.PauseGeneration != token.PauseGeneration {
+		return false
+	}
+	if current.TrialStartedAt == nil || token.TrialStartedAt == nil {
+		return current.TrialStartedAt == nil && token.TrialStartedAt == nil
+	}
+	return current.TrialStartedAt.Equal(*token.TrialStartedAt)
 }

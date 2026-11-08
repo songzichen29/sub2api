@@ -26,6 +26,17 @@ The system SHALL keep metric-based pause and recovery disabled unless an adminis
 - **WHEN** an administrator saves invalid thresholds or a stale configuration revision
 - **THEN** the system SHALL reject the update without changing the saved configuration or pause state
 
+#### Scenario: Dual bounds and existing configuration
+- **WHEN** an administrator configures a metric
+- **THEN** the system SHALL support pause/recovery minimum and maximum bounds with per-metric sample counts, and omitted recovery bounds SHALL inherit pause bounds
+- **AND** existing single-bound JSON and explicitly saved cooldown/sample values SHALL retain their meaning
+- **AND** new defaults SHALL be a 300-second cooldown, 20 pause samples per metric and three recovery samples; the legacy 30-second minimum cooldown SHALL remain supported
+
+#### Scenario: Ops monitoring is disabled
+- **WHEN** Ops monitoring is disabled
+- **THEN** enabling metric rules SHALL be rejected and automatic evaluation SHALL stop
+- **AND** an administrator SHALL still be able to disable the rules or explicitly release a pause
+
 ### Requirement: Degraded rolling metrics pause only the affected account
 The system SHALL pause an enabled account only when a configured pause threshold is breached using sufficient, valid observations from the rolling measurement window.
 
@@ -42,6 +53,13 @@ The system SHALL pause an enabled account only when a configured pause threshold
 - **THEN** those rows SHALL NOT count as successful observations or suppress a corresponding terminal provider error
 - **AND** internal probe and cyber-blocked errors SHALL NOT count as user-request failures
 
+#### Scenario: Free successes and terminal partial failures
+- **WHEN** metric statistics aggregate usage and provider errors
+- **THEN** positive token usage SHALL count even when its cost is zero, terminal HTTP errors SHALL override partial-output usage, and duplicate request identities SHALL count once per source
+- **AND** completed WebSocket turns SHALL remain observations even when their connection later fails
+- **AND** cache/TTFT SHALL use eligible successful streaming/WebSocket observations, exclude image-input tokens from the cache denominator, and accept valid zero timings
+- **AND** billing and dashboard success definitions SHALL remain unchanged
+
 #### Scenario: Account is automatically paused
 - **WHEN** metric rules pause an account
 - **THEN** the system SHALL preserve the account's manual status and schedulable setting and SHALL NOT change other accounts or groups
@@ -52,6 +70,15 @@ The system SHALL automatically recover a metric-paused account only after its co
 #### Scenario: Trial succeeds
 - **WHEN** the cooldown has elapsed and the required trial observations meet every recovery threshold within the trial window
 - **THEN** the system SHALL clear the metric pause and record recovery evidence
+
+#### Scenario: Automatic recovery is disabled
+- **WHEN** an account has `auto_recover=false` and is metric-paused
+- **THEN** the system SHALL admit no recovery trial and SHALL NOT recover it automatically
+- **AND** a missing legacy `auto_recover` field SHALL retain the prior automatic behavior
+
+#### Scenario: Evaluation finishes after its cycle changed
+- **WHEN** a background evaluation's configuration revision, pause generation or trial start differs from the locked current monitor
+- **THEN** that evaluation SHALL NOT pause, recover or end the newer cycle
 
 #### Scenario: Trial fails or exhausts its budget
 - **WHEN** a trial breaches a pause threshold, times out, or reaches its finite request budget without enough recovery evidence
@@ -84,3 +111,22 @@ For accounts in an instance's enabled-or-paused membership snapshot, the system 
 #### Scenario: Stale release request
 - **WHEN** an administrator releases an account using an outdated revision or pause generation
 - **THEN** the system SHALL reject the request without changing the current pause state
+
+### Requirement: Account list metrics and configuration are visible and isolated
+The system SHALL show recent metrics and the independent metric-rule state in the existing account list and provide a clickable configuration entry, including when no observations exist.
+
+#### Scenario: Current page refresh
+- **WHEN** the account list loads or refreshes
+- **THEN** metrics SHALL be fetched in batches of no more than 100 IDs using the complete recent-hour window
+- **AND** late responses from an old page SHALL NOT replace current-page data
+- **AND** metric data SHALL refresh even if the account-list response is HTTP 304
+
+#### Scenario: Configuration details and history
+- **WHEN** the administrator opens the metric panel
+- **THEN** it SHALL show the saved bounds, automatic recovery setting, per-metric samples, actual fresh evaluation window, pause reason, trial budget and paginated audit evidence
+- **AND** a stale write SHALL require refresh while keeping the unsaved form visible
+- **AND** manual release SHALL clearly state that it also disables rules
+
+#### Scenario: Restricted admin key
+- **WHEN** a scoped admin key attempts to read or change metrics through any metric-recovery route
+- **THEN** the existing scoped-key middleware SHALL deny that request rather than expose unrestricted account data

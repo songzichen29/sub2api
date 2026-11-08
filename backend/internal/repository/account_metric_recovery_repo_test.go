@@ -11,80 +11,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAccountMetricSnapshotAggregatesValidObservationsAndDeduplicatesErrors(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	require.NoError(t, err)
-	defer db.Close()
-
-	start := time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC)
-	end := start.Add(time.Hour)
-	repo := &accountMetricRepository{db: db}
-
-	mock.ExpectQuery(regexp.QuoteMeta(opsRebindQuestionPlaceholders(accountMetricUsageAggregateSQL))).
-		WithArgs(int64(17), start, end).
-		WillReturnRows(sqlmock.NewRows([]string{"success", "cached", "prompt", "cache_samples", "ttft_avg", "ttft_samples", "duration_avg", "duration_samples"}).
-			AddRow(int64(3), float64(75), float64(100), int64(2), float64(850), int64(2), float64(4100), int64(3)))
-	mock.ExpectQuery(regexp.QuoteMeta(opsRebindQuestionPlaceholders(accountMetricTerminalErrorsSQL))).
-		WithArgs(int64(17), start, end).
-		WillReturnRows(sqlmock.NewRows([]string{"errors"}).AddRow(int64(1)))
-
-	snapshot, err := repo.GetAccountMetricSnapshot(context.Background(), 17, start, end)
-	require.NoError(t, err)
-	require.Equal(t, int64(3), snapshot.SuccessSamples)
-	require.Equal(t, int64(1), snapshot.ErrorSamples)
-	require.InDelta(t, 0.75, *snapshot.SuccessRate, 0.0001)
-	require.Equal(t, int64(2), snapshot.CacheSamples)
-	require.InDelta(t, 0.75, *snapshot.CacheRate, 0.0001)
-	require.InDelta(t, 850.0, *snapshot.AverageTTFTMs, 0.001)
-	require.Equal(t, int64(2), snapshot.TTFTSamples)
-	require.InDelta(t, 4100.0, *snapshot.AverageDurationMs, 0.001)
-	require.Equal(t, int64(3), snapshot.DurationSamples)
-	require.NoError(t, mock.ExpectationsWereMet())
-
-	query := accountMetricTerminalErrorsSQL
-	for _, fragment := range []string{
-		"e.error_owner = 'provider'",
-		"COALESCE(e.is_business_limited, FALSE) = FALSE",
-		"COALESCE(e.is_count_tokens, FALSE) = FALSE",
-		"GROUP BY COALESCE(e.request_id, e.client_request_id), COALESCE(e.api_key_id, 0)",
-		"NOT EXISTS",
-		"COALESCE(ul.request_type, 0) NOT IN (4, 6)",
-		usageLogSuccessFilterUL,
-	} {
-		require.Contains(t, query, fragment)
+func TestAccountMetricSnapshotBatchUsesOneAggregateQuery(t *testing.T) {
+	for _, mysql := range []bool{false, true} {
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		repo := &accountMetricRepository{db: db, mysql: mysql}
+		start := time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC)
+		end := start.Add(time.Hour)
+		mock.ExpectQuery(regexp.QuoteMeta(repo.query(accountMetricSnapshotsSQL(2, mysql)))).
+			WithArgs(int64(17), int64(18), start, end, int64(17), int64(18), start, end).
+			WillReturnRows(sqlmock.NewRows([]string{"account", "success", "errors", "cache", "cache_samples", "ttft", "ttft_samples", "duration", "duration_samples"}).
+				AddRow(17, 3, 1, 0.75, 2, 850.0, 2, 4100.0, 3))
+		snapshots, err := repo.GetAccountMetricSnapshots(context.Background(), []int64{17, 18}, start, end)
+		require.NoError(t, err)
+		require.Len(t, snapshots, 2)
+		require.InDelta(t, 0.75, *snapshots[17].SuccessRate, 0.0001)
+		require.InDelta(t, 0.75, *snapshots[17].CacheRate, 0.0001)
+		require.Equal(t, int64(2), snapshots[17].TTFTSamples)
+		require.Nil(t, snapshots[18].SuccessRate)
+		require.Nil(t, snapshots[18].CacheRate)
+		require.NoError(t, mock.ExpectationsWereMet())
+		db.Close()
 	}
 }
 
-func TestAccountMetricSnapshotLeavesMissingMetricsNil(t *testing.T) {
+func TestAccountMetricSnapshotRejectsInvalidBatch(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
-
-	start := time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC)
-	end := start.Add(time.Hour)
 	repo := &accountMetricRepository{db: db}
-	mock.ExpectQuery(regexp.QuoteMeta(opsRebindQuestionPlaceholders(accountMetricUsageAggregateSQL))).
-		WithArgs(int64(17), start, end).
-		WillReturnRows(sqlmock.NewRows([]string{"success", "cached", "prompt", "cache_samples", "ttft_avg", "ttft_samples", "duration_avg", "duration_samples"}).
-			AddRow(int64(0), float64(0), float64(0), int64(0), nil, int64(0), nil, int64(0)))
-	mock.ExpectQuery(regexp.QuoteMeta(opsRebindQuestionPlaceholders(accountMetricTerminalErrorsSQL))).
-		WithArgs(int64(17), start, end).
-		WillReturnRows(sqlmock.NewRows([]string{"errors"}).AddRow(int64(0)))
-
-	snapshot, err := repo.GetAccountMetricSnapshot(context.Background(), 17, start, end)
-	require.NoError(t, err)
-	require.Nil(t, snapshot.SuccessRate)
-	require.Nil(t, snapshot.CacheRate)
-	require.Nil(t, snapshot.AverageTTFTMs)
-	require.Nil(t, snapshot.AverageDurationMs)
+	now := time.Now()
+	for _, ids := range [][]int64{{0}, {-1}, make([]int64, 101)} {
+		_, err = repo.GetAccountMetricSnapshots(context.Background(), ids, now.Add(-time.Hour), now)
+		require.Error(t, err)
+	}
+	_, err = repo.GetAccountMetricSnapshot(context.Background(), 1, now, now)
+	require.Error(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAccountMetricQueriesUsePortablePlaceholderRebinding(t *testing.T) {
-	require.Contains(t, opsRebindQuestionPlaceholders(accountMetricTerminalErrorsSQL), "e.account_id = $1")
-	require.Contains(t, opsRebindQuestionPlaceholders(accountMetricTerminalErrorsSQL), "ul.account_id = e.account_id")
-	require.Contains(t, (&accountMetricRepository{mysql: true}).query(accountMetricTerminalErrorsSQL), "e.account_id = ?")
-	require.NotContains(t, (&accountMetricRepository{mysql: true}).query(accountMetricTerminalErrorsSQL), "$1")
+func TestAccountMetricAdmissionRequiresAutoRecover(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer db.Close()
+	repo := &accountMetricRepository{db: db}
+	now := time.Now()
+	row := func() *sqlmock.Rows {
+		return accountPerformanceMonitorTestRow(17, `{"enabled":true,"auto_recover":false,"success_rate":{"pause_threshold":0.8}}`, 1, true, 1, &now, nil, nil, nil)
+	}
+	query := "SELECT " + accountPerformanceMonitorColumns + " FROM account_performance_monitors WHERE account_id = ?"
+	mock.ExpectQuery(regexp.QuoteMeta(repo.query(query))).WithArgs(int64(17)).WillReturnRows(row())
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(repo.query(query + " FOR UPDATE"))).WithArgs(int64(17)).WillReturnRows(row())
+	mock.ExpectRollback()
+	allowed, err := repo.AdmitAccountPerformanceRequest(context.Background(), 17, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.False(t, allowed)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestSaveAccountMetricRecoveryConfigRejectsStaleRevision(t *testing.T) {
@@ -188,7 +171,7 @@ INSERT INTO account_performance_events (
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
-	changed, err := repo.PauseAccountForMetricBreach(context.Background(), 17, 4, "success_rate 0.4 below 0.8", nil, now)
+	changed, err := repo.PauseAccountForMetricBreach(context.Background(), 17, service.AccountMetricEvaluationToken{Revision: 4, PauseGeneration: 2}, "success_rate 0.4 below 0.8", nil, now)
 	require.NoError(t, err)
 	require.True(t, changed)
 	require.NoError(t, mock.ExpectationsWereMet())
@@ -199,6 +182,40 @@ func accountPerformanceMonitorTestRow(accountID int64, config string, revision i
 		"account_id", "config", "revision", "paused", "pause_generation", "paused_at", "reason",
 		"trial_started_at", "trial_requests", "next_trial_at", "metrics_since", "created_at", "updated_at",
 	}).AddRow(accountID, []byte(config), revision, paused, generation, pausedAt, "", trialStartedAt, int64(0), nextTrialAt, metricsSince, time.Now(), time.Now())
+}
+
+func TestAccountMetricEvaluationRejectsPreviousPauseAndTrial(t *testing.T) {
+	now := time.Now().UTC()
+	oldTrial := now.Add(-time.Minute)
+	for _, action := range []string{"pause", "recover", "end"} {
+		for _, staleGeneration := range []bool{true, false} {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			repo := &accountMetricRepository{db: db}
+			token := service.AccountMetricEvaluationToken{Revision: 4, PauseGeneration: 2, TrialStartedAt: &oldTrial}
+			if staleGeneration {
+				token.PauseGeneration = 1
+				token.TrialStartedAt = &now
+			}
+			mock.ExpectBegin()
+			mock.ExpectQuery(regexp.QuoteMeta(repo.query("SELECT " + accountPerformanceMonitorColumns + " FROM account_performance_monitors WHERE account_id = ? FOR UPDATE"))).WithArgs(int64(17)).
+				WillReturnRows(accountPerformanceMonitorTestRow(17, `{"enabled":true}`, 4, action != "pause", 2, &now, &now, nil, nil))
+			mock.ExpectRollback()
+			var changed bool
+			switch action {
+			case "pause":
+				changed, err = repo.PauseAccountForMetricBreach(context.Background(), 17, token, "stale", nil, now)
+			case "recover":
+				changed, err = repo.RecoverAccountFromMetricTrial(context.Background(), 17, token, nil, now)
+			case "end":
+				changed, err = repo.EndAccountMetricTrial(context.Background(), 17, token, "stale", nil, now)
+			}
+			require.NoError(t, err)
+			require.False(t, changed)
+			require.NoError(t, mock.ExpectationsWereMet())
+			db.Close()
+		}
+	}
 }
 
 func metricTestTimePtr(value time.Time) *time.Time { return &value }

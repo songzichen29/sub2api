@@ -631,6 +631,11 @@ export async function getMetricRecovery(id: number): Promise<AccountPerformanceS
   return data
 }
 
+export async function getBatchMetricRecovery(accountIds: number[], signal?: AbortSignal): Promise<{ accounts: Record<string, AccountPerformanceStatus> }> {
+  const { data } = await apiClient.post<{ accounts: Record<string, AccountPerformanceStatus> }>('/admin/accounts/metric-recovery/batch', { account_ids: accountIds }, { signal })
+  return data
+}
+
 export async function saveMetricRecovery(
   id: number,
   expectedRevision: number,
@@ -1232,6 +1237,7 @@ export const accountsAPI = {
   resetTempUnschedulable,
   setSchedulable,
   getMetricRecovery,
+  getBatchMetricRecovery,
   saveMetricRecovery,
   releaseMetricRecovery,
   listMetricRecoveryEvents,
