@@ -419,6 +419,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if err := NormalizeAccountAPIKeys(input.Type, input.Credentials); err != nil {
+		return nil, err
+	}
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -452,6 +455,19 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 			return nil, err
 		}
 		account.Tags = normalizedTags
+	}
+	if input.RateSyncEnabled != nil && *input.RateSyncEnabled {
+		if input.ProbeEnabled != nil && !*input.ProbeEnabled {
+			return nil, infraerrors.BadRequest("UPSTREAM_BILLING_RATE_SYNC_REQUIRES_PROBE", "upstream billing rate sync requires upstream billing probe")
+		}
+		if !isUpstreamBillingProbeAccount(account) {
+			return nil, ErrUpstreamBillingProbeAccountInvalid
+		}
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+		account.Extra[UpstreamBillingRateSyncEnabledExtraKey] = true
 	}
 	if input.ProbeEnabled != nil && *input.ProbeEnabled {
 		if !isUpstreamBillingProbeAccount(account) {
@@ -679,6 +695,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		// 敏感子键采用"incoming 没提供就保留"的合并语义：前端响应已脱敏，
 		// 全对象 PUT 编辑时不会再带回 token，避免覆盖时清空已有凭证。
 		account.Credentials = MergePreservingSensitiveCreds(account.Credentials, input.Credentials)
+		if err := NormalizeAccountAPIKeys(account.Type, account.Credentials); err != nil {
+			return nil, err
+		}
 		// 校验并规范化请求头覆写配置（header 名小写化、格式检查）
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
@@ -1132,6 +1151,42 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 
 	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
+	if _, hasPool := input.Credentials["api_keys"]; hasPool {
+		for _, accountID := range input.AccountIDs {
+			account := targetsByID[accountID]
+			if account == nil {
+				return nil, ErrAccountNotFound
+			}
+			if account.Type != AccountTypeAPIKey {
+				return nil, infraerrors.BadRequest("INVALID_ACCOUNT_API_KEYS", "ordered API keys are only supported on API-key accounts")
+			}
+		}
+		if err := NormalizeAccountAPIKeys(AccountTypeAPIKey, input.Credentials); err != nil {
+			return nil, err
+		}
+	}
+	if key, replaced := input.Credentials["api_key"]; replaced {
+		if _, hasPool := input.Credentials["api_keys"]; !hasPool {
+			// Bulk JSON merges cannot delete an old pool. A singleton list overrides
+			// it safely and OrderedAPIKeys keeps the legacy one-key behavior.
+			for _, account := range cachedTargets {
+				if account.HasAPIKeyPool() {
+					for _, target := range cachedTargets {
+						if target.Type != AccountTypeAPIKey {
+							return nil, infraerrors.BadRequest("INVALID_ACCOUNT_API_KEYS", "replace pooled keys separately from non-API-key accounts")
+						}
+					}
+					check := map[string]any{"api_keys": []any{key}}
+					if err := NormalizeAccountAPIKeys(AccountTypeAPIKey, check); err != nil {
+						return nil, err
+					}
+					input.Credentials["api_key"] = check["api_key"]
+					input.Credentials["api_keys"] = []any{check["api_key"]}
+					break
+				}
+			}
+		}
+	}
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
@@ -1249,7 +1304,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "api_keys", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if _, ok := credentials[key]; ok {
 			return true
 		}
@@ -1265,7 +1320,7 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 	if account.ProxyID != nil {
 		identity["proxy_id"] = *account.ProxyID
 	}
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "api_keys", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if value, ok := account.Credentials[key]; ok {
 			identity[key] = value
 		}

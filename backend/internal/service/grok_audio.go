@@ -93,7 +93,7 @@ func (s *OpenAIGatewayService) ForwardGrokVoice(ctx context.Context, c *gin.Cont
 		proxyURL = account.Proxy.URL()
 	}
 	started := time.Now()
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.httpUpstream.Do(WithAccountAPIKeys(req, account), proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(started).Milliseconds())
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
@@ -182,7 +182,7 @@ func (s *OpenAIGatewayService) OpenGrokRealtime(ctx context.Context, account *Ac
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, u.String(), headers, proxyURL)
+	conn, status, _, err := dialOpenAIWSWithAccountKeys(ctx, account, s.getOpenAIWSPassthroughDialer(), u.String(), headers, proxyURL)
 	if err != nil {
 		return nil, &GrokRealtimeDialError{StatusCode: status, Err: err}
 	}
@@ -288,7 +288,7 @@ func (s *OpenAIGatewayService) ProbeGrokRealtime(ctx context.Context, account *A
 		proxyURL = account.Proxy.URL()
 	}
 	dialer := s.getOpenAIWSPassthroughDialer()
-	conn, _, _, err := dialer.Dial(ctx, u.String(), headers, proxyURL)
+	conn, _, _, err := dialOpenAIWSWithAccountKeys(ctx, account, dialer, u.String(), headers, proxyURL)
 	if err != nil {
 		return err
 	}

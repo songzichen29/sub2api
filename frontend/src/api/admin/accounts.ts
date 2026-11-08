@@ -718,6 +718,7 @@ export interface SyncUpstreamPreviewParams {
   type: string
   base_url?: string
   api_key: string
+  api_keys?: string[]
   model_mapping?: Record<string, string>
 }
 

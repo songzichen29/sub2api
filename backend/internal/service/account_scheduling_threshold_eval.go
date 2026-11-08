@@ -33,7 +33,7 @@ const accountSchedulingThresholdCredentialKey = "account_scheduling_threshold"
 // based on the current per-platform scheduling threshold snapshot.
 func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]int, now time.Time) AccountSchedulingThresholdDecision {
 	decision := AccountSchedulingThresholdDecision{}
-	if account == nil {
+	if account == nil || account.HasAPIKeyPool() {
 		return decision
 	}
 

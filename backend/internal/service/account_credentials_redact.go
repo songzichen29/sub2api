@@ -6,7 +6,7 @@ var SensitiveCredentialKeys = []string{
 	// OAuth
 	"access_token", "refresh_token", "id_token", "agent_private_key",
 	// API Key 类
-	"api_key", "session_key", "cookie",
+	"api_key", "api_keys", "session_key", "cookie",
 	// 云服务凭据
 	"aws_secret_access_key", "aws_session_token",
 	"service_account_json", "service_account", "private_key",
@@ -44,6 +44,13 @@ func MergePreservingSensitiveCreds(existing, incoming map[string]any) map[string
 		}
 		if existingVal, ok := existing[key]; ok {
 			out[key] = existingVal
+		}
+	}
+	// Explicitly replacing a legacy single key must not leave an old ordered
+	// pool shadowing that new credential. Metadata-only updates preserve both.
+	if _, replacesKey := incoming["api_key"]; replacesKey {
+		if _, replacesPool := incoming["api_keys"]; !replacesPool {
+			delete(out, "api_keys")
 		}
 	}
 	return out

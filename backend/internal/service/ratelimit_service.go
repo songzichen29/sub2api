@@ -336,6 +336,20 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+	if account.HasAPIKeyPool() && !customErrorCodesEnabled && AccountAPIKeyFailureRetryable(statusCode, responseBody) {
+		// An exhausted credential pool must remain recoverable. Explicit admin
+		// temp-unschedulable rules keep precedence over the short default cooldown.
+		if tempUnschedRulesApply(account, statusCode, responseBody, tempUnschedulableModel(ctx, nil)) &&
+			s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+		}
+		until := time.Now().Add(15 * time.Second)
+		s.notifyAccountSchedulingBlocked(account, until, "api_key_pool_exhausted")
+		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, "API key pool unavailable; retrying in priority order after cooldown"); err != nil {
+			slog.Warn("api_key_pool_cooldown_failed", "account_id", account.ID, "error", err)
+		}
+		return true
+	}
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 只在非凭据级且命中显式模型级规则时由规则处理，其余保留池模式现有的认证处理。

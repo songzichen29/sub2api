@@ -84,7 +84,7 @@ func (s *GatewayService) proxyAnthropicOAuthGET(ctx context.Context, groupID *in
 		proxyURL = account.Proxy.URL()
 	}
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+	resp, err := s.httpUpstream.DoWithTLS(WithAccountAPIKeys(req, account), proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
 		return 0, "", nil, err
 	}
@@ -167,7 +167,7 @@ func (s *GatewayService) fetchGrowthBookEval(ctx context.Context, account *Accou
 	}
 	tlsProfile := s.tlsFPProfileService.ResolveTLSProfile(account)
 
-	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
+	resp, err := s.httpUpstream.DoWithTLS(WithAccountAPIKeys(req, account), proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {
 		return nil, fmt.Errorf("growthbook eval: %w", err)
 	}

@@ -1,10 +1,23 @@
 package dto
 
 import (
+	"encoding/json"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRedactCredentialsOrderedAPIKeyPool(t *testing.T) {
+	account := &service.Account{Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "primary-secret", "api_keys": []string{"primary-secret", "backup-secret"}, "base_url": "https://upstream.example"}}
+	result := AccountFromService(account)
+	require.Equal(t, 2, result.APIKeyCount)
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "primary-secret")
+	require.NotContains(t, string(encoded), "backup-secret")
+	require.Contains(t, string(encoded), `"api_key_count":2`)
+}
 
 func TestRedactCredentials_NilInput(t *testing.T) {
 	out, status := RedactCredentials(nil)

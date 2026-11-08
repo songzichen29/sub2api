@@ -260,6 +260,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		Type:                    a.Type,
 		Credentials:             redactedCreds,
 		CredentialsStatus:       credsStatus,
+		APIKeyCount:             len(a.OrderedAPIKeys()),
 		Extra:                   sanitizeAccountExtraForDTO(extra),
 		OllamaCloudUsage:        ollamaCloudUsage,
 		OpenCodeGoUsage:         openCodeGoUsage,

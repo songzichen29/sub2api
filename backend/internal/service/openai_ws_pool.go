@@ -1142,6 +1142,11 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 	if queueWait == nil {
 		queueWait = &openAIWSAcquireQueueWait{}
 	}
+	// New independent sessions must try the primary again. Continuations keep
+	// their explicitly preferred connection and therefore their original key.
+	if req.Account.HasAPIKeyPool() && stringsTrim(req.PreferredConnID) == "" {
+		req.ForceNewConn = true
+	}
 
 retryAcquire:
 	accountID := req.Account.ID
@@ -2126,7 +2131,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 			return nil, err
 		}
 	}
-	conn, status, handshakeHeaders, err := p.clientDialer.Dial(ctx, req.WSURL, headers, req.ProxyURL)
+	conn, status, handshakeHeaders, err := dialOpenAIWSWithAccountKeys(ctx, req.Account, p.clientDialer, req.WSURL, headers, req.ProxyURL)
 	if err != nil {
 		var handshakeErr *openAIWSHandshakeError
 		var responseBody []byte

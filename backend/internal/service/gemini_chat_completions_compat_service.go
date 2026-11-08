@@ -144,7 +144,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			c.Set(OpsUpstreamRequestBodyKey, string(geminiReq))
 		}
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+		resp, err = s.httpUpstream.Do(WithAccountAPIKeys(upstreamReq, account), proxyURL, account.ID, account.Concurrency)
 		if err != nil {
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err)
 		}

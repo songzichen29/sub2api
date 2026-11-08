@@ -1318,6 +1318,7 @@ export interface Account {
   // 改为通过 credentials_status.has_<key> 暴露存在性。
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
+  api_key_count?: number
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
@@ -1730,6 +1731,7 @@ export interface CreateAccountRequest {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
+  upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 

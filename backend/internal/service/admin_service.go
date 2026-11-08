@@ -453,6 +453,7 @@ type CreateAccountInput struct {
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
 	ProbeEnabled       *bool
+	RateSyncEnabled    *bool
 	// Tags 创建账号时附带的管理员标签，由 service 层统一规范化。
 	Tags []string
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.

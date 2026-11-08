@@ -184,7 +184,7 @@ func (c *commandCodeUsageClient) get(ctx context.Context, path string, query url
 	req.Header.Set("Accept", "application/json")
 	c.account.ApplyHeaderOverrides(req.Header)
 
-	resp, err := c.httpUpstream.Do(req, c.proxyURL, c.account.ID, maxInt(c.account.Concurrency, 1))
+	resp, err := c.httpUpstream.Do(WithAccountAPIKeys(req, c.account), c.proxyURL, c.account.ID, maxInt(c.account.Concurrency, 1))
 	if err != nil {
 		return fmt.Errorf("upstream request failed: %w", err)
 	}

@@ -1,5 +1,21 @@
 export default {
   "accounts": {
+    "apiKeyPool": {
+      "add": "添加备用 Key",
+      "key": "API Key {index}",
+      "moveUp": "上移 Key {index}",
+      "moveDown": "下移 Key {index}",
+      "remove": "移除 Key {index}",
+      "hint": "同一上游地址、模型和计费配置下按顺序调用，每个独立请求先试第一把；认证失败、额度用尽时尝试下一把，恢复后自动优先。已开始的流式/实时会话不重放。最多 20 把，可按行粘贴。",
+      "stored": "已保存 {count} 把 Key。留空保留原列表；填写后将完整替换，请包含全部需要保留的 Key。",
+      "summary": "{count} 把 Key · 顺序优先",
+      "errors": {
+        "required": "请至少填写一把 API Key",
+        "tooMany": "每个账号最多支持 20 把 API Key",
+        "invalid": "Key 不能为空或包含空白、控制字符，且每把不得超过 8192 字节",
+        "duplicate": "API Key 不能重复"
+      }
+    },
     "title": "账号管理",
     "description": "管理 AI 平台账号和 Cookie",
     "createAccount": "添加账号",

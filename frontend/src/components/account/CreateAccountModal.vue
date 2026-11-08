@@ -1200,13 +1200,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.upstream.apiKey') }}</label>
-          <input
-            v-model="upstreamApiKey"
-            type="password"
-            required
-            class="input font-mono"
-            placeholder="sk-..."
-          />
+          <AccountAPIKeysInput v-model="upstreamApiKey" required />
           <p class="input-hint">{{ t('admin.accounts.upstream.apiKeyHint') }}</p>
         </div>
         <!-- 上游倍率自动探测：antigravity upstream 也是 API-key 账号 -->
@@ -1563,11 +1557,9 @@
         />
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
-          <input
+          <AccountAPIKeysInput
             v-model="apiKeyValue"
-            type="password"
             required
-            class="input font-mono"
             :placeholder="apiKeyValuePlaceholder"
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
@@ -3309,7 +3301,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
-          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" :disabled="form.type === 'apikey' && createPolicies.rateSyncEnabled" class="input" />
           <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
         </div>
       </div>
@@ -3811,6 +3803,7 @@
         />
       </div>
 
+      <AccountCreatePolicyFields v-model="createPolicies" :platform="form.platform" :type="form.type" />
     </form>
 
     <!-- Step 2: OAuth Authorization -->
@@ -4219,6 +4212,10 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
+import AccountAPIKeysInput from '@/components/account/AccountAPIKeysInput.vue'
+import AccountCreatePolicyFields from '@/components/account/AccountCreatePolicyFields.vue'
+import { applyAccountCreatePolicies, defaultAccountCreatePolicies } from '@/components/account/accountCreatePolicies'
+import { accountApiKeyInputError, applyAccountApiKeys } from '@/components/account/accountApiKeys'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
@@ -4460,7 +4457,14 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const createPolicies = ref(defaultAccountCreatePolicies())
 const upstreamBillingAutoProbeEnabled = ref(true)
+watch(() => createPolicies.value.rateSyncEnabled, enabled => {
+  if (enabled) upstreamBillingAutoProbeEnabled.value = true
+})
+watch(upstreamBillingAutoProbeEnabled, enabled => {
+  if (!enabled) createPolicies.value.rateSyncEnabled = false
+})
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 // 多协议供应商（国产厂商与走通用表单的供应商）的接入模式；OpenCode 用 openCodeAccountMode。
@@ -4665,7 +4669,7 @@ function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol
 }
 
 const syncPreviewCredentials = computed(() => {
-  if (!apiKeyValue.value) return undefined
+  if (accountApiKeyInputError(apiKeyValue.value)) return undefined
   const baseUrl = isMultiProtocolPlatform.value && apiProtocol.value === 'adaptive'
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
     : apiKeyBaseUrl.value.trim()
@@ -4678,7 +4682,8 @@ const syncPreviewCredentials = computed(() => {
     platform: form.platform,
     type: form.type,
     base_url: baseUrl || undefined,
-    api_key: apiKeyValue.value,
+    api_key: apiKeyValue.value.split(/\r?\n/)[0]?.trim() || '',
+    api_keys: apiKeyValue.value.split(/\r?\n/).map(key => key.trim()),
     ...(modelMapping ? { model_mapping: modelMapping } : {})
   }
 })
@@ -5633,10 +5638,13 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
   }
 }
 
+const createAccountWithPolicies = (payload: CreateAccountRequest) =>
+  adminAPI.accounts.create(applyAccountCreatePolicies(payload, createPolicies.value))
+
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(withFormTags(payload)))
+    const account = await createAccountWithPolicies(withAntigravityConfirmFlag(withFormTags(payload)))
     const modelMapping = payload.credentials.model_mapping
     const hasConcreteMappedTarget = payload.type === 'apikey' &&
       typeof modelMapping === 'object' &&
@@ -5689,6 +5697,7 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
 
 // Methods
 const resetForm = () => {
+  createPolicies.value = defaultAccountCreatePolicies()
   step.value = 1
   form.name = ''
   form.notes = ''
@@ -5900,7 +5909,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 }
 
 const buildOpenAICodexImportExtra = (): Record<string, unknown> | undefined => {
-  const extra = buildOpenAIExtra()
+  const extra = applyAccountCreatePolicies({ platform: 'openai', type: 'oauth', credentials: {}, extra: buildOpenAIExtra() }, createPolicies.value).extra
   if (!extra) {
     return undefined
   }
@@ -6027,6 +6036,12 @@ const handleVertexServiceAccountDrop = async (event: DragEvent) => {
 }
 
 const handleSubmit = async () => {
+  try {
+    applyAccountCreatePolicies({ platform: form.platform, type: form.type, credentials: {} }, createPolicies.value)
+  } catch (error) {
+    appStore.showError(t((error as Error).message))
+    return
+  }
   if (tagsInput.value?.commit() === false) return
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
@@ -6116,8 +6131,9 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.upstream.pleaseEnterBaseUrl'))
       return
     }
-    if (!upstreamApiKey.value.trim()) {
-      appStore.showError(t('admin.accounts.upstream.pleaseEnterApiKey'))
+    const keyError = accountApiKeyInputError(upstreamApiKey.value)
+    if (keyError) {
+      appStore.showError(t(`admin.accounts.apiKeyPool.errors.${keyError}`))
       return
     }
 
@@ -6126,6 +6142,7 @@ const handleSubmit = async () => {
       base_url: upstreamBaseUrl.value.trim(),
       api_key: upstreamApiKey.value.trim()
     }
+    applyAccountApiKeys(credentials, upstreamApiKey.value)
 
     // Antigravity 只使用映射模式
     const antigravityModelMapping = buildModelMappingObject(
@@ -6190,8 +6207,9 @@ const handleSubmit = async () => {
   }
 
   // For apikey type, create directly
-  if (!apiKeyValue.value.trim()) {
-    appStore.showError(t('admin.accounts.pleaseEnterApiKey'))
+  const keyError = accountApiKeyInputError(apiKeyValue.value)
+  if (keyError) {
+    appStore.showError(t(`admin.accounts.apiKeyPool.errors.${keyError}`))
     return
   }
 
@@ -6212,13 +6230,14 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
+  applyAccountApiKeys(credentials, apiKeyValue.value)
   if (form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl.value)) {
     credentials.tier_id = geminiTierAIStudio.value
   }
 
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
-  // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
+  // 的通用路径；与 createAccountAndFinish 共用额外配置的组装和校验。
   if (isMultiProtocolApiKeyPlatform(form.platform)) {
     credentials.account_mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
     credentials.api_protocol = apiProtocol.value
@@ -6305,12 +6324,13 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildCreateAccountExtra(form.type, buildAnthropicExtra(buildOpenAIExtra()))
+  if (extra === null) return
 
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
-    extra: withUpstreamRequestIdHeader(extra),
+    extra,
     upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
@@ -6362,16 +6382,12 @@ const handleValidateSessionToken = (_sessionToken: string) => {
 const formatDateTimeLocal = formatDateTimeLocalInput
 const parseDateTimeLocal = parseDateTimeLocalInput
 
-// Create account and handle success/failure
-const createAccountAndFinish = async (
-  platform: AccountPlatform,
+// Both ordinary API-key creation and provider-specific creation must persist
+// the same quota, notification and third-party usage-query settings.
+const buildCreateAccountExtra = (
   type: AccountType,
-  credentials: Record<string, unknown>,
   extra?: Record<string, unknown>
-) => {
-  if (!applyTempUnschedConfig(credentials)) {
-    return
-  }
+): Record<string, unknown> | undefined | null => {
   // Inject quota limits for apikey/bedrock/service_account accounts
   let finalExtra = withUpstreamRequestIdHeader(extra)
   if (supportsAccountQuota(type)) {
@@ -6408,7 +6424,7 @@ const createAccountAndFinish = async (
       })
       if (!usageQuery) {
         appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
-        return
+        return null
       }
       quotaExtra.usage_query = usageQuery
     }
@@ -6416,6 +6432,21 @@ const createAccountAndFinish = async (
       finalExtra = quotaExtra
     }
   }
+  return finalExtra
+}
+
+// Create account and handle success/failure
+const createAccountAndFinish = async (
+  platform: AccountPlatform,
+  type: AccountType,
+  credentials: Record<string, unknown>,
+  extra?: Record<string, unknown>
+) => {
+  if (!applyTempUnschedConfig(credentials)) {
+    return
+  }
+  const finalExtra = buildCreateAccountExtra(type, extra)
+  if (finalExtra === null) return
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)
@@ -6506,7 +6537,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithPolicies({
           name: accountName,
           notes: form.notes,
           tags: form.tags.length > 0 ? [...form.tags] : undefined,
@@ -6685,7 +6716,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           return
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithPolicies({
           name: accountName,
           notes: form.notes,
           tags: form.tags.length > 0 ? [...form.tags] : undefined,
@@ -6785,7 +6816,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     if (shouldCreateOpenAI) {
-      await adminAPI.accounts.create({
+      await createAccountWithPolicies({
         name: form.name,
         notes: form.notes,
         tags: form.tags.length > 0 ? [...form.tags] : undefined,
@@ -6836,7 +6867,7 @@ const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | nul
   if (!applyTempUnschedConfig(credentials)) {
     return null
   }
-  return credentials
+  return applyAccountCreatePolicies({ platform: 'openai', type: 'oauth', credentials }, createPolicies.value).credentials
 }
 
 const formatCodexImportMessages = (messages?: CodexSessionImportMessage[]) => {
@@ -7069,7 +7100,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
         const accountName = refreshTokens.length > 1 ? `${baseName} #${i + 1}` : baseName
 
         if (shouldCreateOpenAI) {
-          await adminAPI.accounts.create({
+          await createAccountWithPolicies({
             name: accountName,
             notes: form.notes,
             tags: form.tags.length > 0 ? [...form.tags] : undefined,
@@ -7185,7 +7216,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         }))
-        await adminAPI.accounts.create(createPayload)
+        await createAccountWithPolicies(createPayload)
         successCount++
       } catch (error: any) {
         failedCount++
@@ -7550,7 +7581,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        await adminAPI.accounts.create({
+        await createAccountWithPolicies({
           name: accountName,
           notes: form.notes,
           tags: form.tags.length > 0 ? [...form.tags] : undefined,

@@ -61,6 +61,7 @@ vi.mock('vue-i18n', async () => {
 
 import EditAccountModal from '../EditAccountModal.vue'
 import AccountTagsInput from '../AccountTagsInput.vue'
+import AccountAPIKeysInput from '../AccountAPIKeysInput.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -331,6 +332,28 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
+  it('keeps redacted stored keys untouched and replaces them only on explicit input', async () => {
+    const account = buildAccount()
+    delete account.credentials.api_key
+    account.credentials_status = { has_api_key: true, has_api_keys: true }
+    account.api_key_count = 2
+    const wrapper = mountModal(account)
+    const keys = wrapper.getComponent(AccountAPIKeysInput)
+    expect(keys.props('existingCount')).toBe(2)
+    expect(keys.props('modelValue')).toBe('')
+    await wrapper.get('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalled())
+    let payload = updateAccountMock.mock.calls.at(-1)?.[1]
+    expect(payload.credentials).not.toHaveProperty('api_key')
+    expect(payload.credentials).not.toHaveProperty('api_keys')
+    keys.vm.$emit('update:modelValue', 'new-first\nnew-second')
+    await wrapper.vm.$nextTick()
+    await wrapper.get('form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock.mock.calls.at(-1)?.[1]?.credentials?.api_keys).toEqual(['new-first', 'new-second']))
+    payload = updateAccountMock.mock.calls.at(-1)?.[1]
+    expect(payload.credentials.api_key).toBe('new-first')
+    wrapper.unmount()
+  })
   beforeEach(() => {
     authIsSimpleMode.value = true
   })

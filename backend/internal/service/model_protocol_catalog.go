@@ -199,6 +199,7 @@ func (s *OpenAIGatewayService) modelCatalogProtocols(ctx context.Context, accoun
 	return upstreamModelProtocols.lookup(ctx, key, model, time.Now(), func() {
 		ctx, cancel := context.WithTimeout(context.Background(), modelProtocolCatalogTimeout)
 		defer cancel()
+		ctx = withAccountAPIKeysContext(ctx, account)
 		models, err := s.fetchModelProtocolCatalog(ctx, url, headers, proxyURL, accountID, concurrency)
 		if err != nil {
 			slog.Warn("model_protocol_catalog_refresh_failed", "account_id", accountID, "url", url, "error", err)

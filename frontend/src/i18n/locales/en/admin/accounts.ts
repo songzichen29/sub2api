@@ -1,5 +1,21 @@
 export default {
   "accounts": {
+    "apiKeyPool": {
+      "add": "Add fallback key",
+      "key": "API key {index}",
+      "moveUp": "Move key {index} up",
+      "moveDown": "Move key {index} down",
+      "remove": "Remove key {index}",
+      "hint": "Keys share one upstream URL, model and billing configuration. Independent requests start with the first key, falling back on authentication or quota rejection and preferring earlier keys again when recovered. Active streams and realtime sessions are not replayed. Up to 20 keys; paste one per line.",
+      "stored": "{count} keys saved. Leave blank to keep them. Entering keys replaces the entire list; include every key you want to retain.",
+      "summary": "{count} keys · priority order",
+      "errors": {
+        "required": "Enter at least one API key",
+        "tooMany": "An account supports at most 20 API keys",
+        "invalid": "Keys must be non-empty, contain no whitespace or control characters and be at most 8192 bytes each",
+        "duplicate": "Duplicate API keys are not allowed"
+      }
+    },
     "title": "Account Management",
     "description": "Manage AI platform accounts and credentials",
     "createAccount": "Create Account",

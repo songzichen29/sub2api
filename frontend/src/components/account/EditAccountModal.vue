@@ -239,14 +239,9 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
-          <input
+          <AccountAPIKeysInput
             v-model="editApiKey"
-            type="password"
-            class="input font-mono"
-            autocomplete="new-password"
-            data-1p-ignore
-            data-lpignore="true"
-            data-bwignore="true"
+            :existing-count="account.api_key_count ?? (account.credentials_status?.has_api_key ? 1 : 0)"
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'
@@ -3481,6 +3476,8 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
+import AccountAPIKeysInput from '@/components/account/AccountAPIKeysInput.vue'
+import { accountApiKeyInputError, applyAccountApiKeys } from '@/components/account/accountApiKeys'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -5830,7 +5827,12 @@ const handleSubmit = async () => {
       const hasExistingApiKey =
         props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
       if (editApiKey.value.trim()) {
-        newCredentials.api_key = editApiKey.value.trim()
+        const keyError = accountApiKeyInputError(editApiKey.value)
+        if (keyError) {
+          appStore.showError(t(`admin.accounts.apiKeyPool.errors.${keyError}`))
+          return
+        }
+        applyAccountApiKeys(newCredentials, editApiKey.value)
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return

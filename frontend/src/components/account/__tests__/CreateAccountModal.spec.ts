@@ -2,6 +2,9 @@ import { defineComponent } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AccountTagsInput from '../AccountTagsInput.vue'
+import AccountCreatePolicyFields from '../AccountCreatePolicyFields.vue'
+import AccountAPIKeysInput from '../AccountAPIKeysInput.vue'
+import QuotaLimitCard from '../QuotaLimitCard.vue'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -13,6 +16,7 @@ const {
   probeUpstreamBillingMock,
   syncUpstreamModelsMock,
   showWarningMock,
+  showErrorMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
   authIsSimpleMode,
@@ -21,6 +25,7 @@ const {
   probeUpstreamBillingMock: vi.fn(),
   syncUpstreamModelsMock: vi.fn(),
   showWarningMock: vi.fn(),
+  showErrorMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
   authIsSimpleMode: { value: true },
@@ -28,7 +33,7 @@ const {
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError: showErrorMock,
     showSuccess: vi.fn(),
     showWarning: showWarningMock,
   }),
@@ -92,6 +97,7 @@ const OAuthAuthorizationFlowStub = defineComponent({
     initialInputMethod: String,
   },
   data: () => ({ inputMethod: 'manual' }),
+  methods: { reset() { this.inputMethod = 'manual' } },
   emits: ['import-codex-session', 'import-codex-pat'],
   template: `
     <div>
@@ -154,7 +160,6 @@ function mountModal(groups: any[] = []) {
         ProxyAdBanner: true,
         GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: ModelWhitelistSelectorStub,
-        QuotaLimitCard: true,
       },
     },
   })
@@ -207,6 +212,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     syncUpstreamModelsMock.mockReset().mockResolvedValue({ models: [], metadata: {} })
     showWarningMock.mockReset()
+    showErrorMock.mockReset()
     importCodexSessionMock.mockReset().mockResolvedValue({
       created: 1,
       updated: 0,
@@ -219,6 +225,111 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it.each([
+    ['openai', 'sub2api'], ['anthropic', 'sub2api'],
+    ['openai', 'newapi'], ['anthropic', 'newapi']
+  ])('persists %s API-key usage settings for %s on creation', async (platform, provider) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
+    if (platform === 'openai') await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('usage query account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="usage-query-enabled"]').setValue(true)
+    await wrapper.get('[data-testid="usage-query-provider"]').setValue(provider)
+    const expected: Record<string, unknown> = { enabled: true, provider }
+    if (provider === 'newapi') {
+      await wrapper.get('input[placeholder="https://newapi.example.com"]').setValue(' https://newapi.example.com ')
+      await wrapper.get('input[placeholder="admin.accounts.usageQuery.accessTokenPlaceholder"]').setValue(' test-panel-token ')
+      await wrapper.get('input[placeholder="12345"]').setValue(' 12345 ')
+      Object.assign(expected, { base_url: 'https://newapi.example.com', access_token: 'test-panel-token', user_id: '12345' })
+    }
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0][0].extra?.usage_query).toEqual(expected)
+    wrapper.unmount()
+  })
+
+  it('rejects incomplete usage settings and leaves disabled queries out of the payload', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('usage validation')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="usage-query-enabled"]').setValue(true)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('admin.accounts.usageQuery.incompleteFields')
+    await wrapper.get('[data-testid="usage-query-enabled"]').setValue(false)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0][0].extra?.usage_query).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('preserves ordinary API-key quota settings through the shared create serializer', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('quota account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    const quota = wrapper.getComponent(QuotaLimitCard)
+    await quota.get('button').trigger('click')
+    const limits = quota.findAll('input[type="number"]')
+    expect(limits).toHaveLength(3)
+    await limits[0].setValue('10')
+    await limits[1].setValue('50')
+    await limits[2].setValue('100')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0][0].extra).toEqual(expect.objectContaining({
+      quota_limit: 100, quota_daily_limit: 10, quota_weekly_limit: 50,
+    }))
+    wrapper.unmount()
+  })
+
+  it('creates an ordered key pool and persists newly available controls', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('ordered keys')
+    wrapper.getComponent(AccountAPIKeysInput).vm.$emit('update:modelValue', 'primary\nbackup')
+    await wrapper.get('[data-testid="create-scheduling-override"]').trigger('click')
+    await wrapper.get('[data-testid="create-scheduling-threshold"]').setValue(80)
+    await wrapper.get('[data-testid="create-pause-5h-threshold"]').setValue(70)
+    await wrapper.get('[data-testid="create-image-tool-mode"]').setValue('block')
+    await wrapper.get('[data-testid="create-rate-sync"]').trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      credentials: expect.objectContaining({ api_key: 'primary', api_keys: ['primary', 'backup'], account_scheduling_threshold: 80 }),
+      extra: expect.objectContaining({ auto_pause_5h_threshold: 0.7, codex_image_generation_explicit_tool_policy: 'strip' }),
+      upstream_billing_probe_enabled: true, upstream_billing_rate_sync_enabled: true,
+    }))
+    wrapper.unmount()
+  })
+
+  it('includes new policies in session imports and resets them on reopening', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    const fields = wrapper.getComponent(AccountCreatePolicyFields)
+    fields.vm.$emit('update:modelValue', { ...fields.props('modelValue'), schedulingEnabled: true, schedulingThreshold: 85, planType: 'plus', resetCreditEnabled: true, resetCredit5hThreshold: 90 })
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('import policies')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+    expect(importCodexSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      credential_extras: expect.objectContaining({ account_scheduling_threshold: 85, plan_type: 'plus' }),
+      extra: expect.objectContaining({ auto_reset_credit_enabled: true, auto_reset_credit_5h_threshold: 0.9 }),
+    }))
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent(AccountCreatePolicyFields).props('modelValue').schedulingEnabled).toBe(false)
+    wrapper.unmount()
+  })
 
   it('validates and commits pending tags before creating an account', async () => {
     const wrapper = mountModal()

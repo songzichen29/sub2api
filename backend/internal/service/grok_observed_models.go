@@ -69,7 +69,7 @@ func (s *GrokQuotaService) syncGrokObservedModels(ctx context.Context, account *
 	if grokObservedSnapshotFresh(parseGrokObservedModels(account.Extra), scope, time.Now().UTC()) {
 		return nil
 	}
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.httpUpstream.Do(WithAccountAPIKeys(req, account), proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return s.finishGrokObservedModelsAttempt(ctx, account, req, started, newUpstreamModelSyncUpstreamError("Failed to request upstream model list", err))
 	}

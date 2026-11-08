@@ -191,6 +191,7 @@ type CreateAccountRequest struct {
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
@@ -1169,6 +1170,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
 			ProbeEnabled:          req.ProbeEnabled,
+			RateSyncEnabled:       req.RateSyncEnabled,
 			SkipMixedChannelCheck: skipCheck,
 		})
 		if execErr != nil {
@@ -3297,6 +3299,7 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 		Type         string            `json:"type" binding:"required"`
 		BaseURL      string            `json:"base_url"`
 		APIKey       string            `json:"api_key" binding:"required"`
+		APIKeys      []string          `json:"api_keys"`
 		ModelMapping map[string]string `json:"model_mapping"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -3316,6 +3319,14 @@ func (h *AccountHandler) SyncUpstreamModelsPreview(c *gin.Context) {
 			"base_url":      req.BaseURL,
 			"model_mapping": modelMapping,
 		},
+	}
+
+	if req.APIKeys != nil {
+		tempAccount.Credentials["api_keys"] = req.APIKeys
+		if err := service.NormalizeAccountAPIKeys(req.Type, tempAccount.Credentials); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	if h.accountTestService == nil {

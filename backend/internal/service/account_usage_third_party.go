@@ -192,6 +192,11 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 // a valid third-party quota response with no remaining balance. Errors and
 // unknown results do not change scheduling state.
 func (s *AccountUsageService) disableSchedulingForZeroThirdPartyQuota(ctx context.Context, account *Account, quota *usage_provider.QuotaInfo) {
+	// A primary-key balance is not the aggregate balance of an ordered pool.
+	// Let actual rejected requests try the remaining keys before cooling down.
+	if account != nil && account.HasAPIKeyPool() {
+		return
+	}
 	if s == nil || s.accountRepo == nil || account == nil || quota == nil ||
 		math.IsNaN(quota.Remaining) || math.IsInf(quota.Remaining, 0) || quota.Remaining > 0 {
 		return

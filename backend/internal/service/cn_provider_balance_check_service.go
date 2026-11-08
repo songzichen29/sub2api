@@ -327,6 +327,9 @@ func (s *CNProviderBalanceCheckService) checkOne(ctx context.Context, account *A
 
 // applyBalanceResult 按余额探测结果停调或恢复账号。
 func (s *CNProviderBalanceCheckService) applyBalanceResult(ctx context.Context, account *Account, result *CNProviderBalanceResult, threshold float64) cnBalanceCheckOutcome {
+	if account.HasAPIKeyPool() {
+		return cnBalanceNoChange
+	}
 	// 双币种（deepseek CNY+USD）任一币种余额达标即可继续调度；仅当全部低于
 	// 阈值（或不可用）才停调。
 	low := !result.Available || allCNBalancesBelowThreshold(result, threshold)

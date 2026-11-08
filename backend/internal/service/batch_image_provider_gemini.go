@@ -112,30 +112,46 @@ func (p *GeminiAPIBatchImageProvider) Submit(ctx context.Context, job *BatchImag
 		displayName = strings.TrimSpace(input.BatchID)
 	}
 
-	uploaded, err := p.client.UploadJSONL(ctx, apiKey, displayName, bytes.NewReader(jsonl))
-	if err != nil {
-		return nil, mapGeminiClientError(err)
+	// The upload and batch creation must use the same credential. Do not retry
+	// CreateBatch with a different key referencing another key's uploaded file.
+	keys := account.OrderedAPIKeys()
+	for index, key := range keys {
+		uploaded, uploadErr := p.client.UploadJSONL(ctx, key, displayName, bytes.NewReader(jsonl))
+		if uploadErr != nil {
+			if index+1 < len(keys) && retryableGeminiBatchKeyFailure(uploadErr) && ctx.Err() == nil {
+				continue
+			}
+			return nil, mapGeminiClientError(uploadErr)
+		}
+		if uploaded == nil || strings.TrimSpace(uploaded.Name) == "" {
+			return nil, geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini upload response is missing file name", nil)
+		}
+		batch, createErr := p.client.CreateBatch(ctx, key, input.Model, uploaded.Name, displayName)
+		if createErr != nil {
+			if index+1 < len(keys) && retryableGeminiBatchKeyFailure(createErr) && ctx.Err() == nil {
+				// A definitive rejection did not create a job; clean up its input.
+				_ = p.client.DeleteFile(ctx, key, uploaded.Name)
+				continue
+			}
+			return nil, mapGeminiClientError(createErr)
+		}
+		if batch == nil || strings.TrimSpace(batch.Name) == "" {
+			return nil, geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini batch response is missing job name", nil)
+		}
+		return &BatchProviderJob{ProviderJobName: batch.Name, ProviderInputRef: uploaded.Name, RawState: batch.State}, nil
 	}
-	if uploaded == nil || strings.TrimSpace(uploaded.Name) == "" {
-		return nil, geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini upload response is missing file name", nil)
-	}
+	return nil, ErrBatchImageProviderMissingAPIKey
+}
 
-	batch, err := p.client.CreateBatch(ctx, apiKey, input.Model, uploaded.Name, displayName)
-	if err != nil {
-		return nil, mapGeminiClientError(err)
-	}
-	if batch == nil || strings.TrimSpace(batch.Name) == "" {
-		return nil, geminiProviderError("GEMINI_INVALID_RESPONSE", "Gemini batch response is missing job name", nil)
-	}
-
-	return &BatchProviderJob{
-		ProviderJobName:  batch.Name,
-		ProviderInputRef: uploaded.Name,
-		RawState:         batch.State,
-	}, nil
+func retryableGeminiBatchKeyFailure(err error) bool {
+	var apiErr *GeminiAPIError
+	// 5xx on a job creation may follow acceptance. Never create a second job
+	// unless authentication/quota explicitly rejected the first attempt.
+	return errors.As(err, &apiErr) && apiErr.StatusCode < 500 && AccountAPIKeyFailureRetryable(apiErr.StatusCode, []byte(apiErr.Message))
 }
 
 func (p *GeminiAPIBatchImageProvider) Get(ctx context.Context, job *BatchImageJob, account *Account) (*BatchProviderStatus, error) {
+	ctx = withAccountAPIKeysContext(ctx, account)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return nil, ErrBatchImageProviderUnsupportedAccount
 	}
@@ -174,6 +190,7 @@ func (p *GeminiAPIBatchImageProvider) Get(ctx context.Context, job *BatchImageJo
 }
 
 func (p *GeminiAPIBatchImageProvider) Cancel(ctx context.Context, job *BatchImageJob, account *Account) error {
+	ctx = withAccountAPIKeysContext(ctx, account)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return ErrBatchImageProviderUnsupportedAccount
 	}
@@ -189,6 +206,7 @@ func (p *GeminiAPIBatchImageProvider) Cancel(ctx context.Context, job *BatchImag
 }
 
 func (p *GeminiAPIBatchImageProvider) OpenResult(ctx context.Context, job *BatchImageJob, account *Account) (io.ReadCloser, string, error) {
+	ctx = withAccountAPIKeysContext(ctx, account)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return nil, "", ErrBatchImageProviderUnsupportedAccount
 	}
@@ -205,6 +223,7 @@ func (p *GeminiAPIBatchImageProvider) OpenResult(ctx context.Context, job *Batch
 }
 
 func (p *GeminiAPIBatchImageProvider) Cleanup(ctx context.Context, job *BatchImageJob, account *Account, target CleanupTarget) error {
+	ctx = withAccountAPIKeysContext(ctx, account)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return ErrBatchImageProviderUnsupportedAccount
 	}
@@ -591,7 +610,7 @@ func (c *GeminiBatchHTTPClient) DownloadFile(ctx context.Context, apiKey string,
 		return nil, "", err
 	}
 	req.Header.Set("x-goog-api-key", apiKey)
-	resp, err := c.client.Do(req)
+	resp, err := DoWithAccountAPIKeyFailover(req, c.client.Do)
 	if err != nil {
 		return nil, "", err
 	}
@@ -627,7 +646,7 @@ func (c *GeminiBatchHTTPClient) doBatchJob(req *http.Request) (*GeminiBatchJob, 
 }
 
 func (c *GeminiBatchHTTPClient) doNoBody(req *http.Request) error {
-	resp, err := c.client.Do(req)
+	resp, err := DoWithAccountAPIKeyFailover(req, c.client.Do)
 	if err != nil {
 		return err
 	}
@@ -639,7 +658,7 @@ func (c *GeminiBatchHTTPClient) doNoBody(req *http.Request) error {
 }
 
 func (c *GeminiBatchHTTPClient) doJSON(req *http.Request, out any) error {
-	resp, err := c.client.Do(req)
+	resp, err := DoWithAccountAPIKeyFailover(req, c.client.Do)
 	if err != nil {
 		return err
 	}

@@ -1080,7 +1080,7 @@ func (s *GeminiCachedContentService) doUpstream(ctx context.Context, account *Ac
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.compat.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	resp, err := s.compat.httpUpstream.Do(WithAccountAPIKeys(req, account), proxyURL, account.ID, account.Concurrency)
 	if err != nil {
 		return nil, err
 	}

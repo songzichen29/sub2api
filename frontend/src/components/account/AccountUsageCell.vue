@@ -637,15 +637,14 @@
     <!-- Third-party panel usage (for example newapi-backed API keys). -->
     <template v-if="showThirdPartyUsage">
       <div v-if="loading" class="space-y-1">
-        <div class="h-2 w-full animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
         <div class="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
       <div
-        v-else-if="usageInfo?.error"
+        v-else-if="error || usageInfo?.error"
         class="max-w-[200px] truncate text-xs text-amber-600 dark:text-amber-400"
-        :title="usageInfo.error"
+        :title="error || usageInfo?.error"
       >
-        {{ usageInfo.error }}
+        {{ error || usageInfo?.error }}
       </div>
       <div v-else-if="usageInfo?.third_party_quota" class="space-y-2">
         <UsageProgressBar
@@ -653,23 +652,24 @@
           :label="t('admin.accounts.usageWindow.used')"
           :utilization="thirdPartyPercentRaw"
           color="indigo"
-          data-testid="third-party-usage-bar"
+          display-mode="percentage"
+          data-testid="third-party-usage-percent"
         />
-        <div class="text-xs tabular-nums" data-testid="third-party-remaining">
+        <div v-if="!thirdPartyTotalKnown" class="text-xs tabular-nums" data-testid="third-party-remaining">
           <span class="mr-1 text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageWindow.remaining') }}</span>
           <span :class="['font-semibold', thirdPartyAmountClass]">
             ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
           </span>
-          <span v-if="thirdPartyTotalKnown" class="text-gray-400 dark:text-gray-500">
-            / ${{ formatThirdPartyAmount(usageInfo.third_party_quota.total) }}
-          </span>
         </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+      <div>
         <button
           type="button"
           class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
           :title="t('admin.accounts.usageWindow.activeQuery')"
           :aria-label="t('admin.accounts.usageWindow.activeQuery')"
-          :disabled="activeQueryLoading"
+          :disabled="activeQueryLoading || loading"
           @click="loadActiveUsage"
         >
           <svg class="h-3 w-3" :class="{ 'animate-spin': activeQueryLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -678,7 +678,6 @@
           {{ t('admin.accounts.usageWindow.activeQuery') }}
         </button>
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
     </template>
     <!-- Gemini API Key accounts: show quota info -->
     <div v-else-if="account.platform === 'gemini' && !isGeminiThirdPartyApiKey">
@@ -916,6 +915,9 @@ const thirdPartyAmountClass = computed(() => {
 })
 
 const shouldFetchUsage = computed(() => {
+  // An explicitly enabled panel query takes precedence over platform-specific
+  // OAuth/simulated-quota eligibility (including Grok and third-party Gemini).
+  if (showThirdPartyUsage.value) return true
   if (props.account.platform === 'anthropic') {
     if (props.account.type === 'oauth' || props.account.type === 'setup-token') return true
     return showThirdPartyUsage.value
@@ -933,7 +935,6 @@ const shouldFetchUsage = computed(() => {
     if (props.account.type === 'oauth') return true
     return showThirdPartyUsage.value
   }
-  if (showThirdPartyUsage.value) return true
   return false
 })
 
@@ -1693,9 +1694,12 @@ const attachVisibilityObserver = () => {
 
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
+  error.value = null
   try {
     usageInfo.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+    _usageCache.set(props.account.id, { data: usageInfo.value, ts: Date.now() })
   } catch (e: any) {
+    error.value = t('common.error')
     console.error('Failed to load active usage:', e)
   } finally {
     activeQueryLoading.value = false
@@ -1883,6 +1887,19 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   _usageCache.delete(props.account.id)
   requestAutoLoad()
 })
+
+// Editing a panel setting must start a fresh query on the existing list row.
+// The component is not remounted when the account DTO is patched in place.
+watch(
+  () => JSON.stringify([props.account.extra?.usage_query, props.account.credentials?.base_url]),
+  () => {
+    if (!showThirdPartyUsage.value) return
+    _usageCache.delete(props.account.id)
+    usageInfo.value = null
+    error.value = null
+    void loadUsage({ source: 'active', bypassCache: true })
+  }
+)
 
 watch(
   () => props.manualRefreshToken,
