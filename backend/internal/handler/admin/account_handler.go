@@ -70,6 +70,13 @@ type AccountHandler struct {
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
+	accountMetricRecovery   *service.AccountMetricRecoveryService
+}
+
+// SetAccountMetricRecoveryService attaches the opt-in account performance
+// monitor without changing the existing account mutation flow.
+func (h *AccountHandler) SetAccountMetricRecoveryService(svc *service.AccountMetricRecoveryService) {
+	h.accountMetricRecovery = svc
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.

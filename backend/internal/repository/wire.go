@@ -45,6 +45,10 @@ func ProvideOpsIngressRejectRepository(repo service.OpsRepository) service.OpsIn
 	return nil
 }
 
+func ProvideAccountPerformanceAdmissionRepository(admission *service.AccountMetricAdmissionService) service.AccountPerformanceAdmissionRepository {
+	return admission
+}
+
 // ProvideSessionLimitCache 创建会话限制缓存
 // 用于 Anthropic OAuth/SetupToken 账号的并发会话数量控制
 func ProvideSessionLimitCache(rdb *redis.Client, cfg *config.Config) service.SessionLimitCache {
@@ -99,6 +103,8 @@ var ProviderSet = wire.NewSet(
 	NewSettingRepository,
 	NewScopedAdminKeyRepository,
 	NewOpsRepository,
+	NewAccountPerformanceRepository,
+	ProvideAccountPerformanceAdmissionRepository,
 	ProvideOpsIngressRejectRepository,
 	NewAuditLogRepository,
 	NewPasskeyRepository,

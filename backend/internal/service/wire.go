@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"time"
 
@@ -547,8 +548,8 @@ func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWh
 }
 
 // ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
-func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
-	svc := NewConcurrencyService(cache)
+func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, performanceRepo AccountPerformanceAdmissionRepository, cfg *config.Config) *ConcurrencyService {
+	svc := NewConcurrencyService(cache, performanceRepo)
 	if err := svc.CleanupStaleProcessSlots(context.Background()); err != nil {
 		logger.LegacyPrintf("service.concurrency", "Warning: startup cleanup stale process slots failed: %v", err)
 	}
@@ -556,6 +557,22 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 		svc.SetAccountLoadBatchCacheTTL(time.Duration(cfg.Gateway.Scheduling.LoadBatchCacheTTLMS) * time.Millisecond)
 		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
+	return svc
+}
+
+func ProvideAccountMetricAdmissionService(repo AccountPerformanceRepository) (*AccountMetricAdmissionService, error) {
+	svc := NewAccountMetricAdmissionService(repo)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := svc.Refresh(ctx); err != nil {
+		return nil, fmt.Errorf("initialize account metric admission: %w", err)
+	}
+	return svc, nil
+}
+
+func ProvideAccountMetricRecoveryService(repo AccountPerformanceRepository, ops *OpsService, admission *AccountMetricAdmissionService) *AccountMetricRecoveryService {
+	svc := NewAccountMetricRecoveryService(repo, ops, accountMetricEvaluationInterval, admission)
+	svc.Start()
 	return svc
 }
 
@@ -1025,6 +1042,8 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
 	ProvideConcurrencyService,
+	ProvideAccountMetricAdmissionService,
+	ProvideAccountMetricRecoveryService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
 	ProvideSchedulerSnapshotService,

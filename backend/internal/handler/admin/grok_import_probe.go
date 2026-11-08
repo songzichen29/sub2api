@@ -212,6 +212,7 @@ func ProvideAccountHandler(
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 	grokQuotaService *service.GrokQuotaService,
 	secretEncryptor service.SecretEncryptor,
+	accountMetricRecovery *service.AccountMetricRecoveryService,
 ) *AccountHandler {
 	handler := NewAccountHandler(
 		adminService,
@@ -231,6 +232,7 @@ func ProvideAccountHandler(
 		secretEncryptor,
 	)
 	handler.grokImportProber = grokQuotaService
+	handler.SetAccountMetricRecoveryService(accountMetricRecovery)
 	handler.cfg = cfg
 	return handler
 }

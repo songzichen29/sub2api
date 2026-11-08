@@ -176,6 +176,18 @@ type trackingConcurrencyCache struct {
 	cleanupPrefix string
 }
 
+type accountMetricAdmissionStub struct {
+	AccountPerformanceAdmissionRepository
+	allowed bool
+	err     error
+	calls   int
+}
+
+func (s *accountMetricAdmissionStub) AdmitAccountPerformanceRequest(context.Context, int64, time.Time) (bool, error) {
+	s.calls++
+	return s.allowed, s.err
+}
+
 func (c *trackingConcurrencyCache) CleanupStaleProcessSlots(_ context.Context, prefix string) error {
 	c.cleanupPrefix = prefix
 	return c.cleanupErr
@@ -248,6 +260,40 @@ func TestAcquireAccountSlot_ReleaseDecrements(t *testing.T) {
 	require.Equal(t, int64(42), cache.releasedAccountIDs[0])
 	require.Len(t, cache.releasedRequestIDs, 1)
 	require.NotEmpty(t, cache.releasedRequestIDs[0], "requestID 不应为空")
+}
+
+func TestAcquireAccountSlot_AccountMetricPauseDeniesAndReleasesSlot(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true}
+	metricAdmission := &accountMetricAdmissionStub{allowed: false}
+	svc := NewConcurrencyService(cache, metricAdmission)
+
+	result, err := svc.AcquireAccountSlot(context.Background(), 42, 1)
+	require.NoError(t, err)
+	require.False(t, result.Acquired)
+	require.Nil(t, result.ReleaseFunc)
+	require.Equal(t, 1, metricAdmission.calls)
+	require.Equal(t, []int64{42}, cache.releasedAccountIDs)
+}
+
+func TestAcquireAccountSlot_AccountMetricReadFailureFailsClosed(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true}
+	metricAdmission := &accountMetricAdmissionStub{err: errors.New("database down")}
+	svc := NewConcurrencyService(cache, metricAdmission)
+
+	result, err := svc.AcquireAccountSlot(context.Background(), 42, 1)
+	require.ErrorContains(t, err, "database down")
+	require.Nil(t, result)
+	require.Equal(t, []int64{42}, cache.releasedAccountIDs)
+}
+
+func TestAcquireAccountSlot_AccountMetricCheckAppliesWithoutConcurrencyLimit(t *testing.T) {
+	metricAdmission := &accountMetricAdmissionStub{allowed: false}
+	svc := NewConcurrencyService(&stubConcurrencyCacheForTest{}, metricAdmission)
+
+	result, err := svc.AcquireAccountSlot(context.Background(), 42, 0)
+	require.NoError(t, err)
+	require.False(t, result.Acquired)
+	require.Equal(t, 1, metricAdmission.calls)
 }
 
 func TestAcquireUserSlot_IndependentFromAccount(t *testing.T) {

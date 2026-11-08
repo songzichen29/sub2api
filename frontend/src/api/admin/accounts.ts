@@ -33,7 +33,11 @@ import type {
   GrokMediaEligibilityState,
   GrokModelDiagnostics,
   OpenCodeGoUsageSettings,
-  OpenCodeGoUsageState
+  OpenCodeGoUsageState,
+  AccountMetricRecoveryConfig,
+  AccountPerformanceStatus,
+  AccountPerformanceMonitor,
+  AccountPerformanceEvent
 } from '@/types'
 
 function repeatedParamsSerializer(values: Record<string, unknown>): string {
@@ -622,6 +626,42 @@ export async function setSchedulable(id: number, schedulable: boolean): Promise<
   return data
 }
 
+export async function getMetricRecovery(id: number): Promise<AccountPerformanceStatus> {
+  const { data } = await apiClient.get<AccountPerformanceStatus>(`/admin/accounts/${id}/metric-recovery`)
+  return data
+}
+
+export async function saveMetricRecovery(
+  id: number,
+  expectedRevision: number,
+  config: AccountMetricRecoveryConfig
+): Promise<AccountPerformanceMonitor> {
+  const { data } = await apiClient.put<AccountPerformanceMonitor>(`/admin/accounts/${id}/metric-recovery`, {
+    expected_revision: expectedRevision,
+    config
+  })
+  return data
+}
+
+export async function releaseMetricRecovery(
+  id: number,
+  expectedRevision: number,
+  expectedPauseGeneration: number
+): Promise<AccountPerformanceMonitor> {
+  const { data } = await apiClient.post<AccountPerformanceMonitor>(`/admin/accounts/${id}/metric-recovery/release`, {
+    expected_revision: expectedRevision,
+    expected_pause_generation: expectedPauseGeneration
+  })
+  return data
+}
+
+export async function listMetricRecoveryEvents(id: number, beforeId?: number, limit = 50): Promise<{ events: AccountPerformanceEvent[] }> {
+  const { data } = await apiClient.get<{ events: AccountPerformanceEvent[] }>(`/admin/accounts/${id}/metric-recovery/events`, {
+    params: { before_id: beforeId, limit }
+  })
+  return data
+}
+
 /**
  * Get available models for an account
  * @param id - Account ID
@@ -1191,6 +1231,10 @@ export const accountsAPI = {
   getTempUnschedulableStatus,
   resetTempUnschedulable,
   setSchedulable,
+  getMetricRecovery,
+  saveMetricRecovery,
+  releaseMetricRecovery,
+  listMetricRecoveryEvents,
   getAvailableModels,
   syncUpstreamModels,
   syncUpstreamModelsPreview,

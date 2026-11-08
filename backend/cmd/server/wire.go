@@ -97,6 +97,7 @@ func provideCleanup(
 	apiKeyService *service.APIKeyService,
 	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
+	accountMetricRecovery *service.AccountMetricRecoveryService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
 	cnProviderBalanceCheck *service.CNProviderBalanceCheckService,
@@ -148,6 +149,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"AccountMetricRecoveryService", func() error {
+				if accountMetricRecovery != nil {
+					accountMetricRecovery.Stop()
+				}
+				return nil
+			}},
 			{"QQBot", func() error {
 				if qqBot != nil {
 					qqBot.Stop()

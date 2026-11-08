@@ -1936,6 +1936,8 @@
         </div>
       </div>
 
+      <AccountMetricRecoveryPanel v-if="account" :account-id="account.id" />
+
       <!-- Intercept Warmup Requests (Anthropic/Antigravity) -->
       <div
         v-if="account?.platform === 'anthropic' || account?.platform === 'antigravity'"
@@ -3492,6 +3494,7 @@ import {
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AccountMetricRecoveryPanel from '@/components/account/AccountMetricRecoveryPanel.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,

@@ -1448,6 +1448,70 @@ export interface Account {
   grok_model_diagnostics?: GrokModelDiagnostics
 }
 
+export interface AccountMetricThreshold {
+  pause_threshold: number
+  recovery_threshold?: number
+  min_samples?: number
+}
+
+export interface AccountMetricRecoveryConfig {
+  enabled: boolean
+  cooldown_seconds?: number
+  recovery_samples?: number
+  success_rate?: AccountMetricThreshold
+  cache_rate?: AccountMetricThreshold
+  ttft_ms?: AccountMetricThreshold
+  duration_ms?: AccountMetricThreshold
+}
+
+export interface AccountMetricSnapshot {
+  account_id: number
+  window_start: string
+  window_end: string
+  success_rate?: number | null
+  success_samples: number
+  error_samples: number
+  cache_rate?: number | null
+  cache_samples: number
+  average_ttft_ms?: number | null
+  ttft_samples: number
+  average_duration_ms?: number | null
+  duration_samples: number
+}
+
+export interface AccountPerformanceMonitor {
+  account_id: number
+  config: AccountMetricRecoveryConfig
+  revision: number
+  paused: boolean
+  pause_generation: number
+  paused_at?: string | null
+  reason: string
+  trial_started_at?: string | null
+  trial_requests: number
+  next_trial_at?: string | null
+  metrics_since?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface AccountPerformanceStatus {
+  monitor: AccountPerformanceMonitor
+  metrics_available: boolean
+  metrics?: AccountMetricSnapshot | null
+}
+
+export interface AccountPerformanceEvent {
+  id: number
+  account_id: number
+  action: 'configure' | 'pause' | 'trial' | 'recover' | 'release' | 'retire'
+  actor_id?: number | null
+  revision: number
+  pause_generation: number
+  evidence: Record<string, unknown>
+  created_at: string
+}
+
 // The admin account list may return this compact shape when lite=1. Detail
 // operations still use Account from /admin/accounts/:id.
 export type AccountListItem = Omit<Account, 'groups'>

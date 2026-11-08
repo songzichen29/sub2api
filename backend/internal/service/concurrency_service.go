@@ -225,11 +225,13 @@ const (
 	maxAccountLoadBatchCacheEntries = 256
 	apiKeyConcurrencyFetchTimeout   = 3 * time.Second
 	apiKeySlotTrackTimeout          = 2 * time.Second
+	accountMetricAdmissionTimeout   = 2 * time.Second
 )
 
 // ConcurrencyService 管理账号和用户的并发限制。
 type ConcurrencyService struct {
-	cache ConcurrencyCache
+	cache                  ConcurrencyCache
+	accountPerformanceRepo AccountPerformanceAdmissionRepository
 
 	accountLoadCacheTTL atomic.Int64
 	accountLoadCacheMu  sync.RWMutex
@@ -243,10 +245,13 @@ type cachedAccountLoadBatch struct {
 }
 
 // NewConcurrencyService 创建并发控制服务。
-func NewConcurrencyService(cache ConcurrencyCache) *ConcurrencyService {
+func NewConcurrencyService(cache ConcurrencyCache, performanceRepo ...AccountPerformanceAdmissionRepository) *ConcurrencyService {
 	svc := &ConcurrencyService{
 		cache:            cache,
 		accountLoadCache: make(map[string]cachedAccountLoadBatch),
+	}
+	if len(performanceRepo) > 0 {
+		svc.accountPerformanceRepo = performanceRepo[0]
 	}
 	svc.SetAccountLoadBatchCacheTTL(defaultAccountLoadBatchCacheTTL)
 	return svc
@@ -340,39 +345,44 @@ type UserLoadInfo struct {
 // If the account is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
 func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
-	// If maxConcurrency is 0 or negative, no limit
-	if maxConcurrency <= 0 {
-		return &AcquireResult{
-			Acquired:    true,
-			ReleaseFunc: func() {}, // no-op
-		}, nil
-	}
-
 	// Generate unique request ID for this slot
 	requestID := generateRequestID()
-
-	acquired, err := s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
-	if err != nil {
-		return nil, err
+	acquired := true
+	if maxConcurrency > 0 {
+		var err error
+		acquired, err = s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
+		if err != nil {
+			return nil, err
+		}
+		if !acquired {
+			return &AcquireResult{Acquired: false}, nil
+		}
 	}
 
-	if acquired {
-		return &AcquireResult{
-			Acquired: true,
-			ReleaseFunc: func() {
-				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
-					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
-				}
-			},
-		}, nil
+	releaseSlot := func() {
+		if maxConcurrency <= 0 {
+			return
+		}
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
+			logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
+		}
 	}
-
-	return &AcquireResult{
-		Acquired:    false,
-		ReleaseFunc: nil,
-	}, nil
+	if s.accountPerformanceRepo != nil {
+		admissionCtx, cancel := context.WithTimeout(ctx, accountMetricAdmissionTimeout)
+		admitted, err := s.accountPerformanceRepo.AdmitAccountPerformanceRequest(admissionCtx, accountID, time.Now().UTC())
+		cancel()
+		if err != nil {
+			releaseSlot()
+			return nil, err
+		}
+		if !admitted {
+			releaseSlot()
+			return &AcquireResult{Acquired: false}, nil
+		}
+	}
+	return &AcquireResult{Acquired: true, ReleaseFunc: releaseSlot}, nil
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.
