@@ -16,6 +16,11 @@ type channelMonitorV2Repository struct{ db *sql.DB }
 
 const channelMonitorV2GroupsTable = "`groups`"
 
+const (
+	channelMonitorV2RecentRequestLimit    = 5
+	channelMonitorV2RecentRequestLookback = 24 * time.Hour
+)
+
 func NewChannelMonitorV2Repository(db *sql.DB) service.ChannelMonitorV2Repository {
 	return &channelMonitorV2Repository{db: db}
 }
@@ -132,6 +137,7 @@ type channelMonitorV2Fact struct {
 	Success, Errors, UpstreamAffected, UpstreamAttempts int64
 	Input, Output, CacheCreation, CacheRead             int64
 	TTFTSum, TTFTCount, DurationSum, DurationCount      int64
+	TPSOutputTokens, TPSGenerationMS, TPSSamples        int64
 }
 
 type channelMonitorV2Histogram struct {
@@ -485,7 +491,7 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 		}
 		metrics := acc.total.metric(minutes, admin)
 		applyIgnoredErrors(&metrics, ignoredByDim[key])
-		row := service.ChannelMonitorV2MatrixRow{Platform: key.platform, GroupName: acc.groupName, Model: key.model, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds), Buckets: []service.ChannelMonitorV2TrendPoint{}}
+		row := service.ChannelMonitorV2MatrixRow{Platform: key.platform, GroupName: acc.groupName, Model: key.model, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds), Buckets: []service.ChannelMonitorV2TrendPoint{}, HasTraffic: metrics.RequestCount > 0}
 		if key.groupID > 0 {
 			groupID := key.groupID
 			row.GroupID = &groupID
@@ -506,6 +512,18 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 		}
 		result.Items = append(result.Items, row)
 	}
+	recentRequests, err := r.loadRecentRequests(ctx, effectiveFilter, cfg, groupBy, admin)
+	if err != nil {
+		return nil, fmt.Errorf("load recent channel requests: %w", err)
+	}
+	for i := range result.Items {
+		row := &result.Items[i]
+		key := channelMonitorV2MatrixDimensionKey(groupBy, cfg, row.Platform, int64PointerValue(row.GroupID), row.Model)
+		row.RecentRequests = recentRequests[key]
+		if row.RecentRequests == nil {
+			row.RecentRequests = []service.ChannelMonitorV2RecentRequest{}
+		}
+	}
 	sort.Slice(result.Items, func(i, j int) bool {
 		a, b := result.Items[i], result.Items[j]
 		if a.Platform != b.Platform {
@@ -520,6 +538,182 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 		return a.Model < b.Model
 	})
 	return result, nil
+}
+
+type channelMonitorV2RecentRequestRow struct {
+	service.ChannelMonitorV2RecentRequest
+	Platform           string
+	ErrorType          string
+	ErrorOwner         string
+	ErrorSource        string
+	StatusCode         int
+	UpstreamStatusCode int
+	Message            string
+}
+
+func (r *channelMonitorV2Repository) loadRecentRequests(
+	ctx context.Context,
+	filter service.ChannelMonitorV2Filter,
+	cfg service.ChannelMonitorV2Config,
+	groupBy service.ChannelMonitorV2GroupBy,
+	includeAdmin bool,
+) (map[channelMonitorV2MatrixKey][]service.ChannelMonitorV2RecentRequest, error) {
+	out := map[channelMonitorV2MatrixKey][]service.ChannelMonitorV2RecentRequest{}
+	if channelMonitorV2RestrictedGroupScopeEmpty(filter, cfg) || !filter.End.After(filter.Start) {
+		return out, nil
+	}
+	start := filter.End.Add(-channelMonitorV2RecentRequestLookback)
+	if start.Before(filter.Start) {
+		start = filter.Start
+	}
+	platforms := channelMonitorV2EnabledPlatforms(cfg)
+	if len(filter.Platforms) > 0 {
+		platforms = intersectStrings(platforms, filter.Platforms)
+	}
+	if len(platforms) == 0 {
+		return out, nil
+	}
+	groups, groupScopeEmpty := channelMonitorV2ScopedGroupIDs(filter, cfg)
+	if groupScopeEmpty {
+		return out, nil
+	}
+
+	modelExpr, modelArgs := channelMonitorV2RecentDisplayModelSQL(cfg)
+	partition := []string{"p.platform"}
+	if groupBy == service.ChannelMonitorV2GroupByPlatformGroup || groupBy == service.ChannelMonitorV2GroupByPlatformGroupModel {
+		partition = append(partition, "p.group_id")
+	}
+	if groupBy == service.ChannelMonitorV2GroupByPlatformModel || groupBy == service.ChannelMonitorV2GroupByPlatformGroupModel {
+		partition = append(partition, "p.display_model")
+	}
+	conditions := []string{}
+	args := []any{start, filter.End, start, filter.End}
+	args = append(args, modelArgs...)
+	for _, platform := range platforms {
+		args = append(args, platform)
+	}
+	conditions = append(conditions, "p.platform IN ("+sqlPlaceholders(len(platforms))+")")
+	if len(groups) > 0 {
+		for _, groupID := range groups {
+			args = append(args, groupID)
+		}
+		conditions = append(conditions, "p.group_id IN ("+sqlPlaceholders(len(groups))+")")
+	}
+	if len(filter.Models) > 0 {
+		for _, model := range filter.Models {
+			args = append(args, model)
+		}
+		conditions = append(conditions, "p.display_model IN ("+sqlPlaceholders(len(filter.Models))+")")
+	}
+	args = append(args, channelMonitorV2RecentRequestLimit)
+	adminMessage := `LEFT(COALESCE(NULLIF(e.upstream_error_message,''),NULLIF(e.error_message,''),NULLIF(e.upstream_error_detail,''),NULLIF(e.error_body,''),e.error_type,''),600)`
+	query := `WITH source_rows AS (
+		SELECT ul.id,ul.created_at AS occurred_at,
+			COALESCE(lower(` + usageLogEffectivePlatformExpr + `),'unknown') AS platform,
+			COALESCE(ul.group_id,0) AS group_id,
+			COALESCE(NULLIF(TRIM(ul.requested_model),''),NULLIF(TRIM(ul.model),''),'unknown') AS raw_model,
+			'success' AS status,ul.duration_ms AS duration_ms,ul.first_token_ms AS ttft_ms,
+			CASE WHEN COALESCE(ul.request_type,0) NOT IN (4,6) AND ` + usageLogSuccessFilterUL + `
+				AND ul.output_tokens > 0 AND ul.first_token_ms >= 0 AND ul.duration_ms > ul.first_token_ms
+				THEN ul.output_tokens * 1000.0 / NULLIF(ul.duration_ms-ul.first_token_ms,0) END AS output_tps,
+			'' AS error_type,'' AS error_owner,'' AS error_source,0 AS status_code,0 AS upstream_status_code,'' AS message,0 AS source_order
+		FROM usage_logs ul
+		LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id=ul.group_id
+		LEFT JOIN accounts a ON a.id=ul.account_id
+		WHERE ul.created_at >= ? AND ul.created_at < ? AND ` + usageLogSuccessFilterUL + ` AND COALESCE(ul.request_type,0) NOT IN (4,6)
+		UNION ALL
+		SELECT e.id,e.created_at AS occurred_at,
+			lower(CASE WHEN g.platform='composite' THEN COALESCE(NULLIF(TRIM(a.platform),''),NULLIF(NULLIF(lower(TRIM(e.platform)),''),'composite'),'unknown')
+				ELSE COALESCE(NULLIF(TRIM(e.platform),''),'unknown') END) AS platform,
+			COALESCE(e.group_id,0) AS group_id,
+			COALESCE(NULLIF(TRIM(e.requested_model),''),NULLIF(TRIM(e.model),''),'unknown') AS raw_model,
+			'error' AS status,e.duration_ms AS duration_ms,e.time_to_first_token_ms AS ttft_ms,
+			NULL AS output_tps,COALESCE(e.error_type,''),COALESCE(e.error_owner,''),COALESCE(e.error_source,''),
+			COALESCE(e.status_code,0),COALESCE(e.upstream_status_code,0),` + adminMessage + `,1 AS source_order
+		FROM ops_error_logs e
+		LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id=e.group_id
+		LEFT JOIN accounts a ON a.id=e.account_id
+		WHERE e.created_at >= ? AND e.created_at < ? AND NOT e.is_count_tokens
+			AND (COALESCE(e.status_code,0) >= 400 OR e.error_type='cyber_policy')
+			AND (NULLIF(e.request_id,'') IS NULL OR NOT EXISTS (
+				SELECT 1 FROM ops_error_logs newer WHERE newer.request_id=e.request_id AND NOT newer.is_count_tokens
+					AND (COALESCE(newer.status_code,0) >= 400 OR newer.error_type='cyber_policy')
+					AND (newer.created_at,newer.id) > (e.created_at,e.id)))
+	), normalized AS (
+		SELECT p.*,` + modelExpr + ` AS display_model FROM source_rows p
+	), ranked AS (
+		SELECT p.*,ROW_NUMBER() OVER (PARTITION BY ` + strings.Join(partition, ",") + ` ORDER BY p.occurred_at DESC,p.source_order DESC,p.id DESC) AS recent_rank
+		FROM normalized p WHERE ` + strings.Join(conditions, " AND ") + `
+	)
+	SELECT occurred_at,platform,group_id,display_model,status,duration_ms,ttft_ms,output_tps,
+		error_type,error_owner,error_source,status_code,upstream_status_code,message
+	FROM ranked WHERE recent_rank <= ?
+	ORDER BY platform,group_id,display_model,occurred_at DESC,source_order DESC,id DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var item channelMonitorV2RecentRequestRow
+		var groupID int64
+		var duration, ttft sql.NullInt64
+		var outputTPS sql.NullFloat64
+		if err := rows.Scan(&item.OccurredAt, &item.Platform, &groupID, &item.Model, &item.Status, &duration, &ttft, &outputTPS,
+			&item.ErrorType, &item.ErrorOwner, &item.ErrorSource, &item.StatusCode, &item.UpstreamStatusCode, &item.Message); err != nil {
+			return nil, err
+		}
+		if duration.Valid {
+			item.DurationMs = &duration.Int64
+		}
+		if ttft.Valid {
+			item.TTFTMs = &ttft.Int64
+		}
+		if outputTPS.Valid {
+			item.OutputTPS = &outputTPS.Float64
+		}
+		if item.Status == "error" {
+			item.ErrorCategory = service.ClassifyChannelMonitorV2Error(service.ChannelMonitorV2ErrorInput{
+				ErrorType: item.ErrorType, ErrorOwner: item.ErrorOwner, ErrorSource: item.ErrorSource,
+				StatusCode: item.StatusCode, UpstreamStatusCode: item.UpstreamStatusCode, Message: item.Message,
+			})
+			if includeAdmin {
+				item.Error = &service.ChannelMonitorV2RecentError{
+					StatusCode: item.StatusCode, UpstreamStatusCode: item.UpstreamStatusCode, Message: item.Message,
+				}
+			}
+		}
+		key := channelMonitorV2MatrixDimensionKey(groupBy, cfg, item.Platform, groupID, item.Model)
+		out[key] = append(out[key], item.ChannelMonitorV2RecentRequest)
+	}
+	return out, rows.Err()
+}
+
+func channelMonitorV2RecentDisplayModelSQL(cfg service.ChannelMonitorV2Config) (string, []any) {
+	var args []any
+	var cases []string
+	for _, platform := range cfg.Platforms {
+		if len(platform.Models) == 0 {
+			continue
+		}
+		args = append(args, platform.Platform)
+		for _, model := range platform.Models {
+			args = append(args, model)
+		}
+		args = append(args, service.ChannelMonitorV2OtherModel)
+		cases = append(cases, "WHEN p.platform=? THEN CASE WHEN p.raw_model IN ("+sqlPlaceholders(len(platform.Models))+") THEN p.raw_model ELSE ? END")
+	}
+	if len(cases) == 0 {
+		return "p.raw_model", nil
+	}
+	return "CASE " + strings.Join(cases, " ") + " ELSE p.raw_model END", args
+}
+
+func int64PointerValue(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func channelMonitorV2MatrixDimensionKey(groupBy service.ChannelMonitorV2GroupBy, cfg service.ChannelMonitorV2Config, platform string, groupID int64, model string) channelMonitorV2MatrixKey {
@@ -992,7 +1186,7 @@ func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter servi
 			group = bucketExpr + "," + group
 		}
 	}
-	query := `SELECT ` + bucketExpr + `,m.platform,m.group_id,COALESCE(g.name,''),m.model,SUM(m.success_requests),SUM(m.error_requests),SUM(m.upstream_affected_requests),SUM(m.upstream_attempt_count),SUM(m.input_tokens),SUM(m.output_tokens),SUM(m.cache_creation_tokens),SUM(m.cache_read_tokens),SUM(m.ttft_sum_ms),SUM(m.ttft_count),SUM(m.duration_sum_ms),SUM(m.duration_count) FROM ` + channelMonitorV2MetricsTable(filter) + ` m LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id=NULLIF(m.group_id,0) ` + where + ` GROUP BY ` + group
+	query := `SELECT ` + bucketExpr + `,m.platform,m.group_id,COALESCE(g.name,''),m.model,SUM(m.success_requests),SUM(m.error_requests),SUM(m.upstream_affected_requests),SUM(m.upstream_attempt_count),SUM(m.input_tokens),SUM(m.output_tokens),SUM(m.cache_creation_tokens),SUM(m.cache_read_tokens),SUM(m.ttft_sum_ms),SUM(m.ttft_count),SUM(m.duration_sum_ms),SUM(m.duration_count),SUM(m.tps_output_tokens),SUM(m.tps_generation_ms),SUM(m.tps_samples) FROM ` + channelMonitorV2MetricsTable(filter) + ` m LEFT JOIN ` + channelMonitorV2GroupsTable + ` g ON g.id=NULLIF(m.group_id,0) ` + where + ` GROUP BY ` + group
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -1002,7 +1196,7 @@ func (r *channelMonitorV2Repository) loadFacts(ctx context.Context, filter servi
 	for rows.Next() {
 		var bucket time.Time
 		var f channelMonitorV2Fact
-		if err := rows.Scan(&bucket, &f.Platform, &f.GroupID, &f.GroupName, &f.Model, &f.Success, &f.Errors, &f.UpstreamAffected, &f.UpstreamAttempts, &f.Input, &f.Output, &f.CacheCreation, &f.CacheRead, &f.TTFTSum, &f.TTFTCount, &f.DurationSum, &f.DurationCount); err != nil {
+		if err := rows.Scan(&bucket, &f.Platform, &f.GroupID, &f.GroupName, &f.Model, &f.Success, &f.Errors, &f.UpstreamAffected, &f.UpstreamAttempts, &f.Input, &f.Output, &f.CacheCreation, &f.CacheRead, &f.TTFTSum, &f.TTFTCount, &f.DurationSum, &f.DurationCount, &f.TPSOutputTokens, &f.TPSGenerationMS, &f.TPSSamples); err != nil {
 			return nil, err
 		}
 		f.BucketStart = bucket.UTC().Format(time.RFC3339Nano)
@@ -1373,8 +1567,8 @@ func channelMonitorV2BucketExpr(column string, seconds int) string {
 }
 
 type metricAccumulator struct {
-	success, errors, upstreamAffected, upstreamAttempts, input, output, cacheCreation, cacheRead, ttftSum, ttftCount, durationSum, durationCount int64
-	hist                                                                                                                                         map[string]map[int64]int64
+	success, errors, upstreamAffected, upstreamAttempts, input, output, cacheCreation, cacheRead, ttftSum, ttftCount, durationSum, durationCount, tpsOutputTokens, tpsGenerationMS, tpsSamples int64
+	hist                                                                                                                                                                                       map[string]map[int64]int64
 }
 
 func newMetricAccumulator() *metricAccumulator {
@@ -1393,6 +1587,9 @@ func (a *metricAccumulator) addFact(f channelMonitorV2Fact) {
 	a.ttftCount += f.TTFTCount
 	a.durationSum += f.DurationSum
 	a.durationCount += f.DurationCount
+	a.tpsOutputTokens += f.TPSOutputTokens
+	a.tpsGenerationMS += f.TPSGenerationMS
+	a.tpsSamples += f.TPSSamples
 }
 func (a *metricAccumulator) addHistogram(h channelMonitorV2Histogram) {
 	if a.hist[h.Metric] == nil {
@@ -1414,6 +1611,11 @@ func (a *metricAccumulator) metric(minutes float64, admin bool) service.ChannelM
 	}
 	if denom > 0 {
 		m.CacheRate = float64(a.cacheRead) / float64(denom)
+	}
+	m.TPSSampleCount = a.tpsSamples
+	if a.tpsSamples > 0 && a.tpsGenerationMS > 0 {
+		outputTPS := float64(a.tpsOutputTokens) * 1000 / float64(a.tpsGenerationMS)
+		m.OutputTPS = &outputTPS
 	}
 	if admin {
 		affected, attempts := a.upstreamAffected, a.upstreamAttempts

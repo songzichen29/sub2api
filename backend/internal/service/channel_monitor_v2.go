@@ -104,6 +104,8 @@ type ChannelMonitorV2Metric struct {
 	CacheRate                float64                 `json:"cache_rate"`
 	CacheRateNumerator       int64                   `json:"cache_rate_numerator"`
 	CacheRateDenominator     int64                   `json:"cache_rate_denominator"`
+	OutputTPS                *float64                `json:"output_tps,omitempty"`
+	TPSSampleCount           int64                   `json:"tps_sample_count"`
 	TTFT                     ChannelMonitorV2Latency `json:"ttft"`
 	Duration                 ChannelMonitorV2Latency `json:"duration"`
 	UpstreamAffectedRequests *int64                  `json:"upstream_affected_requests,omitempty"`
@@ -244,13 +246,32 @@ type ChannelMonitorV2ModelRow struct {
 }
 
 type ChannelMonitorV2MatrixRow struct {
-	Platform  string                       `json:"platform"`
-	GroupID   *int64                       `json:"group_id,omitempty"`
-	GroupName string                       `json:"group_name,omitempty"`
-	Model     string                       `json:"model,omitempty"`
-	Metrics   ChannelMonitorV2Metric       `json:"metrics"`
-	Health    ChannelMonitorV2Health       `json:"health"`
-	Buckets   []ChannelMonitorV2TrendPoint `json:"buckets"`
+	Platform       string                          `json:"platform"`
+	GroupID        *int64                          `json:"group_id,omitempty"`
+	GroupName      string                          `json:"group_name,omitempty"`
+	Model          string                          `json:"model,omitempty"`
+	Metrics        ChannelMonitorV2Metric          `json:"metrics"`
+	Health         ChannelMonitorV2Health          `json:"health"`
+	Buckets        []ChannelMonitorV2TrendPoint    `json:"buckets"`
+	HasTraffic     bool                            `json:"has_traffic"`
+	RecentRequests []ChannelMonitorV2RecentRequest `json:"recent_requests,omitempty"`
+}
+
+type ChannelMonitorV2RecentRequest struct {
+	OccurredAt    time.Time                    `json:"occurred_at"`
+	Model         string                       `json:"model"`
+	Status        string                       `json:"status"`
+	DurationMs    *int64                       `json:"duration_ms,omitempty"`
+	TTFTMs        *int64                       `json:"ttft_ms,omitempty"`
+	OutputTPS     *float64                     `json:"output_tps,omitempty"`
+	ErrorCategory string                       `json:"error_category,omitempty"`
+	Error         *ChannelMonitorV2RecentError `json:"error,omitempty"`
+}
+
+type ChannelMonitorV2RecentError struct {
+	StatusCode         int    `json:"status_code"`
+	UpstreamStatusCode int    `json:"upstream_status_code"`
+	Message            string `json:"message"`
 }
 
 type ChannelMonitorV2Matrix struct {
@@ -536,6 +557,12 @@ func (s *ChannelMonitorV2Service) Matrix(ctx context.Context, filter ChannelMoni
 			for j := range matrix.Items[i].Buckets {
 				redactChannelMonitorV2Metric(&matrix.Items[i].Buckets[j].Metrics, hideTP)
 			}
+			for j := range matrix.Items[i].RecentRequests {
+				if hideTP {
+					matrix.Items[i].RecentRequests[j].OutputTPS = nil
+				}
+				matrix.Items[i].RecentRequests[j].Error = nil
+			}
 		}
 	}
 	return matrix, nil
@@ -648,6 +675,7 @@ func redactChannelMonitorV2Metric(m *ChannelMonitorV2Metric, hideThroughput bool
 	m.TokenCount = 0
 	m.CacheRateNumerator = 0
 	m.CacheRateDenominator = 0
+	m.TPSSampleCount = 0
 	// Latency sample_count is also a volume signal.
 	m.TTFT.SampleCount = 0
 	m.Duration.SampleCount = 0
@@ -656,6 +684,7 @@ func redactChannelMonitorV2Metric(m *ChannelMonitorV2Metric, hideThroughput bool
 	if hideThroughput {
 		m.RPM = 0
 		m.TPM = 0
+		m.OutputTPS = nil
 	}
 }
 

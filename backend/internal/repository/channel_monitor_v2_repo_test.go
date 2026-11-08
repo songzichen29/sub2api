@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql/driver"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,60 @@ func TestChannelMonitorV2MatrixDimensionKey(t *testing.T) {
 	require.Equal(t, channelMonitorV2MatrixKey{platform: "openai", model: service.ChannelMonitorV2OtherModel}, key)
 	key = channelMonitorV2MatrixDimensionKey(service.ChannelMonitorV2GroupByPlatform, cfg, "openai", 7, "gpt-5")
 	require.Equal(t, channelMonitorV2MatrixKey{platform: "openai"}, key)
+}
+
+func TestChannelMonitorV2RecentRequestsAreScopedAndUseOutputTPS(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	repo := &channelMonitorV2Repository{db: db}
+	start := time.Date(2026, 8, 1, 20, 0, 0, 0, time.UTC)
+	end := start.Add(3 * time.Hour)
+	filter := service.ChannelMonitorV2Filter{
+		Start: start, End: end, Models: []string{"gpt-5"},
+		AllowedGroupIDs: []int64{7}, RestrictGroups: true,
+	}
+	cfg := service.ChannelMonitorV2Config{
+		Platforms: []service.ChannelMonitorV2PlatformConfig{{Platform: "openai", Enabled: true, Models: []string{"gpt-5"}}},
+		GroupIDs:  []int64{7, 9},
+	}
+	queryPattern := `(?is)WITH source_rows AS .*ROW_NUMBER\(\) OVER \(PARTITION BY p\.platform,p\.group_id,p\.display_model .*recent_rank <= \?`
+	rows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{
+			"occurred_at", "platform", "group_id", "display_model", "status", "duration_ms", "ttft_ms", "output_tps",
+			"error_type", "error_owner", "error_source", "status_code", "upstream_status_code", "message",
+		}).AddRow(end.Add(-time.Minute), "openai", int64(7), "gpt-5", "error", int64(1200), nil, nil, "timeout", "provider", "proxy", 504, 502, "upstream timeout detail").
+			AddRow(end.Add(-2*time.Minute), "openai", int64(7), "gpt-5", "success", int64(900), int64(100), 20.5, "", "", "", 0, 0, "")
+	}
+	args := []driver.Value{start, end, start, end, "openai", "gpt-5", service.ChannelMonitorV2OtherModel, "openai", int64(7), "gpt-5", channelMonitorV2RecentRequestLimit}
+	// The raw query binds display-model CASE parameters before filter predicates.
+	for _, admin := range []bool{false, true} {
+		mock.ExpectQuery(queryPattern).WithArgs(args...).WillReturnRows(rows())
+		recent, err := repo.loadRecentRequests(context.Background(), filter, cfg, service.ChannelMonitorV2GroupByPlatformGroupModel, admin)
+		require.NoError(t, err)
+		key := channelMonitorV2MatrixKey{platform: "openai", groupID: 7, model: "gpt-5"}
+		require.Len(t, recent[key], 2)
+		require.Equal(t, "error", recent[key][0].Status)
+		require.Equal(t, "timeout", recent[key][0].ErrorCategory)
+		require.Equal(t, "success", recent[key][1].Status)
+		require.Equal(t, 20.5, *recent[key][1].OutputTPS)
+		if admin {
+			require.Equal(t, "upstream timeout detail", recent[key][0].Error.Message)
+		} else {
+			require.Nil(t, recent[key][0].Error)
+		}
+		require.Nil(t, recent[key][1].Error)
+	}
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestChannelMonitorV2RecentRequestDisplayModelUsesConfiguredOtherBucket(t *testing.T) {
+	expr, args := channelMonitorV2RecentDisplayModelSQL(service.ChannelMonitorV2Config{Platforms: []service.ChannelMonitorV2PlatformConfig{
+		{Platform: "openai", Models: []string{"gpt-5", "gpt-5-mini"}},
+		{Platform: "grok"},
+	}})
+	require.Contains(t, expr, "WHEN p.platform=? THEN CASE WHEN p.raw_model IN (?,?) THEN p.raw_model ELSE ? END")
+	require.Equal(t, []any{"openai", "gpt-5", "gpt-5-mini", service.ChannelMonitorV2OtherModel}, args)
 }
 
 func TestChannelMonitorV2HistogramPercentilesAreMergedFromCounts(t *testing.T) {

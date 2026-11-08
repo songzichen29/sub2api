@@ -452,6 +452,36 @@ func TestChannelMonitorV2ReadAPIsRejectDisabledConfig(t *testing.T) {
 	require.ErrorIs(t, err, ErrChannelMonitorDisabled)
 }
 
+func TestChannelMonitorV2MatrixRedactsRecentErrorDetailsForUsers(t *testing.T) {
+	outputTPS := 24.5
+	request := ChannelMonitorV2RecentRequest{
+		Status: "error", ErrorCategory: "timeout",
+		Error: &ChannelMonitorV2RecentError{StatusCode: 504, Message: "private upstream body"},
+	}
+	fixture := func() *channelMonitorV2RepoStub {
+		return &channelMonitorV2RepoStub{
+			config: ChannelMonitorV2Config{Enabled: true},
+			matrix: &ChannelMonitorV2Matrix{Items: []ChannelMonitorV2MatrixRow{{
+				Metrics:        ChannelMonitorV2Metric{OutputTPS: &outputTPS, TPSSampleCount: 3},
+				RecentRequests: []ChannelMonitorV2RecentRequest{request},
+			}}},
+		}
+	}
+
+	userMatrix, err := NewChannelMonitorV2Service(fixture()).Matrix(context.Background(), ChannelMonitorV2Filter{}, ChannelMonitorV2GroupByPlatform, false)
+	require.NoError(t, err)
+	require.Nil(t, userMatrix.Items[0].Metrics.OutputTPS)
+	require.Zero(t, userMatrix.Items[0].Metrics.TPSSampleCount)
+	require.Nil(t, userMatrix.Items[0].RecentRequests[0].Error)
+	require.Equal(t, "timeout", userMatrix.Items[0].RecentRequests[0].ErrorCategory)
+
+	adminMatrix, err := NewChannelMonitorV2Service(fixture()).Matrix(context.Background(), ChannelMonitorV2Filter{}, ChannelMonitorV2GroupByPlatform, true)
+	require.NoError(t, err)
+	require.Equal(t, 24.5, *adminMatrix.Items[0].Metrics.OutputTPS)
+	require.Equal(t, int64(3), adminMatrix.Items[0].Metrics.TPSSampleCount)
+	require.Equal(t, "private upstream body", adminMatrix.Items[0].RecentRequests[0].Error.Message)
+}
+
 func TestNormalizeChannelMonitorV2IgnoredCategories(t *testing.T) {
 	got := normalizeChannelMonitorV2IgnoredCategories([]string{"timeout", "TIMEOUT", "not-a-real", "", "timeout", "other"})
 	require.Equal(t, []string{"other", "timeout"}, got)
@@ -551,6 +581,7 @@ func TestRedactChannelMonitorV2MetricKeepsRates(t *testing.T) {
 		InputTokens: 1, OutputTokens: 2, CacheCreationTokens: 3, CacheReadTokens: 4,
 		TokenCount: 10, RPM: 12, TPM: 34, ErrorRate: 0.1, SuccessRate: 0.9,
 		CacheRate: 0.5, CacheRateNumerator: 4, CacheRateDenominator: 8,
+		OutputTPS: func() *float64 { v := 6.25; return &v }(), TPSSampleCount: 4,
 		TTFT: ChannelMonitorV2Latency{SampleCount: 50, P50Ms: &p50},
 	}
 	upstream := int64(3)
@@ -560,6 +591,8 @@ func TestRedactChannelMonitorV2MetricKeepsRates(t *testing.T) {
 	require.Zero(t, m.ErrorRequests)
 	require.Zero(t, m.TokenCount)
 	require.Zero(t, m.CacheRateNumerator)
+	require.Zero(t, m.TPSSampleCount)
+	require.NotNil(t, m.OutputTPS)
 	require.Zero(t, m.TTFT.SampleCount)
 	require.Nil(t, m.UpstreamAffectedRequests)
 	require.InDelta(t, 0.1, m.ErrorRate, 0.0001)
@@ -571,6 +604,7 @@ func TestRedactChannelMonitorV2MetricKeepsRates(t *testing.T) {
 	redactChannelMonitorV2Metric(&m, true)
 	require.Zero(t, m.RPM)
 	require.Zero(t, m.TPM)
+	require.Nil(t, m.OutputTPS)
 	require.InDelta(t, 0.1, m.ErrorRate, 0.0001)
 }
 

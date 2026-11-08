@@ -28,6 +28,10 @@ const i18nT = (key: string, params?: Record<string, unknown>) => {
     'channelMonitorV2.matrix.warningLegend': '警告',
     'channelMonitorV2.matrix.criticalLegend': '异常',
     'channelMonitorV2.matrix.unknownLegend': '未知',
+    'channelMonitorV2.matrix.recentRequests': '近期请求',
+    'channelMonitorV2.matrix.requestSuccess': '成功',
+    'channelMonitorV2.matrix.requestError': '失败',
+    'channelMonitorV2.errorCategories.timeout': '超时',
   }
   const template = map[key] || key
   return template.replace(/\{(\w+)\}/g, (_, name) => String(params?.[name] ?? ''))
@@ -74,6 +78,8 @@ function metrics(requestCount: number): MonitorMetric {
     cache_rate: 0.5,
     cache_rate_numerator: 50,
     cache_rate_denominator: 100,
+    output_tps: 42.5,
+    tps_sample_count: 3,
     ttft: { sample_count: requestCount, p50_ms: 100, p95_ms: 300, avg_ms: 150 },
     duration: { sample_count: requestCount, p50_ms: 500, p95_ms: 900, avg_ms: 600 },
     upstream_affected_requests: 2,
@@ -96,6 +102,14 @@ describe('RelayPulseMatrix', () => {
             { bucket_start: '2026-08-01T00:00:00Z', metrics: metrics(10), health },
             { bucket_start: '2026-08-01T00:01:00Z', metrics: metrics(0), health },
           ],
+          recent_requests: [{
+            occurred_at: '2026-08-01T00:02:30Z',
+            model: 'gpt-5',
+            status: 'error',
+            duration_ms: 1200,
+            error_category: 'timeout',
+            error: { status_code: 504, upstream_status_code: 502, message: 'upstream timeout detail' },
+          }],
         }],
         coverage: {
           requested_start: '2026-08-01T00:00:00Z',
@@ -119,6 +133,7 @@ describe('RelayPulseMatrix', () => {
     expect(tip).toContain('90.0%')
     expect(tip).toContain('首 Token')
     expect(tip).toContain('每秒 Token')
+    expect(tip).toContain('42.5')
     expect(tip).toContain('缓存率')
     expect(tip).toContain('RPM')
     expect(tip).not.toContain('请求数')
@@ -130,6 +145,7 @@ describe('RelayPulseMatrix', () => {
     expect(header).toContain('首 Token')
     expect(header).toContain('每秒 Token')
     expect(header).toContain('缓存率')
+    expect(wrapper.findAll('.summary-value')[2].text()).toBe('42.5')
     // Multi-band class from score 52 → score5
     expect(cells[0].classes().some((c) => c.startsWith('health-score'))).toBe(true)
     // Redacted user payloads may have request_count=0 but still include score.
@@ -139,6 +155,11 @@ describe('RelayPulseMatrix', () => {
     // No click-to-open modal
     await cells[0].trigger('click')
     expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+
+    await wrapper.get('button[aria-label="近期请求"]').trigger('click')
+    expect(wrapper.text()).toContain('近期请求')
+    expect(wrapper.text()).toContain('超时')
+    expect(wrapper.text()).toContain('upstream timeout detail')
   })
 })
 
@@ -172,5 +193,6 @@ describe('RelayPulseMatrix axis range', () => {
     })
     // 5 minutes @ 60s buckets → 5 cells spanning the selected range
     expect(wrapper.findAll('.pulse-cell')).toHaveLength(5)
+    expect(wrapper.findAll('.summary-value')[2].text()).toBe('42.5')
   })
 })

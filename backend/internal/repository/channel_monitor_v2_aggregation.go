@@ -175,7 +175,7 @@ var channelMonitorV2UsageMetricsSQL = `
 INSERT INTO channel_monitor_v2_metrics_1m (
   bucket_start, platform, group_id, model, success_requests,
   input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens,
-  ttft_sum_ms, ttft_count, duration_sum_ms, duration_count, computed_at
+  ttft_sum_ms, ttft_count, duration_sum_ms, duration_count, tps_output_tokens, tps_generation_ms, tps_samples, computed_at
 )
 SELECT TIMESTAMPADD(MINUTE, TIMESTAMPDIFF(MINUTE, '1970-01-01 00:00:00', ul.created_at), '1970-01-01 00:00:00'),
        %s, COALESCE(ul.group_id, 0), %s,
@@ -189,12 +189,19 @@ SELECT TIMESTAMPADD(MINUTE, TIMESTAMPDIFF(MINUTE, '1970-01-01 00:00:00', ul.crea
        COALESCE(SUM(CASE WHEN ul.first_token_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN ul.first_token_ms ELSE 0 END), 0),
        SUM(CASE WHEN ul.first_token_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN 1 ELSE 0 END),
        COALESCE(SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN ul.duration_ms ELSE 0 END), 0),
-       SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN 1 ELSE 0 END), NOW(6)
+       SUM(CASE WHEN ul.duration_ms IS NOT NULL AND ` + usageLogSuccessFilterUL + ` THEN 1 ELSE 0 END),
+       COALESCE(SUM(CASE WHEN ` + channelMonitorV2OutputTPSEligibleSQL + ` THEN ul.output_tokens ELSE 0 END), 0),
+       COALESCE(SUM(CASE WHEN ` + channelMonitorV2OutputTPSEligibleSQL + ` THEN ul.duration_ms-ul.first_token_ms ELSE 0 END), 0),
+       SUM(CASE WHEN ` + channelMonitorV2OutputTPSEligibleSQL + ` THEN 1 ELSE 0 END), NOW(6)
 FROM usage_logs ul
 LEFT JOIN ` + "`groups`" + ` g ON g.id = ul.group_id
 LEFT JOIN accounts a ON a.id = ul.account_id
 WHERE ul.created_at >= ? AND ul.created_at < ?
 GROUP BY 1, 2, 3, 4`
+
+const channelMonitorV2OutputTPSEligibleSQL = `COALESCE(ul.request_type,0) NOT IN (4,6)
+ AND ` + usageLogSuccessFilterUL + `
+ AND ul.output_tokens > 0 AND ul.first_token_ms >= 0 AND ul.duration_ms > ul.first_token_ms`
 
 var channelMonitorV2UserMetricsSQL = `
 INSERT INTO channel_monitor_v2_user_metrics_1m (
@@ -509,13 +516,13 @@ INSERT INTO channel_monitor_v2_metrics_rollup (
   bucket_start, bucket_seconds, platform, group_id, model, success_requests, error_requests,
   upstream_affected_requests, upstream_attempt_count, input_tokens, output_tokens,
   cache_creation_tokens, cache_read_tokens, ttft_sum_ms, ttft_count, duration_sum_ms,
-  duration_count, computed_at
+  duration_count, tps_output_tokens, tps_generation_ms, tps_samples, computed_at
 )
 SELECT %s, %d,
        platform, group_id, model, SUM(success_requests), SUM(error_requests),
        SUM(upstream_affected_requests), SUM(upstream_attempt_count), SUM(input_tokens),
        SUM(output_tokens), SUM(cache_creation_tokens), SUM(cache_read_tokens),
-       SUM(ttft_sum_ms), SUM(ttft_count), SUM(duration_sum_ms), SUM(duration_count), NOW()
+       SUM(ttft_sum_ms), SUM(ttft_count), SUM(duration_sum_ms), SUM(duration_count), SUM(tps_output_tokens), SUM(tps_generation_ms), SUM(tps_samples), NOW()
 FROM channel_monitor_v2_metrics_1m m
 WHERE m.bucket_start >= ? AND m.bucket_start < ?
 GROUP BY 1, 2, 3, 4, 5`

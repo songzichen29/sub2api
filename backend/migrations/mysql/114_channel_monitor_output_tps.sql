@@ -1,0 +1,18 @@
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_1m' AND column_name = 'tps_output_tokens');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_1m ADD COLUMN tps_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER duration_count', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_1m' AND column_name = 'tps_generation_ms');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_1m ADD COLUMN tps_generation_ms BIGINT NOT NULL DEFAULT 0 AFTER tps_output_tokens', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_1m' AND column_name = 'tps_samples');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_1m ADD COLUMN tps_samples BIGINT NOT NULL DEFAULT 0 AFTER tps_generation_ms', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_rollup' AND column_name = 'tps_output_tokens');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_rollup ADD COLUMN tps_output_tokens BIGINT NOT NULL DEFAULT 0 AFTER duration_count', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_rollup' AND column_name = 'tps_generation_ms');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_rollup ADD COLUMN tps_generation_ms BIGINT NOT NULL DEFAULT 0 AFTER tps_output_tokens', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @col_exists = (SELECT COUNT(1) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'channel_monitor_v2_metrics_rollup' AND column_name = 'tps_samples');
+SET @sql = IF(@col_exists = 0, 'ALTER TABLE channel_monitor_v2_metrics_rollup ADD COLUMN tps_samples BIGINT NOT NULL DEFAULT 0 AFTER tps_generation_ms', 'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;

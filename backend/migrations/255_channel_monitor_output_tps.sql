@@ -1,0 +1,9 @@
+ALTER TABLE channel_monitor_v2_metrics_1m
+    ADD COLUMN IF NOT EXISTS tps_output_tokens BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS tps_generation_ms BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS tps_samples BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE channel_monitor_v2_metrics_rollup
+    ADD COLUMN IF NOT EXISTS tps_output_tokens BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS tps_generation_ms BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS tps_samples BIGINT NOT NULL DEFAULT 0;

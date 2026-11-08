@@ -44,6 +44,8 @@ export interface MonitorMetric {
   cache_rate: number
   cache_rate_numerator: number
   cache_rate_denominator: number
+  output_tps?: number | null
+  tps_sample_count?: number
   ttft: LatencyMetric
   duration: LatencyMetric
   upstream_affected_requests?: number
@@ -166,6 +168,20 @@ export interface MonitorMatrixRow {
   metrics: MonitorMetric
   health: MonitorHealth
   buckets: MonitorMatrixBucket[]
+  recent_requests?: Array<{
+    occurred_at: string
+    model: string
+    status: string
+    duration_ms?: number | null
+    ttft_ms?: number | null
+    output_tps?: number | null
+    error_category?: string
+    error?: {
+      status_code: number
+      upstream_status_code: number
+      message: string
+    }
+  }>
 }
 
 export interface MonitorMatrixResponse {
