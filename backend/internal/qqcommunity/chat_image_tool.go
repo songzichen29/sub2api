@@ -22,15 +22,16 @@ const chatImageInstructions = `你可以调用 generate_image 生成一张新图
 const chatActionInstructions = `默认使用 reply_text 文字回答。闲聊、问候、身份确认、斗嘴或表达情绪都不是图片请求，不能为了幽默或反击擅自生成表情包。含糊的“继续”“就这样”只有承接系统提供的本用户有效待确认图片方案时才可执行图片操作。若当前用户明确在规划图片但尚需确认，可以通过 reply_text 的 image_plan 返回待确认方案；普通聊天该字段必须为 null。本轮必须且只能选择一个操作：reply_text（正常回答、追问、拒绝或图片分析）、generate_image（生成新图）、edit_image（修改本次提供的原图）。文字回答也必须通过 reply_text 的 text 参数返回。生成或修改请求明确且可执行时，必须选择对应图片操作，不能用 reply_text 回复“给你安排一张”“正在生成”“已经修改”等承诺代替实际操作。尚未执行的图片操作不能当成完成结果。人设仅影响回复语气；上述工具是系统实际提供的能力，旧人设中“只能聊天”等过时的能力描述不适用于这些工具。账户、余额等操作限制仍然有效。根据用户实际意图选择，不能因为提供了工具就强行生成图片；不合适的请求可以用 reply_text 拒绝或提供合适的替代建议。`
 
 type chatTurnResult struct {
-	Text           string
-	Meme           *memeRequest
-	SiteQuery      *siteQuery
-	ImagePlan      *pendingImagePlan
-	ImagePrompt    string
-	EditImageIndex int
-	InputTokens    int64
-	OutputTokens   int64
-	ChatExecution  ChatExecution
+	Text              string
+	Meme              *memeRequest
+	SiteQuery         *siteQuery
+	ImagePlan         *pendingImagePlan
+	ImagePrompt       string
+	ImageOutputFormat string
+	EditImageIndex    int
+	InputTokens       int64
+	OutputTokens      int64
+	ChatExecution     ChatExecution
 }
 
 func chatImageTool(protocol string) map[string]any {
@@ -43,8 +44,8 @@ func chatImageFunction() map[string]any {
 		"description": "仅在当前用户明确请求新图片，或确认本用户有效待确认方案时生成并发送一张图片。闲聊、问候、斗嘴、身份确认和能力咨询不调用。prompt 必须为完整画面描述。",
 		"strict":      true,
 		"parameters": map[string]any{
-			"type": "object", "properties": map[string]any{"prompt": map[string]string{"type": "string", "description": "完整画面描述，1～6000 字"}},
-			"required": []string{"prompt"}, "additionalProperties": false,
+			"type": "object", "properties": map[string]any{"prompt": map[string]string{"type": "string", "description": "完整画面描述，1～6000 字"}, "output_format": chatImageOutputFormatSchema()},
+			"required": []string{"prompt", "output_format"}, "additionalProperties": false,
 		},
 	}
 	return function
@@ -58,16 +59,21 @@ func wrapChatImageTool(protocol string, function map[string]any) map[string]any 
 	return map[string]any{"type": "function", "function": function}
 }
 
+func chatImageOutputFormatSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"auto", "png", "jpeg", "webp", "gif"}, "description": "默认 auto；仅在用户明确要求格式或动画时选择对应格式，GIF 需渠道支持"}
+}
+
 func chatEditImageTool(protocol string) map[string]any {
 	function := chatImageFunction()
 	function["name"] = chatEditImageToolName
 	function["description"] = "修改本次输入中的指定原图并发送结果。只选择用户要求修改的图片，保留未要求修改的内容。"
 	parameters := map[string]any{"type": "object", "additionalProperties": false}
 	parameters["properties"] = map[string]any{
-		"prompt":      map[string]string{"type": "string", "description": "完整编辑要求和需要保留的内容，1～6000 字"},
-		"image_index": map[string]any{"type": "integer", "description": "待编辑原图在本次输入图片中的编号，从 1 开始", "minimum": 1, "maximum": maxInputImages},
+		"prompt":        map[string]string{"type": "string", "description": "完整编辑要求和需要保留的内容，1～6000 字"},
+		"image_index":   map[string]any{"type": "integer", "description": "待编辑原图在本次输入图片中的编号，从 1 开始", "minimum": 1, "maximum": maxInputImages},
+		"output_format": chatImageOutputFormatSchema(),
 	}
-	parameters["required"] = []string{"prompt", "image_index"}
+	parameters["required"] = []string{"prompt", "image_index", "output_format"}
 	function["parameters"] = parameters
 	return wrapChatImageTool(protocol, function)
 }
@@ -245,8 +251,9 @@ func validateChatImageCall(result chatTurnResult, calls []chatToolCall) (chatTur
 		return result, errors.New("模型返回了不支持的工具调用")
 	}
 	var args struct {
-		Prompt     string          `json:"prompt"`
-		ImageIndex json.RawMessage `json:"image_index"`
+		Prompt       string          `json:"prompt"`
+		OutputFormat string          `json:"output_format"`
+		ImageIndex   json.RawMessage `json:"image_index"`
 	}
 	d := json.NewDecoder(strings.NewReader(calls[0].Function.Arguments))
 	d.DisallowUnknownFields()
@@ -266,6 +273,10 @@ func validateChatImageCall(result chatTurnResult, calls []chatToolCall) (chatTur
 	} else if len(args.ImageIndex) > 0 {
 		return result, errors.New("模型生图参数不正确")
 	}
+	if args.OutputFormat != "auto" && !validImageOutputFormat(args.OutputFormat) {
+		return result, errors.New("模型选择的图片输出格式无效")
+	}
+	result.ImageOutputFormat = args.OutputFormat
 	prompt := strings.TrimSpace(args.Prompt)
 	if n := len([]rune(prompt)); n == 0 || n > 6000 {
 		return result, errors.New("模型生图描述长度须为 1～6000 字")

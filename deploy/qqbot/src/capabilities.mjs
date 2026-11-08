@@ -57,8 +57,10 @@ export async function executeCapability({name,args}, context, {config,store,site
     if(!c.image_generation_enabled || c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images) || (input.ambient && !/(画|绘|生成|创作|制作|编辑|修改|换|改).{0,25}(图|画|猫|狗|水世界|照片|背景|颜色)|画(?:一|个|张|只)|修图|改图/u.test(input.text))) throw new Error('仅在权限开启且用户要求创作或编辑图片时处理');
     if(context.generated) throw new Error('本条消息已有生图请求，不重复提交');
     const prompt=boundedText(args.prompt,6000),source=name==='edit_image'?selectedImage(args.image_index):undefined;
+    const format=args.output_format ?? 'auto';
+    if(!['auto','png','jpeg','webp','gif'].includes(format)) throw new Error('不支持的图片输出格式');
     context.generated=true;
-    return call({tool:name,prompt,...(source?{source_image:{mimeType:source.mimeType,data:source.data}}:{})});
+    return call({tool:name,prompt,...(format!=='auto'?{output_format:format}:{}),...(source?{source_image:{mimeType:source.mimeType,data:source.data}}:{})});
   }
   if(name==='web_search' || name==='web_fetch') {
     if(!c.web_enabled) throw new Error('联网查询已关闭');

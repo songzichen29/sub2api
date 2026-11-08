@@ -647,13 +647,14 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			break
 		}
 		kind := "chat"
+		imageConfig := c
 		prompt := strings.TrimSpace(mentionPrefix.ReplaceAllString(strings.TrimSpace(e.Content), ""))
 		if prompt == "" && (hasImages || parts != "" || e.referenceID() != "") {
 			prompt = "请分析这条消息的内容。"
 		}
 		if cmd == "生图" {
 			kind = "image"
-			prompt = arg
+			imageConfig, prompt = imageCommandOptions(c, arg)
 			if !c.ImageEnabled {
 				text = "生图功能未启用。"
 			}
@@ -695,7 +696,7 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 				} else {
 					sendImageProgress("正在生成图片，请稍候。")
 				}
-				img, err = s.runtimeImage(ctx, c, e, prompt)
+				img, err = s.runtimeImage(ctx, imageConfig, e, prompt)
 				status := "succeeded"
 				if err != nil {
 					status = "failed"
@@ -781,10 +782,10 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 						if err == nil && turn.EditImageIndex > 0 {
 							imageEdited = true
 							sendImageProgress("正在修改图片，请稍候。")
-							img, err = s.editImage(ctx, c, turn.ImagePrompt, input.Images[turn.EditImageIndex-1])
+							img, err = s.editImage(ctx, imageOutputConfig(c, turn.ImageOutputFormat), turn.ImagePrompt, input.Images[turn.EditImageIndex-1])
 						} else if err == nil {
 							sendImageProgress("正在生成图片，请稍候。")
-							img, err = s.generateImage(ctx, c, turn.ImagePrompt)
+							img, err = s.generateImage(ctx, imageOutputConfig(c, turn.ImageOutputFormat), turn.ImagePrompt)
 						}
 						status := "succeeded"
 						if err != nil {
@@ -817,6 +818,9 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 				}
 			}
 			j.Error = err.Error()
+			if message := imageOutputMessage(err); message != "" {
+				text = message
+			}
 			_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET error=$2,input_tokens=$3,output_tokens=$4,chat_execution=$5 WHERE id=$1`, j.ID, j.Error, j.InputTokens, j.OutputTokens, nullableChatExecution(j.ChatExecution))
 			if sendErr := s.send(ctx, c, *j, text, nil, seq); sendErr != nil {
 				return sendErr
@@ -824,6 +828,9 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 			return fmt.Errorf("模型调用失败：%w", err)
 		}
 		// Persist before sending to QQ. Delivery retries only reuse this saved result.
+		if len(img) > 0 {
+			imageType = generatedImageType(img)
+		}
 		if _, err = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_text=$2,result_image=$3,image_type=$4,input_tokens=$5,output_tokens=$6,chat_execution=$7 WHERE id=$1`, j.ID, text, img, imageType, j.InputTokens, j.OutputTokens, nullableChatExecution(j.ChatExecution)); err != nil {
 			return errors.New("生成成功但结果保存失败；未自动重新生成")
 		}

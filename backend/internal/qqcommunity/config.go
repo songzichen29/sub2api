@@ -200,6 +200,9 @@ func validateConfig(c Config) error {
 	if c.ImageSize != "1024x1024" && c.ImageSize != "1536x1024" && c.ImageSize != "1024x1536" && c.ImageSize != "auto" {
 		return errors.New("图片尺寸不正确")
 	}
+	if !validImageOutputFormat(c.ImageOutputFormat) {
+		return errors.New("生图格式须为默认、png、jpeg、webp 或 gif")
+	}
 	if c.Enabled && (c.AppID == "" || c.AppSecret == "" || len(c.AllowedGroups) == 0) {
 		return errors.New("启用前请填写 QQ 凭据和允许使用的群")
 	}

@@ -42,6 +42,7 @@ type Config struct {
 	ImageAPIKeySet           bool                     `json:"image_api_key_set"`
 	ImageModel               string                   `json:"image_model"`
 	ImageSize                string                   `json:"image_size"`
+	ImageOutputFormat        string                   `json:"image_output_format"`
 	SystemPrompt             string                   `json:"system_prompt"`
 	SiteKnowledge            SiteKnowledgeConfig      `json:"site_knowledge"`
 	MaxOutputTokens          int                      `json:"max_output_tokens"`
@@ -103,22 +104,23 @@ type Payload struct {
 type Event struct {
 	// Only the authenticated runtime tools endpoint populates this validated
 	// data URL; OneBot events are reconstructed and cannot supply this field.
-	RuntimeEditImage string           `json:"runtime_edit_image,omitempty"`
-	CommandReply     bool             `json:"command_reply,omitempty"`
-	HelpAction       string           `json:"help_action,omitempty"`
-	ID               string           `json:"id"`
-	GroupID          string           `json:"group_openid"`
-	MemberID         string           `json:"member_openid"`
-	Content          string           `json:"content"`
-	Timestamp        json.RawMessage  `json:"timestamp"`
-	Mentions         []Mention        `json:"mentions"`
-	Attachments      []Attachment     `json:"attachments"`
-	Faces            []string         `json:"faces,omitempty"`
-	UnsupportedMedia bool             `json:"unsupported_media,omitempty"`
-	MessageScene     MessageScene     `json:"message_scene"`
-	MessageType      int              `json:"message_type"`
-	MsgElements      []MessageElement `json:"msg_elements"`
-	MessageReference struct {
+	RuntimeEditImage   string           `json:"runtime_edit_image,omitempty"`
+	RuntimeImageFormat string           `json:"runtime_image_format,omitempty"`
+	CommandReply       bool             `json:"command_reply,omitempty"`
+	HelpAction         string           `json:"help_action,omitempty"`
+	ID                 string           `json:"id"`
+	GroupID            string           `json:"group_openid"`
+	MemberID           string           `json:"member_openid"`
+	Content            string           `json:"content"`
+	Timestamp          json.RawMessage  `json:"timestamp"`
+	Mentions           []Mention        `json:"mentions"`
+	Attachments        []Attachment     `json:"attachments"`
+	Faces              []string         `json:"faces,omitempty"`
+	UnsupportedMedia   bool             `json:"unsupported_media,omitempty"`
+	MessageScene       MessageScene     `json:"message_scene"`
+	MessageType        int              `json:"message_type"`
+	MsgElements        []MessageElement `json:"msg_elements"`
+	MessageReference   struct {
 		MessageID string `json:"message_id"`
 	} `json:"message_reference"`
 	Author struct {

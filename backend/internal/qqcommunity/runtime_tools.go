@@ -14,15 +14,16 @@ import (
 
 // Identities are supplied by the authenticated bridge, never by model arguments.
 type runtimeToolRequest struct {
-	Tool        string              `json:"tool"`
-	GroupID     string              `json:"group_id"`
-	MemberID    string              `json:"member_id"`
-	MessageID   string              `json:"message_id"`
-	Prompt      string              `json:"prompt,omitempty"`
-	Keyword     string              `json:"keyword,omitempty"`
-	Query       string              `json:"query,omitempty"`
-	URL         string              `json:"url,omitempty"`
-	SourceImage *runtimeSourceImage `json:"source_image,omitempty"`
+	Tool         string              `json:"tool"`
+	GroupID      string              `json:"group_id"`
+	MemberID     string              `json:"member_id"`
+	MessageID    string              `json:"message_id"`
+	Prompt       string              `json:"prompt,omitempty"`
+	OutputFormat string              `json:"output_format,omitempty"`
+	Keyword      string              `json:"keyword,omitempty"`
+	Query        string              `json:"query,omitempty"`
+	URL          string              `json:"url,omitempty"`
+	SourceImage  *runtimeSourceImage `json:"source_image,omitempty"`
 }
 
 type runtimeSourceImage struct {
@@ -49,11 +50,15 @@ func runtimeToolScope(c Config, in runtimeToolRequest) bool {
 }
 
 func runtimeImageEvent(in runtimeToolRequest) (Event, error) {
+	if in.OutputFormat != "auto" && !validImageOutputFormat(in.OutputFormat) {
+		return Event{}, errors.New("不支持的图片输出格式")
+	}
 	prompt := strings.TrimSpace(in.Prompt)
 	if in.GroupID == "" || prompt == "" || len([]rune(prompt)) > 6000 {
 		return Event{}, errors.New("请在已开放群描述要画的图片，最多6000字")
 	}
 	e := Event{ID: in.MessageID, GroupID: in.GroupID, MemberID: in.MemberID, Content: "/生图 " + prompt}
+	e.RuntimeImageFormat = in.OutputFormat
 	if in.Tool == "edit_image" {
 		if in.SourceImage == nil || len(in.SourceImage.Data) > 8<<20 {
 			return Event{}, errors.New("改图必须提供有效原图，单张最多6MB")
@@ -76,6 +81,7 @@ func runtimeImageEvent(in runtimeToolRequest) (Event, error) {
 }
 
 func (s *Service) runtimeImage(ctx context.Context, c Config, e Event, prompt string) ([]byte, error) {
+	c = imageOutputConfig(c, e.RuntimeImageFormat)
 	if e.RuntimeEditImage != "" {
 		return s.editImage(ctx, c, prompt, e.RuntimeEditImage)
 	}

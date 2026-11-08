@@ -28,7 +28,10 @@ test('media tool effects bind to the verified sender, persist assets, isolate co
  const context={input,id:'turn',scope:'123:group:456'},calls=[];
  const deps={config:{snapshot:()=>c},store,siteTool:async body=>{calls.push(body);return body.tool==='search_meme'?{...png,description:'开心'}:{status:'queued'};}};
  assert.equal(validateImages([png]).length,1);assert.throws(()=>validateImages([{...png,mimeType:'image/gif'}]));
- assert.equal((await executeCapability({name:'generate_image',args:{prompt:'疯狂水世界启动',group_id:'999'}},context,deps)).status,'queued');
+ await assert.rejects(executeCapability({name:'generate_image',args:{prompt:'疯狂水世界启动',output_format:'mp4'}},context,deps),/格式/);
+ assert.equal(context.generated,undefined);
+ assert.equal((await executeCapability({name:'generate_image',args:{prompt:'疯狂水世界启动',group_id:'999',output_format:'gif'}},context,deps)).status,'queued');
+ assert.equal(calls[0].output_format,'gif');
  assert.equal(calls[0].group_id,'456');assert.equal(calls[0].member_id,'789');assert.equal(calls[0].message_id,'42');
  await assert.rejects(executeCapability({name:'generate_image',args:{prompt:'第二次'}},context,deps),/不重复/);
  store.cacheImages(context.scope,'42',[png]);
