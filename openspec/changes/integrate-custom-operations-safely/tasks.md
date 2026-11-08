@@ -19,14 +19,17 @@
 
 ## Validation limits
 
-- Real database/Redis execution remains unverified: this machine has no Docker
-  runtime, and the existing integration-tag test suite fails compilation in
-  unrelated account/proxy tests. The new persistence regression is included for
-  execution after that harness is repaired. No live database was used for tests.
+- Release continuation verified the new migrations, group persistence/auth
+  projection, monitor SQL and Redis concurrency/Live leases using isolated real
+  engines on the production host. No production rows were copied or changed.
+  The full integration-tag suite still fails compilation in unrelated tests.
 - The unit-tag service suite also has pre-existing proxy/backup test API drift.
   Default-tag focused regressions pass; this is not a claim that all test suites pass.
 - AOCI MCP is bound to D:/data/sub2api, not this isolated worktree. Its check reports
   1203 semantic changes and 12 orphans in that main repository. Maintenance was
   not invoked against the wrong repository, and no index alignment is claimed.
-- No live QQ delivery, browser end-to-end run, push or production deployment
-  forms part of this completed local implementation.
+- The user subsequently authorized production release. Production merge/push
+  through cd76199af are complete. QQ schema registration was repaired after the
+  first image build rejected required:false; all 36 Node tests pass on Linux.
+  Image builds and deployment verification continue after the repair.
+- No live QQ delivery or browser end-to-end run has been performed.

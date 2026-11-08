@@ -53,6 +53,8 @@ test('the pinned DSH profile exposes only QQ tools, executes native calls, forwa
     const session = h.session();
     const first = await session.run([{type:'text',text:'remember qqbot-smoke-marker'},{type:'image',mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR4nO3NsQ0AAAzCMP5/un0CNkuZ41wybXsHAAAAAAAAAAAAxR4yw/wuPL6QkAAAAABJRU5ErkJggg=='}]);
     assert.equal(first.finalResponse, 'profile-ok');
+    assert.deepEqual(toolCalls.map(c=>c.name), ['send_meme'],
+      JSON.stringify(requests.flatMap(r=>r.input || []).filter(item=>item.type==='function_call_output')));
     await h.close(); h = new DeepSeekHarness(options); await h.start();
     const restored = await h.resumeSession(session.id);
     const second = await restored.run('what was the marker');

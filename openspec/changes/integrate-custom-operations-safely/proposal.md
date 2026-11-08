@@ -28,8 +28,10 @@ quality extensions are excluded; existing plans, assessments, history and UI rem
 unchanged. Also excluded: duplicate account performance tables/services, API-key
 billing-group fallback, strict account tiers, automatic quality-driven account
 movement, public-vote scheduling, QQ transport replacement, weighted check-in
-defaults, restored invitation commands, Mihomo, ticket harvesting, BPS, and
-production deployment. Existing migration files remain immutable.
+defaults, restored invitation commands, Mihomo, ticket harvesting, and BPS.
+Production deployment was initially excluded; the user's subsequent request
+authorized production merge, push, image builds, deployment and verification.
+Existing migration files remain immutable.
 
 ## Provenance
 

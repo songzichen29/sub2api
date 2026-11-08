@@ -1,4 +1,4 @@
-const imageFormat = {type:'string',required:false,description:'输出格式：auto/png/jpeg/webp/gif。默认 auto，仅在用户明确要求格式或动画时指定，GIF 需要生图渠道支持。'};
+const imageFormat = {type:'string',description:'输出格式：auto/png/jpeg/webp/gif。默认 auto，仅在用户明确要求格式或动画时指定，GIF 需要生图渠道支持。'};
 export const toolDefinitions = [
   { name:'generate_image', description:'用户自然语言要求画图、创作图片时调用。只提交本站生图任务，沿用额度和去重，站点稍后发送实际图片或失败说明。不要要求用户改发/生图，不要在仅提交后声称画好了。', parameters:{prompt:{type:'string',required:true,description:'完整的图片创作描述，最多6000字'},output_format:imageFormat} },
   { name:'edit_image', description:'修改当前发送或明确引用的原图，例如换背景、改颜色、修图。必须选择实际加载的原图，不允许把改图降级成重新生成。站点稍后发送修改后的图片或失败说明。', parameters:{prompt:{type:'string',required:true,description:'具体修改要求，最多6000字'},image_index:{type:'integer',required:true,description:'原图的source_index，1至4，不能选择未加载的图'},output_format:imageFormat} },

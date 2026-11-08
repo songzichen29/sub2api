@@ -100,7 +100,32 @@ or index rewrite was performed, and this change does not claim AOCI alignment.
 
 ## Release status
 
-This is a local implementation and validation handoff. It has not been pushed,
-merged into the production branch, built by GitHub Actions or deployed. Before
-production release, run the isolated MySQL/Redis checks in an available test
-environment and retain the normal production branch/build/health verification.
+The user subsequently authorized production merge and deployment. The four
+implementation commits through cd76199af were fast-forwarded and pushed to
+merge/upstream-main-into-pgsql-mysql-20260426 on November 8, 2026.
+
+Release preflight used temporary MySQL and Redis containers with the exact
+production engine images, an internal test network and no production data mounts.
+Only production schema was copied; no business rows were copied or changed.
+MySQL migrations 113/114 passed twice, including idempotency. Real database
+group create/update/read, API-key authentication projection, monitor aggregation,
+90-minute matrix and recent-request SQL passed. Real Redis independent-client
+contention, combined global/group limits and Live lease transfer/refresh/release
+passed. The isolated test containers, test volumes and network were removed.
+The temporary harness used a Go test overlay to avoid the unrelated broken
+integration-tag suite; this does not claim that the full integration suite passes.
+
+The first QQ image build exposed an SDK schema error: optional parameters must
+omit required rather than specify required:false. This prevented the entire QQ
+tool module from registering. The format declaration was corrected, a real SDK
+registration regression was added, and runtime failures now expose mock tool
+error results. All 36 Node tests passed in an isolated container on the QQ host,
+including real SDK execution with a mock model and restart/history recovery.
+No real QQ messages were sent for these checks.
+
+GitHub image builds and actual deployment verification continue after the fix.
+Release evidence and rollback assets are stored on the corresponding hosts at
+/data/ops/releases/custom-operations-cd76199af-20261108; credentials and business
+data are not included in repository evidence. AOCI's final maintenance check
+reported 1223 historical/out-of-scope targets and 12 orphans, with no pending
+recovery. No semantic index update or alignment is claimed.
