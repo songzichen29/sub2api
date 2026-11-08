@@ -5,8 +5,8 @@
 - 默认生产服务器为新机 `154.219.123.75`。后续“看服务器”“查日志”“线上排错”“部署”“重启”均指新机；只有用户明确指定旧机时才访问 `192.204.56.111`。
 - 线上问题先查新机实际日志、运行镜像和配置。若属于代码问题，必须按“修改仓库源码 → 必要测试 → 推送 GitHub 生产分支 → 等该提交的 GitHub Actions 镜像构建成功 → 新机拉取该提交对应镜像 → 重建相关服务 → 验证健康和故障接口”执行。
 - 不以只改容器内文件、服务器临时源码或只重启旧镜像作为代码修复交付。推送、等待构建、更新服务和验证属于用户已授权的修复流程，无需反复确认。
-- 生产分支为 `merge/upstream-main-into-pgsql-mysql-20260426`；镜像构建工作流为 `.github/workflows/docker-branch-pgsql-mysql.yml`（Build Branch Docker Image）。部署前核对提交 SHA 与构建结果，优先固定镜像摘要，保留上一个摘要以便回滚。
-- 新机 Compose 入口为 `/data/docker-compose/sub2api/compose.yaml`。操作前通过容器标签核实当前文件；仅重建本次相关服务，保留数据库、Redis、MinIO 数据卷与环境配置。Watchtower 当前停用，不能假设推送后自动部署。
+- 生产分支为 `merge/upstream-main-into-pgsql-mysql-20260426`；镜像构建工作流为 `.github/workflows/docker-branch-pgsql-mysql.yml`（Build Branch Docker Image）。部署前核对提交 SHA 与构建结果，记录本次和前一个镜像摘要用于验证与回滚。启用 Watchtower 自动更新时，Sub2API 应用镜像及 `SUB2API_IMAGE_NAME` 必须使用 `ghcr.io/songzichen29/sub2api:branch-pgsql-mysql-20260426`，不得固定为 `@sha256:...`；Watchtower 自身及其他服务可保留固定摘要。
+- 新机 Compose 入口为 `/data/docker-compose/sub2api/compose.yaml`。操作前通过容器标签核实当前文件；仅重建本次相关服务，保留数据库、Redis、MinIO 数据卷与环境配置。Watchtower 已于 2026-11-06 恢复，仅监控 Sub2API，每 120 秒检查生产分支镜像标签。推送后须核验构建结果、实际运行提交与健康状态，不能仅凭推送或构建成功声称部署完成。
 - 新机已是生产数据主机，禁止从旧机反向覆盖新机数据或让旧业务重新接单。不要覆盖 `/root/sub2api` 等已有工作区的未提交源码。
 - 域名 HTTPS 使用用户购买的证书，续期后手动替换；未经用户要求不申请新证书、不配置业务证书自动续期。保留现有 Nginx 443 与 VPN 分流配置。
 - 密钥和口令仅从已有授权配置安全读取，不写入日志、提交或规则文件。服务器规则保存于 `/root/AGENTS.md`、`/data/AGENTS.md`，详细交接见 `/data/ops/SUB2API_OPERATIONS.md`；服务器上使用 Codex 时先读取这些规则和当前仓库的 `AGENTS.md`。
