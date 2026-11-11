@@ -9,4 +9,15 @@ describe('AccountMetricRecoveryCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.metricRecovery.unavailable')
     await wrapper.get('button').trigger('click'); expect(wrapper.emitted('configure')).toHaveLength(1)
   })
+
+  it('keeps metrics visible during refresh and marks retained data after failure', async () => {
+    const wrapper = mount(AccountMetricRecoveryCell, { props: { status: { monitor: { account_id: 7, config: { enabled: false }, revision: 1, paused: false, pause_generation: 0, reason: '', trial_requests: 0 }, metrics_available: true }, loading: true } })
+    expect(wrapper.text()).toContain('admin.accounts.metricRecovery.successShort')
+    expect(wrapper.text()).not.toContain('common.loading')
+    await wrapper.setProps({ loading: false, error: true })
+    expect(wrapper.text()).toContain('admin.accounts.metricRecovery.successShort')
+    expect(wrapper.text()).toContain('admin.accounts.metricRecovery.loadFailed')
+    expect(wrapper.text()).not.toContain('admin.accounts.metricRecovery.lastHour')
+    wrapper.unmount()
+  })
 })

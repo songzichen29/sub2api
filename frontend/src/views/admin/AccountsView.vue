@@ -783,6 +783,7 @@ const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
 const autoRefreshFetching = ref(false)
+let autoRefreshVersion = 0
 // Keep the silent window short enough that it never changes the interval the
 // administrator selected (especially the 5-second option).
 const AUTO_REFRESH_SILENT_WINDOW_MS = 0
@@ -1243,6 +1244,7 @@ useSwipeSelect(accountTableRef, {
 }, swipeVirtualContext)
 
 const resetAutoRefreshCache = () => {
+  autoRefreshVersion += 1
   autoRefreshETag.value = null
   upstreamBillingRateETag.value = null
 }
@@ -1499,6 +1501,7 @@ const inAutoRefreshSilentWindow = () => {
 const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
   return (
     current.updated_at !== next.updated_at ||
+    current.last_used_at !== next.last_used_at ||
     current.current_concurrency !== next.current_concurrency ||
     current.current_window_cost !== next.current_window_cost ||
     current.active_sessions !== next.active_sessions ||
@@ -1522,14 +1525,12 @@ const syncAccountRefs = (nextAccount: Account) => {
 
 const mergeAccountsIncrementally = (nextRows: Account[]) => {
   const currentRows = accounts.value
-  const currentByID = new Map(currentRows.map(row => [row.id, row]))
-  let changed = nextRows.length !== currentRows.length
-  const mergedRows = nextRows.map((nextRow) => {
-    const currentRow = currentByID.get(nextRow.id)
-    if (!currentRow) {
-      changed = true
-      return nextRow
-    }
+  const nextByID = new Map(nextRows.map(row => [row.id, row]))
+  let changed = false
+  // 后台只更新当前行，新增、移除及重排留给手动同步，避免打断阅读和选择。
+  const mergedRows = currentRows.map((currentRow) => {
+    const nextRow = nextByID.get(currentRow.id)
+    if (!nextRow) return currentRow
     if (shouldReplaceAutoRefreshRow(currentRow, nextRow)) {
       changed = true
       syncAccountRefs(nextRow)
@@ -1537,23 +1538,17 @@ const mergeAccountsIncrementally = (nextRows: Account[]) => {
     }
     return currentRow
   })
-  if (!changed) {
-    for (let i = 0; i < mergedRows.length; i += 1) {
-      if (mergedRows[i].id !== currentRows[i]?.id) {
-        changed = true
-        break
-      }
-    }
-  }
   if (changed) {
     accounts.value = mergedRows
   }
+  return changed
 }
 
 const refreshAccountsIncrementally = async () => {
   if (autoRefreshFetching.value) return
   syncAccountListDerivedParams()
   autoRefreshFetching.value = true
+  const requestVersion = autoRefreshVersion
   try {
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
@@ -1572,17 +1567,20 @@ const refreshAccountsIncrementally = async () => {
       { etag: autoRefreshETag.value }
     )
 
+    // 翻页、排序和手动刷新会使旧请求失效，不能再覆盖新列表。
+    if (requestVersion !== autoRefreshVersion) return
     if (result.etag) {
       autoRefreshETag.value = result.etag
     }
-    // Metric state changes independently from the account-list ETag.
-    if (result.notModified) await refreshMetricRecovery()
+    let rowsChanged = false
     if (!result.notModified && result.data) {
-      pagination.total = result.data.total || 0
-      pagination.pages = result.data.pages || 0
-      mergeAccountsIncrementally(result.data.items || [])
-      hasPendingListSync.value = false
+      const nextRows = result.data.items || []
+      hasPendingListSync.value = result.data.total !== pagination.total ||
+        !sameAccountIDOrder(accounts.value.map(row => row.id), nextRows.map(row => row.id))
+      rowsChanged = mergeAccountsIncrementally(nextRows)
     }
+    // 行更新已触发指标监听；304 或行未变化时也要刷新独立指标，且只请求一次。
+    if (!rowsChanged) await refreshMetricRecovery()
     upstreamBillingNow.value = Date.now()
 
     await refreshTodayStatsBatch()
@@ -2729,6 +2727,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  autoRefreshVersion += 1
   upstreamBillingRateAbortController?.abort()
   if (usageBatchFlushTimer !== null) {
     clearTimeout(usageBatchFlushTimer)

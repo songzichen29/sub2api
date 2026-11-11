@@ -68,12 +68,12 @@ vi.mock('vue-i18n', async () => {
 })
 
 const DataTableStub = defineComponent({
-  props: { data: { type: Array, default: () => [] } },
+  props: { data: { type: Array, default: () => [] }, loading: Boolean },
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <slot name="cell-groups" :row="row" />
-        <slot name="cell-last_used_at" :row="row" :value="null" />
+        <slot name="cell-last_used_at" :row="row" :value="row.last_used_at" />
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -108,7 +108,7 @@ function mountView(stubActionMenu = true) {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
         DataTable: DataTableStub,
-        AccountTableActions: { template: '<div><slot name="after" /></div>' },
+        AccountTableActions: { template: '<div><button data-test="manual-refresh" @click="$emit(\'refresh\')">refresh</button><slot name="after" /></div>' },
         AccountTableFilters: true,
         AccountBulkActionsBar: true,
         Pagination: true,
@@ -258,6 +258,108 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
+    wrapper.unmount()
+  })
+
+  it('updates runtime fields without reordering or replacing the visible rows', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const second = { ...listRow, id: 43, name: 'second row' }
+    listAccounts.mockResolvedValue({ items: [listRow, second], total: 2, pages: 1 })
+    const updated = { ...listRow, last_used_at: '2026-11-11T08:00:00Z', current_concurrency: 1, status: 'error' }
+    listWithEtag.mockResolvedValue({ notModified: false, etag: 'new', data: { items: [second, updated], total: 2, pages: 1 } })
+    const wrapper = mountView()
+    await flushPromises()
+    const firstElement = wrapper.get('[data-account-name="compact row"]').element
+
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-account-name]').map(row => row.attributes('data-account-name'))).toEqual(['compact row', 'second row'])
+    expect(wrapper.get('[data-account-name="compact row"]').element).toBe(firstElement)
+    expect(wrapper.getComponent(DataTableStub).props('data')[0]).toMatchObject(updated)
+    expect(wrapper.getComponent(DataTableStub).props('loading')).toBe(false)
+    expect(getBatchMetricRecovery).toHaveBeenCalledTimes(2)
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it.each([true, false])('refreshes metrics once even when visible account data is unchanged (304=%s)', async (notModified) => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listWithEtag.mockResolvedValue({ notModified, etag: 'new', data: { items: [listRow], total: 1, pages: 1 } })
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(getBatchMetricRecovery).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('defers page membership changes until manual synchronization', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const second = { ...listRow, id: 43, name: 'second row' }
+    listWithEtag.mockResolvedValue({ notModified: false, etag: 'new', data: { items: [second], total: 1, pages: 1 } })
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(wrapper.get('[data-account-name]').attributes('data-account-name')).toBe('compact row')
+    expect(wrapper.text()).toContain('admin.accounts.listPendingSyncHint')
+
+    listAccounts.mockResolvedValue({ items: [second], total: 1, pages: 1 })
+    const syncButton = wrapper.findAll('button').find(button => button.text() === 'admin.accounts.listPendingSyncAction')!
+    await syncButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-account-name]').attributes('data-account-name')).toBe('second row')
+    expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
+    wrapper.unmount()
+  })
+
+  it('ignores an automatic response started before a manual refresh', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    let finish!: (value: unknown) => void
+    listWithEtag.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(6000)
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, name: 'manually refreshed', updated_at: 'new' }], total: 1, pages: 1 })
+    await wrapper.get('[data-test="manual-refresh"]').trigger('click')
+    await flushPromises()
+    finish({ notModified: false, etag: 'stale', data: { items: [{ ...listRow, updated_at: 'old' }], total: 1, pages: 1 } })
+    await flushPromises()
+    expect(wrapper.get('[data-account-name]').attributes('data-account-name')).toBe('manually refreshed')
+    wrapper.unmount()
+  })
+
+  it.each(['sort', 'page', 'pageSize'])('fully synchronizes on %s and rejects the previous automatic response', async (action) => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    listAccounts.mockResolvedValueOnce({ items: [listRow], total: 30, pages: 2 })
+    let finish!: (value: unknown) => void
+    listWithEtag.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(6000)
+    const second = { ...listRow, id: 43, name: 'new first row' }
+    const refreshed = { ...listRow, updated_at: 'new' }
+    listAccounts.mockResolvedValue({ items: [second, refreshed], total: 30, pages: 2 })
+    if (action === 'sort') wrapper.getComponent(DataTableStub).vm.$emit('sort', 'last_used_at', 'desc')
+    if (action === 'page') wrapper.getComponent({ name: 'Pagination' }).vm.$emit('update:page', 2)
+    if (action === 'pageSize') wrapper.getComponent({ name: 'Pagination' }).vm.$emit('update:pageSize', 50)
+    await flushPromises()
+    finish({ notModified: false, etag: 'stale', data: { items: [{ ...listRow, name: 'stale row', updated_at: 'old' }], total: 1, pages: 1 } })
+    await flushPromises()
+    expect(wrapper.findAll('[data-account-name]').map(row => row.attributes('data-account-name'))).toEqual(['new first row', 'compact row'])
+    expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
+    expect(listAccounts).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 

@@ -57,3 +57,18 @@
 After committing this completion, push `merge/upstream-main-into-pgsql-mysql-20260426`, wait for that commit's Build Branch Docker Image workflow, then verify Watchtower's actual running revision, image digest, health and read-only metric API response. Keep the application on its branch tag for automatic updates. Record deployment results outside this source commit in `/data/ops/releases/metric-recovery-completion-20261108/`; the source checklist alone is not deployment evidence.
 
 - Archive the change after implementation and review requirements are satisfied.
+
+## Account list silent refresh follow-up — 2026-11-11
+
+- [x] 6.1 Keep visible account order and membership during timed refresh, update matching IDs, and reuse manual synchronization for list changes.
+- [x] 6.2 Preserve displayed metrics during background requests and failures, mark failed refreshes, and refresh metrics for both unchanged HTTP 200 and HTTP 304 account responses.
+- [x] 6.3 Discard automatic responses invalidated by manual refresh, sorting, pagination or unmount; retain the full-load behavior for explicit user actions.
+- [x] 6.4 Verify regressions, actual browser interactions, affected-file lint, frontend build and independent AI review.
+
+### Silent refresh verification
+
+- The original implementation failed eight regression assertions across the account view, metric loader and cell. The corrected implementation passed all six selected frontend files / 33 tests with `pnpm exec vitest run` and `--minWorkers=1 --maxWorkers=2`, including sort/page/page-size races, selection, columns and scheduler-score coverage.
+- Independent review found no confirmed new defects and independently passed the three core files / 19 tests before the final three pagination/sort cases were added, plus `DataTable.spec.ts` / 14 tests. The three added cases received an incremental review.
+- Affected-file ESLint and `pnpm run build` passed, including locale completeness and `vue-tsc -b`. Existing Browserslist, test-mock warnings and bundle-size/dynamic-import warnings remain; no full CI or backend-suite pass is claimed for this frontend-only fix.
+- The real account page was exercised in a local browser with mocked APIs: server order 20–1 retained visible order 1–20 during automatic refresh; selection, row heights and scrollTop 400 remained stable; pending/failed metric requests retained 95% data with an error indication on failure; explicit synchronization applied order 20–1. The local dev session displayed untranslated keys, so this verifies refresh interactions rather than production locale rendering. No production account data was changed.
+- This fix changes no backend, database, routing, ordered-key failover or third-party usage display behavior. Deployment evidence is recorded separately under `/data/ops/releases/account-silent-refresh-20261111/` after the source commit is built and verified.

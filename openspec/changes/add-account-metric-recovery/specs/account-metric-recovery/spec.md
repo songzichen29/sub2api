@@ -121,6 +121,14 @@ The system SHALL show recent metrics and the independent metric-rule state in th
 - **AND** late responses from an old page SHALL NOT replace current-page data
 - **AND** metric data SHALL refresh even if the account-list response is HTTP 304
 
+#### Scenario: Background account refresh
+- **WHEN** a timed refresh returns updated rows or a different server order
+- **THEN** the current page SHALL retain its visible row order and membership while updating matching account IDs
+- **AND** membership, order or total changes SHALL show the existing manual synchronization action
+- **AND** manual refresh, sorting and pagination SHALL still load the complete current result, and late automatic responses SHALL NOT overwrite it
+- **AND** existing metrics SHALL remain visible while refreshing, with failures identified without clearing retained data
+- **AND** metrics SHALL refresh once per automatic cycle even when the account response is HTTP 200 with unchanged rows or HTTP 304
+
 #### Scenario: Configuration details and history
 - **WHEN** the administrator opens the metric panel
 - **THEN** it SHALL show the saved bounds, automatic recovery setting, per-metric samples, actual fresh evaluation window, pause reason, trial budget and paginated audit evidence

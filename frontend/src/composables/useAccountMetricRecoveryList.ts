@@ -14,7 +14,11 @@ export function useAccountMetricRecoveryList(accounts: Ref<{ id: number }[]>) {
     const request = new AbortController()
     controller = request
     const ids = [...new Set(accounts.value.map(account => account.id))]
-    statuses.value = {}
+    // 保留当前页已有指标，避免后台刷新闪空；离开当前页的账号不再保留。
+    const visibleIDs = new Set(ids.map(String))
+    statuses.value = Object.fromEntries(
+      Object.entries(statuses.value).filter(([id]) => visibleIDs.has(id))
+    )
     error.value = false
     loading.value = ids.length > 0
     try {
@@ -27,6 +31,7 @@ export function useAccountMetricRecoveryList(accounts: Ref<{ id: number }[]>) {
       }
       if (current === sequence) statuses.value = next
     } catch {
+      // 查询失败时保留上次结果，并由单元格标明刷新失败。
       if (current === sequence && !request.signal.aborted) error.value = true
     } finally {
       if (current === sequence) loading.value = false
