@@ -40,6 +40,23 @@ func TestQualityCandyAnswerOnly(t *testing.T) {
 		{"explicit quantity shape count remains ambiguous", "最少取21个。至少取出的数量为22个五角星形。", "unknown"},
 		{"explicit final shape count remains ambiguous", "最少取21个。最终答案：至少取5个五角星形。", "unknown"},
 		{"shape counts do not hide invalid final", "最少取21个。至少取5个五角星形，才能配对。最终答案为22.5个。", "unknown"},
+		{"inline proof sum preserves answer", "最终答案：最少取21个。因此至少需要16+5=21个。", "normal"},
+		{"multiline proof sum preserves answer", "答案：最少取21个。因此至少要取\n9+12=21个。", "normal"},
+		{"wrong proof sum does not grade proof", "最终答案：最少取21个。因此至少需要16+5=22个。", "normal"},
+		{"proof sum does not fix wrong answer", "因此至少需要16+5=21个。最终答案是22个。", "degraded"},
+		{"proof sum does not hide conflicting final", "最终答案是21个。因此至少需要16+5=21个。最终答案是22个。", "unknown"},
+		{"inline proof sum alone", "因此至少需要16+5=21个。", "unknown"},
+		{"multiline proof sum alone", "因此至少要取\n9+12=21个。", "unknown"},
+		{"final sum remains ambiguous", "最终答案是21个。最终答案为16+5=21个。", "unknown"},
+		{"nested final sum remains ambiguous", "最终答案是21个。最终答案：至少需要16+5=21个。", "unknown"},
+		{"summary sum remains ambiguous", "最终答案是21个。综上，至少需要16+5=22个。", "unknown"},
+		{"multiline summary sum remains ambiguous", "最终答案是21个。综上，至少要取\n16+5=22个。", "unknown"},
+		{"proof sum exception preserves numeric conflict", "最终答案是21个。因此至少需要22个。", "unknown"},
+		{"proof sum alternatives remain ambiguous", "最终答案是21个。因此至少需要16+5=21或22个。", "unknown"},
+		{"explicit quantity sum remains ambiguous", "最终答案是21个。因此至少取出的数量为16+5=21个。", "unknown"},
+		{"explicit total multiline sum remains ambiguous", "最终答案是21个。因此至少取出的总数为\n16+5=21个。", "unknown"},
+		{"final header proof sum remains ambiguous", "最少取21个。最终答案：\n因此至少需要16+5=22个。综上，最少取21个。", "unknown"},
+		{"final header multiline proof sum remains ambiguous", "最少取21个。最终答案：\n因此至少要取\n16+5=22个。综上，最少取21个。", "unknown"},
 		{"markdown", "**最少取21个。**", "normal"},
 		{"inline math", `**最少取 \(21\) 个。**`, "normal"},
 		{"display math", "最终答案为\n\\[\n\\boxed{21\\text{ 个}}。\n\\]", "normal"},
@@ -161,6 +178,93 @@ func TestQualityCandyReportedShapeCounts(t *testing.T) {
 	require.Equal(t, "normal", verdict)
 	require.Equal(t, "answer_exact", result.Assessment.Basis)
 	require.Empty(t, result.Assessment.Model)
+}
+
+func TestQualityCandyReportedProofSums(t *testing.T) {
+	for _, tc := range []struct{ name, answer string }{
+		{"cde59e4e-44b4-476d-81db-b4b9913abd14", `**答案：最少取 21 个。**
+
+### 一、21 个足够
+
+取 **9 个圆形糖果、12 个五角星形糖果**。
+
+- 圆形西瓜味只有 8 个，所以 9 个圆形中，必有苹果味或桃子味。
+- 五角星形中，非苹果味只有 \(6+4=10\) 个，非桃子味只有 \(7+4=11\) 个。因此，12 个五角星形中，**苹果味、桃子味一定都有**。
+
+所以，无论圆形中取到的是苹果味还是桃子味，都能与五角星形中另一种口味的糖果配成所需的一对。
+
+### 二、20 个不能保证
+
+考虑一种最不利但完全符合数量条件的取出顺序：
+
+| 形状 | 该形状糖果的取出顺序 |
+|---|---|
+| 圆形 | 先 8 个西瓜味，再 7 个苹果味，最后 9 个桃子味 |
+| 五角星形 | 先 4 个西瓜味，再 7 个苹果味，最后 6 个桃子味 |
+
+所需的搭配只有两种：
+
+1. **圆形苹果味＋五角星形桃子味**` + "  " + `
+   圆形苹果味最早出现在第 9 个圆形，五角星形桃子味最早出现在第 12 个五角星形。因此至少要取
+   \[
+   9+12=21\text{ 个}.
+   \]
+
+2. **圆形桃子味＋五角星形苹果味**` + "  " + `
+   圆形桃子味最早出现在第 16 个圆形，五角星形苹果味最早出现在第 5 个五角星形。因此至少要取
+   \[
+   16+5=21\text{ 个}.
+   \]
+
+在这种可能的情况下，**总共只取 20 个，无论怎样选择形状，都无法得到所需搭配**。即使允许看到已取糖果的口味后再调整形状选择，也不能保证成功。
+
+综上，最少需要 **\(\boxed{21}\) 个**。`},
+		{"e595b204-d6cc-4748-97e5-0ba1a1795161", `**最终答案：最少取 21 个。**
+
+### 一、21 个足够
+
+选择取 **9 个圆形糖果、12 个五角星形糖果**。
+
+- 五角星形中，非苹果味只有 \(6+4=10\) 个，所以取 12 个必有苹果味；非桃子味只有 \(7+4=11\) 个，所以也必有桃子味。
+- 圆形中，西瓜味只有 8 个，所以取 9 个，必有至少一个苹果味或桃子味。
+
+因此：
+- 若圆形中有苹果味，就与五角星形中的桃子味配对；
+- 若圆形中有桃子味，就与五角星形中的苹果味配对。
+
+两颗口味分别为苹果、桃子，且形状不同，故 **21 个一定足够**。
+
+### 二、20 个不能保证
+
+考虑一种最不利但完全符合数量的取出顺序：每种形状都先取到西瓜味，再取到苹果味，最后才取到桃子味。
+
+| 形状 | 该形状的取出顺序 |
+|---|---|
+| 圆形 | 8 个西瓜 → 7 个苹果 → 9 个桃子 |
+| 五角星形 | 4 个西瓜 → 7 个苹果 → 6 个桃子 |
+
+在这种情况下，要出现符合要求的一对，只有两种可能：
+
+1. **圆形桃子＋五角星形苹果**` + "  " + `
+   圆形桃子最早是第 \(8+7+1=16\) 个圆形糖果；五角星形苹果最早是第 \(4+1=5\) 个五角星形糖果。` + "  " + `
+   因此至少需要 \(16+5=21\) 个。
+
+2. **圆形苹果＋五角星形桃子**` + "  " + `
+   圆形苹果最早是第 \(8+1=9\) 个圆形糖果；五角星形桃子最早是第 \(4+7+1=12\) 个五角星形糖果。` + "  " + `
+   因此至少需要 \(9+12=21\) 个。
+
+所以在这种可能的取出顺序下，**无论怎样选择形状，甚至根据已取出的口味调整选择，取 20 个都无法成功**。
+
+综上，最少需要 **\(\boxed{21}\) 个**。`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := &ModelQualityResult{Answer: tc.answer}
+			verdict, _ := assessQualityCandy(result)
+			require.Equal(t, "normal", verdict)
+			require.Equal(t, "answer_exact", result.Assessment.Basis)
+			require.Empty(t, result.Assessment.Model)
+		})
+	}
 }
 
 func TestModelQualityCandyNeverUsesJudge(t *testing.T) {

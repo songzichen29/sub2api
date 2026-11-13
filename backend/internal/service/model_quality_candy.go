@@ -16,6 +16,7 @@ var (
 	qualityCandyAlternative = regexp.MustCompile(`(?:^|[，,])\s*(?:或|还是|也可能)`)
 	qualityCandyTail        = regexp.MustCompile(`^\s*(?:颗|个)?(?:糖果)?\s*(?:[.!！]?$|[，,。；;：:].*)$`)
 	qualityCandyShapeCount  = regexp.MustCompile(`^\s*(?:颗|个)\s*(?:圆形|五角星形)`)
+	qualityCandyProofSum    = regexp.MustCompile(`^[0-9]+(?:\s*\+\s*[0-9]+)+\s*=\s*[0-9]+\s*(?:颗|个)?(?:糖果)?[.!！]?$`)
 )
 
 // 只识别明确结论或独立答案，不把证明中出现的 21 当作答对。
@@ -47,8 +48,28 @@ func qualityCandyFinalAnswer(text string) (int, bool) {
 				continue
 			}
 			// 只忽略证明中的分项下界，结论引导词和显式总数声明仍参与冲突判断。
-			if match[1] == "" && strings.HasPrefix(prefix, "至少") && !strings.Contains(prefix, "总数") && !strings.Contains(prefix, "数量") && qualityCandyShapeCount.MatchString(tail) {
+			partialBound := strings.HasPrefix(prefix, "至少") && !strings.Contains(prefix, "总数") && !strings.Contains(prefix, "数量")
+			if match[1] == "" && partialBound && qualityCandyShapeCount.MatchString(tail) {
 				continue
+			}
+			// 只识别证明中加法等式的语法，不求值；最终声明和综上等收束结论仍须明确整数。
+			if partialBound && continuationRank == 0 {
+				lead := strings.TrimRight(match[1], "，,:： ")
+				if lead == "" || lead == "因此" || lead == "所以" || lead == "故" {
+					expression := strings.TrimSpace(number + tail)
+					if expression == "" {
+						// 跨行证明须在处理标题前识别，避免先清除已有的明确答案。
+						for _, next := range lines[i+1:] {
+							expression = strings.TrimSpace(next)
+							if expression != "" {
+								break
+							}
+						}
+					}
+					if qualityCandyProofSum.MatchString(expression) {
+						continue
+					}
+				}
 			}
 			// “最终答案：最少取21个”包含两层声明，保留外层最终答案的优先级。
 			if number == "" {
