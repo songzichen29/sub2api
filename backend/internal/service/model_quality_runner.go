@@ -101,6 +101,10 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		finish("failed", "error", "检测配置已被删除")
 		return
 	}
+	if err := validateQualityBenchmark(cfg.Benchmark); err != nil {
+		finish("failed", "error", err.Error())
+		return
+	}
 	if qualityPrompt(cfg.Benchmark) == "" || cfg.Benchmark != r.Target.Benchmark || cfg.Model != r.Target.Model {
 		finish("failed", "error", "检测配置与运行快照不匹配")
 		return
@@ -118,18 +122,30 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 			return
 		}
 	}
-	judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, r.JudgeKeyID)
-	if err != nil {
-		finish("failed", "error", err.Error())
-		return
-	}
-	r.JudgeKeyID = judgeKey.ID
-	if r.Target.JudgeModel == "" {
-		r.Target.JudgeModel = s.planJudgeModel(p)
-	}
-	if validateQualityJudgeModel(r.Target.JudgeModel) != nil {
-		finish("failed", "error", "裁判模型配置无效")
-		return
+	var judgeKey APIKey
+	if cfg.Benchmark == "pelican" {
+		key, err := s.qualityJudgeKey(ctx, p.OwnerID, r.JudgeKeyID)
+		if err != nil {
+			finish("failed", "error", err.Error())
+			return
+		}
+		judgeKey = *key
+		r.JudgeKeyID = judgeKey.ID
+		if r.Target.JudgeModel == "" {
+			r.Target.JudgeModel = s.planJudgeModel(p)
+		}
+		if validateQualityJudgeModel(r.Target.JudgeModel) != nil {
+			finish("failed", "error", "裁判模型配置无效")
+			return
+		}
+	} else {
+		r.JudgeKeyID, r.Target.JudgeModel = 0, ""
+		// 升级前已保存但尚未提交评分的糖果答案可直接完成，不重新生成。
+		if !generating {
+			verdict, reason := assessQualityCandy(r.Result)
+			finish("succeeded", verdict, reason)
+			return
+		}
 	}
 	r.Target.BenchmarkVersion = qualityBenchmarkVersion
 	// Once the sanitized artifact is saved, judging depends only on the judge
@@ -143,9 +159,6 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		r.Phase = "generating"
 	} else {
 		artifact := r.Result.HTML
-		if cfg.Benchmark == "candy" {
-			artifact = r.Result.Answer
-		}
 		if strings.TrimSpace(artifact) == "" {
 			finish("failed", "error", "缺少待评分作品")
 			return
@@ -201,6 +214,11 @@ func (s *ModelQualityService) step(ctx context.Context, r *ModelQualityRun) {
 		r.Status, r.Phase, r.Reason = "running", "classifying", "作品已生成，等待独立裁判"
 		if r.Result.ServiceTier != "default" && r.Result.ServiceTier != "priority" && r.Result.ServiceTier != "ultrafast" {
 			r.Result.ServiceTier = ""
+		}
+		if cfg.Benchmark == "candy" {
+			verdict, reason := assessQualityCandy(r.Result)
+			finish("succeeded", verdict, reason)
+			return
 		}
 		saveCtx, done := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer done()

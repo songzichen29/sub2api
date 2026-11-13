@@ -79,7 +79,7 @@ func TestQualityAssessmentRejectsAmbiguousOrMissingScores(t *testing.T) {
 }
 
 func TestModelQualitySavedArtifactDoesNotRevalidateGenerator(t *testing.T) {
-	for _, mode := range []string{"candy", "pelican", "creative"} {
+	for _, mode := range []string{"candy", "pelican"} {
 		t.Run(mode, func(t *testing.T) {
 			s, repo, client, run := qualityFixture()
 			repo.plan.Config.Benchmark, run.Target.Benchmark = mode, mode
@@ -93,7 +93,11 @@ func TestModelQualitySavedArtifactDoesNotRevalidateGenerator(t *testing.T) {
 			run.CredentialHash = "old-generator-credentials"
 			s.step(context.Background(), run)
 			require.Equal(t, 1, client.creates)
-			require.Equal(t, 1, client.gets)
+			if mode == "candy" {
+				require.Zero(t, client.gets)
+			} else {
+				require.Equal(t, 1, client.gets)
+			}
 			require.Equal(t, "succeeded", run.Status)
 			require.Equal(t, "normal", run.Verdict)
 		})
@@ -102,7 +106,7 @@ func TestModelQualitySavedArtifactDoesNotRevalidateGenerator(t *testing.T) {
 
 func TestModelQualityAccountIndependencePreservesAuthorization(t *testing.T) {
 	t.Run("unavailable generator still blocks generation", func(t *testing.T) {
-		s, repo, client, run := qualityFixture()
+		s, repo, client, run := qualityJudgedFixture()
 		repo.plan.Config.MonitorID = 8
 		s.monitors = qualityTestMonitors{&ChannelMonitor{ID: 8, Enabled: false, Provider: MonitorProviderOpenAI, Endpoint: "https://relay.example", APIKey: "generator-key"}}
 		s.step(context.Background(), run)
@@ -110,21 +114,21 @@ func TestModelQualityAccountIndependencePreservesAuthorization(t *testing.T) {
 		require.Equal(t, "error", run.Verdict)
 	})
 	t.Run("revoked judge key still blocks judging", func(t *testing.T) {
-		s, _, client, run := qualityFixture()
+		s, _, client, run := qualityJudgedFixture()
 		s.step(context.Background(), run)
 		s.keys.(qualityTestKeys).key.Status = "disabled"
 		s.step(context.Background(), run)
 		require.Equal(t, 1, client.creates)
 		require.Zero(t, client.gets)
 		require.Equal(t, "error", run.Verdict)
-		require.NotEmpty(t, run.Result.Answer)
+		require.NotEmpty(t, run.Result.HTML)
 	})
 }
 
 func TestModelQualityJudgeAcceptsGatewayAccountChanges(t *testing.T) {
 	for _, account := range []string{"4589", "4597"} {
 		t.Run(account, func(t *testing.T) {
-			s, _, generator, run := qualityFixture()
+			s, _, generator, run := qualityJudgedFixture()
 			s.judgeModel, run.Target.JudgeModel = "gpt-6.1-sol", "gpt-6.1-sol"
 			s.step(context.Background(), run)
 			calls := 0
@@ -139,10 +143,10 @@ func TestModelQualityJudgeAcceptsGatewayAccountChanges(t *testing.T) {
 				require.NotContains(t, payload, "account_id")
 				instructions := payload["instructions"].(string)
 				require.Contains(t, instructions, qualityJudgeFormatVersion)
-				for _, field := range []string{"checks", "confidence", "reason", "answer", "sufficiency", "minimality"} {
+				for _, field := range []string{"checks", "confidence", "reason", "subject", "bicycle", "motion"} {
 					require.Contains(t, instructions, `"`+field+`"`)
 				}
-				text := qualityValidCandyAssessment
+				text := qualityScoredAssessment(t, "pelican", 0.95, nil)
 				if account == "4589" {
 					text = "```json\n" + text + "\n```"
 				}
@@ -165,7 +169,7 @@ func TestModelQualityJudgeAcceptsGatewayAccountChanges(t *testing.T) {
 }
 
 func TestModelQualityInvalidAssessmentDiagnosticDoesNotEchoResponse(t *testing.T) {
-	s, _, _, run := qualityFixture()
+	s, _, _, run := qualityJudgedFixture()
 	s.step(context.Background(), run)
 	inputTokens, outputTokens := int64(100), int64(50)
 	s.judge = qualityFixedCompletionClient{result: &qualityCompletion{
@@ -178,7 +182,7 @@ func TestModelQualityInvalidAssessmentDiagnosticDoesNotEchoResponse(t *testing.T
 	require.Contains(t, run.Reason, "字段类型")
 	require.NotContains(t, run.Reason, "private-test-key")
 	require.NotContains(t, run.Reason, "secret-field")
-	require.NotEmpty(t, run.Result.Answer)
+	require.NotEmpty(t, run.Result.HTML)
 	require.EqualValues(t, 50, *run.Result.JudgeOutputTokens)
 }
 

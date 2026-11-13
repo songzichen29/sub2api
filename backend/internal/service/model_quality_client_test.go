@@ -147,12 +147,12 @@ func TestQualityAssessmentValidationAndVerdicts(t *testing.T) {
 }
 
 func TestQualityJudgeFailureAndCancellationKeepsArtifact(t *testing.T) {
-	s, _, c, r := qualityFixture()
+	s, _, c, r := qualityJudgedFixture()
 	s.step(context.Background(), r)
 	c.judgment = `{"confidence":1,"reason":"pretend normal"}`
 	s.step(context.Background(), r)
 	require.Equal(t, "error", r.Verdict)
-	require.NotEmpty(t, r.Result.Answer)
+	require.NotEmpty(t, r.Result.HTML)
 }
 
 func TestQualityOperationLeaseExceedsTimeout(t *testing.T) {

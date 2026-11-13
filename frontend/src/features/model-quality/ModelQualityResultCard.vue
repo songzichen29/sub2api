@@ -25,9 +25,10 @@
             <p v-if="run.reason">{{ run.reason }}</p>
             <p>{{ t('modelQuality.source') }}: {{ run.result?.source || t('modelQuality.notReported') }}</p>
             <template v-if="run.result?.assessment">
-              <p>{{ t('modelQuality.judgeModel') }}: {{ run.result.assessment.model }} · {{ t('modelQuality.evidenceConfidence') }} {{ Math.round(run.result.assessment.confidence * 100) }}%</p>
+              <p v-if="localAnswerCheck">{{ t('modelQuality.localAnswerCheck') }}</p>
+              <p v-else>{{ t('modelQuality.judgeModel') }}: {{ run.result.assessment.model }} · {{ t('modelQuality.evidenceConfidence') }} {{ Math.round(run.result.assessment.confidence * 100) }}%</p>
               <p v-for="check in run.result.assessment.checks" :key="check.id">{{ t(`modelQuality.checks.${check.id}`) }} {{ check.score }}/2: {{ check.evidence }}</p>
-              <p>{{ t('modelQuality.judgeUsage') }} {{ run.result.judge_input_tokens ?? '—' }} / {{ run.result.judge_output_tokens ?? '—' }}</p>
+              <p v-if="!localAnswerCheck">{{ t('modelQuality.judgeUsage') }} {{ run.result.judge_input_tokens ?? '—' }} / {{ run.result.judge_output_tokens ?? '—' }}</p>
             </template>
             <p>{{ t('modelQuality.inputTokens') }} {{ run.result?.input_tokens ?? '—' }} · {{ t('modelQuality.outputTokens') }} {{ run.result?.output_tokens ?? '—' }}</p>
             <p>{{ t('modelQuality.reasoningTokens') }} {{ run.result?.reasoning_tokens ?? '—' }}</p>
@@ -55,6 +56,7 @@ const props = defineProps<{ run: QualityRun; planName?: string; highlighted?: bo
 const emit = defineEmits<{ expand: [run: QualityRun] }>()
 const { t } = useI18n()
 const mode = ref<'preview' | 'source'>('preview')
+const localAnswerCheck = computed(() => props.run.result?.assessment?.basis === 'answer_exact')
 const emptyStats = { total: 0, passed: 0, failed: 0, errors: 0, unknown: 0 }
 const cardName = computed(() => props.planName || props.run.target.monitor_name || props.run.target.channel_name || props.run.target.model)
 const modelLabel = computed(() => [props.run.target.model, props.run.target.reasoning_effort, props.run.target.service_tier].filter(Boolean).join(' · '))

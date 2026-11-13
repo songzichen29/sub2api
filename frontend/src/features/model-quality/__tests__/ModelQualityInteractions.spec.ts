@@ -201,17 +201,17 @@ describe('integrated model quality', () => {
     const customRow = wrapper.findAll('[data-model-config]')[1]
     await customRow.find('input').setValue('custom-model')
     await customRow.find('input[value="pelican"]').setValue(true)
-    await customRow.find('input[value="creative"]').setValue(true)
+    expect(customRow.find('input[value="creative"]').exists()).toBe(false)
     await wrapper.find('form').trigger('submit'); await flushPromises()
     const input = api.save.mock.calls[0][1]
-    expect(input.configs.map((c: { model: string; benchmark: string }) => [c.model, c.benchmark])).toEqual([['gpt-6-astra', 'candy'], ['gpt-6-astra', 'pelican'], ['custom-model', 'candy'], ['custom-model', 'pelican'], ['custom-model', 'creative']])
+    expect(input.configs.map((c: { model: string; benchmark: string }) => [c.model, c.benchmark])).toEqual([['gpt-6-astra', 'candy'], ['gpt-6-astra', 'pelican'], ['custom-model', 'candy'], ['custom-model', 'pelican']])
     expect(input.interval_minutes).toBe(3)
     expect(input.configs.every((c: { monitor_id: number }) => c.monitor_id === 2)).toBe(true)
   })
   it('restores the saved judge and accepts a custom model even when suggestions fail', async () => {
     api.options.mockResolvedValue({ groups: [], keys: [], monitors: [], default_judge_model: 'server-default', judge_models: ['suggested-judge'], judge_models_warning: '列表暂不可用，可手动填写后测试' })
     api.save.mockResolvedValue({})
-    const editable = { ...plan, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'candy' as const, reasoning_effort: 'high', service_tier: '' } }
+    const editable = { ...plan, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'pelican' as const, reasoning_effort: 'high', service_tier: '' } }
     wrapper = mount(ModelQualityForm, { props: { plan: editable }, global: { stubs: { teleport: true } } })
     await flushPromises()
     expect(wrapper.find('button#quality-judge-model').text()).toContain('saved-judge')
@@ -229,6 +229,7 @@ describe('integrated model quality', () => {
     api.save.mockResolvedValue({})
     wrapper = mount(ModelQualityForm, { props: { plan: null }, global: { stubs: { teleport: true } } })
     await flushPromises()
+    await wrapper.find('[data-model-config] input[value="pelican"]').setValue(true)
     expect(wrapper.find('button#quality-judge-model').text()).toContain('gpt-6.1-sol')
     await wrapper.find('button#quality-judge-model').trigger('click')
     await wrapper.findAll('[role="option"]').find(o => o.text() === 'other-judge')!.trigger('click')
@@ -241,7 +242,7 @@ describe('integrated model quality', () => {
     api.options.mockResolvedValue({ groups: [], keys: [], monitors: [] })
     let rejectSave!: (error: Error) => void
     api.save.mockImplementation(() => new Promise((_resolve, reject) => { rejectSave = reject }))
-    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'candy', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'pelican', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
     await flushPromises()
     await wrapper.find('form').trigger('submit')
     expect(wrapper.find('[role="status"]').text()).toBe('modelQuality.testingJudge')
@@ -261,7 +262,7 @@ describe('integrated model quality', () => {
   })
   it('labels disabling an unchanged judge as save without a probe', async () => {
     api.options.mockResolvedValue({ groups: [], keys: [], monitors: [] })
-    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, enabled: true, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'candy', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, enabled: true, judge_model: 'saved-judge', config: { monitor_id: 2, model: 'generator', benchmark: 'pelican', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
     await flushPromises()
     expect(wrapper.find('button[type="submit"]').text()).toBe('modelQuality.testAndSave')
     await wrapper.findAll('label').find(l => l.text() === 'modelQuality.enabled')!.find('input').setValue(false)
@@ -270,6 +271,95 @@ describe('integrated model quality', () => {
     await wrapper.find('.select-search-input').setValue('changed-judge')
     await wrapper.find('[role="option"]').trigger('click')
     expect(wrapper.find('button[type="submit"]').text()).toBe('modelQuality.testAndSave')
+  })
+  it('saves candy-only plans without judge validation or a scoring probe notice', async () => {
+    api.options.mockResolvedValue({ groups: [], keys: [], monitors: [], judge_models_warning: 'Judge unavailable' })
+    let finishSave!: (value: unknown) => void
+    api.save.mockImplementation(() => new Promise(resolve => { finishSave = resolve }))
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, judge_model: 'x'.repeat(201), config: { monitor_id: 2, model: 'generator', benchmark: 'candy', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
+    await flushPromises()
+    expect(wrapper.find('button#quality-judge-model').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Judge unavailable')
+    expect(wrapper.text()).not.toContain('modelQuality.invalidJudgeModel')
+    expect(wrapper.text()).not.toContain('modelQuality.judgeProbeNotice')
+    expect(wrapper.text()).toContain('modelQuality.candyAnswerNotice')
+    expect(wrapper.text()).toContain('modelQuality.candyCredentialNotice')
+    expect(wrapper.text()).not.toContain('modelQuality.boundCredentialNotice')
+    expect(wrapper.find('button[type="submit"]').text()).toBe('modelQuality.save')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.find('form').trigger('submit')
+    expect(wrapper.find('[role="status"]').text()).toBe('modelQuality.saving')
+    expect(api.save).toHaveBeenCalledTimes(1)
+    finishSave({})
+    await flushPromises()
+    expect(wrapper.emitted('saved')).toHaveLength(1)
+  })
+  it('requires scoring settings only while pelican mode is selected', async () => {
+    api.options.mockResolvedValue({ groups: [], keys: [], monitors: [], judge_models_warning: 'Judge unavailable' })
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, judge_model: 'x'.repeat(201), config: { monitor_id: 2, model: 'generator', benchmark: 'candy', reasoning_effort: 'high', service_tier: '' } } }, global: { stubs: { teleport: true } } })
+    await flushPromises()
+    await wrapper.find('[data-model-config] input[value="pelican"]').setValue(true)
+    expect(wrapper.find('button#quality-judge-model').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Judge unavailable')
+    expect(wrapper.text()).toContain('modelQuality.invalidJudgeModel')
+    expect(wrapper.find('button[type="submit"]').text()).toBe('modelQuality.testAndSave')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('[data-model-config] input[value="pelican"]').setValue(false)
+    expect(wrapper.find('button#quality-judge-model').exists()).toBe(false)
+    expect(wrapper.find('button[type="submit"]').text()).toBe('modelQuality.save')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+  })
+  it('removes retired creative configurations from mixed plans and preserves valid modes', async () => {
+    api.options.mockResolvedValue({ groups: [], keys: [], monitors: [] })
+    api.save.mockResolvedValue({})
+    const base = { monitor_id: 2, model: 'generator', reasoning_effort: 'high', service_tier: '' }
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, configs: [
+      { ...base, benchmark: 'candy' }, { ...base, benchmark: 'creative' },
+      { ...base, model: 'retired-only', benchmark: 'creative' },
+    ] } }, global: { stubs: { teleport: true } } })
+    await flushPromises()
+    expect(wrapper.findAll('[data-model-config]')).toHaveLength(1)
+    expect(wrapper.find('input[value="creative"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('modelQuality.retiredModeNotice')
+    expect(wrapper.find('button#quality-judge-model').exists()).toBe(false)
+    await wrapper.find('form').trigger('submit'); await flushPromises()
+    expect(api.save).toHaveBeenCalledWith('p1', expect.objectContaining({ configs: [expect.objectContaining({ model: 'generator', benchmark: 'candy' })] }))
+  })
+  it('requires an explicit supported mode when editing a creative-only plan', async () => {
+    api.options.mockResolvedValue({ groups: [], keys: [], monitors: [] })
+    api.save.mockResolvedValue({})
+    wrapper = mount(ModelQualityForm, { props: { plan: { ...plan, config: { monitor_id: 2, model: 'legacy-model', benchmark: 'creative', reasoning_effort: 'high', service_tier: 'priority' } } }, global: { stubs: { teleport: true } } })
+    await flushPromises()
+    expect(wrapper.find('[data-model-config] input').element.value).toBe('legacy-model')
+    expect(wrapper.find('input[value="creative"]').exists()).toBe(false)
+    expect(wrapper.find('[data-model-config] input[type="checkbox"]:checked').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('modelQuality.candyCredentialNotice')
+    expect(wrapper.text()).toContain('modelQuality.retiredModeNotice')
+    expect(wrapper.text()).toContain('modelQuality.selectModelModes')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.find('form').trigger('submit'); await flushPromises()
+    expect(api.save).not.toHaveBeenCalled()
+    await wrapper.find('input[value="pelican"]').setValue(true)
+    expect(wrapper.find('button#quality-judge-model').exists()).toBe(true)
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+    await wrapper.find('form').trigger('submit'); await flushPromises()
+    expect(api.save).toHaveBeenCalledWith('p1', expect.objectContaining({ configs: [expect.objectContaining({ model: 'legacy-model', benchmark: 'pelican', reasoning_effort: 'high', service_tier: 'priority' })] }))
+  })
+  it('shows local candy evidence without model confidence or judging usage', () => {
+    const checked: QualityRun = {
+      ...run('checked'),
+      result: {
+        answer: '答案是21。', source: 'native-v1:answer_exact', duration_ms: 1000,
+        assessment: { version: 'native-v1:answer-exact-v1', model: '', basis: 'answer_exact', confidence: 1, checks: [{ id: 'answer', score: 2, evidence: '最终答案为21，与标准答案一致。' }] },
+      },
+    }
+    wrapper = mount(ModelQualityResultCard, { props: { run: checked, bodyHeight: '240px' } })
+    expect(wrapper.find('details').text()).toContain('modelQuality.localAnswerCheck')
+    expect(wrapper.find('details').text()).toContain('最终答案为21，与标准答案一致。')
+    expect(wrapper.find('details').text()).not.toContain('modelQuality.judgeModel')
+    expect(wrapper.find('details').text()).not.toContain('modelQuality.evidenceConfidence')
+    expect(wrapper.find('details').text()).not.toContain('modelQuality.judgeUsage')
+    expect(wrapper.find('details').text()).not.toContain('100%')
   })
   it('renders native judge evidence as text and still supports legacy results', async () => {
     const assessed: QualityRun = {

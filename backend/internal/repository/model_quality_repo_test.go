@@ -88,6 +88,41 @@ func TestModelQualityQueueRejectsJudgeModelEditedAfterRead(t *testing.T) {
 	}
 }
 
+func TestModelQualityQueueCandyIgnoresLegacyJudgeButArtworkRemainsFenced(t *testing.T) {
+	for _, mode := range []string{"candy", "pelican", "creative"} {
+		t.Run(mode, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer db.Close()
+			now := time.Now()
+			configs := []service.ModelQualityConfig{{Benchmark: "candy"}}
+			runs := []*service.ModelQualityRun{{ID: "candy", PlanID: "plan", BatchID: "batch", StartedAt: now, Target: service.ModelQualityTarget{Benchmark: "candy"}}}
+			if mode != "candy" {
+				configs = append(configs, service.ModelQualityConfig{Benchmark: mode})
+				runs = append(runs, &service.ModelQualityRun{ID: "artwork", PlanID: "plan", BatchID: "batch", StartedAt: now, Target: service.ModelQualityTarget{Benchmark: mode, JudgeModel: "old-model"}})
+			}
+			config, err := json.Marshal(qualityStoredConfig{JudgeModel: "new-model", Configs: configs})
+			require.NoError(t, err)
+			mock.ExpectBegin()
+			mock.ExpectQuery(`SELECT active_run_id, enabled, next_run_at, interval_minutes.* FOR UPDATE`).WithArgs("plan").WillReturnRows(sqlmock.NewRows([]string{"active", "enabled", "due", "interval", "config"}).AddRow(nil, false, now, 3, string(config)))
+			if mode == "candy" {
+				mock.ExpectExec(`INSERT INTO model_quality_runs`).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE model_quality_plans SET active_run_id`).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectCommit()
+			} else {
+				mock.ExpectRollback()
+			}
+			err = NewModelQualityRepository(db).QueueBatch(context.Background(), runs, false)
+			if mode == "candy" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, service.ErrQualityBusy)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestModelQualityQueueSerializesAndHonorsDisabledSchedule(t *testing.T) {
 	for _, tc := range []struct {
 		name               string

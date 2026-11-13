@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ func TestModelQualityDefaultJudgeIsSol(t *testing.T) {
 		s := NewModelQualityService(nil, nil, nil, nil, nil, nil, cfg)
 		require.Equal(t, "gpt-6.1-sol", s.judgeModel)
 	}
-	s, repo, _, _ := qualityFixture()
+	s, repo, _, _ := qualityJudgedFixture()
 	s.judgeModel = NewModelQualityService(nil, nil, nil, nil, nil, nil, nil).judgeModel
 	runs, err := s.Queue(context.Background(), repo.plan.ID, false)
 	require.NoError(t, err)
@@ -26,7 +27,7 @@ func TestModelQualityDefaultJudgeIsSol(t *testing.T) {
 }
 
 func TestModelQualityNativeAllModes(t *testing.T) {
-	for _, mode := range []string{"candy", "pelican", "creative"} {
+	for _, mode := range []string{"candy", "pelican"} {
 		t.Run(mode, func(t *testing.T) {
 			s, _, c, r := qualityFixture()
 			s.repo.(*qualityTestRepo).plan.Config.Benchmark, r.Target.Benchmark = mode, mode
@@ -37,14 +38,22 @@ func TestModelQualityNativeAllModes(t *testing.T) {
 			require.Equal(t, qualityPrompt(mode), c.request.Input)
 			s.step(context.Background(), r)
 			require.Equal(t, "normal", r.Verdict)
-			require.Len(t, r.Result.Assessment.Checks, len(qualityRubric(mode)))
+			if mode == "candy" {
+				require.Len(t, r.Result.Assessment.Checks, 1)
+			} else {
+				require.Len(t, r.Result.Assessment.Checks, len(qualityRubric(mode)))
+			}
 			if mode != "candy" {
 				require.Equal(t, "<html><svg></svg></html>", r.Result.HTML)
 				require.Contains(t, r.Reason, "未运行浏览器")
 			}
 			s.step(context.Background(), r)
 			require.Equal(t, 1, c.creates, "finished work must never regenerate")
-			require.Equal(t, 1, c.gets, "finished work must never rejudge")
+			if mode == "candy" {
+				require.Zero(t, c.gets)
+			} else {
+				require.Equal(t, 1, c.gets, "finished work must never rejudge")
+			}
 		})
 	}
 }
@@ -111,20 +120,20 @@ func TestModelQualityJudgeKeyResolution(t *testing.T) {
 }
 
 func TestModelQualityJudgeHTTPFailureIsNotDegradation(t *testing.T) {
-	s, _, c, r := qualityFixture()
+	s, _, c, r := qualityJudgedFixture()
 	s.step(context.Background(), r)
 	c.err = &qualityHTTPStatusError{StatusCode: 502}
 	s.step(context.Background(), r)
 	require.Equal(t, "error", r.Verdict)
 	require.Contains(t, r.Reason, "裁判请求失败")
 	require.Contains(t, r.Reason, "HTTP 502")
-	require.NotEmpty(t, r.Result.Answer)
+	require.NotEmpty(t, r.Result.HTML)
 }
 
 func TestModelQualityJudgeEvidenceIsRedacted(t *testing.T) {
-	s, _, c, r := qualityFixture()
+	s, _, c, r := qualityJudgedFixture()
 	s.step(context.Background(), r)
-	c.judgment = `{"confidence":0.95,"reason":"private-test-key","checks":[{"id":"answer","score":2,"evidence":"private-test-key"},{"id":"sufficiency","score":2,"evidence":"https://our.example/custom/v1"},{"id":"minimality","score":2,"evidence":"http://127.0.0.1:8080/v1"}]}`
+	c.judgment = strings.ReplaceAll(qualityScoredAssessment(t, "pelican", 0.95, nil), "具体评分依据：", "private-test-key https://our.example/custom/v1 http://127.0.0.1:8080/v1 ")
 	s.step(context.Background(), r)
 	b, err := json.Marshal(r)
 	require.NoError(t, err)

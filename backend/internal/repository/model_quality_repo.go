@@ -223,7 +223,8 @@ func (r *modelQualityRepository) QueueBatch(ctx context.Context, runs []*service
 	}
 	for i, item := range runs {
 		c, t := configs[i], item.Target
-		if config.JudgeModel != "" && config.JudgeModel != t.JudgeModel {
+		// 糖果使用本地答案核对，历史计划的裁判字段不再参与其快照校验。
+		if t.Benchmark != "candy" && config.JudgeModel != "" && config.JudgeModel != t.JudgeModel {
 			return service.ErrQualityBusy
 		}
 		if c.MonitorID != t.MonitorID || c.Model != t.Model || c.Benchmark != t.Benchmark || c.ReasoningEffort != t.ReasoningEffort || c.ServiceTier != t.ServiceTier {

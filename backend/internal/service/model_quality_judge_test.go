@@ -33,8 +33,8 @@ func TestModelQualitySaveTestsSelectedJudgeAndFreezesItForRun(t *testing.T) {
 	require.Zero(t, c.creates)
 	require.Equal(t, "custom-judge", c.request.Model)
 	require.Equal(t, "medium", c.request.Effort)
-	require.Equal(t, qualityAssessmentSchema("candy"), c.request.Schema)
-	require.Contains(t, c.request.Input, `"benchmark":"candy"`)
+	require.Equal(t, qualityAssessmentSchema("pelican"), c.request.Schema)
+	require.Contains(t, c.request.Input, `"benchmark":"pelican"`)
 	require.NotContains(t, c.request.Input, "channel-only-key")
 	require.Equal(t, qualityCredentials{s.judgeOrigin, "private-test-key"}, c.credential)
 

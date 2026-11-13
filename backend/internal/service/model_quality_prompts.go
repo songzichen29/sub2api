@@ -20,19 +20,12 @@ const qualityPelicanPrompt = `请制作一只鹈鹕骑自行车的二维循环�
 动画中腿、脚、踏板、车架和车轮应保持合理连接，不能让部件绕错误的中心飞走。可以使用内联 SVG、CSS 或 Canvas/JavaScript，技术选择不影响评分。
 请完成构图、背景和循环运动；所有绘图、样式、脚本放在本文件，不依赖外部图片、字体、库或网络资源。`
 
-const qualityCreativePrompt = `请自由创作一个完整、有明确主题的二维动画场景。题材、构图和视觉风格由你决定。
-输出可直接打开的单文件 HTML，不要 Markdown 代码围栏或解释。作品应有可辨识的主体、协调的环境和至少一种与主题有关的连续运动。
-提供一个真正有效的暂停/继续控件。运动中的物体及其组成部分应保持合理的空间关系。
-允许内联 SVG、CSS、Canvas 和 JavaScript，不依赖任何外部图片、字体、库或网络资源。不要输出占位画面或待完成事项。`
-
 func qualityPrompt(benchmark string) string {
 	switch benchmark {
 	case "candy":
 		return qualityCandyPrompt
 	case "pelican":
 		return qualityPelicanPrompt
-	case "creative":
-		return qualityCreativePrompt
 	default:
 		return ""
 	}

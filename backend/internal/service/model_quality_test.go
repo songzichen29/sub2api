@@ -239,22 +239,29 @@ func qualityFixture() (*ModelQualityService, *qualityTestRepo, *qualityTestClien
 	s := &ModelQualityService{repo: repo, keys: qualityTestKeys{key: &APIKey{ID: 9, UserID: 3, Name: "测试降智", GroupID: &groupID, Key: "private-test-key", Status: StatusActive}}, groups: qualityTestGroups{}, channels: qualityTestChannels{}, visibility: qualityTestVisibility{groups: []Group{{ID: groupID}}}, generator: c, judge: c, judgeOrigin: "http://127.0.0.1:8080/v1", judgeKeyName: "测试降智", judgeModel: "gpt-6-luna"}
 	return s, repo, c, r
 }
+func qualityJudgedFixture() (*ModelQualityService, *qualityTestRepo, *qualityTestClient, *ModelQualityRun) {
+	s, repo, client, run := qualityFixture()
+	repo.plan.Config.Benchmark, run.Target.Benchmark = "pelican", "pelican"
+	client.result.Text = "<html><svg></svg></html>"
+	return s, repo, client, run
+}
+
 func TestModelQualityLifecycleAndPrivateResult(t *testing.T) {
 	s, repo, c, r := qualityFixture()
-	c.result.Text = "21 private-test-key https://our.example/custom/v1"
+	c.result.Text = "最终答案21。private-test-key https://our.example/custom/v1"
 	s.step(context.Background(), r)
 	require.Equal(t, 1, c.creates)
 	require.Equal(t, "our-model", c.request.Model)
 	require.Equal(t, qualityCandyPrompt, c.request.Input)
 	require.Equal(t, "submitting", repo.saved[0].Status)
-	require.Equal(t, "running", r.Status)
-	require.Equal(t, "classifying", r.Phase)
+	require.Equal(t, "succeeded", r.Status)
+	require.Equal(t, "complete", r.Phase)
 	require.Contains(t, r.Result.Answer, "[REDACTED]")
 	s.step(context.Background(), r)
 	require.Equal(t, 1, c.creates)
-	require.Equal(t, 1, c.gets)
-	require.Equal(t, "gpt-6-luna", c.request.Model)
-	require.Equal(t, "http://127.0.0.1:8080/v1", c.credential.baseURL)
+	require.Zero(t, c.gets)
+	require.Equal(t, "our-model", c.request.Model)
+	require.Equal(t, "https://our.example/custom/v1", c.credential.baseURL)
 	require.Equal(t, "succeeded", r.Status)
 	require.Equal(t, "normal", r.Verdict)
 	require.NotNil(t, r.Result.Assessment)
@@ -267,7 +274,7 @@ func TestModelQualityLifecycleAndPrivateResult(t *testing.T) {
 func TestModelQualityRestartAndFailure(t *testing.T) {
 	for _, phase := range []string{"generating", "classifying"} {
 		t.Run("uncertain "+phase, func(t *testing.T) {
-			s, _, c, r := qualityFixture()
+			s, _, c, r := qualityJudgedFixture()
 			r.Status = "submitting"
 			r.Phase = phase
 			s.step(context.Background(), r)
@@ -276,14 +283,14 @@ func TestModelQualityRestartAndFailure(t *testing.T) {
 		})
 	}
 	t.Run("legacy tasks never contact Manxue", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		r.RemoteID = "legacy"
 		s.step(context.Background(), r)
 		require.Zero(t, c.creates+c.gets)
 		require.Equal(t, "error", r.Verdict)
 	})
 	t.Run("request failure never resubmits", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		c.err = errors.New("secret-echo")
 		s.step(context.Background(), r)
 		require.Equal(t, 1, c.creates)
@@ -291,29 +298,29 @@ func TestModelQualityRestartAndFailure(t *testing.T) {
 		require.NotContains(t, r.Reason, "secret-echo")
 	})
 	t.Run("saved artifact resumes judging only", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		s.step(context.Background(), r)
 		s.step(context.Background(), r)
 		require.Equal(t, 1, c.creates)
 		require.Equal(t, 1, c.gets)
 	})
 	t.Run("judge failure keeps artifact", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		s.step(context.Background(), r)
 		c.err = errors.New("oops")
 		s.step(context.Background(), r)
 		require.Equal(t, "error", r.Verdict)
-		require.NotEmpty(t, r.Result.Answer)
+		require.NotEmpty(t, r.Result.HTML)
 	})
 	t.Run("cancelled", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		r.CancelRequested = true
 		s.step(context.Background(), r)
 		require.Zero(t, c.creates+c.gets)
 		require.Equal(t, "cancelled", r.Status)
 	})
 	t.Run("rotated key does not invalidate saved artifact", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		s.step(context.Background(), r)
 		s.keys.(qualityTestKeys).key.Key = "new"
 		s.step(context.Background(), r)
@@ -323,7 +330,7 @@ func TestModelQualityRestartAndFailure(t *testing.T) {
 		require.Equal(t, "normal", r.Verdict)
 	})
 	t.Run("wrong owner", func(t *testing.T) {
-		s, _, c, r := qualityFixture()
+		s, _, c, r := qualityJudgedFixture()
 		s.keys.(qualityTestKeys).key.UserID = 999
 		s.step(context.Background(), r)
 		require.Zero(t, c.creates+c.gets)
@@ -356,10 +363,51 @@ func TestModelQualityConfig(t *testing.T) {
 		cfg := ModelQualityConfig{BaseURL: base, Benchmark: "candy", Model: "model", ReasoningEffort: "high"}
 		require.Error(t, validateQualityConfig(&cfg))
 	}
-	for _, mode := range []string{"candy", "pelican", "creative"} {
+	for _, mode := range []string{"candy", "pelican"} {
 		cfg := ModelQualityConfig{BaseURL: "https://our.example/v1", Benchmark: mode, Model: "custom-model", ReasoningEffort: "max"}
 		require.NoError(t, validateQualityConfig(&cfg))
 	}
+}
+
+func TestModelQualityCreativeDisabledButHistoryAvailable(t *testing.T) {
+	s, repo, client, input := qualityJudgeSaveFixture()
+	input.Config.Benchmark = "creative"
+	_, err := s.Save(context.Background(), "", 3, input)
+	require.ErrorContains(t, err, "自由创作检测已停用")
+	require.Zero(t, client.creates+client.gets)
+	require.Empty(t, qualityPrompt("creative"))
+	repo.plan.Config = input.Config
+	s.keys = nil
+	_, err = s.Queue(context.Background(), repo.plan.ID, false)
+	require.ErrorContains(t, err, "自由创作检测已停用")
+	require.Empty(t, repo.queued)
+	for _, saved := range []bool{false, true} {
+		s, repo, client, run := qualityFixture()
+		repo.plan.Config.Benchmark, run.Target.Benchmark = "creative", "creative"
+		s.keys = nil
+		if saved {
+			run.Result = &ModelQualityResult{HTML: "<html>saved artwork</html>"}
+		}
+		s.step(context.Background(), run)
+		require.Equal(t, "failed", run.Status)
+		require.Contains(t, run.Reason, "自由创作检测已停用")
+		require.Zero(t, client.creates+client.gets)
+	}
+	// 停用生成入口不删除或重算已结束的自由创作历史。
+	s, _, client, run := qualityFixture()
+	run.Target.Benchmark = "creative"
+	run.Status, run.Verdict, run.Reason = "succeeded", "normal", "historical assessment"
+	now := time.Now()
+	run.FinishedAt = &now
+	run.Result = &ModelQualityResult{HTML: "<html>historical artwork</html>"}
+	s.step(context.Background(), run)
+	loaded, err := s.Detail(context.Background(), run.ID, 42, false)
+	require.NoError(t, err)
+	require.Equal(t, "creative", loaded.Target.Benchmark)
+	require.Equal(t, "normal", loaded.Verdict)
+	require.Equal(t, "historical assessment", loaded.Reason)
+	require.Equal(t, "<html>historical artwork</html>", loaded.Result.HTML)
+	require.Zero(t, client.creates+client.gets)
 }
 
 func TestModelQualityMultipleModelsAndModesInOneRound(t *testing.T) {
@@ -448,7 +496,7 @@ func TestModelQualityQueueWaitDoesNotConsumeExecutionTimeout(t *testing.T) {
 	run.ExecutionStartedAt = &now
 	s.step(context.Background(), run)
 	require.Equal(t, 1, client.creates)
-	require.Nil(t, run.FinishedAt)
+	require.Equal(t, "succeeded", run.Status)
 }
 
 func TestModelQualityDeleteAuthorization(t *testing.T) {

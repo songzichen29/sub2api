@@ -29,7 +29,7 @@
           <input v-model.number="form.interval_minutes" type="number" class="input" min="3" max="10080" step="1" required />
         </label>
       </div>
-      <div class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
+      <div v-if="needsJudge" class="space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
         <label for="quality-judge-model" class="block text-sm">{{ t('modelQuality.planJudgeModel') }}</label>
         <Select
           id="quality-judge-model"
@@ -64,11 +64,14 @@
         </div>
         <button type="button" class="btn btn-secondary btn-sm" :disabled="models.length >= 100" @click="addModel">{{ t('modelQuality.addModel') }}</button>
         <p class="text-xs text-gray-500">{{ t('modelQuality.modeSupport') }}</p>
+        <p v-if="hasRetiredMode" class="text-xs text-amber-700 dark:text-amber-400">{{ t('modelQuality.retiredModeNotice') }}</p>
+        <p v-if="configs.some(config => config.benchmark === 'candy')" class="text-xs text-gray-500">{{ t('modelQuality.candyAnswerNotice') }}</p>
         <p v-if="validationError" class="text-xs text-amber-700 dark:text-amber-400">{{ validationError }}</p>
       </div>
       <label class="flex items-center gap-2 text-sm"><input v-model="form.enabled" type="checkbox" />{{ t('modelQuality.enabled') }}</label>
       <label class="flex items-center gap-2 text-sm"><input v-model="form.public_visible" type="checkbox" />{{ t('modelQuality.publicVisible') }}</label>
-      <p class="text-xs text-gray-500">{{ t('modelQuality.boundCredentialNotice') }}</p>
+      <p v-if="needsJudge" class="text-xs text-gray-500">{{ t('modelQuality.boundCredentialNotice') }}</p>
+      <p v-else-if="configs.some(config => config.benchmark === 'candy')" class="text-xs text-gray-500">{{ t('modelQuality.candyCredentialNotice') }}</p>
       </fieldset>
       <p v-if="saving" role="status" class="text-sm text-gray-600 dark:text-gray-300">{{ t(skipJudgeProbe ? 'modelQuality.saving' : 'modelQuality.testingJudge') }}</p>
     </form>
@@ -102,26 +105,34 @@ const form = reactive({
   judge_model: props.plan?.judge_model || props.plan?.target.judge_model || 'gpt-6.1-sol',
 })
 const initialJudgeModel = computed(() => props.plan?.judge_model || props.plan?.target.judge_model || options.value.default_judge_model || 'gpt-6.1-sol')
-const skipJudgeProbe = computed(() => !!props.plan?.enabled && !form.enabled && form.judge_model === initialJudgeModel.value)
 const judgeModelOptions = computed(() => [...new Set([form.judge_model, options.value.default_judge_model || 'gpt-6.1-sol', ...(options.value.judge_models || [])])]
   .filter(Boolean).map(model => ({ value: model, label: model })))
-const modes = ['candy', 'pelican', 'creative'] as const
+const modes = ['candy', 'pelican'] as const
 const efforts = ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']
 type ModelRow = { key: number; model: string; effort: string; tier: string; modes: api.QualityConfig['benchmark'][] }
 let nextKey = 0
 const initial = props.plan?.configs?.length ? props.plan.configs : props.plan?.config ? [props.plan.config] : []
+const hasRetiredMode = initial.some(config => config.benchmark === 'creative')
 const grouped: ModelRow[] = []
 for (const c of initial) {
+  if (c.benchmark === 'creative') continue
   let row = grouped.find(r => r.model === c.model && r.effort === c.reasoning_effort && r.tier === c.service_tier)
   if (!row) { row = { key: nextKey++, model: c.model, effort: c.reasoning_effort, tier: c.service_tier, modes: [] }; grouped.push(row) }
   row.modes.push(c.benchmark)
+}
+// 旧计划仅有已停用模式时保留模型，要求用户选择有效模式，不能自动改为糖果题。
+if (!grouped.length && initial.length) {
+  const config = initial[0]
+  grouped.push({ key: nextKey++, model: config.model, effort: config.reasoning_effort, tier: config.service_tier, modes: [] })
 }
 const models = ref<ModelRow[]>(grouped.length ? grouped : [{ key: nextKey++, model: 'gpt-6-astra', effort: 'low', tier: '', modes: ['candy'] }])
 const configs = computed<api.QualityConfig[]>(() => models.value.flatMap(row => row.modes.map(benchmark => ({
   monitor_id: monitorID.value, model: row.model.trim(), benchmark, reasoning_effort: row.effort, service_tier: row.tier,
 }))))
+const needsJudge = computed(() => configs.value.some(config => config.benchmark === 'pelican'))
+const skipJudgeProbe = computed(() => !needsJudge.value || (!!props.plan?.enabled && !form.enabled && form.judge_model === initialJudgeModel.value))
 const validationError = computed(() => {
-  if (!form.judge_model.trim() || new TextEncoder().encode(form.judge_model).length > 200) return t('modelQuality.invalidJudgeModel')
+  if (needsJudge.value && (!form.judge_model.trim() || new TextEncoder().encode(form.judge_model).length > 200)) return t('modelQuality.invalidJudgeModel')
   if (models.value.some(row => !row.model.trim() || !row.modes.length)) return t('modelQuality.selectModelModes')
   if (configs.value.length > 100) return t('modelQuality.tooManyConfigs')
   const keys = configs.value.map(c => JSON.stringify([c.model, c.benchmark, c.reasoning_effort, c.service_tier]))

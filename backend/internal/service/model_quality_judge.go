@@ -67,10 +67,10 @@ func (s *ModelQualityService) probeQualityJudge(ctx context.Context, owner int64
 	keyID, keyText, groupID := key.ID, key.Key, *key.GroupID
 	// A fixed public sample tests transport + the actual scoring output contract,
 	// not model intelligence. It never generates an artwork or enters the queue.
-	const sample = "答案是21。取9颗圆形和12颗星形；12星必有苹果与桃子，9圆至少有一种目标口味，能异形配对。20颗时：圆不超过8可全西瓜；星不超过4可全西瓜；否则圆不超过15、星不超过11，可全部取苹果与西瓜，故不能保证。"
+	const sample = `<html><body><svg viewBox="0 0 400 300"><circle cx="120" cy="220" r="45"/><circle cx="280" cy="220" r="45"/><path d="M120 220L180 150L220 220L120 220L250 150L280 220"/><ellipse cx="180" cy="100" rx="45" ry="30"/><path d="M200 80L270 85L220 110Z"/></svg></body></html>`
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	completion, err := s.judge.Complete(probeCtx, qualityCredentials{s.judgeOrigin, keyText}, qualityJudgeRequest("candy", model, sample))
+	completion, err := s.judge.Complete(probeCtx, qualityCredentials{s.judgeOrigin, keyText}, qualityJudgeRequest("pelican", model, sample))
 	if err != nil {
 		var statusErr *qualityHTTPStatusError
 		if errors.As(err, &statusErr) {
@@ -81,7 +81,7 @@ func (s *ModelQualityService) probeQualityJudge(ctx context.Context, owner int64
 	if completion == nil {
 		return qualityInvalid("评分模型测试未返回正文；配置未保存")
 	}
-	if _, _, _, err := parseQualityAssessment(completion.Text, "candy", model); err != nil {
+	if _, _, _, err := parseQualityAssessment(completion.Text, "pelican", model); err != nil {
 		return qualityInvalid("评分模型测试返回的评分结构无效：" + err.Error() + "；配置未保存")
 	}
 	// Re-resolve the named key, but never the selected upstream account. A key

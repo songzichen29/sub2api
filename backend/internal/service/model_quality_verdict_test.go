@@ -137,15 +137,15 @@ func TestQualityVerdictPolicyCoversRubric(t *testing.T) {
 func TestModelQualityVerdictUpgradePreservesArtifactsAndHistory(t *testing.T) {
 	t.Run("saved artifact uses new policy without regenerating", func(t *testing.T) {
 		s, repo, client, run := qualityFixture()
-		repo.plan.Config.Benchmark, run.Target.Benchmark = "creative", "creative"
+		repo.plan.Config.Benchmark, run.Target.Benchmark = "pelican", "pelican"
 		run.Status = "running"
 		run.Target.BenchmarkVersion = "native-v1"
 		run.Result = &ModelQualityResult{HTML: "<html><body>saved work</body></html>", Source: "native-v1:unassessed", DurationMS: 123}
-		client.judgment = qualityScoredAssessment(t, "creative", 0.95, map[string]int{"interaction": 1})
+		client.judgment = qualityScoredAssessment(t, "pelican", 0.95, map[string]int{"motion": 1})
 		s.step(context.Background(), run)
 		require.Equal(t, "succeeded", run.Status)
 		require.Equal(t, "unknown", run.Verdict)
-		require.Contains(t, run.Reason, "暂停/继续功能")
+		require.Contains(t, run.Reason, "运动关系")
 		require.Equal(t, "native-v1:json-v2:verdict-v2", run.Result.Assessment.Version)
 		require.Equal(t, "<html><body>saved work</body></html>", run.Result.HTML)
 		require.EqualValues(t, 123, run.Result.DurationMS)

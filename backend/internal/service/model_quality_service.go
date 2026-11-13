@@ -112,6 +112,16 @@ func qualityConfigs(p *ModelQualityPlan) []ModelQualityConfig {
 	return []ModelQualityConfig{p.Config}
 }
 
+// 纯糖果计划只核对答案，不依赖模型裁判线路。
+func qualityNeedsJudge(p *ModelQualityPlan) bool {
+	for _, cfg := range qualityConfigs(p) {
+		if cfg.Benchmark == "pelican" {
+			return true
+		}
+	}
+	return false
+}
+
 func qualityConfigForRun(p *ModelQualityPlan, configID string) (ModelQualityConfig, bool) {
 	if configID == "" {
 		configs := qualityConfigs(p)
@@ -138,6 +148,16 @@ func qualityConfigViews(configs []ModelQualityConfig) []ModelQualityConfigView {
 	return out
 }
 
+func validateQualityBenchmark(benchmark string) error {
+	if benchmark == "creative" {
+		return qualityInvalid("自由创作检测已停用，请选择糖果或鹈鹕检测")
+	}
+	if benchmark != "candy" && benchmark != "pelican" {
+		return qualityInvalid("请选择糖果或鹈鹕检测")
+	}
+	return nil
+}
+
 func validateQualityConfig(c *ModelQualityConfig) error {
 	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
 	c.Model = strings.TrimSpace(c.Model)
@@ -155,8 +175,8 @@ func validateQualityConfig(c *ModelQualityConfig) error {
 			return qualityInvalid("检测渠道必须使用公网 HTTPS 地址")
 		}
 	}
-	if c.Benchmark != "candy" && c.Benchmark != "pelican" && c.Benchmark != "creative" {
-		return qualityInvalid("请选择糖果、鹈鹕或自由创作检测")
+	if err := validateQualityBenchmark(c.Benchmark); err != nil {
+		return err
 	}
 	if c.Model == "" || len(c.Model) > 200 {
 		return qualityInvalid("模型名称不能为空且最多 200 字节")
@@ -256,8 +276,12 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 		skipJudgeProbe = old.Enabled && !in.Enabled && p.JudgeModel == s.planJudgeModel(old)
 	}
 	p.JudgeModel = s.planJudgeModel(p)
-	if err := validateQualityJudgeModel(p.JudgeModel); err != nil {
-		return nil, err
+	if qualityNeedsJudge(p) {
+		if err := validateQualityJudgeModel(p.JudgeModel); err != nil {
+			return nil, err
+		}
+	} else {
+		p.JudgeModel = ""
 	}
 	in.Config = configs[0]
 	p.Config = configs[0]
@@ -275,7 +299,7 @@ func (s *ModelQualityService) Save(ctx context.Context, id string, owner int64, 
 	}
 	// Test on the server before writing, so bypassing the form cannot persist an
 	// untested selection. One small scoring request; never retry automatically.
-	if !skipJudgeProbe {
+	if qualityNeedsJudge(p) && !skipJudgeProbe {
 		if err := s.probeQualityJudge(ctx, owner, p.JudgeModel); err != nil {
 			return nil, err
 		}
@@ -300,7 +324,10 @@ func (s *ModelQualityService) Delete(ctx context.Context, id string, user int64,
 }
 
 func (s *ModelQualityService) target(ctx context.Context, p *ModelQualityPlan, config ModelQualityConfig) (ModelQualityTarget, error) {
-	t := ModelQualityTarget{ConfigID: modelQualityConfigID(config), GroupID: p.GroupID, Model: config.Model, Benchmark: config.Benchmark, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier, JudgeModel: s.planJudgeModel(p)}
+	t := ModelQualityTarget{ConfigID: modelQualityConfigID(config), GroupID: p.GroupID, Model: config.Model, Benchmark: config.Benchmark, ReasoningEffort: config.ReasoningEffort, ServiceTier: config.ServiceTier}
+	if config.Benchmark == "pelican" {
+		t.JudgeModel = s.planJudgeModel(p)
+	}
 	if config.MonitorID > 0 {
 		t.MonitorID = config.MonitorID
 		if s.monitors != nil {
@@ -385,12 +412,21 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		return nil, err
 	}
 	now := time.Now()
-	if err := validateQualityJudgeModel(s.planJudgeModel(p)); err != nil {
-		return nil, err
+	for _, cfg := range qualityConfigs(p) {
+		if err := validateQualityBenchmark(cfg.Benchmark); err != nil {
+			return nil, err
+		}
 	}
-	judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, 0)
-	if err != nil {
-		return nil, err
+	var judgeKeyID int64
+	if qualityNeedsJudge(p) {
+		if err := validateQualityJudgeModel(s.planJudgeModel(p)); err != nil {
+			return nil, err
+		}
+		judgeKey, err := s.qualityJudgeKey(ctx, p.OwnerID, 0)
+		if err != nil {
+			return nil, err
+		}
+		judgeKeyID = judgeKey.ID
 	}
 	batchID := uuid.NewString()
 	runs := make([]*ModelQualityRun, 0, len(qualityConfigs(p)))
@@ -402,8 +438,12 @@ func (s *ModelQualityService) Queue(ctx context.Context, id string, scheduled bo
 		if err != nil {
 			return nil, err
 		}
-		target.BenchmarkVersion, target.JudgeModel = qualityBenchmarkVersion, s.planJudgeModel(p)
-		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now, JudgeKeyID: judgeKey.ID})
+		target.BenchmarkVersion = qualityBenchmarkVersion
+		runJudgeKeyID := judgeKeyID
+		if config.Benchmark == "candy" {
+			runJudgeKeyID = 0
+		}
+		runs = append(runs, &ModelQualityRun{ID: uuid.NewString(), PlanID: id, BatchID: batchID, ConfigID: target.ConfigID, Target: target, Status: "queued", Verdict: "pending", StartedAt: now, JudgeKeyID: runJudgeKeyID})
 	}
 	if err := s.repo.QueueBatch(ctx, runs, scheduled); err != nil {
 		return nil, err
