@@ -6,13 +6,16 @@ import (
 	"strings"
 )
 
+const qualityCandyNumberPattern = `(?:[0-9零一二两三四五六七八九十百]+|\(\s*[0-9零一二两三四五六七八九十百]+\s*\)|（\s*[0-9零一二两三四五六七八九十百]+\s*）)`
+
 var (
 	qualityCandyUnits       = regexp.MustCompile(`\\(?:text|mathrm)\{\s*(个|颗|糖果)\s*\}`)
 	qualityCandyBox         = regexp.MustCompile(`\\boxed\{\s*([0-9零一二两三四五六七八九十百]+\s*(?:个|颗)?(?:糖果)?)\s*\}`)
-	qualityCandyAnswer      = regexp.MustCompile(`(?i)^((?:(?:因此|所以|故|综上所述|综上|由此可知|总之)[，,:： ]*)?)((?:最终|最后)?(?:答案|结论)(?:应该是|应为|是|为)?|(?:所求(?:的)?)?(?:最少|最小|至少)(?:需要|要)?(?:取出|抽取|取|拿出)?(?:的)?(?:(?:总数|数量)(?:应该是|应为|是|为)?)?|the (?:final )?answer is|minimum is)([ ：:=]*)(?:需要|取出|抽取|取)?\s*([0-9零一二两三四五六七八九十百]*)(.*)$`)
-	qualityCandyBare        = regexp.MustCompile(`^([0-9零一二两三四五六七八九十百]+)\s*(?:颗|个)?(?:糖果)?[。.!！]?$`)
+	qualityCandyAnswer      = regexp.MustCompile(`(?i)^((?:(?:因此|所以|故|综上所述|综上|由此可知|总之)[，,:： ]*)?)((?:最终|最后)?(?:答案|结论)(?:应该是|应为|是|为)?|(?:所求(?:的)?)?(?:最少|最小|至少)(?:需要|要)?(?:取出|抽取|取|拿出)?(?:的)?(?:(?:总数|数量)(?:应该是|应为|是|为)?)?|the (?:final )?answer is|minimum is)([ ：:=]*)(?:需要|取出|抽取|取)?\s*(` + qualityCandyNumberPattern + `)?(.*)$`)
+	qualityCandyBare        = regexp.MustCompile(`^(` + qualityCandyNumberPattern + `)\s*(?:颗|个)?(?:糖果)?[。.!！]?$`)
 	qualityCandyAlternative = regexp.MustCompile(`(?:^|[，,])\s*(?:或|还是|也可能)`)
 	qualityCandyTail        = regexp.MustCompile(`^\s*(?:颗|个)?(?:糖果)?\s*(?:[.!！]?$|[，,。；;：:].*)$`)
+	qualityCandyShapeCount  = regexp.MustCompile(`^\s*(?:颗|个)\s*(?:圆形|五角星形)`)
 )
 
 // 只识别明确结论或独立答案，不把证明中出现的 21 当作答对。
@@ -42,6 +45,20 @@ func qualityCandyFinalAnswer(text string) (int, bool) {
 			// 无数字时必须有明确声明边界，不能把“最少性证明”等标题当作答案。
 			if number == "" && strings.TrimSpace(tail) != "" && match[3] == "" && !strings.HasSuffix(prefix, "是") && !strings.HasSuffix(prefix, "为") && !strings.HasPrefix(tail, "不是") {
 				continue
+			}
+			// 只忽略证明中的分项下界，结论引导词和显式总数声明仍参与冲突判断。
+			if match[1] == "" && strings.HasPrefix(prefix, "至少") && !strings.Contains(prefix, "总数") && !strings.Contains(prefix, "数量") && qualityCandyShapeCount.MatchString(tail) {
+				continue
+			}
+			// “最终答案：最少取21个”包含两层声明，保留外层最终答案的优先级。
+			if number == "" {
+				if nested := qualityCandyAnswer.FindStringSubmatch(strings.TrimSpace(tail)); nested != nil {
+					prefix += nested[2]
+					number, tail = nested[4], nested[5]
+					if nested[1] != "" {
+						rank = 2
+					}
+				}
 			}
 			declared = true
 			if match[1] != "" || strings.Contains(prefix, "最终") || strings.Contains(prefix, "最后") || strings.Contains(prefix, "数量") || strings.Contains(prefix, "总数") || strings.Contains(strings.ToLower(prefix), "final") {
@@ -85,6 +102,8 @@ func qualityCandyFinalAnswer(text string) (int, bool) {
 }
 
 func qualityCandyNumber(text string) (int, bool) {
+	// 前置模式只接受包住整数的成对括号，不能把“2(1)”等表达式拼成21。
+	text = strings.Trim(text, "()（） \t\r\n")
 	if value, err := strconv.Atoi(text); err == nil {
 		return value, true
 	}
