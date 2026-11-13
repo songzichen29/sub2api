@@ -2,6 +2,32 @@ import { describe, expect, it } from 'vitest'
 import { qualityPreviewDocument } from '../qualityPreview'
 
 describe('isolated artwork document', () => {
+  it('reports script failures before artwork execution without exposing error contents', () => {
+    const raw = '<html><head><script>throw new Error("private-artwork-detail")</script></head><body></body></html>'
+    const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'parent-nonce', 7), 'text/html')
+    const scripts = [...doc.querySelectorAll('script')]
+    const bridge = scripts[0]!
+    expect(bridge.hasAttribute('data-sub2api-preview-error')).toBe(true)
+    expect(bridge.getAttribute('nonce')).toBe('parent-nonce')
+    expect(scripts[1]?.textContent).toContain('private-artwork-detail')
+    const policy = doc.querySelector('meta[http-equiv="Content-Security-Policy"]')!
+    expect(policy.compareDocumentPosition(bridge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const listeners = new Map<string, (event: Event) => void>()
+    const sent: unknown[] = []
+    new Function('addEventListener', 'parent', bridge.textContent!)((type: string, callback: (event: Event) => void) => listeners.set(type, callback), {
+      postMessage: (message: unknown, origin: string) => sent.push([message, origin]),
+    })
+    listeners.get('error')!(new Event('error'))
+    expect(sent).toEqual([])
+    listeners.get('error')!(new ErrorEvent('error', { message: 'private-artwork-detail', error: new SyntaxError('private-artwork-detail') }))
+    listeners.get('unhandledrejection')!(new Event('unhandledrejection'))
+    expect(sent).toEqual([
+      [{ type: 'sub2api-quality-preview-error', documentVersion: 7 }, '*'],
+      [{ type: 'sub2api-quality-preview-error', documentVersion: 7 }, '*'],
+    ])
+    expect(JSON.stringify(sent)).not.toContain('private-artwork-detail')
+  })
+
   it('preserves inline drawing scripts containing compact less-than comparisons in document order', () => {
     const setup = 'const colors = ["#284e51", "#edf2e9"];'
     const draw = `const canvas = document.getElementById('scene');
@@ -12,10 +38,10 @@ describe('isolated artwork document', () => {
       <canvas id="scene" width="960" height="600"></canvas><script>${draw}</script>
     </body></html>`
     const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'drawing-nonce'), 'text/html')
-    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit])')]
+    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit]):not([data-sub2api-preview-error])')]
     expect(scripts.map(script => script.textContent)).toEqual([setup, draw])
     expect(scripts.map(script => script.getAttribute('nonce'))).toEqual(['drawing-nonce', 'drawing-nonce'])
-    expect(doc.head.querySelector('script')?.textContent).toBe(setup)
+    expect(doc.head.querySelector('script:not([data-sub2api-preview-error])')?.textContent).toBe(setup)
     expect(doc.querySelector('canvas')?.nextElementSibling?.textContent).toBe(draw)
   })
 
@@ -29,7 +55,7 @@ describe('isolated artwork document', () => {
       <script type="module" nonce="untrusted" onload="alert(1)">for(let i=0;i<5;i++) { console.log(i); }</script>
     </body></html>`
     const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'trusted'), 'text/html')
-    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit])')]
+    const scripts = [...doc.querySelectorAll('script:not([data-sub2api-preview-fit]):not([data-sub2api-preview-error])')]
     expect(scripts).toHaveLength(1)
     expect(scripts[0]?.textContent).toBe('for(let i=0;i<5;i++) { console.log(i); }')
     expect(scripts[0]?.getAttribute('type')).toBe('module')
@@ -85,8 +111,8 @@ describe('isolated artwork document', () => {
     const doc = new DOMParser().parseFromString(qualityPreviewDocument(raw, 'test-nonce'), 'text/html')
     expect(doc.querySelector('svg circle')).not.toBeNull()
     expect(doc.querySelector('style')?.textContent).toContain('background')
-    expect(doc.querySelectorAll('script')).toHaveLength(2)
-    expect(doc.querySelector('script:not([data-sub2api-preview-fit])')?.getAttribute('nonce')).toBe('test-nonce')
+    expect(doc.querySelectorAll('script')).toHaveLength(3)
+    expect(doc.querySelector('script:not([data-sub2api-preview-fit]):not([data-sub2api-preview-error])')?.getAttribute('nonce')).toBe('test-nonce')
     expect(doc.querySelector('script[data-sub2api-preview-fit]')?.getAttribute('nonce')).toBe('test-nonce')
     expect(doc.querySelector('iframe,form,script[src],a[href]')).toBeNull()
     expect(doc.querySelector('meta[http-equiv="refresh"]')).toBeNull()

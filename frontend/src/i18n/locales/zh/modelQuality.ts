@@ -4,6 +4,7 @@ export default {
     modeSupport: '糖果和鹈鹕两种模式均直接调用所选渠道的 Responses 接口；模型、思考强度及服务等级须由渠道支持。',
     candyAnswerNotice: '糖果题仅在本地核对最终答案是否为 21，不评价证明过程、不调用评分模型，也不产生裁判费用。',
     localAnswerCheck: '本地答案核对',
+    previewScriptFailed: '作品脚本执行失败，当前预览可能不完整。',
     retiredModeNotice: '自由创作模式已停用，保存时将移除旧配置；请至少选择一种有效检测模式。',
     candyCredentialNotice: '本站使用绑定渠道的 URL 和 Key 生成糖果题回答，生成按正常用量计费；无需配置裁判 Key 或评分模型。',
     judgeModel: '裁判模型', evidenceConfidence: '证据置信度（非准确率）', judgeUsage: '裁判 Token（输入/输出）',

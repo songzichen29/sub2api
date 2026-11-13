@@ -4,6 +4,7 @@ export default {
     modeSupport: 'Candy and pelican modes call the linked channel’s Responses API directly. The channel must support the requested model, reasoning effort and service tier.',
     candyAnswerNotice: 'Candy checks only whether the final answer is 21 locally. Proofs are not scored, no scoring model is called, and no judging charge applies.',
     localAnswerCheck: 'Local answer check',
+    previewScriptFailed: 'The artwork script failed. This preview may be incomplete.',
     retiredModeNotice: 'Creative mode is retired and its old configurations will be removed when saving. Select at least one supported test mode.',
     candyCredentialNotice: 'The linked channel URL and key generate the candy answer at normal usage rates. No judge key or scoring model is required.',
     judgeModel: 'Judge model', evidenceConfidence: 'Evidence confidence (not accuracy)', judgeUsage: 'Judge tokens (input/output)',

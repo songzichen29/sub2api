@@ -1,7 +1,7 @@
 import DOMPurify from 'dompurify'
 
 /** Only use this document in an opaque-origin sandboxed iframe, never v-html. */
-export function qualityPreviewDocument(raw: string, nonce = ''): string {
+export function qualityPreviewDocument(raw: string, nonce = '', documentVersion = 0): string {
   const source = new DOMParser().parseFromString(raw, 'text/html')
   const inlineScripts = new Map<string, string>()
   for (const script of source.querySelectorAll('script')) {
@@ -46,6 +46,16 @@ export function qualityPreviewDocument(raw: string, nonce = ''): string {
   policy.httpEquiv = 'Content-Security-Policy'
   policy.content = `default-src 'none'; script-src ${nonce ? `'nonce-${nonce}'` : "'unsafe-inline'"}; script-src-attr 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`
   doc.head.prepend(policy)
+  const errorScript = doc.createElement('script')
+  errorScript.setAttribute('data-sub2api-preview-error', 'true')
+  if (nonce) errorScript.setAttribute('nonce', nonce)
+  // 先于作品脚本安装监听，语法错误也能提示；只发送固定状态，不传作品正文或报错内容。
+  errorScript.textContent = `(() => {
+    const report = () => parent.postMessage({ type: 'sub2api-quality-preview-error', documentVersion: ${documentVersion} }, '*');
+    addEventListener('error', event => { if (event instanceof ErrorEvent) report(); });
+    addEventListener('unhandledrejection', report);
+  })();`
+  doc.head.insertBefore(errorScript, policy.nextSibling)
   const charset = doc.createElement('meta')
   charset.setAttribute('charset', 'utf-8')
   doc.head.prepend(charset)
