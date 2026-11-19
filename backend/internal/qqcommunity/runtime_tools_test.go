@@ -164,6 +164,19 @@ func TestRuntimePrivateImageDeliveryUsesSenderAndRechecksPermission(t *testing.T
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestRuntimePrivateImageWorkerExpiresBeforeLoadingConfig(t *testing.T) {
+	s, mock, c, _ := observationFixture(t)
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("SELECT .* FROM qqc_jobs q").WillReturnRows(sqlmock.NewRows(strings.Split(jobColumns, ",")).AddRow("private-expired", c.AppID, runtimePrivateImageCreate, "", "789", "42", []byte(`{}`), "image", "queued", "", []byte{}, "", "", 0, 0, time.Now().Add(-6*time.Minute), nil, "", "", []byte(`{}`), []byte(`{}`), nil))
+	mock.ExpectExec("UPDATE qqc_jobs SET status='running'").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE qqc_jobs SET status").WithArgs("private-expired", "expired", "排队超过回复时限，请重新发送").WillReturnResult(sqlmock.NewResult(0, 1))
+	s.runOne(context.Background())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestRuntimePrivateImageWorkerReservesPersonalQuotaAndDeliversImage(t *testing.T) {
 	s, mock, c, _ := observationFixture(t)
 	c.RuntimeChat = DefaultRuntimeChatConfig()

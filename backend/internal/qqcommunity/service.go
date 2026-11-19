@@ -110,7 +110,7 @@ func (s *Service) maintenance(ctx context.Context) {
 	// An interrupted model request may already have cost money. Preserve its
 	// status for inspection and never replay it after a process crash.
 	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='interrupted',error='处理进程中断，未自动重试；请检查调用用量',finished_at=NOW(),payload='{}' WHERE status='running' AND started_at<NOW()-INTERVAL '10 minutes'`)
-	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='expired',error='排队超过回复时限，请重新发送',finished_at=NOW(),payload='{}' WHERE status='queued' AND created_at<NOW()-INTERVAL '5 minutes' AND event_type IN ('GROUP_AT_MESSAGE_CREATE','GROUP_MESSAGE_CREATE','INTERACTION_CREATE')`)
+	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET status='expired',error='排队超过回复时限，请重新发送',finished_at=NOW(),payload='{}' WHERE status='queued' AND created_at<NOW()-INTERVAL '5 minutes' AND event_type IN ('GROUP_AT_MESSAGE_CREATE','GROUP_MESSAGE_CREATE','INTERACTION_CREATE','RUNTIME_PRIVATE_IMAGE_CREATE')`)
 	_, _ = s.db.ExecContext(ctx, `UPDATE qqc_jobs SET result_image=NULL,result_text='',payload='{}',member_nickname='',message_preview='' WHERE created_at<NOW()-INTERVAL '24 hours' AND (result_image IS NOT NULL OR result_text<>'' OR payload<>'{}'::jsonb OR member_nickname<>'' OR message_preview<>'')`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_bind_requests WHERE expires_at<NOW()`)
 	_, _ = s.db.ExecContext(ctx, `DELETE FROM qqc_private_bind_sessions WHERE expires_at<NOW()`)
@@ -138,7 +138,7 @@ func (s *Service) runOne(parent context.Context) {
 	}
 	ctx, cancel := jobContext(parent, j)
 	defer cancel()
-	if (isGroupMessageEvent(j.EventType) || j.EventType == interactionCreate) && checkModelBudget(ctx, minimumModelBudget) != nil {
+	if (isGroupMessageEvent(j.EventType) || j.EventType == interactionCreate || j.EventType == runtimePrivateImageCreate) && checkModelBudget(ctx, minimumModelBudget) != nil {
 		s.finish(j, "expired", "排队超过回复时限，请重新发送")
 		return
 	}
