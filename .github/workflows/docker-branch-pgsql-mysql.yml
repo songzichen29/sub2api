@@ -17,6 +17,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Resolve build version
+        id: version
+        run: |
+          version="$(sh backend/scripts/resolve-version.sh)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
       - name: Set lowercase owner
         id: repo
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
@@ -45,6 +51,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=sub2api
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.description=Sub2API branch build for pgsql-to-mysql deployment
 
       - name: Build and push Docker image
@@ -54,5 +61,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ github.sha }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
