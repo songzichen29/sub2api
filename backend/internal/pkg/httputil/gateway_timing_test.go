@@ -101,6 +101,10 @@ func TestTraceGatewayUpstreamCancellation(t *testing.T) {
 
 func TestTraceGatewayUpstreamEarlyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
+			t.Error(err)
+			return
+		}
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
 		w.(http.Flusher).Flush()
@@ -108,9 +112,13 @@ func TestTraceGatewayUpstreamEarlyResponse(t *testing.T) {
 	defer server.Close()
 	core, logs := observer.New(zap.InfoLevel)
 	ctx := WithGatewayTiming(logger.IntoContext(context.Background(), zap.New(core)))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader(strings.Repeat("A", 1<<20)))
+	// 上传停在 Read，确保收到 413 时请求仍未写完；不依赖本机缓冲区速度。
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, reader)
 	require.NoError(t, err)
-	req.Header.Set("Expect", "100-continue")
+	req.ContentLength = 1 << 20
 	req, finish := TraceGatewayUpstream(req)
 	resp, err := http.DefaultClient.Do(req)
 	finish(resp, err)
