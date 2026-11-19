@@ -73,6 +73,13 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(payload['own_images'])
         bridge.images.assert_awaited()
 
+    async def test_natural_image_request_is_direct_when_ambient_chat_is_disabled(self):
+        bridge, event = self.fixture('给我一张单人房间里穿黄色宽松背心、站在窗边或者地上捡衣服的日常向图')
+        bridge.cfg['ambient_enabled'] = False
+        await bridge.on_message(event)
+        payload = next(call.args[1] for call in bridge.call.await_args_list if call.args[0] == '/turn')
+        self.assertFalse(payload['ambient'])
+
     async def test_media_only_and_split_text_delivery_do_not_add_quotes(self):
         bridge, event = self.fixture('发一个表情包')
 
