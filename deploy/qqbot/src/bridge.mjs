@@ -11,7 +11,7 @@ import { beijingTime, localRecords, timeGuidance, timezone } from './time.mjs';
 import { nextProactive, canDeliverProactive, proactiveAllowed } from './proactive.mjs';
 import { ConversationScheduler } from './scheduler.mjs';
 import { chatAllowed, groupAdministrator, publicErrors } from './chat-policy.mjs';
-import { parseVoiceCommand, synthesizeVoice } from './voice.mjs';
+import { parseVoiceRequest, synthesizeVoice } from './voice.mjs';
 
 export function createBridge({ config, token, store, root, makeHarness, siteTool=(body,options)=>config.tool(body,options), speech=synthesizeVoice, clock=Date.now, concurrency=4, turnTimeoutMs=225000 }) {
   const workspace = join(root, 'workspace');
@@ -114,11 +114,12 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     const loadedImages=Number.isSafeInteger(input.image_loaded_count) && input.image_loaded_count >= 0 ? input.image_loaded_count : images.length;
     const imageCutoff=Number.isFinite(input.received_at)?Math.min(input.received_at,Date.now()):Date.now();
     const text = boundedText(input.text || (images.length ? '用户发来图片，请根据实际附件理解内容并自然回应。' : input.image_count || input.image_note ? '用户发来图片或引用内容，但附件读取失败。请说明无法读取图片，不要编造看到的内容。' : '有人 @ 了你，请简短回应。'));
-    const voiceRequest = !proactiveJob && parseVoiceCommand(text);
+    const voiceRequest = !proactiveJob && parseVoiceRequest(text);
     const id = opaqueKey(callerScope + ':' + input.message_id), prior = store.turn(id);
     if (prior) {
       if (prior.status !== 'completed') throw new Error('previous_execution_unconfirmed');
-      return { id, text: prior.reply, media:store.media(id), duplicate: true };
+      const media = store.media(id);
+      return { id, text: media.some(item => item.mimeType.startsWith('audio/')) ? '' : prior.reply, media, duplicate: true };
     }
     if (/^\/?清空(?:对话)?$/u.test(text)) {
       const permitted = !input.group || groupAdministrator(c,input);
@@ -127,7 +128,13 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       const answer = permitted ? '已重置这里的会话和检索记忆，原始审计记录保留。' : '本群使用共享上下文，请由群管理员清空。';
       store.finish(id, 'completed', answer); return { id, text: answer };
     }
-    if (sensitiveText(text)) {
+    if (voiceRequest?.mode === 'read' && !voiceRequest.text && input.quote) {
+      if (input.quote.available !== true) throw new Error('voice_quote_unavailable');
+      if (input.quote.truncated) throw new Error('voice_quote_too_long');
+      voiceRequest.text = boundedText(input.quote.text || '', 6000);
+      if (!voiceRequest.text) throw new Error('voice_quote_text_missing');
+    }
+    if (sensitiveText(voiceRequest?.mode === 'read' ? voiceRequest.text : text)) {
       store.begin(id, scope); const answer = '请勿在群聊或聊天记忆中提供密码、验证码、API Key 等信息；账号绑定请使用“绑定”指令。';
       store.finish(id, 'completed', answer); return { id, text: answer };
     }
@@ -139,10 +146,11 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     store.setTurnContext(id, scope, input.message_id, input.sender);
     const description=!voiceRequest && !images.length && !input.image_count && capabilityReply(text,c);
     if(description) {store.finish(id,'completed',description);return {id,text:description};}
-    let worker;
+    let worker, synthesizing = false;
     try {
       store.recordStatus(id,'running');
-      if (voiceRequest) {
+      if (voiceRequest?.mode === 'read') {
+        synthesizing = true;
         const media = await speech(voiceRequest, { signal });
         signal?.throwIfAborted();
         for (const audio of media) store.addMedia(id, audio);
@@ -178,7 +186,10 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
           times: input.group && proactiveAllowed(c, input.chat) ? c.proactive_times : [], required_idle_minutes: c.proactive_idle_minutes ?? 10 },
         conversation_memory: { ...memory, messages: localRecords(memory.messages) }, recalled_original_messages: localRecords(retrieval),
         mode: proactiveJob ? '指定北京时间点主动热群。这是系统触发，不是任何群成员的请求，verified_sender 是机器人自身。结合本群上下文和当前时段自然开一个新话题，1～2句、最多80字，不要复读，不提调度或UTC，不调用工具或查询成员账号；没有合适话题就只输出[跳过]。' : input.ambient ? '自主接话。结合群里多人的上下文；不适合参与就只输出[跳过]。' : '结合上下文回复 verified_sender 的当前提问',
-        text: text.replace(/^\/?(?:聊天|分身)\s*/u, '')
+        text: text.replace(/^\/?(?:聊天|分身)\s*/u, ''),
+        response_mode: voiceRequest?.mode === 'reply'
+          ? '本条用户要求语音回答。正常思考、按需调用工具，只输出适合朗读的实际回答正文；系统会合成并发送语音。不要复述语音指令、编造已发送语音、输出语音占位符或要求用户改发语音合成命令。'
+          : '本条使用普通文字回复，不沿用历史消息中的语音输出要求。'
       };
       if (input.quote) {
         const quoteText=boundedText(input.quote.text || '',6000);
@@ -202,17 +213,25 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       let answer = await runSession(session, blocks,signal,{allowEmpty:true});
       if (!answer && !store.media(id).length) throw new Error('empty_model_response');
       if(store.media(id).length && answer==='[跳过]') answer='来一张表情包。';
+      if (voiceRequest?.mode === 'reply') {
+        if (!answer || answer === '[跳过]') throw new Error('empty_model_response');
+        if (sensitiveText(answer)) throw new Error('voice_sensitive_text');
+        synthesizing = true;
+        const media = await speech({ ...voiceRequest, text: answer }, { signal });
+        signal?.throwIfAborted();
+        for (const audio of media) store.addMedia(id, audio);
+      }
       if (!proactiveJob) {
         const totalBytes=(state?.bytes || 0) + bytes(context) + bytes(answer) + 500;
         if (answer==='[跳过]') store.setConversation(scope,session.id,boundary,totalBytes);
         else store.stageConversation(id,scope,session.id,boundary,totalBytes);
       }
       store.finish(id, 'completed', answer);
-      return { id, text: answer, media:store.media(id), session: session.id };
+      return { id, text: voiceRequest?.mode === 'reply' ? '' : answer, media:store.media(id), session: session.id };
     } catch (error) {
       store.finish(id, 'failed');
       store.discardPending(id);
-      if (!voiceRequest) {
+      if (voiceRequest?.mode !== 'read') {
         if (!proactiveJob) store.dropConversation(scope);
         await discardRuntime(scope);
       }
@@ -221,7 +240,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       console.error(JSON.stringify({ event: 'turn_failed', id, code: error.name, message: message.slice(0, 500) }));
       if (signal?.aborted) throw new Error('turn_expired');
       if (Object.hasOwn(publicErrors, error.message)) throw error;
-      throw new Error(voiceRequest ? 'voice_request_failed' : 'model_unavailable');
+      throw new Error(synthesizing ? 'voice_request_failed' : 'model_unavailable');
     } finally { if(worker)toolContexts.delete(worker.token); }
   }
 

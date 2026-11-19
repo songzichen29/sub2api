@@ -74,6 +74,38 @@ test('voice commands read capability questions literally instead of returning th
   assert.deepEqual(requests.map(body => body.text), ['你有什么工具']);
 });
 
+test('bare voice commands read an available quote with the default voice while explicit text takes precedence', async t => {
+  const { requests, post, input } = await fixture(t);
+  const quote = { message_id: '-88', available: true, sender: '123', text: '被引用的文字。'.repeat(120) };
+  const result = await post('/turn', { ...input, text: '语音合成', quote });
+  assert.equal(result.status, 200);
+  assert.equal(result.media.length, 2);
+  assert.equal(requests.map(body => body.text).join(''), quote.text);
+  assert.ok(requests.every(body => body.referenceId === 'fbe02f8306fc4d3d915e9871722a39d5'));
+  const duplicate = await post('/turn', { ...input, text: '语音合成', quote: { available: false } });
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(requests.length, 2);
+  const explicit = await post('/turn', { ...input, message_id: '2', text: '御姐语音合成 只读这里', quote: { available: false, truncated: true } });
+  assert.equal(explicit.status, 200);
+  assert.deepEqual(requests.at(-1), { text: '只读这里', referenceId: '8a88ef7d77d748e59879d8994e216e01' });
+});
+
+test('unavailable, empty, truncated and sensitive quotes never reach the TTS provider', async t => {
+  const { requests, post, input } = await fixture(t);
+  for (const [i, [quote, error]] of [
+    [{ available: false }, 'voice_quote_unavailable'],
+    [{ available: true, text: '  ' }, 'voice_quote_text_missing'],
+    [{ available: true, text: '截断的文字', truncated: true }, 'voice_quote_too_long']
+  ].entries()) {
+    const result = await post('/turn', { ...input, message_id: String(i + 1), text: '语音合成', quote });
+    assert.equal(result.status, 400);
+    assert.equal(result.error, error);
+  }
+  const sensitive = await post('/turn', { ...input, message_id: '4', text: '语音合成', quote: { available: true, text: 'API Key: sk-1234567890abcdefghijklmnop' } });
+  assert.match(sensitive.text, /请勿/u);
+  assert.equal(requests.length, 0);
+});
+
 test('voice respects private users, scope, sensitive-data checks and current chat quotas', async t => {
   const { config, requests, post, input } = await fixture(t);
   const privateTurn = { ...input, group: false, chat: '789', text: '/语音合成 你好' };
@@ -86,6 +118,18 @@ test('voice respects private users, scope, sensitive-data checks and current cha
   config.total_daily_chat_limit = 1;
   assert.equal((await post('/turn', { ...input, message_id: '2' })).error, 'rate_limited');
   assert.equal(requests.length, 1);
+});
+
+test('natural reading uses the quoted original or explicit literal text without invoking the model', async t => {
+  const { post, input, requests } = await fixture(t);
+  const quote = { available: true, text: '原文：今天开会。', sender: '789', message_id: 'old' };
+  const result = await post('/turn', { ...input, text: '这段话念给我听', quote });
+  assert.equal(result.status, 200);
+  assert.equal(result.text, '');
+  assert.equal(requests[0].text, quote.text);
+  const literal = await post('/turn', { ...input, message_id: 'literal', text: '把“你好，世界。”念给我听', quote: { available: false } });
+  assert.equal(literal.status, 200);
+  assert.equal(requests[1].text, '你好，世界。');
 });
 
 test('permissions are checked again before voice delivery and partial delivery is never replayed', async t => {

@@ -36,6 +36,11 @@ export function isPersonalQuery(event) {
 export function routeEvent(event, config) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) return 'drop';
   if (String(event.self_id) !== config.bot_id) return 'drop';
+  if (event.post_type === 'notice' && event.notice_type === 'notify' && event.sub_type === 'poke') {
+    if (String(event.target_id) !== config.bot_id || String(event.user_id) === config.bot_id || config.enabled === false || config.chat_disabled) return 'drop';
+    if (event.group_id) return config.groups.includes(String(event.group_id)) && !config.group_policies?.some(p => p.group_id === String(event.group_id) && p.disable_chat) ? 'chat' : 'drop';
+    return config.private_users.includes(String(event.user_id)) ? 'chat' : 'drop';
+  }
   if (event.post_type !== 'message') return 'business';
   if (!Array.isArray(event.message) || event.message.some(s => !s || typeof s !== 'object' || typeof s.type !== 'string')) return 'drop';
   if (String(event.user_id) === config.bot_id) return 'drop';

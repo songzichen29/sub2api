@@ -33,6 +33,71 @@ async function fixture(t,run=()=>({finalResponse:'回复'}),options={}) {
   return {store,c,config,calls,bridge,post};
 }
 
+test('poke interactions invoke the conversation model with the current group history',async t=>{
+  const f=await fixture(t,()=>({finalResponse:'怎么啦，接着聊刚才的开黑？'}));
+  f.store.observe('123:group:456',{event_id:'msg:prior',sender:'789',text:'刚才在聊开黑'});
+  const result=await f.post('/turn',{...input,message_id:'poke-event',text:'[戳一戳事件] 当前发送者刚刚戳了你一下，请结合当前会话自然回应这次互动。',ambient:false});
+  assert.equal(result.code,200);
+  assert.equal(result.text,'怎么啦，接着聊刚才的开黑？');
+  assert.equal(f.calls.length,1);
+  assert.equal(f.calls[0].context.verified_sender,'789');
+  assert.ok(f.calls[0].context.conversation_memory.messages.some(m=>m.text==='刚才在聊开黑'));
+});
+
+test('spoken answers synthesize model output, preserve receipt-confirmed memory and do not persist into later turns',async t=>{
+  const spoken=[];
+  const f=await fixture(t,({context})=>{
+    if (context.text.includes('用语音')) {
+      assert.match(context.response_mode,/本条用户要求语音回答/u);
+      assert.equal(context.quoted_message.text,'一起去爬山吧');
+      return {finalResponse:'好呀，周末一起去爬山。'};
+    }
+    assert.match(context.response_mode,/普通文字/u);
+    return {finalResponse:'那就周六出发。'};
+  },{speech:async command=>{spoken.push(command);return [{mimeType:'audio/mpeg',data:'SUQzBAAAAAAAAA=='}];}});
+  const request={...input,text:'用语音回复我，你觉得这个提议怎么样？',quote:{available:true,text:'一起去爬山吧',message_id:'previous'}};
+  const result=await f.post('/turn',request);
+  assert.equal(result.code,200);
+  assert.equal(result.text,'');
+  assert.equal(result.media.length,1);
+  assert.equal(spoken[0].text,'好呀，周末一起去爬山。');
+  assert.equal(spoken[0].referenceId,'fbe02f8306fc4d3d915e9871722a39d5');
+  assert.equal(f.store.history('123:group:456').filter(m=>m.role==='assistant').length,0);
+  const duplicate=await f.post('/turn',request);
+  assert.equal(duplicate.duplicate,true);
+  assert.equal(duplicate.text,'');
+  assert.deepEqual(duplicate.media,result.media);
+  assert.equal(f.calls.length,1);
+  assert.equal(spoken.length,1);
+  await f.post('/delivery/claim',{id:result.id});
+  await f.post('/delivery/finish',{id:result.id,status:'sent',message_ids:['-100']});
+  assert.match(f.store.history('123:group:456').find(m=>m.role==='assistant').text,/好呀，周末一起去爬山。.*\n.*已发送语音/u);
+  const next=await f.post('/turn',{...input,message_id:'next',text:'那就定个时间'});
+  assert.equal(next.text,'那就周六出发。');
+  assert.equal(next.media.length,0);
+  assert.equal(spoken.length,1);
+  assert.equal(next.session,result.session);
+});
+
+test('voice synthesis failures never become text successes and model failures never call TTS',async t=>{
+  for (const [name,run,speech,expected] of [
+    ['tts',()=>({finalResponse:'模型回答'}),async()=>{throw new Error('fetch failed');},'voice_request_failed'],
+    ['model',()=>{throw new Error('upstream unavailable');},async()=>assert.fail('模型失败不合成语音'),'model_unavailable'],
+    ['sensitive',()=>({finalResponse:'API Key: sk-1234567890abcdefghijklmnop'}),async()=>assert.fail('敏感答案不提交第三方'),'voice_sensitive_text'],
+    ['empty',()=>({finalResponse:''}),async()=>assert.fail('空答案不调用语音接口'),'empty_model_response']
+  ]) await t.test(name,async t=>{
+    const f=await fixture(t,run,{speech});
+    const result=await f.post('/turn',{...input,text:'请用语音回答我，讲个故事'});
+    assert.notEqual(result.code,200);
+    assert.equal(result.error,expected);
+    assert.equal(result.text,undefined);
+    assert.equal(f.store.history('123:group:456').filter(m=>m.role==='assistant').length,0);
+    const replay=await f.post('/turn',{...input,text:'请用语音回答我，讲个故事'});
+    assert.equal(replay.error,'previous_execution_unconfirmed');
+    assert.equal(f.calls.length,1);
+  });
+});
+
 test('scheduler preserves per-group order, permits other groups, and cancels queued work',async()=>{
   const s=new ConversationScheduler({concurrency:2,maxPending:1}),a=deferred(),b=deferred(),events=[];
   const first=s.run('a',async()=>{events.push('a1');await a.promise;});

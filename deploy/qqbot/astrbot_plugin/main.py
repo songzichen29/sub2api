@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import hashlib
 import json
 import random
 import time
@@ -151,18 +152,31 @@ class DSHBridge(Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL, priority=100)
     async def on_message(self, event: AstrMessageEvent):
+        raw = event.message_obj.raw_message
+        if not isinstance(raw, dict):
+            try:
+                raw = dict(raw)
+            except (TypeError, ValueError):
+                return
+        if raw.get("post_type") == "notice":
+            if raw.get("notice_type") != "notify" or raw.get("sub_type") != "poke" or str(raw.get("target_id")) != str(raw.get("self_id")):
+                return
+            # 通知没有 QQ 消息 ID，使用原始通知的稳定摘要去重，不使用 AstrBot 随机生成的 ID。
+            notice_id = hashlib.sha256(json.dumps(raw, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
+            raw = {**raw, "message_type": "group" if raw.get("group_id") else "private", "message_id": "poke-" + notice_id,
+                   "message": [{"type": "text", "data": {"text": "[戳一戳事件] 当前发送者刚刚戳了你一下，请结合当前会话自然回应这次互动。"}}]}
         # Own the event before any await so AstrBot never calls a second model.
         event.should_call_llm(False)
         event.stop_event()
         received_at = time.time()
         try:
-            await asyncio.wait_for(self.queued_message(event, received_at), timeout=225)
+            await asyncio.wait_for(self.queued_message(event, received_at, raw), timeout=225)
         except asyncio.TimeoutError:
-            await self.audit_failure(event, "turn_expired")
+            await self.audit_failure(raw, "turn_expired")
             await event.send(MessageChain().message("这条消息等待或处理超时，请重新发送。"))
         except BridgeError as error:
             if "排队消息已满" in str(error):
-                await self.audit_failure(event, "queue_full")
+                await self.audit_failure(raw, "queue_full")
             await event.send(MessageChain().message(str(error)))
 
     @asynccontextmanager
@@ -181,19 +195,13 @@ class DSHBridge(Star):
                 self.pending.pop(key, None)
                 self.locks.pop(key, None)
 
-    async def queued_message(self, event, received_at):
-        raw = event.message_obj.raw_message
-        if not isinstance(raw, dict):
-            try:
-                raw = dict(raw)
-            except (TypeError, ValueError):
-                return
+    async def queued_message(self, event, received_at, raw):
         group = raw.get("message_type") == "group"
         key = ("group:" if group else "private:") + str(raw.get("group_id" if group else "user_id", ""))
         # Acquire before policy/quote/image IO so slow downloads cannot reorder
         # messages from the same conversation.
         async with self.conversation_slot(key):
-            await self.handle_message(event, received_at)
+            await self.handle_message(event, received_at, raw)
 
     async def audit_skip(self, identity, reason):
         try:
@@ -201,28 +209,20 @@ class DSHBridge(Star):
         except Exception:
             logger.warning("QQ DSH skip reason could not be reported: %s", reason)
 
-    async def audit_failure(self, event, reason):
-        raw = event.message_obj.raw_message
-        if isinstance(raw, dict):
-            sender = str(raw.get("user_id", ""))
-            group = raw.get("message_type") == "group"
-            await self.audit_skip({"bot": str(raw.get("self_id", "")), "sender": sender,
-                "chat": str(raw.get("group_id", "")) if group else sender, "group": group,
-                "message_id": str(raw.get("message_id", ""))}, reason)
+    async def audit_failure(self, raw, reason):
+        sender = str(raw.get("user_id", ""))
+        group = raw.get("message_type") == "group"
+        await self.audit_skip({"bot": str(raw.get("self_id", "")), "sender": sender,
+            "chat": str(raw.get("group_id", "")) if group else sender, "group": group,
+            "message_id": str(raw.get("message_id", ""))}, reason)
 
-    async def handle_message(self, event, received_at):
+    async def handle_message(self, event, received_at, raw):
         try:
             await self.policy()
         except Exception:
             logger.warning("QQ DSH policy unavailable")
             return
         cfg = dict(self.cfg)
-        raw = event.message_obj.raw_message
-        if not isinstance(raw, dict):
-            try:
-                raw = dict(raw)
-            except (TypeError, ValueError):
-                return
         sender = str(raw.get("user_id", event.get_sender_id()))
         group = str(raw.get("group_id", ""))
         is_group = raw.get("message_type") == "group"
@@ -241,8 +241,9 @@ class DSHBridge(Star):
         text = "".join(str(s.get("data", {}).get("text", "")) for s in raw.get("message", []) if s.get("type") == "text").strip()
         received_images = image_segments(raw)
         mentioned = any(s.get("type") == "at" and str(s.get("data", {}).get("qq")) == cfg["bot_id"] for s in raw.get("message", []))
-        quote = await self.quoted(raw, event)
-        direct = not is_group or mentioned or requests_tool(text) or (quote and str(quote.get("user_id")) == cfg["bot_id"]) or text.startswith(("/聊天", "/分身", "/清空")) or text in ("清空", "清空对话") or any(name in text for name in cfg.get("names", ["小碗"]))
+        poke = raw.get("post_type") == "notice"
+        quote = None if poke else await self.quoted(raw, event)
+        direct = poke or not is_group or mentioned or requests_tool(text) or (quote and str(quote.get("user_id")) == cfg["bot_id"]) or text.startswith(("/聊天", "/分身", "/清空")) or text in ("清空", "清空对话") or any(name in text for name in cfg.get("names", ["小碗"]))
         loaded = None
         if cfg.get("collect_memes", False) and any(is_sticker(s) for s in image_segments(raw)):
             loaded, _ = await self.images(raw, event)
@@ -296,10 +297,11 @@ class DSHBridge(Star):
                 payload["image_note"] += "每次最多处理4张图片，本条其余图片未处理，请分批发送。"
             reply = next((s for s in raw.get("message", []) if s.get("type") == "reply"), None)
             if reply:
+                quote_text = "".join(str(s.get("data", {}).get("text", "")) for s in (quote or {}).get("message", []) if s.get("type") == "text")
                 payload["quote"] = {"message_id": str(reply.get("data", {}).get("id", "")), "available": quote is not None,
                     "sender": str((quote or {}).get("user_id", "")),
                     "name": str((quote or {}).get("sender", {}).get("card") or (quote or {}).get("sender", {}).get("nickname") or "")[:80],
-                    "text": "".join(str(s.get("data", {}).get("text", "")) for s in (quote or {}).get("message", []) if s.get("type") == "text")[:6000]}
+                    "text": quote_text[:6000], "truncated": len(quote_text) > 6000}
             result = await self.call("/turn", payload)
             answer = result.get("text", "").strip()
             if (not answer or answer == "[跳过]") and not result.get("media"):

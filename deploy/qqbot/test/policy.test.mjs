@@ -37,3 +37,16 @@ test('private users and groups never share a memory scope', () => {
   assert.equal(authorized('token', 'token'), true);
   assert.equal(authorized('other', 'token'), false);
 });
+
+test('only permitted pokes targeting the bot reach chat while other notices keep their business route', () => {
+  const poke = { post_type: 'notice', notice_type: 'notify', sub_type: 'poke', self_id: 123, user_id: 789, target_id: 123, time: 1700000000 };
+  assert.equal(routeEvent(poke, c), 'chat');
+  assert.equal(routeEvent({ ...poke, group_id: 456 }, c), 'chat');
+  for (const rejected of [{ ...poke, target_id: 888 }, { ...poke, user_id: 123 }, { ...poke, user_id: 999 }, { ...poke, self_id: 999 }, { ...poke, group_id: 999 }]) {
+    assert.equal(routeEvent(rejected, c), 'drop');
+  }
+  for (const disabled of [{ ...c, enabled: false }, { ...c, chat_disabled: true }, { ...c, group_policies: [{ group_id: '456', disable_chat: true }] }]) {
+    assert.equal(routeEvent({ ...poke, group_id: 456 }, disabled), 'drop');
+  }
+  assert.equal(routeEvent({ ...poke, notice_type: 'group_increase', sub_type: 'approve' }, c), 'business');
+});

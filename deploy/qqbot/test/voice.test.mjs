@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { parseVoiceCommand, synthesizeVoice } from '../src/voice.mjs';
+import { parseVoiceCommand, parseVoiceRequest, synthesizeVoice } from '../src/voice.mjs';
 import { routeEvent } from '../src/policy.mjs';
 
 // 10ms 单声道 PCM WAV，测试传输真实音频字节而非供应商服务。
@@ -28,7 +28,9 @@ test('documented voice commands select fixed model IDs and leave ordinary conver
     ['御姐语音合成 你好', '御姐', '8a88ef7d77d748e59879d8994e216e01'],
     ['/曼波语音合成：你好', '曼波', '561fcedfdf0e4e1399d1bc4930d50c0e'],
     ['Nico语音合成 你好', 'Nico', '1aa39c8196a349cfb459ef6e0eb2c7bb'],
-    ['语音合成 你好', '可莉', 'a54b3b693c6a4218bcd758a5b8b1fceb']
+    ['可莉语音合成 你好', '可莉', 'a54b3b693c6a4218bcd758a5b8b1fceb'],
+    ['语音合成 你好', '默认', 'fbe02f8306fc4d3d915e9871722a39d5'],
+    ['/语音合成：你好', '默认', 'fbe02f8306fc4d3d915e9871722a39d5']
   ]) assert.deepEqual(parseVoiceCommand(command), { voice, referenceId, text: '你好' });
   assert.equal(parseVoiceCommand('/语音合成').text, '');
   for (const text of ['什么是语音合成', '你能语音合成吗', '不要御姐语音合成 你好', '未知语音合成 你好', '你好']) {
@@ -48,6 +50,22 @@ test('voice commands route to chat while binding, account queries and group boun
   }
   assert.equal(routeEvent(event('查下我的余额'), config), 'business');
   assert.equal(routeEvent({ ...event('/语音合成 你好'), message_type: 'private', user_id: 999 }, config), 'business');
+});
+
+test('current natural requests distinguish spoken answers, literal reading and explicit text overrides', () => {
+  for (const text of ['用语音回复我，为什么天空是蓝色的？', '今天怎么样？请用语音回答我', '你能不能用语音给我讲个故事', '给我发条语音吧', '语音说一下你的看法', '用语音回复，别用文字', '你用语音回我', '我想听你用语音讲个故事']) {
+    assert.equal(parseVoiceRequest(text)?.mode, 'reply', text);
+    assert.equal(parseVoiceRequest(text).referenceId, 'fbe02f8306fc4d3d915e9871722a39d5');
+  }
+  assert.equal(parseVoiceRequest('麻烦你用御姐的声音回答我，讲个笑话').voice, '御姐');
+  for (const text of ['这段话念给我听', '把引用的内容读给我听', '请朗读：你好', '把“你好，世界。”念给我听', '语音合成 你好']) {
+    assert.equal(parseVoiceRequest(text)?.mode, 'read', text);
+  }
+  assert.equal(parseVoiceRequest('把“你好，世界。”念给我听').text, '你好，世界。');
+  assert.equal(parseVoiceRequest('用御姐的声音把这句话念给我听：你好').text, '你好');
+  for (const text of ['你好', '不要用语音回复我', '请不要用语音回答', '什么是语音回复？', '你支持语音回复吗', '他想让你用语音回复他', '“用语音回复我”是什么意思', '用语音回复我，还是用文字吧', '请用语音回答，算了，不需要语音了']) {
+    assert.equal(parseVoiceRequest(text), undefined, text);
+  }
 });
 
 test('the TTS client posts the documented JSON and splits every character without breaking emoji', async t => {

@@ -29,12 +29,35 @@ const voices = {
   李云龙: '2e576989a8f94e888bf218de90f8c19a'
 };
 const commandPattern = new RegExp(`^/?(${Object.keys(voices).join('|')})?语音合成(?=\\s|[:：]|$)\\s*[:：]?\\s*([\\s\\S]*)$`, 'u');
+const requestPrefix = '(?:(?:我想|我希望)(?:让你|听你|你)\\s*)?(?:(?:请|麻烦|劳驾)(?:你)?\\s*)?(?:你\\s*)?(?:(?:能不能|可不可以|可以|能)\\s*)?(?:(?:帮|给|替)我\\s*)?';
+const voiceNames = Object.keys(voices).join('|');
+const readTarget = '(?:这段话|这句话|这段文字|这条消息|引用(?:的)?(?:消息|内容|文字)?|上面(?:的)?(?:消息|内容|文字))';
+const readingPattern = new RegExp(`^${requestPrefix}(?:用(${voiceNames})(?:的)?(?:声音|音色|语音)?\\s*)?(?:把|将)?${readTarget}?(?:朗读|念|读)(?:一下)?(?:给我听|出来)?(?:一下)?(?:好吗|可以吗|吧|吗)?[。？！!?]?\\s*(?:[:：]\\s*([\\s\\S]*))?$`, 'u');
+const quotedReadingPattern = new RegExp(`^${requestPrefix}(?:用(${voiceNames})(?:的)?(?:声音|音色|语音)?\\s*)?(?:把|将)?[“「"]([\\s\\S]+)[”」"](?:朗读|念|读)(?:一下)?(?:给我听|出来)(?:吧|好吗|吗)?[。？！!?]?$`, 'u');
+const replyPattern = new RegExp(`^${requestPrefix}(?:(?:用|通过)(?:(${voiceNames})(?:的)?(?:声音|音色|语音)?|语音)(?:来)?(?:给我|跟我|和我)?(?:回复|回答|答复|回我|讲|说|解释|介绍|聊|告诉)|语音(?:回复|回答|答复|回我|讲|说)|(?:给我)?发(?:一)?(?:条|段|个)?语音(?:回复|回答|答复|给我|讲|说|聊|吧|好吗|可以吗|吗|$))`, 'u');
+const textReplyPattern = new RegExp(`^${requestPrefix}(?:(?:不要|别|不用|不需要|无需)(?:再)?(?:用|发)?(?:语音|(?:${voiceNames})(?:的)?(?:声音|音色))|(?:还是|改成|改用)?(?:只)?(?:用|发)?(?:文字|文本)(?:回复|回答|答复|就好|就行|吧|$))`, 'u');
 
 export function parseVoiceCommand(text) {
   const match = commandPattern.exec(text);
   if (!match) return;
-  const voice = match[1] || '可莉';
-  return { voice, referenceId: voices[voice], text: match[2].trim() };
+  const voice = match[1];
+  return { voice: voice || '默认', referenceId: voice ? voices[voice] : 'fbe02f8306fc4d3d915e9871722a39d5', text: match[2].trim() };
+}
+
+export function parseVoiceRequest(text) {
+  const command = parseVoiceCommand(text);
+  if (command) return { ...command, mode: 'read' };
+  const reading = quotedReadingPattern.exec(text) || readingPattern.exec(text);
+  if (reading) return { ...parseVoiceCommand((reading[1] || '') + '语音合成'), text: (reading[2] || '').trim(), mode: 'read' };
+  let request;
+  // 只读当前消息中的直接请求；后面的“改用文字”等明确指令覆盖前面的语音要求。
+  for (const clause of text.split(/[，,。！!？?；;\n]/u)) {
+    const directive = clause.trim();
+    if (textReplyPattern.test(directive)) { request = undefined; continue; }
+    const reply = replyPattern.exec(directive);
+    if (reply) request = { ...parseVoiceCommand((reply[1] || '') + '语音合成'), mode: 'reply' };
+  }
+  return request;
 }
 
 export async function synthesizeVoice(command, { signal, fetcher = fetch } = {}) {

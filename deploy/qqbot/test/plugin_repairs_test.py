@@ -206,6 +206,116 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bridge.call.await_args.args[0], '/events')
         self.assertEqual(bridge.call.await_args.args[1]['reason'], 'sampled_out')
 
+    async def test_natural_voice_requests_bypass_ambient_sampling_and_send_real_audio_packets(self):
+        for text in ('请用语音回复我，讲个故事', '你能不能用语音给我讲个故事', '用御姐的声音回答我，讲个笑话', '给我发条语音吧', '这段话念给我听', '把引用的内容读给我听', '你用语音回我', '我想听你用语音讲个故事'):
+            with self.subTest(text=text):
+                bridge, event = self.fixture(text)
+                bridge.cfg['ambient_enabled'] = False
+                bridge.cfg['ambient_sample_percent'] = 0
+
+                async def call(path, body):
+                    if path == '/turn':
+                        self.assertFalse(body['ambient'])
+                        return {'id': 'natural-voice', 'text': '', 'media': [{'mimeType': 'audio/mpeg', 'data': 'SUQzBAAAAAAAAA=='}]}
+                    return {'claimed': True, 'ok': True}
+
+                bridge.call.side_effect = call
+                event.bot.api.call_action.return_value = {'message_id': -100}
+                await bridge.on_message(event)
+                self.assertEqual(event.bot.api.call_action.await_count, 1)
+                self.assertEqual(event.bot.api.call_action.await_args.kwargs['message'][0]['type'], 'record')
+                self.assertEqual(bridge.call.await_args.args, ('/delivery/finish', {'id': 'natural-voice', 'status': 'sent', 'message_ids': ['-100']}))
+
+    async def test_bare_voice_commands_forward_scoped_quotes_and_report_truncation(self):
+        for private in (False, True):
+            for text in ('被引用的正文', '字' * 6001):
+                with self.subTest(private=private, length=len(text)):
+                    bridge, event = self.fixture('语音合成', private=private)
+                    bridge.cfg['ambient_enabled'] = False
+                    bridge.quoted = types.MethodType(Bridge.quoted, bridge)
+                    event.message_obj.raw_message['message'].append({'type': 'reply', 'data': {'id': '-88'}})
+                    if not private:
+                        event.message_obj.raw_message['message'].append({'type': 'at', 'data': {'qq': '123'}})
+                    event.bot.api.call_action.return_value = {
+                        'message_type': 'private' if private else 'group', 'group_id': None if private else 456,
+                        'user_id': 789 if private else 123, 'message': [{'type': 'text', 'data': {'text': text}}]}
+                    await bridge.on_message(event)
+                    payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
+                    self.assertEqual(payload['text'], '语音合成')
+                    self.assertFalse(payload['ambient'])
+                    self.assertTrue(payload['quote']['available'])
+                    self.assertEqual(payload['quote']['text'], text[:6000])
+                    self.assertEqual(payload['quote']['truncated'], len(text) > 6000)
+
+    async def test_cross_group_voice_quotes_are_unavailable(self):
+        bridge, event = self.fixture('语音合成')
+        bridge.quoted = types.MethodType(Bridge.quoted, bridge)
+        event.message_obj.raw_message['message'].append({'type': 'reply', 'data': {'id': '-88'}})
+        event.bot.api.call_action.return_value = {'message_type': 'group', 'group_id': 999, 'user_id': 123,
+                                                'message': [{'type': 'text', 'data': {'text': '其他群的文字'}}]}
+        await bridge.on_message(event)
+        payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
+        self.assertFalse(payload['quote']['available'])
+        self.assertEqual(payload['quote']['text'], '')
+
+    async def test_native_pokes_use_the_model_turn_and_confirm_actual_reply_receipts(self):
+        for private in (False, True):
+            with self.subTest(private=private):
+                bridge, event = self.fixture(private=private)
+                bridge.cfg['ambient_enabled'] = False
+                raw = {'post_type': 'notice', 'notice_type': 'notify', 'sub_type': 'poke', 'self_id': 123,
+                       'user_id': 789, 'target_id': 123, 'time': 1700000000}
+                if not private:
+                    raw['group_id'] = 456
+                event.message_obj.raw_message = raw
+                bridge.images = types.MethodType(Bridge.images, bridge)
+
+                async def call(path, body):
+                    if path == '/turn':
+                        return {'id': 'poke-turn', 'text': '怎么啦，接着聊？'}
+                    return {'claimed': True, 'ok': True}
+
+                bridge.call.side_effect = call
+                await bridge.on_message(event)
+                payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
+                self.assertIn('戳一戳事件', payload['text'])
+                self.assertFalse(payload['ambient'])
+                self.assertEqual(payload['group'], not private)
+                self.assertEqual(payload['chat'], '789' if private else '456')
+                self.assertEqual(payload['sender'], '789')
+                self.assertTrue(payload['message_id'].startswith('poke-'))
+                bridge.quoted.assert_not_awaited()
+                event.bot.api.call_action.assert_awaited_once_with(
+                    'send_private_msg' if private else 'send_group_msg',
+                    message=[{'type': 'text', 'data': {'text': '怎么啦，接着聊？'}}],
+                    **({'user_id': 789} if private else {'group_id': 456}))
+                self.assertEqual(bridge.call.await_args.args,
+                                 ('/delivery/finish', {'id': 'poke-turn', 'status': 'sent', 'message_ids': ['-100']}))
+
+    async def test_replayed_pokes_keep_the_same_id_despite_astrbot_random_ids(self):
+        bridge, event = self.fixture()
+        event.message_obj.raw_message = {'post_type': 'notice', 'notice_type': 'notify', 'sub_type': 'poke',
+                                        'self_id': 123, 'user_id': 789, 'target_id': 123, 'group_id': 456, 'time': 1700000000}
+        for message_id in ('astrbot-random-one', 'astrbot-random-two'):
+            event.message_obj.message_id = message_id
+            await bridge.on_message(event)
+        payloads = [c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn']
+        self.assertEqual(len(payloads), 2)
+        self.assertEqual(payloads[0]['message_id'], payloads[1]['message_id'])
+
+    async def test_other_notices_targets_and_disabled_scopes_never_invoke_the_model(self):
+        for changes, disabled in [({'target_id': 999}, False), ({'notice_type': 'group_increase'}, False),
+                                  ({'user_id': 123}, False), ({'group_id': 999}, False), ({}, True)]:
+            with self.subTest(changes=changes, disabled=disabled):
+                bridge, event = self.fixture()
+                bridge.cfg['chat_disabled'] = disabled
+                event.message_obj.raw_message = {'post_type': 'notice', 'notice_type': 'notify', 'sub_type': 'poke',
+                                                'self_id': 123, 'user_id': 789, 'target_id': 123, 'group_id': 456,
+                                                'time': 1700000000, **changes}
+                await bridge.on_message(event)
+                self.assertFalse(any(c.args[0] == '/turn' for c in bridge.call.await_args_list))
+                event.bot.api.call_action.assert_not_awaited()
+
 
 if __name__ == '__main__':
     unittest.main()
