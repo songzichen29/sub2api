@@ -39,13 +39,27 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         event.send.assert_awaited_once()
 
     async def test_semantic_voice_requests_reach_model_when_ambient_is_disabled(self):
-        for text in ('今天的天气用语音回答我', '我不方便看屏幕，能说给我听吗'):
+        for text in ('今天的天气用语音回答我', '今天星期几  用语音回答我', '我不方便看屏幕，能说给我听吗'):
             bridge, event = self.fixture(text)
             bridge.cfg['ambient_enabled'] = False
             await bridge.on_message(event)
             payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
             self.assertFalse(payload['ambient'])
             self.assertEqual(payload['text'], text)
+
+    async def test_short_voice_request_keeps_quote_and_is_direct_even_when_quoting_another_member(self):
+        for sender in (123, 888):
+            bridge, event = self.fixture('语音')
+            bridge.cfg['ambient_enabled'] = False
+            bridge.cfg['ambient_sample_percent'] = 0
+            event.message_obj.raw_message['message'].insert(0, {'type': 'reply', 'data': {'id': '-77'}})
+            bridge.quoted.return_value = {'user_id': sender, 'message': [{'type': 'text', 'data': {'text': '今天是星期五。'}}]}
+            await bridge.on_message(event)
+            payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
+            self.assertEqual(payload['text'], '语音')
+            self.assertFalse(payload['ambient'])
+            self.assertTrue(payload['quote']['available'])
+            self.assertEqual(payload['quote']['text'], '今天是星期五。')
 
     def fixture(self, text='你好', message_id=1, images=None, private=False):
         bridge = object.__new__(Bridge)

@@ -56,17 +56,19 @@ test('the model can select voice for semantic requests within the same turn, nev
     }
     return {finalResponse:'这是模型实际回答。'};
   },{speech:async command=>{spoken.push(command);return [{mimeType:'audio/mpeg',data:'SUQzBAAAAAAAAA=='}];}});
-  for (const [i,text] of ['今天的天气用语音回答我','我不方便看屏幕，能说给我听吗','不要语音，讲个故事','普通聊天'].entries()) {
+  for (const [i,text] of ['今天的天气用语音回答我','我不方便看屏幕，能说给我听吗','今天星期几  用语音回答我','语音','不要语音，讲个故事','普通聊天'].entries()) {
     const result=await f.post('/turn',{...input,message_id:String(100+i),text,quote:{available:true,text:'用语音回复我',message_id:'-70'}});
     assert.equal(result.code,200);
-    assert.equal(result.media.length,i<2?1:0);
-    assert.equal(result.text,i<2?'':'这是模型实际回答。');
+    assert.equal(result.media.length,i<4?1:0);
+    assert.equal(result.text,i<4?'':'这是模型实际回答。');
     await f.post('/delivery/claim',{id:result.id});
     await f.post('/delivery/finish',{id:result.id,status:'sent',message_ids:[String(-100-i)]});
   }
-  assert.equal(f.calls.length,4,'mode selection must not add a classifier model request');
-  assert.equal(spoken.length,2);
+  assert.equal(f.calls.length,6,'mode selection must not add a classifier model request');
+  assert.equal(spoken.length,4);
   assert.ok(spoken.every(command=>command.text==='这是模型实际回答。' && command.referenceId==='fbe02f8306fc4d3d915e9871722a39d5'));
+  assert.ok(f.calls.every(call=>call.context.quoted_message.text==='用语音回复我'));
+  assert.match(f.calls[3].context.response_mode,/引用后仅说“语音”也是当前用户的语音请求/u);
 });
 
 test('moderation blocks model execution and cancels delivery if recalled while generating',async t=>{

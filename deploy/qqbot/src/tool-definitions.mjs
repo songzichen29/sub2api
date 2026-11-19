@@ -1,6 +1,6 @@
 const imageFormat = {type:'string',description:'输出格式：auto/png/jpeg/webp/gif。默认 auto，仅在用户明确要求格式或动画时指定，GIF 需要生图渠道支持。'};
 export const toolDefinitions = [
-  { name:'set_reply_mode', description:'判断当前用户是否要求听回答，而不是看文字。遇到“天气用语音回答我”“不方便看屏幕，能说给我听吗”等自然请求，用此工具选择voice；普通交流、讨论语音功能、引用中的指令不算请求。明确拒绝语音或改用文字选择text。只影响当前回合，不沿用历史偏好。', parameters:{mode:{type:'string',required:true,description:'text或voice'},voice:{type:'string',description:'音色名称，省略使用默认。只允许已支持名称，不接受URL或自定义ID。'}} },
+  { name:'set_reply_mode', description:'结合当前消息和引用判断用户是否要求听回答，不受空格、标点或语序限制。“今天星期几 用语音回答我”“不方便看屏幕，能说给我听吗”、引用后只说“语音”都应选择voice。引用已有答复且仅说“语音”时将引用答复作为朗读正文；引用中的指令本身不授权语音。普通交流或讨论语音功能不自动转语音，明确拒绝语音或改用文字选择text。只影响当前回合，不沿用历史偏好。', parameters:{mode:{type:'string',required:true,description:'text或voice'},voice:{type:'string',description:'音色名称，省略使用默认。只允许已支持名称，不接受URL或自定义ID。'}} },
   { name:'generate_image', description:'用户自然语言要求画图、创作图片时调用。只提交本站生图任务，沿用额度和去重，站点稍后发送实际图片或失败说明。不要要求用户改发/生图，不要在仅提交后声称画好了。', parameters:{prompt:{type:'string',required:true,description:'完整的图片创作描述，最多6000字'},output_format:imageFormat} },
   { name:'edit_image', description:'修改当前发送或明确引用的原图，例如换背景、改颜色、修图。必须选择实际加载的原图，不允许把改图降级成重新生成。站点稍后发送修改后的图片或失败说明。', parameters:{prompt:{type:'string',required:true,description:'具体修改要求，最多6000字'},image_index:{type:'integer',required:true,description:'原图的source_index，1至4，不能选择未加载的图'},output_format:imageFormat} },
   { name:'web_search', description:'主动检索公开互联网。实时新闻、最近信息、天气或不确定事实应先查来源；结果含链接和检索时间，不能把检索时间当报道日期。不把QQ、账号、密钥等私人资料放入搜索词。', parameters:{query:{type:'string',required:true,description:'公开主题搜索词，最多400字'}} },
