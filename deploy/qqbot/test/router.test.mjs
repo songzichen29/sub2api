@@ -4,6 +4,42 @@ import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 import { createRouter } from '../src/router.mjs';
+import { routeEvent } from '../src/policy.mjs';
+
+test('private routing keeps ordinary words in chat, cancellation and own queries in business',()=>{
+  const config={bot_id:'123',groups:['456'],private_users:['789'],business_commands:[]};
+  const event=text=>({post_type:'message',message_type:'private',self_id:123,user_id:789,message_id:1,message:[{type:'text',data:{text}}]});
+  for(const text of ['OpenAI','DeepSeek','确认一下今天的天气','余额是什么'])assert.equal(routeEvent(event(text),config),'chat',text);
+  for(const text of ['取消','/取消','查下我的余额','/今日用量','抽奖次数'])assert.equal(routeEvent(event(text),config),'business',text);
+});
+
+test('router preserves per-conversation order without blocking other groups and obeys ingress decisions',{timeout:10000},async t=>{
+  const business=new WebSocketServer({port:0}),chat=new WebSocketServer({port:0});
+  await Promise.all([once(business,'listening'),once(chat,'listening')]);
+  const frames=[[],[]],peers=[];
+  for(const [i,upstream] of [business,chat].entries())upstream.on('connection',ws=>{peers[i]=ws;ws.on('message',raw=>frames[i].push(JSON.parse(raw)));});
+  let release;
+  const hold=new Promise(resolve=>{release=resolve;});
+  const gates=[];
+  const router=createRouter({config:{bot_id:'123',groups:['456','457'],private_users:['789'],business_commands:[],business_observation:true,business_ws_url:`ws://127.0.0.1:${business.address().port}`},onebotToken:'site',astrbotToken:'chat',chatUrl:`ws://127.0.0.1:${chat.address().port}`,
+    observe:async event=>{if(event.message_id===1)await hold;},checkEvent:async body=>{gates.push(body.event.message_id);return {allowed:body.event.message_id!==4,business:body.event.message_type==='private'};}});
+  router.server.listen(0,'127.0.0.1');await once(router.server,'listening');
+  const gateway=new WebSocket(`ws://127.0.0.1:${router.server.address().port}/onebot/ws`,{headers:{Authorization:'Bearer site','X-Self-ID':'123','X-Client-Role':'Universal'}});
+  t.after(async()=>{release();gateway.terminate();await router.close();for(const s of [business,chat]){for(const ws of s.clients)ws.terminate();await new Promise(resolve=>s.close(resolve));}});
+  await once(gateway,'open');
+  for(let n=0;n<100 && peers.filter(Boolean).length<2;n++)await delay(10);
+  const event=(message_id,group_id=456)=>({post_type:'message',message_type:'group',self_id:123,user_id:789,message_id,group_id,sub2api_received_at:1,message:[{type:'text',data:{text:'OpenAI'}}]});
+  for(const e of [event(1),event(2),event(3,457),event(4,457),{...event(5),message_type:'private'}])gateway.send(JSON.stringify(e));
+  for(let n=0;n<100 && (!frames[1].some(e=>e.message_id===3) || !frames[0].some(e=>e.message_id===5));n++)await delay(10);
+  assert.deepEqual(frames[1].filter(e=>e.post_type==='message').map(e=>e.message_id),[3]);
+  assert.ok(frames[0].some(e=>e.message_id===5 && !e.sub2api_observe_only),'active binding session overrides a word that locally routes to chat');
+  assert.equal(frames.flat().some(e=>e.message_id===4),false,'blocked traffic reaches neither model nor business consumer');
+  assert.ok(frames[1].find(e=>e.message_id===3).sub2api_received_at>1,'caller cannot spoof the receipt timestamp');
+  release();
+  for(let n=0;n<100 && !frames[1].some(e=>e.message_id===2);n++)await delay(10);
+  assert.deepEqual(frames[1].filter(e=>e.post_type==='message').map(e=>e.message_id),[3,1,2]);
+  assert.ok(gates.indexOf(1)<gates.indexOf(2));
+});
 
 test('isolated OneBot routing and colliding API echoes retain one destination', { timeout: 12000 }, async () => {
   const business = new WebSocketServer({ port: 0 }), chat = new WebSocketServer({ port: 0 });

@@ -5,19 +5,20 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { authorized, routeEvent, shouldObserveGroup } from './policy.mjs';
 import { bridgeClient } from './runtime-config.mjs';
+import { errorFields } from './diagnostics.mjs';
 
-export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000, observe }) {
+export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws://astrbot:6199/ws', retryMs = 5000, observe, checkEvent }) {
   // A 6 MiB image becomes roughly 8 MiB when OneBot carries it as base64 JSON.
   // Keep the limit bounded while allowing the configured image input size through.
   const onebotMaxPayload = 12 * 1024 * 1024;
   const peers = new Map(), pending = new Map(), timers = new Set();
   let gateway, closing = false;
-  let observations = Promise.resolve();
+  const observations = new Map();
   const counts = { business: 0, chat: 0, drop: 0, observed: 0, unavailable: 0 };
   const server = http.createServer((req, res) => {
     if (req.url !== '/health') { res.writeHead(404); return res.end(); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ gateway: gateway?.readyState === WebSocket.OPEN, business: peers.get('business')?.readyState === WebSocket.OPEN, chat: peers.get('chat')?.readyState === WebSocket.OPEN, counts }));
+    res.end(JSON.stringify({ gateway: gateway?.readyState === WebSocket.OPEN, business: peers.get('business')?.readyState === WebSocket.OPEN, chat: peers.get('chat')?.readyState === WebSocket.OPEN, pending_scopes: observations.size, counts }));
   });
   const listener = new WebSocketServer({ noServer: true, maxPayload: onebotMaxPayload });
   server.on('upgrade', (req, socket, head) => {
@@ -47,7 +48,7 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
       pending.set(echo, { peer, original: action.echo, expires: Date.now() + 20000 });
       owner.send(JSON.stringify({ ...action, echo }));
     });
-    peer.on('error', () => {});
+    peer.on('error', error => console.error(JSON.stringify({ event: 'upstream_connection_failed', peer: name, ...errorFields(error) })));
     peer.on('close', () => {
       if (peers.get(name) === peer) peers.delete(name);
       for (const [echo, item] of pending) if (item.peer === peer) pending.delete(echo);
@@ -73,31 +74,47 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
       if (String(event.self_id) !== config.bot_id) return;
       // Only this router decides whether an event may execute business logic.
       delete event.sub2api_observe_only;
+      delete event.sub2api_received_at;
+      if (event.post_type === 'message') event.sub2api_received_at = Date.now();
       const clean = JSON.stringify(event);
       if (event.post_type === 'meta_event') {
         for (const peer of peers.values()) if (peer.readyState === WebSocket.OPEN) peer.send(clean);
         return;
       }
-      const route = routeEvent(event, config); counts[route]++;
-      if (route !== 'business' && shouldObserveGroup(event, config)) {
-        const business = peers.get('business');
-        if (business?.readyState === WebSocket.OPEN) {
-          business.send(JSON.stringify({ ...event, sub2api_observe_only: true })); counts.observed++;
-        } else { counts.unavailable++; console.error(JSON.stringify({ event: 'observation_not_forwarded', message_id: event.message_id })); }
-      }
-      const peer = peers.get(route);
-      const forward = () => {
-        if (gateway !== ws) return;
-        if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
-        else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
+      const dispatch = async () => {
+        const initialRoute = routeEvent(event, config);
+        const gate = checkEvent && event.post_type === 'message' && (event.message_type === 'private' || shouldObserveGroup(event, config))
+          ? await checkEvent({ phase: 'route', event }) : { allowed: true };
+        const route = !gate.allowed ? 'drop' : gate.business === true ? 'business' : initialRoute;
+        counts[route]++;
+        if (!gate.allowed) {
+          console.info(JSON.stringify({event:'event_blocked',message_id:event.message_id,reason:gate.reason || 'scope_denied'}));
+          return;
+        }
+        if (route !== 'business' && shouldObserveGroup(event, config)) {
+          const business = peers.get('business');
+          if (business?.readyState === WebSocket.OPEN) {
+            business.send(JSON.stringify({ ...event, sub2api_observe_only: true })); counts.observed++;
+          } else { counts.unavailable++; console.error(JSON.stringify({ event: 'observation_not_forwarded', message_id: event.message_id })); }
+        }
+        const forward = () => {
+          if (gateway !== ws) return;
+          const peer = peers.get(route);
+          if (peer?.readyState === WebSocket.OPEN) peer.send(clean);
+          else if (route !== 'drop') { counts.unavailable++; console.error(JSON.stringify({ event: 'event_not_forwarded', route, message_id: event.message_id })); }
+        };
+        if (observe && shouldObserveGroup(event, config)) {
+          await observe(event);
+        }
+        forward();
       };
-      if (observe && shouldObserveGroup(event, config)) {
-        observations = observations.then(async () => {
-          try { await observe(event); }
-          catch { console.error(JSON.stringify({ event: 'group_history_not_persisted', message_id: event.message_id })); }
-          forward();
-        }).catch(() => {});
-      } else forward();
+      const scope = event.message_type === 'private' ? `private:${event.user_id}` : `group:${event.group_id}`;
+      const previous = observations.get(scope) || Promise.resolve();
+      const work = previous.then(dispatch).catch(error => {
+        counts.unavailable++;
+        console.error(JSON.stringify({ event: 'event_dispatch_failed', message_id: event.message_id, ...errorFields(error) }));
+      }).finally(() => { if (observations.get(scope) === work) observations.delete(scope); });
+      observations.set(scope, work);
     });
     ws.on('close', () => {
       if (gateway !== ws) return;
@@ -107,7 +124,7 @@ export function createRouter({ config, onebotToken, astrbotToken, chatUrl = 'ws:
       for (const [echo, item] of pending) { pending.delete(echo); rejected(item.peer, item.original); }
       for (const peer of peers.values()) peer.close();
     });
-    ws.on('error', () => {});
+    ws.on('error', error => console.error(JSON.stringify({ event: 'gateway_connection_failed', ...errorFields(error) })));
   });
   const expiry = setInterval(() => {
     for (const [echo, item] of pending) if (item.expires < Date.now()) {
@@ -133,11 +150,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const config = JSON.parse(readFileSync('/run/qqbot/config.json', 'utf8'));
   const client = bridgeClient('http://bridge:8787', readFileSync('/run/secrets/bridge-token', 'utf8').trim());
   Object.assign(config, await client.policy());
-  const policyTimer = setInterval(() => client.policy().then(policy => Object.assign(config, policy)).catch(() => console.error(JSON.stringify({ event: 'policy_sync_failed' }))), 5000).unref();
+  const policyTimer = setInterval(() => client.policy().then(policy => Object.assign(config, policy)).catch(error => console.error(JSON.stringify({ event: 'policy_sync_failed', ...errorFields(error) }))), 5000).unref();
   const router = createRouter({
     config,
     onebotToken: readFileSync('/run/secrets/onebot-token', 'utf8').trim(),
-    astrbotToken: readFileSync('/run/secrets/astrbot-token', 'utf8').trim(), observe: event => client.observe(event)
+    astrbotToken: readFileSync('/run/secrets/astrbot-token', 'utf8').trim(), observe: event => client.observe(event), checkEvent: body => client.checkEvent(body)
   });
   router.server.listen(6200, '0.0.0.0', () => console.log('QQBot OneBot router listening on 6200'));
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, async () => { clearInterval(policyTimer); await router.close(); process.exit(); });

@@ -542,6 +542,15 @@ func (s *Service) sendFormatted(ctx context.Context, c Config, j Job, text strin
 }
 
 func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job, text string, img []byte, seq int, keyboard *messageKeyboard) error {
+	if j.EventType == runtimePrivateQueryCreate {
+		current, err := s.Config(ctx)
+		if err != nil {
+			return err
+		}
+		if current.AppID != j.AppID || !current.allowsPrivateChat(j.MemberID) {
+			return ErrDisabled
+		}
+	}
 	if j.EventType == runtimePrivateImageCreate {
 		current, err := s.Config(ctx)
 		if err != nil {

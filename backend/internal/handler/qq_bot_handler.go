@@ -45,6 +45,13 @@ func (h *QQBotHandler) ChatRuntimeTools(c *gin.Context) {
 	}
 	h.service.Community.ServeRuntimeTools(c.Writer, c.Request)
 }
+func (h *QQBotHandler) ChatRuntimeIngress(c *gin.Context) {
+	if h.Community == nil || h.service.Community == nil {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	h.service.Community.ServeRuntimeIngress(c.Writer, c.Request)
+}
 func (h *QQBotHandler) GetConfig(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	cfg, err := h.service.Config(c.Request.Context())

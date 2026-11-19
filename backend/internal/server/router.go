@@ -123,6 +123,7 @@ func registerRoutes(
 	v1.GET("/qq-bot/runtime/config", h.QQBot.ChatRuntime)
 	v1.POST("/qq-bot/runtime/status", h.QQBot.ChatRuntime)
 	v1.POST("/qq-bot/runtime/tools", h.QQBot.ChatRuntimeTools)
+	v1.POST("/qq-bot/runtime/ingress", h.QQBot.ChatRuntimeIngress)
 
 	// 面板 API 限流器：认证接口按用户 ID、公开接口按安全客户端 IP，
 	// 防止高频刷管理面接口打爆数据库（阈值可在系统设置中调整）。

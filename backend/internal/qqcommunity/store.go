@@ -320,6 +320,11 @@ func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) 
 	if err != nil {
 		return err
 	}
+	if cmd, _ := command(e.Content); n > 0 && cmd == "生图" {
+		if _, err = tx.ExecContext(ctx, `UPDATE qqc_jobs SET kind='image' WHERE app_id=$1 AND event_key=$2 AND status='queued'`, c.AppID, eventKey); err != nil {
+			return err
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}
@@ -351,6 +356,10 @@ func scanJob(r scanner) (Job, error) {
 	return j, err
 }
 func (s *Service) claimJob(ctx context.Context) (Job, error) {
+	return s.claimJobLane(ctx, "")
+}
+
+func (s *Service) claimJobLane(ctx context.Context, lane string) (Job, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Job{}, err
@@ -360,16 +369,29 @@ func (s *Service) claimJob(ctx context.Context) (Job, error) {
 		return Job{}, err
 	}
 	var n int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_jobs WHERE status='running'`).Scan(&n); err != nil {
+	countQuery := `SELECT COUNT(*) FROM qqc_jobs WHERE status='running'`
+	filter := ""
+	limit := 2
+	if lane == "image" {
+		countQuery += " AND kind='image'"
+		filter = " AND q.kind='image'"
+		limit = 1
+	}
+	if lane == "business" {
+		countQuery += " AND kind<>'image'"
+		filter = " AND q.kind<>'image'"
+		limit = 1
+	}
+	if err = tx.QueryRowContext(ctx, countQuery).Scan(&n); err != nil {
 		return Job{}, err
 	}
-	if n >= 2 {
+	if n >= limit {
 		return Job{}, sql.ErrNoRows
 	}
 	// Keep each member's turns ordered within a group without making other
-	// members wait for a slow model call. The transaction lock and global cap
-	// above apply across service instances; notification pacing stays separate.
-	j, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM qqc_jobs q WHERE status='queued'
+	// members wait for a slow model call. Each production lane has a reserved
+	// slot across service instances; notification pacing stays separate.
+	j, err := scanJob(tx.QueryRowContext(ctx, `SELECT `+jobColumns+` FROM qqc_jobs q WHERE status='queued'`+filter+`
  AND (q.started_at IS NULL OR q.started_at<=NOW())
  AND (q.kind<>'ambient_chat' OR NOT EXISTS(SELECT 1 FROM qqc_jobs a WHERE a.app_id=q.app_id AND a.group_id=q.group_id AND a.kind='ambient_chat' AND a.status='running'))
  AND (event_type NOT IN ('PRICE_CHANGE_NOTIFICATION','HEALTH_CHANGE_NOTIFICATION','RANKING_REWARD_NOTIFICATION') OR (

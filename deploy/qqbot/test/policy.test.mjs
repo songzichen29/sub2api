@@ -14,8 +14,8 @@ test('chat and clear use DSH; foreign identities and groups are dropped', () => 
   assert.equal(routeEvent({ ...event('你好'), group_id: 999 }, c), 'drop');
   assert.equal(routeEvent({ ...event('你好'), user_id: 123 }, c), 'drop');
 });
-test('binding secrets bypass the language model even for the owner', () => {
-  for (const text of ['绑定', 'a1b2c3d4', '12345678901234567890_-AB', 'me@example.com']) assert.equal(routeEvent({ ...event(text), message_type: 'private' }, c), 'business');
+test('explicit binding messages and full tokens bypass the model; active short codes use the ingress session check', () => {
+  for (const text of ['绑定', '/绑定 a1b2c3d4', '12345678901234567890_-AB', 'me@example.com']) assert.equal(routeEvent({ ...event(text), message_type: 'private' }, c), 'business');
   assert.equal(routeEvent({ ...event('你好呀'), message_type: 'private' }, c), 'chat');
   assert.equal(routeEvent({ ...event('你好呀'), message_type: 'private', user_id: 999 }, c), 'business');
 });

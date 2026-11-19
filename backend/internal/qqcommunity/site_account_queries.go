@@ -23,7 +23,11 @@ func (s *Service) querySiteAccount(ctx context.Context, c Config, j Job, q siteQ
 	if err != nil {
 		return siteQueryOutcome("账户查询失败，请稍后重试。", "failed", "config_read_failed")
 	}
-	if current.AppID != j.AppID || !current.Enabled || !current.allows(j.GroupID) {
+	allowed := current.allows(j.GroupID)
+	if j.EventType == runtimePrivateQueryCreate {
+		allowed = j.GroupID == "" && current.allowsPrivateChat(j.MemberID)
+	}
+	if current.AppID != j.AppID || !current.Enabled || !allowed {
 		return siteQueryOutcome("当前群未启用机器人，账户查询暂时不可用。", "unavailable", "group_disabled")
 	}
 	var text string

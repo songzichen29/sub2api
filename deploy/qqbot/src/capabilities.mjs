@@ -1,6 +1,7 @@
 import { boundedText } from './policy.mjs';
 import { sensitiveText } from './memory.mjs';
 import { chatAllowed } from './chat-policy.mjs';
+import { replyVoice, voiceReplyForbidden } from './voice.mjs';
 
 // Capability descriptions come from the live configuration. A language model
 // must not turn an old "I have no tools" answer into the current product state.
@@ -42,9 +43,15 @@ export function validateImages(images=[]) {
 
 export async function executeCapability({name,args}, context, {config,store,siteTool}) {
   const c=config.snapshot(), {input,id,scope}=context;
-  if (input.proactive) throw new Error('主动热群没有用户授权，不执行账户或图片工具');
-  if(!chatAllowed(c,input)) throw new Error('本会话已停用');
+  if (input.proactive) throw Object.assign(new Error('主动热群没有用户授权，不执行账户或图片工具'), {code:'proactive_tool_denied'});
+  if(!chatAllowed(c,input)) throw Object.assign(new Error('本会话已停用'), {code:'scope_denied'});
   context.signal?.throwIfAborted();
+  if (name === 'set_reply_mode') {
+    if (!['text', 'voice'].includes(args.mode)) throw new Error('invalid_reply_mode');
+    if (args.mode === 'voice' && voiceReplyForbidden(input.text)) throw new Error('voice_explicitly_declined');
+    context.replyVoice = args.mode === 'voice' ? replyVoice(args.voice) : undefined;
+    return { status: 'selected', mode: args.mode, notice: '仅设置本条回答方式，尚未生成或发送语音；请继续输出实际答案。' };
+  }
   const call=(body,options={})=>siteTool({...body,group_id:input.group?input.chat:'',member_id:input.sender,message_id:input.message_id},{signal:context.signal,...options});
   const selectedImage=index=>{
     if(!Number.isInteger(index) || index<1 || index>4)throw new Error('请选择第1至4张实际加载的图片');
@@ -56,9 +63,9 @@ export async function executeCapability({name,args}, context, {config,store,site
     return image;
   };
   if(name==='generate_image' || name==='edit_image') {
-    if(!c.image_generation_enabled || (input.group && c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images))) throw new Error('当前会话的生图功能已关闭');
-    if(input.ambient && !/(画|绘|生成|创作|制作|编辑|修改|换|改).{0,25}(图|画|猫|狗|水世界|照片|背景|颜色)|画(?:一|个|张|只)|修图|改图|(?:给我|帮我|来|要)(?:一|两|几)?张[\s\S]*(?:图|画|照片)/u.test(input.text)) throw new Error('当前消息未识别出画图或改图请求，任务未提交；这不是生图权限关闭');
-    if(context.generated) throw new Error('本条消息已有生图请求，不重复提交');
+    if(!c.image_generation_enabled || (input.group && c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images))) throw Object.assign(new Error('当前会话的生图功能已关闭'), {code:'image_generation_disabled'});
+    if(input.ambient && !/(画|绘|生成|创作|制作|编辑|修改|换|改).{0,25}(图|画|猫|狗|水世界|照片|背景|颜色)|画(?:一|个|张|只)|修图|改图|(?:给我|帮我|来|要)(?:一|两|几)?张[\s\S]*(?:图|画|照片)/u.test(input.text)) throw Object.assign(new Error('当前消息未识别出画图或改图请求，任务未提交；这不是生图权限关闭'), {code:'image_intent_unrecognized'});
+    if(context.generated) throw Object.assign(new Error('本条消息已有生图请求，不重复提交'), {code:'image_already_requested'});
     const prompt=boundedText(args.prompt,6000),source=name==='edit_image'?selectedImage(args.image_index):undefined;
     const format=args.output_format ?? 'auto';
     if(!['auto','png','jpeg','webp','gif'].includes(format)) throw new Error('不支持的图片输出格式');
@@ -66,13 +73,13 @@ export async function executeCapability({name,args}, context, {config,store,site
     return call({tool:name,prompt,...(format!=='auto'?{output_format:format}:{}),...(source?{source_image:{mimeType:source.mimeType,data:source.data}}:{})});
   }
   if(name==='web_search' || name==='web_fetch') {
-    if(!c.web_enabled) throw new Error('联网查询已关闭');
+    if(!c.web_enabled) throw Object.assign(new Error('联网查询已关闭'), {code:'web_disabled'});
     const value=boundedText(name==='web_search'?args.query:args.url,name==='web_search'?400:2000);
-    if(sensitiveText(value)) throw new Error('不能把私人凭据发往互联网');
+    if(sensitiveText(value)) throw Object.assign(new Error('不能把私人凭据发往互联网'), {code:'sensitive_tool_input'});
     return call({tool:name,[name==='web_search'?'query':'url']:value});
   }
   if(name==='collect_meme') {
-    if(!c.memes_enabled || !c.collect_memes) throw new Error('表情包收藏已关闭');
+    if(!c.memes_enabled || !c.collect_memes) throw Object.assign(new Error('表情包收藏已关闭'), {code:'meme_collection_disabled'});
     const tags=boundedText(args.tags,80);
     if(sensitiveText(tags)) throw new Error('收藏参数无效');
     const image=selectedImage(args.image_index);

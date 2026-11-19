@@ -3,6 +3,7 @@ package qqcommunity
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -119,8 +120,7 @@ func (s *Service) privateBindingSession(ctx context.Context, c Config, memberID 
 	return session, err
 }
 
-// Private messages are handled in memory and never enter the durable job queue,
-// group history, or logs, so the raw binding code is not retained there.
+// 绑定会话优先于账户查询；绑定码只在内存处理，不进入任务队列或聊天记忆。
 func (s *Service) handlePrivateBinding(ctx context.Context, c Config, in obEvent) error {
 	memberID := string(in.UserID)
 	if memberID == "" || len(memberID) > 128 || in.MessageID == "" {
@@ -138,8 +138,20 @@ func (s *Service) handlePrivateBinding(ctx context.Context, c Config, in obEvent
 	}
 	session, err := s.privateBindingSession(ctx, c, memberID)
 	if errors.Is(err, sql.ErrNoRows) {
+		if cmd := privateAccountCommand(in); cmd != "" && c.allowsPrivateChat(memberID) {
+			e := oneBotMessageEvent(in)
+			e.Content = "/" + cmd
+			raw, err := json.Marshal(e)
+			if err != nil {
+				return err
+			}
+			return s.enqueueRuntimePrivateQuery(ctx, c, e, raw)
+		}
 		if code == "/绑定" || code == "绑定" {
 			return s.sendOneBotPrivate(ctx, c, memberID, "", "请先在已开放的群里发送 /绑定，再按私聊提示提交网站绑定码。")
+		}
+		if c.allowsPrivateChat(memberID) && privateBindingMessage.MatchString(code) {
+			return s.sendOneBotPrivate(ctx, c, memberID, "", "当前没有进行中的绑定。需要绑定请先在已开放群发送 /绑定；确认和解绑请在网站个人资料页操作。")
 		}
 		return nil
 	}

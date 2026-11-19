@@ -307,41 +307,21 @@ func (s *Service) enqueueOneBot(ctx context.Context, in obEvent) error {
 	if !c.allows(string(in.GroupID)) {
 		return nil
 	}
-	e := Event{ID: string(in.MessageID), GroupID: string(in.GroupID), MemberID: string(in.UserID)}
+	e := oneBotMessageEvent(in)
 	at := time.Unix(in.Time, 0)
 	if in.Time == 0 {
 		at = time.Now()
-	}
-	e.Timestamp, _ = json.Marshal(at.UTC().Format(time.RFC3339))
-	e.Author.MemberID = string(in.UserID)
-	e.Author.MemberRole = in.Sender.Role
-	e.Author.Username = in.Sender.Card
-	if e.Author.Username == "" {
-		e.Author.Username = in.Sender.Nickname
 	}
 	kind := groupMessageCreate
 	if in.PostType == "message" {
 		if in.MessageType != "group" || in.MessageID == "" {
 			return nil
 		}
-		var text strings.Builder
 		for _, seg := range in.Message {
-			switch seg.Type {
-			case "text":
-				text.WriteString(obValue(seg.Data["text"]))
-			case "at":
-				id := obValue(seg.Data["qq"])
-				e.Mentions = append(e.Mentions, Mention{ID: id, MemberID: id})
-				if id == c.AppID {
-					kind = groupAtMessageCreate
-				}
-			case "reply":
-				e.MessageReference.MessageID = obValue(seg.Data["id"])
-			default:
-				appendOneBotMedia(&e, seg)
+			if seg.Type == "at" && obValue(seg.Data["qq"]) == c.AppID {
+				kind = groupAtMessageCreate
 			}
 		}
-		e.Content = strings.TrimSpace(text.String())
 		cmd, arg := command(e.Content, c.CustomCommands...)
 		// Retain the existing /聊天 and /画图 aliases from the initial release.
 		if !in.ObserveOnly && (strings.HasPrefix(e.Content, "/聊天 ") || strings.HasPrefix(e.Content, "聊天 ")) {

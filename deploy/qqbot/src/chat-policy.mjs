@@ -14,6 +14,10 @@ export function groupAdministrator(c, input) {
 }
 
 export const publicErrors = {
+  moderation_blocked: '原消息已被防刷屏拦截，本次不生成或发送回复。',
+  event_check_failed: '消息权限或防刷屏状态暂时无法确认，本次未执行，请稍后重试。',
+  voice_explicitly_declined: '本条消息明确要求不用语音，请使用文字回复。',
+  unknown_voice: '不支持该音色，请使用已配置的音色名称。',
   queue_full: '聊天队列已满，请稍后再发一次。',
   turn_expired: '这条消息等待或处理超时，请重新发送。',
   runtime_stopping: '聊天服务正在重启，请稍后重试。',

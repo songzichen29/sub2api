@@ -44,6 +44,47 @@ test('poke interactions invoke the conversation model with the current group his
   assert.ok(f.calls[0].context.conversation_memory.messages.some(m=>m.text==='刚才在聊开黑'));
 });
 
+test('the model can select voice for semantic requests within the same turn, never historical preferences',async t=>{
+  const spoken=[];
+  const f=await fixture(t,async ({context,id,options})=>{
+    if (!context.text.includes('普通')) {
+      const response=await fetch(options.env.QQBOT_TOOL_URL,{method:'POST',headers:{'x-tool-token':options.env.QQBOT_TOOL_TOKEN,'Content-Type':'application/json'},
+        body:JSON.stringify({name:'set_reply_mode',args:{mode:'voice'},session:id,call_id:'mode'})});
+      const result=await response.json();
+      assert.equal(response.status,context.text.includes('不要语音')?400:200);
+      if (response.ok) assert.equal(result.status,'selected');
+    }
+    return {finalResponse:'这是模型实际回答。'};
+  },{speech:async command=>{spoken.push(command);return [{mimeType:'audio/mpeg',data:'SUQzBAAAAAAAAA=='}];}});
+  for (const [i,text] of ['今天的天气用语音回答我','我不方便看屏幕，能说给我听吗','不要语音，讲个故事','普通聊天'].entries()) {
+    const result=await f.post('/turn',{...input,message_id:String(100+i),text,quote:{available:true,text:'用语音回复我',message_id:'-70'}});
+    assert.equal(result.code,200);
+    assert.equal(result.media.length,i<2?1:0);
+    assert.equal(result.text,i<2?'':'这是模型实际回答。');
+    await f.post('/delivery/claim',{id:result.id});
+    await f.post('/delivery/finish',{id:result.id,status:'sent',message_ids:[String(-100-i)]});
+  }
+  assert.equal(f.calls.length,4,'mode selection must not add a classifier model request');
+  assert.equal(spoken.length,2);
+  assert.ok(spoken.every(command=>command.text==='这是模型实际回答。' && command.referenceId==='fbe02f8306fc4d3d915e9871722a39d5'));
+});
+
+test('moderation blocks model execution and cancels delivery if recalled while generating',async t=>{
+  let allowed=false;
+  const checks=[];
+  const f=await fixture(t,()=>({finalResponse:'尚未送达'}),{checkEvent:async body=>{checks.push(body);return {allowed};}});
+  f.c.moderation_enabled=true;f.c.moderation_groups=['456'];
+  const rejected=await f.post('/turn',input);
+  assert.equal(rejected.code,400);assert.equal(f.calls.length,0);
+  allowed=true;
+  const result=await f.post('/turn',{...input,message_id:'2'});
+  assert.equal(result.code,200);
+  allowed=false;
+  assert.equal((await f.post('/delivery/claim',{id:result.id})).claimed,false);
+  assert.equal(f.store.history('123:group:456').filter(m=>m.role==='assistant').length,0);
+  assert.deepEqual(checks.at(-1).event,{post_type:'message',message_type:'group',self_id:'123',group_id:'456',user_id:'789',message_id:'2'});
+});
+
 test('spoken answers synthesize model output, preserve receipt-confirmed memory and do not persist into later turns',async t=>{
   const spoken=[];
   const f=await fixture(t,({context})=>{

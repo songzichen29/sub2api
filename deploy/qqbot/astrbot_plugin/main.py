@@ -168,9 +168,9 @@ class DSHBridge(Star):
         # Own the event before any await so AstrBot never calls a second model.
         event.should_call_llm(False)
         event.stop_event()
-        received_at = time.time()
+        received_at = min(time.time(), raw.get("sub2api_received_at", time.time() * 1000) / 1000)
         try:
-            await asyncio.wait_for(self.queued_message(event, received_at, raw), timeout=225)
+            await asyncio.wait_for(self.queued_message(event, received_at, raw), timeout=max(0, received_at + 225 - time.time()))
         except asyncio.TimeoutError:
             await self.audit_failure(raw, "turn_expired")
             await event.send(MessageChain().message("这条消息等待或处理超时，请重新发送。"))
@@ -221,6 +221,7 @@ class DSHBridge(Star):
             await self.policy()
         except Exception:
             logger.warning("QQ DSH policy unavailable")
+            await event.send(MessageChain().message("聊天配置暂时无法同步，本条未调用模型，请稍后再试。"))
             return
         cfg = dict(self.cfg)
         sender = str(raw.get("user_id", event.get_sender_id()))
@@ -269,6 +270,11 @@ class DSHBridge(Star):
             if random.random() * 100 >= cfg.get("ambient_sample_percent", 100):
                 await self.audit_skip(identity, "sampled_out")
                 return
+        if any(segment.get("type") == "record" for segment in raw.get("message", [])):
+            await self.audit_skip(identity, "unsupported_audio")
+            await event.send(MessageChain().message("目前支持把文字合成为语音，但还不能识别你发来的语音。请改发文字，或先在 QQ 中转成文字。"))
+            self.last_reply[chat] = time.time()
+            return
         try:
             load_images = should_load_images(cfg.get("image_input_enabled", False), direct, received_images)
             tool_images = (cfg.get("collect_memes", False) and requests_collection(text)) or requests_image_edit(text)

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import types
+import time
 import unittest
 from unittest.mock import AsyncMock, Mock
 from plugin_proactive_test import Bridge
@@ -10,6 +11,42 @@ PNG = {'mimeType': 'image/png', 'data': 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD
 
 
 class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
+    async def test_inbound_audio_explains_missing_asr_without_calling_model(self):
+        bridge, event = self.fixture('', private=True)
+        event.message_obj.raw_message['message'] = [{'type': 'record', 'data': {'file': 'audio'}}]
+        await bridge.on_message(event)
+        self.assertEqual(bridge.call.await_count, 1)
+        self.assertEqual(bridge.call.await_args.args[0], '/events')
+        self.assertEqual(bridge.call.await_args.args[1]['reason'], 'unsupported_audio')
+        bridge.images.assert_not_awaited()
+        event.send.assert_awaited_once()
+
+    async def test_unrelated_group_audio_does_not_bypass_disabled_ambient_chat(self):
+        bridge, event = self.fixture('')
+        bridge.cfg['ambient_enabled'] = False
+        event.message_obj.raw_message['message'] = [{'type': 'record', 'data': {'file': 'audio'}}]
+        await bridge.on_message(event)
+        event.send.assert_not_awaited()
+        self.assertEqual(bridge.call.await_args.args[1]['reason'], 'ambient_disabled')
+
+    async def test_router_wait_counts_toward_existing_turn_deadline(self):
+        bridge, event = self.fixture('你好', private=True)
+        event.message_obj.raw_message['sub2api_received_at'] = (time.time() - 226) * 1000
+        await bridge.on_message(event)
+        bridge.policy.assert_not_awaited()
+        self.assertEqual(bridge.call.await_args.args[0], '/events')
+        self.assertEqual(bridge.call.await_args.args[1]['reason'], 'turn_expired')
+        event.send.assert_awaited_once()
+
+    async def test_semantic_voice_requests_reach_model_when_ambient_is_disabled(self):
+        for text in ('今天的天气用语音回答我', '我不方便看屏幕，能说给我听吗'):
+            bridge, event = self.fixture(text)
+            bridge.cfg['ambient_enabled'] = False
+            await bridge.on_message(event)
+            payload = next(c.args[1] for c in bridge.call.await_args_list if c.args[0] == '/turn')
+            self.assertFalse(payload['ambient'])
+            self.assertEqual(payload['text'], text)
+
     def fixture(self, text='你好', message_id=1, images=None, private=False):
         bridge = object.__new__(Bridge)
         bridge.cfg = {'enabled': True, 'bot_id': '123', 'groups': ['456'], 'private_users': ['789'], 'names': ['小碗'],

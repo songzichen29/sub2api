@@ -20,7 +20,7 @@ type replyDeadlineKey struct{}
 // Queueing, model calls, uploads and delivery share the original event window.
 // Membership events and proactive notifications use their own lifecycle.
 func jobContext(parent context.Context, j Job) (context.Context, context.CancelFunc) {
-	if isGroupMessageEvent(j.EventType) || j.EventType == interactionCreate || j.EventType == runtimePrivateImageCreate {
+	if isGroupMessageEvent(j.EventType) || j.EventType == interactionCreate || j.EventType == runtimePrivateImageCreate || j.EventType == runtimePrivateQueryCreate {
 		deadline := j.CreatedAt.Add(passiveReplyWindow)
 		ctx := context.WithValue(parent, replyDeadlineKey{}, deadline)
 		return context.WithDeadline(ctx, deadline)

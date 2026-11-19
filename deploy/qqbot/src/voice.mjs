@@ -44,6 +44,16 @@ export function parseVoiceCommand(text) {
   return { voice: voice || '默认', referenceId: voice ? voices[voice] : 'fbe02f8306fc4d3d915e9871722a39d5', text: match[2].trim() };
 }
 
+export function voiceReplyForbidden(text) {
+  if (parseVoiceRequest(text)?.mode === 'reply') return false;
+  return text.split(/[，,。！!？?；;\n]/u).some(clause => textReplyPattern.test(clause.trim()));
+}
+
+export function replyVoice(voice = '默认') {
+  if (voice !== '默认' && !Object.hasOwn(voices, voice)) throw new Error('unknown_voice');
+  return parseVoiceCommand((voice === '默认' ? '' : voice) + '语音合成');
+}
+
 export function parseVoiceRequest(text) {
   const command = parseVoiceCommand(text);
   if (command) return { ...command, mode: 'read' };
@@ -52,7 +62,7 @@ export function parseVoiceRequest(text) {
   let request;
   // 只读当前消息中的直接请求；后面的“改用文字”等明确指令覆盖前面的语音要求。
   for (const clause of text.split(/[，,。！!？?；;\n]/u)) {
-    const directive = clause.trim();
+    const directive = clause.trim().replace(/^(?:算了|还是|改成|改用|改为)\s*/u, '');
     if (textReplyPattern.test(directive)) { request = undefined; continue; }
     const reply = replyPattern.exec(directive);
     if (reply && /^(?:是(?:什么|啥)|什么意思)/u.test(directive.slice(reply[0].length))) continue;

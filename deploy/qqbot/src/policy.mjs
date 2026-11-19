@@ -49,8 +49,9 @@ export function routeEvent(event, config) {
   if (event.message_type === 'private') {
     // Binding codes and email addresses never enter the conversational store.
     if (!config.private_users.includes(String(event.user_id)) ||
-        /^(?:\/?(?:绑定|确认|解绑)|[a-z\d]{6,16}$|[a-z\d_-]{24}$|[^\s@]+@[^\s@]+\.[^\s@]+$)/iu.test(text)) return 'business';
-    return 'chat';
+        /^(?:\/?(?:绑定|确认|解绑|取消)(?:\s|$)|[a-z\d_-]{24}$|[^\s@]+@[^\s@]+\.[^\s@]+$)/iu.test(text) ||
+        isPersonalQuery(event) || /^\/?(?:余额|我的余额|今日用量|用量|抽奖次数)\s*$/u.test(text)) return 'business';
+    return config.enabled === false || config.chat_disabled ? 'drop' : 'chat';
   }
   if (event.message_type !== 'group' || !config.groups.includes(String(event.group_id))) return 'drop';
   // A request directed at another member must not query this sender's account.

@@ -2,7 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { parseVoiceCommand, parseVoiceRequest, synthesizeVoice } from '../src/voice.mjs';
+import { parseVoiceCommand, parseVoiceRequest, synthesizeVoice, voiceReplyForbidden, replyVoice } from '../src/voice.mjs';
+
+test('current explicit output choice overrides earlier clauses and voices remain allowlisted',()=>{
+  assert.equal(voiceReplyForbidden('用语音回答我，不要语音了'),true);
+  assert.equal(voiceReplyForbidden('不要语音，算了用语音回答我'),false);
+  assert.equal(replyVoice().referenceId,'fbe02f8306fc4d3d915e9871722a39d5');
+  assert.throws(()=>replyVoice('https://example.invalid/custom'),/unknown_voice/);
+});
 import { routeEvent } from '../src/policy.mjs';
 
 // 10ms 单声道 PCM WAV，测试传输真实音频字节而非供应商服务。
