@@ -1441,7 +1441,7 @@ export default {
     "modelMappingNotePlaceholder": "可选备注：记录这个模型映射的用途、限制或别名",
     "usageQuery": {
       "updatedAt": "更新于",
-      "details": "用量详情",
+      "details": "额度详情",
       "plan": "套餐 / 分组",
       "total": "总额度",
       "queryKey": "查询 Key",

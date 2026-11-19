@@ -1444,7 +1444,7 @@ export default {
     "testFirstResponseElapsed": "First response",
     "usageQuery": {
       "updatedAt": "Updated",
-      "details": "Usage details",
+      "details": "Quota details",
       "plan": "Plan / group",
       "total": "Total quota",
       "queryKey": "Query key",

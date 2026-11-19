@@ -19,14 +19,12 @@
       <div v-if="quota.updated_at" class="text-gray-500 dark:text-gray-400" data-testid="usage-query-updated-at">
         {{ t('admin.accounts.usageQuery.updatedAt') }} <time :datetime="new Date(quota.updated_at).toISOString()">{{ formatDateTime(new Date(quota.updated_at)) }}</time>
       </div>
-      <details v-if="quota.plan_name || quota.total_known !== false">
+      <details v-if="quota.total_known !== false">
         <summary class="w-fit cursor-pointer text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageQuery.details') }}</summary>
         <dl class="mt-1 grid grid-cols-[auto_1fr] gap-x-4 tabular-nums">
           <template v-if="quota.plan_name"><dt class="text-gray-500">{{ t('admin.accounts.usageQuery.plan') }}</dt><dd>{{ quota.plan_name }}</dd></template>
-          <template v-if="quota.total_known !== false">
-            <dt class="text-gray-500">{{ t('admin.accounts.usageWindow.used') }}</dt><dd>{{ amount(quota.used) }}</dd>
-            <dt class="text-gray-500">{{ t('admin.accounts.usageQuery.total') }}</dt><dd>{{ amount(quota.total) }}</dd>
-          </template>
+          <dt class="text-gray-500">{{ t('admin.accounts.usageWindow.used') }}</dt><dd>{{ amount(quota.used) }}</dd>
+          <dt class="text-gray-500">{{ t('admin.accounts.usageQuery.total') }}</dt><dd>{{ amount(quota.total) }}</dd>
         </dl>
       </details>
     </template>

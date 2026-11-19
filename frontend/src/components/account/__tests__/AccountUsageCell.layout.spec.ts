@@ -75,12 +75,13 @@ describe('account usage layout with real provider components', () => {
   })
 
   it('keeps unknown-total balances truthful without fabricating a bar or denominator', () => {
-    const wrapper = mountUsage({ extra: { usage_query: { enabled: true } } }, {
-      third_party_quota: { plan_name: 'balance', remaining: 75, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    const wrapper = mountUsage({ extra: { usage_query: { enabled: true, provider: 'sub2api' } } }, {
+      third_party_quota: { plan_name: '钱包余额', remaining: 0.63, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
     })
     expect(wrapper.find('.usage-progress-row').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$75.00')
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$0.63')
     expect(wrapper.get('[data-testid="third-party-remaining"]').text()).not.toContain('/')
+    expect(wrapper.find('details').exists()).toBe(false)
   })
 
   it.each(['openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'zhipu'] as const)(
