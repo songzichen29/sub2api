@@ -158,6 +158,8 @@ var usageLogInsertColumnNames = [...]string{
 	"upstream_request_id",
 	"session_id",
 	"native_compaction_v2",
+	"cache_creation_30m_tokens",
+	"cache_creation_12h_tokens",
 	"created_at",
 }
 

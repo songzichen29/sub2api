@@ -114,11 +114,13 @@ func TestBuildMySQLUsageLogInsertQuery_UsesInsertIgnore(t *testing.T) {
 
 func TestBuildMySQLUsageLogBestEffortInsertQuery_UsesSingleMultiRowStatement(t *testing.T) {
 	prepared := prepareUsageLogInsert(&service.UsageLog{
-		UserID:    1,
-		APIKeyID:  2,
-		AccountID: 3,
-		RequestID: "req-mysql-batch",
-		Model:     "gpt-5",
+		UserID:                 1,
+		APIKeyID:               2,
+		AccountID:              3,
+		RequestID:              "req-mysql-batch",
+		Model:                  "gpt-5",
+		CacheCreation30mTokens: 31,
+		CacheCreation12hTokens: 43,
 	})
 
 	query, args := buildMySQLUsageLogBestEffortInsertQuery([]usageLogInsertPrepared{prepared, prepared})
@@ -131,6 +133,16 @@ func TestBuildMySQLUsageLogBestEffortInsertQuery_UsesSingleMultiRowStatement(t *
 	require.Len(t, usageLogInsertColumnNames, len(usageLogInsertArgTypes))
 	require.Equal(t, len(prepared.args)*2, strings.Count(query, "?"))
 	require.Len(t, args, len(prepared.args)*2)
+	for row := range 2 {
+		for index, column := range usageLogInsertColumns(t, normalizedQuery) {
+			if column == "cache_creation_30m_tokens" {
+				require.EqualValues(t, 31, args[row*len(prepared.args)+index])
+			}
+			if column == "cache_creation_12h_tokens" {
+				require.EqualValues(t, 43, args[row*len(prepared.args)+index])
+			}
+		}
+	}
 }
 
 func TestExecUsageLogInsertNoResult_RetriesTransientMySQLWriteErrors(t *testing.T) {

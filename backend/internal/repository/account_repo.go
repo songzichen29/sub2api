@@ -1854,19 +1854,23 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 	}
 
 	ids := make([]int64, 0, len(updates))
+	for id := range updates {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
 	args := make([]any, 0, len(updates)*2)
 	caseSQL := "UPDATE accounts SET last_used_at = CASE id"
-	for id, ts := range updates {
+	for _, id := range ids {
 		caseSQL += " WHEN ? THEN ?"
-		args = append(args, id, ts)
-		ids = append(ids, id)
+		args = append(args, id, updates[id])
 	}
 	inClause, inArgs := buildAccountInt64InClause(ids)
 	caseSQL += " END, updated_at = NOW() WHERE id IN (" + inClause + ") AND deleted_at IS NULL"
 	args = append(args, inArgs...)
 
 	// 同一事务内先按 id 升序锁定目标行再更新，与计费合并事务锁多个账号行的顺序一致；
-	// 锁强度与更新非键列相同，不阻塞引用 accounts 的外键检查。
+	// PostgreSQL 使用非键更新锁，MySQL 使用 FOR UPDATE。
 	exec := r.sql
 	var tx *sql.Tx
 	if db, ok := r.sql.(*sql.DB); ok {
@@ -1881,7 +1885,13 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 		}()
 		exec = tx
 	}
-	rows, err := exec.QueryContext(ctx, "SELECT id FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE", pq.Array(ids))
+	lockQuery := "SELECT id FROM accounts WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY id FOR NO KEY UPDATE"
+	lockArgs := []any{pq.Array(ids)}
+	if accountRepositoryDialect(r) == dialect.MySQL {
+		lockQuery = "SELECT id FROM accounts WHERE id IN (" + inClause + ") AND deleted_at IS NULL ORDER BY id FOR UPDATE"
+		lockArgs = inArgs
+	}
+	rows, err := exec.QueryContext(ctx, lockQuery, lockArgs...)
 	if err != nil {
 		return err
 	}
