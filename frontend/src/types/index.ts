@@ -1632,6 +1632,7 @@ export interface AccountUsageInfo {
   gemini_flash_minute?: UsageProgress | null
   antigravity_quota?: Record<string, AntigravityModelQuota> | null
   third_party_quota?: AccountThirdPartyQuotaInfo | null
+  third_party_key?: { index: number; last_used_at?: string } | null
   // Per-group 5-hour and weekly windows (retrieveUserQuotaSummary); every model of a group shares them.
   antigravity_quota_groups?: AntigravityQuotaGroup[] | null
   grok_request_quota?: GrokQuotaWindow | null

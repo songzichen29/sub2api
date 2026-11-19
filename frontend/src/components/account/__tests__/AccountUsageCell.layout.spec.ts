@@ -7,7 +7,7 @@ const { getUsage } = vi.hoisted(() => ({ getUsage: vi.fn() }))
 vi.mock('@/api/admin', () => ({ adminAPI: { accounts: { getUsage }, cnProviders: { queryQuota: vi.fn() } } }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
-  useI18n: () => ({ t: (key: string) => key })
+  useI18n: () => ({ t: (key: string, params?: { index: number }) => params ? `${key}:${params.index}` : key })
 }))
 enableAutoUnmount(afterEach)
 const windowData = { utilization: 25, resets_at: '2099-01-01T00:00:00Z', remaining_seconds: 3600 }
@@ -39,18 +39,39 @@ describe('account usage layout with real provider components', () => {
     expect(row.get('.usage-progress-track > div').attributes('style')).toContain('width: 25%')
   })
 
-  it('renders only used percentage when total is known and preserves active refresh', async () => {
+  it('renders remaining balance alongside known-total usage and preserves active refresh', async () => {
     const quota = { plan_name: 'test', remaining: 75, used: 25, total: 100, unit: 'USD', utilization: 0.25 }
     getUsage.mockResolvedValue({ third_party_quota: { ...quota, remaining: 60, used: 40, utilization: 0.4 } })
     const wrapper = mountUsage({ extra: { usage_query: { enabled: true } } }, { third_party_quota: quota })
     expect(wrapper.get('[data-testid="third-party-usage-percent"] .usage-progress-value').text()).toBe('25%')
     expect(wrapper.find('.usage-progress-track').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="third-party-remaining"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$75.00')
     await wrapper.get('button').trigger('click')
     await flushPromises()
     expect(getUsage).toHaveBeenCalledWith(9601, 'active', true)
     expect(wrapper.get('.usage-progress-value').text()).toBe('40%')
-    expect(wrapper.find('[data-testid="third-party-remaining"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$60.00')
+  })
+
+  it.each([
+    { key: { index: 2, last_used_at: '2026-11-19T01:00:00Z' }, label: 'recentKey:2' },
+    { key: { index: 1 }, label: 'primaryKey:1' }
+  ])('identifies the queried key as $label', ({ key, label }) => {
+    const wrapper = mountUsage({ api_key_count: 3, extra: { usage_query: { enabled: true, provider: 'sub2api' } } }, {
+      third_party_key: key,
+      third_party_quota: { plan_name: 'balance', remaining: 60, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    })
+    expect(wrapper.get('[data-testid="third-party-key"]').text()).toBe(`admin.accounts.usageQuery.${label}`)
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$60.00')
+    expect(Boolean(wrapper.get('[data-testid="third-party-key"]').attributes('title'))).toBe('last_used_at' in key)
+  })
+
+  it('labels NewAPI balances as panel-account balances rather than an individual key', () => {
+    const wrapper = mountUsage({ api_key_count: 3, extra: { usage_query: { enabled: true, provider: 'newapi' } } }, {
+      third_party_quota: { plan_name: 'balance', remaining: 60, used: 40, total: 100, unit: 'USD', utilization: 0.4 }
+    })
+    expect(wrapper.text()).toContain('admin.accounts.usageQuery.panelAccountBalance')
+    expect(wrapper.find('[data-testid="third-party-key"]').exists()).toBe(false)
   })
 
   it('keeps unknown-total balances truthful without fabricating a bar or denominator', () => {

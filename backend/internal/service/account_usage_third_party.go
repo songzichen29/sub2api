@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"math"
@@ -13,6 +14,11 @@ import (
 
 // usageQueryExtraKey account.extra 中第三方用量查询配置的 key
 const usageQueryExtraKey = "usage_query"
+
+type AccountUsageKey struct {
+	Index      int        `json:"index"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+}
 
 // usageQueryConfig 是 account.extra.usage_query 的内部表示。
 //
@@ -110,28 +116,46 @@ func (s *AccountUsageService) resolveProviderConfig(account *Account, cfg usageQ
 // + singleflight，防止短时间内大量请求击穿。
 func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *Account, cfg usageQueryConfig, force bool) (*UsageInfo, error) {
 	if account == nil {
-		return buildThirdPartyUsageInfo(nil, fmt.Errorf("account is required")), nil
+		return buildThirdPartyUsageInfo(nil, fmt.Errorf("account is required"), nil), nil
 	}
 	accountID := account.ID
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	var keyInfo *AccountUsageKey
+	if cfg.Provider == usage_provider.ProviderSub2API && account.HasAPIKeyPool() {
+		keys := account.OrderedAPIKeys()
+		keyInfo = &AccountUsageKey{Index: 1}
+		if recent, ok := recentAccountAPIKeyUses.Load(accountID); ok {
+			use := recent.(accountAPIKeyUse)
+			if use.poolFingerprint == accountAPIKeyPoolFingerprint(account.GetCredential("base_url"), keys) {
+				keyInfo.Index = use.index + 1
+				keyInfo.LastUsedAt = &use.usedAt
+			}
+		}
+		apiKey = keys[keyInfo.Index-1]
+	}
+	identity := sha256.Sum256([]byte(strings.Join([]string{
+		string(cfg.Provider), cfg.BaseURL, cfg.EncryptedAccessKey, cfg.UserID,
+		account.GetCredential("base_url"), apiKey,
+	}, "\x00")))
 	// 1. 检查缓存
 	if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok && !force {
-		if entry, ok := cached.(*thirdPartyUsageCache); ok {
+		if entry, ok := cached.(*thirdPartyUsageCache); ok && entry.identity == identity {
 			age := time.Since(entry.timestamp)
 			if entry.err != nil && age < thirdPartyErrorCacheTTL {
-				return buildThirdPartyUsageInfo(nil, entry.err), nil
+				return buildThirdPartyUsageInfo(nil, entry.err, keyInfo), nil
 			}
 			if entry.quota != nil && age < thirdPartyCacheTTL {
 				s.disableSchedulingForZeroThirdPartyQuota(ctx, account, entry.quota)
-				return buildThirdPartyUsageInfo(entry.quota, nil), nil
+				return buildThirdPartyUsageInfo(entry.quota, nil, keyInfo), nil
 			}
 		}
 	}
 
-	flightKey := fmt.Sprintf("third_party_usage:%d", accountID)
+	flightKey := fmt.Sprintf("third_party_usage:%d:%x", accountID, identity)
 	result, fetchErr, _ := s.cache.thirdPartyFlight.Do(flightKey, func() (any, error) {
 		// 双检
 		if cached, ok := s.cache.thirdPartyCache.Load(accountID); ok && !force {
-			if entry, ok := cached.(*thirdPartyUsageCache); ok {
+			if entry, ok := cached.(*thirdPartyUsageCache); ok && entry.identity == identity {
 				age := time.Since(entry.timestamp)
 				if entry.err != nil && age < thirdPartyErrorCacheTTL {
 					return nil, entry.err
@@ -147,8 +171,12 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 			s.cache.thirdPartyCache.Store(accountID, &thirdPartyUsageCache{
 				err:       err,
 				timestamp: time.Now(),
+				identity:  identity,
 			})
 			return nil, err
+		}
+		if providerCfg.Provider == usage_provider.ProviderSub2API {
+			providerCfg.AccessToken = apiKey
 		}
 
 		factory := s.thirdPartyFactory
@@ -160,6 +188,7 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 			s.cache.thirdPartyCache.Store(accountID, &thirdPartyUsageCache{
 				err:       err,
 				timestamp: time.Now(),
+				identity:  identity,
 			})
 			return nil, err
 		}
@@ -169,23 +198,25 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 			s.cache.thirdPartyCache.Store(accountID, &thirdPartyUsageCache{
 				err:       err,
 				timestamp: time.Now(),
+				identity:  identity,
 			})
 			return nil, err
 		}
 		s.cache.thirdPartyCache.Store(accountID, &thirdPartyUsageCache{
 			quota:     quota,
 			timestamp: time.Now(),
+			identity:  identity,
 		})
 		return quota, nil
 	})
 
 	if fetchErr != nil {
 		// 错误降级：仍返回结构化 UsageInfo（带 error 字段），与前端 amber 提示样式一致
-		return buildThirdPartyUsageInfo(nil, fetchErr), nil
+		return buildThirdPartyUsageInfo(nil, fetchErr, keyInfo), nil
 	}
 	quota, _ := result.(*usage_provider.QuotaInfo)
 	s.disableSchedulingForZeroThirdPartyQuota(ctx, account, quota)
-	return buildThirdPartyUsageInfo(quota, nil), nil
+	return buildThirdPartyUsageInfo(quota, nil, keyInfo), nil
 }
 
 // disableSchedulingForZeroThirdPartyQuota applies fail-closed scheduling for
@@ -213,11 +244,12 @@ func (s *AccountUsageService) disableSchedulingForZeroThirdPartyQuota(ctx contex
 }
 
 // buildThirdPartyUsageInfo 把 Provider 结果包装成 UsageInfo。
-func buildThirdPartyUsageInfo(quota *usage_provider.QuotaInfo, err error) *UsageInfo {
+func buildThirdPartyUsageInfo(quota *usage_provider.QuotaInfo, err error, keyInfo *AccountUsageKey) *UsageInfo {
 	now := time.Now()
 	info := &UsageInfo{
-		Source:    "active",
-		UpdatedAt: &now,
+		Source:        "active",
+		UpdatedAt:     &now,
+		ThirdPartyKey: keyInfo,
 	}
 	if err != nil {
 		info.Error = err.Error()

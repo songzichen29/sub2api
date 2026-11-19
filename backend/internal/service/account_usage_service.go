@@ -111,6 +111,7 @@ type thirdPartyUsageCache struct {
 	quota     *usage_provider.QuotaInfo
 	err       error
 	timestamp time.Time
+	identity  [32]byte
 }
 
 const (
@@ -255,6 +256,7 @@ type UsageInfo struct {
 
 	// 第三方面板（如 newapi）查询返回的额度信息
 	ThirdPartyQuota *usage_provider.QuotaInfo `json:"third_party_quota,omitempty"`
+	ThirdPartyKey   *AccountUsageKey          `json:"third_party_key,omitempty"`
 
 	// Antigravity AI Credits 余额
 	AICredits []AICredit `json:"ai_credits,omitempty"`

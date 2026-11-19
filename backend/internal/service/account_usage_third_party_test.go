@@ -2,9 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
+	"github.com/stretchr/testify/require"
 )
 
 type countingUsageProvider struct {
@@ -85,6 +90,100 @@ func TestThirdPartyUsageForceBypassesCache(t *testing.T) {
 	if provider.calls != 2 {
 		t.Fatalf("provider calls = %d, want 2", provider.calls)
 	}
+}
+
+func TestThirdPartyUsageFollowsSuccessfulPoolKey(t *testing.T) {
+	var primaryStatus, usageQueries atomic.Int32
+	var rejectAll atomic.Bool
+	primaryStatus.Store(http.StatusPaymentRequired)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/usage" {
+			usageQueries.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			switch r.Header.Get("Authorization") {
+			case "Bearer first":
+				_, _ = fmt.Fprint(w, `{"balance":10}`)
+			case "Bearer second":
+				_, _ = fmt.Fprint(w, `{"balance":20}`)
+			case "Bearer replacement":
+				_, _ = fmt.Fprint(w, `{"balance":30}`)
+			default:
+				w.WriteHeader(http.StatusUnauthorized)
+			}
+			return
+		}
+		if rejectAll.Load() {
+			w.WriteHeader(http.StatusPaymentRequired)
+			return
+		}
+		if r.Header.Get("Authorization") == "Bearer first" {
+			w.WriteHeader(int(primaryStatus.Load()))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(upstream.Close)
+	account := &Account{ID: 98741, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": upstream.URL + "/v1", "api_key": "first", "api_keys": []string{"first", "second"},
+	}}
+	t.Cleanup(func() { recentAccountAPIKeyUses.Delete(account.ID) })
+	svc := &AccountUsageService{
+		cache: NewUsageCache(),
+		thirdPartyFactory: func(usage_provider.ProviderType) (usage_provider.Provider, error) {
+			return usage_provider.NewSub2APIProviderWithClient(upstream.Client()), nil
+		},
+	}
+	cfg := usageQueryConfig{Provider: usage_provider.ProviderSub2API}
+	usage, err := svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 10.0, usage.ThirdPartyQuota.Remaining)
+	require.Equal(t, 1, usage.ThirdPartyKey.Index)
+	require.Nil(t, usage.ThirdPartyKey.LastUsedAt)
+
+	sendRequest := func() int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, upstream.URL+"/v1/responses", nil)
+		require.NoError(t, err)
+		req.Header.Set("Authorization", "Bearer first")
+		resp, err := DoWithAccountAPIKeyFailover(WithAccountAPIKeys(req, account), upstream.Client().Do)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		return resp.StatusCode
+	}
+	require.Equal(t, http.StatusOK, sendRequest())
+	usage, err = svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 20.0, usage.ThirdPartyQuota.Remaining)
+	require.Equal(t, 2, usage.ThirdPartyKey.Index)
+	require.NotNil(t, usage.ThirdPartyKey.LastUsedAt)
+	require.Equal(t, int32(2), usageQueries.Load())
+
+	// 全部请求失败时保留最近一次成功 Key，同一 Key 继续复用自己的余额缓存。
+	rejectAll.Store(true)
+	require.Equal(t, http.StatusPaymentRequired, sendRequest())
+	usage, err = svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 2, usage.ThirdPartyKey.Index)
+	require.Equal(t, int32(2), usageQueries.Load())
+
+	rejectAll.Store(false)
+	primaryStatus.Store(http.StatusOK)
+	require.Equal(t, http.StatusOK, sendRequest())
+	usage, err = svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 1, usage.ThirdPartyKey.Index)
+	require.Equal(t, 10.0, usage.ThirdPartyQuota.Remaining)
+	require.NotNil(t, usage.ThirdPartyKey.LastUsedAt)
+	require.Equal(t, int32(3), usageQueries.Load())
+
+	account.Credentials["api_key"] = "replacement"
+	account.Credentials["api_keys"] = []string{"replacement", "second"}
+	usage, err = svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 30.0, usage.ThirdPartyQuota.Remaining)
+	require.Equal(t, 1, usage.ThirdPartyKey.Index)
+	require.Nil(t, usage.ThirdPartyKey.LastUsedAt)
+	require.Equal(t, int32(4), usageQueries.Load())
 }
 
 func TestThirdPartyUsageDisablesSchedulingWhenBalanceIsZero(t *testing.T) {

@@ -636,6 +636,17 @@
   <div ref="rootRef" v-else class="account-usage-cell space-y-2 text-xs leading-5">
     <!-- Third-party panel usage (for example newapi-backed API keys). -->
     <template v-if="showThirdPartyUsage">
+      <div
+        v-if="usageInfo?.third_party_key"
+        class="text-xs text-gray-500 dark:text-gray-400"
+        data-testid="third-party-key"
+        :title="usageInfo.third_party_key.last_used_at ? formatDateTime(usageInfo.third_party_key.last_used_at) : undefined"
+      >
+        {{ t(usageInfo.third_party_key.last_used_at ? 'admin.accounts.usageQuery.recentKey' : 'admin.accounts.usageQuery.primaryKey', { index: usageInfo.third_party_key.index }) }}
+      </div>
+      <div v-else-if="(account.api_key_count ?? 0) > 1 && account.extra?.usage_query?.provider !== 'sub2api'" class="text-xs text-gray-500 dark:text-gray-400">
+        {{ t('admin.accounts.usageQuery.panelAccountBalance') }}
+      </div>
       <div v-if="loading" class="space-y-1">
         <div class="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
@@ -655,7 +666,7 @@
           display-mode="percentage"
           data-testid="third-party-usage-percent"
         />
-        <div v-if="!thirdPartyTotalKnown" class="text-xs tabular-nums" data-testid="third-party-remaining">
+        <div class="text-xs tabular-nums" data-testid="third-party-remaining">
           <span class="mr-1 text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageWindow.remaining') }}</span>
           <span :class="['font-semibold', thirdPartyAmountClass]">
             ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
@@ -780,7 +791,7 @@ import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
-import { formatCompactNumber } from '@/utils/format'
+import { formatCompactNumber, formatDateTime } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import UsageProgressBar from './UsageProgressBar.vue'

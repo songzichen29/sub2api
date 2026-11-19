@@ -72,6 +72,7 @@ const DataTableStub = defineComponent({
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
+        <div data-test="account-name"><slot name="cell-name" :row="row" :value="row.name" /></div>
         <slot name="cell-groups" :row="row" />
         <slot name="cell-last_used_at" :row="row" :value="row.last_used_at" />
         <slot name="cell-actions" :row="row" />
@@ -203,6 +204,16 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('keeps the multi-key count below the account name in the same cell', async () => {
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, type: 'apikey', api_key_count: 3 }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    const cell = wrapper.get('[data-test="account-name"]')
+    expect(cell.findAll('span').map(span => span.text())).toEqual(['compact row', 'admin.accounts.apiKeyPool.summary'])
+    expect(cell.get('.flex-col').exists()).toBe(true)
     wrapper.unmount()
   })
 

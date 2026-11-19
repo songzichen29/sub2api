@@ -17,6 +17,13 @@ func TestRedactCredentialsOrderedAPIKeyPool(t *testing.T) {
 	require.NotContains(t, string(encoded), "primary-secret")
 	require.NotContains(t, string(encoded), "backup-secret")
 	require.Contains(t, string(encoded), `"api_key_count":2`)
+	item := AccountListItemFromAccount(AccountFromServiceShallow(account))
+	require.Equal(t, 2, item.APIKeyCount)
+	encoded, err = json.Marshal(item)
+	require.NoError(t, err)
+	require.Contains(t, string(encoded), `"api_key_count":2`)
+	require.NotContains(t, string(encoded), "primary-secret")
+	require.NotContains(t, string(encoded), "backup-secret")
 }
 
 func TestRedactCredentials_NilInput(t *testing.T) {

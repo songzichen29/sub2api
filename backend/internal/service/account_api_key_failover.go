@@ -3,12 +3,34 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 )
 
 type accountAPIKeysContextKey struct{}
+
+type accountAPIKeysRequest struct {
+	accountID       int64
+	keys            []string
+	poolFingerprint [32]byte
+}
+
+type accountAPIKeyUse struct {
+	poolFingerprint [32]byte
+	index           int
+	usedAt          time.Time
+}
+
+// 仅保存当前进程最近收到成功响应的 Key 序号，不保存 Key 明文。
+var recentAccountAPIKeyUses sync.Map // accountID -> accountAPIKeyUse
+
+func accountAPIKeyPoolFingerprint(baseURL string, keys []string) [32]byte {
+	return sha256.Sum256([]byte(baseURL + "\x00" + strings.Join(keys, "\x00")))
+}
 
 // WithAccountAPIKeys opts an account-authenticated request into ordered failover.
 // It does not change the account, header map, or request body shared by callers.
@@ -21,7 +43,11 @@ func WithAccountAPIKeys(req *http.Request, account *Account) *http.Request {
 
 func withAccountAPIKeysContext(ctx context.Context, account *Account) context.Context {
 	if keys := account.OrderedAPIKeys(); len(keys) > 1 {
-		return context.WithValue(ctx, accountAPIKeysContextKey{}, keys)
+		return context.WithValue(ctx, accountAPIKeysContextKey{}, accountAPIKeysRequest{
+			accountID:       account.ID,
+			keys:            keys,
+			poolFingerprint: accountAPIKeyPoolFingerprint(account.GetCredential("base_url"), keys),
+		})
 	}
 	return ctx
 }
@@ -33,7 +59,8 @@ func DoWithAccountAPIKeyFailover(req *http.Request, send func(*http.Request) (*h
 	if req == nil {
 		return send(req)
 	}
-	keys, _ := req.Context().Value(accountAPIKeysContextKey{}).([]string)
+	pool, _ := req.Context().Value(accountAPIKeysContextKey{}).(accountAPIKeysRequest)
+	keys := pool.keys
 	if len(keys) < 2 || !requestUsesAPIKey(req, keys[0]) {
 		return send(req)
 	}
@@ -51,6 +78,13 @@ func DoWithAccountAPIKeyFailover(req *http.Request, send func(*http.Request) (*h
 		}
 		replaceRequestAPIKey(attempt, keys[0], key)
 		resp, err := send(attempt)
+		if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			recentAccountAPIKeyUses.Store(pool.accountID, accountAPIKeyUse{
+				poolFingerprint: pool.poolFingerprint,
+				index:           i,
+				usedAt:          time.Now(),
+			})
+		}
 		if err != nil || resp == nil || resp.StatusCode < 400 || !canReplay || i == len(keys)-1 {
 			return resp, err
 		}

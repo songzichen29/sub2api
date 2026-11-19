@@ -355,6 +355,7 @@ type AccountListItem struct {
 
 	Credentials       map[string]any                 `json:"credentials,omitempty"`
 	CredentialsStatus map[string]bool                `json:"credentials_status,omitempty"`
+	APIKeyCount       int                            `json:"api_key_count,omitempty"`
 	Extra             map[string]any                 `json:"extra,omitempty"`
 	OllamaCloudUsage  *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
 	OpenCodeGoUsage   *service.OpenCodeGoUsageState  `json:"opencode_go_usage,omitempty"`

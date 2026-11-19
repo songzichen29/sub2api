@@ -1430,6 +1430,9 @@ export default {
     "duplicateConfirmButton": "复制",
     "modelMappingNotePlaceholder": "可选备注：记录这个模型映射的用途、限制或别名",
     "usageQuery": {
+      "recentKey": "最近使用 Key #{index}",
+      "primaryKey": "优先 Key #{index}（暂无使用记录）",
+      "panelAccountBalance": "面板账户余额",
       "title": "用量查询",
       "hint": "查询该账号在上游的剩余额度。仅 API Key 类型账号支持。",
       "enable": "启用第三方用量查询",

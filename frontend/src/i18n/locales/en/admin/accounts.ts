@@ -1433,6 +1433,9 @@ export default {
     "testConnectElapsed": "Connect",
     "testFirstResponseElapsed": "First response",
     "usageQuery": {
+      "recentKey": "Last used Key #{index}",
+      "primaryKey": "Primary Key #{index} (no usage recorded)",
+      "panelAccountBalance": "Panel account balance",
       "title": "Usage Query",
       "hint": "Query this account's remaining upstream quota. Only available for API Key accounts.",
       "enable": "Enable third-party usage query",

@@ -237,7 +237,6 @@
           </template>
           <template #cell-name="{ row, value }">
             <div class="flex flex-col">
-              <span v-if="row.api_key_count > 1" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.apiKeyPool.summary', { count: row.api_key_count }) }}</span>
               <HelpTooltip
                 v-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
@@ -256,6 +255,7 @@
                 </template>
               </HelpTooltip>
               <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span v-if="row.api_key_count > 1" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.apiKeyPool.summary', { count: row.api_key_count }) }}</span>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
