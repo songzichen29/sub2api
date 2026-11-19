@@ -77,7 +77,8 @@ def is_sticker(segment):
 
 
 def requests_tool(text):
-    return requests_collection(text) or requests_image_edit(text) or bool(re.search(r"画一张|画个|画只|帮我画|生成.{0,8}(?:图片|图像|照片)|发.{0,12}表情|(?:看|识别|分析|描述|读).{0,12}(?:图|照片)|(?:图片|照片|这张图|那张图).{0,12}(?:看|懂|识别|分析|描述|读|什么|内容|颜色)|上网|查一下|查下|搜一下|搜下|最新.{0,12}(?:新闻|消息)|实时", text))
+    voice = re.match(r"^/?(?:可莉|塞恩|猫咪|妮蔻|Nico|盖伦|御姐|刘亦菲|蒋介石|军事|曼波|贝利亚|蔡徐坤|麦克阿瑟|影视解说|宣传片|曹操|乌萨奇|卢本伟|泽拉斯|派克|雷军|爱莉希雅|空之律者|典韦|鳄鱼|李云龙)?语音合成(?=\s|[:：]|$)", text)
+    return requests_collection(text) or requests_image_edit(text) or bool(voice) or bool(re.search(r"画一张|画个|画只|帮我画|生成.{0,8}(?:图片|图像|照片)|发.{0,12}表情|(?:看|识别|分析|描述|读).{0,12}(?:图|照片)|(?:图片|照片|这张图|那张图).{0,12}(?:看|懂|识别|分析|描述|读|什么|内容|颜色)|上网|查一下|查下|搜一下|搜下|最新.{0,12}(?:新闻|消息)|实时", text))
 
 
 def message_packets(result):
@@ -85,6 +86,9 @@ def message_packets(result):
     packets = [[{"type": "text", "data": {"text": answer[i:i + 1200]}}] for i in range(0, len(answer), 1200)]
     for i, image in enumerate(result.get("media", [])):
         data = base64.b64decode(image["data"], validate=True)
+        if image["mimeType"].startswith("audio/"):
+            packets.append([{"type": "record", "data": {"file": "base64://" + image["data"]}}])
+            continue
         if len(data) > 6 * 1024 * 1024 or image_mime(data) != image["mimeType"]:
             raise ValueError("invalid_outgoing_image")
         segment = {"type": "image", "data": {"file": "base64://" + image["data"]}}

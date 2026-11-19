@@ -200,7 +200,8 @@ export class Store {
   commitReply(id, bot) {
     if (this.db.prepare('SELECT status FROM delivery WHERE id=?').get(id)?.status !== 'sent') return;
     const context = this.db.prepare('SELECT * FROM turn_context WHERE id=?').get(id), turn = this.turn(id);
-    if (context && turn && turn.reply !== '[跳过]' && (turn.reply || this.media(id).length)) this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply + (this.media(id).length ? '\n[已发送表情包图片]' : '') });
+    const media = [...new Set(this.media(id).map(item => item.mimeType.startsWith('audio/') ? '[已发送语音]' : '[已发送表情包图片]'))];
+    if (context && turn && turn.reply !== '[跳过]' && (turn.reply || media.length)) this.observe(context.scope, { event_id: 'reply:' + id, sender: bot, name: '机器人', role: 'assistant', text: turn.reply + media.map(label => '\n' + label).join('') });
   }
   diagnostic(id) { return this.db.prepare('SELECT * FROM diagnostics WHERE id=?').get(id); }
   recordTurn(id, scope, sender, message, deadline) {

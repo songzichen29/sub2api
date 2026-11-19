@@ -19,6 +19,7 @@ test('capability questions report actual switches without executing a task or de
  assert.equal(capabilityReply('你能收集表情包吗？或者发送表情包吗 给我随便发一个表情包',c),undefined);
  assert.equal(capabilityReply('你手上有什么工具调用？给我发一个表情包',c),undefined);
  const off=capabilityReply('你手上有什么工具调用',{});assert.ok(!off.includes('联网搜索'));assert.ok(!off.includes('自然语言生图'));
+ assert.match(capabilityReply('你现在支持语音吗？',c),/御姐语音合成/u);
 });
 test('media tool effects bind to the verified sender, persist assets, isolate collections and honor toggles',async t=>{
  const root=mkdtempSync(join(tmpdir(),'qq-tools-')),store=new Store(join(root,'db'),join(root,'raw'));

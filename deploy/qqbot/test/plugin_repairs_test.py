@@ -176,6 +176,29 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
         event.bot.api.call_action.return_value['sender']['user_id'] = 999
         self.assertIsNone(await Bridge.quoted(bridge, raw, event))
 
+    async def test_voice_commands_work_without_ambient_chat_and_report_each_record_receipt(self):
+        for private in (False, True):
+            with self.subTest(private=private):
+                bridge, event = self.fixture('/御姐语音合成 你好', private=private)
+                bridge.cfg['ambient_enabled'] = False
+                audio = {'mimeType': 'audio/mpeg', 'data': 'SUQzBAAAAAAAAA=='}
+
+                async def call(path, body):
+                    if path == '/turn':
+                        self.assertFalse(body['ambient'])
+                        return {'id': 'voice', 'text': '', 'media': [audio, audio]}
+                    return {'claimed': True, 'ok': True}
+
+                bridge.call.side_effect = call
+                event.bot.api.call_action.side_effect = [{'message_id': -101}, {'message_id': -102}]
+                await bridge.on_message(event)
+                self.assertEqual(event.bot.api.call_action.await_count, 2)
+                for action in event.bot.api.call_action.await_args_list:
+                    self.assertEqual(action.args, ('send_private_msg' if private else 'send_group_msg',))
+                    self.assertEqual(action.kwargs['message'], [{'type': 'record', 'data': {'file': 'base64://' + audio['data']}}])
+                self.assertEqual(bridge.call.await_args.args,
+                                 ('/delivery/finish', {'id': 'voice', 'status': 'sent', 'message_ids': ['-101', '-102']}))
+
     async def test_sampling_skip_records_reason_instead_of_looking_like_no_activity(self):
         bridge, event = self.fixture()
         bridge.cfg['ambient_sample_percent'] = 0

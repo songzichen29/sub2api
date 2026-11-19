@@ -11,8 +11,9 @@ import { beijingTime, localRecords, timeGuidance, timezone } from './time.mjs';
 import { nextProactive, canDeliverProactive, proactiveAllowed } from './proactive.mjs';
 import { ConversationScheduler } from './scheduler.mjs';
 import { chatAllowed, groupAdministrator, publicErrors } from './chat-policy.mjs';
+import { parseVoiceCommand, synthesizeVoice } from './voice.mjs';
 
-export function createBridge({ config, token, store, root, makeHarness, siteTool=(body,options)=>config.tool(body,options), clock=Date.now, concurrency=4, turnTimeoutMs=225000 }) {
+export function createBridge({ config, token, store, root, makeHarness, siteTool=(body,options)=>config.tool(body,options), speech=synthesizeVoice, clock=Date.now, concurrency=4, turnTimeoutMs=225000 }) {
   const workspace = join(root, 'workspace');
   mkdirSync(workspace, { recursive: true });
   const scheduler = new ConversationScheduler({concurrency});
@@ -113,6 +114,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     const loadedImages=Number.isSafeInteger(input.image_loaded_count) && input.image_loaded_count >= 0 ? input.image_loaded_count : images.length;
     const imageCutoff=Number.isFinite(input.received_at)?Math.min(input.received_at,Date.now()):Date.now();
     const text = boundedText(input.text || (images.length ? '用户发来图片，请根据实际附件理解内容并自然回应。' : input.image_count || input.image_note ? '用户发来图片或引用内容，但附件读取失败。请说明无法读取图片，不要编造看到的内容。' : '有人 @ 了你，请简短回应。'));
+    const voiceRequest = !proactiveJob && parseVoiceCommand(text);
     const id = opaqueKey(callerScope + ':' + input.message_id), prior = store.turn(id);
     if (prior) {
       if (prior.status !== 'completed') throw new Error('previous_execution_unconfirmed');
@@ -135,11 +137,18 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     if(c.memes_enabled && c.collect_memes) for(const image of toolImages) if(image.is_meme) store.collectMeme(scope,image,'群表情 '+String(image.label || '').slice(0,60),{automatic:true});
     const boundary = proactiveJob ? store.latest(scope) : store.observe(scope, { event_id: 'msg:' + input.message_id, sender: input.sender, name: String(input.name || '').slice(0, 80), text });
     store.setTurnContext(id, scope, input.message_id, input.sender);
-    const description=!images.length && !input.image_count && capabilityReply(text,c);
+    const description=!voiceRequest && !images.length && !input.image_count && capabilityReply(text,c);
     if(description) {store.finish(id,'completed',description);return {id,text:description};}
     let worker;
     try {
       store.recordStatus(id,'running');
+      if (voiceRequest) {
+        const media = await speech(voiceRequest, { signal });
+        signal?.throwIfAborted();
+        for (const audio of media) store.addMedia(id, audio);
+        store.finish(id, 'completed', '');
+        return { id, text: '', media };
+      }
       worker = await runtime(c,scope,signal);
       const h=worker.harness;
       const capacity = c.context_window_tokens || 65536;
@@ -201,13 +210,18 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       store.finish(id, 'completed', answer);
       return { id, text: answer, media:store.media(id), session: session.id };
     } catch (error) {
-      store.finish(id, 'failed'); if (!proactiveJob) store.dropConversation(scope);
+      store.finish(id, 'failed');
       store.discardPending(id);
-      await discardRuntime(scope);
+      if (!voiceRequest) {
+        if (!proactiveJob) store.dropConversation(scope);
+        await discardRuntime(scope);
+      }
       let message = String(error.message);
       for (const secret of [c.model_api_key, token]) if (secret) message = message.replaceAll(secret, '[redacted]');
       console.error(JSON.stringify({ event: 'turn_failed', id, code: error.name, message: message.slice(0, 500) }));
-      throw new Error(Object.hasOwn(publicErrors,error.message)?error.message:'model_unavailable');
+      if (signal?.aborted) throw new Error('turn_expired');
+      if (Object.hasOwn(publicErrors, error.message)) throw error;
+      throw new Error(voiceRequest ? 'voice_request_failed' : 'model_unavailable');
     } finally { if(worker)toolContexts.delete(worker.token); }
   }
 
@@ -244,7 +258,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     const [bot,kind,chat]=turn.scope.split(':');
     const input={bot,group:kind==='group',chat,sender:context?.sender || record?.sender || chat};
     if(!chatAllowed(c,input) || (record && Date.now()>record.deadline))return false;
-    return !store.media(id).length || (c.memes_enabled && !(c.group_policies || []).some(p=>p.group_id===chat && p.disable_images));
+    return !store.media(id).some(media => media.mimeType.startsWith('image/')) || (c.memes_enabled && !(c.group_policies || []).some(p=>p.group_id===chat && p.disable_images));
   }
   const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') {

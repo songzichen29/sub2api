@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { parseVoiceCommand } from './voice.mjs';
 
 export function authorized(actual, expected) {
   if (typeof actual !== 'string' || !expected) return false;
@@ -50,6 +51,7 @@ export function routeEvent(event, config) {
   // A request directed at another member must not query this sender's account.
   const mentions = event.message.filter(s => s.type === 'at').map(s => String(s.data?.qq));
   if (mentions.length && !mentions.includes(config.bot_id)) return 'drop';
+  if (parseVoiceCommand(text)) return config.enabled === false || config.chat_disabled ? 'drop' : 'chat';
   if (['清空', '清空对话', '聊天', '分身'].includes(command)) return config.enabled === false || config.chat_disabled ? 'drop' : 'chat';
   if (text.startsWith('/') || config.business_commands.includes(command)) return 'business';
   if (isPersonalQuery(event)) return 'business';

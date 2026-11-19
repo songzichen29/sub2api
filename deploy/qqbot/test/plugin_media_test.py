@@ -39,6 +39,16 @@ class PluginMediaTests(unittest.TestCase):
         self.assertTrue(media.is_sticker({'type':'image','data':{'sub_type':1}}))
         self.assertFalse(media.is_sticker({'type':'image','data':{}}))
 
+    def test_voice_packets_use_separate_native_record_messages(self):
+        audio = {'mimeType': 'audio/mpeg', 'data': 'SUQzBAAAAAAAAA=='}
+        packets = media.message_packets({'text': '语音', 'media': [audio, audio]})
+        self.assertEqual([p[0]['type'] for p in packets], ['text', 'record', 'record'])
+        self.assertEqual(packets[1], [{'type': 'record', 'data': {'file': 'base64://' + audio['data']}}])
+        self.assertEqual(media.message_packets({'text': '', 'media': [audio]}), packets[1:2])
+        for command in ('御姐语音合成 你好', '/曼波语音合成：你好', '语音合成 你好', '/语音合成'):
+            self.assertTrue(media.requests_tool(command), command)
+        self.assertFalse(media.requests_tool('不要御姐语音合成 你好'))
+
     def test_ambient_messages_with_images_always_load_vision_input(self):
         self.assertTrue(media.should_load_images(True, False, [{'type': 'image'}]))
         self.assertFalse(media.should_load_images(True, False, []))
