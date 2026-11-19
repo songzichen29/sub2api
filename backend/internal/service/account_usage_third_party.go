@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
 )
 
@@ -115,6 +116,10 @@ func (s *AccountUsageService) resolveProviderConfig(account *Account, cfg usageQ
 // getThirdPartyUsage 通过第三方 Provider 拉取额度，带 5 分钟成功 / 1 分钟错误负缓存
 // + singleflight，防止短时间内大量请求击穿。
 func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *Account, cfg usageQueryConfig, force bool) (*UsageInfo, error) {
+	return s.getThirdPartyUsageWithKey(ctx, account, cfg, force, 0)
+}
+
+func (s *AccountUsageService) getThirdPartyUsageWithKey(ctx context.Context, account *Account, cfg usageQueryConfig, force bool, keyIndex int) (*UsageInfo, error) {
 	if account == nil {
 		return buildThirdPartyUsageInfo(nil, fmt.Errorf("account is required"), nil), nil
 	}
@@ -132,6 +137,12 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 			}
 		}
 		apiKey = keys[keyInfo.Index-1]
+	}
+	if keyIndex > 0 {
+		apiKey = account.OrderedAPIKeys()[keyIndex-1]
+		if keyInfo == nil || keyInfo.Index != keyIndex {
+			keyInfo = &AccountUsageKey{Index: keyIndex}
+		}
 	}
 	identity := sha256.Sum256([]byte(strings.Join([]string{
 		string(cfg.Provider), cfg.BaseURL, cfg.EncryptedAccessKey, cfg.UserID,
@@ -217,6 +228,42 @@ func (s *AccountUsageService) getThirdPartyUsage(ctx context.Context, account *A
 	quota, _ := result.(*usage_provider.QuotaInfo)
 	s.disableSchedulingForZeroThirdPartyQuota(ctx, account, quota)
 	return buildThirdPartyUsageInfo(quota, nil, keyInfo), nil
+}
+
+func (s *AccountUsageService) GetAPIKeyUsage(ctx context.Context, accountID int64, index int, force bool) (*UsageInfo, error) {
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", true); err != nil {
+		return nil, err
+	}
+	cfg, enabled := extractUsageQueryConfig(account)
+	if account.Type != AccountTypeAPIKey || !enabled || cfg.Provider != usage_provider.ProviderSub2API {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_QUERY", "selecting a key requires Sub2API usage queries")
+	}
+	if index < 1 || index > len(account.OrderedAPIKeys()) {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_QUERY_KEY", "selected API key does not exist")
+	}
+	return s.getThirdPartyUsageWithKey(ctx, account, cfg, force, index)
+}
+
+// PreviewUsageQuery 使用表单快照查询，不写账号、调度状态或正式查询缓存。
+func (s *AccountUsageService) PreviewUsageQuery(ctx context.Context, account *Account) (*UsageInfo, error) {
+	cfg, enabled := extractUsageQueryConfig(account)
+	if !enabled {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_QUERY", "usage query must be enabled")
+	}
+	providerCfg, err := s.resolveProviderConfig(account, cfg)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_QUERY", err.Error())
+	}
+	provider, err := s.thirdPartyFactory(providerCfg.Provider)
+	if err != nil {
+		return nil, infraerrors.BadRequest("INVALID_USAGE_QUERY", err.Error())
+	}
+	quota, err := provider.Fetch(ctx, providerCfg)
+	return buildThirdPartyUsageInfo(quota, err, nil), nil
 }
 
 // disableSchedulingForZeroThirdPartyQuota applies fail-closed scheduling for

@@ -239,22 +239,7 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
-          <AccountAPIKeysInput
-            v-model="editApiKey"
-            :existing-count="account.api_key_count ?? (account.credentials_status?.has_api_key ? 1 : 0)"
-            :placeholder="
-              account.platform === 'openai'
-                ? 'sk-proj-...'
-                : account.platform === 'gemini'
-                  ? 'AQ.Ab...'
-                  : account.platform === 'antigravity'
-                    ? 'sk-...'
-                    : account.platform === 'grok'
-                      ? 'xai-...'
-                      : 'sk-ant-...'
-            "
-          />
-          <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
+          <AccountAPIKeyEditor v-model="editApiKeys" />
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
@@ -881,45 +866,20 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
-      <div
+      <AccountUsageQueryForm
         v-if="account.type === 'apikey'"
-        class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <div>
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageQuery.hint') }}</p>
-        </div>
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-          <input v-model="usageQueryEnabled" type="checkbox" data-testid="usage-query-enabled" class="h-4 w-4 rounded border-gray-300" />
-          <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
-        </label>
-        <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
-          <div>
-            <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
-            <select v-model="usageQueryProvider" data-testid="usage-query-provider" class="input">
-              <option value="newapi">newapi</option>
-              <option value="sub2api">{{ t('admin.accounts.usageQuery.sub2apiOption') }}</option>
-            </select>
-          </div>
-          <template v-if="usageQueryProvider === 'newapi'">
-            <div>
-              <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
-              <input v-model="usageQueryBaseUrl" type="text" class="input" placeholder="https://newapi.example.com" />
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
-              <input v-model="usageQueryAccessToken" type="password" class="input font-mono" autocomplete="new-password" :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')" />
-              <p class="input-hint">{{ t('admin.accounts.usageQuery.editTokenHint') }}</p>
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
-              <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
-            </div>
-          </template>
-        </div>
-      </div>
+        v-model:enabled="usageQueryEnabled"
+        v-model:provider="usageQueryProvider"
+        v-model:base-url="usageQueryBaseUrl"
+        v-model:access-token="usageQueryAccessToken"
+        v-model:user-id="usageQueryUserId"
+        :account-id="account.id"
+        :account-base-url="editBaseUrl"
+        :api-keys="editApiKeys"
+        :has-stored-token="hasStoredUsageToken"
+      />
 
+      <!-- OpenAI/Grok OAuth Model Mapping -->
       <div
         v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3491,8 +3451,9 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
-import AccountAPIKeysInput from '@/components/account/AccountAPIKeysInput.vue'
-import { accountApiKeyInputError, applyAccountApiKeys } from '@/components/account/accountApiKeys'
+import AccountAPIKeyEditor from '@/components/account/AccountAPIKeyEditor.vue'
+import AccountUsageQueryForm from '@/components/account/AccountUsageQueryForm.vue'
+import { accountApiKeyDrafts, accountApiKeyDraftError, serializeAccountApiKeyDrafts, type AccountAPIKeyDraft } from '@/components/account/accountApiKeys'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3733,6 +3694,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editApiKeys = ref<AccountAPIKeyDraft[]>([])
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -4596,6 +4558,7 @@ const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
 const usageQueryBaseUrl = ref('')
 const usageQueryAccessToken = ref('')
 const usageQueryUserId = ref('')
+const hasStoredUsageToken = computed(() => props.account?.extra?.usage_query?.provider !== 'sub2api' && Boolean(props.account?.extra?.usage_query?.access_token))
 const tagsTouched = ref(false)
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
@@ -4716,7 +4679,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     usageQueryEnabled.value = usageQuery.enabled === true
     usageQueryProvider.value = normalizeUsageQueryProvider(usageQuery.provider)
     usageQueryBaseUrl.value = String(usageQuery.base_url || '')
-    usageQueryAccessToken.value = String(usageQuery.access_token || '')
+    usageQueryAccessToken.value = ''
     usageQueryUserId.value = String(usageQuery.user_id || '')
   } else {
     usageQueryEnabled.value = false
@@ -5144,6 +5107,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  editApiKeys.value = accountApiKeyDrafts(newAccount.api_key_pool?.keys ?? [])
 }
 
 async function loadTLSProfiles() {
@@ -5837,23 +5801,18 @@ const handleSubmit = async () => {
         }
       }
 
-      // Handle API key
-      // 后端响应已脱敏：currentCredentials 不会再包含 api_key 原文。
-      // 用户填入新值则覆盖；留空时优先看 credentials_status.has_api_key；
-      // 若后端尚未升级（无 credentials_status），回退读旧结构 currentCredentials.api_key。
-      // 两者都无才报错。
-      const hasExistingApiKey =
-        props.account.credentials_status?.has_api_key ?? Boolean(currentCredentials.api_key)
-      if (editApiKey.value.trim()) {
-        const keyError = accountApiKeyInputError(editApiKey.value)
-        if (keyError) {
-          appStore.showError(t(`admin.accounts.apiKeyPool.errors.${keyError}`))
-          return
-        }
-        applyAccountApiKeys(newCredentials, editApiKey.value)
-      } else if (!hasExistingApiKey) {
-        appStore.showError(t('admin.accounts.apiKeyIsRequired'))
+      const keyError = accountApiKeyDraftError(editApiKeys.value)
+      if (keyError) {
+        appStore.showError(t(`admin.accounts.apiKeyPool.errors.${keyError}`))
         return
+      }
+      const keyEntries = serializeAccountApiKeyDrafts(editApiKeys.value)
+      const savedEntries = props.account.api_key_pool?.keys.map(key => ({ id: key.id }))
+      if (JSON.stringify(keyEntries) !== JSON.stringify(savedEntries)) {
+        updatePayload.api_key_update = {
+          revision: props.account.api_key_pool?.revision,
+          entries: keyEntries
+        }
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）
@@ -6520,7 +6479,7 @@ const handleSubmit = async () => {
             baseUrl: usageQueryBaseUrl.value,
             accessToken: usageQueryAccessToken.value,
             userId: usageQueryUserId.value
-          })
+          }, hasStoredUsageToken.value)
           if (!usageQuery) {
             appStore.showError(t('admin.accounts.usageQuery.incompleteFields'))
             return

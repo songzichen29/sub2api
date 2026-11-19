@@ -1,4 +1,32 @@
+import type { AccountAPIKeySummary, AccountAPIKeyUpdate } from '@/types'
+
 export const MAX_ACCOUNT_API_KEYS = 20
+
+export interface AccountAPIKeyDraft {
+  id?: string
+  masked?: string
+  last_used_at?: string
+  value: string
+}
+
+export function accountApiKeyDrafts(keys: AccountAPIKeySummary[]): AccountAPIKeyDraft[] {
+  return keys.map(key => ({ ...key, value: '' }))
+}
+
+export function accountApiKeyDraftError(entries: AccountAPIKeyDraft[]): string | null {
+  if (!entries.length) return 'required'
+  if (entries.length > MAX_ACCOUNT_API_KEYS) return 'tooMany'
+  if (entries.some(entry => !entry.id && !entry.value.trim())) return 'emptyEntry'
+  const newValues = entries.filter(entry => entry.value.trim() || !entry.id).map(entry => entry.value)
+  if (!newValues.length) return null
+  return accountApiKeyInputError(newValues.join('\n'))
+}
+
+export function serializeAccountApiKeyDrafts(entries: AccountAPIKeyDraft[]): AccountAPIKeyUpdate['entries'] {
+  return entries.map(entry => entry.value.trim() || !entry.id
+    ? { value: entry.value.trim() }
+    : { id: entry.id })
+}
 
 export function accountApiKeyInputError(value: string): string | null {
   if (!value.trim()) return 'required'

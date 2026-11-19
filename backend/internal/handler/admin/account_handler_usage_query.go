@@ -7,9 +7,72 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/service/usage_provider"
+	"github.com/gin-gonic/gin"
 )
+
+type usageQueryPreviewRequest struct {
+	AccountID      int64          `json:"account_id" binding:"min=0"`
+	UsageQuery     map[string]any `json:"usage_query" binding:"required"`
+	AccountBaseURL *string        `json:"account_base_url"`
+	APIKey         string         `json:"api_key"`
+	KeyID          string         `json:"key_id"`
+}
+
+func (h *AccountHandler) PreviewUsageQuery(c *gin.Context) {
+	var req usageQueryPreviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid usage query configuration")
+		return
+	}
+	account := &service.Account{Type: service.AccountTypeAPIKey}
+	if req.AccountID > 0 {
+		stored, err := h.adminService.GetAccount(c.Request.Context(), req.AccountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		copy := *stored
+		account = &copy
+	}
+	if account.Type != service.AccountTypeAPIKey || (req.APIKey != "" && req.KeyID != "") {
+		response.BadRequest(c, "Invalid API key selection")
+		return
+	}
+	credentials := make(map[string]any, len(account.Credentials))
+	for name, value := range account.Credentials {
+		credentials[name] = value
+	}
+	if req.AccountBaseURL != nil {
+		credentials["base_url"] = strings.TrimSpace(*req.AccountBaseURL)
+	}
+	if req.APIKey != "" {
+		credentials["api_key"] = strings.TrimSpace(req.APIKey)
+	}
+	if req.KeyID != "" {
+		key, err := account.APIKeyByID(req.KeyID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		credentials["api_key"] = key
+	}
+	extra := map[string]any{"usage_query": req.UsageQuery}
+	if err := encryptUsageQueryToken(extra, account.Extra, h.secretEncryptor); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	account.Credentials = credentials
+	account.Extra = extra
+	usage, err := h.accountUsageService.PreviewUsageQuery(c.Request.Context(), account)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, usage)
+}
 
 // prepareUsageQueryExtra encrypts a newly supplied newapi token and restores
 // the existing ciphertext when an edit submits the masked token. Sub2API

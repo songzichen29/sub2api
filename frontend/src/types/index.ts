@@ -1226,6 +1226,25 @@ export interface AccountUsageQueryConfig {
   user_id?: string
 }
 
+export interface AccountAPIKeySummary {
+  id: string
+  masked: string
+  last_used_at?: string
+}
+
+export interface AccountAPIKeyUpdate {
+  revision: string
+  entries: Array<{ id?: string; value?: string }>
+}
+
+export interface AccountUsageQueryPreviewRequest {
+  account_id?: number
+  usage_query: AccountUsageQueryConfig
+  account_base_url?: string
+  api_key?: string
+  key_id?: string
+}
+
 export interface AccountThirdPartyQuotaInfo {
   plan_name: string
   remaining: number
@@ -1322,6 +1341,7 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   api_key_count?: number
+  api_key_pool?: { revision: string; keys: AccountAPIKeySummary[] }
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
@@ -1741,6 +1761,7 @@ export interface CreateAccountRequest {
 }
 
 export interface UpdateAccountRequest {
+  api_key_update?: AccountAPIKeyUpdate
   name?: string
   notes?: string | null
   tags?: string[]

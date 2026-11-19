@@ -1,6 +1,9 @@
 export default {
   "accounts": {
     "apiKeyPool": {
+      "lastUsed": "最近成功使用",
+      "replacePlaceholder": "留空保留，填写后仅替换这把 Key",
+      "editHint": "按列表顺序优先调用。可追加、替换、移除或调整顺序，保存后生效。",
       "add": "添加备用 Key",
       "key": "API Key {index}",
       "moveUp": "上移 Key {index}",
@@ -10,6 +13,7 @@ export default {
       "stored": "已保存 {count} 把 Key。留空保留原列表；填写后将完整替换，请包含全部需要保留的 Key。",
       "summary": "{count} 把 Key · 顺序优先",
       "errors": {
+        "emptyEntry": "请填写新增的 Key，或移除空项",
         "required": "请至少填写一把 API Key",
         "tooMany": "每个账号最多支持 20 把 API Key",
         "invalid": "Key 不能为空或包含空白、控制字符，且每把不得超过 8192 字节",
@@ -1436,10 +1440,22 @@ export default {
     "duplicateConfirmButton": "复制",
     "modelMappingNotePlaceholder": "可选备注：记录这个模型映射的用途、限制或别名",
     "usageQuery": {
+      "updatedAt": "更新于",
+      "details": "用量详情",
+      "plan": "套餐 / 分组",
+      "total": "总额度",
+      "queryKey": "查询 Key",
+      "autoKey": "最近使用的 Key",
+      "test": "测试查询",
+      "testing": "查询中…",
+      "newapiHint": "使用面板访问令牌查询账户余额；同一账户下的多个 Key 共享该查询结果。",
+      "sub2apiHint": "使用当前上游地址和所选 Key 查询额度或钱包余额。测试查询不会保存配置或改变调度。",
+      "urlRequired": "请先填写上游地址",
+      "sub2apiMissingFields": "请先填写上游地址和要查询的 Key",
       "recentKey": "最近使用 Key #{index}",
       "primaryKey": "优先 Key #{index}（暂无使用记录）",
       "panelAccountBalance": "面板账户余额",
-      "title": "用量查询",
+      "title": "自定义用量查询",
       "hint": "查询该账号在上游的剩余额度。仅 API Key 类型账号支持。",
       "enable": "启用第三方用量查询",
       "provider": "提供商",
@@ -1448,7 +1464,7 @@ export default {
       "accessToken": "访问令牌",
       "accessTokenPlaceholder": "输入访问令牌",
       "userId": "上游用户 ID",
-      "editTokenHint": "保留原值请勿修改；如需更换请直接覆盖。",
+      "editTokenHint": "已保存访问令牌。留空保留，填写后替换。",
       "incompleteFields": "已开启用量查询，请填写面板地址、访问令牌和上游用户 ID 后再提交",
       "notEnabledHint": "未开启用量查询"
     },

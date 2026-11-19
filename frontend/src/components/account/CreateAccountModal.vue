@@ -1565,39 +1565,15 @@
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
-        <div class="space-y-3 border-t border-gray-200 pt-4 dark:border-dark-600">
-          <div>
-            <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.usageQuery.title') }}</h3>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageQuery.hint') }}</p>
-          </div>
-          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
-            <input v-model="usageQueryEnabled" type="checkbox" data-testid="usage-query-enabled" class="h-4 w-4 rounded border-gray-300" />
-            <span>{{ t('admin.accounts.usageQuery.enable') }}</span>
-          </label>
-          <div v-if="usageQueryEnabled" class="space-y-3 pl-6">
-            <div>
-              <label class="input-label">{{ t('admin.accounts.usageQuery.provider') }}</label>
-              <select v-model="usageQueryProvider" data-testid="usage-query-provider" class="input">
-                <option value="newapi">newapi</option>
-                <option value="sub2api">{{ t('admin.accounts.usageQuery.sub2apiOption') }}</option>
-              </select>
-            </div>
-            <template v-if="usageQueryProvider === 'newapi'">
-              <div>
-                <label class="input-label">{{ t('admin.accounts.usageQuery.baseUrl') }}</label>
-                <input v-model="usageQueryBaseUrl" type="text" class="input" placeholder="https://newapi.example.com" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('admin.accounts.usageQuery.accessToken') }}</label>
-                <input v-model="usageQueryAccessToken" type="password" class="input font-mono" autocomplete="new-password" :placeholder="t('admin.accounts.usageQuery.accessTokenPlaceholder')" />
-              </div>
-              <div>
-                <label class="input-label">{{ t('admin.accounts.usageQuery.userId') }}</label>
-                <input v-model="usageQueryUserId" type="text" class="input" placeholder="12345" />
-              </div>
-            </template>
-          </div>
-        </div>
+        <AccountUsageQueryForm
+          v-model:enabled="usageQueryEnabled"
+          v-model:provider="usageQueryProvider"
+          v-model:base-url="usageQueryBaseUrl"
+          v-model:access-token="usageQueryAccessToken"
+          v-model:user-id="usageQueryUserId"
+          :account-base-url="apiKeyBaseUrl"
+          :api-keys="usageQueryApiKeys"
+        />
 
         <!-- 上游倍率自动探测：全部 API-key 平台可用（所在区块已限定 apikey 类型） -->
         <div
@@ -4228,6 +4204,7 @@ import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import AccountTagsInput from '@/components/account/AccountTagsInput.vue'
 import AccountAPIKeysInput from '@/components/account/AccountAPIKeysInput.vue'
+import AccountUsageQueryForm from '@/components/account/AccountUsageQueryForm.vue'
 import AccountCreatePolicyFields from '@/components/account/AccountCreatePolicyFields.vue'
 import { applyAccountCreatePolicies, defaultAccountCreatePolicies } from '@/components/account/accountCreatePolicies'
 import { accountApiKeyInputError, applyAccountApiKeys } from '@/components/account/accountApiKeys'
@@ -5128,6 +5105,7 @@ const usageQueryProvider = ref<AccountUsageQueryProvider>('newapi')
 const usageQueryBaseUrl = ref('')
 const usageQueryAccessToken = ref('')
 const usageQueryUserId = ref('')
+const usageQueryApiKeys = computed(() => apiKeyValue.value.split(/\r?\n/).map(value => ({ value })))
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {

@@ -684,61 +684,15 @@
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else class="account-usage-cell space-y-2 text-xs leading-5">
     <!-- Third-party panel usage (for example newapi-backed API keys). -->
-    <template v-if="showThirdPartyUsage">
-      <div
-        v-if="usageInfo?.third_party_key"
-        class="text-xs text-gray-500 dark:text-gray-400"
-        data-testid="third-party-key"
-        :title="usageInfo.third_party_key.last_used_at ? formatDateTime(usageInfo.third_party_key.last_used_at) : undefined"
-      >
-        {{ t(usageInfo.third_party_key.last_used_at ? 'admin.accounts.usageQuery.recentKey' : 'admin.accounts.usageQuery.primaryKey', { index: usageInfo.third_party_key.index }) }}
-      </div>
-      <div v-else-if="(account.api_key_count ?? 0) > 1 && account.extra?.usage_query?.provider !== 'sub2api'" class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t('admin.accounts.usageQuery.panelAccountBalance') }}
-      </div>
-      <div v-if="loading" class="space-y-1">
-        <div class="h-3 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-      </div>
-      <div
-        v-else-if="error || usageInfo?.error"
-        class="max-w-[200px] truncate text-xs text-amber-600 dark:text-amber-400"
-        :title="error || usageInfo?.error"
-      >
-        {{ error || usageInfo?.error }}
-      </div>
-      <div v-else-if="usageInfo?.third_party_quota" class="space-y-2">
-        <UsageProgressBar
-          v-if="thirdPartyTotalKnown"
-          :label="t('admin.accounts.usageWindow.used')"
-          :utilization="thirdPartyPercentRaw"
-          color="indigo"
-          display-mode="percentage"
-          data-testid="third-party-usage-percent"
-        />
-        <div class="text-xs tabular-nums" data-testid="third-party-remaining">
-          <span class="mr-1 text-gray-500 dark:text-gray-400">{{ t('admin.accounts.usageWindow.remaining') }}</span>
-          <span :class="['font-semibold', thirdPartyAmountClass]">
-            ${{ formatThirdPartyAmount(usageInfo.third_party_quota.remaining) }}
-          </span>
-        </div>
-      </div>
-      <div v-else class="text-xs text-gray-400">-</div>
-      <div>
-        <button
-          type="button"
-          class="inline-flex min-h-7 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-          :title="t('admin.accounts.usageWindow.activeQuery')"
-          :aria-label="t('admin.accounts.usageWindow.activeQuery')"
-          :disabled="activeQueryLoading || loading"
-          @click="loadActiveUsage"
-        >
-          <svg class="h-3 w-3" :class="{ 'animate-spin': activeQueryLoading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {{ t('admin.accounts.usageWindow.activeQuery') }}
-        </button>
-      </div>
-    </template>
+    <AccountUsageQueryCell
+      v-if="showThirdPartyUsage"
+      :account="account"
+      :usage="usageInfo"
+      :loading="loading || activeQueryLoading"
+      :error="error"
+      :manual-refresh-token="manualRefreshToken"
+      @refresh="loadActiveUsage"
+    />
     <!-- Gemini API Key accounts: show quota info -->
     <div v-else-if="account.platform === 'gemini' && !isGeminiThirdPartyApiKey">
       <AccountQuotaInfo :account="account" />
@@ -844,6 +798,7 @@ import { formatCompactNumber, formatDateTime } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import UsageProgressBar from './UsageProgressBar.vue'
+import AccountUsageQueryCell from './AccountUsageQueryCell.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
@@ -956,22 +911,6 @@ const isZeroTodayStats = computed(() => {
     (stats.tokens ?? 0) === 0 &&
     (stats.cost ?? 0) === 0 &&
     (stats.user_cost ?? 0) === 0
-})
-
-const thirdPartyPercentRaw = computed(() => {
-  const utilization = usageInfo.value?.third_party_quota?.utilization
-  return typeof utilization === 'number' && Number.isFinite(utilization)
-    ? utilization * 100
-    : 0
-})
-
-const thirdPartyTotalKnown = computed(() => usageInfo.value?.third_party_quota?.total_known !== false)
-const thirdPartyAmountClass = computed(() => {
-  const remaining = usageInfo.value?.third_party_quota?.remaining
-  if (typeof remaining === 'number' && remaining <= 0) return 'text-red-600 dark:text-red-400'
-  return thirdPartyPercentRaw.value >= 80
-    ? 'text-amber-600 dark:text-amber-400'
-    : 'text-gray-800 dark:text-gray-100'
 })
 
 const shouldFetchUsage = computed(() => {
@@ -1883,13 +1822,6 @@ const formatKeyUserCost = computed(() => {
   return props.todayStats.user_cost.toFixed(2)
 })
 
-const formatThirdPartyAmount = (value: number | null | undefined): string => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
-  const normalized = Math.max(value, 0)
-  if (normalized >= 10000) return formatCompactNumber(normalized)
-  return normalized.toFixed(2)
-}
-
 onMounted(() => {
   if (typeof window !== 'undefined') {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
@@ -2065,6 +1997,11 @@ onUnmounted(() => {
   width: auto;
   font-size: 0.75rem;
   line-height: 1.25rem;
+}
+
+.account-usage-cell :deep(.account-usage-query-result .usage-progress-row) {
+  grid-template-columns: 4.5rem auto;
+  justify-content: start;
 }
 
 .account-usage-cell :deep(.usage-progress-reset) {

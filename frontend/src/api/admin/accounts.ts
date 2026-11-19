@@ -12,6 +12,7 @@ import type {
   UpdateAccountRequest,
   PaginatedResponse,
   AccountUsageInfo,
+  AccountUsageQueryPreviewRequest,
   WindowStats,
   ClaudeModel,
   AccountUsageStatsResponse,
@@ -399,13 +400,19 @@ export async function clearError(id: number): Promise<Account> {
  * @param id - Account ID
  * @returns Account usage info
  */
-export async function getUsage(id: number, source?: 'passive' | 'active', force?: boolean): Promise<AccountUsageInfo> {
+export async function getUsage(id: number, source?: 'passive' | 'active', force?: boolean, keyIndex?: number): Promise<AccountUsageInfo> {
   const params: Record<string, string> = {}
   if (source) params.source = source
   if (force) params.force = 'true'
+  if (keyIndex !== undefined) params.key_index = String(keyIndex)
   const { data } = await apiClient.get<AccountUsageInfo>(`/admin/accounts/${id}/usage`, {
     params: Object.keys(params).length > 0 ? params : undefined
   })
+  return data
+}
+
+export async function previewUsageQuery(request: AccountUsageQueryPreviewRequest): Promise<AccountUsageInfo> {
+  const { data } = await apiClient.post<AccountUsageInfo>('/admin/accounts/usage-query/preview', request)
   return data
 }
 
@@ -1227,6 +1234,7 @@ export const accountsAPI = {
   getStats,
   clearError,
   getUsage,
+  previewUsageQuery,
   getBatchUsage,
   listTags,
   getTodayStats,

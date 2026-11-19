@@ -61,7 +61,7 @@ vi.mock('vue-i18n', async () => {
 
 import EditAccountModal from '../EditAccountModal.vue'
 import AccountTagsInput from '../AccountTagsInput.vue'
-import AccountAPIKeysInput from '../AccountAPIKeysInput.vue'
+import AccountAPIKeyEditor from '../AccountAPIKeyEditor.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -152,6 +152,8 @@ function buildAccount() {
   return {
     id: 1,
     name: 'OpenAI Key',
+    api_key_count: 1,
+    api_key_pool: { revision: 'pool-v1', keys: [{ id: 'key-one', masked: '••••test' }] },
     notes: '',
     platform: 'openai',
     type: 'apikey',
@@ -332,26 +334,43 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
 }
 
 describe('EditAccountModal', () => {
-  it('keeps redacted stored keys untouched and replaces them only on explicit input', async () => {
+  it('preserves saved keys and submits only explicit per-key changes with the original revision', async () => {
     const account = buildAccount()
     delete account.credentials.api_key
     account.credentials_status = { has_api_key: true, has_api_keys: true }
     account.api_key_count = 2
+    account.api_key_pool.keys.push({ id: 'key-two', masked: '••••two' })
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     const wrapper = mountModal(account)
-    const keys = wrapper.getComponent(AccountAPIKeysInput)
-    expect(keys.props('existingCount')).toBe(2)
-    expect(keys.props('modelValue')).toBe('')
+    const keys = wrapper.getComponent(AccountAPIKeyEditor)
+    expect(keys.props('modelValue').map(key => key.value)).toEqual(['', ''])
     await wrapper.get('form').trigger('submit.prevent')
-    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalled())
-    let payload = updateAccountMock.mock.calls.at(-1)?.[1]
-    expect(payload.credentials).not.toHaveProperty('api_key')
-    expect(payload.credentials).not.toHaveProperty('api_keys')
-    keys.vm.$emit('update:modelValue', 'new-first\nnew-second')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledOnce())
+    expect(updateAccountMock.mock.calls[0][1]).not.toHaveProperty('api_key_update')
+    expect(updateAccountMock.mock.calls[0][1].credentials).not.toHaveProperty('api_keys')
+    keys.vm.$emit('update:modelValue', [{ id: 'key-two', value: '' }, { value: 'new-key' }])
     await wrapper.vm.$nextTick()
     await wrapper.get('form').trigger('submit.prevent')
-    await vi.waitFor(() => expect(updateAccountMock.mock.calls.at(-1)?.[1]?.credentials?.api_keys).toEqual(['new-first', 'new-second']))
-    payload = updateAccountMock.mock.calls.at(-1)?.[1]
-    expect(payload.credentials.api_key).toBe('new-first')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledTimes(2))
+    expect(updateAccountMock.mock.calls[1][1].api_key_update).toEqual({
+      revision: 'pool-v1', entries: [{ id: 'key-two' }, { value: 'new-key' }]
+    })
+    expect(updateAccountMock.mock.calls[1][1].credentials).not.toHaveProperty('api_key')
+    wrapper.unmount()
+  })
+  it('keeps a saved NewAPI token when saving an unchanged empty token field', async () => {
+    const account = buildAccount()
+    account.extra = { usage_query: { enabled: true, provider: 'newapi', base_url: 'https://panel.example', user_id: '12', access_token: '***' } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="usage-query-access-token"]').element as HTMLInputElement).value).toBe('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await vi.waitFor(() => expect(updateAccountMock).toHaveBeenCalledOnce())
+    expect(updateAccountMock.mock.calls[0][1].extra.usage_query).toEqual({
+      enabled: true, provider: 'newapi', base_url: 'https://panel.example', user_id: '12', access_token: ''
+    })
     wrapper.unmount()
   })
   beforeEach(() => {
@@ -1770,8 +1789,8 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('api_key')
   })
 
-  it('allows saving apikey account against legacy backend without credentials_status', async () => {
-    // 新前端 + 旧后端：credentials_status 缺失，但 credentials.api_key 仍是明文，应允许保存
+  it('preserves existing credential fields when credentials_status is omitted', async () => {
+    // Key 列表快照可保留凭据，不依赖 credentials_status。
     const account = buildAccount()
     // 显式确保没有 credentials_status
     expect(account.credentials_status).toBeUndefined()
@@ -1789,8 +1808,9 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.api_key).toBe('sk-test')
   })
 
-  it('blocks apikey save when neither credentials_status nor legacy api_key indicates existence', async () => {
+  it('blocks an empty API key list', async () => {
     const account = buildAccount()
+    account.api_key_pool.keys = []
     account.credentials = {
       base_url: 'https://api.openai.com'
     }
@@ -2052,6 +2072,8 @@ describe('EditAccountModal gemini explicit cache upstream switch', () => {
       type: 'apikey',
       credentials: { api_key: 'sk-upstream', ...credentials },
       credentials_status: { has_api_key: true },
+      api_key_count: 1,
+      api_key_pool: { revision: 'gemini-pool-v1', keys: [{ id: 'gemini-key', masked: '••••ream' }] },
       extra: {},
       proxy_id: null,
       concurrency: 1,

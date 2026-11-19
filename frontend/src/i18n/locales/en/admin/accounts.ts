@@ -1,6 +1,9 @@
 export default {
   "accounts": {
     "apiKeyPool": {
+      "lastUsed": "Last successful use",
+      "replacePlaceholder": "Leave blank to keep; enter a value to replace this key",
+      "editHint": "Keys are tried in priority order. Append, replace, remove or reorder keys, then save to apply.",
       "add": "Add fallback key",
       "key": "API key {index}",
       "moveUp": "Move key {index} up",
@@ -10,6 +13,7 @@ export default {
       "stored": "{count} keys saved. Leave blank to keep them. Entering keys replaces the entire list; include every key you want to retain.",
       "summary": "{count} keys · priority order",
       "errors": {
+        "emptyEntry": "Enter the new key or remove the empty row",
         "required": "Enter at least one API key",
         "tooMany": "An account supports at most 20 API keys",
         "invalid": "Keys must be non-empty, contain no whitespace or control characters and be at most 8192 bytes each",
@@ -1439,10 +1443,22 @@ export default {
     "testConnectElapsed": "Connect",
     "testFirstResponseElapsed": "First response",
     "usageQuery": {
+      "updatedAt": "Updated",
+      "details": "Usage details",
+      "plan": "Plan / group",
+      "total": "Total quota",
+      "queryKey": "Query key",
+      "autoKey": "Last used key",
+      "test": "Test query",
+      "testing": "Querying…",
+      "newapiHint": "Use a panel access token to query the account balance. Keys belonging to the same account share this result.",
+      "sub2apiHint": "Query quota or wallet balance using the current upstream URL and selected key. Testing does not save settings or change scheduling.",
+      "urlRequired": "Enter the upstream URL first",
+      "sub2apiMissingFields": "Enter the upstream URL and select a key to query",
       "recentKey": "Last used Key #{index}",
       "primaryKey": "Primary Key #{index} (no usage recorded)",
       "panelAccountBalance": "Panel account balance",
-      "title": "Usage Query",
+      "title": "Custom Usage Query",
       "hint": "Query this account's remaining upstream quota. Only available for API Key accounts.",
       "enable": "Enable third-party usage query",
       "provider": "Provider",
@@ -1451,7 +1467,7 @@ export default {
       "accessToken": "Access Token",
       "accessTokenPlaceholder": "Enter access token",
       "userId": "Upstream User ID",
-      "editTokenHint": "Leave unchanged to keep the existing token; type to overwrite.",
+      "editTokenHint": "An access token is saved. Leave blank to keep it, or enter a replacement.",
       "incompleteFields": "Usage query is enabled. Please fill in panel URL, access token and upstream user ID before submitting.",
       "notEnabledHint": "Usage query not enabled"
     },

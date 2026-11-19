@@ -616,6 +616,31 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if input.APIKeyUpdate != nil {
+		if input.Type != "" && input.Type != AccountTypeAPIKey {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_API_KEYS", "key editing cannot change the account type")
+		}
+		if _, provided := input.Credentials["api_key"]; provided {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_API_KEYS", "use only one API key update format")
+		}
+		if _, provided := input.Credentials["api_keys"]; provided {
+			return nil, infraerrors.BadRequest("INVALID_ACCOUNT_API_KEYS", "use only one API key update format")
+		}
+		keys, keyErr := account.ResolveAPIKeyUpdate(input.APIKeyUpdate)
+		if keyErr != nil {
+			return nil, keyErr
+		}
+		if input.Credentials == nil {
+			input.Credentials = make(map[string]any, len(account.Credentials))
+			for name, value := range account.Credentials {
+				input.Credentials[name] = value
+			}
+			delete(input.Credentials, "api_keys")
+		}
+		for name, value := range keys {
+			input.Credentials[name] = value
+		}
+	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}

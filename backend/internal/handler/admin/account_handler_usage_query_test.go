@@ -1,6 +1,20 @@
 package admin
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestEncryptUsageQueryTokenBlankPreservesSavedToken(t *testing.T) {
+	previous := map[string]any{"usage_query": map[string]any{"provider": "newapi", "access_token": "saved-ciphertext"}}
+	extra := map[string]any{"usage_query": map[string]any{"enabled": true, "provider": "newapi", "access_token": ""}}
+	require.NoError(t, encryptUsageQueryToken(extra, previous, nil))
+	require.Equal(t, "saved-ciphertext", extra["usage_query"].(map[string]any)["access_token"])
+
+	newAccount := map[string]any{"usage_query": map[string]any{"enabled": true, "provider": "newapi", "access_token": ""}}
+	require.ErrorIs(t, encryptUsageQueryToken(newAccount, nil, nil), errUsageQueryAccessTokenRequired)
+}
 
 func TestEncryptUsageQueryTokenSub2APIReusesAccountCredentials(t *testing.T) {
 	extra := map[string]any{

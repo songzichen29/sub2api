@@ -198,24 +198,25 @@ type CreateAccountRequest struct {
 // UpdateAccountRequest represents update account request
 // 使用指针类型来区分"未提供"和"设置为0"
 type UpdateAccountRequest struct {
-	Name                    string         `json:"name"`
-	Notes                   *string        `json:"notes"`
-	Tags                    *[]string      `json:"tags"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	ExpiresAt               *int64         `json:"expires_at"`
-	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
-	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
-	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	APIKeyUpdate            *service.AccountAPIKeyUpdate `json:"api_key_update"`
+	Name                    string                       `json:"name"`
+	Notes                   *string                      `json:"notes"`
+	Tags                    *[]string                    `json:"tags"`
+	Type                    string                       `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
+	Credentials             map[string]any               `json:"credentials"`
+	Extra                   map[string]any               `json:"extra"`
+	ProxyID                 *int64                       `json:"proxy_id"`
+	Concurrency             *int                         `json:"concurrency"`
+	Priority                *int                         `json:"priority"`
+	RateMultiplier          *float64                     `json:"rate_multiplier"`
+	LoadFactor              *int                         `json:"load_factor"`
+	Status                  string                       `json:"status" binding:"omitempty,oneof=active inactive error"`
+	GroupIDs                *[]int64                     `json:"group_ids"`
+	ExpiresAt               *int64                       `json:"expires_at"`
+	AutoPauseOnExpired      *bool                        `json:"auto_pause_on_expired"`
+	ProbeEnabled            *bool                        `json:"upstream_billing_probe_enabled"`
+	RateSyncEnabled         *bool                        `json:"upstream_billing_rate_sync_enabled"`
+	ConfirmMixedChannelRisk *bool                        `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
@@ -1292,6 +1293,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
+		APIKeyUpdate:          req.APIKeyUpdate,
 		Name:                  req.Name,
 		Notes:                 req.Notes,
 		Tags:                  req.Tags,
@@ -2681,6 +2683,20 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	force := c.Query("force") == "true"
 
 	var usage *service.UsageInfo
+	if rawIndex, present := c.GetQuery("key_index"); present {
+		index, parseErr := strconv.Atoi(rawIndex)
+		if parseErr != nil || index < 1 || source == "passive" {
+			response.BadRequest(c, "key_index must select an API key for an active query")
+			return
+		}
+		usage, err = h.accountUsageService.GetAPIKeyUsage(c.Request.Context(), accountID, index, force)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, usage)
+		return
+	}
 	if source == "passive" {
 		usage, err = h.accountUsageService.GetPassiveUsage(c.Request.Context(), accountID)
 	} else {

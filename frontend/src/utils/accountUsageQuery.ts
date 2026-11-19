@@ -14,7 +14,8 @@ export function normalizeUsageQueryProvider(value: unknown): AccountUsageQueryPr
 
 export function buildUsageQueryConfig(
   provider: AccountUsageQueryProvider,
-  fields: NewAPIUsageQueryFields
+  fields: NewAPIUsageQueryFields,
+  hasStoredToken = false
 ): AccountUsageQueryConfig | null {
   if (provider === 'sub2api') {
     return {
@@ -26,7 +27,7 @@ export function buildUsageQueryConfig(
   const baseUrl = fields.baseUrl.trim()
   const accessToken = fields.accessToken.trim()
   const userId = fields.userId.trim()
-  if (!baseUrl || !accessToken || !userId) {
+  if (!baseUrl || (!accessToken && !hasStoredToken) || !userId) {
     return null
   }
   return {

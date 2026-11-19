@@ -228,3 +228,84 @@ func (zeroQuotaProvider) Type() usage_provider.ProviderType { return usage_provi
 func (zeroQuotaProvider) Fetch(context.Context, usage_provider.Config) (*usage_provider.QuotaInfo, error) {
 	return &usage_provider.QuotaInfo{Remaining: 0, Unit: "USD"}, nil
 }
+
+type selectedUsageAccountRepo struct {
+	zeroQuotaAccountRepoStub
+	account *Account
+}
+
+func (r *selectedUsageAccountRepo) GetByID(context.Context, int64) (*Account, error) {
+	return r.account, nil
+}
+
+func TestUsageQueryPreviewDoesNotChangeAccountOrCache(t *testing.T) {
+	var failed atomic.Bool
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/usage", r.URL.Path)
+		require.Equal(t, "Bearer selected-key", r.Header.Get("Authorization"))
+		if failed.Load() {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"balance":0,"unit":"CNY"}`)
+	}))
+	t.Cleanup(upstream.Close)
+	repo := &zeroQuotaAccountRepoStub{}
+	svc := &AccountUsageService{accountRepo: repo, cache: NewUsageCache(), thirdPartyFactory: func(usage_provider.ProviderType) (usage_provider.Provider, error) {
+		return usage_provider.NewSub2APIProviderWithClient(upstream.Client()), nil
+	}}
+	account := &Account{ID: 410, Type: AccountTypeAPIKey, Schedulable: true,
+		Credentials: map[string]any{"base_url": upstream.URL, "api_key": "selected-key"},
+		Extra:       map[string]any{"usage_query": map[string]any{"enabled": true, "provider": "sub2api"}},
+	}
+	result, err := svc.PreviewUsageQuery(context.Background(), account)
+	require.NoError(t, err)
+	require.Empty(t, result.Error)
+	require.Equal(t, "CNY", result.ThirdPartyQuota.Unit)
+	require.Zero(t, result.ThirdPartyQuota.Remaining)
+	require.True(t, account.Schedulable)
+	require.Zero(t, repo.setSchedulableCalls)
+	_, cached := svc.cache.thirdPartyCache.Load(account.ID)
+	require.False(t, cached)
+
+	failed.Store(true)
+	result, err = svc.PreviewUsageQuery(context.Background(), account)
+	require.NoError(t, err)
+	require.Contains(t, result.Error, "401")
+	require.Nil(t, result.ThirdPartyQuota)
+	require.Zero(t, repo.setSchedulableCalls)
+}
+
+func TestUsageQuerySelectedKeyIsIndependentOfRecentUsage(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "Bearer second" {
+			_, _ = fmt.Fprint(w, `{"balance":22}`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"balance":11}`)
+	}))
+	t.Cleanup(upstream.Close)
+	account := &Account{ID: 411, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"base_url": upstream.URL, "api_key": "first", "api_keys": []string{"first", "second"},
+	}, Extra: map[string]any{"usage_query": map[string]any{"enabled": true, "provider": "sub2api"}}}
+	repo := &selectedUsageAccountRepo{account: account}
+	svc := &AccountUsageService{accountRepo: repo, cache: NewUsageCache(), thirdPartyFactory: func(usage_provider.ProviderType) (usage_provider.Provider, error) {
+		return usage_provider.NewSub2APIProviderWithClient(upstream.Client()), nil
+	}}
+	result, err := svc.GetAPIKeyUsage(context.Background(), account.ID, 2, true)
+	require.NoError(t, err)
+	require.Equal(t, 22.0, result.ThirdPartyQuota.Remaining)
+	require.Equal(t, 2, result.ThirdPartyKey.Index)
+	require.Nil(t, result.ThirdPartyKey.LastUsedAt)
+	result, err = svc.getThirdPartyUsage(context.Background(), account, usageQueryConfig{Provider: usage_provider.ProviderSub2API}, false)
+	require.NoError(t, err)
+	require.Equal(t, 11.0, result.ThirdPartyQuota.Remaining)
+	require.Equal(t, 1, result.ThirdPartyKey.Index)
+	_, err = svc.GetAPIKeyUsage(context.Background(), account.ID, 3, true)
+	require.Error(t, err)
+	_, err = svc.GetAPIKeyUsage(context.Background(), account.ID, 0, true)
+	require.Error(t, err)
+	account.Extra["usage_query"] = map[string]any{"enabled": true, "provider": "newapi"}
+	_, err = svc.GetAPIKeyUsage(context.Background(), account.ID, 1, true)
+	require.Error(t, err)
+}

@@ -475,6 +475,7 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
+	APIKeyUpdate       *AccountAPIKeyUpdate
 	ProxyMode          string // 受限写入在验权后选择代理。
 	Name               string
 	Notes              *string

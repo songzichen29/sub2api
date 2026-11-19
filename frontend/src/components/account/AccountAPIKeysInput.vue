@@ -25,6 +25,7 @@
       </template>
     </div>
     <button type="button" class="btn btn-secondary text-sm" :disabled="keys.length >= MAX_ACCOUNT_API_KEYS" data-testid="add-account-api-key" @click="emit('update:modelValue', modelValue + '\n')">{{ t('admin.accounts.apiKeyPool.add') }}</button>
+    <p v-if="validationError" role="alert" class="text-xs text-red-600 dark:text-red-400">{{ t(`admin.accounts.apiKeyPool.errors.${validationError}`) }}</p>
     <p class="input-hint">{{ t('admin.accounts.apiKeyPool.hint') }}</p>
   </div>
 </template>
@@ -32,12 +33,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MAX_ACCOUNT_API_KEYS } from './accountApiKeys'
+import { accountApiKeyInputError, MAX_ACCOUNT_API_KEYS } from './accountApiKeys'
 
 const props = withDefaults(defineProps<{ modelValue: string; existingCount?: number; placeholder?: string; required?: boolean }>(), { existingCount: 0, placeholder: 'sk-...', required: false })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { t } = useI18n()
 const keys = computed(() => props.modelValue.split(/\r?\n/))
+const validationError = computed(() => props.modelValue ? accountApiKeyInputError(props.modelValue) : null)
 function update(index: number, value: string) {
   const next = [...keys.value]
   next[index] = value

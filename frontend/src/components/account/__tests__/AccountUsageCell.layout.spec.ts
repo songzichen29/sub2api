@@ -133,4 +133,49 @@ describe('account usage layout with real provider components', () => {
     expect(getUsage).toHaveBeenCalledWith(9601, 'active', true)
     expect(wrapper.get('.usage-progress-value').text()).toBe('40%')
   })
+
+  it.each(['newapi', 'sub2api'] as const)('uses the same currency, timestamp and details for %s', (provider) => {
+    const updatedAt = Date.parse('2026-11-20T00:00:00Z')
+    const wrapper = mountUsage({ extra: { usage_query: { enabled: true, provider } } }, {
+      third_party_quota: { plan_name: 'Monthly', remaining: 75, used: 25, total: 100, unit: 'CNY', utilization: 0.25, updated_at: updatedAt }
+    })
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('¥75.00')
+    expect(wrapper.get('time').attributes('datetime')).toBe('2026-11-20T00:00:00.000Z')
+    expect(wrapper.get('details').text()).toContain('Monthly')
+    expect(wrapper.get('details').text()).toContain('¥25.00')
+    expect(wrapper.get('details').text()).toContain('¥100.00')
+  })
+
+  it('keeps the selected key result independent of background list refreshes', async () => {
+    const quota = { plan_name: 'balance', remaining: 10, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    getUsage.mockReset().mockResolvedValue({ third_party_key: { index: 2 }, third_party_quota: { ...quota, remaining: 22 } })
+    const wrapper = mountUsage({ api_key_count: 2, extra: { usage_query: { enabled: true, provider: 'sub2api' } } }, {
+      third_party_key: { index: 1 }, third_party_quota: quota
+    })
+    await wrapper.get('[data-testid="usage-query-key"]').setValue('2')
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledWith(9601, 'active', true, 2)
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
+    await wrapper.setProps({ batchedUsage: { third_party_key: { index: 1 }, third_party_quota: { ...quota, remaining: 9 } } })
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
+    await wrapper.get('[data-testid="usage-query-key"]').setValue('0')
+    await flushPromises()
+    expect(getUsage).toHaveBeenLastCalledWith(9601, 'active', true)
+  })
+
+  it('discards an old selected-key response after switching keys', async () => {
+    const quota = { plan_name: 'balance', remaining: 22, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    let completeFirst!: (value: AccountUsageInfo) => void
+    getUsage.mockReset()
+      .mockReturnValueOnce(new Promise<AccountUsageInfo>(resolve => { completeFirst = resolve }))
+      .mockResolvedValueOnce({ third_party_key: { index: 2 }, third_party_quota: quota })
+    const wrapper = mountUsage({ api_key_count: 2, extra: { usage_query: { enabled: true, provider: 'sub2api' } } }, {})
+    await wrapper.get('[data-testid="usage-query-key"]').setValue('1')
+    await wrapper.get('[data-testid="usage-query-key"]').setValue('2')
+    await flushPromises()
+    completeFirst({ third_party_key: { index: 1 }, third_party_quota: { ...quota, remaining: 11 } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="third-party-key"]').text()).toBe('admin.accounts.apiKeyPool.key:2')
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
+  })
 })
