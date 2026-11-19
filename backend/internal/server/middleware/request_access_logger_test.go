@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 )
@@ -198,6 +199,29 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	if !found {
 		t.Fatalf("access log event not found")
 	}
+}
+
+func TestLogger_AccessLogIncludesGatewayTiming(t *testing.T) {
+	sink := initMiddlewareTestLogger(t)
+	r := gin.New()
+	r.Use(Logger())
+	r.POST("/v1/responses", func(c *gin.Context) {
+		c.Request = c.Request.WithContext(pkghttputil.WithGatewayTiming(c.Request.Context()))
+		if _, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request); err != nil {
+			t.Fatal(err)
+		}
+		c.Status(http.StatusOK)
+	})
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader("{}")))
+	for _, event := range sink.list() {
+		if event.Message == "http request completed" {
+			if event.Fields["request_body_wire_bytes"] != int64(2) || event.Fields["request_body_read_complete"] != true {
+				t.Fatalf("missing body timing: %+v", event.Fields)
+			}
+			return
+		}
+	}
+	t.Fatal("access log missing")
 }
 
 func TestLogger_IngressRejectRemainsInStandardAccessLog(t *testing.T) {

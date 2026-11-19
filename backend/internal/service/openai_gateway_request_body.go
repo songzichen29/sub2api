@@ -721,7 +721,7 @@ func gjsonArrayHasElements(value gjson.Result) bool {
 // ids, and opaque extensions). Callers scope this normalization to OpenAI
 // destinations; compatible providers may still consume their own content.
 func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, error) {
-	input := gjson.GetBytes(body, "input")
+	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return body, false, nil
 	}
@@ -732,7 +732,7 @@ func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, 
 			return true
 		}
 		content := item.Get("content")
-		if content.IsArray() && len(content.Array()) > 0 {
+		if gjsonArrayHasElements(content) {
 			needsNormalization = true
 			return false
 		}
@@ -774,6 +774,91 @@ func normalizeOpenAIResponsesReasoningContentReplay(body []byte) ([]byte, bool, 
 }
 
 func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
+	root := parseRawJSONView(body)
+	if !knownStoreFalse && root.Get("store").Type != gjson.False {
+		return body, false, nil
+	}
+	input := root.Get("input")
+	if !input.IsArray() {
+		return body, false, nil
+	}
+	// 无需改写时直接复用原始请求，避免把几十 MB 的图片解码进 map。
+	// 重复键仍由原解码器处理，保持最后一个键生效及非法 JSON 的报错语义。
+	if !gjson.ValidBytes(body) || hasDuplicateJSONObjectKeys(root) {
+		return normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body, knownStoreFalse)
+	}
+	type replayItem struct {
+		raw         string
+		drop        bool
+		stripID     bool
+		addSummary  bool
+		stripCallID bool
+	}
+	items := make([]replayItem, 0)
+	needsNormalization := false
+	duplicateItemKeys := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		edit := replayItem{raw: item.Raw}
+		if !item.IsObject() {
+			items = append(items, edit)
+			return true
+		}
+		if hasDuplicateJSONObjectKeys(item) {
+			duplicateItemKeys = true
+			return false
+		}
+		typ := strings.TrimSpace(item.Get("type").Str)
+		id := strings.TrimSpace(item.Get("id").Str)
+		switch typ {
+		case "reasoning":
+			edit.drop = strings.TrimSpace(item.Get("encrypted_content").Str) == ""
+			edit.stripID = strings.HasPrefix(id, "rs_")
+			edit.addSummary = item.Get("summary").Type == gjson.Null
+		case "item_reference":
+			edit.drop = strings.HasPrefix(id, "rs_")
+		}
+		edit.stripCallID = shouldStripOpenAIResponsesNonPairCallID(typ) && item.Get("call_id").Exists()
+		needsNormalization = needsNormalization || edit.drop || edit.stripID || edit.addSummary || edit.stripCallID
+		items = append(items, edit)
+		return true
+	})
+	if duplicateItemKeys {
+		return normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body, knownStoreFalse)
+	}
+	if !needsNormalization {
+		return body, false, nil
+	}
+	rebuilt := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.drop {
+			continue
+		}
+		raw := item.raw
+		var err error
+		if item.stripID {
+			raw, err = sjson.Delete(raw, "id")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize API-key reasoning id: %w", err)
+			}
+		}
+		if item.addSummary {
+			raw, err = sjson.SetRaw(raw, "summary", "[]")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize API-key reasoning summary: %w", err)
+			}
+		}
+		if item.stripCallID {
+			raw, err = sjson.Delete(raw, "call_id")
+			if err != nil {
+				return body, false, fmt.Errorf("normalize API-key reasoning call_id: %w", err)
+			}
+		}
+		rebuilt = append(rebuilt, raw)
+	}
+	return replaceOpenAIRawInput(body, input, rebuilt), true, nil
+}
+
+func normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
 	if !knownStoreFalse && gjson.GetBytes(body, "store").Type != gjson.False {
 		return body, false, nil
 	}
@@ -838,10 +923,6 @@ func normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body []byte, knownStoreFalse
 		return body, false, fmt.Errorf("serialize API-key store=false reasoning replay: %w", err)
 	}
 	return normalized, true, nil
-}
-
-func normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body []byte, knownStoreFalse bool) ([]byte, bool, error) {
-	return normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, knownStoreFalse)
 }
 
 func normalizeOpenAICodexCompactReasoningEffortForAccount(c *gin.Context, account *Account, body []byte) ([]byte, bool, error) {

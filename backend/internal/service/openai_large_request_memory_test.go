@@ -32,6 +32,7 @@ func TestLargeNativeResponsesRemainsByteIdentical(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, changed)
 		require.True(t, bytes.Equal(body, out))
+		require.Same(t, &body[0], &out[0], "no-op 必须复用原始缓冲区")
 	}
 }
 
@@ -60,17 +61,26 @@ func TestStoreFalseRawReplayMatchesDecodedBehavior(t *testing.T) {
 		`{"store":false,"input":[{"type":"reasoning","id":"rs_drop"}]} trailing`,
 		`{"store":false,"input":[{"type":"reasoning","id":"rs_drop"}]`,
 		`{"store":false,"input":[]}`,
+		`{"store":false,"input":[{"type":"reasoning","encrypted_content":42,"summary":[]}]}`,
+		`{"store":false,"input":[{"type":"reasoning","encrypted_content":"opaque","summary":false,"id":42}]}`,
+		`{"store":false,"input":[{"ty\u0070e":"reasoning","encrypted_content":"opaque","summ\u0061ry":null}]}`,
+		`{"store":false,"input":[{"type":"reasoning","encrypted_content":"opaque","summary":[],"summary":null}]}`,
+		`{"store":false,"input":[{"type":"message","call_id":null,"content":"\u4f60\u597d"}]}`,
+		`{"store":false,"store":true,"input":[{"type":"reasoning"}]}`,
+		`{"store":true,"input":[{"type":"reasoning"}]}`,
 	}
 	for _, fixture := range fixtures {
 		body := []byte(fixture)
-		want, wantChanged, wantErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body, false)
-		got, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
-		require.Equal(t, wantErr != nil, err != nil)
-		if wantErr != nil {
-			continue
+		for _, knownStoreFalse := range []bool{false, true} {
+			want, wantChanged, wantErr := normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body, knownStoreFalse)
+			got, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, knownStoreFalse)
+			require.Equal(t, wantErr != nil, err != nil)
+			if wantErr != nil {
+				continue
+			}
+			require.Equal(t, wantChanged, changed)
+			require.JSONEq(t, string(want), string(got))
 		}
-		require.Equal(t, wantChanged, changed)
-		require.JSONEq(t, string(want), string(got))
 	}
 }
 
@@ -85,6 +95,48 @@ func TestLegacyIngressNativeFastPathKeepsValidation(t *testing.T) {
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(out, "messages").Exists())
 	require.Equal(t, "keep", gjson.GetBytes(out, "input").String())
+}
+
+func TestStoreFalseRawReplayPreservesLargeImage(t *testing.T) {
+	body := bytes.Replace(largeNativeResponsesBody(2<<20), []byte(`"input":[`),
+		[]byte(`"input":[{"type":"reasoning","id":"rs_history","encrypted_content":"opaque","summary":null,"call_id":"unused"},`), 1)
+	original := bytes.Clone(body)
+	out, changed, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplay(body, false)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, original, body)
+	require.False(t, gjson.GetBytes(out, "input.0.id").Exists())
+	require.False(t, gjson.GetBytes(out, "input.0.call_id").Exists())
+	require.Equal(t, "[]", gjson.GetBytes(out, "input.0.summary").Raw)
+	require.Equal(t, parseRawJSONView(body).Get("input.1").Raw, parseRawJSONView(out).Get("input.1").Raw)
+	decoded, decodedChanged, err := normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded(body, false)
+	require.NoError(t, err)
+	require.True(t, decodedChanged)
+	require.JSONEq(t, string(decoded), string(out))
+}
+
+func BenchmarkOpenAIStoreFalseRewrite(b *testing.B) {
+	body := bytes.Replace(largeNativeResponsesBody(69<<20), []byte(`"input":[`),
+		[]byte(`"input":[{"type":"reasoning","id":"rs_history","encrypted_content":"opaque","summary":null},`), 1)
+	for _, tc := range []struct {
+		name string
+		fn   func([]byte, bool) ([]byte, bool, error)
+	}{
+		{"decoded", normalizeOpenAIAPIKeyStoreFalseReasoningReplayDecoded},
+		{"raw", normalizeOpenAIAPIKeyStoreFalseReasoningReplay},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(body)))
+			for i := 0; i < b.N; i++ {
+				out, changed, err := tc.fn(body, false)
+				if err != nil || !changed {
+					b.Fatalf("replay normalization failed: changed=%v err=%v", changed, err)
+				}
+				runtime.KeepAlive(out)
+			}
+		})
+	}
 }
 
 func BenchmarkOpenAILargeNativeRequest(b *testing.B) {

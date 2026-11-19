@@ -14,10 +14,39 @@ import (
 	"testing"
 	"time"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
+
+func TestHTTPUpstreamGatewayTimingKeepsAttemptsSeparate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		_, _ = io.WriteString(w, "ok")
+	}))
+	defer server.Close()
+	upstream, send := lifecycleClient(t, server, false)
+	core, logs := observer.New(zap.InfoLevel)
+	ctx := pkghttputil.WithGatewayTiming(logger.IntoContext(context.Background(), zap.New(core)))
+	for attempt := 1; attempt <= 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, strings.NewReader("{}"))
+		require.NoError(t, err)
+		resp, err := send(req)
+		require.NoError(t, err)
+		_, err = io.Copy(io.Discard, resp.Body)
+		require.NoError(t, err)
+		require.NoError(t, resp.Body.Close())
+		requireNoUpstreamInFlight(t, upstream)
+		events := logs.FilterMessage("gateway.upstream_timing").All()
+		require.Len(t, events, attempt)
+		require.EqualValues(t, attempt, events[attempt-1].ContextMap()["upstream_attempt"])
+		require.Equal(t, attempt == 2, events[attempt-1].ContextMap()["upstream_conn_reused"])
+	}
+}
 
 // Exercise both public entry points. The TLS case uses the test server's trusted
 // transport so the test remains local and does not depend on system trust roots.

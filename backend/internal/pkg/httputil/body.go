@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/zstd"
+	"go.uber.org/zap"
 )
 
 const (
@@ -120,6 +121,16 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 
 	startedAt := time.Now()
 	raw, err := readRequestBodyChunksWithBudget(req.Context(), req.Body, capHint, req.ContentLength)
+	bytesRead := int64(len(raw.data))
+	var readFailure *RequestBodyReadError
+	if errors.As(err, &readFailure) {
+		bytesRead = readFailure.BytesRead
+	}
+	RecordGatewayTiming(req.Context(),
+		zap.Int64("request_body_read_ms", time.Since(startedAt).Milliseconds()),
+		zap.Int64("request_body_wire_bytes", bytesRead),
+		zap.Bool("request_body_read_complete", err == nil),
+	)
 	if err != nil {
 		var readErr *RequestBodyReadError
 		if errors.As(err, &readErr) {
@@ -134,7 +145,9 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 	}
 
 	defer raw.release(req.Context())
+	decodeStarted := time.Now()
 	decoded, err := decompressRequestBodyWithBudget(req.Context(), enc, raw.data)
+	RecordGatewayTiming(req.Context(), zap.Int64("request_body_decode_ms", time.Since(decodeStarted).Milliseconds()))
 	if err != nil {
 		kind := RequestBodyReadErrorKindDecode
 		if errors.Is(err, ErrUnsupportedContentEncoding) {

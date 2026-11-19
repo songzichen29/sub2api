@@ -439,9 +439,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
+	c.Request = c.Request.WithContext(pkghttputil.WithGatewayTiming(logger.IntoContext(c.Request.Context(), reqLog)))
+	defer func() {
+		for _, key := range []string{service.OpsRoutingLatencyMsKey, service.OpsUpstreamLatencyMsKey, service.OpsTimeToFirstTokenMsKey, service.OpsOpenAIUpstreamFirstEventMsKey} {
+			if value, ok := getContextInt64(c, key); ok {
+				pkghttputil.RecordGatewayTiming(c.Request.Context(), zap.Int64(key, value))
+			}
+		}
+	}()
 
 	// Read request body
+	bodyStarted := time.Now()
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	bodyReady := time.Now()
+	pkghttputil.RecordGatewayTiming(c.Request.Context(),
+		zap.Int64("request_body_ready_ms", bodyReady.Sub(bodyStarted).Milliseconds()),
+		zap.Int("request_body_decoded_bytes", len(body)),
+	)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -576,7 +590,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
+	auditStarted := time.Now()
+	decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body)
+	pkghttputil.RecordGatewayTiming(c.Request.Context(), zap.Int64("request_security_audit_ms", time.Since(auditStarted).Milliseconds()))
+	if decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
@@ -635,6 +652,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	requestPlatform := openAICompatibleRequestPlatform(c.Request.Context(), apiKey)
 
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
+	// 包含校验、规范化、审核和前置查询，不冒充纯 JSON 解析时间。
+	pkghttputil.RecordGatewayTiming(c.Request.Context(), zap.Int64("request_prepare_ms", time.Since(bodyReady).Milliseconds()))
 	routingStart := time.Now()
 
 	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted, reqLog)

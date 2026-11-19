@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
@@ -86,6 +87,7 @@ func Logger() gin.HandlerFunc {
 			fields = append(fields, zap.Int64("api_key_id", apiKey.ID))
 		}
 
+		fields = append(fields, pkghttputil.GatewayTimingFields(c.Request.Context())...)
 		l := logger.FromContext(c.Request.Context()).With(fields...)
 		l.Info("http request completed", zap.Time("completed_at", endTime))
 

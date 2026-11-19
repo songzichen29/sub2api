@@ -314,7 +314,9 @@ func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...
 		drainTimeout = drainTimeouts[0]
 	}
 	ctx, cancel := pkghttputil.NewUpstreamAttemptContext(req.Context(), drainTimeout)
-	resp, err := servertiming.Do(client, req.WithContext(ctx))
+	tracedRequest, finishTiming := pkghttputil.TraceGatewayUpstream(req.WithContext(ctx))
+	resp, err := servertiming.Do(client, tracedRequest)
+	finishTiming(resp, err)
 	if err != nil {
 		cancel()
 		return resp, err
