@@ -46,6 +46,31 @@ test('media tool effects bind to the verified sender, persist assets, isolate co
  c.enabled=false;await assert.rejects(executeCapability({name:'collect_meme',args:{image_index:1,tags:'开心'}},context,deps),/停用/);
 });
 
+test('ambient image requests accept natural wording and separate intent from permissions',async()=>{
+ const c={enabled:true,bot_id:'123',groups:['456'],image_generation_enabled:true};
+ const input={bot:'123',sender:'789',chat:'456',message_id:'42',group:true,ambient:true,text:'给我一张单人房间里穿黄色宽松背心、站在窗边或者地上捡衣服的日常向图'};
+ const calls=[],deps={config:{snapshot:()=>c},store:{},siteTool:async body=>{calls.push(body);return {status:'queued'};}};
+ const run=text=>executeCapability({name:'generate_image',args:{prompt:'窗边的日常场景'}},{input:{...input,text},id:'turn',scope:'123:group:456'},deps);
+ assert.equal((await run(input.text)).status,'queued');
+ assert.equal(calls[0].group_id,'456');
+ await assert.rejects(run('你有什么生图功能'),/未识别出画图或改图请求/u);
+ c.image_generation_enabled=false;
+ await assert.rejects(run(input.text),/当前会话的生图功能已关闭/u);
+ assert.equal(calls.length,1);
+});
+
+test('private tools bind to the allowed sender and reject permission revocation',async()=>{
+ const c={enabled:true,bot_id:'123',groups:['456'],private_users:['789'],image_generation_enabled:true};
+ const input={bot:'123',sender:'789',chat:'789',message_id:'42',group:false,text:'画一只猫'};
+ const calls=[],deps={config:{snapshot:()=>c},store:{},siteTool:async body=>{calls.push(body);return {status:'queued'};}};
+ const run=()=>executeCapability({name:'generate_image',args:{prompt:'猫',group_id:'456',member_id:'other'}},{input,id:'turn',scope:'123:private:789'},deps);
+ assert.equal((await run()).status,'queued');
+ assert.equal(calls[0].group_id,'');assert.equal(calls[0].member_id,'789');
+ c.private_users=[];
+ await assert.rejects(run(),/本会话已停用/u);
+ assert.equal(calls.length,1);
+});
+
 test('random meme requests retry two safe theme fallbacks; specific searches stay exact',async t=>{
  const root=mkdtempSync(join(tmpdir(),'qqbot-meme-fallback-')),store=new Store(join(root,'db'),join(root,'raw'));
  t.after(()=>{store.db.close();rmSync(root,{recursive:true,force:true});});

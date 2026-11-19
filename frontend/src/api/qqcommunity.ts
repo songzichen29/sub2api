@@ -60,6 +60,7 @@ export interface QQGroupPolicy {
   disable_activities: boolean; disable_notifications: boolean; chat_daily_limit: number | null; image_daily_limit: number | null
 }
 export interface QQRuntimeChatConfig {
+  private_chat_enabled: boolean; private_users: string[]
   enabled: boolean; names: string[]; ambient_enabled: boolean; ambient_groups: string[]
   sample_percent: number; start_hour: number; end_hour: number
   daily_calls: number; hourly_replies: number; daily_replies: number
@@ -69,7 +70,7 @@ export interface QQRuntimeChatConfig {
   proactive_enabled: boolean; proactive_groups: string[]; proactive_times: string[]; proactive_idle_minutes: number
 }
 export function defaultRuntimeChatConfig(): QQRuntimeChatConfig {
-  return { enabled: true, names: ['小碗', '大碗'], ambient_enabled: false, ambient_groups: [],
+  return { enabled: true, private_chat_enabled: false, private_users: [], names: ['小碗', '大碗'], ambient_enabled: false, ambient_groups: [],
     sample_percent: 100, start_hour: 8, end_hour: 2, daily_calls: 1800, hourly_replies: 100, daily_replies: 1000,
     image_input_enabled: true, web_enabled: true, memes_enabled: true, collect_memes: true,
     media_daily_calls: 100, context_window_tokens: 65536,

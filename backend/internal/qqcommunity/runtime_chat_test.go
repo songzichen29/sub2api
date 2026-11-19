@@ -90,6 +90,36 @@ func TestRuntimeAcceptsExistingDSHPersona(t *testing.T) {
 	require.Error(t, validateConfig(c))
 }
 
+func TestRuntimePrivateChatConfigurationPreservesLegacyAndHonorsExplicitScope(t *testing.T) {
+	var c Config
+	require.NoError(t, json.Unmarshal([]byte(`{"enabled":true,"app_id":"123","group_admins":[{"app_id":"123","group_id":"456","member_id":"789"},{"app_id":"999","member_id":"888"}],"runtime_chat":{"enabled":true}}`), &c))
+	require.True(t, c.RuntimeChat.PrivateChatEnabled)
+	require.Equal(t, []string{"789"}, c.RuntimeChat.PrivateUsers)
+	require.True(t, c.allowsPrivateChat("789"))
+	c.RuntimeChat.PrivateChatEnabled = false
+	raw, err := json.Marshal(c)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &c))
+	require.False(t, c.allowsPrivateChat("789"))
+	require.Empty(t, runtimePolicy(c)["private_users"])
+	require.Equal(t, []string{"789"}, c.RuntimeChat.PrivateUsers)
+	c.RuntimeChat.PrivateChatEnabled = true
+	c.RuntimeChat.PrivateUsers = []string{}
+	raw, err = json.Marshal(c)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(raw, &c))
+	require.False(t, c.allowsPrivateChat("789"), "an explicit empty list must not restore administrators")
+	for _, users := range [][]string{{"789", "789"}, {"not-qq"}, {"123"}, {"0789"}} {
+		c.RuntimeChat.PrivateUsers = users
+		require.Error(t, validateRuntimeChat(c))
+	}
+	c.RuntimeChat.PrivateUsers = []string{"777"}
+	require.NoError(t, validateRuntimeChat(c))
+	require.True(t, c.allowsPrivateChat("777"))
+	c.ChatDisabled = true
+	require.False(t, c.allowsPrivateChat("777"))
+}
+
 func TestRuntimeProactiveConfigurationUsesBeijingAndAllowedGroups(t *testing.T) {
 	c := DefaultConfig()
 	c.AllowedGroups = []string{"456"}

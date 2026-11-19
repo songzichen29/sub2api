@@ -34,6 +34,8 @@ type runtimeSourceImage struct {
 var runtimeNumericID = regexp.MustCompile(`^[1-9][0-9]{0,23}$`)
 var runtimeMessageID = regexp.MustCompile(`^-?[0-9]{1,24}$`)
 
+const runtimePrivateImageCreate = "RUNTIME_PRIVATE_IMAGE_CREATE"
+
 func runtimeToolScope(c Config, in runtimeToolRequest) bool {
 	if !c.Enabled || !c.RuntimeChat.Enabled || c.ChatDisabled || !runtimeNumericID.MatchString(in.MemberID) || !runtimeMessageID.MatchString(in.MessageID) {
 		return false
@@ -41,12 +43,7 @@ func runtimeToolScope(c Config, in runtimeToolRequest) bool {
 	if in.GroupID != "" {
 		return c.allows(in.GroupID) && !c.groupPolicy(in.GroupID).DisableChat
 	}
-	for _, admin := range c.GroupAdmins {
-		if admin.AppID == c.AppID && admin.MemberID == in.MemberID {
-			return true
-		}
-	}
-	return false
+	return c.allowsPrivateChat(in.MemberID)
 }
 
 func runtimeImageEvent(in runtimeToolRequest) (Event, error) {
@@ -54,8 +51,8 @@ func runtimeImageEvent(in runtimeToolRequest) (Event, error) {
 		return Event{}, errors.New("不支持的图片输出格式")
 	}
 	prompt := strings.TrimSpace(in.Prompt)
-	if in.GroupID == "" || prompt == "" || len([]rune(prompt)) > 6000 {
-		return Event{}, errors.New("请在已开放群描述要画的图片，最多6000字")
+	if prompt == "" || len([]rune(prompt)) > 6000 {
+		return Event{}, errors.New("请描述要画的图片，最多6000字")
 	}
 	e := Event{ID: in.MessageID, GroupID: in.GroupID, MemberID: in.MemberID, Content: "/生图 " + prompt}
 	e.RuntimeImageFormat = in.OutputFormat
@@ -86,6 +83,38 @@ func (s *Service) runtimeImage(ctx context.Context, c Config, e Event, prompt st
 		return s.editImage(ctx, c, prompt, e.RuntimeEditImage)
 	}
 	return s.generateImage(ctx, c, prompt)
+}
+
+func runtimePrivateImageAllowed(c Config, j Job) bool {
+	return j.EventType == runtimePrivateImageCreate && j.GroupID == "" && c.AppID == j.AppID && c.ImageEnabled && c.allowsPrivateChat(j.MemberID)
+}
+
+// 私聊生图复用持久任务队列和去重，不写入群发现、群历史或群图片缓存。
+func (s *Service) enqueueRuntimePrivateImage(ctx context.Context, c Config, e Event, raw json.RawMessage) error {
+	cmd, _ := command(e.Content)
+	if e.GroupID != "" || !c.ImageEnabled || !c.allowsPrivateChat(e.MemberID) || e.Author.MemberID != e.MemberID || cmd != "生图" {
+		return ErrDisabled
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(71427102)`); err != nil {
+		return err
+	}
+	var queued int
+	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_jobs WHERE status='queued'`).Scan(&queued); err != nil {
+		return err
+	}
+	if queued >= 200 {
+		return errors.New("机器人队列已满")
+	}
+	key := runtimePrivateImageCreate + ":" + e.MemberID + ":" + e.ID
+	if _, err = tx.ExecContext(ctx, `INSERT INTO qqc_jobs(id,app_id,event_key,event_type,group_id,member_id,message_id,payload,kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(app_id,event_key) DO NOTHING`, randomID(), c.AppID, key, runtimePrivateImageCreate, "", e.MemberID, e.ID, string(raw), "image"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
@@ -125,8 +154,8 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 	var out any
 	switch in.Tool {
 	case "generate_image", "edit_image":
-		if !c.ImageEnabled || c.groupPolicy(in.GroupID).DisableImages {
-			fail(400, "本群未启用生图")
+		if !c.ImageEnabled || (in.GroupID != "" && c.groupPolicy(in.GroupID).DisableImages) {
+			fail(400, "当前会话未启用生图")
 			return
 		}
 		e, eventErr := runtimeImageEvent(in)
@@ -135,15 +164,20 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		raw, _ := json.Marshal(e)
+		eventType, eventKey := groupAtMessageCreate, groupAtMessageCreate+":"+in.MessageID
+		if in.GroupID == "" {
+			eventType = runtimePrivateImageCreate
+			eventKey = runtimePrivateImageCreate + ":" + in.MemberID + ":" + in.MessageID
+		}
 		// Use the original QQ message id. The normal durable queue deduplicates
 		// this request and owns image quotas, generation and the QQ receipt.
-		if err = s.Enqueue(ctx, c, Payload{Type: groupAtMessageCreate, Data: raw}); err != nil {
+		if err = s.Enqueue(ctx, c, Payload{ID: eventKey, Type: eventType, Data: raw}); err != nil {
 			fail(503, "生图任务提交失败，请稍后再试")
 			return
 		}
 		var jobID, jobStatus string
-		if err = s.db.QueryRowContext(ctx, `SELECT id,status FROM qqc_jobs WHERE app_id=$1 AND event_key=$2`, c.AppID, groupAtMessageCreate+":"+in.MessageID).Scan(&jobID, &jobStatus); err != nil || (jobStatus != "queued" && jobStatus != "running" && jobStatus != "completed") {
-			fail(400, "生图请求未受理或此前已失败，请检查群策略后重新发送")
+		if err = s.db.QueryRowContext(ctx, `SELECT id,status FROM qqc_jobs WHERE app_id=$1 AND event_key=$2`, c.AppID, eventKey).Scan(&jobID, &jobStatus); err != nil || (jobStatus != "queued" && jobStatus != "running" && jobStatus != "completed") {
+			fail(400, "生图请求未受理或此前已失败，请检查会话权限后重新发送")
 			return
 		}
 		out = map[string]string{"status": "queued", "job_id": jobID, "job_status": jobStatus, "message": "生图请求已交给站点，稍后由站点发送图片或失败说明。当前仅已提交，不能声称画好或发送成功。"}

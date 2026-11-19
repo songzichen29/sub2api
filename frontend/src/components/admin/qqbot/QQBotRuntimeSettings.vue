@@ -5,6 +5,12 @@
     <p class="text-sm" role="status" data-testid="dsh-runtime-status">{{ t(status?.connected ? 'qqbot.runtimeChat.connected' : 'qqbot.runtimeChat.pending') }}</p>
     <p v-if="status?.last_seen_at" class="text-xs text-gray-500">{{ t('qqbot.runtimeChat.memoryStats', { sessions: status.sessions, messages: status.messages, summaries: status.summaries }) }}</p>
     <QQChatDiagnostics :status="status" :show-records="false" />
+    <fieldset class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
+      <legend>{{ t('qqbot.runtimeChat.privateTitle') }}</legend>
+      <label class="flex items-center gap-2"><input v-model="value.private_chat_enabled" type="checkbox" data-testid="runtime-private-enabled" />{{ t('qqbot.runtimeChat.privateEnabled') }}</label>
+      <label class="block space-y-1">{{ t('qqbot.runtimeChat.privateUsers') }}<textarea v-model="privateUsers" class="input" rows="3" data-testid="runtime-private-users" :disabled="!value.private_chat_enabled" /></label>
+      <p class="text-xs text-gray-500">{{ t('qqbot.runtimeChat.privateHelp') }}</p>
+    </fieldset>
     <label class="block space-y-1">{{ t('qqbot.runtimeChat.names') }}<textarea v-model="names" class="input" rows="2" data-testid="runtime-names" /></label>
     <label class="flex items-center gap-2"><input v-model="value.ambient_enabled" type="checkbox" data-testid="runtime-ambient-enabled" />{{ t('qqbot.runtimeChat.ambient') }}</label>
     <QQGroupPicker v-model="value.ambient_groups" :groups="groups" :policies="policies" :names="groupNames" :label="t('qqbot.runtimeChat.ambientGroups')" />
@@ -49,6 +55,12 @@ import type { QQRuntimeChatConfig, QQChatRuntimeStatus, QQGroupPolicy } from '@/
 const value = defineModel<QQRuntimeChatConfig>({ required: true })
 defineProps<{ status?: QQChatRuntimeStatus; groups: string[]; policies?: QQGroupPolicy[]; groupNames?: Record<string, string> }>()
 const { t } = useI18n()
+const splitUsers = (text: string) => [...new Set(text.split(/[\s,，]+/).filter(Boolean))]
+const privateUsers = ref(value.value.private_users.join('\n'))
+watch(privateUsers, text => { value.value.private_users = splitUsers(text) }, { flush: 'sync' })
+watch(() => value.value.private_users, users => {
+  if (JSON.stringify(users) !== JSON.stringify(splitUsers(privateUsers.value))) privateUsers.value = users.join('\n')
+})
 const names = computed({ get: () => value.value.names.join('\n'), set: (text: string) => { value.value.names = [...new Set(text.split(/[\n,，]+/).map(s => s.trim()).filter(Boolean))] } })
 const splitTimes = (text: string) => text.split(/[\s,，]+/).filter(Boolean)
 const proactiveTimes = ref(value.value.proactive_times.join(', '))

@@ -148,7 +148,12 @@ func (s *Service) runOne(parent context.Context) {
 		s.finish(j, "failed", err.Error())
 		return
 	}
-	if !c.Enabled || c.AppID != j.AppID || !c.allows(j.GroupID) {
+	allowed := c.allows(j.GroupID)
+	if j.EventType == runtimePrivateImageCreate {
+		allowed = runtimePrivateImageAllowed(c, j)
+		j.PrivateReply = true
+	}
+	if !c.Enabled || c.AppID != j.AppID || !allowed {
 		reason := "bot_disabled"
 		if c.AppID != j.AppID {
 			reason = "app_changed"
@@ -192,7 +197,7 @@ func (s *Service) runOne(parent context.Context) {
 		s.finish(j, "failed", "事件格式不正确")
 		return
 	}
-	if !isGroupMessageEvent(j.EventType) && j.EventType != interactionCreate {
+	if !isGroupMessageEvent(j.EventType) && j.EventType != interactionCreate && j.EventType != runtimePrivateImageCreate {
 		err = s.memberEvent(ctx, c, j, e)
 		if err != nil {
 			s.finish(j, "failed", "群成员事件处理失败")
@@ -438,6 +443,9 @@ func (s *Service) message(ctx context.Context, c Config, j *Job, e Event) error 
 		cmd = "帮助"
 	}
 	j.CommandReply = cmd != "" || e.CommandReply
+	if j.EventType == runtimePrivateImageCreate {
+		j.CommandReply = false
+	}
 	if arg != "" {
 		switch cmd {
 		case "领码":

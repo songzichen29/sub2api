@@ -182,6 +182,21 @@ describe('QQ module settings', () => {
   expect(api.saveSection).toHaveBeenCalledWith('runtime-chat', 'runtime-chat-1', expect.objectContaining({ runtime_chat: expect.objectContaining({ proactive_enabled: true, proactive_times: ['12:00', '14:00', '18:00'], proactive_idle_minutes: 15 }) }))
   expect(server.allowed_groups).toEqual(['group', 'other-group'])
  })
+ it('saves the private-chat switch and explicit users independently of group administrators', async () => {
+  server.group_admins = [{ app_id: 'app', group_id: 'group', member_id: 'trusted-member', nickname: '管理员' }]
+  const w = await mountView(); await category(w, '对话与指令')
+  const users = w.get('[data-testid="runtime-private-users"]')
+  expect((users.element as HTMLTextAreaElement).disabled).toBe(true)
+  await w.get('[data-testid="runtime-private-enabled"]').setValue(true)
+  await users.setValue('2904566522\n123456789,2904566522')
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(api.saveSection).toHaveBeenLastCalledWith('runtime-chat', 'runtime-chat-1', expect.objectContaining({ runtime_chat: expect.objectContaining({ private_chat_enabled: true, private_users: ['2904566522', '123456789'] }) }))
+  expect(server.group_admins).toEqual([{ app_id: 'app', group_id: 'group', member_id: 'trusted-member', nickname: '管理员' }])
+  await w.get('[data-testid="runtime-private-enabled"]').setValue(false)
+  await w.get('form').trigger('submit'); await flushPromises()
+  expect(server.runtime_chat?.private_chat_enabled).toBe(false)
+  expect(server.runtime_chat?.private_users).toEqual(['2904566522', '123456789'])
+ })
  it('reports synchronized DSH memory and validates runtime capacity', async () => {
   api.runtime.mockResolvedValue({ groups: [], jobs: [], rewards: [], bindings: 0, encryption_ready: true, chat_runtime: { connected: true, last_seen_at: '2026-11-05T00:00:00Z', sessions: 2, messages: 150, summaries: 1 } })
   const w = await mountView(); await category(w, '对话与指令')

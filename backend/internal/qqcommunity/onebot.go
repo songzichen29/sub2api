@@ -435,6 +435,9 @@ func (s *Service) sendOneBotChunk(ctx context.Context, c Config, j Job, text str
 	if j.PrivateReply {
 		action = "send_private_msg"
 		params["user_id"] = j.MemberID
+		if j.GroupID == "" {
+			delete(params, "group_id")
+		}
 	}
 	raw, err := s.oneBotCall(ctx, c, action, params)
 	if err != nil {

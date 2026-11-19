@@ -18,11 +18,15 @@ func TestRuntimeGroupAdminsKeepExactScope(t *testing.T) {
 	c := DefaultConfig()
 	c.AppID = "123"
 	c.GroupAdmins = []GroupAdmin{{AppID: "123", GroupID: "456", MemberID: "789"}, {AppID: "999", GroupID: "456", MemberID: "888"}}
+	c.RuntimeChat.PrivateChatEnabled = true
+	c.RuntimeChat.PrivateUsers = []string{"777"}
 	p := runtimePolicy(c)
 	require.Empty(t, p["owners"])
-	require.Equal(t, []string{"789"}, p["private_users"])
+	require.Equal(t, []string{"777"}, p["private_users"])
 	require.Equal(t, c.GroupAdmins, p["group_admins"])
 	c.Enabled, c.RuntimeChat.Enabled = true, true
+	require.True(t, runtimeToolScope(c, runtimeToolRequest{MemberID: "777", MessageID: "1"}))
+	require.False(t, runtimeToolScope(c, runtimeToolRequest{MemberID: "789", MessageID: "1"}))
 	require.False(t, runtimeToolScope(c, runtimeToolRequest{MemberID: "888", MessageID: "1"}))
 }
 

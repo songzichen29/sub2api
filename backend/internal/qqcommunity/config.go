@@ -32,11 +32,26 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	// requests so it cannot collect evidence or authorize queued punishments.
 	decoded.Moderation.ReportEnabled = false
 	var history struct {
-		Messages *int `json:"history_messages"`
-		Turns    *int `json:"history_turns"`
+		Messages    *int `json:"history_messages"`
+		Turns       *int `json:"history_turns"`
+		RuntimeChat struct {
+			PrivateChatEnabled *bool    `json:"private_chat_enabled"`
+			PrivateUsers       []string `json:"private_users"`
+		} `json:"runtime_chat"`
 	}
 	if err := json.Unmarshal(data, &history); err != nil {
 		return err
+	}
+	// 老配置仅允许群管理员私聊；升级保留原名单，显式开关和空名单不再继承管理员。
+	if history.RuntimeChat.PrivateChatEnabled == nil && history.RuntimeChat.PrivateUsers == nil {
+		seen := map[string]bool{}
+		for _, admin := range decoded.GroupAdmins {
+			if admin.AppID == decoded.AppID && runtimeNumericID.MatchString(admin.MemberID) && !seen[admin.MemberID] {
+				decoded.RuntimeChat.PrivateUsers = append(decoded.RuntimeChat.PrivateUsers, admin.MemberID)
+				seen[admin.MemberID] = true
+			}
+		}
+		decoded.RuntimeChat.PrivateChatEnabled = len(decoded.RuntimeChat.PrivateUsers) > 0
 	}
 	switch {
 	case history.Messages != nil:

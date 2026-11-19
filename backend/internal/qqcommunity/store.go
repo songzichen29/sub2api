@@ -166,6 +166,9 @@ func (s *Service) Enqueue(ctx context.Context, c Config, p Payload) (err error) 
 		reason = "invalid_payload"
 		return err
 	}
+	if p.Type == runtimePrivateImageCreate {
+		return s.enqueueRuntimePrivateImage(ctx, c, e, p.Data)
+	}
 	if isGroupMessageEvent(p.Type) {
 		if sanitizePublicBinding(&e, c) {
 			p.Data, err = json.Marshal(e)
@@ -410,7 +413,11 @@ func (s *Service) reserveUsage(ctx context.Context, c Config, j Job, kind string
 	if err != nil {
 		return err
 	}
-	if !current.Enabled || current.AppID != c.AppID || !current.allows(j.GroupID) {
+	allowed := current.allows(j.GroupID)
+	if j.EventType == runtimePrivateImageCreate {
+		allowed = kind == "image" && runtimePrivateImageAllowed(current, j)
+	}
+	if !current.Enabled || current.AppID != c.AppID || !allowed {
 		return errFeatureUnavailable
 	}
 	c = current
@@ -426,7 +433,7 @@ func (s *Service) reserveUsage(ctx context.Context, c Config, j Job, kind string
 	} else if kind != "chat" {
 		return errFeatureUnavailable
 	}
-	if per == 0 || total == 0 || c.groupLimit(j.GroupID, kind) == 0 {
+	if per == 0 || total == 0 || (j.EventType != runtimePrivateImageCreate && c.groupLimit(j.GroupID, kind) == 0) {
 		return errFeatureUnavailable
 	}
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,271))`, c.AppID); err != nil {
@@ -440,7 +447,11 @@ func (s *Service) reserveUsage(ctx context.Context, c Config, j Job, kind string
 		return errUsageCooldown
 	}
 	usageDay := day(time.Now())
-	for i, scope := range []string{"all", "member:" + j.MemberID, "group:" + j.GroupID} {
+	scopes := []string{"all", "member:" + j.MemberID}
+	if j.EventType != runtimePrivateImageCreate {
+		scopes = append(scopes, "group:"+j.GroupID)
+	}
+	for i, scope := range scopes {
 		limit := total
 		if i == 1 {
 			limit = per

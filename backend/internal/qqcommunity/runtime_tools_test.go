@@ -11,7 +11,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 	htmlpkg "golang.org/x/net/html"
 )
@@ -83,7 +85,7 @@ func TestRuntimeNaturalImageRequestKeepsOriginalIdentityAndUsesBusinessCommand(t
 	command, arg := command(e.Content)
 	require.Equal(t, "生图", command)
 	require.Equal(t, "疯狂水世界启动", arg)
-	_, err = runtimeImageEvent(runtimeToolRequest{Prompt: "test"})
+	_, err = runtimeImageEvent(runtimeToolRequest{Prompt: " "})
 	require.Error(t, err)
 	c := DefaultConfig()
 	require.NoError(t, json.Unmarshal([]byte(`{"runtime_chat":{"enabled":true}}`), &c))
@@ -108,4 +110,112 @@ func TestRuntimeWebParsesActualSourcesAndRejectsInternalURLs(t *testing.T) {
 	}
 	root, _ := htmlpkg.Parse(strings.NewReader(`<div>公开正文<script>steal secrets</script><span hidden>private</span></div>`))
 	require.Equal(t, "公开正文", runtimeNodeText(root))
+}
+
+func TestRuntimePrivateImageEnqueuesOnceWithPrivateIdentity(t *testing.T) {
+	s, mock, c, _ := observationFixture(t)
+	c.RuntimeChat = DefaultRuntimeChatConfig()
+	c.Enabled, c.ImageEnabled, c.RuntimeChat.Enabled, c.RuntimeChat.PrivateChatEnabled = true, true, true, true
+	c.RuntimeChat.PrivateUsers = []string{"789"}
+	e, err := runtimeImageEvent(runtimeToolRequest{Tool: "generate_image", MemberID: "789", MessageID: "42", Prompt: "窗边的猫"})
+	require.NoError(t, err)
+	require.Empty(t, e.GroupID)
+	raw, err := json.Marshal(e)
+	require.NoError(t, err)
+	for _, inserted := range []int64{1, 0} {
+		mock.ExpectBegin()
+		mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+		mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+		mock.ExpectExec("INSERT INTO qqc_jobs.*ON CONFLICT.*DO NOTHING").WithArgs(sqlmock.AnyArg(), c.AppID, runtimePrivateImageCreate+":789:42", runtimePrivateImageCreate, "", "789", "42", string(raw), "image").WillReturnResult(sqlmock.NewResult(0, inserted))
+		mock.ExpectCommit()
+		require.NoError(t, s.Enqueue(context.Background(), c, Payload{Type: runtimePrivateImageCreate, Data: raw}))
+	}
+	c.RuntimeChat.PrivateChatEnabled = false
+	require.ErrorIs(t, s.Enqueue(context.Background(), c, Payload{Type: runtimePrivateImageCreate, Data: raw}), ErrDisabled)
+	require.NoError(t, mock.ExpectationsWereMet(), "private requests must not write group history or discovered groups")
+}
+
+func TestRuntimePrivateImageDeliveryUsesSenderAndRechecksPermission(t *testing.T) {
+	s, mock, c, _ := observationFixture(t)
+	c.RuntimeChat = DefaultRuntimeChatConfig()
+	c.Enabled, c.ImageEnabled, c.RuntimeChat.Enabled, c.RuntimeChat.PrivateChatEnabled = true, true, true, true
+	c.RuntimeChat.PrivateUsers = []string{"789"}
+	j := Job{ID: "private-image", AppID: c.AppID, EventType: runtimePrivateImageCreate, MemberID: "789", MessageID: "42", PrivateReply: true, Kind: "image", CreatedAt: time.Now()}
+	requests := bindingTestBot(t, s, c, map[string]any{"message_id": 1234})
+	expectObservationConfig(mock, c)
+	require.NoError(t, s.send(context.Background(), c, j, "图片已生成。", testInputPNG(t), 1))
+	req := bindingTestRequest(t, requests)
+	require.JSONEq(t, `"send_private_msg"`, string(req["action"]))
+	var params struct {
+		UserID  string  `json:"user_id"`
+		GroupID *string `json:"group_id"`
+		Message []struct {
+			Type string `json:"type"`
+		} `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(req["params"], &params))
+	require.Equal(t, "789", params.UserID)
+	require.Nil(t, params.GroupID)
+	require.Equal(t, "image", params.Message[1].Type)
+	c.RuntimeChat.PrivateChatEnabled = false
+	expectObservationConfig(mock, c)
+	require.ErrorIs(t, s.send(context.Background(), c, j, "图片已生成。", testInputPNG(t), 1), ErrDisabled)
+	require.Empty(t, requests)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRuntimePrivateImageWorkerReservesPersonalQuotaAndDeliversImage(t *testing.T) {
+	s, mock, c, _ := observationFixture(t)
+	c.RuntimeChat = DefaultRuntimeChatConfig()
+	c.Enabled, c.ImageEnabled, c.RuntimeChat.Enabled, c.RuntimeChat.PrivateChatEnabled = true, true, true, true
+	c.RuntimeChat.PrivateUsers = []string{"789"}
+	original := testInputPNG(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		require.Equal(t, "/images/generations", r.URL.Path)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": base64.StdEncoding.EncodeToString(original)}}})
+	}))
+	defer server.Close()
+	c.ImageBaseURL = server.URL
+	e, err := runtimeImageEvent(runtimeToolRequest{Tool: "generate_image", MemberID: "789", MessageID: "42", Prompt: "窗边的猫", OutputFormat: "png"})
+	require.NoError(t, err)
+	raw, err := json.Marshal(e)
+	require.NoError(t, err)
+	requests := bindingTestBot(t, s, c, map[string]any{"message_id": 1234})
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("SELECT .* FROM qqc_jobs q").WillReturnRows(sqlmock.NewRows(strings.Split(jobColumns, ",")).AddRow("private-job", c.AppID, runtimePrivateImageCreate, "", "789", "42", raw, "image", "queued", "", []byte{}, "", "", 0, 0, time.Now(), nil, "", "", []byte(`{}`), []byte(`{}`), nil))
+	mock.ExpectExec("UPDATE qqc_jobs SET status='running'").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	expectObservationConfig(mock, c)
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock_shared").WillReturnResult(sqlmock.NewResult(0, 1))
+	expectObservationConfig(mock, c)
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT COUNT").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	mock.ExpectQuery("INSERT INTO qqc_daily_usage").WithArgs(c.AppID, "all", sqlmock.AnyArg(), "image", c.TotalDailyImageLimit).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("INSERT INTO qqc_daily_usage").WithArgs(c.AppID, "member:789", sqlmock.AnyArg(), "image", c.DailyImageLimit).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectExec("UPDATE qqc_jobs SET kind").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec("DELETE FROM qqc_pending_image_plans").WithArgs(c.AppID, "", "789").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("UPDATE qqc_jobs SET image_decision").WillReturnResult(sqlmock.NewResult(0, 1))
+	expectObservationConfig(mock, c)
+	mock.ExpectExec("UPDATE qqc_jobs SET image_decision").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE qqc_jobs SET result_text").WillReturnResult(sqlmock.NewResult(0, 1))
+	expectObservationConfig(mock, c)
+	mock.ExpectExec("UPDATE qqc_jobs SET status").WithArgs("private-job", "completed", "").WillReturnResult(sqlmock.NewResult(0, 1))
+	s.runOne(context.Background())
+	require.NoError(t, mock.ExpectationsWereMet(), "no group quota, group history or binding mutation is allowed")
+	require.Equal(t, 1, calls)
+	for i := 0; i < 2; i++ {
+		req := bindingTestRequest(t, requests)
+		require.JSONEq(t, `"send_private_msg"`, string(req["action"]))
+		require.Contains(t, string(req["params"]), `"user_id":"789"`)
+		require.NotContains(t, string(req["params"]), `"group_id"`)
+		if i == 1 {
+			require.Contains(t, string(req["params"]), base64.StdEncoding.EncodeToString(original))
+		}
+	}
 }

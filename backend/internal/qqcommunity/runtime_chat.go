@@ -17,6 +17,8 @@ import (
 // retired when this is enabled; account, image and moderation services remain.
 type RuntimeChatConfig struct {
 	Enabled              bool     `json:"enabled"`
+	PrivateChatEnabled   bool     `json:"private_chat_enabled"`
+	PrivateUsers         []string `json:"private_users"`
 	Names                []string `json:"names"`
 	AmbientEnabled       bool     `json:"ambient_enabled"`
 	AmbientGroups        []string `json:"ambient_groups"`
@@ -42,7 +44,7 @@ type RuntimeChatConfig struct {
 }
 
 func DefaultRuntimeChatConfig() RuntimeChatConfig {
-	return RuntimeChatConfig{Names: []string{"小碗", "大碗"}, AmbientGroups: []string{}, SamplePercent: 100,
+	return RuntimeChatConfig{PrivateUsers: []string{}, Names: []string{"小碗", "大碗"}, AmbientGroups: []string{}, SamplePercent: 100,
 		StartHour: 8, EndHour: 2, DailyCalls: 1800, HourlyReplies: 100, DailyReplies: 1000,
 		ImageInputEnabled: true, WebEnabled: true, MemesEnabled: true, CollectMemes: true,
 		MediaSamplePercent: 10, MediaDailyCalls: 100, ContextWindowTokens: 65536,
@@ -54,6 +56,13 @@ func validateRuntimeChat(c Config) error {
 	r := c.RuntimeChat
 	if !r.Enabled {
 		return nil
+	}
+	seenUsers := map[string]bool{}
+	for _, user := range r.PrivateUsers {
+		if !runtimeNumericID.MatchString(user) || user == c.AppID || seenUsers[user] {
+			return errors.New("私聊用户须为不重复的有效 QQ 号，不能填写机器人自身")
+		}
+		seenUsers[user] = true
 	}
 	if len(r.ProactiveGroups) > 100 || len(r.ProactiveTimes) > 24 || r.ProactiveIdleMinutes < 0 || r.ProactiveIdleMinutes > 1440 {
 		return errors.New("热群最多配置 100 个群、24 个时间点，安静时长须为 0～1440 分钟")
@@ -128,12 +137,8 @@ func (c Config) MarshalJSON() ([]byte, error) {
 func runtimePolicy(c Config) map[string]any {
 	r := c.RuntimeChat
 	privateUsers := []string{}
-	seen := map[string]bool{}
-	for _, admin := range c.GroupAdmins {
-		if admin.AppID == c.AppID && admin.MemberID != "" && !seen[admin.MemberID] {
-			privateUsers = append(privateUsers, admin.MemberID)
-			seen[admin.MemberID] = true
-		}
+	if r.PrivateChatEnabled {
+		privateUsers = append(privateUsers, r.PrivateUsers...)
 	}
 	sort.Strings(privateUsers)
 	commands := []string{"帮助", "签到", "我的余额", "余额", "今日用量", "用量", "成长任务", "邀请奖励", "邀请活动", "我的邀请", "我的奖励", "抽奖", "抽奖次数", "我的抽奖", "抽奖活动", "渠道状态", "渠道", "监控", "渠道监控", "生图", "画图", "价格", "绑定", "确认", "解绑", "转账", "领码"}
@@ -160,7 +165,8 @@ func runtimePolicy(c Config) map[string]any {
 		"bot_id": c.AppID, "groups": c.AllowedGroups, "group_policies": c.GroupPolicies,
 		// Group administrators are not global owners. Keep the exact bot/group scope.
 		"owners": []string{}, "group_admins": c.GroupAdmins, "private_users": privateUsers, "business_commands": commands, "business_observation": true,
-		"model": c.ChatModel, "model_base_url": c.BaseURL, "model_api": api, "model_api_key": c.APIKey,
+		"private_chat_enabled": r.PrivateChatEnabled,
+		"model":                c.ChatModel, "model_base_url": c.BaseURL, "model_api": api, "model_api_key": c.APIKey,
 		"persona": persona, "max_output_tokens": c.MaxOutputTokens, "context_window_tokens": r.ContextWindowTokens,
 		"daily_chat_limit": c.DailyChatLimit, "total_daily_chat_limit": c.TotalDailyChatLimit,
 		"cooldown_seconds": c.CooldownSeconds, "user_hourly_limit": 60,
@@ -173,6 +179,18 @@ func runtimePolicy(c Config) map[string]any {
 		"proactive_groups": r.ProactiveGroups, "proactive_times": r.ProactiveTimes,
 		"proactive_idle_minutes": r.ProactiveIdleMinutes, "welcome_enabled": r.WelcomeEnabled,
 	}
+}
+
+func (c Config) allowsPrivateChat(member string) bool {
+	if !c.Enabled || !c.RuntimeChat.Enabled || c.ChatDisabled || !c.RuntimeChat.PrivateChatEnabled {
+		return false
+	}
+	for _, user := range c.RuntimeChat.PrivateUsers {
+		if user == member {
+			return true
+		}
+	}
+	return false
 }
 
 func runtimeRevision(policy map[string]any) string {

@@ -542,7 +542,16 @@ func (s *Service) sendFormatted(ctx context.Context, c Config, j Job, text strin
 }
 
 func (s *Service) sendFormattedWithKeyboard(ctx context.Context, c Config, j Job, text string, img []byte, seq int, keyboard *messageKeyboard) error {
-	if j.PrivateReply {
+	if j.EventType == runtimePrivateImageCreate {
+		current, err := s.Config(ctx)
+		if err != nil {
+			return err
+		}
+		if !runtimePrivateImageAllowed(current, j) {
+			return ErrDisabled
+		}
+	}
+	if j.PrivateReply && j.EventType != runtimePrivateImageCreate {
 		if err := s.checkPrivateReplyBinding(ctx, c, j); err != nil {
 			return err
 		}

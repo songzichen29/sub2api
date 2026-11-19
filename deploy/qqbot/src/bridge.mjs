@@ -144,7 +144,8 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
     if(c.memes_enabled && c.collect_memes) for(const image of toolImages) if(image.is_meme) store.collectMeme(scope,image,'群表情 '+String(image.label || '').slice(0,60),{automatic:true});
     const boundary = proactiveJob ? store.latest(scope) : store.observe(scope, { event_id: 'msg:' + input.message_id, sender: input.sender, name: String(input.name || '').slice(0, 80), text });
     store.setTurnContext(id, scope, input.message_id, input.sender);
-    const description=!voiceRequest && !images.length && !input.image_count && capabilityReply(text,c);
+    const imageGenerationEnabled=c.image_generation_enabled && !(input.group && c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images));
+    const description=!voiceRequest && !images.length && !input.image_count && capabilityReply(text,{...c,image_generation_enabled:imageGenerationEnabled});
     if(description) {store.finish(id,'completed',description);return {id,text:description};}
     let worker, synthesizing = false;
     try {
@@ -200,7 +201,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
         (receivedImages>images.length?'QQ 收到图片，但图片内容没有成功传递给模型。本条图片不可见；请明确说明无法读取图片内容，不要根据配文猜测图中细节。':'')+(input.image_note || '');
       context.attachments={received:receivedImages,loaded:loadedImages,forwarded:images.length,
         sources:toolImages.map((image,i)=>({source_index:image.source_index || i+1,source:input.quote && !input.own_images?'quoted_message':'current_message',visible:images.some(forwarded=>forwarded.data===image.data)})),
-        note:imageNote,tools:{web:c.web_enabled,memes:c.memes_enabled,image_generation:c.image_generation_enabled}};
+        note:imageNote,tools:{web:c.web_enabled,memes:c.memes_enabled,image_generation:imageGenerationEnabled}};
       if (bytes(context) > budget) throw new Error('message_exceeds_model_capacity');
       const blocks = [{ type: 'text', text: JSON.stringify(context) }, { type: 'text', text: '当前用户的问题：' + context.text }];
       for (const image of images) {

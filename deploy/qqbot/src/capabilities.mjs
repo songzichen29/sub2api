@@ -1,5 +1,6 @@
 import { boundedText } from './policy.mjs';
 import { sensitiveText } from './memory.mjs';
+import { chatAllowed } from './chat-policy.mjs';
 
 // Capability descriptions come from the live configuration. A language model
 // must not turn an old "I have no tools" answer into the current product state.
@@ -13,7 +14,7 @@ export function capabilityReply(text,c) {
   const task=/(?:吗|么|[？?。！!，,])\s*(?:帮我|给我|替我|请|画|生成|发送|发一|查)/u.test(text);
   if(task || (!tools && !(count>=1 && (why || (question && styleOnly.test(question[1])))))) return;
   const enabled=[];
-  if(c.image_generation_enabled) enabled.push('自然语言生图和原图编辑（已开放群）');
+  if(c.image_generation_enabled) enabled.push('自然语言生图和原图编辑（已开放会话）');
   if(c.image_input_enabled) enabled.push('直接识别发来或引用的图片');
   if(c.web_enabled) enabled.push('联网搜索和读取网页');
   if(c.memes_enabled) enabled.push(c.collect_memes?'发送、收藏表情包':'发送表情包');
@@ -42,7 +43,7 @@ export function validateImages(images=[]) {
 export async function executeCapability({name,args}, context, {config,store,siteTool}) {
   const c=config.snapshot(), {input,id,scope}=context;
   if (input.proactive) throw new Error('主动热群没有用户授权，不执行账户或图片工具');
-  if(!c.enabled || c.chat_disabled || (input.group && (!c.groups.includes(input.chat) || c.group_policies?.some(p=>p.group_id===input.chat && p.disable_chat)))) throw new Error('本会话已停用');
+  if(!chatAllowed(c,input)) throw new Error('本会话已停用');
   context.signal?.throwIfAborted();
   const call=(body,options={})=>siteTool({...body,group_id:input.group?input.chat:'',member_id:input.sender,message_id:input.message_id},{signal:context.signal,...options});
   const selectedImage=index=>{
@@ -55,7 +56,8 @@ export async function executeCapability({name,args}, context, {config,store,site
     return image;
   };
   if(name==='generate_image' || name==='edit_image') {
-    if(!c.image_generation_enabled || c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images) || (input.ambient && !/(画|绘|生成|创作|制作|编辑|修改|换|改).{0,25}(图|画|猫|狗|水世界|照片|背景|颜色)|画(?:一|个|张|只)|修图|改图/u.test(input.text))) throw new Error('仅在权限开启且用户要求创作或编辑图片时处理');
+    if(!c.image_generation_enabled || (input.group && c.group_policies?.some(p=>p.group_id===input.chat && p.disable_images))) throw new Error('当前会话的生图功能已关闭');
+    if(input.ambient && !/(画|绘|生成|创作|制作|编辑|修改|换|改).{0,25}(图|画|猫|狗|水世界|照片|背景|颜色)|画(?:一|个|张|只)|修图|改图|(?:给我|帮我|来|要)(?:一|两|几)?张[\s\S]*(?:图|画|照片)/u.test(input.text)) throw new Error('当前消息未识别出画图或改图请求，任务未提交；这不是生图权限关闭');
     if(context.generated) throw new Error('本条消息已有生图请求，不重复提交');
     const prompt=boundedText(args.prompt,6000),source=name==='edit_image'?selectedImage(args.image_index):undefined;
     const format=args.output_format ?? 'auto';
