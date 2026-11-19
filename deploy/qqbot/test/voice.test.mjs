@@ -63,7 +63,7 @@ test('current natural requests distinguish spoken answers, literal reading and e
   }
   assert.equal(parseVoiceRequest('把“你好，世界。”念给我听').text, '你好，世界。');
   assert.equal(parseVoiceRequest('用御姐的声音把这句话念给我听：你好').text, '你好');
-  for (const text of ['你好', '不要用语音回复我', '请不要用语音回答', '什么是语音回复？', '你支持语音回复吗', '他想让你用语音回复他', '“用语音回复我”是什么意思', '用语音回复我，还是用文字吧', '请用语音回答，算了，不需要语音了']) {
+  for (const text of ['你好', '不要用语音回复我', '请不要用语音回答', '什么是语音回复？', '语音回复是什么意思', '语音回答需要付费吗', '语音回复有什么好处', '用语音回复是什么意思', '你支持语音回复吗', '他想让你用语音回复他', '“用语音回复我”是什么意思', '用语音回复我，还是用文字吧', '请用语音回答，算了，不需要语音了']) {
     assert.equal(parseVoiceRequest(text), undefined, text);
   }
 });

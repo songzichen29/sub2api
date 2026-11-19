@@ -34,7 +34,7 @@ const voiceNames = Object.keys(voices).join('|');
 const readTarget = '(?:这段话|这句话|这段文字|这条消息|引用(?:的)?(?:消息|内容|文字)?|上面(?:的)?(?:消息|内容|文字))';
 const readingPattern = new RegExp(`^${requestPrefix}(?:用(${voiceNames})(?:的)?(?:声音|音色|语音)?\\s*)?(?:把|将)?${readTarget}?(?:朗读|念|读)(?:一下)?(?:给我听|出来)?(?:一下)?(?:好吗|可以吗|吧|吗)?[。？！!?]?\\s*(?:[:：]\\s*([\\s\\S]*))?$`, 'u');
 const quotedReadingPattern = new RegExp(`^${requestPrefix}(?:用(${voiceNames})(?:的)?(?:声音|音色|语音)?\\s*)?(?:把|将)?[“「"]([\\s\\S]+)[”」"](?:朗读|念|读)(?:一下)?(?:给我听|出来)(?:吧|好吗|吗)?[。？！!?]?$`, 'u');
-const replyPattern = new RegExp(`^${requestPrefix}(?:(?:用|通过)(?:(${voiceNames})(?:的)?(?:声音|音色|语音)?|语音)(?:来)?(?:给我|跟我|和我)?(?:回复|回答|答复|回我|讲|说|解释|介绍|聊|告诉)|语音(?:回复|回答|答复|回我|讲|说)|(?:给我)?发(?:一)?(?:条|段|个)?语音(?:回复|回答|答复|给我|讲|说|聊|吧|好吗|可以吗|吗|$))`, 'u');
+const replyPattern = new RegExp(`^${requestPrefix}(?:(?:用|通过)(?:(${voiceNames})(?:的)?(?:声音|音色|语音)?|语音)(?:来)?(?:给我|跟我|和我)?(?:回复|回答|答复|回我|讲|说|解释|介绍|聊|告诉)|语音(?:回复|回答|答复|回我|讲|说)(?=我|一下|下|吧|好吗|可以吗|吗|个|一(?:个|段)|这|那|今天|刚才|[：:\\s]|$)|(?:给我)?发(?:一)?(?:条|段|个)?语音(?:回复|回答|答复|给我|讲|说|聊|吧|好吗|可以吗|吗|$))`, 'u');
 const textReplyPattern = new RegExp(`^${requestPrefix}(?:(?:不要|别|不用|不需要|无需)(?:再)?(?:用|发)?(?:语音|(?:${voiceNames})(?:的)?(?:声音|音色))|(?:还是|改成|改用)?(?:只)?(?:用|发)?(?:文字|文本)(?:回复|回答|答复|就好|就行|吧|$))`, 'u');
 
 export function parseVoiceCommand(text) {
@@ -55,6 +55,7 @@ export function parseVoiceRequest(text) {
     const directive = clause.trim();
     if (textReplyPattern.test(directive)) { request = undefined; continue; }
     const reply = replyPattern.exec(directive);
+    if (reply && /^(?:是(?:什么|啥)|什么意思)/u.test(directive.slice(reply[0].length))) continue;
     if (reply) request = { ...parseVoiceCommand((reply[1] || '') + '语音合成'), mode: 'reply' };
   }
   return request;
