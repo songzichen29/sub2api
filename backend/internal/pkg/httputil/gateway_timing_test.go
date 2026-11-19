@@ -72,7 +72,7 @@ func TestTraceGatewayUpstreamTLSAndReuse(t *testing.T) {
 		require.Equal(t, attempt == 2, fields["upstream_conn_reused"])
 		require.Equal(t, false, fields["upstream_transport_error"])
 		require.Contains(t, fields, "upstream_write_ms")
-		require.GreaterOrEqual(t, fields["upstream_wait_first_byte_ms"].(int64), int64(15))
+		require.GreaterOrEqual(t, fields["upstream_wait_first_byte_ms"], int64(15))
 		if attempt == 1 {
 			require.Contains(t, fields, "upstream_tls_total_ms")
 		}
@@ -107,15 +107,19 @@ func TestTraceGatewayUpstreamEarlyResponse(t *testing.T) {
 		}
 		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusRequestEntityTooLarge)
-		w.(http.Flusher).Flush()
+		if err := http.NewResponseController(w).Flush(); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer server.Close()
 	core, logs := observer.New(zap.InfoLevel)
 	ctx := WithGatewayTiming(logger.IntoContext(context.Background(), zap.New(core)))
 	// 上传停在 Read，确保收到 413 时请求仍未写完；不依赖本机缓冲区速度。
 	reader, writer := io.Pipe()
-	defer reader.Close()
-	defer writer.Close()
+	t.Cleanup(func() {
+		require.NoError(t, reader.Close())
+		require.NoError(t, writer.Close())
+	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, reader)
 	require.NoError(t, err)
 	req.ContentLength = 1 << 20
