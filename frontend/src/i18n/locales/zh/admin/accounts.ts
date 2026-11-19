@@ -417,7 +417,11 @@ export default {
       "antigravityArgon5h": "A·5h",
       "antigravityArgonWeekly": "A·周",
       "antigravityOther5h": "C·5h",
-      "antigravityOtherWeekly": "C·周"
+      "antigravityOtherWeekly": "C·周",
+      "quotaRefreshFailedCached": "刷新失败，当前显示历史额度，不能确认剩余额度。",
+      "quotaRefreshFailedUnknown": "刷新失败，当前额度未知。",
+      "quotaObservedAt": "额度采样时间：",
+      "quotaObservationUnknown": "未知（历史缓存）"
     },
     "openaiQuotaReset": {
       "count": "次数",
@@ -710,7 +714,7 @@ export default {
       "testMode": "测试模式",
       "testModeDefault": "常规请求",
       "testModeCompact": "Compact 探测",
-      "modelRestrictionDisabledByPassthrough": "已开启自动透传：模型白名单/映射不会生效。",
+      "modelRestrictionDisabledByPassthrough": "自动透传默认忽略模型限制；开启“透传时按账号模型筛选”后，模型限制仅用于筛选候选账号。",
       "codexImageGenerationBridge": "Codex 图片生成桥接",
       "codexImageGenerationBridgeDesc": "账号级策略优先于渠道和全局配置。仅控制 Codex 走 /responses 文本端点时是否注入 image_generation 工具；不影响独立图片生成接口。",
       "codexImageGenerationBridgeInherit": "跟随渠道",
@@ -726,7 +730,9 @@ export default {
       "wsModeHttpBridgeHint": "网关将客户端 WS 请求转换为上游 HTTP 请求，再将 SSE 流式响应转换为 WS 消息返回。",
       "imageSizeTiers": "生图尺寸档位",
       "imageSizeTiersDesc": "限制本账号承接的生图尺寸档位，档位与计费一致：最长边 ≤1024 为 1K，≤2048 为 2K，更大为 4K（2560x1440 属于 4K）。指定了尺寸的请求只会调度到允许该档位的账号；未传尺寸或 auto 的请求优先调度到不限档位的账号，没有时依次选允许 4K、2K、1K 的账号。全选即不限，对 Images 接口与 Responses 生图工具生效。",
-      "imageSizeTiersAtLeastOne": "至少保留一个档位"
+      "imageSizeTiersAtLeastOne": "至少保留一个档位",
+      "passthroughModelFilter": "透传时按账号模型筛选",
+      "passthroughModelFilterDesc": "使用账号模型白名单与映射的来源模型名筛选候选账号，映射目标不会改写透传请求的模型名。列表为空时允许所有模型。默认关闭。"
     },
     "anthropic": {
       "apiKeyPassthrough": "自动透传（仅替换认证）",
@@ -1663,7 +1669,15 @@ export default {
       "saved": "已保存。",
       "conflict": "配置或暂停状态已被其他操作更改，请刷新后重新确认再保存。",
       "invalidConfig": "请填写有效的阈值、整数样本数和冷却时间。",
-      "actions": { "configure": "修改配置", "pause": "指标暂停", "trial": "试运行请求", "trialEnd": "结束试运行", "recover": "自动恢复", "release": "手动释放", "retire": "关闭规则" },
+      "actions": {
+        "configure": "修改配置",
+        "pause": "指标暂停",
+        "trial": "试运行请求",
+        "trialEnd": "结束试运行",
+        "recover": "自动恢复",
+        "release": "手动释放",
+        "retire": "关闭规则"
+      },
       "title": "账号指标自动暂停／恢复",
       "hint": "可选的滚动一小时规则，默认关闭，且独立于手动账号调度控制。",
       "enabled": "启用账号指标自动暂停／恢复",
@@ -1927,6 +1941,7 @@ export default {
       "errorEmptyCatalog": "未获得有效模型目录",
       "errorTooLarge": "目录超过读取上限",
       "errorPersistence": "目录保存失败"
-    }
+    },
+    "modelWildcardNotSupported": "模型白名单不支持通配符，请输入完整的模型名称。"
   }
 }

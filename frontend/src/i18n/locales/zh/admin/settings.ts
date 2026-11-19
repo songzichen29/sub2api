@@ -746,7 +746,7 @@ export default {
       "maxAmount": "最高金额",
       "dailyLimit": "每日限额",
       "balanceRechargeMultiplier": "余额充值倍率",
-      "balanceRechargeMultiplierHint": "用户每支付 1 CNY 可获得多少 USD 余额",
+      "balanceRechargeMultiplierHint": "用户每支付 1 CNY 可获得多少 USD 余额（最多 6 位小数，可按实时汇率配置）",
       "balanceRechargePreview": "预览：1 CNY = {usd} USD",
       "subscriptionUsdToCnyRate": "订阅 CNY 换算汇率",
       "subscriptionUsdToCnyRateHint": "CNY 支付通道下，套餐每 1 USD 价格收取多少 CNY（如 7.15）。0 或留空 = 不换算，订阅按 price 数值直接收款。启用后所有套餐 price 必须按 USD 定价",
@@ -959,7 +959,9 @@ export default {
         "noticeLabel": "充值赠送活动文案",
         "noticeHint": "支持 Markdown，展示在充值页金额选择区顶部；留空则不展示。",
         "noticePlaceholder": "例如：🎁 限时活动：单笔充值满 $100 送 20%，满 $500 送 30%……"
-      }
+      },
+      "field_refundSuccessCode": "退款成功码",
+      "field_refundSuccessCodeHint": "按当前网关的退款接口文档选择成功码。默认 1（如 ZPAY），仅在网关文档规定时选择 0。此设置只影响退款，下单和查单仍要求成功码为 1。"
     },
     "balanceNotify": {
       "title": "余额不足提醒",

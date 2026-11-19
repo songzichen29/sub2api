@@ -381,3 +381,127 @@ func TestReleaseUsageBillingBatchImageBalance_SkipsWhenHoldNeverReserved(t *test
 	require.NoError(t, tx.Commit())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestApplyBatchMySQLPreservesCommandBalancesAndQuotaCrossing(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageBillingRepository{db: db}
+	cmds := []*service.UsageBillingCommand{
+		{RequestID: "b", UserID: 42, APIKeyID: 7, BalanceCost: 0.1, APIKeyQuotaCost: 0.1},
+		{RequestID: "a", UserID: 42, APIKeyID: 7, BalanceCost: 0.2, APIKeyQuotaCost: 0.2},
+		{RequestID: "c", UserID: 42, APIKeyID: 7, BalanceCost: 0.4, APIKeyQuotaCost: 0.4},
+	}
+	mock.ExpectBegin()
+	// 认领按唯一键排序，返回余额和额度状态仍按原命令顺序。
+	for _, i := range []int{1, 0, 2} {
+		cmds[i].Normalize()
+		mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+			WithArgs(cmds[i].RequestID, int64(7)).WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec(`INSERT IGNORE INTO usage_billing_dedup`).
+			WithArgs(cmds[i].RequestID, int64(7), cmds[i].RequestFingerprint).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectQuery(`(?s)SELECT balance FROM users.*FOR UPDATE`).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow("0.5"))
+	mock.ExpectExec(overdraftBalanceDeductSQL).WithArgs("0.7", int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(apiKeyQuotaIncrementSQL).WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"quota", "quota_used"}).AddRow("0.5", "0"))
+	mock.ExpectExec(`(?s)UPDATE api_keys.*SET status = CASE.*quota_used = quota_used \+ \?`).
+		WithArgs(service.StatusAPIKeyActive, "0.7", service.StatusAPIKeyQuotaExhausted, "0.7", int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	outcomes, err := repo.ApplyBatch(context.Background(), cmds)
+	require.NoError(t, err)
+	require.Len(t, outcomes, 3)
+	for i, balance := range []float64{0.4, 0.2, -0.2} {
+		require.NoError(t, outcomes[i].Err)
+		require.True(t, outcomes[i].Result.Applied)
+		require.InDelta(t, balance, *outcomes[i].Result.NewBalance, 1e-10)
+		require.Equal(t, i == 2, outcomes[i].Result.BalanceOverdrafted)
+		require.Equal(t, i == 2, outcomes[i].Result.APIKeyQuotaExhausted)
+	}
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyBatchMySQLDoesNotChargeArchivedOrConflictingRequests(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageBillingRepository{db: db}
+	cmds := []*service.UsageBillingCommand{
+		{RequestID: "archived", RequestFingerprint: "same", UserID: 42, APIKeyID: 7, BalanceCost: 3},
+		{RequestID: "conflict", RequestFingerprint: "different", UserID: 42, APIKeyID: 7, BalanceCost: 5},
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+		WithArgs("archived", int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"request_fingerprint"}).AddRow("same"))
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+		WithArgs("conflict", int64(7)).WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(`INSERT IGNORE INTO usage_billing_dedup`).
+		WithArgs("conflict", int64(7), "different").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup\s+WHERE`).
+		WithArgs("conflict", int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"request_fingerprint"}).AddRow("original"))
+	mock.ExpectCommit()
+
+	outcomes, err := repo.ApplyBatch(context.Background(), cmds)
+	require.NoError(t, err)
+	require.False(t, outcomes[0].Result.Applied)
+	require.ErrorIs(t, outcomes[1].Err, service.ErrUsageBillingRequestConflict)
+	require.Nil(t, outcomes[1].Result)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyBatchMySQLRollsBackBalanceAndDedupWhenQuotaUpdateFails(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageBillingRepository{db: db}
+	cmd := &service.UsageBillingCommand{RequestID: "rollback", UserID: 42, APIKeyID: 7, BalanceCost: 1, APIKeyQuotaCost: 1}
+	cmd.Normalize()
+	mock.ExpectBegin()
+	mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+		WithArgs(cmd.RequestID, int64(7)).WillReturnError(sql.ErrNoRows)
+	mock.ExpectExec(`INSERT IGNORE INTO usage_billing_dedup`).
+		WithArgs(cmd.RequestID, int64(7), cmd.RequestFingerprint).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(`(?s)SELECT balance FROM users.*FOR UPDATE`).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance"}).AddRow("10"))
+	mock.ExpectExec(overdraftBalanceDeductSQL).WithArgs("1", int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(apiKeyQuotaIncrementSQL).WithArgs(int64(7)).WillReturnError(sql.ErrConnDone)
+	mock.ExpectRollback()
+
+	outcomes, err := repo.ApplyBatch(context.Background(), []*service.UsageBillingCommand{cmd})
+	require.ErrorIs(t, err, sql.ErrConnDone)
+	require.Nil(t, outcomes)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestApplyBatchMySQLCapturesFrozenImageBalance(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageBillingRepository{db: db}
+	cmd := &service.UsageBillingCommand{
+		RequestID: "image", UserID: 42, APIKeyID: 7, BalanceCost: 0.25,
+		BalanceHoldID: "job", BalanceHoldAmount: 1,
+		BalanceHoldSettlementID: "settlement", BalanceHoldSettlementFingerprint: "hold-fingerprint",
+	}
+	cmd.Normalize()
+	mock.ExpectBegin()
+	for _, identity := range [][2]string{{cmd.RequestID, cmd.RequestFingerprint}, {cmd.BalanceHoldSettlementID, cmd.BalanceHoldSettlementFingerprint}} {
+		mock.ExpectQuery(`(?s)SELECT request_fingerprint.*FROM usage_billing_dedup_archive`).
+			WithArgs(identity[0], int64(7)).WillReturnError(sql.ErrNoRows)
+		mock.ExpectExec(`INSERT IGNORE INTO usage_billing_dedup`).
+			WithArgs(identity[0], int64(7), identity[1]).WillReturnResult(sqlmock.NewResult(0, 1))
+	}
+	mock.ExpectQuery(`(?s)SELECT 1.*FROM usage_billing_dedup`).
+		WithArgs(service.BatchImageHoldRequestID("job"), int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(1))
+	mock.ExpectExec(captureBatchImageHoldSQL).
+		WithArgs(0.75, 1.0, int64(42), 1.0).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(selectBalanceFrozenSQL).WithArgs(int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"balance", "frozen_balance"}).AddRow(9.75, 0))
+	mock.ExpectCommit()
+
+	outcomes, err := repo.ApplyBatch(context.Background(), []*service.UsageBillingCommand{cmd})
+	require.NoError(t, err)
+	require.True(t, outcomes[0].Result.Applied)
+	require.InDelta(t, 9.75, *outcomes[0].Result.NewBalance, 1e-10)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

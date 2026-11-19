@@ -71,12 +71,12 @@ const DataTableStub = defineComponent({
   props: { data: { type: Array, default: () => [] }, loading: Boolean },
   template: `
     <div>
-      <div v-for="row in data" :key="row.id" :data-account-name="row.name">
+      <template v-if="!loading"><div v-for="row in data" :key="row.id" :data-account-name="row.name">
         <div data-test="account-name"><slot name="cell-name" :row="row" :value="row.name" /></div>
         <slot name="cell-groups" :row="row" />
         <slot name="cell-last_used_at" :row="row" :value="row.last_used_at" />
         <slot name="cell-actions" :row="row" />
-      </div>
+      </div></template>
     </div>
   `
 })
@@ -196,6 +196,35 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+    wrapper.unmount()
+  })
+
+  it('keeps existing rows mounted and busy while a manual list refresh is pending', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const row = wrapper.get('[data-account-name="compact row"]').element
+    let finish: (value: unknown) => void = () => {}
+    listAccounts.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    await wrapper.get('[data-test="manual-refresh"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(DataTableStub).props('loading')).toBe(false)
+    expect(wrapper.get('[data-account-name="compact row"]').element).toBe(row)
+    expect(wrapper.find('[aria-busy="true"]').attributes()).toHaveProperty('inert')
+    finish({ items: [{ ...listRow, name: 'updated row' }], total: 1, page: 1, page_size: 20, pages: 1 })
+    await flushPromises()
+    expect(wrapper.get('[data-account-name="updated row"]').element).toBe(row)
+    expect(wrapper.find('[aria-busy="true"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('still shows initial loading when no rows are available', async () => {
+    let finish: (value: unknown) => void = () => {}
+    listAccounts.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.getComponent(DataTableStub).props('loading')).toBe(true)
+    finish({ items: [listRow], total: 1, page: 1, page_size: 20, pages: 1 })
+    await flushPromises()
     wrapper.unmount()
   })
 

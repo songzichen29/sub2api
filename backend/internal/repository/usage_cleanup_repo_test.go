@@ -424,18 +424,9 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
 		Model:     &model,
 	}
 
-	firstDeletedAt := start.Add(time.Hour)
-	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
-		WithArgs(start, end, userID, "gpt-4", 2).
-		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(firstDeletedAt))
 	mock.ExpectExec(`(?s)DELETE FROM usage_logs`).
 		WithArgs(start, end, userID, "gpt-4", 2).
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
-		WithArgs(service.GroupUsageDate(firstDeletedAt)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 
 	deleted, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 2)
 	require.NoError(t, err)
@@ -443,58 +434,24 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestUsageCleanupRepositoryDeleteUsageLogsBatchAtomicallyInvalidatesGroupRollups(t *testing.T) {
+// 分组日桶失效由 usage_logs 的行级触发器完成，删除批次不显式锁定汇总状态行，
+// 因而不与 usage_logs 写入串行。
+func TestUsageCleanupRepositoryDeleteUsageLogsBatchDoesNotLockGroupRollupState(t *testing.T) {
 	setUsageCleanupRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
 	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
-	firstDeletedAt := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
 	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
 
-	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
-		WithArgs(start, end, 2).
-		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(firstDeletedAt))
 	mock.ExpectExec(`(?s)DELETE FROM usage_logs`).
 		WithArgs(start, end, 2).
 		WillReturnResult(sqlmock.NewResult(0, 2))
-	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
-		WithArgs(service.GroupUsageDate(firstDeletedAt)).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 
 	deleted, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 2)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), deleted)
-	require.NoError(t, mock.ExpectationsWereMet())
-}
-
-func TestUsageCleanupRepositoryDeleteUsageLogsBatchRollsBackWhenInvalidationFails(t *testing.T) {
-	setUsageCleanupRollupTestTimezone(t)
-	db, mock := newSQLMock(t)
-	repo := &usageCleanupRepository{sql: db}
-
-	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
-	deletedAt := time.Date(2026, 8, 1, 3, 0, 0, 0, time.UTC)
-	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
-
-	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
-		WithArgs(start, end, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(deletedAt))
-	mock.ExpectExec(`(?s)DELETE FROM usage_logs`).
-		WithArgs(start, end, 1).
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
-		WithArgs(service.GroupUsageDate(deletedAt)).
-		WillReturnError(sql.ErrConnDone)
-	mock.ExpectRollback()
-
-	_, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 1)
-	require.ErrorIs(t, err, sql.ErrConnDone)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -506,14 +463,9 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchQueryError(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
 
-	mock.ExpectBegin()
-	mock.ExpectQuery(`(?s)SELECT MIN\(created_at\).*FROM.*usage_logs`).
-		WithArgs(start, end, 5).
-		WillReturnRows(sqlmock.NewRows([]string{"min"}).AddRow(start.Add(time.Hour)))
 	mock.ExpectExec("DELETE FROM usage_logs").
 		WithArgs(start, end, 5).
 		WillReturnError(sql.ErrConnDone)
-	mock.ExpectRollback()
 
 	_, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 5)
 	require.Error(t, err)

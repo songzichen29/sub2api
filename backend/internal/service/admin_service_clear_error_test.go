@@ -50,6 +50,10 @@ func (r *accountRepoStubForClearAccountError) ClearModelRateLimits(ctx context.C
 	return r.clearModelRateLimitErr
 }
 
+func (r *accountRepoStubForClearAccountError) ClearModelRateLimit(ctx context.Context, id int64, scope string) error {
+	return nil
+}
+
 func (r *accountRepoStubForClearAccountError) ClearTempUnschedulable(ctx context.Context, id int64) error {
 	r.clearTempUnschedCalls++
 	r.account.TempUnschedulableUntil = nil

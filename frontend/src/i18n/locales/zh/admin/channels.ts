@@ -39,7 +39,10 @@ export default {
       "unitPerMillion": "/ 1M token",
       "unitPerRequest": "/ 次",
       "videoPrice": "视频单价",
-      "unitPerSecond": "/ 秒"
+      "unitPerSecond": "/ 秒",
+      "cacheWrite30mPrice": "缓存写入（30m）",
+      "cacheWrite12hHint": "留空沿用通用缓存写入价，仅对上游报告的 OpenAI 12h 写入生效。",
+      "cacheWrite12hPrice": "缓存写入（12h）"
     }
   },
   "channels": {
@@ -79,6 +82,7 @@ export default {
         "outputPrice": "输出价格",
         "cacheWritePrice": "缓存写入价格",
         "cacheWrite1hPrice": "1h 缓存写入价格",
+        "cacheWrite12hPrice": "12h 缓存写入价格",
         "cacheReadPrice": "缓存读取价格",
         "perRequestPrice": "单次价格"
       },
@@ -227,7 +231,12 @@ export default {
       "reasoningEffortMultiplierDefault": "默认 1",
       "clearReasoningEffortMultipliers": "清空倍率",
       "reasoningEffortMultiplierPositive": "{effort} 思考等级倍率必须为大于 0 的有限数字",
-      "reasoningEffortLevelInvalid": "不支持的思考等级：{effort}"
+      "reasoningEffortLevelInvalid": "不支持的思考等级：{effort}",
+      "cacheWrite30mPrice": "缓存写入（30m）",
+      "cacheWrite12hHint": "留空沿用通用缓存写入价，仅对上游报告的 OpenAI 12h 写入生效。",
+      "cacheWrite12hPrice": "缓存写入（12h）",
+      "cacheWrite12hPriceShort": "缓存写 12h",
+      "ultrafastMultiplier": "Ultra Fast 倍率"
     },
     "noGroupsSelected": "{platform} 平台未选择分组，请至少选择一个分组或禁用该平台",
     "emptyModelsInPricing": "{platform} 平台下有定价条目未添加模型，请添加模型或删除该条目",

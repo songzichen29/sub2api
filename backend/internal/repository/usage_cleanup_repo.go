@@ -295,19 +295,17 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 		return 0, fmt.Errorf("cleanup filters missing time range")
 	}
 	args = append(args, limit)
-	if db, ok := r.sql.(*sql.DB); ok {
-		return r.deleteUsageLogsBatchWithRollupInvalidation(ctx, db, whereClause, args)
-	}
+	// usage_logs 的行级触发器按被删记录的日期使分组日桶失效。
 	query := fmt.Sprintf(`
-		WITH target AS (
-			SELECT id
-			FROM usage_logs
-			WHERE %s
-			ORDER BY created_at ASC, id ASC
-			LIMIT ?
-		)
 		DELETE FROM usage_logs
-		WHERE id IN (SELECT id FROM target)
+		WHERE id IN (
+			SELECT id FROM (
+				SELECT id FROM usage_logs
+				WHERE %s
+				ORDER BY created_at ASC, id ASC
+				LIMIT ?
+			) target
+		)
 	`, whereClause)
 
 	res, err := r.sql.ExecContext(ctx, query, args...)
@@ -316,63 +314,6 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, err
-	}
-	return deleted, nil
-}
-
-func (r *usageCleanupRepository) deleteUsageLogsBatchWithRollupInvalidation(ctx context.Context, db *sql.DB, whereClause string, args []any) (int64, error) {
-	tx, err := db.BeginTx(ctx, dashboardAggregationTxOptions())
-	if err != nil {
-		return 0, err
-	}
-	rollback := func(err error) (int64, error) {
-		_ = tx.Rollback()
-		return 0, err
-	}
-
-	// Keep the same usage_logs -> rollup state lock order as the MySQL triggers.
-	var earliestDeletedAt sql.NullTime
-	selectQuery := fmt.Sprintf(`
-		SELECT MIN(created_at)
-		FROM (
-			SELECT created_at
-			FROM usage_logs
-			WHERE %s
-			ORDER BY created_at ASC, id ASC
-			LIMIT ?
-		) target
-	`, whereClause)
-	if err := tx.QueryRowContext(ctx, selectQuery, args...).Scan(&earliestDeletedAt); err != nil {
-		return rollback(err)
-	}
-	deleteQuery := fmt.Sprintf(`
-		DELETE FROM usage_logs
-		WHERE id IN (
-			SELECT id FROM (
-				SELECT id
-				FROM usage_logs
-				WHERE %s
-				ORDER BY created_at ASC, id ASC
-				LIMIT ?
-			) target
-		)
-	`, whereClause)
-	result, err := tx.ExecContext(ctx, deleteQuery, args...)
-	if err != nil {
-		return rollback(err)
-	}
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return rollback(err)
-	}
-
-	if deleted > 0 && earliestDeletedAt.Valid {
-		if err := invalidateGroupUsageRollupsAt(ctx, tx, earliestDeletedAt.Time); err != nil {
-			return rollback(err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 	return deleted, nil

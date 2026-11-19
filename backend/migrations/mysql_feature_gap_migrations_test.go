@@ -407,6 +407,35 @@ func TestMySQLChannelMonitorV2MigrationAvoidsUnsupportedColumnIfNotExists(t *tes
 	require.Contains(t, sql, "prepare stmt from @sql")
 }
 
+func TestMySQLUpstreamV023MigrationIncludesNewFieldsAndRollupTriggers(t *testing.T) {
+	content, err := MySQLFS.ReadFile("115_upstream_v0_2_23.sql")
+	require.NoError(t, err)
+	sql := string(content)
+	for _, fragment := range []string{
+		"groups` ADD COLUMN `force_openai_ultrafast`",
+		"usage_logs` ADD COLUMN `cache_creation_30m_tokens`",
+		"usage_logs` ADD COLUMN `cache_creation_12h_tokens`",
+		"channel_model_pricing` ADD COLUMN `cache_write_12h_price`",
+		"channel_pricing_intervals` ADD COLUMN `cache_write_12h_price`",
+		"channel_account_stats_model_pricing` ADD COLUMN `cache_write_12h_price`",
+		"channel_account_stats_pricing_intervals` ADD COLUMN `cache_write_12h_price`",
+		"channel_model_pricing` ADD COLUMN `ultrafast_multiplier`",
+		"usage_group_rollup_state` ADD COLUMN `expired_before`",
+		"usage_group_rollup_state` ADD COLUMN `building_until`",
+		"usage_group_rollup_state` ADD COLUMN `build_dirty_from`",
+		"ON `usage_logs` (`api_key_id`, `created_at`, `actual_cost`)",
+		"NEW.`created_at` >= `expired_before`",
+		"OLD.`created_at` >= `expired_before`",
+		"SET `build_dirty_from` = CASE",
+	} {
+		require.Contains(t, sql, fragment)
+	}
+	require.Equal(t, 3, strings.Count(sql, "CREATE TRIGGER"))
+	// 迁移执行器按分号拆分；每个触发器必须使用单条 UPDATE，不能包含 BEGIN/END 块。
+	require.NotContains(t, strings.ToUpper(sql), "BEGIN")
+	requireNotPostgresOnlySQL(t, sql)
+}
+
 func requireNotPostgresOnlySQL(t *testing.T, sql string) {
 	t.Helper()
 

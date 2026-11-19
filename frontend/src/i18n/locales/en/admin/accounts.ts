@@ -609,7 +609,7 @@ export default {
       "testMode": "Test mode",
       "testModeDefault": "Default request",
       "testModeCompact": "Compact probe",
-      "modelRestrictionDisabledByPassthrough": "Automatic passthrough is enabled: model whitelist/mapping will not take effect.",
+      "modelRestrictionDisabledByPassthrough": "Automatic passthrough ignores model restrictions by default. Enable \"Filter passthrough accounts by model\" to use them for account selection only.",
       "codexImageGenerationBridge": "Codex image-generation bridge",
       "codexImageGenerationBridgeDesc": "Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.",
       "codexImageGenerationBridgeInherit": "Follow channel",
@@ -625,7 +625,9 @@ export default {
       "wsModeHttpBridgeHint": "The gateway converts client WS requests to upstream HTTP requests, then converts SSE streaming responses back into WS messages.",
       "imageSizeTiers": "Image size tiers",
       "imageSizeTiersDesc": "Limits the image size tiers this account serves, using the billing tiers: longest edge ≤1024 is 1K, ≤2048 is 2K, larger is 4K (2560x1440 is 4K). Requests with an explicit size are only scheduled to accounts allowing that tier; requests without a size or with auto prefer accounts without a tier limit, then accounts allowing 4K, 2K and 1K in that order. Selecting all tiers means no limit. Applies to the Images API and the Responses image generation tool.",
-      "imageSizeTiersAtLeastOne": "Keep at least one tier"
+      "imageSizeTiersAtLeastOne": "Keep at least one tier",
+      "passthroughModelFilter": "Filter passthrough accounts by model",
+      "passthroughModelFilterDesc": "Use the account model whitelist and mapping source names to select this account. Mapping targets do not rename passthrough requests. An empty list allows all models. Disabled by default."
     },
     "anthropic": {
       "apiKeyPassthrough": "Auto passthrough (auth only)",
@@ -1343,7 +1345,11 @@ export default {
       "antigravityArgon5h": "A·5h",
       "antigravityArgonWeekly": "A·wk",
       "antigravityOther5h": "C·5h",
-      "antigravityOtherWeekly": "C·wk"
+      "antigravityOtherWeekly": "C·wk",
+      "quotaRefreshFailedCached": "Refresh failed. Showing a previous observation; remaining quota is unconfirmed.",
+      "quotaRefreshFailedUnknown": "Refresh failed. Current quota is unknown.",
+      "quotaObservedAt": "Quota observed: ",
+      "quotaObservationUnknown": "Unknown (cached)"
     },
     "openaiQuotaReset": {
       "count": "Resets",
@@ -1663,7 +1669,15 @@ export default {
       "saved": "Saved.",
       "conflict": "Another operation changed this configuration or pause. Refresh and review before saving again.",
       "invalidConfig": "Enter valid thresholds, integer sample counts and cooldown.",
-      "actions": { "configure": "Configure", "pause": "Metric pause", "trial": "Trial request", "trialEnd": "End trial", "recover": "Automatic recovery", "release": "Manual release", "retire": "Disable rules" },
+      "actions": {
+        "configure": "Configure",
+        "pause": "Metric pause",
+        "trial": "Trial request",
+        "trialEnd": "End trial",
+        "recover": "Automatic recovery",
+        "release": "Manual release",
+        "retire": "Disable rules"
+      },
       "title": "Account metric pause and recovery",
       "hint": "Optional rolling-hour rules. Disabled by default and independent from manual account scheduling controls.",
       "enabled": "Enable account metric recovery",
@@ -1927,6 +1941,7 @@ export default {
       "errorEmptyCatalog": "No usable model catalog was returned",
       "errorTooLarge": "The catalog exceeds the read limit",
       "errorPersistence": "The catalog could not be saved"
-    }
+    },
+    "modelWildcardNotSupported": "Wildcards are not supported in the model whitelist. Enter an exact model name."
   }
 }

@@ -39,7 +39,10 @@ export default {
       "unitPerMillion": "/ 1M tokens",
       "unitPerRequest": "/ request",
       "videoPrice": "Video Price",
-      "unitPerSecond": "/ second"
+      "unitPerSecond": "/ second",
+      "cacheWrite30mPrice": "Cache Write (30m)",
+      "cacheWrite12hHint": "Leave empty to use the generic cache-write price. Applies only to reported OpenAI 12h writes.",
+      "cacheWrite12hPrice": "Cache Write (12h)"
     }
   },
   "channels": {
@@ -79,6 +82,7 @@ export default {
         "outputPrice": "output price",
         "cacheWritePrice": "cache write price",
         "cacheWrite1hPrice": "1h cache write price",
+        "cacheWrite12hPrice": "12h cache write price",
         "cacheReadPrice": "cache read price",
         "perRequestPrice": "per-request price"
       },
@@ -227,7 +231,12 @@ export default {
       "reasoningEffortMultiplierDefault": "Default: 1",
       "clearReasoningEffortMultipliers": "Clear multipliers",
       "reasoningEffortMultiplierPositive": "The {effort} reasoning effort multiplier must be a finite number greater than 0",
-      "reasoningEffortLevelInvalid": "Unsupported reasoning effort: {effort}"
+      "reasoningEffortLevelInvalid": "Unsupported reasoning effort: {effort}",
+      "cacheWrite30mPrice": "Cache Write (30m)",
+      "cacheWrite12hHint": "Leave empty to use the generic cache-write price. Applies only to reported OpenAI 12h writes.",
+      "cacheWrite12hPrice": "Cache Write (12h)",
+      "cacheWrite12hPriceShort": "Cache W 12h",
+      "ultrafastMultiplier": "Ultrafast Multiplier"
     },
     "noGroupsSelected": "No group selected for {platform}. Select at least one group or disable this platform.",
     "emptyModelsInPricing": "{platform} has pricing entries without models. Add models or remove those entries.",

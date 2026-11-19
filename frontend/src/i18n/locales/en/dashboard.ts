@@ -649,7 +649,8 @@ export default {
       "unitPerMillion": "/ 1M tokens",
       "unitPerRequest": "/ request",
       "videoPrice": "Video Price",
-      "unitPerSecond": "/ second"
+      "unitPerSecond": "/ second",
+      "cacheWrite12hPrice": "Cache Write (12h)"
     }
   },
   "affiliate": {

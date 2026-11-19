@@ -746,7 +746,7 @@ export default {
       "maxAmount": "Maximum Amount",
       "dailyLimit": "Daily Limit",
       "balanceRechargeMultiplier": "Balance Recharge Multiplier",
-      "balanceRechargeMultiplierHint": "How many USD balance the user receives for each 1 CNY paid",
+      "balanceRechargeMultiplierHint": "How many USD balance the user receives for each 1 CNY paid (up to 6 decimal places, e.g. for live FX rates)",
       "balanceRechargePreview": "Preview: 1 CNY = {usd} USD",
       "subscriptionUsdToCnyRate": "Subscription USD to CNY Rate",
       "subscriptionUsdToCnyRateHint": "CNY charged per 1 USD of plan price on CNY channels (e.g. 7.15). 0 or empty = disabled, plan price is charged as-is. When enabled, all plan prices must be set in USD",
@@ -959,7 +959,9 @@ export default {
         "noticeLabel": "Recharge Bonus Notice",
         "noticeHint": "Markdown supported. Shown at the top of the amount picker on the recharge page; leave empty to hide.",
         "noticePlaceholder": "e.g. 🎁 Limited offer: get 20% extra on top-ups of $100+, 30% on $500+ …"
-      }
+      },
+      "field_refundSuccessCode": "Refund success code",
+      "field_refundSuccessCodeHint": "Use the success code documented by this gateway's refund API. Default: 1 (e.g. ZPAY). Select 0 only for gateways that document it. Payment creation and order queries still require 1."
     },
     "balanceNotify": {
       "title": "Balance Low Notification",

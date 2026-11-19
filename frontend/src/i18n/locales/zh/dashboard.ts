@@ -649,7 +649,8 @@ export default {
       "unitPerMillion": "/ 1M token",
       "unitPerRequest": "/ 次",
       "videoPrice": "视频单价",
-      "unitPerSecond": "/ 秒"
+      "unitPerSecond": "/ 秒",
+      "cacheWrite12hPrice": "缓存写入（12h）"
     }
   },
   "affiliate": {
