@@ -144,6 +144,11 @@ func TestAccountTestService_TestAccountConnection_GrokUsesXAIResponses(t *testin
 	require.NotContains(t, rec.Body.String(), "claude")
 	require.Contains(t, rec.Body.String(), `"model":"grok-4.3"`)
 	require.Contains(t, rec.Body.String(), `"type":"test_complete"`)
+
+	upstream.resp = adaptiveCNResponsesTestResponse()
+	c, _ = newTestContext()
+	require.NoError(t, svc.TestAccountConnection(c, account.ID, "grok", "  请只回复连接成功  ", AccountTestModeDefault))
+	require.Equal(t, "请只回复连接成功", gjson.GetBytes(upstream.lastBody, "input").String())
 }
 
 func TestAccountTestService_TestAccountConnection_GrokDefaultsEmptyModelTo45(t *testing.T) {

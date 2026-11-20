@@ -53,6 +53,40 @@ func newJSONResponse(status int, body string) *http.Response {
 
 // --- test functions ---
 
+func TestAccountTestService_OpenAICustomPrompt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prompt string
+		want   string
+	}{
+		{name: "自定义多行提示词", prompt: "  请只回复连接成功\n保留换行。  ", want: "请只回复连接成功\n保留换行。"},
+		{name: "留空使用默认值", want: "hi"},
+		{name: "空白使用默认值", prompt: " \n ", want: "hi"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{
+				ID:          89,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+				Credentials: map[string]any{"access_token": "test-token"},
+			}
+			repo := &openAIAccountTestRepo{mockAccountRepoForGemini: mockAccountRepoForGemini{
+				accountsByID: map[int64]*Account{account.ID: account},
+			}}
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{adaptiveCNResponsesTestResponse()}}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+			c, _ := newTestContext()
+
+			require.NoError(t, svc.TestAccountConnection(c, account.ID, "gpt-5.4", tc.prompt, AccountTestModeDefault))
+			require.Len(t, upstream.requests, 1)
+			body, err := io.ReadAll(upstream.requests[0].Body)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, gjson.GetBytes(body, "input.0.content.0.text").String())
+		})
+	}
+}
+
 func newTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

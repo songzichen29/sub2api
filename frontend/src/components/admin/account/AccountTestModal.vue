@@ -66,12 +66,12 @@
         />
       </div>
 
-      <div v-if="supportsImageTest" class="space-y-1.5">
+      <div v-if="!isOpenAIAccount || testMode !== 'compact'" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
-          :label="t('admin.accounts.imagePromptLabel')"
-          :placeholder="t('admin.accounts.imagePromptPlaceholder')"
-          :hint="t('admin.accounts.imageTestHint')"
+          :label="t(supportsImageTest ? 'admin.accounts.imagePromptLabel' : 'admin.accounts.testPromptLabel')"
+          :placeholder="t(supportsImageTest ? 'admin.accounts.imagePromptPlaceholder' : 'admin.accounts.testPromptPlaceholder')"
+          :hint="supportsImageTest ? t('admin.accounts.imageTestHint') : undefined"
           :disabled="status === 'connecting'"
           rows="3"
         />
@@ -195,7 +195,7 @@
           {{
             supportsImageTest
               ? t('admin.accounts.imageTestMode')
-              : t('admin.accounts.testPrompt')
+              : t('admin.accounts.textTestMode')
           }}
         </span>
       </div>
@@ -437,7 +437,7 @@ const startTest = async () => {
       mode?: 'default' | 'compact'
     } = {
       model_id: selectedModelId.value,
-      prompt: supportsImageTest.value ? testPrompt.value.trim() : ''
+      prompt: isOpenAIAccount.value && testMode.value === 'compact' ? '' : testPrompt.value.trim()
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
@@ -525,7 +525,9 @@ const handleEvent = (event: {
       addLine(
         supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
+            : testPrompt.value.trim() && testMode.value !== 'compact'
+              ? t('admin.accounts.sendingCustomTestMessage', { prompt: testPrompt.value.trim() })
+              : t('admin.accounts.sendingTestMessage'),
         'text-gray-400'
       )
       addLine('', 'text-gray-300')

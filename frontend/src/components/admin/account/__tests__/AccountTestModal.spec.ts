@@ -117,6 +117,49 @@ describe('AccountTestModal', () => {
     vi.restoreAllMocks()
   })
 
+  it.each(['openai', 'anthropic', 'gemini', 'grok', 'antigravity'])('%s 文本测试会发送自定义提示词', async (platform) => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'text-model', display_name: 'Text Model' }
+    ])
+    const wrapper = mountModal({ platform })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    await wrapper.get('textarea.textarea-stub').setValue('  请只回复连接成功\n保留换行。  ')
+    const startButton = wrapper.findAll('button').find((button) =>
+      button.text().includes('admin.accounts.startTest')
+    )!
+    await startButton.trigger('click')
+    await flushPromises()
+
+    expect(vi.mocked(fetch).mock.calls[0][1]).toHaveProperty('body', JSON.stringify({
+      model_id: 'text-model',
+      prompt: '请只回复连接成功\n保留换行。',
+      ...(platform === 'openai' ? { mode: 'default' } : {})
+    }))
+    expect(wrapper.get('textarea.textarea-stub').element).toHaveProperty('value', '  请只回复连接成功\n保留换行。  ')
+  })
+
+  it.each(['', ' \n '])('文本测试提示词留空时继续使用默认测试内容', async (prompt) => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'text-model', display_name: 'Text Model' }
+    ])
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await wrapper.get('textarea.textarea-stub').setValue(prompt)
+    const startButton = wrapper.findAll('button').find((button) =>
+      button.text().includes('admin.accounts.startTest')
+    )!
+    await startButton.trigger('click')
+    await flushPromises()
+
+    expect(vi.mocked(fetch).mock.calls[0][1]).toHaveProperty('body', JSON.stringify({
+      model_id: 'text-model',
+      prompt: ''
+    }))
+  })
+
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {
     const wrapper = mountModal()
     await wrapper.setProps({ show: true })
@@ -204,8 +247,11 @@ describe('AccountTestModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
 
+    await wrapper.get('textarea.textarea-stub').setValue('自定义文本不用于 Compact 探测')
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'compact'
+    await flushPromises()
+    expect(wrapper.find('textarea.textarea-stub').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 
