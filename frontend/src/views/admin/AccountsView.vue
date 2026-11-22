@@ -163,7 +163,7 @@
           </AccountTableActions>
         </div>
         <div
-          v-if="hasPendingListSync"
+          v-if="hasPendingListSync && !liveLastUsedSort"
           class="mt-2 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700/40 dark:bg-amber-900/20 dark:text-amber-200"
         >
           <span>{{ t('admin.accounts.listPendingSyncHint') }}</span>
@@ -779,6 +779,7 @@ const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
 const AUTO_REFRESH_STORAGE_KEY = 'account-auto-refresh'
 const autoRefreshIntervals = [5, 10, 15, 30] as const
 const autoRefreshEnabled = ref(false)
+const liveLastUsedSort = computed(() => autoRefreshEnabled.value && sortState.sort_by === 'last_used_at')
 const autoRefreshIntervalSeconds = ref<(typeof autoRefreshIntervals)[number]>(30)
 const autoRefreshCountdown = ref(0)
 const autoRefreshETag = ref<string | null>(null)
@@ -1523,25 +1524,21 @@ const syncAccountRefs = (nextAccount: Account) => {
   if (menu.acc?.id === nextAccount.id) menu.acc = nextAccount
 }
 
-const mergeAccountsIncrementally = (nextRows: Account[]) => {
-  const currentRows = accounts.value
-  const nextByID = new Map(nextRows.map(row => [row.id, row]))
-  let changed = false
-  // 后台只更新当前行，新增、移除及重排留给手动同步，避免打断阅读和选择。
-  const mergedRows = currentRows.map((currentRow) => {
-    const nextRow = nextByID.get(currentRow.id)
-    if (!nextRow) return currentRow
-    if (shouldReplaceAutoRefreshRow(currentRow, nextRow)) {
-      changed = true
-      syncAccountRefs(nextRow)
-      return nextRow
-    }
-    return currentRow
-  })
-  if (changed) {
-    accounts.value = mergedRows
+const mergeAccountsIncrementally = (nextRows: Account[], applyServerOrder: boolean) => {
+  const currentByID = new Map(accounts.value.map(row => [row.id, row]))
+  let rowsChanged = applyServerOrder
+  for (const nextRow of nextRows) {
+    const currentRow = currentByID.get(nextRow.id)
+    if (!currentRow || !shouldReplaceAutoRefreshRow(currentRow, nextRow)) continue
+    currentByID.set(nextRow.id, nextRow)
+    syncAccountRefs(nextRow)
+    rowsChanged = true
   }
-  return changed
+  if (rowsChanged) {
+    const displayRows = applyServerOrder ? nextRows : accounts.value
+    accounts.value = displayRows.map(row => currentByID.get(row.id) ?? row)
+  }
+  return rowsChanged
 }
 
 const refreshAccountsIncrementally = async () => {
@@ -1568,16 +1565,26 @@ const refreshAccountsIncrementally = async () => {
     )
 
     // 翻页、排序和手动刷新会使旧请求失效，不能再覆盖新列表。
-    if (requestVersion !== autoRefreshVersion) return
+    if (requestVersion !== autoRefreshVersion || !autoRefreshEnabled.value) return
     if (result.etag) {
       autoRefreshETag.value = result.etag
     }
     let rowsChanged = false
     if (!result.notModified && result.data) {
       const nextRows = result.data.items || []
-      hasPendingListSync.value = result.data.total !== pagination.total ||
-        !sameAccountIDOrder(accounts.value.map(row => row.id), nextRows.map(row => row.id))
-      rowsChanged = mergeAccountsIncrementally(nextRows)
+      const orderChanged = !sameAccountIDOrder(accounts.value.map(row => row.id), nextRows.map(row => row.id))
+      hasPendingListSync.value = !liveLastUsedSort.value && (orderChanged || result.data.total !== pagination.total)
+      if (liveLastUsedSort.value) {
+        pagination.total = result.data.total
+        pagination.pages = result.data.pages
+        const lastPage = Math.max(1, pagination.pages)
+        if (pagination.page > lastPage) {
+          pagination.page = lastPage
+          await load()
+          return
+        }
+      }
+      rowsChanged = mergeAccountsIncrementally(nextRows, liveLastUsedSort.value && orderChanged)
     }
     // 行更新已触发指标监听；304 或行未变化时也要刷新独立指标，且只请求一次。
     if (!rowsChanged) await refreshMetricRecovery()
@@ -2358,7 +2365,8 @@ const syncPaginationAfterLocalRemoval = () => {
   if (pagination.page > maxPage) {
     pagination.page = maxPage
   }
-  // 行被本地移除后不立刻全量补页，改为提示用户手动同步。
+  // 本地移除后，下一轮刷新需要重新取页，已发出的旧请求也应失效。
+  resetAutoRefreshCache()
   hasPendingListSync.value = nextTotal > 0
 }
 

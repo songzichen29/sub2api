@@ -72,6 +72,7 @@ const DataTableStub = defineComponent({
   template: `
     <div>
       <template v-if="!loading"><div v-for="row in data" :key="row.id" :data-account-name="row.name">
+        <slot name="cell-select" :row="row" />
         <div data-test="account-name"><slot name="cell-name" :row="row" :value="row.name" /></div>
         <slot name="cell-groups" :row="row" />
         <slot name="cell-last_used_at" :row="row" :value="row.last_used_at" />
@@ -356,6 +357,64 @@ describe('admin AccountsView lite account list', () => {
     await syncButton.trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-account-name]').attributes('data-account-name')).toBe('second row')
+    expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
+    wrapper.unmount()
+  })
+
+  it.each(['asc', 'desc'])('automatically follows last-used order and page membership (%s)', async (order) => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    localStorage.setItem('account-table-sort', JSON.stringify({ key: 'last_used_at', order }))
+    const firstPage = Array.from({ length: 20 }, (_, index) => ({ ...listRow, id: index + 1, name: `account ${index + 1}` }))
+    const recentlyUsed = { ...firstPage[1], last_used_at: '2026-11-22T10:00:00Z' }
+    const reordered = [recentlyUsed, firstPage[0], ...firstPage.slice(2)]
+    const entering = { ...listRow, id: 21, name: 'entering account' }
+    const nextPage = [entering, ...reordered.slice(0, -1)]
+    listAccounts.mockResolvedValue({ items: firstPage, total: 21, pages: 2 })
+    listWithEtag
+      .mockResolvedValueOnce({ notModified: false, etag: 'reordered', data: { items: reordered, total: 21, pages: 2 } })
+      .mockResolvedValueOnce({ notModified: false, etag: 'entered', data: { items: nextPage, total: 22, pages: 2 } })
+    const wrapper = mountView()
+    await flushPromises()
+    const selected = wrapper.get('[data-account-name="account 2"] input')
+    await selected.setValue(true)
+
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(listWithEtag).toHaveBeenCalledWith(1, 20, expect.objectContaining({ sort_by: 'last_used_at', sort_order: order }), { etag: null })
+    expect(wrapper.getComponent(DataTableStub).props('data')).toEqual(reordered)
+    expect(wrapper.get('[data-account-name="account 2"] input').element).toBe(selected.element)
+    expect((selected.element as HTMLInputElement).checked).toBe(true)
+    expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
+
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(wrapper.getComponent(DataTableStub).props('data')).toEqual(nextPage)
+    expect(wrapper.getComponent({ name: 'Pagination' }).props('total')).toBe(22)
+    expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
+    expect(listAccounts).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
+  it('loads the new last page when a last-used refresh removes the current page', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    localStorage.setItem('account-table-sort', JSON.stringify({ key: 'last_used_at', order: 'desc' }))
+    listAccounts.mockResolvedValue({ items: [listRow], total: 21, pages: 2 })
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.getComponent({ name: 'Pagination' }).vm.$emit('update:page', 2)
+    await flushPromises()
+
+    const remaining = { ...listRow, id: 1, name: 'remaining account' }
+    listWithEtag.mockResolvedValue({ notModified: false, etag: 'empty-page', data: { items: [], total: 1, pages: 1 } })
+    listAccounts.mockResolvedValue({ items: [remaining], total: 1, pages: 1 })
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    expect(wrapper.getComponent({ name: 'Pagination' }).props('page')).toBe(1)
+    expect(wrapper.getComponent(DataTableStub).props('data')).toEqual([remaining])
     expect(wrapper.text()).not.toContain('admin.accounts.listPendingSyncHint')
     wrapper.unmount()
   })
