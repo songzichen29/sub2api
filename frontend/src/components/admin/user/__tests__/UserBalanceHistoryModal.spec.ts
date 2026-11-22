@@ -8,7 +8,8 @@ vi.mock('@/api/admin', () => ({ adminAPI: { users: mocks } }))
 vi.mock('@/utils/format', () => ({ formatDateTime: () => 'date' }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({ t: (key: string, params?: Record<string, string>) =>
+    params ? key + ' ' + Object.values(params).join(' ') : key }),
 }))
 enableAutoUnmount(afterEach)
 beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, 'error').mockImplementation(() => {}) })
@@ -39,6 +40,50 @@ async function openDialog() {
 }
 
 describe('UserBalanceHistoryModal request ordering', () => {
+  it.each([
+    ['QQ growth reward #76', 'growth'],
+    ['QQ checkin reward #77', 'checkin'],
+    ['QQ invite reward #78', 'invite'],
+    ['QQ lottery reward #79', 'lottery'],
+    ['QQ streak reward #80', 'streak'],
+    ['QQ ranking reward #81', 'ranking'],
+    ['QQ redemption reward #82', 'redemption'],
+    ['Website checkin reward #83', 'website_checkin'],
+  ])('localizes the system reward title and note for %s', async (notes, kind) => {
+    mocks.getUserBalanceHistory.mockResolvedValue({
+      items: [{ id: 1, code: 'QQ-REWARD', type: 'admin_balance', value: 0.1, notes }],
+      total: 1,
+      total_recharged: 0,
+    })
+    const wrapper = await openDialog()
+    await flushPromises()
+    const number = notes.match(/#(\d+)/)![1]
+    expect(wrapper.text()).toContain(`redeem.qqRewards.${kind}`)
+    expect(wrapper.get(`[title="redeem.qqRewardRecord ${number}"]`).text()).toBe(`redeem.qqRewardRecord ${number}`)
+    expect(wrapper.text()).not.toContain(notes)
+    expect(wrapper.text()).not.toContain('redeem.balanceAddedAdmin')
+    expect(wrapper.text()).not.toContain('redeem.adminAdjustment')
+    expect(wrapper.text()).toContain('+$0.10')
+  })
+
+  it('localizes campaign notes while retaining administrator-written adjustment notes', async () => {
+    mocks.getUserBalanceHistory.mockResolvedValue({
+      items: [
+        { id: 1, code: 'CODE', type: 'balance', value: 1, notes: 'QQ campaign 1c712861ba2a48048bde15d9281fd793' },
+        { id: 2, code: 'MANUAL', type: 'admin_balance', value: 2, notes: 'Manual credit: QQ growth reward #76' },
+      ],
+      total: 2,
+      total_recharged: 1,
+    })
+    const wrapper = await openDialog()
+    await flushPromises()
+    expect(wrapper.text()).toContain('redeem.qqCampaignRecord')
+    expect(wrapper.text()).not.toContain('QQ campaign')
+    expect(wrapper.get('[title="Manual credit: QQ growth reward #76"]').text()).toBe('Manual credit: QQ growth reward #76')
+    expect(wrapper.text()).toContain('redeem.balanceAddedAdmin')
+    expect(wrapper.text()).toContain('redeem.adminAdjustment')
+  })
+
   it('keeps the new user history when an old response finishes later', async () => {
     const old = deferred()
     mocks.getUserBalanceHistory.mockReturnValueOnce(old.promise).mockResolvedValueOnce(result(20))

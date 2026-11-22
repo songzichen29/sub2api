@@ -96,7 +96,7 @@
       <!-- History list -->
       <div v-else class="max-h-[28rem] space-y-3 overflow-y-auto">
         <div
-          v-for="item in history"
+          v-for="item in displayedHistory"
           :key="item.id"
           class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800"
         >
@@ -119,9 +119,9 @@
                 <p
                   v-if="item.notes"
                   class="mt-0.5 text-xs text-gray-500 dark:text-dark-400"
-                  :title="item.notes"
+                  :title="item.displayNote"
                 >
-                  {{ item.notes.length > 60 ? item.notes.substring(0, 55) + '...' : item.notes }}
+                  {{ item.displayNote.length > 60 ? item.displayNote.substring(0, 55) + '...' : item.displayNote }}
                 </p>
                 <p class="mt-0.5 text-xs text-gray-400 dark:text-dark-500">
                   {{ formatDateTime(item.used_at || item.created_at) }}
@@ -134,13 +134,13 @@
                 {{ formatValue(item) }}
               </p>
               <p
-                v-if="isAdminType(item.type)"
+                v-if="isAdminType(item.type) && !parseQQRewardNote(item.notes)"
                 class="text-xs text-gray-400 dark:text-dark-500"
               >
                 {{ t('redeem.adminAdjustment') }}
               </p>
               <p
-                v-else
+                v-else-if="!isAdminType(item.type)"
                 class="font-mono text-xs text-gray-400 dark:text-dark-500"
               >
                 {{ item.code.slice(0, 8) }}...
@@ -179,6 +179,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI, type BalanceHistoryItem } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
+import { formatAccountActivityNote, parseQQRewardNote } from '@/utils/accountActivity'
 import type { AdminUser } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -190,6 +191,10 @@ const emit = defineEmits(['close', 'deposit', 'withdraw'])
 const { t } = useI18n()
 
 const history = ref<BalanceHistoryItem[]>([])
+const displayedHistory = computed(() => history.value.map(item => ({
+  ...item,
+  displayNote: formatAccountActivityNote(item.notes, t)
+})))
 const loading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
@@ -303,6 +308,8 @@ const getValueColor = (item: BalanceHistoryItem) => {
 
 // Item title
 const getItemTitle = (item: BalanceHistoryItem) => {
+  const reward = item.type === 'admin_balance' ? parseQQRewardNote(item.notes) : null
+  if (reward) return t('redeem.qqRewards.' + reward.kind)
   switch (item.type) {
     case 'balance':
       return t('redeem.balanceAddedRedeem')

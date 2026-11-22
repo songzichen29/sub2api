@@ -254,19 +254,27 @@ describe('RedeemView refresh after redemption', () => {
   })
 
   it('localizes historical website check-ins and campaign notes without hiding operator notes', async () => {
-    getAccountActivity.mockResolvedValue({ total: 3, items: [
+    getAccountActivity.mockResolvedValue({ total: 5, items: [
       { id: 11, code: 'USED', type: 'lottery_chances', value: 1, notes: 'QQ campaign 1c712861ba2a48048bde15d9281fd793', used_at: '2026-11-07T07:53:40Z' },
       { id: 12, code: 'REWARD', type: 'admin_balance', value: 0.1, notes: 'Website checkin reward #88', used_at: '2026-11-07T00:00:00Z' },
       { id: 13, code: 'MANUAL', type: 'admin_balance', value: 1, notes: '人工备注保留', used_at: '2026-11-07T00:00:00Z' },
+      { id: 14, code: 'QQ-CHECKIN', type: 'admin_balance', value: 0.1, notes: 'QQ checkin reward #89', used_at: '2026-11-07T00:00:00Z' },
+      { id: 15, code: 'QQ-LOTTERY', type: 'admin_balance', value: 1, notes: 'QQ lottery reward #90: 保底奖励', used_at: '2026-11-07T00:00:00Z' },
     ] })
     const wrapper = mount(RedeemView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('redeem.qqCampaignRecord')
     expect(wrapper.text()).toContain('redeem.qqRewards.website_checkin')
     expect(wrapper.text()).toContain('redeem.qqRewardRecord 88')
+    expect(wrapper.text()).toContain('redeem.qqRewards.checkin')
+    expect(wrapper.get('[title="redeem.qqRewardRecord 89"]').text()).toBe('redeem.qqRewardRecord 89')
+    expect(wrapper.text()).toContain('redeem.qqRewards.lottery')
+    expect(wrapper.get('[title="redeem.qqRewardDetail redeem.qqRewardRecord 90 保底奖励"]').text()).toBe('redeem.qqRewardDetail redeem.qqRewardRecord 90 保底奖励')
     expect(wrapper.text()).toContain('人工备注保留')
     expect(wrapper.text()).not.toContain('QQ campaign')
     expect(wrapper.text()).not.toContain('Website checkin reward')
+    expect(wrapper.text()).not.toContain('QQ checkin reward')
+    expect(wrapper.text()).not.toContain('QQ lottery reward')
     wrapper.unmount()
   })
 

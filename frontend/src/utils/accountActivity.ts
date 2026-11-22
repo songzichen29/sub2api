@@ -18,3 +18,14 @@ export function parseQQRewardNote(notes?: string): QQRewardNote | null {
 export function parseQQCampaignNote(notes?: string): string | null {
   return notes?.match(/^QQ campaign ([a-f0-9]{24}|[a-f0-9]{32})$/i)?.[1] || null
 }
+
+export function formatAccountActivityNote(
+  notes: string | undefined,
+  t: (key: string, params?: Record<string, string>) => string
+): string {
+  if (parseQQCampaignNote(notes)) return t('redeem.qqCampaignRecord')
+  const reward = parseQQRewardNote(notes)
+  if (!reward) return notes || ''
+  const record = t('redeem.qqRewardRecord', { number: reward.number })
+  return reward.detail ? t('redeem.qqRewardDetail', { record, detail: reward.detail }) : record
+}
