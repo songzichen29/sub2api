@@ -10,13 +10,13 @@
               class="w-full sm:w-64"
               @search="onFilterChange"
             />
-            <Select
+            <Select :aria-label="t('keys.group')"
               :model-value="filterGroupId"
               class="w-40"
               :options="groupFilterOptions"
               @update:model-value="onGroupFilterChange"
             />
-            <Select
+            <Select :aria-label="t('keys.statusLabel')"
               :model-value="filterStatus"
               class="w-40"
               :options="statusFilterOptions"
@@ -452,7 +452,10 @@
           </template>
 
           <template #empty>
+            <EmptyState v-if="loadError" :title="t('keys.failedToLoad')" :action-text="t('common.retry')" :action-icon="false" @action="loadApiKeys" />
+            <EmptyState v-else-if="hasActiveFilters" :title="t('common.noResults')" :action-text="t('common.clearFilters')" :action-icon="false" @action="clearFilters" />
             <EmptyState
+              v-else
               :title="t('keys.noKeysYet')"
               :description="t('keys.createFirstKey')"
               :action-text="t('keys.createKey')"
@@ -624,7 +627,7 @@
 
         <div v-if="showEditModal">
           <label class="input-label">{{ t('keys.statusLabel') }}</label>
-          <Select
+          <Select :aria-label="t('keys.statusLabel')"
             v-model="formData.status"
             :options="statusOptions"
             :placeholder="t('keys.selectStatus')"
@@ -1383,6 +1386,7 @@ const handleBulkUpdated = (succeededIds: number[]) => {
 
 const groups = ref<Group[]>([])
 const loading = ref(false)
+const loadError = ref(false)
 const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
@@ -1405,6 +1409,14 @@ const sortState = ref({
 const filterSearch = ref('')
 const filterStatus = ref('')
 const filterGroupId = ref<string | number>('')
+const hasActiveFilters = computed(() => !!(filterSearch.value.trim() || filterStatus.value || filterGroupId.value !== ''))
+
+const clearFilters = () => {
+  filterSearch.value = ''
+  filterStatus.value = ''
+  filterGroupId.value = ''
+  onFilterChange()
+}
 
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
@@ -1600,6 +1612,7 @@ const loadApiKeys = async () => {
   abortController = controller
   const { signal } = controller
   loading.value = true
+  loadError.value = false
   usageLoading.value = false
   try {
     // Build filters
@@ -1635,6 +1648,7 @@ const loadApiKeys = async () => {
     if (isAbortError(error)) {
       return
     }
+    loadError.value = true
     appStore.showError(t('keys.failedToLoad'))
   } finally {
     if (abortController === controller) {

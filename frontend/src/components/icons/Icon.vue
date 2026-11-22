@@ -5,7 +5,12 @@
     viewBox="0 0 24 24"
     stroke="currentColor"
     :stroke-width="strokeWidth"
+    :aria-hidden="!label && !$attrs['aria-label'] && !$attrs['aria-labelledby'] ? true : undefined"
+    :aria-label="label"
+    :role="label || $attrs['aria-label'] || $attrs['aria-labelledby'] ? 'img' : undefined"
+    focusable="false"
   >
+    <title v-if="label">{{ label }}</title>
     <path stroke-linecap="round" stroke-linejoin="round" :d="iconPath" />
   </svg>
 </template>
@@ -17,6 +22,7 @@ const props = withDefaults(defineProps<{
   name: keyof typeof icons
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   strokeWidth?: number
+  label?: string
 }>(), {
   size: 'md',
   strokeWidth: 1.5

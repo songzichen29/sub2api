@@ -168,7 +168,7 @@
 
               <!-- Enabled Toggle -->
               <div class="flex items-center gap-1.5" @click.stop>
-                <Toggle
+                <Toggle :aria-label="t('common.status') + ' · ' + plan.model_id"
                   :model-value="plan.enabled"
                   @update:model-value="(val: boolean) => handleToggleEnabled(plan, val)"
                 />

@@ -4,17 +4,21 @@
       <label class="text-sm">{{ t('qqbot.group') }}<input v-model.trim="filters.group_id" class="input" maxlength="128" data-testid="qq-job-group" /></label>
       <QQMemberPicker v-model="filters.member_id" :group-id="filters.group_id" :app-id="appId" :disabled="loading" @select="selectMember" />
       <label class="text-sm">{{ t('qqbot.workspace.jobKind') }}<select v-model="filters.kind" class="input" data-testid="qq-job-kind"><option value="">{{ t('qqbot.workspace.all') }}</option><option v-for="kind in kinds" :key="kind" :value="kind">{{ kindLabel(kind) }}</option></select></label>
-      <label class="text-sm">{{ t('common.status') }}<select v-model="filters.status" class="input"><option value="">{{ t('qqbot.workspace.all') }}</option><option v-for="status in statuses" :key="status" :value="status">{{ status }}</option></select></label>
+      <label class="text-sm">{{ t('common.status') }}<select v-model="filters.status" class="input"><option value="">{{ t('qqbot.workspace.all') }}</option><option v-for="status in statuses" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label>
       <label class="text-sm">{{ t('qqbot.siteQuery.kindFilter') }}<select v-model="filters.query_kind" class="input" data-testid="qq-job-query-kind"><option value="">{{ t('qqbot.workspace.all') }}</option><option v-for="kind in queryKinds" :key="kind" :value="kind">{{ t(`qqbot.siteQuery.kinds.${kind}`) }}</option></select></label>
       <label class="text-sm">{{ t('qqbot.siteQuery.statusFilter') }}<select v-model="filters.query_status" class="input" data-testid="qq-job-query-status"><option value="">{{ t('qqbot.workspace.all') }}</option><option v-for="status in queryStatuses" :key="status" :value="status">{{ t(`qqbot.siteQuery.statuses.${status}`) }}</option></select></label>
       <label class="text-sm">{{ t('qqbot.workspace.from') }}<input v-model="filters.from" class="input" type="datetime-local" /></label>
       <label class="text-sm">{{ t('qqbot.workspace.to') }}<input v-model="filters.to" class="input" type="datetime-local" /></label>
       <button class="btn btn-primary self-end" :disabled="loading">{{ t('common.search') }}</button>
     </form>
-    <p v-if="error" role="alert" class="text-sm text-red-600">{{ error }}</p>
+    <p v-if="loading" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
+    <div v-if="error" role="alert" class="flex items-center justify-between gap-3 text-sm text-red-600">
+      <p>{{ error }}</p>
+      <button type="button" class="btn btn-secondary" :disabled="loading" @click="load(data.page)">{{ t('common.retry') }}</button>
+    </div>
     <p class="text-xs text-gray-500">{{ t('qqbot.workspace.recordsHelp') }}</p>
     <article v-for="job in data.items" :key="job.id" class="space-y-2 rounded-lg border p-4 text-sm dark:border-dark-700">
-      <p class="flex flex-wrap justify-between gap-2"><strong>{{ kindLabel(job.kind || 'event') }} · {{ job.status }}</strong><time>{{ new Date(job.created_at).toLocaleString() }}</time></p>
+      <p class="flex flex-wrap justify-between gap-2"><strong>{{ kindLabel(job.kind || 'event') }} · {{ statusLabel(job.status) }}</strong><time>{{ new Date(job.created_at).toLocaleString() }}</time></p>
       <p class="break-all text-xs text-gray-500">{{ job.group_id }} · {{ job.member_id }} · {{ job.id }}</p>
       <p v-if="job.trigger_reason || job.decision_reason">{{ job.trigger_reason }} → {{ job.decision_reason || job.status }}</p>
       <div v-if="job.image_decision?.tool" class="rounded bg-gray-50 p-3 text-xs dark:bg-dark-800">
@@ -37,8 +41,8 @@
       <p v-if="job.kind === 'spam_report'" class="text-xs text-gray-500">{{ t('qqbot.workspace.reportReviewHelp') }}</p>
       <p v-if="job.error" class="break-all text-red-600">{{ job.error }}</p>
     </article>
-    <p v-if="!loading && !data.items.length">{{ t('common.noData') }}</p>
-    <div class="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{{ t('qqbot.recordsPage', { total: data.total, page: data.page, pages }) }}</span><div class="flex gap-2"><button class="btn btn-secondary" :disabled="loading || data.page <= 1" @click="load(data.page - 1)">{{ t('qqbot.previousPage') }}</button><button class="btn btn-secondary" :disabled="loading || data.page >= pages" @click="load(data.page + 1)">{{ t('qqbot.nextPage') }}</button></div></div>
+    <p v-if="!loading && !error && !data.items.length">{{ t('common.noData') }}</p>
+    <div v-if="!error" class="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{{ t('qqbot.recordsPage', { total: data.total, page: data.page, pages }) }}</span><div class="flex gap-2"><button class="btn btn-secondary" :disabled="loading || data.page <= 1" @click="load(data.page - 1)">{{ t('qqbot.previousPage') }}</button><button class="btn btn-secondary" :disabled="loading || data.page >= pages" @click="load(data.page + 1)">{{ t('qqbot.nextPage') }}</button></div></div>
   </section>
 </template>
 <script setup lang="ts">
@@ -55,6 +59,7 @@ let applied = { ...filters }
 function search() { applied = { ...filters }; void load(1) }
 const kinds = ['chat', 'image', 'ambient_chat', 'spam_report', 'notifications', 'price_notification', 'health_notification', 'ranking_notification', 'heartbeat_notification']
 function kindLabel(kind: string) { const key = `qqbot.workspace.jobKinds.${kind}`; return te(key) ? t(key) : kind }
+function statusLabel(status: string) { const key = `qqbot.workspace.jobStatuses.${status}`; return te(key) ? t(key) : status }
 const statuses = ['queued', 'running', 'completed', 'skipped', 'failed', 'delivery_failed', 'expired', 'interrupted', 'cancelled']
 const queryKinds: QQSiteQueryKind[] = ['model_price', 'channel_status', 'activity_rules', 'account_balance', 'today_usage', 'lottery_chances']
 const queryStatuses = ['succeeded', 'not_found', 'unavailable', 'failed']

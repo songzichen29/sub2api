@@ -1,6 +1,9 @@
 export default {
   "dashboard": {
     "title": "仪表盘",
+    "statsLoadFailed": "账户概览加载失败",
+    "chartsLoadFailed": "用量图表加载失败",
+    "quotasLoadFailed": "配额用量加载失败",
     "welcomeMessage": "欢迎回来！这是您账户的概览。",
     "balance": "余额",
     "apiKeys": "API 密钥",

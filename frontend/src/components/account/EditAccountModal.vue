@@ -2372,7 +2372,7 @@
                 {{ t('admin.accounts.opencodeGo.autoRefreshHint') }}
               </p>
             </div>
-            <Toggle
+            <Toggle :aria-label="t('admin.accounts.opencodeGo.autoRefresh')"
               :model-value="opencodeGoState?.auto_refresh_enabled ?? false"
               :disabled="opencodeGoSaving"
               data-testid="opencode-go-auto-refresh"

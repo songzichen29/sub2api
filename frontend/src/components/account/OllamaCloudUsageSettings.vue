@@ -113,7 +113,7 @@
             {{ t('admin.accounts.ollamaCloud.autoRefreshHint') }}
           </p>
         </div>
-        <Toggle
+        <Toggle :aria-label="t('admin.accounts.ollamaCloud.autoRefresh')"
           :model-value="state.auto_refresh_enabled"
           :disabled="saving"
           data-testid="ollama-cloud-auto-refresh"

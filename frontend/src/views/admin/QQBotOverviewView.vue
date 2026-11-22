@@ -1,16 +1,9 @@
 <template>
   <AppLayout>
     <div class="workspace-page qq-workspace space-y-5">
-      <div class="flex items-center justify-between gap-3"><h1 class="text-2xl font-semibold">{{ t('qqbot.workspace.overview') }}</h1><button class="btn btn-secondary" :disabled="loading" @click="load">{{ t('common.refresh') }}</button></div>
+      <div class="flex items-center justify-between gap-3"><h1 class="text-2xl font-semibold">{{ t('qqbot.workspace.overview') }}</h1><button class="btn btn-secondary" :disabled="loading || refreshing" @click="refreshAll">{{ refreshing ? t('common.loading') : t('common.refresh') }}</button></div>
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700">{{ error }}</p>
-	  <QQActivityStats />
       <template v-if="overview && config">
-        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.overviewHelp', { day: overview.day }) }}</p>
-        <div class="qq-stats">
-          <article v-for="stat in stats" :key="stat.label"><p class="text-sm text-gray-500 dark:text-gray-400">{{ t(stat.label) }}</p><p class="font-semibold">{{ stat.value }}</p></article>
-        </div>
-        <QQChatDiagnostics v-if="config.runtime_chat?.enabled" class="card p-5" :status="overview.chat_runtime" />
-        <p v-if="overview.reward_alert" role="alert" class="rounded-lg bg-amber-50 p-4 text-amber-800">{{ t('qqbot.workspace.budgetExceeded') }}</p>
         <section class="card space-y-4 p-5">
           <h2 class="text-lg font-semibold">{{ t('qqbot.workspace.effectiveStatus') }}</h2>
           <p>{{ t(config.enabled ? 'qqbot.workspace.enabled' : 'qqbot.workspace.disabled') }} · {{ t('qqbot.workspace.lastEvent') }}: {{ overview.last_event ? new Date(overview.last_event).toLocaleString() : t('qqbot.workspace.noEvent') }}</p>
@@ -18,6 +11,12 @@
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.connectivityHelp') }}</p>
           <div class="flex flex-wrap gap-2"><RouterLink class="btn btn-secondary" to="/admin/qqbot/config">{{ t('qqbot.basicConfig') }}</RouterLink><RouterLink class="btn btn-secondary" to="/admin/qqbot/groups">{{ t('qqbot.workspace.groups') }}</RouterLink><RouterLink class="btn btn-secondary" to="/admin/qqbot/records">{{ t('qqbot.workspace.records') }}</RouterLink></div>
         </section>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.overviewHelp', { day: overview.day }) }}</p>
+        <div class="qq-stats">
+          <article v-for="stat in stats" :key="stat.label"><p class="text-sm text-gray-500 dark:text-gray-400">{{ t(stat.label) }}</p><p class="font-semibold">{{ stat.value }}</p></article>
+        </div>
+        <QQChatDiagnostics v-if="config.runtime_chat?.enabled" class="card p-5" :status="overview.chat_runtime" />
+        <p v-if="overview.reward_alert" role="alert" class="rounded-lg bg-amber-50 p-4 text-amber-800">{{ t('qqbot.workspace.budgetExceeded') }}</p>
         <section class="card space-y-4 p-5">
           <h2 class="text-lg font-semibold">{{ t('qqbot.workspace.diagnose') }}</h2>
           <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.diagnoseHelp') }}</p>
@@ -26,9 +25,14 @@
             <QQMemberPicker v-model="member" :group-id="group" :app-id="config.app_id" :disabled="diagnosing" @select="selectMember" />
             <button class="btn btn-primary" :disabled="diagnosing">{{ t('qqbot.workspace.diagnoseAction') }}</button>
           </form>
-          <template v-if="diagnosis"><ul class="space-y-2 text-sm"><li v-for="check in diagnosis.checks" :key="check.code">{{ check.ok ? '✓' : '○' }} {{ check.message }}</li></ul><article v-for="job in diagnosis.jobs" :key="job.id" class="rounded border p-3 text-sm dark:border-dark-700"><p>{{ new Date(job.created_at).toLocaleString() }} · {{ job.kind }} · {{ job.status }}</p><p class="break-words [overflow-wrap:anywhere]">{{ job.decision_reason || job.error || job.trigger_reason }}</p></article><p v-if="!diagnosis.jobs.length" class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.noJobs') }}</p></template>
+          <template v-if="diagnosis"><ul class="space-y-2 text-sm"><li v-for="check in diagnosis.checks" :key="check.code">{{ check.ok ? '✓' : '○' }} {{ check.message }}</li></ul><article v-for="job in diagnosis.jobs" :key="job.id" class="rounded border p-3 text-sm dark:border-dark-700"><p>{{ new Date(job.created_at).toLocaleString() }} · {{ t(`qqbot.workspace.jobKinds.${job.kind}`) }} · {{ t(`qqbot.workspace.jobStatuses.${job.status}`) }}</p><p class="break-words [overflow-wrap:anywhere]">{{ job.decision_reason || job.error || job.trigger_reason }}</p></article><p v-if="!diagnosis.jobs.length" class="text-sm text-gray-500 dark:text-gray-400">{{ t('qqbot.workspace.noJobs') }}</p></template>
         </section>
       </template>
+      <p v-if="loading && !overview" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
+      <details class="card p-5">
+        <summary class="cursor-pointer font-medium">{{ t('qqbot.activityStats.title') }}</summary>
+        <QQActivityStats ref="activityStats" embedded class="mt-5" />
+      </details>
     </div>
   </AppLayout>
 </template>
@@ -42,6 +46,8 @@ import QQChatDiagnostics from '@/components/admin/qqbot/QQChatDiagnostics.vue'
 import QQActivityStats from '@/components/admin/qqbot/QQActivityStats.vue'
 import { runtimeMetricsFresh } from '@/utils/qqRuntime'
 const { t } = useI18n()
+const activityStats = ref<InstanceType<typeof QQActivityStats>>()
+const refreshing = ref(false)
 const config = ref<QQBotConfig>(), overview = ref<QQOverview>(), runtime = ref<QQBotRuntime>()
 const loading = ref(false), error = ref(''), diagnosing = ref(false), group = ref(''), member = ref('')
 const diagnosis = ref<{ checks: QQDiagnosticCheck[]; jobs: QQBotRuntime['jobs'] }>()
@@ -66,6 +72,14 @@ const stats = computed(() => overview.value ? [
  { label: 'qqbot.workspace.chatUsed', value: metricsUnknown.value ? '—' : overview.value.chat_used },
  { label: 'qqbot.workspace.imageUsed', value: overview.value.image_used }
 ] : [])
+async function refreshAll() {
+  refreshing.value = true
+  try {
+    await Promise.all([load(), activityStats.value!.refresh()])
+  } finally {
+    refreshing.value = false
+  }
+}
 async function load() { loading.value = true; error.value = ''; try { [config.value, overview.value, runtime.value] = await Promise.all([qqbotAPI.config(), qqbotAPI.overview(), qqbotAPI.runtime()]) } catch (e) { error.value = (e as Error).message } finally { loading.value = false } }
 async function diagnose() {
  const appId = config.value?.app_id, selectedGroup = group.value, selectedMember = member.value

@@ -62,4 +62,32 @@ describe('QQ code campaigns and activity statistics', () => {
   expect(api.activityStats).toHaveBeenLastCalledWith(expect.objectContaining({ filter: 'chances', page: 1 }))
   w.unmount()
  })
+ it('保护发码活动的时间草稿，并在保存成功后解除离开保护', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  const w = mount(QQBotCodeCampaigns, { global: globalOptions() })
+  try {
+   await flushPromises()
+   await w.get('tbody button').trigger('click')
+   const clean = new Event('beforeunload', { cancelable: true })
+   window.dispatchEvent(clean)
+   expect(clean.defaultPrevented).toBe(false)
+   const form = w.findAll('form')[0]!
+   await form.findAll('input[type="datetime-local"]')[0]!.setValue('2026-12-01T12:00')
+   const dirty = new Event('beforeunload', { cancelable: true })
+   window.dispatchEvent(dirty)
+   expect(dirty.defaultPrevented).toBe(true)
+   await form.findAll('button').find(button => button.text() === '取消')!.trigger('click')
+   expect(confirm).toHaveBeenCalledOnce()
+   expect(w.find('input[type="datetime-local"]').exists()).toBe(true)
+   api.saveCodeCampaign.mockResolvedValue(campaign)
+   await form.trigger('submit')
+   await flushPromises()
+   const saved = new Event('beforeunload', { cancelable: true })
+   window.dispatchEvent(saved)
+   expect(saved.defaultPrevented).toBe(false)
+  } finally {
+   w.unmount()
+   confirm.mockRestore()
+  }
+ })
 })

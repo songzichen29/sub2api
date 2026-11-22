@@ -100,7 +100,7 @@
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
-            <Toggle v-model="formData.redis.enable_tls" />
+            <Toggle :aria-label="t('setup.redis.enableTls')" v-model="formData.redis.enable_tls" />
           </div>
 
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -255,7 +255,7 @@
                 {{ t("setup.redis.enableTlsHint") }}
               </p>
             </div>
-            <Toggle v-model="formData.redis.enable_tls" />
+            <Toggle :aria-label="t('setup.redis.enableTls')" v-model="formData.redis.enable_tls" />
           </div>
 
           <button

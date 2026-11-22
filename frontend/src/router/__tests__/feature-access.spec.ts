@@ -87,7 +87,7 @@ function createDeferred<T>() {
   return { promise, resolve }
 }
 
-function runGuard(meta: Record<string, unknown>, path: string) {
+function runGuard(meta: Record<string, unknown>, path: string, name = 'FeatureRoute') {
   if (!routerHarness.guard) {
     throw new Error('router guard was not registered')
   }
@@ -97,7 +97,7 @@ function runGuard(meta: Record<string, unknown>, path: string) {
     {
       path,
       fullPath: path,
-      name: 'FeatureRoute',
+      name,
       params: {},
       meta: { requiresAuth: true, ...meta },
     },
@@ -126,6 +126,34 @@ describe('feature route guard', () => {
     authStore.isAuthenticated = false
     appStore.backendModeEnabled = true
     const { navigation, next } = runGuard({ requiresAuth: false }, '/docs')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it.each([false, true])('匿名访问 404 页时保留错误页，后台模式为 %s', async backendMode => {
+    authStore.isAuthenticated = false
+    appStore.backendModeEnabled = backendMode
+    const { navigation, next } = runGuard({ requiresAuth: false }, '/missing-page', 'NotFound')
+    await navigation
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('匿名访问受保护页面仍跳转登录并保留目标地址', async () => {
+    authStore.isAuthenticated = false
+    const { navigation, next } = runGuard({}, '/dashboard')
+    await navigation
+    expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
+  })
+
+  it.each([
+    '/auth/oauth/callback',
+    '/auth/dingtalk/callback',
+    '/auth/dingtalk/email-completion',
+    '/legal/terms',
+  ])('后台模式允许匿名访问 %s', async path => {
+    authStore.isAuthenticated = false
+    appStore.backendModeEnabled = true
+    const { navigation, next } = runGuard({ requiresAuth: false }, path)
     await navigation
     expect(next).toHaveBeenCalledWith()
   })

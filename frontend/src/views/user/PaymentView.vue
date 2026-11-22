@@ -341,79 +341,60 @@
         </template>
         <div v-if="(checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan" class="card p-4">
           <div class="flex flex-col items-center gap-3">
-            <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
-              class="h-40 max-w-full cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
-              @click="previewImage = checkout.help_image_url" />
+            <button v-if="checkout.help_image_url" type="button" :aria-label="t('common.imagePreview')" class="max-w-full rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600" @click="previewImage = checkout.help_image_url">
+              <img :src="checkout.help_image_url" alt="" class="h-40 max-w-full rounded-md object-contain transition-opacity hover:opacity-80" />
+            </button>
             <div v-if="checkout.help_text" class="markdown-body w-full overflow-x-auto break-words" v-html="renderedHelpText"></div>
           </div>
         </div>
       </template>
     </div>
-    <!-- Renewal Plan Selection Modal -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="showRenewalModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" @click.self="closeRenewalModal">
-          <div class="relative flex max-h-full w-full max-w-lg flex-col rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-dark-700 dark:bg-dark-900">
-            <!-- Close button -->
-            <button class="absolute right-4 top-4 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200" @click="closeRenewalModal">
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-            <h3 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.selectPlan') }}</h3>
-            <div class="space-y-4">
-              <div v-if="renewalModalNotice" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
-                <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
-              </div>
-            <h3 class="mb-4 shrink-0 text-lg font-semibold text-gray-900 dark:text-white">{{ t('payment.selectPlan') }}</h3>
-            <div class="min-h-0 space-y-4 overflow-y-auto">
-              <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
-            </div>
-            </div>
-          </div>
+    <BaseDialog
+      :show="showRenewalModal"
+      :title="t('payment.selectPlan')"
+      close-on-click-outside
+      @close="closeRenewalModal"
+    >
+      <div class="space-y-4">
+        <div v-if="renewalModalNotice" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
+          <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
         </div>
-      </Transition>
-    </Teleport>
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="renewalModeTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" @click.self="renewalModeTarget = null">
-          <div class="w-full max-w-md rounded-xl border border-gray-200 bg-white p-5 shadow-lg dark:border-dark-700 dark:bg-dark-900">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.renewalMode.title') }}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-              {{ t('payment.renewalMode.message') }}
-            </p>
-            <div class="mt-4 space-y-3">
-              <button
-                type="button"
-                class="w-full rounded-lg border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-dark-700 dark:hover:bg-dark-800"
-                @click="confirmRenewalMode('extend')"
-              >
-                <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
-                <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
-              </button>
-              <button
-                type="button"
-                class="w-full rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50"
-                @click="confirmRenewalMode('restart')"
-              >
-                <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
-                <span class="mt-1 block text-xs text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
-              </button>
-            </div>
-            <div class="mt-4 flex justify-end">
-              <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-    <!-- Image Preview Overlay -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="previewImage" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm" @click="previewImage = ''">
-          <img :src="previewImage" alt="" class="max-h-[85vh] max-w-[90vw] rounded-xl object-contain shadow-2xl" />
-        </div>
-      </Transition>
-    </Teleport>
+        <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
+      </div>
+    </BaseDialog>
+    <BaseDialog
+      :show="!!renewalModeTarget"
+      :title="t('payment.renewalMode.title')"
+      width="narrow"
+      close-on-click-outside
+      @close="renewalModeTarget = null"
+    >
+      <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t('payment.renewalMode.message') }}</p>
+      <div class="mt-4 space-y-3">
+        <button type="button" class="w-full rounded-md border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600 dark:border-dark-700 dark:hover:bg-dark-800" @click="confirmRenewalMode('extend')">
+          <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
+          <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
+        </button>
+        <button type="button" class="w-full rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50" @click="confirmRenewalMode('restart')">
+          <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
+          <span class="mt-1 block text-sm text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
+        </button>
+      </div>
+      <template #footer>
+        <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
+      </template>
+    </BaseDialog>
+    <BaseDialog
+      :show="!!previewImage"
+      :title="t('common.imagePreview')"
+      width="wide"
+      :z-index="60"
+      close-on-click-outside
+      @close="previewImage = ''"
+    >
+      <img :src="previewImage" :alt="t('common.imagePreview')" class="mx-auto max-h-[75dvh] max-w-full rounded-md object-contain" />
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -437,6 +418,7 @@ import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderTy
 import type { UserSubscription } from '@/types'
 import { formatBalanceRechargeMultiplier, formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import CouponInput from '@/components/payment/CouponInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'

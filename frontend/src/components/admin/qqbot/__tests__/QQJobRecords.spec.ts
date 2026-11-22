@@ -47,7 +47,7 @@ describe('image intent receipts', () => {
     await w.get('[data-testid="qq-job-query-status"]').setValue('failed')
     await w.get('form').trigger('submit'); await flushPromises()
     expect(api.jobs).toHaveBeenLastCalledWith(expect.objectContaining({ query_kind: 'model_price', query_status: 'failed', page: 1 }))
-    expect(w.get('article strong').text()).toContain('completed')
+    expect(w.get('article strong').text()).toContain(i18n.global.t('qqbot.workspace.jobStatuses.completed'))
     const query = w.get('[data-testid="qq-job-site-query"]')
     expect(query.text()).toContain(i18n.global.t('qqbot.siteQuery.statuses.failed'))
     expect(query.text()).toContain('model-test')

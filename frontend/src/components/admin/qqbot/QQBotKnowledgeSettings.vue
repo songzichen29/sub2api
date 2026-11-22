@@ -1,7 +1,7 @@
 <template>
   <section class="card space-y-4 p-6" :aria-label="t('qqbot.knowledge.title')">
     <h2 class="text-lg font-semibold">{{ t('qqbot.knowledge.title') }}</h2>
-    <p class="text-sm text-gray-500">{{ t('qqbot.knowledge.help') }}</p>
+    <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('qqbot.knowledge.help') }}</p>
     <label class="flex items-center gap-2">
       <input v-model="value.enabled" data-testid="knowledge-enabled" type="checkbox" />
       {{ t('qqbot.knowledge.enabled') }}
@@ -12,8 +12,8 @@
         ref="textarea"
         v-model="value.content"
         data-testid="knowledge-content"
-        class="input min-h-80"
-        rows="16"
+        class="input min-h-40"
+        rows="8"
         :placeholder="t('qqbot.knowledge.placeholder')"
         :required="false"
         :aria-invalid="!!validationError"
@@ -24,8 +24,14 @@
       <h3 class="font-semibold">{{ t('qqbot.knowledge.entries') }}</h3>
       <button type="button" class="btn btn-secondary" data-testid="knowledge-add" :disabled="entries.length >= 40" @click="addEntry">{{ t('qqbot.knowledge.add') }}</button>
     </div>
-    <p class="text-xs text-gray-500">{{ t('qqbot.knowledge.entriesHelp') }}</p>
-    <article v-for="(entry, index) in entries" :key="entry.id" class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
+    <p class="text-xs text-gray-500 dark:text-dark-400">{{ t('qqbot.knowledge.entriesHelp') }}</p>
+    <details v-for="(entry, index) in entries" :key="entry.id" :open="entry.id === newEntryId" class="rounded-lg border dark:border-dark-700">
+      <summary class="cursor-pointer break-words px-4 py-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600">
+        {{ entry.title || t('qqbot.knowledge.entryTitle') }}
+        <span class="ml-2 text-sm font-normal text-gray-500 dark:text-dark-400">{{ entry.category }}</span>
+        <span class="ml-2 text-sm font-normal" :class="entry.enabled ? 'text-primary-700 dark:text-primary-300' : 'text-gray-500 dark:text-dark-400'">{{ t(entry.enabled ? 'common.enabled' : 'common.disabled') }}</span>
+      </summary>
+      <div class="space-y-3 border-t p-4 dark:border-dark-700">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <label class="flex items-center gap-2 text-sm"><input v-model="entry.enabled" type="checkbox" :data-testid="`knowledge-entry-enabled-${index}`" />{{ t('qqbot.knowledge.entryEnabled') }}</label>
         <button type="button" class="btn btn-secondary" :data-testid="`knowledge-remove-${index}`" @click="removeEntry(index)">{{ t('qqbot.knowledge.remove') }}</button>
@@ -37,10 +43,11 @@
       <label class="block space-y-1 text-sm"><span>{{ t('qqbot.knowledge.keywords') }}</span><input :value="keywordDrafts[entry.id] ?? entry.keywords.join(', ')" class="input" :placeholder="t('qqbot.knowledge.keywordsPlaceholder')" :data-testid="`knowledge-entry-keywords-${index}`" @input="setKeywords(index, ($event.target as HTMLInputElement).value)" /></label>
       <label class="block space-y-1 text-sm"><span>{{ t('qqbot.knowledge.entryContent') }}</span><textarea v-model="entry.content" class="input min-h-32" rows="5" :required="entry.enabled" :data-testid="`knowledge-entry-content-${index}`" /></label>
       <label class="block space-y-1 text-sm"><span>{{ t('qqbot.knowledge.url') }}</span><input v-model="entry.url" class="input" type="url" maxlength="2048" :data-testid="`knowledge-entry-url-${index}`" /></label>
-      <p v-if="entry.updated_at" class="text-xs text-gray-500">{{ t('qqbot.knowledge.updatedAt') }}: {{ entry.updated_at }}</p>
-    </article>
-    <p id="qq-knowledge-count" data-testid="knowledge-count" class="text-xs text-gray-500">{{ t('qqbot.knowledge.count', { count: characterCount, max: maxCharacters }) }}</p>
-    <p id="qq-knowledge-scope" class="text-xs text-gray-500">{{ t('qqbot.knowledge.scope') }}</p>
+      <p v-if="entry.updated_at" class="text-xs text-gray-500 dark:text-dark-400">{{ t('qqbot.knowledge.updatedAt') }}: {{ entry.updated_at }}</p>
+      </div>
+    </details>
+    <p id="qq-knowledge-count" data-testid="knowledge-count" class="text-xs text-gray-500 dark:text-dark-400">{{ t('qqbot.knowledge.count', { count: characterCount, max: maxCharacters }) }}</p>
+    <p id="qq-knowledge-scope" class="text-xs text-gray-500 dark:text-dark-400">{{ t('qqbot.knowledge.scope') }}</p>
     <p id="qq-knowledge-validation" class="text-sm text-red-600 dark:text-red-400" :role="validationError ? 'alert' : undefined">{{ validationError }}</p>
   </section>
 </template>
@@ -55,12 +62,14 @@ const { t } = useI18n()
 const maxCharacters = 12000
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const keywordDrafts = ref<Record<string, string>>({})
+const newEntryId = ref('')
 watch(() => value.value, () => { keywordDrafts.value = {} }, { flush: 'sync' })
 const entries = computed(() => value.value.entries ?? [])
 const characterCount = computed(() => Array.from(value.value.content).length + entries.value.reduce((total, entry) => total + Array.from(entry.title + entry.category + entry.content + entry.url + entry.keywords.join('')).length, 0))
 function addEntry() {
   if (entries.value.length >= 40) return
   const id = `knowledge_${crypto.randomUUID().replace(/-/g, '')}`
+  newEntryId.value = id
   value.value.entries = [...entries.value, { id, title: '', category: '', content: '', url: '', keywords: [], enabled: false, updated_at: '' }]
 }
 function removeEntry(index: number) {

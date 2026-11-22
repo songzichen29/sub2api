@@ -24,7 +24,7 @@
 
             <!-- Role Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('role')" class="w-full sm:w-32">
-              <Select
+              <Select :aria-label="t('profile.role')"
                 v-model="filters.role"
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
@@ -37,7 +37,7 @@
 
             <!-- Status Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('status')" class="w-full sm:w-32">
-              <Select
+              <Select :aria-label="t('common.status')"
                 v-model="filters.status"
                 :options="[
                   { value: '', label: t('admin.users.allStatus') },
@@ -50,7 +50,7 @@
 
             <!-- Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('group')" class="w-full sm:w-44">
-              <Select
+              <Select :aria-label="t('admin.users.searchAuthorizedGroups')"
                 v-model="filters.group"
                 :options="groupFilterOptions"
                 searchable
@@ -63,7 +63,7 @@
 
             <!-- API Key Group Filter (visible when enabled) -->
             <div v-if="visibleFilters.has('apiKeyGroup')" class="w-full sm:w-44">
-              <Select
+              <Select :aria-label="t('admin.users.searchApiKeyGroups')"
                 v-model="filters.apiKeyGroup"
                 :options="apiKeyGroupFilterOptions"
                 searchable
@@ -100,7 +100,7 @@
                 <!-- Select/Multi-select type -->
                 <template v-else-if="['select', 'multi_select'].includes(getAttributeDefinition(Number(attrId))?.type || '')">
                   <div class="w-full">
-                    <Select
+                    <Select :aria-label="getAttributeDefinitionName(Number(attrId))"
                       :model-value="value"
                       :options="[
                         { value: '', label: getAttributeDefinitionName(Number(attrId)) },
@@ -671,7 +671,10 @@
           </template>
 
           <template #empty>
+            <EmptyState v-if="loadError" :title="t('admin.users.failedToLoad')" :action-text="t('common.retry')" :action-icon="false" @action="loadUsers" />
+            <EmptyState v-else-if="hasActiveFilters" :title="t('common.noResults')" :action-text="t('common.clearFilters')" :action-icon="false" @action="clearFilters" />
             <EmptyState
+              v-else
               :title="t('admin.users.noUsersYet')"
               :description="t('admin.users.createFirstUser')"
               :action-text="t('admin.users.createUser')"
@@ -1129,6 +1132,7 @@ const columns = computed<Column[]>(() =>
 
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
+const loadError = ref(false)
 const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
@@ -1221,6 +1225,20 @@ const filters = reactive({
   apiKeyGroup: null as number | null  // group id bound to the user's API keys, null = all
 })
 const activeAttributeFilters = reactive<Record<number, string>>({})
+const hasActiveFilters = computed(() => !!(
+  searchQuery.value.trim() || filters.role || filters.status || filters.group || filters.apiKeyGroup !== null ||
+  Object.values(activeAttributeFilters).some(Boolean)
+))
+
+const clearFilters = () => {
+  clearTimeout(searchTimeout)
+  searchQuery.value = ''
+  Object.assign(filters, { role: '', status: '', group: '', apiKeyGroup: null })
+  for (const key of Object.keys(activeAttributeFilters)) delete activeAttributeFilters[Number(key)]
+  saveFiltersToStorage()
+  pagination.page = 1
+  void loadUsers()
+}
 
 // Visible filters tracking (which filters are shown in the UI)
 // Keys: 'role', 'status', 'attr_${id}'
@@ -1680,6 +1698,7 @@ const loadUsers = async () => {
   abortController = currentAbortController
   const { signal } = currentAbortController
   loading.value = true
+  loadError.value = false
   try {
     // Build attribute filters from active filters
     const attrFilters: Record<number, string> = {}
@@ -1731,6 +1750,7 @@ const loadUsers = async () => {
       return
     }
     const message = error.response?.data?.detail || error.message || t('admin.users.failedToLoad')
+    loadError.value = true
     appStore.showError(message)
     console.error('Error loading users:', error)
   } finally {

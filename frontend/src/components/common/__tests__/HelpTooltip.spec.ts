@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
+
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 function getTooltipElement(): HTMLDivElement {
   const tooltip = document.body.querySelector('[role="tooltip"]')
@@ -89,7 +91,7 @@ describe('HelpTooltip', () => {
     expect(tooltip.style.display).not.toBe('none')
     expect(tooltip.textContent).toContain('click details')
 
-    const closeButton = tooltip.querySelector('button[aria-label="Close"]')
+    const closeButton = tooltip.querySelector('button[aria-label="common.close"]')
     if (!(closeButton instanceof HTMLButtonElement)) {
       throw new Error('close button not found')
     }
@@ -105,6 +107,19 @@ describe('HelpTooltip', () => {
     await nextTick()
     expect(tooltip.style.display).toBe('none')
 
+    wrapper.unmount()
+  })
+
+  it('支持键盘展开和 Escape 关闭默认提示', async () => {
+    const wrapper = mount(HelpTooltip, { attachTo: document.body, props: { content: '帮助内容' } })
+    const trigger = wrapper.get('[role="button"]')
+    expect(trigger.attributes('tabindex')).toBe('0')
+    await trigger.trigger('keydown', { key: 'Enter' })
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    expect(getTooltipElement().id).toBe(trigger.attributes('aria-describedby'))
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await nextTick()
+    expect(trigger.attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
   })
 })

@@ -5,10 +5,12 @@
         <h1>{{ t(groupMode ? 'qqbot.workspace.groups' : 'qqbot.basicConfig') }}</h1>
         <button class="btn btn-secondary" :disabled="busy || refreshingRuntime" @click="refreshStatus">{{ t('common.refresh') }}</button>
       </div>
-      <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-950">{{ error }}</p>
-      <p v-if="notice" role="status" class="rounded-lg bg-green-50 p-4 text-green-700 dark:bg-green-950">{{ notice }}</p>
-      <p v-if="!form" class="text-gray-500">{{ t('common.loading') }}</p>
-      <form v-else ref="settingsForm" novalidate @submit.prevent="save"><fieldset :disabled="busy" class="min-w-0 space-y-6">
+      <div v-if="error && !form" role="alert" class="space-y-3 rounded-lg bg-red-50 p-4 text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p>{{ error }}</p>
+        <button type="button" class="btn btn-secondary" :disabled="busy" @click="loadConfig">{{ t('common.retry') }}</button>
+      </div>
+      <p v-if="!form && busy" role="status" class="text-gray-500">{{ t('common.loading') }}</p>
+      <form v-if="form" ref="settingsForm" novalidate @submit.prevent="save"><fieldset :disabled="busy" class="min-w-0 space-y-6">
         <div v-if="!groupMode" class="workspace-tabs"><button v-for="category in categories" :key="category.key" type="button" :aria-pressed="activeCategory === category.key" @click="selectCategory(category.key)">{{ t(category.label) }}</button></div>
         <nav
           role="tablist"
@@ -39,7 +41,7 @@
           <p v-if="runtime && !runtime.encryption_ready" class="text-sm text-amber-700">{{ t('qqbot.encryptionRequired') }}</p>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-1">机器人 QQ<input v-model.trim="form.app_id" class="input" autocomplete="off" /></label>
-            <label class="space-y-1">OneBot Token<input v-model="form.app_secret" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.app_secret_set)" /><span class="flex gap-2 text-xs"><input v-model="form.clear_app_secret" type="checkbox" />{{ t('qqbot.clearSecret') }}</span></label>
+            <div class="space-y-2"><label class="block space-y-1">OneBot Token<input v-model="form.app_secret" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.app_secret_set)" /></label><label class="flex items-center gap-2 text-sm"><input v-model="form.clear_app_secret" type="checkbox" />{{ t('qqbot.clearSecret') }}</label></div>
           </div>
 
           <div class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-800"><span>NapCat Universal 反向 WebSocket</span><code class="mt-1 block break-all select-all">{{ onebotURL }}</code><p class="mt-2 text-gray-500">与 NapCat 配置使用相同 Token；机器人 QQ 必须与登录账号一致。</p></div>
@@ -122,7 +124,7 @@
           <p class="text-xs text-gray-500">{{ t('qqbot.workspace.chatDisabledHelp') }}</p>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="space-y-1">Base URL<input v-model.trim="form.base_url" class="input" placeholder="https://api.example.com/v1" /><span class="text-xs text-gray-500">{{ t('qqbot.baseHelp') }}</span></label>
-            <label class="space-y-1">API Key<input v-model="form.api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.api_key_set)" /><span class="flex gap-2 text-xs"><input v-model="form.clear_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</span></label>
+            <div class="space-y-2"><label class="block space-y-1">API Key<input v-model="form.api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.api_key_set)" /></label><label class="flex items-center gap-2 text-sm"><input v-model="form.clear_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</label></div>
             <label class="space-y-1">{{ t('qqbot.chatModel') }}<input v-model.trim="form.chat_model" list="qq-chat-models" class="input" /><datalist id="qq-chat-models"><option v-for="model in chatModels" :key="model" :value="model" /></datalist><button type="button" class="btn btn-secondary" :disabled="modelsBusy" @click="loadModels('chat')">{{ t('qqbot.fetchModels') }}</button></label>
             <label class="space-y-1">{{ t('qqbot.protocol') }}<select v-model="form.chat_protocol" class="input"><option value="chat_completions">Chat Completions</option><option value="responses">Responses</option></select></label>
           </div>
@@ -152,7 +154,7 @@
             <label class="space-y-1">{{ t('qqbot.imageSize') }}<select v-model="form.image_size" class="input"><option>1024x1024</option><option>1536x1024</option><option>1024x1536</option><option>auto</option></select></label>
             <label class="space-y-1">{{ t('qqbot.imageOutputFormat') }}<select v-model="form.image_output_format" class="input"><option value="">{{ t('qqbot.imageOutputDefault') }}</option><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option><option value="gif">GIF</option></select><span class="block text-xs text-gray-500">{{ t('qqbot.imageOutputHint') }}</span></label>
             <label class="space-y-1">{{ t('qqbot.imageBase') }}<input v-model.trim="form.image_base_url" class="input" :placeholder="t('qqbot.reuseChat')" /></label>
-            <label class="space-y-1">{{ t('qqbot.imageKey') }}<input v-model="form.image_api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.image_api_key_set)" /><span class="flex gap-2 text-xs"><input v-model="form.clear_image_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</span></label>
+            <div class="space-y-2"><label class="block space-y-1">{{ t('qqbot.imageKey') }}<input v-model="form.image_api_key" type="password" class="input" autocomplete="new-password" :placeholder="secretHint(form.image_api_key_set)" /></label><label class="flex items-center gap-2 text-sm"><input v-model="form.clear_image_api_key" type="checkbox" />{{ t('qqbot.clearSecret') }}</label></div>
           </div>
           <p class="text-sm text-gray-500">{{ t('qqbot.imageHelp') }}</p>
         </section>
@@ -164,8 +166,10 @@
           </div>
         </section>
         <div class="qq-save-bar flex flex-wrap items-center gap-3 rounded-lg border bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+          <p v-if="error" role="alert" class="w-full text-sm text-red-700 dark:text-red-300">{{ error }}</p>
+          <p v-if="notice" role="status" class="w-full text-sm text-green-700 dark:text-green-300">{{ notice }}</p>
           <span class="text-sm">{{ t(dirtySections.includes(activeTab) ? 'qqbot.workspace.unsaved' : 'qqbot.workspace.saved') }}</span>
-          <button type="submit" :disabled="busy || !dirtySections.includes(activeTab)" class="btn btn-primary">{{ t('qqbot.workspace.saveModule', { name: t(tabs.find(tab => tab.key === activeTab)!.label) }) }}</button>
+          <button type="submit" :disabled="busy || !dirtySections.includes(activeTab)" :aria-busy="saving" class="btn btn-primary">{{ saving ? t('common.saving') : t('qqbot.workspace.saveModule', { name: t(tabs.find(tab => tab.key === activeTab)!.label) }) }}</button>
           <button type="button" :disabled="busy" class="btn btn-secondary" @click="reloadModule">{{ t('qqbot.workspace.reloadModule') }}</button>
         </div>
         <details v-if="visibleProbeKinds.length" :key="activeTab" class="card p-4">
@@ -288,6 +292,7 @@ const groupPolicies = computed({ get: () => form.value?.group_policies || [], se
 const notificationGroups = computed({ get: () => parseGroups(notificationGroupsText.value), set: value => { notificationGroupsText.value = value.join('\n') } })
 const healthGroups = computed({ get: () => parseGroups(healthGroupsText.value), set: value => { healthGroupsText.value = value.join('\n') } })
 const busy = ref(false)
+const saving = ref(false)
 const refreshingRuntime = ref(false)
 const error = ref('')
 const notice = ref('')
@@ -375,7 +380,7 @@ async function save() {
   const pending = cloneConfig(draft())
   const previousBaseline = cloneConfig(baseline.value!)
   const otherDrafts = dirtySections.value.filter(key => key !== section)
-  busy.value = true; error.value = ''; notice.value = ''
+  busy.value = true; saving.value = true; error.value = ''; notice.value = ''
   try {
     const saved = await qqbotAPI.saveSection(section, baseline.value?.section_versions?.[section] || '', pending)
     apply(saved)
@@ -388,7 +393,7 @@ async function save() {
     apply(merged, false)
     notice.value = t('common.saved')
     await refreshRuntime()
-  } catch (e) { error.value = message(e) } finally { busy.value = false }
+  } catch (e) { error.value = message(e) } finally { busy.value = false; saving.value = false }
 }
 async function reloadModule() {
  if (dirtySections.value.includes(activeTab.value) && !window.confirm(t('qqbot.workspace.discardModule'))) return
@@ -428,5 +433,22 @@ async function probe(kind: ProbeKind) {
   busy.value = true; error.value = ''; notice.value = ''
   try { notice.value = (await qqbotAPI.probe(kind)).message } catch (e) { error.value = message(e) } finally { busy.value = false }
 }
-onMounted(async () => { if (route?.path === '/admin/qqbot/config' && ['groups', 'group-admins', 'moderation'].includes(activeTab.value)) { await router.replace({ path: '/admin/qqbot/groups', query: { tab: activeTab.value } }) } busy.value = true; try { apply(await qqbotAPI.config()); await refreshRuntime() } catch (e) { error.value = message(e) } finally { busy.value = false } })
+async function loadConfig() {
+  busy.value = true
+  error.value = ''
+  try {
+    apply(await qqbotAPI.config())
+    await refreshRuntime()
+  } catch (e) {
+    error.value = message(e)
+  } finally {
+    busy.value = false
+  }
+}
+onMounted(async () => {
+  if (route?.path === '/admin/qqbot/config' && ['groups', 'group-admins', 'moderation'].includes(activeTab.value)) {
+    await router.replace({ path: '/admin/qqbot/groups', query: { tab: activeTab.value } })
+  }
+  await loadConfig()
+})
 </script>

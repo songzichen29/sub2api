@@ -11,12 +11,13 @@
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
         <!-- Tab Navigation -->
-        <div class="sticky top-0 z-10 overflow-x-auto settings-tabs-scroll">
-          <nav class="settings-tabs">
+        <div class="sticky top-16 z-20 overflow-x-auto settings-tabs-shell settings-tabs-scroll">
+          <nav class="settings-tabs" :aria-label="t('nav.settings')">
             <button
               v-for="tab in settingsTabs"
               :key="tab.key"
               type="button"
+              :aria-current="activeTab === tab.key ? 'page' : undefined"
               :class="[
                 'settings-tab',
                 activeTab === tab.key && 'settings-tab-active',
@@ -183,7 +184,7 @@
                       {{ t("admin.settings.overloadCooldown.enabledHint") }}
                     </p>
                   </div>
-                  <Toggle v-model="overloadCooldownForm.enabled" />
+                  <Toggle :aria-label="t('admin.settings.overloadCooldown.enabled')" v-model="overloadCooldownForm.enabled" />
                 </div>
 
                 <div
@@ -284,7 +285,7 @@
                       {{ t("admin.settings.rateLimit429Cooldown.enabledHint") }}
                     </p>
                   </div>
-                  <Toggle v-model="rateLimit429CooldownForm.enabled" />
+                  <Toggle :aria-label="t('admin.settings.rateLimit429Cooldown.enabled')" v-model="rateLimit429CooldownForm.enabled" />
                 </div>
 
                 <div
@@ -393,7 +394,7 @@
                       {{ t("admin.settings.streamTimeout.enabledHint") }}
                     </p>
                   </div>
-                  <Toggle v-model="streamTimeoutForm.enabled" />
+                  <Toggle :aria-label="t('admin.settings.streamTimeout.enabled')" v-model="streamTimeoutForm.enabled" />
                 </div>
 
                 <!-- Settings - Only show when enabled -->
@@ -573,7 +574,7 @@
                       {{ t("admin.settings.rectifier.enabledHint") }}
                     </p>
                   </div>
-                  <Toggle v-model="rectifierForm.enabled" />
+                  <Toggle :aria-label="t('admin.settings.rectifier.enabled')" v-model="rectifierForm.enabled" />
                 </div>
 
                 <!-- Sub-toggles (only show when master is enabled) -->
@@ -596,7 +597,7 @@
                         }}
                       </p>
                     </div>
-                    <Toggle
+                    <Toggle :aria-label="t('admin.settings.rectifier.thinkingSignature')"
                       v-model="rectifierForm.thinking_signature_enabled"
                     />
                   </div>
@@ -614,7 +615,7 @@
                         {{ t("admin.settings.rectifier.thinkingBudgetHint") }}
                       </p>
                     </div>
-                    <Toggle v-model="rectifierForm.thinking_budget_enabled" />
+                    <Toggle :aria-label="t('admin.settings.rectifier.thinkingBudget')" v-model="rectifierForm.thinking_budget_enabled" />
                   </div>
 
                   <!-- API Key Signature Rectifier -->
@@ -630,7 +631,7 @@
                         {{ t("admin.settings.rectifier.apikeySignatureHint") }}
                       </p>
                     </div>
-                    <Toggle v-model="rectifierForm.apikey_signature_enabled" />
+                    <Toggle :aria-label="t('admin.settings.rectifier.apikeySignature')" v-model="rectifierForm.apikey_signature_enabled" />
                   </div>
 
                   <!-- Custom Patterns (only when apikey_signature_enabled) -->
@@ -789,7 +790,7 @@
                       >
                         {{ t("admin.settings.betaPolicy.action") }}
                       </label>
-                      <Select
+                      <Select :aria-label="t('admin.settings.betaPolicy.action')"
                         :modelValue="rule.action"
                         @update:modelValue="rule.action = $event as any"
                         :options="betaPolicyActionOptions"
@@ -803,7 +804,7 @@
                       >
                         {{ t("admin.settings.betaPolicy.scope") }}
                       </label>
-                      <Select
+                      <Select :aria-label="t('admin.settings.betaPolicy.scope')"
                         :modelValue="rule.scope"
                         @update:modelValue="rule.scope = $event as any"
                         :options="betaPolicyScopeOptions"
@@ -951,7 +952,7 @@
                     >
                       {{ t("admin.settings.betaPolicy.fallbackAction") }}
                     </label>
-                    <Select
+                    <Select :aria-label="t('admin.settings.betaPolicy.fallbackAction')"
                       :modelValue="rule.fallback_action || 'pass'"
                       @update:modelValue="rule.fallback_action = $event as any"
                       :options="betaPolicyActionOptions"
@@ -1124,7 +1125,7 @@
                     >
                       {{ t("admin.settings.openaiFastPolicy.serviceTier") }}
                     </label>
-                    <Select
+                    <Select :aria-label="t('admin.settings.openaiFastPolicy.serviceTier')"
                       :modelValue="rule.service_tier"
                       @update:modelValue="
                         rule.service_tier = $event as
@@ -1144,7 +1145,7 @@
                     >
                       {{ t("admin.settings.openaiFastPolicy.action") }}
                     </label>
-                    <Select
+                    <Select :aria-label="t('admin.settings.openaiFastPolicy.action')"
                       :modelValue="rule.action"
                       @update:modelValue="
                         rule.action = $event as
@@ -1164,7 +1165,7 @@
                     >
                       {{ t("admin.settings.openaiFastPolicy.scope") }}
                     </label>
-                    <Select
+                    <Select :aria-label="t('admin.settings.openaiFastPolicy.scope')"
                       :modelValue="rule.scope"
                       @update:modelValue="
                         rule.scope = $event as
@@ -1306,7 +1307,7 @@
                   >
                     {{ t("admin.settings.openaiFastPolicy.fallbackAction") }}
                   </label>
-                  <Select
+                  <Select :aria-label="t('admin.settings.openaiFastPolicy.fallbackAction')"
                     :modelValue="rule.fallback_action || 'pass'"
                     @update:modelValue="
                       rule.fallback_action = $event as
@@ -1391,7 +1392,7 @@
                     {{ t("admin.settings.standaloneAccountImport.enabledHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.standalone_account_import_enabled" />
+                <Toggle :aria-label="t('admin.settings.standaloneAccountImport.enabled')" v-model="form.standalone_account_import_enabled" />
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -1462,7 +1463,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle v-model="form.registration_enabled" />
+                <Toggle :aria-label="t('admin.settings.registration.enableRegistration')" v-model="form.registration_enabled" />
               </div>
 
               <!-- Email Verification -->
@@ -1477,7 +1478,7 @@
                     {{ t("admin.settings.registration.emailVerificationHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.email_verify_enabled" />
+                <Toggle :aria-label="t('admin.settings.registration.emailVerification')" v-model="form.email_verify_enabled" />
               </div>
 
               <!-- Email Suffix Whitelist -->
@@ -1566,7 +1567,7 @@
                     {{ t("admin.settings.registration.emailDomainQuotaHint") }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.registration.emailDomainQuota')"
                   v-model="form.registration_email_domain_quota_enabled"
                 />
               </div>
@@ -1586,7 +1587,7 @@
                     {{ t("admin.settings.registration.promoCodeHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.promo_code_enabled" />
+                <Toggle :aria-label="t('admin.settings.registration.promoCode')" v-model="form.promo_code_enabled" />
               </div>
 
               <!-- Invitation Code -->
@@ -1601,7 +1602,7 @@
                     {{ t("admin.settings.registration.invitationCodeHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.invitation_code_enabled" />
+                <Toggle :aria-label="t('admin.settings.registration.invitationCode')" v-model="form.invitation_code_enabled" />
               </div>
               <!-- Password Reset - Only show when email verification is enabled -->
               <div
@@ -1616,7 +1617,7 @@
                     {{ t("admin.settings.registration.passwordResetHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.password_reset_enabled" />
+                <Toggle :aria-label="t('admin.settings.registration.passwordReset')" v-model="form.password_reset_enabled" />
               </div>
               <!-- Frontend URL - Only show when password reset is enabled -->
               <div
@@ -1660,7 +1661,7 @@
                     {{ t("admin.settings.registration.totpKeyNotConfigured") }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.registration.totp')"
                   v-model="form.totp_enabled"
                   :disabled="!form.totp_encryption_key_configured"
                 />
@@ -1680,7 +1681,7 @@
                       {{ t("admin.settings.security.passkeyHint") }}
                     </p>
                   </div>
-                  <Toggle
+                  <Toggle :aria-label="t('admin.settings.security.passkey')"
                     v-model="form.passkey_enabled"
                     data-testid="passkey-toggle"
                     :disabled="!form.passkey_configured"
@@ -1737,7 +1738,7 @@
                     {{ t("admin.settings.security.stepUpHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.step_up_enabled" />
+                <Toggle :aria-label="t('admin.settings.security.stepUp')" v-model="form.step_up_enabled" />
               </div>
 
               <!-- 会话 IP/UA 绑定 -->
@@ -1752,7 +1753,7 @@
                     {{ t("admin.settings.security.sessionBindingHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.session_binding_enabled" />
+                <Toggle :aria-label="t('admin.settings.security.sessionBinding')" v-model="form.session_binding_enabled" />
               </div>
 
               <!-- 审计日志保留天数 -->
@@ -1799,7 +1800,7 @@
                     {{ t("admin.settings.apiKeyAcl.trustForwardedIpHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.api_key_acl_trust_forwarded_ip" />
+                <Toggle :aria-label="t('admin.settings.apiKeyAcl.trustForwardedIp')" v-model="form.api_key_acl_trust_forwarded_ip" />
               </div>
 
               <div
@@ -1920,7 +1921,7 @@
                       {{ t("admin.settings.panelRateLimit.enabledHint") }}
                     </p>
                   </div>
-                  <Toggle v-model="panelRateLimitForm.enabled" />
+                  <Toggle :aria-label="t('admin.settings.panelRateLimit.enabled')" v-model="panelRateLimitForm.enabled" />
                 </div>
 
                 <div
@@ -2010,7 +2011,7 @@
                         {{ t("admin.settings.panelRateLimit.exemptAdminHint") }}
                       </p>
                     </div>
-                    <Toggle v-model="panelRateLimitForm.exempt_admin" />
+                    <Toggle :aria-label="t('admin.settings.panelRateLimit.exemptAdmin')" v-model="panelRateLimitForm.exempt_admin" />
                   </div>
                 </div>
 
@@ -2078,7 +2079,7 @@
                     {{ t("admin.settings.captcha.enableHint") }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.captcha.enable')"
                   v-model="captchaMasterEnabled"
                   data-testid="captcha-enabled-toggle"
                 />
@@ -2481,7 +2482,7 @@
                     {{ t("admin.settings.linuxdo.enableHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.linuxdo_connect_enabled" />
+                <Toggle :aria-label="t('admin.settings.linuxdo.enable')" v-model="form.linuxdo_connect_enabled" />
               </div>
 
               <div
@@ -2599,7 +2600,7 @@
                     {{ t("admin.settings.wechatConnect.enabledHint") }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.wechatConnect.enabledLabel')"
                   v-model="form.wechat_connect_enabled"
                   data-testid="wechat-connect-enabled"
                 />
@@ -2627,7 +2628,7 @@
                           }}
                         </p>
                       </div>
-                      <Toggle
+                      <Toggle :aria-label="localText('PC 应用', 'PC App')"
                         :model-value="form.wechat_connect_open_enabled"
                         data-testid="wechat-connect-open-enabled"
                         @update:model-value="handleWeChatOpenEnabledChange"
@@ -2700,7 +2701,7 @@
                           }}
                         </p>
                       </div>
-                      <Toggle
+                      <Toggle :aria-label="localText('公众号', 'Official Account')"
                         :model-value="form.wechat_connect_mp_enabled"
                         data-testid="wechat-connect-mp-enabled"
                         @update:model-value="handleWeChatMPEnabledChange"
@@ -2778,7 +2779,7 @@
                           }}
                         </p>
                       </div>
-                      <Toggle
+                      <Toggle :aria-label="localText('移动应用', 'Mobile App')"
                         :model-value="form.wechat_connect_mobile_enabled"
                         data-testid="wechat-connect-mobile-enabled"
                         @update:model-value="handleWeChatMobileEnabledChange"
@@ -2941,7 +2942,7 @@
                     {{ t("admin.settings.oidc.enableHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.oidc_connect_enabled" />
+                <Toggle :aria-label="t('admin.settings.oidc.enable')" v-model="form.oidc_connect_enabled" />
               </div>
 
               <div
@@ -3241,7 +3242,7 @@
                         {{ t("admin.settings.oidc.usePkce") }}
                       </label>
                     </div>
-                    <Toggle
+                    <Toggle :aria-label="t('admin.settings.oidc.usePkce')"
                       v-model="form.oidc_connect_use_pkce"
                       data-testid="oidc-connect-use-pkce"
                     />
@@ -3255,7 +3256,7 @@
                         {{ t("admin.settings.oidc.validateIdToken") }}
                       </label>
                     </div>
-                    <Toggle
+                    <Toggle :aria-label="t('admin.settings.oidc.validateIdToken')"
                       v-model="form.oidc_connect_validate_id_token"
                       data-testid="oidc-connect-validate-id-token"
                     />
@@ -3269,7 +3270,7 @@
                         {{ t("admin.settings.oidc.requireEmailVerified") }}
                       </label>
                     </div>
-                    <Toggle
+                    <Toggle :aria-label="t('admin.settings.oidc.requireEmailVerified')"
                       v-model="form.oidc_connect_require_email_verified"
                     />
                   </div>
@@ -3443,7 +3444,7 @@
                         >
                           {{ t("admin.settings.defaults.subscriptionGroup") }}
                         </label>
-                        <Select
+                        <Select :aria-label="t('admin.settings.defaults.subscriptionGroup')"
                           v-model="item.group_id"
                           class="default-sub-group-select"
                           :options="defaultSubscriptionGroupOptions"
@@ -3517,7 +3518,7 @@
                         >
                           {{ t("admin.settings.defaults.subscriptionAssignMode") }}
                         </label>
-                        <Select
+                        <Select :aria-label="t('admin.settings.defaults.subscriptionAssignMode')"
                           v-model="item.mode"
                           :options="defaultSubscriptionAssignModeOptions"
                           @change="
@@ -3694,7 +3695,7 @@
                     {{ t("admin.settings.authSourceDefaults.requireEmailHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.force_email_on_third_party_signup" />
+                <Toggle :aria-label="t('admin.settings.authSourceDefaults.requireEmailLabel')" v-model="form.force_email_on_third_party_signup" />
               </div>
 
               <div class="space-y-4">
@@ -3712,7 +3713,7 @@
                         {{ authSource.description }}
                       </p>
                     </div>
-                    <Toggle
+                    <Toggle :aria-label="authSource.title"
                       v-model="
                         authSourceDefaults[authSource.source].grant_on_signup
                       "
@@ -3780,7 +3781,7 @@
                           {{ t("admin.settings.authSourceDefaults.grantOnFirstBindHint") }}
                         </p>
                       </div>
-                      <Toggle
+                      <Toggle :aria-label="t('admin.settings.authSourceDefaults.grantOnFirstBindLabel')"
                         v-model="
                           authSourceDefaults[authSource.source]
                             .grant_on_first_bind
@@ -3838,7 +3839,7 @@
                             >
                               {{ t("admin.settings.defaults.subscriptionGroup") }}
                             </label>
-                            <Select
+                            <Select :aria-label="t('admin.settings.defaults.subscriptionGroup')"
                               v-model="item.group_id"
                               class="default-sub-group-select"
                               :options="defaultSubscriptionGroupOptions"
@@ -3914,7 +3915,7 @@
                             >
                               {{ t("admin.settings.defaults.subscriptionAssignMode") }}
                             </label>
-                            <Select
+                            <Select :aria-label="t('admin.settings.defaults.subscriptionAssignMode')"
                               v-model="item.mode"
                               :options="defaultSubscriptionAssignModeOptions"
                               @change="
@@ -4393,7 +4394,7 @@
                     {{ t("admin.settings.scheduling.allowUngroupedKeyHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.allow_ungrouped_key_scheduling" />
+                <Toggle :aria-label="t('admin.settings.scheduling.allowUngroupedKey')" v-model="form.allow_ungrouped_key_scheduling" />
               </div>
 
               <div
@@ -4412,7 +4413,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.openaiExperimentalScheduler.lowRatePriorityTitle')"
                   v-model="form.openai_low_upstream_rate_priority_enabled"
                   data-testid="openai-low-rate-priority-toggle"
                 />
@@ -4462,7 +4463,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t('admin.settings.openaiExperimentalScheduler.title')"
                   v-model="form.openai_advanced_scheduler_enabled"
                   data-testid="openai-advanced-scheduler-toggle"
                 />
@@ -4480,7 +4481,7 @@
                     {{ t("admin.settings.openaiExperimentalScheduler.stickyWeightedDescription") }}
                   </p>
                 </div>
-                <Toggle v-model="form.openai_advanced_scheduler_sticky_weighted_enabled" />
+                <Toggle :aria-label="t('admin.settings.openaiExperimentalScheduler.stickyWeightedTitle')" v-model="form.openai_advanced_scheduler_sticky_weighted_enabled" />
               </div>
 
               <div
@@ -4495,7 +4496,7 @@
                     {{ t("admin.settings.openaiExperimentalScheduler.subscriptionPriorityDescription") }}
                   </p>
                 </div>
-                <Toggle v-model="form.openai_advanced_scheduler_subscription_priority_enabled" />
+                <Toggle :aria-label="t('admin.settings.openaiExperimentalScheduler.subscriptionPriorityTitle')" v-model="form.openai_advanced_scheduler_subscription_priority_enabled" />
               </div>
 
               <div
@@ -4613,7 +4614,7 @@
                       {{ t("admin.settings.gatewayForwarding.grokCrossClientMapHint") }}
                     </p>
                   </div>
-                  <Toggle
+                  <Toggle :aria-label="t('admin.settings.gatewayForwarding.grokCrossClientMap')"
                     v-model="form.grok_cross_client_model_map_enabled"
                     data-testid="grok-cross-client-model-map-toggle"
                   />
@@ -4689,7 +4690,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle v-model="form.enable_fingerprint_unification" />
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.fingerprintUnification', )" v-model="form.enable_fingerprint_unification" />
               </div>
 
               <!-- Metadata Passthrough -->
@@ -4710,7 +4711,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle v-model="form.enable_metadata_passthrough" />
+                <Toggle :aria-label="t('admin.settings.gatewayForwarding.metadataPassthrough')" v-model="form.enable_metadata_passthrough" />
               </div>
 
               <!-- CCH Signing -->
@@ -4725,7 +4726,7 @@
                     {{ t("admin.settings.gatewayForwarding.cchSigningHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.enable_cch_signing" />
+                <Toggle :aria-label="t('admin.settings.gatewayForwarding.cchSigning')" v-model="form.enable_cch_signing" />
               </div>
 
               <!-- Claude OAuth System Prompt Injection -->
@@ -4748,7 +4749,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.claudeOAuthSystemPromptInjection', )"
                   v-model="form.enable_claude_oauth_system_prompt_injection"
                 />
               </div>
@@ -4839,7 +4840,7 @@
                         >
                           <Icon name="arrowDown" size="xs" />
                         </button>
-                        <Toggle v-model="block.enabled" />
+                        <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.claudeOAuthSystemPromptBlocks', )" v-model="block.enabled" />
                         <button
                           type="button"
                           class="btn btn-secondary btn-sm px-2 text-red-600 hover:text-red-700 dark:text-red-400"
@@ -4862,7 +4863,7 @@
                               )
                             }}
                           </label>
-                          <Select
+                          <Select :aria-label="t( 'admin.settings.gatewayForwarding.systemBlockPreset', )"
                             v-model="block.preset"
                             :options="claudeOAuthSystemPromptPresetOptions"
                             @change="
@@ -4881,7 +4882,7 @@
                               )
                             }}
                           </label>
-                          <Select
+                          <Select :aria-label="t( 'admin.settings.gatewayForwarding.systemBlockType', )"
                             v-model="block.type"
                             :options="claudeOAuthSystemPromptBlockTypeOptions"
                           />
@@ -4917,10 +4918,10 @@
                               }}
                             </label>
                           </div>
-                          <Toggle v-model="block.cacheControlEnabled" />
+                          <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.systemBlockCacheControl', )" v-model="block.cacheControlEnabled" />
                         </div>
                         <div v-if="block.cacheControlEnabled">
-                          <Select
+                          <Select :aria-label="t('admin.settings.gatewayForwarding.systemBlockCacheControl') + ' TTL'"
                             v-model="block.cacheControlTTL"
                             :options="claudeOAuthSystemPromptCacheTTLOptions"
                           />
@@ -4979,7 +4980,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.anthropicCacheTTL1hInjection', )"
                   v-model="form.enable_anthropic_cache_ttl_1h_injection"
                 />
               </div>
@@ -5004,7 +5005,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle v-model="form.rewrite_message_cache_control" />
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.rewriteMessageCacheControl', )" v-model="form.rewrite_message_cache_control" />
               </div>
 
               <!-- 客户端 dateline 归一化（仅 Anthropic OAuth/SetupToken） -->
@@ -5027,7 +5028,7 @@
                     }}
                   </p>
                 </div>
-                <Toggle
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.clientDatelineNormalization', )"
                   v-model="form.enable_client_dateline_normalization"
                 />
               </div>
@@ -5148,7 +5149,7 @@
                     {{ codexSyncedVersionLabel }}
                   </p>
                 </div>
-                <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.openaiCodexVersionAutoSync', )" v-model="form.openai_codex_version_auto_sync_enabled" />
               </div>
 
               <!-- Claude Code 客户端版本号 -->
@@ -5203,7 +5204,7 @@
                     {{ claudeSyncedVersionLabel }}
                   </p>
                 </div>
-                <Toggle v-model="form.claude_code_version_auto_sync_enabled" />
+                <Toggle :aria-label="t( 'admin.settings.gatewayForwarding.claudeCodeVersionAutoSync', )" v-model="form.claude_code_version_auto_sync_enabled" />
               </div>
 
             </div>
@@ -5233,7 +5234,7 @@
                     {{ t("admin.settings.webSearchEmulation.enabledHint") }}
                   </p>
                 </div>
-                <Toggle v-model="webSearchConfig.enabled" />
+                <Toggle :aria-label="t('admin.settings.webSearchEmulation.enabled')" v-model="webSearchConfig.enabled" />
               </div>
 
               <!-- Providers -->
@@ -5285,7 +5286,7 @@
                           d="M9 5l7 7-7 7"
                         />
                       </svg>
-                      <Select
+                      <Select :aria-label="t('admin.settings.webSearchEmulation.providerType')"
                         v-model="provider.type"
                         :options="[
                           { value: 'brave', label: 'Brave Search' },
@@ -5674,7 +5675,7 @@
                     {{ t("admin.settings.site.backendModeDescription") }}
                   </p>
                 </div>
-                <Toggle v-model="form.backend_mode_enabled" />
+                <Toggle :aria-label="t('admin.settings.site.backendMode')" v-model="form.backend_mode_enabled" />
               </div>
 
               <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -6044,7 +6045,7 @@
                     {{ t("admin.settings.site.compactHomeHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.compact_home_enabled" data-testid="compact-home-toggle" />
+                <Toggle :aria-label="t('admin.settings.site.compactHome')" v-model="form.compact_home_enabled" data-testid="compact-home-toggle" />
               </div>
 
               <!-- User Invoice Visibility -->
@@ -6077,7 +6078,7 @@
                     {{ t("admin.settings.site.hideCcsImportButtonHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.hide_ccs_import_button" />
+                <Toggle :aria-label="t('admin.settings.site.hideCcsImportButton')" v-model="form.hide_ccs_import_button" />
               </div>
             </div>
           </div>
@@ -6317,7 +6318,7 @@
                   {{ t('admin.settings.features.channelMonitor.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.channel_monitor_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.channelMonitor.enabled')" v-model="form.channel_monitor_enabled" />
             </div>
 
             <div v-if="form.channel_monitor_enabled" class="space-y-5">
@@ -6390,7 +6391,7 @@
                       {{ t('admin.settings.features.channelMonitor.hideThroughputHint') }}
                     </p>
                   </div>
-                  <Toggle v-model="form.channel_monitor_hide_throughput" />
+                  <Toggle :aria-label="t('admin.settings.features.channelMonitor.hideThroughput')" v-model="form.channel_monitor_hide_throughput" />
                 </div>
                 <div class="flex items-start justify-between gap-4">
                   <div class="min-w-0">
@@ -6401,7 +6402,7 @@
                       {{ t('admin.settings.features.channelMonitor.hideUserRankingHint') }}
                     </p>
                   </div>
-                  <Toggle v-model="form.channel_monitor_hide_user_ranking" />
+                  <Toggle :aria-label="t('admin.settings.features.channelMonitor.hideUserRanking')" v-model="form.channel_monitor_hide_user_ranking" />
                 </div>
               </div>
 
@@ -6414,7 +6415,7 @@
                     {{ t('admin.settings.features.channelMonitor.showQuotaHint') }}
                   </p>
                 </div>
-                <Toggle v-model="form.channel_monitor_show_quota" />
+                <Toggle :aria-label="t('admin.settings.features.channelMonitor.showQuota')" v-model="form.channel_monitor_show_quota" />
               </div>
             </div>
           </div>
@@ -6448,7 +6449,7 @@
                   {{ t('admin.settings.features.availableChannels.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.available_channels_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.availableChannels.enabled')" v-model="form.available_channels_enabled" />
             </div>
           </div>
         </div>
@@ -6472,7 +6473,7 @@
                   {{ t('admin.settings.features.modelPlaza.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.model_plaza_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.modelPlaza.enabled')" v-model="form.model_plaza_enabled" />
             </div>
 
             <div v-if="form.model_plaza_enabled" class="flex items-center justify-between">
@@ -6484,7 +6485,7 @@
                   {{ t('admin.settings.features.modelPlaza.requireAuthHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.model_plaza_require_auth" />
+              <Toggle :aria-label="t('admin.settings.features.modelPlaza.requireAuth')" v-model="form.model_plaza_require_auth" />
             </div>
 
             <div v-if="form.model_plaza_enabled">
@@ -6523,7 +6524,7 @@
                 </p>
               </div>
               <div class="w-full shrink-0 sm:w-56">
-                <Select
+                <Select :aria-label="t('admin.settings.features.siteBillingMode.label')"
                   :modelValue="siteBillingMode"
                   :options="siteBillingModeOptions"
                   @update:modelValue="siteBillingMode = $event as SiteBillingMode"
@@ -6552,7 +6553,7 @@
                   {{ t('admin.settings.features.pluginManagement.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.plugin_management_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.pluginManagement.enabled')" v-model="form.plugin_management_enabled" />
             </div>
           </div>
         </div>
@@ -6585,7 +6586,7 @@
                   {{ t('admin.settings.features.riskControl.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.risk_control_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.riskControl.enabled')" v-model="form.risk_control_enabled" />
             </div>
 
             <div>
@@ -6609,7 +6610,7 @@
                   {{ t('admin.settings.features.riskControl.cyberSessionBlockHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.cyber_session_block_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.riskControl.cyberSessionBlock')" v-model="form.cyber_session_block_enabled" />
             </div>
 
             <div v-if="form.cyber_session_block_enabled">
@@ -6647,7 +6648,7 @@
                   {{ t('admin.settings.features.affiliate.enabledHint') }}
                 </p>
               </div>
-              <Toggle v-model="form.affiliate_enabled" />
+              <Toggle :aria-label="t('admin.settings.features.affiliate.enabled')" v-model="form.affiliate_enabled" />
             </div>
 
           <div v-if="form.affiliate_enabled" class="space-y-6">
@@ -6662,7 +6663,7 @@
                         {{ t('admin.settings.features.affiliate.rechargeEnabledHint') }}
                       </p>
                     </div>
-                    <Toggle v-model="form.affiliate_recharge_enabled" />
+                    <Toggle :aria-label="t('admin.settings.features.affiliate.rechargeEnabled')" v-model="form.affiliate_recharge_enabled" />
                   </div>
                   <div class="mt-4">
                     <label class="input-label">
@@ -6693,7 +6694,7 @@
                         {{ t('admin.settings.features.affiliate.subscriptionEnabledHint') }}
                       </p>
                     </div>
-                    <Toggle v-model="form.affiliate_subscription_enabled" />
+                    <Toggle :aria-label="t('admin.settings.features.affiliate.subscriptionEnabled')" v-model="form.affiliate_subscription_enabled" />
                   </div>
                   <div class="mt-4">
                     <label class="input-label">
@@ -7194,7 +7195,7 @@
                     {{ t("admin.settings.payment.enabledHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.payment_enabled" />
+                <Toggle :aria-label="t('admin.settings.payment.enabled')" v-model="form.payment_enabled" />
               </div>
               <template v-if="form.payment_enabled">
                 <!-- Row 1: Product name -->
@@ -7427,7 +7428,7 @@
                     <label class="input-label">{{
                       t("admin.settings.payment.loadBalanceStrategy")
                     }}</label>
-                    <Select
+                    <Select :aria-label="t('admin.settings.payment.loadBalanceStrategy')"
                       v-model="form.payment_load_balance_strategy"
                       :options="loadBalanceOptions"
                       class="w-40"
@@ -7460,7 +7461,7 @@
                           ]"
                         />
                       </button>
-                      <Select
+                      <Select :aria-label="t('admin.settings.payment.cancelRateLimit')"
                         v-model="form.payment_cancel_rate_limit_window_mode"
                         :options="cancelRateLimitModeOptions"
                         class="w-24"
@@ -7485,7 +7486,7 @@
                         class="input w-14 text-center"
                         :disabled="!form.payment_cancel_rate_limit_enabled"
                       />
-                      <Select
+                      <Select :aria-label="t('admin.settings.payment.cancelRateLimitUnit')"
                         v-model="form.payment_cancel_rate_limit_unit"
                         :options="cancelRateLimitUnitOptions"
                         class="w-28"
@@ -7682,7 +7683,7 @@
                             <input v-model.number="rule.threshold" type="number" step="0.01" min="0" class="input" />
                           </td>
                           <td class="px-4 py-2">
-                            <Select v-model="rule.type" :options="discountTypeOptions" />
+                            <Select :aria-label="t('admin.settings.payment.discountType')" v-model="rule.type" :options="discountTypeOptions" />
                           </td>
                           <td class="px-4 py-2">
                             <input v-model.number="rule.value" type="number" step="0.01" min="0" class="input" />
@@ -7691,7 +7692,7 @@
                             <input v-model="rule.label" type="text" class="input" />
                           </td>
                           <td class="px-4 py-2">
-                            <Toggle v-model="rule.enabled" />
+                            <Toggle :aria-label="t('common.enabled')" v-model="rule.enabled" />
                           </td>
                           <td class="px-4 py-2 text-right">
                             <button
@@ -8055,7 +8056,7 @@
                     {{ t("admin.settings.smtp.useTlsHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.smtp_use_tls" />
+                <Toggle :aria-label="t('admin.settings.smtp.useTls')" v-model="form.smtp_use_tls" />
               </div>
             </div>
           </div>
@@ -8151,7 +8152,7 @@
                     {{ t("admin.settings.subscriptionExpiryNotify.enabledHint") }}
                   </p>
                 </div>
-                <Toggle v-model="form.subscription_expiry_notify_enabled" />
+                <Toggle :aria-label="t('admin.settings.subscriptionExpiryNotify.enabled')" v-model="form.subscription_expiry_notify_enabled" />
               </div>
             </div>
           </div>
@@ -8176,7 +8177,7 @@
                   class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >{{ t("admin.settings.balanceNotify.enabled") }}</label
                 >
-                <Toggle v-model="form.balance_low_notify_enabled" />
+                <Toggle :aria-label="t('admin.settings.balanceNotify.enabled')" v-model="form.balance_low_notify_enabled" />
               </div>
               <div v-if="form.balance_low_notify_enabled">
                 <label
@@ -8236,7 +8237,7 @@
                   class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >{{ t("admin.settings.quotaNotify.enabled") }}</label
                 >
-                <Toggle v-model="form.account_quota_notify_enabled" />
+                <Toggle :aria-label="t('admin.settings.quotaNotify.enabled')" v-model="form.account_quota_notify_enabled" />
               </div>
               <div v-if="form.account_quota_notify_enabled">
                 <label
@@ -8336,7 +8337,7 @@
                   >
                     {{ localText("启用告警邮件", "Enable Alert Emails") }}
                   </label>
-                  <Toggle v-model="opsEmailConfig.alert.enabled" />
+                  <Toggle :aria-label="localText('启用告警邮件', 'Enable Alert Emails')" v-model="opsEmailConfig.alert.enabled" />
                 </div>
                 <div v-if="opsEmailConfig.alert.enabled">
                   <label
@@ -12880,184 +12881,42 @@ watch(
 
 /* ============ Settings Tab Navigation ============ */
 .settings-tabs-shell {
-  @apply sticky z-20 -mx-1 rounded-2xl border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
-  top: 4.75rem;
-  box-shadow:
-    0 12px 28px rgb(15 23 42 / 0.07),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
+  @apply sticky top-16 z-20 border-b border-gray-200 bg-gray-50 py-1 dark:border-dark-700 dark:bg-dark-950;
 }
 
 .settings-tabs-scroll {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-.settings-tabs-scroll:hover {
-  scrollbar-color: rgb(0 0 0 / 0.15) transparent;
-}
-
-.settings-tabs-scroll::-webkit-scrollbar {
-  height: 3px;
-}
-
-.settings-tabs-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.settings-tabs-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 3px;
-}
-
-.settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(0 0 0 / 0.15);
 }
 
 .settings-tabs {
-  @apply inline-flex min-w-full gap-0.5 rounded-2xl border border-gray-100 bg-white/80 p-1 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80;
-  box-shadow:
-    0 1px 3px rgb(0 0 0 / 0.04),
-    0 1px 2px rgb(0 0 0 / 0.02);
-}
-
-@media (min-width: 640px) {
-  .settings-tabs {
-    @apply flex;
-  }
-}
-
-@media (min-width: 768px) {
-  .settings-tabs {
-    @apply min-w-full;
-  }
-
-  .settings-tab {
-    @apply min-w-0 flex-1 basis-0 overflow-hidden px-2 text-[13px];
-  }
-
-  .settings-tab-icon {
-    @apply h-6 w-6;
-  }
+  @apply flex min-w-max gap-5;
 }
 
 .settings-tab {
-  @apply relative flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-2 text-sm font-medium text-gray-500 dark:text-dark-400 transition-all duration-200 ease-out;
+  @apply flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent px-1 py-2 text-sm font-medium text-gray-600 transition-colors duration-150 dark:text-dark-300;
 }
 
-.settings-tab::before {
-  @apply absolute inset-0 -z-10 rounded-xl opacity-0 transition-opacity duration-200;
-  content: "";
-  background: linear-gradient(135deg, rgb(248 250 252 / 0.95), rgb(241 245 249 / 0.8));
-}
-
-.settings-tab:hover::before,
-.settings-tab:focus-visible::before {
-  opacity: 1;
-}
-
-.settings-tab:hover:not(.settings-tab-active) {
-  @apply text-gray-700 dark:text-gray-300;
-  background: rgb(0 0 0 / 0.03);
+.settings-tab:hover {
+  @apply text-gray-900 dark:text-white;
 }
 
 .settings-tab:focus-visible {
-  @apply ring-2 ring-primary-500/40 ring-offset-2 ring-offset-white dark:ring-offset-dark-900;
+  @apply outline outline-2 outline-offset-2 outline-primary-600;
 }
 
 .settings-tab-active {
-  @apply text-primary-600 dark:text-primary-400;
-  background: linear-gradient(
-    135deg,
-    rgba(20, 184, 166, 0.08),
-    rgba(20, 184, 166, 0.03)
-  );
-  box-shadow: 0 1px 2px rgba(20, 184, 166, 0.1);
-}
-
-.settings-tab-active::before {
-  opacity: 0;
-}
-
-.settings-tab-active::after {
-  position: absolute;
-  right: 0.75rem;
-  bottom: 0.25rem;
-  left: 0.75rem;
-  height: 2px;
-  border-radius: 9999px;
-  content: "";
-  background: linear-gradient(90deg, #14b8a6, #0ea5e9);
+  @apply border-primary-600 text-primary-700 dark:border-primary-400 dark:text-primary-300;
 }
 
 .settings-tab-icon {
-  @apply flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400;
-}
-
-.settings-tab:hover .settings-tab-icon,
-.settings-tab:focus-visible .settings-tab-icon {
-  @apply text-gray-700 dark:text-gray-200;
-}
-
-.settings-tab-active .settings-tab-icon {
-  @apply bg-primary-500/15 text-primary-600 dark:bg-primary-400/15 dark:text-primary-400;
+  @apply flex h-5 w-5 items-center justify-center;
 }
 
 .settings-tab-label {
-  @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
+  @apply whitespace-nowrap;
 }
 
-/* ============ 系统设置 保存浮标 ============ */
 .settings-save-dock {
-  @apply sticky bottom-3 z-20 ml-auto flex w-fit items-center rounded-full border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
-  box-shadow:
-    0 10px 26px rgb(15 23 42 / 0.12),
-    0 1px 0 rgb(255 255 255 / 0.9) inset;
-}
-</style>
-
-<style>
-/* Dark-mode overrides for Settings tabs. Kept UNSCOPED so they survive
-   Vue scoped CSS processing and remain readable in production dark mode. */
-.dark .settings-tabs-scroll:hover {
-  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
-}
-
-.dark .settings-tabs-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.2);
-}
-
-.dark .settings-tab:hover:not(.settings-tab-active) {
-  background: rgb(255 255 255 / 0.04);
-}
-
-.dark .settings-tabs-shell {
-  border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
-  box-shadow:
-    0 16px 36px rgb(0 0 0 / 0.28),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
-}
-
-.dark .settings-tab::before {
-  background: linear-gradient(135deg, rgb(30 41 59 / 0.9), rgb(51 65 85 / 0.62));
-}
-
-.dark .settings-tab-active {
-  background: linear-gradient(
-    135deg,
-    rgba(45, 212, 191, 0.12),
-    rgba(45, 212, 191, 0.05)
-  );
-  box-shadow:
-    0 12px 26px rgb(0 0 0 / 0.22),
-    0 1px 0 rgb(255 255 255 / 0.08) inset;
-}
-
-.dark .settings-save-dock {
-  border-color: rgb(51 65 85 / 0.65);
-  background: rgb(15 23 42 / 0.86);
-  box-shadow:
-    0 14px 32px rgb(0 0 0 / 0.34),
-    0 1px 0 rgb(255 255 255 / 0.06) inset;
+  @apply sticky bottom-3 z-20 ml-auto flex w-fit items-center rounded-lg border border-gray-200 bg-white p-1.5 shadow-sm dark:border-dark-700 dark:bg-dark-900;
 }
 </style>

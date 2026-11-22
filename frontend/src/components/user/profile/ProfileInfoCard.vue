@@ -2,12 +2,12 @@
   <div class="space-y-6">
     <section
       data-testid="profile-overview-hero"
-      class="card overflow-hidden border border-primary-100/80 bg-gradient-to-br from-primary-50 via-white to-amber-50/70 dark:border-primary-900/40 dark:from-primary-950/40 dark:via-dark-900 dark:to-dark-950"
+      class="card overflow-hidden"
     >
-      <div class="px-6 py-6 md:px-8">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <div class="p-6">
+        <div class="flex items-start gap-4 sm:gap-6">
           <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
+            class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-primary-700 text-xl font-semibold text-white sm:h-16 sm:w-16 sm:text-2xl"
           >
             <img
               v-if="avatarUrl"
@@ -21,7 +21,7 @@
           <div class="min-w-0 flex-1 space-y-5">
             <div class="space-y-3">
               <div class="flex flex-wrap items-center gap-2">
-                <h2 class="truncate text-2xl font-semibold text-gray-900 dark:text-white">
+                <h2 class="break-words text-xl font-semibold text-gray-900 dark:text-white sm:text-2xl">
                   {{ displayName }}
                 </h2>
                 <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
@@ -48,57 +48,44 @@
                 >
                   {{ t('profile.userId') }}: {{ user.id }}
                 </p>
-                <div
-                  v-if="sourceHints.length"
-                  class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
-                >
-                  <span
-                    v-for="hint in sourceHints"
-                    :key="hint.key"
-                    class="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 ring-1 ring-primary-100 dark:bg-dark-900/70 dark:ring-primary-900/40"
-                  >
-                    <Icon name="link" size="sm" />
-                    {{ hint.text }}
-                  </span>
-                </div>
               </div>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3">
+            <dl class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 dark:border-dark-700 sm:grid-cols-3 sm:gap-6">
               <div
                 data-testid="profile-overview-metric-balance"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="min-w-0"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <dt class="text-sm text-gray-500 dark:text-dark-400">
                   {{ t('profile.accountBalance') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                </dt>
+                <dd class="mt-1 break-words text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
                   {{ formatCurrency(user?.balance || 0) }}
-                </p>
+                </dd>
               </div>
               <div
                 data-testid="profile-overview-metric-concurrency"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="min-w-0"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <dt class="text-sm text-gray-500 dark:text-dark-400">
                   {{ t('profile.concurrencyLimit') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                </dt>
+                <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
                   {{ user?.concurrency || 0 }}
-                </p>
+                </dd>
               </div>
               <div
                 data-testid="profile-overview-metric-member-since"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
+                class="col-span-2 min-w-0 sm:col-span-1"
               >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <dt class="text-sm text-gray-500 dark:text-dark-400">
                   {{ t('profile.memberSince') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
+                </dt>
+                <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-white">
                   {{ memberSinceLabel }}
-                </p>
+                </dd>
               </div>
-            </div>
+            </dl>
           </div>
         </div>
       </div>
@@ -108,7 +95,7 @@
       <div data-testid="profile-main-column" class="space-y-6">
         <section
           data-testid="profile-basics-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="card p-6"
         >
           <div class="mb-5 flex items-start justify-between gap-4">
             <div>
@@ -122,14 +109,14 @@
           </div>
 
           <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="min-w-0">
               <ProfileAvatarCard
                 :user="user"
                 embedded
               />
             </div>
 
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+            <div class="min-w-0">
               <ProfileEditForm
                 :initial-username="user?.username || ''"
                 embedded
@@ -140,7 +127,7 @@
 
         <section
           data-testid="profile-auth-bindings-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="card p-6"
         >
           <ProfileIdentityBindingsSection
             :user="user"
@@ -160,7 +147,7 @@
       <div data-testid="profile-side-column" class="space-y-6">
         <section
           v-if="sourceHints.length"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
+          class="card p-6"
         >
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
             {{ t('profile.linkedProfileSources') }}
@@ -169,11 +156,11 @@
             {{ t('profile.linkedProfileSourcesDescription') }}
           </p>
 
-          <div class="mt-5 grid gap-3">
+          <div class="mt-4 divide-y divide-gray-100 dark:divide-dark-700">
             <div
               v-for="hint in sourceHints"
               :key="hint.key"
-              class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-300"
+              class="flex items-start gap-3 py-3 text-sm text-gray-600 dark:text-gray-300"
             >
               <Icon name="link" size="sm" class="mt-0.5 text-gray-400 dark:text-gray-500" />
               <span>{{ hint.text }}</span>

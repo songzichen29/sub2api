@@ -9,7 +9,11 @@
       <label class="text-sm">{{ t('qqbot.workspace.to') }}<input v-model="filters.to" class="input" type="datetime-local" /></label>
       <button class="btn btn-primary self-end" :disabled="loading">{{ t('common.search') }}</button>
     </form>
-    <p v-if="error" role="alert" class="text-red-600">{{ error }}</p>
+    <p v-if="loading" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</p>
+    <div v-if="error" role="alert" class="flex items-center justify-between gap-3 text-red-600">
+      <p>{{ error }}</p>
+      <button type="button" class="btn btn-secondary" :disabled="loading" @click="load(data.page)">{{ t('common.retry') }}</button>
+    </div>
     <article v-for="item in data.items" :key="item.id" class="space-y-2 rounded-lg border p-3 text-sm dark:border-dark-700">
       <p>{{ new Date(item.created_at).toLocaleString() }} · {{ label('reasons', item.reason) }}</p>
       <p class="break-all text-gray-500">{{ item.group_id }} · {{ item.member_id }}</p>
@@ -17,8 +21,8 @@
       <p>{{ t('qqbot.moderation.recallResult', { succeeded: item.recall_succeeded, total: item.recall_total, pending: item.pending }) }}</p>
       <p v-if="item.error" class="break-all text-red-600">{{ item.error }}</p>
     </article>
-    <p v-if="!data.items.length && !loading">{{ t('common.noData') }}</p>
-    <div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+    <p v-if="!data.items.length && !loading && !error">{{ t('common.noData') }}</p>
+    <div v-if="!error" class="flex flex-wrap items-center justify-between gap-3 text-sm">
       <span>{{ t('qqbot.recordsPage', { total: data.total, page: data.page, pages }) }}</span>
       <div class="flex gap-2"><button class="btn btn-secondary" :disabled="loading || data.page <= 1" @click="load(data.page - 1)">{{ t('qqbot.previousPage') }}</button><button class="btn btn-secondary" :disabled="loading || data.page >= pages" @click="load(data.page + 1)">{{ t('qqbot.nextPage') }}</button></div>
     </div>

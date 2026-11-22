@@ -70,12 +70,43 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/auth/callback',
+    alias: '/auth/oauth/callback',
     name: 'OAuthCallback',
     component: () => import('@/views/auth/OAuthCallbackView.vue'),
     meta: {
       requiresAuth: false,
       title: 'OAuth Callback',
       titleKey: 'auth.oauthCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/dingtalk/callback',
+    name: 'DingTalkOAuthCallback',
+    component: () => import('@/views/auth/DingTalkCallbackView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'DingTalk OAuth Callback',
+      titleKey: 'auth.dingtalkCallbackPageTitle'
+    }
+  },
+  {
+    path: '/auth/dingtalk/email-completion',
+    name: 'DingTalkEmailCompletion',
+    component: () => import('@/views/auth/DingTalkEmailCompletionView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Complete Account',
+      titleKey: 'auth.dingtalk.createAccountTitle'
+    }
+  },
+  {
+    path: '/legal/:documentId',
+    name: 'LegalDocument',
+    component: () => import('@/views/public/LegalDocumentView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Legal Document',
+      titleKey: 'legal.loginAgreement'
     }
   },
   {
@@ -197,8 +228,7 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Dashboard',
-      titleKey: 'dashboard.title',
-      descriptionKey: 'dashboard.welcomeMessage'
+      titleKey: 'dashboard.title'
     }
   },
   {
@@ -418,6 +448,18 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: false,
       requiresAdmin: false,
       title: 'Payment',
+      requiresPayment: false
+    }
+  },
+  {
+    path: '/payment/airwallex',
+    name: 'AirwallexPayment',
+    component: () => import('@/views/user/AirwallexPaymentView.vue'),
+    meta: {
+      requiresAuth: false,
+      requiresAdmin: false,
+      title: 'Airwallex Payment',
+      titleKey: 'payment.airwallexPay',
       requiresPayment: false
     }
   },
@@ -790,7 +832,9 @@ const routes: RouteRecordRaw[] = [
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),
     meta: {
-      title: '404 Not Found'
+      requiresAuth: false,
+      title: '404 Not Found',
+      titleKey: 'errors.pageNotFound'
     }
   }
 ]
@@ -824,9 +868,12 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/qq/report', '/account-import', '/setup', '/payment/result', '/docs']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/qq/report', '/account-import', '/setup', '/payment/result', '/docs', '/legal/']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
+  '/auth/oauth/callback',
+  '/auth/dingtalk/callback',
+  '/auth/dingtalk/email-completion',
   '/auth/linuxdo/callback',
   '/auth/oidc/callback',
   '/auth/wechat/callback',
@@ -956,7 +1003,7 @@ router.beforeEach(async (to, _from, next) => {
       }
     }
     // Backend mode: block public pages for unauthenticated users (except login, key-usage, setup)
-    if (appStore.backendModeEnabled && !authStore.isAuthenticated) {
+    if (appStore.backendModeEnabled && !authStore.isAuthenticated && to.name !== 'NotFound') {
       const isAllowed = isBackendModePublicRouteAllowed(to.path, authStore.hasPendingAuthSession)
       if (!isAllowed) {
         next('/login')

@@ -11,7 +11,7 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses, panelClass]" @click.stop>
+        <div ref="dialogRef" tabindex="-1" :class="['modal-content', widthClasses, panelClass]" @click.stop>
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -19,9 +19,10 @@
             </h3>
             <button
               v-if="showCloseButton"
+              type="button"
               @click="emit('close')"
-              class="-mr-2 rounded-xl p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:ring-offset-2 dark:text-dark-500 dark:hover:bg-dark-700 dark:hover:text-dark-300 dark:focus-visible:ring-offset-dark-900"
-              aria-label="Close modal"
+              class="-mr-2 rounded-md p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30 focus-visible:ring-offset-2 dark:text-dark-500 dark:hover:bg-dark-700 dark:hover:text-dark-300 dark:focus-visible:ring-offset-dark-900"
+              :aria-label="t('common.close')"
             >
               <Icon name="x" size="md" />
             </button>
@@ -49,10 +50,12 @@ const openDialogs = new Set<string>()
 
 <script setup lang="ts">
 import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
 // 生成唯一ID以避免多个对话框时ID冲突
 const dialogId = `modal-title-${++dialogIdCounter}`
+const { t } = useI18n()
 
 // 焦点管理
 const dialogRef = ref<HTMLElement | null>(null)
@@ -111,8 +114,42 @@ const handleClose = () => {
 }
 
 const handleEscape = (event: KeyboardEvent) => {
-  if (props.show && props.closeOnEscape && event.key === 'Escape' && [...openDialogs].pop() === dialogId) {
+  if (event.defaultPrevented || !props.show || [...openDialogs].pop() !== dialogId) return
+  if (props.closeOnEscape && event.key === 'Escape') {
     emit('close')
+  }
+}
+
+const handleTab = (event: KeyboardEvent) => {
+  if (event.key !== 'Tab' || event.defaultPrevented || !props.show || [...openDialogs].pop() !== dialogId || !dialogRef.value) return
+
+  // 捕获阶段先确定焦点，避免子组件关闭 Teleport 菜单后丢失触发器关系。
+  const panel = dialogRef.value
+  const focusable = [...panel.querySelectorAll<HTMLElement>(
+    'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
+  )].filter(element => !element.matches(':disabled, [tabindex="-1"]') && !element.closest('[hidden], [inert]') && element.getClientRects().length > 0)
+  const active = document.activeElement
+  // 下拉框通过 aria-controls 关联到弹窗内触发器，Tab 关闭后继续表单顺序。
+  const portalTrigger = [...panel.querySelectorAll<HTMLElement>('[aria-controls]')].find(element =>
+    element.getAttribute('aria-controls')?.split(/\s+/).some(id => document.getElementById(id)?.contains(active))
+  )
+  if (portalTrigger) {
+    event.preventDefault()
+    const index = focusable.indexOf(portalTrigger)
+    const next = (index + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length
+    ;(focusable[next] || panel).focus()
+    return
+  }
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  if (!first) {
+    event.preventDefault()
+    panel.focus()
+    return
+  }
+  if (!panel.contains(active) || active === panel || (event.shiftKey ? active === first : active === last)) {
+    event.preventDefault()
+    ;(event.shiftKey ? last : first).focus()
   }
 }
 
@@ -135,15 +172,16 @@ watch(
       // 等待DOM更新后设置焦点到对话框
       await nextTick()
       if (dialogRef.value) {
-        const firstFocusable = dialogRef.value.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        const firstFocusable = dialogRef.value.querySelector<HTMLElement>('[autofocus]') || dialogRef.value.querySelector<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
         )
-        firstFocusable?.focus()
+        ;(firstFocusable || dialogRef.value).focus()
       }
     } else {
+      const wasTopmost = [...openDialogs].pop() === dialogId
       updateScrollLock(false)
       // 恢复之前的焦点
-      if (previousActiveElement && typeof previousActiveElement.focus === 'function') {
+      if (wasTopmost && previousActiveElement?.isConnected) {
         previousActiveElement.focus()
       }
       previousActiveElement = null
@@ -154,11 +192,14 @@ watch(
 
 onMounted(() => {
   document.addEventListener('keydown', handleEscape)
+  document.addEventListener('keydown', handleTab, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleEscape)
-  // 确保组件卸载时移除滚动锁定
+  document.removeEventListener('keydown', handleTab, true)
+  const wasTopmost = [...openDialogs].pop() === dialogId
   updateScrollLock(false)
+  if (wasTopmost && previousActiveElement?.isConnected) previousActiveElement.focus()
 })
 </script>

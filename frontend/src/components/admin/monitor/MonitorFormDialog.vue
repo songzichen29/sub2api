@@ -168,7 +168,7 @@
 
       <div class="flex items-center justify-between">
         <label class="input-label mb-0">{{ t('admin.channelMonitor.form.enabled') }}</label>
-        <Toggle v-model="form.enabled" />
+        <Toggle :aria-label="t('admin.channelMonitor.form.enabled')" v-model="form.enabled" />
       </div>
 
       <!-- 高级设置区：请求模板 + 自定义 headers/body（仅探活模式有意义） -->

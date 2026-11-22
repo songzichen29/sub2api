@@ -94,7 +94,7 @@
           </template>
 
           <template #cell-enabled="{ row }">
-            <Toggle :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
+            <Toggle :aria-label="t('common.status') + ' · ' + row.name" :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
           </template>
 
           <template #cell-actions="{ row }">

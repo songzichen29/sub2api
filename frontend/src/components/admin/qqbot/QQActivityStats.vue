@@ -1,6 +1,6 @@
 <template>
-  <section class="card space-y-4 p-5" :aria-busy="loading">
-    <div class="flex flex-wrap items-center justify-between gap-3">
+  <section class="space-y-4" :class="{ 'card p-5': !embedded }" :aria-busy="loading">
+    <div v-if="!embedded" class="flex flex-wrap items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">{{ t('qqbot.activityStats.title') }}</h2>
       <button class="btn btn-secondary" :disabled="loading" @click="load">{{ t('common.refresh') }}</button>
     </div>
@@ -38,6 +38,7 @@ import { useI18n } from 'vue-i18n'
 import { saveAs } from 'file-saver'
 import { qqbotAPI, type QQActivityStatsPage } from '@/api/qqcommunity'
 const { t } = useI18n()
+defineProps<{ embedded?: boolean }>()
 const date = ref(new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)), search = ref(''), filter = ref(''), page = ref(1)
 const data = ref<QQActivityStatsPage>(), loading = ref(false), exporting = ref(false), error = ref('')
 let request = 0
@@ -55,4 +56,5 @@ function selectMetric(value: string) { filter.value = value; applyFilters() }
 async function exportRows() { exporting.value = true; error.value = ''; try { saveAs(await qqbotAPI.exportActivityStats(params()), `activity-stats-${date.value}.csv`) } catch (e) { error.value = (e as Error).message } finally { exporting.value = false } }
 onMounted(load)
 onBeforeUnmount(() => { ++request })
+defineExpose({ refresh: load })
 </script>

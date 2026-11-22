@@ -76,3 +76,32 @@ describe('router invoice routes', () => {
     expect(route?.meta.requiresUserInvoice === true).toBe(name === 'InvoiceList')
   })
 })
+
+describe('补齐已有页面入口', () => {
+  it('为未知地址注册公开的 404 页', async () => {
+    const { default: router } = await import('@/router')
+    const route = router.resolve('/missing-page')
+    expect(route.name).toBe('NotFound')
+    expect(route.meta.requiresAuth).toBe(false)
+  })
+
+  it.each([
+    ['/auth/oauth/callback', 'OAuthCallback'],
+    ['/auth/callback', 'OAuthCallback'],
+    ['/auth/dingtalk/callback', 'DingTalkOAuthCallback'],
+    ['/auth/dingtalk/email-completion', 'DingTalkEmailCompletion'],
+    ['/payment/airwallex', 'AirwallexPayment'],
+  ])('%s 解析到对应的公开页面', async (path, name) => {
+    const { default: router } = await import('@/router')
+    const route = router.resolve(path)
+    expect(route.name).toBe(name)
+    expect(route.meta.requiresAuth).toBe(false)
+  })
+
+  it('通过协议命名路由生成条款地址', async () => {
+    const { default: router } = await import('@/router')
+    const route = router.resolve({ name: 'LegalDocument', params: { documentId: 'terms' } })
+    expect(route.path).toBe('/legal/terms')
+    expect(route.meta.requiresAuth).toBe(false)
+  })
+})

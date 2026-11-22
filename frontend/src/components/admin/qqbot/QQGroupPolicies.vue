@@ -1,9 +1,12 @@
 <template>
   <div class="space-y-4">
-    <p class="text-sm text-gray-500">{{ t('qqbot.workspace.groupPolicyHelp') }}</p>
-    <article v-for="group in groups" :key="group" class="space-y-3 rounded-lg border p-4 dark:border-dark-700">
-      <p v-if="policy(group).label || names?.[group]" class="break-all font-medium">{{ policy(group).label || names?.[group] }}</p>
-      <code class="block break-all text-xs">{{ group }}</code>
+    <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('qqbot.workspace.groupPolicyHelp') }}</p>
+    <details v-for="group in groups" :key="group" data-testid="qq-group-policy" class="rounded-lg border dark:border-dark-700">
+      <summary class="cursor-pointer break-all px-4 py-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600">
+        {{ policy(group).label || names?.[group] || group }}
+        <code v-if="policy(group).label || names?.[group]" class="ml-2 text-sm font-normal text-gray-500 dark:text-dark-400">{{ group }}</code>
+      </summary>
+      <div class="space-y-3 border-t p-4 dark:border-dark-700">
       <label class="block text-sm">{{ t('qqbot.workspace.groupLabel') }}<input class="input" :value="policy(group).label" :placeholder="names?.[group]" maxlength="60" @input="update(group, { label: ($event.target as HTMLInputElement).value })" /></label>
       <div class="flex flex-wrap gap-4">
         <label v-for="key in switches" :key="key" class="flex items-center gap-2 text-sm"><input type="checkbox" :checked="!policy(group)[key]" @change="update(group, { [key]: !($event.target as HTMLInputElement).checked })" />{{ t(`qqbot.workspace.${key}`) }}</label>
@@ -11,7 +14,8 @@
       <div class="grid gap-3 sm:grid-cols-2">
         <label v-for="key in quotas" :key="key" class="text-sm">{{ t(`qqbot.workspace.${key}`) }}<input class="input" type="number" min="0" max="100000" :value="policy(group)[key]" :placeholder="t('qqbot.workspace.inherit')" @input="update(group, { [key]: ($event.target as HTMLInputElement).value === '' ? null : Number(($event.target as HTMLInputElement).value) })" /></label>
       </div>
-    </article>
+      </div>
+    </details>
   </div>
 </template>
 <script setup lang="ts">

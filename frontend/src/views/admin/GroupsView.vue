@@ -21,21 +21,21 @@
                 @input="handleSearch"
               />
             </div>
-            <Select
+            <Select :aria-label="t('admin.groups.allPlatforms')"
               v-model="filters.platform"
               :options="platformFilterOptions"
               :placeholder="t('admin.groups.allPlatforms')"
               class="w-44"
               @change="loadGroups"
             />
-            <Select
+            <Select :aria-label="t('common.status')"
               v-model="filters.status"
               :options="statusOptions"
               :placeholder="t('admin.groups.allStatus')"
               class="w-40"
               @change="loadGroups"
             />
-            <Select
+            <Select :aria-label="t('admin.groups.allGroups')"
               v-if="!authStore.isSimpleMode"
               v-model="filters.is_exclusive"
               :options="exclusiveOptions"
@@ -492,8 +492,14 @@
         id="create-group-form"
         @submit.prevent="handleCreateGroup"
         class="space-y-5"
+        @invalid.capture="revealGroupField"
       >
-        <div>
+        <nav v-if="!authStore.isSimpleMode" class="group-form-nav" :aria-label="t('common.sections')">
+          <button type="button" @click="scrollGroupSection('create-group-basic')">{{ t('common.basicSettings') }}</button>
+          <button type="button" @click="scrollGroupSection('create-group-pricing')">{{ t('common.quotaAndPricing') }}</button>
+          <button type="button" @click="scrollGroupSection('create-group-advanced')">{{ t('common.advancedSettings') }}</button>
+        </nav>
+        <div id="create-group-basic" class="scroll-mt-16">
           <GroupI18nField
             v-model="createForm.name"
             v-model:i18n="createForm.i18n"
@@ -519,7 +525,7 @@
           <label class="input-label">{{
             t("admin.groups.form.platform")
           }}</label>
-          <Select
+          <Select :aria-label="t('admin.groups.form.platform')"
             v-model="createForm.platform"
             :options="platformOptions"
             data-tour="group-form-platform"
@@ -703,7 +709,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="createForm.is_exclusive" />
+            <Toggle :aria-label="t('admin.groups.form.exclusive')" v-model="createForm.is_exclusive" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 createForm.is_exclusive
@@ -715,12 +721,12 @@
         </div>
 
         <!-- Subscription Configuration -->
-        <div class="mt-4 border-t pt-4">
+        <div id="create-group-pricing" class="mt-4 scroll-mt-16 border-t pt-4">
           <div>
             <label class="input-label">{{
               t("admin.groups.subscription.type")
             }}</label>
-            <Select
+            <Select :aria-label="t('admin.groups.subscription.type')"
               v-model="createForm.subscription_type"
               :options="subscriptionTypeOptions"
             />
@@ -829,7 +835,7 @@
                 {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
-            <Toggle v-model="createModelAllowlistState.enabled" />
+            <Toggle :aria-label="t('admin.groups.modelAllowlist.title')" v-model="createModelAllowlistState.enabled" />
           </div>
           <div
             v-if="createModelAllowlistState.enabled"
@@ -1334,6 +1340,9 @@
           </div>
         </div>
 
+        <details id="create-group-advanced" class="scroll-mt-16 border-t pt-4">
+          <summary class="cursor-pointer text-sm font-semibold">{{ t('common.advancedSettings') }}</summary>
+          <div class="space-y-5 pt-4">
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="createForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -1438,7 +1447,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="createForm.mcp_xml_inject" />
+            <Toggle :aria-label="t('admin.groups.mcpXml.title')" v-model="createForm.mcp_xml_inject" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 createForm.mcp_xml_inject
@@ -1480,7 +1489,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="createForm.claude_code_only" />
+            <Toggle :aria-label="t('admin.groups.claudeCode.title')" v-model="createForm.claude_code_only" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 createForm.claude_code_only
@@ -1494,7 +1503,7 @@
             <label class="input-label">{{
               t("admin.groups.claudeCode.fallbackGroup")
             }}</label>
-            <Select
+            <Select :aria-label="t('admin.groups.claudeCode.fallbackGroup')"
               v-model="createForm.fallback_group_id"
               :options="fallbackGroupOptions"
               :placeholder="t('admin.groups.claudeCode.noFallback')"
@@ -1683,7 +1692,7 @@
             <label class="text-sm text-gray-600 dark:text-gray-400">{{
               t("admin.groups.openaiLive.allow")
             }}</label>
-            <Toggle
+            <Toggle :aria-label="t('admin.groups.openaiLive.allow')"
               :model-value="createForm.allow_live"
               @update:model-value="toggleLive('create')"
             />
@@ -1707,7 +1716,7 @@
             <label class="text-sm text-gray-600 dark:text-gray-400">{{
               t("admin.groups.openaiMessages.allowDispatch")
             }}</label>
-            <Toggle v-model="createForm.allow_messages_dispatch" />
+            <Toggle :aria-label="t('admin.groups.openaiMessages.allowDispatch')" v-model="createForm.allow_messages_dispatch" />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
@@ -1932,7 +1941,7 @@
                 }}
               </p>
             </div>
-            <Toggle v-model="createForm.require_oauth_only" />
+            <Toggle :aria-label="t('admin.groups.accountFilters.oauthOnly')" v-model="createForm.require_oauth_only" />
           </div>
 
           <!-- require_privacy_set toggle -->
@@ -1949,7 +1958,7 @@
                 }}
               </p>
             </div>
-            <Toggle v-model="createForm.require_privacy_set" />
+            <Toggle :aria-label="t('admin.groups.accountFilters.privacySetOnly')" v-model="createForm.require_privacy_set" />
           </div>
         </div>
 
@@ -1964,7 +1973,7 @@
           <label class="input-label">{{
             t("admin.groups.invalidRequestFallback.title")
           }}</label>
-          <Select
+          <Select :aria-label="t('admin.groups.invalidRequestFallback.title')"
             v-model="createForm.fallback_group_id_on_invalid_request"
             :options="invalidRequestFallbackOptions"
             :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
@@ -2006,7 +2015,7 @@
           </div>
           <!-- 启用开关 -->
           <div class="flex items-center gap-3 mb-3">
-            <Toggle v-model="createForm.model_routing_enabled" />
+            <Toggle :aria-label="t('admin.groups.modelRouting.title')" v-model="createForm.model_routing_enabled" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 createForm.model_routing_enabled
@@ -2146,6 +2155,8 @@
             {{ t("admin.groups.modelRouting.addRule") }}
           </button>
         </div>
+          </div>
+        </details>
         </template>
       </form>
 
@@ -2203,8 +2214,14 @@
         id="edit-group-form"
         @submit.prevent="handleUpdateGroup"
         class="space-y-5"
+        @invalid.capture="revealGroupField"
       >
-        <div>
+        <nav v-if="!authStore.isSimpleMode" class="group-form-nav" :aria-label="t('common.sections')">
+          <button type="button" @click="scrollGroupSection('edit-group-basic')">{{ t('common.basicSettings') }}</button>
+          <button type="button" @click="scrollGroupSection('edit-group-pricing')">{{ t('common.quotaAndPricing') }}</button>
+          <button type="button" @click="scrollGroupSection('edit-group-advanced')">{{ t('common.advancedSettings') }}</button>
+        </nav>
+        <div id="edit-group-basic" class="scroll-mt-16">
           <GroupI18nField
             v-model="editForm.name"
             v-model:i18n="editForm.i18n"
@@ -2228,7 +2245,7 @@
           <label class="input-label">{{
             t("admin.groups.form.platform")
           }}</label>
-          <Select
+          <Select :aria-label="t('admin.groups.form.platform')"
             v-model="editForm.platform"
             :options="platformOptions"
             :disabled="true"
@@ -2410,7 +2427,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="editForm.is_exclusive" />
+            <Toggle :aria-label="t('admin.groups.form.exclusive')" v-model="editForm.is_exclusive" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 editForm.is_exclusive
@@ -2422,16 +2439,16 @@
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.status") }}</label>
-          <Select v-model="editForm.status" :options="editStatusOptions" />
+          <Select :aria-label="t('admin.groups.form.status')" v-model="editForm.status" :options="editStatusOptions" />
         </div>
 
         <!-- Subscription Configuration -->
-        <div class="mt-4 border-t pt-4">
+        <div id="edit-group-pricing" class="mt-4 scroll-mt-16 border-t pt-4">
           <div>
             <label class="input-label">{{
               t("admin.groups.subscription.type")
             }}</label>
-            <Select
+            <Select :aria-label="t('admin.groups.subscription.type')"
               v-model="editForm.subscription_type"
               :options="subscriptionTypeOptions"
               :disabled="true"
@@ -2541,7 +2558,7 @@
                 {{ t("admin.groups.modelAllowlist.hint") }}
               </p>
             </div>
-            <Toggle v-model="editModelAllowlistState.enabled" />
+            <Toggle :aria-label="t('admin.groups.modelAllowlist.title')" v-model="editModelAllowlistState.enabled" />
           </div>
           <div
             v-if="editModelAllowlistState.enabled"
@@ -3046,6 +3063,9 @@
           </div>
         </div>
 
+        <details id="edit-group-advanced" class="scroll-mt-16 border-t pt-4">
+          <summary class="cursor-pointer text-sm font-semibold">{{ t('common.advancedSettings') }}</summary>
+          <div class="space-y-5 pt-4">
         <!-- 支持的模型系列（仅 antigravity 平台） -->
         <div v-if="editForm.platform === 'antigravity'" class="border-t pt-4">
           <div class="mb-1.5 flex items-center gap-1">
@@ -3150,7 +3170,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="editForm.mcp_xml_inject" />
+            <Toggle :aria-label="t('admin.groups.mcpXml.title')" v-model="editForm.mcp_xml_inject" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 editForm.mcp_xml_inject
@@ -3192,7 +3212,7 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            <Toggle v-model="editForm.claude_code_only" />
+            <Toggle :aria-label="t('admin.groups.claudeCode.title')" v-model="editForm.claude_code_only" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 editForm.claude_code_only
@@ -3206,7 +3226,7 @@
             <label class="input-label">{{
               t("admin.groups.claudeCode.fallbackGroup")
             }}</label>
-            <Select
+            <Select :aria-label="t('admin.groups.claudeCode.fallbackGroup')"
               v-model="editForm.fallback_group_id"
               :options="fallbackGroupOptionsForEdit"
               :placeholder="t('admin.groups.claudeCode.noFallback')"
@@ -3405,7 +3425,7 @@
             <label class="text-sm text-gray-600 dark:text-gray-400">{{
               t("admin.groups.openaiLive.allow")
             }}</label>
-            <Toggle
+            <Toggle :aria-label="t('admin.groups.openaiLive.allow')"
               :model-value="editForm.allow_live"
               @update:model-value="toggleLive('edit')"
             />
@@ -3429,7 +3449,7 @@
             <label class="text-sm text-gray-600 dark:text-gray-400">{{
               t("admin.groups.openaiMessages.allowDispatch")
             }}</label>
-            <Toggle v-model="editForm.allow_messages_dispatch" />
+            <Toggle :aria-label="t('admin.groups.openaiMessages.allowDispatch')" v-model="editForm.allow_messages_dispatch" />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiMessages.allowDispatchHint") }}
@@ -3653,7 +3673,7 @@
                 }}
               </p>
             </div>
-            <Toggle v-model="editForm.require_oauth_only" />
+            <Toggle :aria-label="t('admin.groups.accountFilters.oauthOnly')" v-model="editForm.require_oauth_only" />
           </div>
 
           <!-- require_privacy_set toggle -->
@@ -3670,7 +3690,7 @@
                 }}
               </p>
             </div>
-            <Toggle v-model="editForm.require_privacy_set" />
+            <Toggle :aria-label="t('admin.groups.accountFilters.privacySetOnly')" v-model="editForm.require_privacy_set" />
           </div>
         </div>
 
@@ -3685,7 +3705,7 @@
           <label class="input-label">{{
             t("admin.groups.invalidRequestFallback.title")
           }}</label>
-          <Select
+          <Select :aria-label="t('admin.groups.invalidRequestFallback.title')"
             v-model="editForm.fallback_group_id_on_invalid_request"
             :options="invalidRequestFallbackOptionsForEdit"
             :placeholder="t('admin.groups.invalidRequestFallback.noFallback')"
@@ -3727,7 +3747,7 @@
           </div>
           <!-- 启用开关 -->
           <div class="flex items-center gap-3 mb-3">
-            <Toggle v-model="editForm.model_routing_enabled" />
+            <Toggle :aria-label="t('admin.groups.modelRouting.title')" v-model="editForm.model_routing_enabled" />
             <span class="text-sm text-gray-500 dark:text-gray-400">
               {{
                 editForm.model_routing_enabled
@@ -3867,6 +3887,8 @@
             {{ t("admin.groups.modelRouting.addRule") }}
           </button>
         </div>
+          </div>
+        </details>
         </template>
       </form>
 
@@ -4208,7 +4230,7 @@
                 <label class="input-label">{{
                   t("admin.groups.compositeRoutes.matchType")
                 }}</label>
-                <Select
+                <Select :aria-label="t('admin.groups.compositeRoutes.matchType')"
                   v-model="compositeRouteForm.match_type"
                   :options="compositeRouteMatchOptions"
                 />
@@ -4217,7 +4239,7 @@
                 <label class="input-label">{{
                   t("admin.groups.compositeRoutes.endpoint")
                 }}</label>
-                <Select
+                <Select :aria-label="t('admin.groups.compositeRoutes.endpoint')"
                   v-model="compositeRouteForm.endpoint"
                   :options="compositeRouteEndpointOptions"
                 />
@@ -4229,7 +4251,7 @@
                 <label class="input-label">{{
                   t("admin.groups.compositeRoutes.targetPlatform")
                 }}</label>
-                <Select
+                <Select :aria-label="t('admin.groups.compositeRoutes.targetPlatform')"
                   v-model="compositeRouteForm.target_platform"
                   :options="compositeRoutePlatformOptions"
                 />
@@ -4312,7 +4334,7 @@
                 @keyup.enter="previewCompositeRoute"
               />
               <div class="flex gap-2">
-                <Select
+                <Select :aria-label="t('admin.groups.compositeRoutes.endpoint')"
                   v-model="compositePreviewEndpoint"
                   :options="compositeRouteEndpointOptions"
                   class="min-w-0 flex-1"
@@ -4978,6 +5000,16 @@ const sortState = reactive({
 });
 
 let abortController: AbortController | null = null;
+
+function scrollGroupSection(id: string) {
+  const section = document.getElementById(id)!;
+  if (section instanceof HTMLDetailsElement) section.open = true;
+  section.scrollIntoView({ block: 'start' });
+}
+
+function revealGroupField(event: Event) {
+  (event.target as HTMLElement).closest('details')?.setAttribute('open', '');
+}
 
 const showCreateModal = ref(false);
 const showEditModal = ref(false);
@@ -6120,6 +6152,7 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
 };
 
 const handleCreateGroup = async () => {
+  document.getElementById('create-group-advanced')?.setAttribute('open', '');
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
     return;
@@ -6481,6 +6514,7 @@ const closeEditModal = () => {
 };
 
 const handleUpdateGroup = async () => {
+  document.getElementById('edit-group-advanced')?.setAttribute('open', '');
   if (!editingGroup.value) return;
   if (!editForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));

@@ -1,6 +1,9 @@
 export default {
   "dashboard": {
     "title": "Dashboard",
+    "statsLoadFailed": "Failed to load account overview",
+    "chartsLoadFailed": "Failed to load usage charts",
+    "quotasLoadFailed": "Failed to load quota usage",
     "welcomeMessage": "Welcome back! Here's an overview of your account.",
     "balance": "Balance",
     "apiKeys": "API Keys",

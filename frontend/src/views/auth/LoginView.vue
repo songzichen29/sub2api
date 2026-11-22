@@ -6,9 +6,6 @@
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ t('auth.welcomeBack') }}
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          {{ t('auth.signInToAccount') }}
-        </p>
       </div>
 
       <!-- Login Form -->
@@ -61,6 +58,8 @@
               type="button"
               @click="showPassword = !showPassword"
               :disabled="authActionDisabled"
+              :aria-label="t(showPassword ? 'common.hidePassword' : 'common.showPassword')"
+              :aria-pressed="showPassword"
               class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
             >
               <Icon v-if="showPassword" name="eyeOff" size="md" />

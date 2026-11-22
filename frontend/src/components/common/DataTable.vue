@@ -1,5 +1,17 @@
 <template>
   <div v-if="!isDesktopViewport" class="space-y-3">
+    <div v-if="sortableColumns.length" class="flex items-center gap-2">
+      <label class="flex min-w-0 flex-1 items-center gap-2 text-sm">
+        <span class="shrink-0">{{ t('common.sortBy') }}</span>
+        <select class="input" :value="sortKey" @change="handleSort(($event.target as HTMLSelectElement).value)">
+          <option v-if="!sortKey" value="" disabled>{{ t('common.selectOption') }}</option>
+          <option v-for="column in sortableColumns" :key="column.key" :value="column.key">{{ column.label }}</option>
+        </select>
+      </label>
+      <button v-if="sortKey" type="button" class="btn btn-secondary" @click="handleSort(sortKey)">
+        {{ t(sortOrder === 'asc' ? 'common.ascending' : 'common.descending') }}
+      </button>
+    </div>
     <template v-if="loading">
       <div v-for="i in 5" :key="i" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
         <div class="space-y-3">
@@ -73,7 +85,7 @@
             :data-field="column.key"
             class="flex min-w-0 items-start justify-between gap-4"
           >
-            <span class="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400">
+            <span class="text-sm font-medium text-gray-500 dark:text-dark-400">
               {{ column.label }}
             </span>
             <div class="min-w-0 max-w-full text-right text-sm text-gray-900 dark:text-gray-100">
@@ -123,7 +135,7 @@
             scope="col"
             :aria-sort="column.sortable ? getColumnAriaSort(column.key) : undefined"
             :class="[
-              'sticky-header-cell py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-dark-400',
+              'sticky-header-cell py-3 text-left text-sm font-medium text-gray-600 dark:text-dark-300',
               getAdaptivePaddingClass(),
               { 'cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-700': column.sortable },
               getStickyColumnClass(column, index),
@@ -140,16 +152,19 @@
               >
                 <span>{{ column.label }}</span>
               </slot>
-              <span
+              <button
                 v-if="column.sortable"
-                class="inline-flex h-5 w-4 flex-col items-center justify-center"
-                aria-hidden="true"
+                type="button"
+                class="inline-flex h-7 w-6 shrink-0 flex-col items-center justify-center rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600"
+                :aria-label="`${column.label} · ${t(sortKey === column.key && sortOrder === 'asc' ? 'common.descending' : 'common.ascending')}`"
+                @click.stop="handleSort(column.key)"
               >
                 <svg
                   class="h-2.5 w-2.5"
                   :class="getSortIndicatorClass(column.key, 'asc')"
                   fill="currentColor"
                   viewBox="0 0 10 10"
+                  aria-hidden="true"
                 >
                   <path d="M5 2L1.5 6.5h7L5 2z" />
                 </svg>
@@ -158,10 +173,11 @@
                   :class="getSortIndicatorClass(column.key, 'desc')"
                   fill="currentColor"
                   viewBox="0 0 10 10"
+                  aria-hidden="true"
                 >
                   <path d="M5 8L1.5 3.5h7L5 8z" />
                 </svg>
-              </span>
+              </button>
             </div>
           </th>
         </tr>
@@ -672,6 +688,7 @@ const resolveRowClass = (row: any, index: number) => {
 const resolveRowKey = (row: any, index: number) => resolveStableRowKey(row) ?? index
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
+const sortableColumns = computed(() => props.columns.filter(column => column.sortable))
 const columnsSignature = computed(() =>
   props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
 )

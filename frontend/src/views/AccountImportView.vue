@@ -18,6 +18,11 @@
         </div>
       </div>
 
+      <div v-else-if="statusError" role="alert" class="card space-y-4 p-5">
+        <p class="text-sm text-red-700 dark:text-red-400">{{ statusError }}</p>
+        <button class="btn btn-secondary" @click="loadStatus">{{ t('common.retry') }}</button>
+      </div>
+
       <div v-else-if="!status?.enabled" class="card p-5">
         <div class="text-sm font-medium text-gray-900 dark:text-white">
           {{ t('accountImport.disabled') }}
@@ -87,6 +92,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const loading = ref(true)
+const statusError = ref('')
 const verifying = ref(false)
 const password = ref('')
 const token = ref('')
@@ -107,6 +113,7 @@ const loadOptions = async (nextToken: string) => {
 
 const loadStatus = async () => {
   loading.value = true
+  statusError.value = ''
   try {
     status.value = await getStandaloneAccountImportStatus()
     if (status.value.enabled && status.value.password_configured) {
@@ -120,8 +127,8 @@ const loadStatus = async () => {
         }
       }
     }
-  } catch (error: any) {
-    appStore.showError(error?.message || t('accountImport.loadFailed'))
+  } catch (error) {
+    statusError.value = error instanceof Error ? error.message : t('accountImport.loadFailed')
   } finally {
     loading.value = false
   }

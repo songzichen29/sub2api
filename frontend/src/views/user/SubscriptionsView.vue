@@ -8,6 +8,11 @@
         ></div>
       </div>
 
+      <div v-else-if="loadError" role="alert" class="card space-y-4 p-6">
+        <p class="text-sm text-red-700 dark:text-red-400">{{ t('userSubscriptions.failedToLoad') }}</p>
+        <button class="btn btn-secondary" @click="loadSubscriptions">{{ t('common.retry') }}</button>
+      </div>
+
       <!-- Empty State -->
       <div v-else-if="subscriptions.length === 0" class="card p-12 text-center">
         <div
@@ -28,18 +33,18 @@
         <div
           v-for="subscription in subscriptions"
           :key="subscription.id"
-          class="overflow-hidden rounded-2xl border bg-white dark:bg-dark-800"
+          class="card overflow-hidden"
           :class="platformBorderClass(subscription.group?.platform || '')"
         >
           <!-- Header -->
           <div
-            class="flex items-center justify-between border-b border-gray-100 p-4 dark:border-dark-700"
+            class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 p-4 dark:border-dark-700"
           >
-            <div class="flex items-center gap-3">
+            <div class="flex min-w-0 flex-1 basis-full items-center gap-3 sm:basis-48">
               <div :class="['h-1.5 w-1.5 shrink-0 rounded-full', platformAccentDotClass(subscription.group?.platform || '')]" />
-              <div>
-                <div class="flex items-center gap-2">
-                  <h3 class="font-semibold text-gray-900 dark:text-white">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="break-words font-semibold text-gray-900 dark:text-white">
                     {{ subscription.group?.name || `Group #${subscription.group_id}` }}
                   </h3>
                   <span :class="['rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(subscription.group?.platform || '')]">
@@ -51,10 +56,10 @@
                 </p>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span
                 :class="[
-                  'rounded-full px-2 py-0.5 text-xs font-medium',
+                  'rounded-md px-2 py-0.5 text-xs font-medium',
                   subscription.status === 'active'
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
                     : subscription.status === 'expired'
@@ -307,7 +312,7 @@
               </p>
             </div>
 
-            <!-- No limits configured - Unlimited badge -->
+            <!-- 未设置用量上限 -->
             <div
               v-if="
                 !subscription.group?.daily_limit_usd &&
@@ -316,19 +321,9 @@
                 !getOverdraftLimit(subscription) &&
                 !hasTotalQuota(subscription)
               "
-              class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
+              class="border-t border-gray-100 pt-4 dark:border-dark-700"
             >
-              <div class="flex items-center gap-3">
-                <span class="text-4xl text-emerald-600 dark:text-emerald-400">∞</span>
-                <div>
-                  <p class="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-                    {{ t('userSubscriptions.unlimited') }}
-                  </p>
-                  <p class="text-xs text-emerald-600/70 dark:text-emerald-400/70">
-                    {{ t('userSubscriptions.unlimitedDesc') }}
-                  </p>
-                </div>
-              </div>
+              <p class="text-sm text-gray-600 dark:text-dark-300">{{ t('userSubscriptions.unlimitedDesc') }}</p>
             </div>
           </div>
         </div>
@@ -376,6 +371,7 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+const loadError = ref(false)
 const overdraftUpdatingId = ref<number | null>(null)
 const weekendSkipUpdatingId = ref<number | null>(null)
 const renewalTarget = ref<UserSubscription | null>(null)
@@ -383,8 +379,10 @@ const renewalTarget = ref<UserSubscription | null>(null)
 async function loadSubscriptions() {
   try {
     loading.value = true
+    loadError.value = false
     subscriptions.value = await subscriptionsAPI.getMySubscriptions()
   } catch (error) {
+    loadError.value = true
     console.error('Failed to load subscriptions:', error)
     appStore.showError(t('userSubscriptions.failedToLoad'))
   } finally {

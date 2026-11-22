@@ -46,7 +46,7 @@
           <div>
             <strong class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.enableTitle') }}</strong>
           </div>
-          <Toggle v-model="draft.enabled" />
+          <Toggle :aria-label="t('channelMonitorV2.settings.enableTitle')" v-model="draft.enabled" />
         </div>
         <div class="flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
@@ -101,7 +101,7 @@
             :key="platform.platform"
             class="grid grid-cols-1 items-center gap-3 px-5 py-3 sm:grid-cols-[auto_7rem_minmax(0,1fr)_auto]"
           >
-            <Toggle v-model="platform.enabled" />
+            <Toggle :aria-label="platformLabel(platform.platform)" v-model="platform.enabled" />
             <strong class="text-sm font-medium text-gray-900 dark:text-white">{{ platformLabel(platform.platform) }}</strong>
             <input
               class="input"

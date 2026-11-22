@@ -2,24 +2,28 @@
   <AppLayout>
     <div class="space-y-6">
       <!-- Loading State -->
-      <div v-if="loading" class="flex items-center justify-center py-12">
+      <div v-if="loading && !stats" class="flex items-center justify-center py-12">
         <LoadingSpinner />
       </div>
 
-      <template v-else-if="stats">
+      <div v-if="snapshotError" role="alert" class="card flex items-center justify-between gap-4 p-5">
+        <p class="text-sm text-red-700 dark:text-red-400">{{ t('admin.dashboard.failedToLoad') }}</p>
+        <button type="button" class="btn btn-secondary" :disabled="chartsLoading" @click="loadDashboardStats">{{ t('common.retry') }}</button>
+      </div>
+      <template v-if="stats">
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30">
-                <Icon name="key" size="md" class="text-blue-600 dark:text-blue-400" :stroke-width="2" />
+              <div class="text-gray-500 dark:text-dark-400">
+                <Icon name="key" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.dashboard.apiKeys') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="text-2xl font-semibold text-gray-900 dark:text-white">
                   {{ stats.total_api_keys }}
                 </p>
                 <p class="text-xs text-green-600 dark:text-green-400">
@@ -32,14 +36,14 @@
           <!-- Service Accounts -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30">
-                <Icon name="server" size="md" class="text-purple-600 dark:text-purple-400" :stroke-width="2" />
+              <div class="text-gray-500 dark:text-dark-400">
+                <Icon name="server" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.dashboard.accounts') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="text-2xl font-semibold text-gray-900 dark:text-white">
                   {{ stats.total_accounts }}
                 </p>
                 <p class="text-xs">
@@ -57,14 +61,14 @@
           <!-- Today Requests -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30">
-                <Icon name="chart" size="md" class="text-green-600 dark:text-green-400" :stroke-width="2" />
+              <div class="text-gray-500 dark:text-dark-400">
+                <Icon name="chart" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.dashboard.todayRequests') }}
                 </p>
-                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                <p class="text-2xl font-semibold text-gray-900 dark:text-white">
                   {{ stats.today_requests }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -77,14 +81,14 @@
           <!-- New Users Today -->
           <div class="card p-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
-                <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
+              <div class="text-gray-500 dark:text-dark-400">
+                <Icon name="userPlus" size="md" class="text-primary-700 dark:text-primary-300" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-600 dark:text-gray-400">
                   {{ t('admin.dashboard.users') }}
                 </p>
-                <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p class="text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
                   +{{ stats.today_new_users }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -96,15 +100,15 @@
         </div>
 
         <!-- Row 2: Token Stats -->
-        <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div class="grid grid-cols-1 divide-y divide-gray-200 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-700 sm:grid-cols-2 lg:grid-cols-4">
           <!-- Today Tokens -->
-          <div class="card p-4">
+          <div class="min-w-0 px-4 py-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
+              <div class="hidden">
                 <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.todayTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
@@ -134,13 +138,13 @@
           </div>
 
           <!-- Total Tokens -->
-          <div class="card p-4">
+          <div class="min-w-0 px-4 py-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-indigo-100 p-2 dark:bg-indigo-900/30">
+              <div class="hidden">
                 <Icon name="database" size="md" class="text-indigo-600 dark:text-indigo-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.totalTokens') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
@@ -170,13 +174,13 @@
           </div>
 
           <!-- Performance (RPM/TPM) -->
-          <div class="card p-4">
+          <div class="min-w-0 px-4 py-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-violet-100 p-2 dark:bg-violet-900/30">
+              <div class="hidden">
                 <Icon name="bolt" size="md" class="text-violet-600 dark:text-violet-400" :stroke-width="2" />
               </div>
               <div class="flex-1">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.performance') }}
                 </p>
                 <div class="flex items-baseline gap-2">
@@ -196,13 +200,13 @@
           </div>
 
           <!-- Avg Response Time -->
-          <div class="card p-4">
+          <div class="min-w-0 px-4 py-4">
             <div class="flex items-center gap-3">
-              <div class="rounded-lg bg-rose-100 p-2 dark:bg-rose-900/30">
+              <div class="hidden">
                 <Icon name="clock" size="md" class="text-rose-600 dark:text-rose-400" :stroke-width="2" />
               </div>
               <div>
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
                   {{ t('admin.dashboard.avgResponse') }}
                 </p>
                 <p class="text-xl font-bold text-gray-900 dark:text-white">
@@ -399,6 +403,7 @@ const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
+const snapshotError = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
 const rankingLoading = ref(false)
@@ -652,6 +657,7 @@ const onDateRangeChange = (range: {
 
 // Load data
 const loadDashboardSnapshot = async (includeStats: boolean) => {
+  snapshotError.value = false
   const currentSeq = ++chartLoadSeq
   if (includeStats && !stats.value) {
     loading.value = true
@@ -676,6 +682,7 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
     modelStats.value = response.models || []
   } catch (error) {
     if (currentSeq !== chartLoadSeq) return
+    snapshotError.value = true
     appStore.showError(t('admin.dashboard.failedToLoad'))
     console.error('Error loading dashboard snapshot:', error)
   } finally {

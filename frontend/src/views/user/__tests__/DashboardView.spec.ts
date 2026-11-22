@@ -3,6 +3,11 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import DashboardView from '../DashboardView.vue'
 
+vi.mock('vue-i18n', async importOriginal => ({
+  ...await importOriginal<typeof import('vue-i18n')>(),
+  useI18n: () => ({ t: (key: string) => key }),
+}))
+
 const {
   refreshUser,
   getDashboardStats,
@@ -80,4 +85,32 @@ describe('user DashboardView', () => {
     expect(getDashboardModels).toHaveBeenCalledWith({ start_date: today, end_date: today })
     expect(getByDateRange).toHaveBeenCalledWith(today, today)
   })
+  it('首次加载失败显示重试入口，重试成功后恢复账户概览', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    getDashboardStats.mockRejectedValueOnce(new Error('network unavailable'))
+    const wrapper = mount(DashboardView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          LoadingSpinner: true,
+          UserDashboardStats: true,
+          UserDashboardCharts: true,
+          UserDashboardRecentUsage: true,
+          UserDashboardQuickActions: true,
+        },
+      },
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('dashboard.statsLoadFailed')
+      await wrapper.get('[role="alert"] button').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+      expect(wrapper.findComponent({ name: 'UserDashboardStats' }).exists()).toBe(true)
+    } finally {
+      wrapper.unmount()
+      error.mockRestore()
+    }
+  })
+
 })

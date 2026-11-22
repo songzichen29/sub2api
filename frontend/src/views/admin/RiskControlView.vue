@@ -345,7 +345,7 @@
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.enabled') }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.enabledHint') }}</p>
                 </div>
-                <Toggle v-model="configForm.enabled" />
+                <Toggle :aria-label="t('admin.riskControl.enabled')" v-model="configForm.enabled" />
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.mode') }}</label>
@@ -772,7 +772,7 @@
                 <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.recordNonHits') }}</p>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.recordNonHitsHint') }}</p>
               </div>
-              <Toggle v-model="configForm.record_non_hits" />
+              <Toggle :aria-label="t('admin.riskControl.recordNonHits')" v-model="configForm.record_non_hits" />
             </div>
             <div class="space-y-4 rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
               <div class="flex items-center justify-between gap-4">
@@ -780,7 +780,7 @@
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.preHashCheck') }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.preHashCheckHint') }}</p>
                 </div>
-                <Toggle v-model="configForm.pre_hash_check_enabled" />
+                <Toggle :aria-label="t('admin.riskControl.preHashCheck')" v-model="configForm.pre_hash_check_enabled" />
               </div>
               <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900/30">
                 <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -836,21 +836,21 @@
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.emailOnHit') }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.emailOnHitHint') }}</p>
                 </div>
-                <Toggle v-model="configForm.email_on_hit" />
+                <Toggle :aria-label="t('admin.riskControl.emailOnHit')" v-model="configForm.email_on_hit" />
               </div>
               <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700">
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.autoBan') }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.autoBanHint') }}</p>
                 </div>
-                <Toggle v-model="configForm.auto_ban_enabled" />
+                <Toggle :aria-label="t('admin.riskControl.autoBan')" v-model="configForm.auto_ban_enabled" />
               </div>
               <div class="flex items-center justify-between rounded-lg border border-gray-100 p-4 dark:border-dark-700 lg:col-span-2">
                 <div>
                   <p class="text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.riskControl.cyberPolicyExcludeBan') }}</p>
                   <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.cyberPolicyExcludeBanHint') }}</p>
                 </div>
-                <Toggle v-model="configForm.cyber_policy_exclude_from_ban_count" />
+                <Toggle :aria-label="t('admin.riskControl.cyberPolicyExcludeBan')" v-model="configForm.cyber_policy_exclude_from_ban_count" />
               </div>
               <div>
                 <label class="input-label">{{ t('admin.riskControl.banThreshold') }}</label>

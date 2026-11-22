@@ -6,35 +6,27 @@
       @click="toggle"
       :disabled="disabled"
       :aria-expanded="isOpen"
-      :aria-haspopup="true"
-      :id="id"
-      :aria-label="ariaLabel ?? 'Select option'"
+      aria-haspopup="listbox"
+      :id="id || instanceId"
+      :aria-label="ariaLabel"
+      :aria-labelledby="ariaLabelledby"
       :aria-describedby="ariaDescribedby"
+      :aria-controls="isOpen ? `${instanceId}-options` : undefined"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
+        canClear && 'select-trigger-clearable',
         error && 'select-trigger-error',
         disabled && 'select-trigger-disabled'
       ]"
       @keydown.down.prevent="onTriggerKeyDown"
       @keydown.up.prevent="onTriggerKeyDown"
+      @keydown.delete="clearSelection"
     >
       <span class="select-value">
         <slot name="selected" :option="selectedOption">
           {{ selectedLabel }}
         </slot>
-      </span>
-      <span
-        v-if="clearable && hasValue && !disabled"
-        class="select-clear"
-        role="button"
-        tabindex="-1"
-        aria-label="Clear selection"
-        @click.stop="clearSelection"
-        @mousedown.stop
-        @keydown.enter.stop.prevent="clearSelection"
-      >
-        <Icon name="x" size="sm" />
       </span>
       <span class="select-icon">
         <Icon
@@ -43,6 +35,15 @@
           :class="['transition-transform duration-200', isOpen && 'rotate-180']"
         />
       </span>
+    </button>
+    <button
+      v-if="canClear"
+      type="button"
+      class="select-clear"
+      :aria-label="t('common.clearSelection')"
+      @click.stop="clearSelection"
+    >
+      <Icon name="x" size="sm" />
     </button>
 
     <!-- Teleport dropdown to body to escape stacking context -->
@@ -55,6 +56,9 @@
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
+          :id="`${instanceId}-options`"
+          :aria-label="ariaLabel || placeholderText"
+          :aria-labelledby="ariaLabelledby"
           tabindex="-1"
           @click.stop
           @mousedown.stop
@@ -154,6 +158,7 @@ interface Props {
   clearable?: boolean
   id?: string
   ariaLabel?: string
+  ariaLabelledby?: string
   ariaDescribedby?: string
   /** 远程搜索模式：输入不在本地过滤 options，而是防抖后 emit('search', query)，由父组件请求数据更新 options */
   remote?: boolean
@@ -432,10 +437,14 @@ const selectOption = (option: any) => {
   triggerRef.value?.focus()
 }
 
-const clearSelection = () => {
-  if (props.disabled) return
+const canClear = computed(() => props.clearable && hasValue.value && !props.disabled)
+
+const clearSelection = (event: Event) => {
+  if (!canClear.value || (event instanceof KeyboardEvent && event.isComposing)) return
+  event.preventDefault()
   emit('update:modelValue', null)
   emit('change', null, null)
+  triggerRef.value?.focus()
 }
 
 // Keyboards
@@ -520,11 +529,11 @@ onUnmounted(() => {
 <style scoped>
 .select-trigger {
   @apply flex w-full items-center justify-between gap-2;
-  @apply rounded-xl px-4 py-2.5 text-sm;
+  @apply rounded-md px-3 py-2 text-sm;
   @apply bg-white dark:bg-dark-800;
   @apply border border-gray-200 dark:border-dark-600;
   @apply text-gray-900 dark:text-gray-100;
-  @apply transition-all duration-200;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
   @apply focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30;
   @apply hover:border-gray-300 dark:hover:border-dark-500;
   @apply cursor-pointer;
@@ -551,9 +560,14 @@ onUnmounted(() => {
 }
 
 .select-clear {
-  @apply flex flex-shrink-0 cursor-pointer items-center justify-center;
-  @apply rounded text-gray-400 transition-colors;
-  @apply hover:text-gray-600 dark:hover:text-gray-200;
+  @apply absolute right-9 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center;
+  @apply rounded text-gray-500 transition-colors dark:text-dark-400;
+  @apply hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200;
+  @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600;
+}
+
+.select-trigger-clearable .select-value {
+  @apply pr-7;
 }
 </style>
 
@@ -561,9 +575,9 @@ onUnmounted(() => {
 .select-dropdown-portal {
   @apply w-max min-w-[200px];
   @apply bg-white dark:bg-dark-800;
-  @apply rounded-xl;
+  @apply rounded-lg;
   @apply border border-gray-200 dark:border-dark-700;
-  @apply shadow-lg shadow-black/10 dark:shadow-black/30;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.1);
   @apply overflow-hidden;
   pointer-events: auto !important;
 }
@@ -628,12 +642,12 @@ onUnmounted(() => {
 
 .select-dropdown-enter-active,
 .select-dropdown-leave-active {
-  transition: all 0.2s ease;
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
 }
 
 .select-dropdown-enter-from,
 .select-dropdown-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-4px);
 }
 </style>

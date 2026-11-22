@@ -30,7 +30,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const isMobile = ref(false)
 
 const checkMobile = () => {
-  isMobile.value = window.innerWidth < 1024
+  isMobile.value = window.innerWidth < 768
 }
 
 onMounted(() => {
@@ -47,7 +47,13 @@ onUnmounted(() => {
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
   @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  height: calc(100dvh - 64px - 2rem);
+}
+
+@media (min-width: 768px) {
+  .table-page-layout {
+    height: calc(100dvh - 64px - 3rem);
+  }
 }
 
 .layout-section-fixed {
@@ -60,7 +66,7 @@ onUnmounted(() => {
 
 /* 表格滚动容器 - 增强版表体滚动方案 */
 .table-scroll-container {
-  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  @apply flex flex-col overflow-hidden h-full bg-white dark:bg-dark-800 rounded-lg border border-gray-200 dark:border-dark-700;
 }
 
 .table-scroll-container :deep(.table-wrapper) {
@@ -84,14 +90,18 @@ onUnmounted(() => {
 }
 
 .table-scroll-container :deep(th) {
-  @apply px-5 py-4 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
+  @apply py-3 text-left text-sm font-medium text-gray-600 dark:text-dark-300 border-b border-gray-200 dark:border-dark-700;
 }
 
 .table-scroll-container :deep(td) {
-  @apply px-5 py-4 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-dark-800;
+  @apply py-3 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-100 dark:border-dark-800;
 }
 
 /* 移动端：恢复正常滚动 */
+.table-page-layout.mobile-mode {
+  height: auto;
+}
+
 .table-page-layout.mobile-mode .table-scroll-container {
   @apply h-auto overflow-visible border-none shadow-none bg-transparent;
 }

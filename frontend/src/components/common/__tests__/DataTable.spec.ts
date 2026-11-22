@@ -81,6 +81,25 @@ describe('DataTable', () => {
     expect(nameHeader.attributes('aria-sort')).toBe('descending')
     expect(nameHeader.findAll('svg')[0].classes()).toContain('text-gray-300')
     expect(nameHeader.findAll('svg')[1].classes()).toContain('text-primary-600')
+    expect(nameHeader.get('button').attributes('aria-label')).toContain('Name')
+    await nameHeader.get('button').trigger('click')
+    expect(nameHeader.attributes('aria-sort')).toBe('ascending')
+  })
+
+  it('窄屏卡片仍可选择排序字段并切换方向', async () => {
+    stubMobileMatchMedia()
+    const wrapper = mount(DataTable, { props: {
+      columns: [{ key: 'name', label: '名称', sortable: true }, { key: 'id', label: '编号', sortable: true }],
+      data: [{ id: 1, name: '测试' }],
+      defaultSortKey: 'name',
+      serverSideSort: true,
+    } })
+    await wrapper.vm.$nextTick()
+    await wrapper.get('select').setValue('id')
+    expect(wrapper.emitted('sort')?.at(-1)).toEqual(['id', 'asc'])
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('sort')?.at(-1)).toEqual(['id', 'desc'])
+    wrapper.unmount()
   })
 
   it('renders every row with no virtual padding spacer for small datasets (virtualization off)', async () => {

@@ -50,7 +50,7 @@ describe('QQ module settings', () => {
   api.runtime.mockResolvedValue({ groups: [{ id: 'discovered', last_event: '', last_seen_at: '' }], jobs: [], rewards: [], bindings: 0, encryption_ready: true })
   const w = await mountView(locale, '/admin/qqbot/groups')
   const panel = w.get('#qqbot-settings-panel-groups')
-  const card = panel.findAll('article')[0]!
+  const card = panel.findAll('[data-testid="qq-group-policy"]')[0]!
   expect(card.text()).toContain('技术交流群')
   expect(card.get('code').text()).toBe('group')
   expect((card.get('input[maxlength="60"]').element as HTMLInputElement).value).toBe('')
@@ -68,8 +68,8 @@ describe('QQ module settings', () => {
   api.groupInfo.mockImplementation(async (appID: string, groupID: string) => ({ app_id: appID, sandbox: false, group_id: groupID, name: '官方群名称', status: 'available' }))
   const w = await mountView('zh', '/admin/qqbot/groups')
   const panel = w.get('#qqbot-settings-panel-groups')
-  const card = panel.findAll('article')[0]!
-  expect(card.get('p').text()).toBe('VIP 客户群')
+  const card = panel.findAll('[data-testid="qq-group-policy"]')[0]!
+  expect(card.get('summary').text()).toContain('VIP 客户群')
   const picker = panel.find('fieldset')
   await picker.get('input.input').setValue('官方群名称')
   expect(picker.text()).toContain('VIP 客户群')
@@ -84,7 +84,7 @@ describe('QQ module settings', () => {
   const panel = w.get('#qqbot-settings-panel-groups')
   expect(panel.text()).toContain('NapCat 暂时无法获取群资料')
   expect(api.groupInfo).toHaveBeenCalledTimes(1)
-  await panel.findAll('article')[0]!.get('input[maxlength="60"]').setValue('手填群昵称')
+  await panel.findAll('[data-testid="qq-group-policy"]')[0]!.get('input[maxlength="60"]').setValue('手填群昵称')
   await w.get('form').trigger('submit'); await flushPromises()
   expect(server.group_policies?.[0]?.label).toBe('手填群昵称')
  })
