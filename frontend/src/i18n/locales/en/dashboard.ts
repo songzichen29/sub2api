@@ -1068,7 +1068,8 @@ export default {
       "perRequest": "Per request",
       "perImage": "Per image",
       "reasoningMultiplierBadge": "{effort} ×{multiplier}",
-      "reasoningMultiplierHint": "When the forwarded reasoning effort is {effort}, billing and quota usage for the request are multiplied by {multiplier}. Unconfigured levels use 1×"
+      "reasoningMultiplierHint": "When the forwarded reasoning effort is {effort}, billing and quota usage for the request are multiplied by {multiplier}. Unconfigured levels use 1×",
+      "copyModelId": "Copy model ID {model}"
     },
     "nav": {
       "login": "Sign In",

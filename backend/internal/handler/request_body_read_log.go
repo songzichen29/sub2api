@@ -16,14 +16,13 @@ import (
 // logging request content.
 func requestBodyReadFailure(reqLog *zap.Logger, req *http.Request, err error) (int, string) {
 	failure := pkghttputil.DescribeRequestBodyReadFailure(req, err)
-	if failure.Kind == pkghttputil.RequestBodyReadErrorMaxBytes {
-		return failure.Status, buildBodyTooLargeMessage(failure.MaxBytesLimit)
+	if failure.Kind != pkghttputil.RequestBodyReadErrorMaxBytes {
+		logRequestBodyReadFailure(reqLog, failure)
 	}
-	logRequestBodyReadFailure(reqLog, failure)
 	if failure.Kind == pkghttputil.RequestBodyReadErrorUnsupportedContentEncoding || failure.Kind == pkghttputil.RequestBodyReadErrorDecodeContentEncoding {
 		return failure.Status, requestBodyReadErrorMessage(err)
 	}
-	return failure.Status, failure.Message
+	return failure.Status, failure.ClientMessage()
 }
 
 func logRequestBodyReadFailure(reqLog *zap.Logger, failure pkghttputil.RequestBodyReadFailure) {

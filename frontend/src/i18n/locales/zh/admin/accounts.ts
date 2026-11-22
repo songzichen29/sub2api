@@ -1962,6 +1962,8 @@ export default {
       "errorTooLarge": "目录超过读取上限",
       "errorPersistence": "目录保存失败"
     },
-    "modelWildcardNotSupported": "模型白名单不支持通配符，请输入完整的模型名称。"
+    "modelWildcardNotSupported": "模型白名单不支持通配符，请输入完整的模型名称。",
+    "refreshTokenHint": "系统已在后台自动刷新令牌，频繁手动刷新可能与自动刷新相互冲突，导致令牌失效、账号被暂停",
+    "refreshTokenFrequentWarning": "距离上次手动刷新不足一分钟：频繁刷新可能与后台自动刷新冲突，导致令牌失效。如无必要请稍候再试。"
   }
 }

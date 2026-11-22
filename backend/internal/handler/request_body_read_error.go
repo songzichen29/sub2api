@@ -74,7 +74,7 @@ func logRequestBodyReadError(c *gin.Context, component string, err error) {
 
 func writeOpenAIRequestBodyReadError(h *OpenAIGatewayHandler, c *gin.Context, component string, err error) {
 	if maxErr, ok := extractMaxBytesError(err); ok {
-		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", pkghttputil.BodyTooLargeMessage(maxErr.Limit))
 		return
 	}
 	logRequestBodyReadError(c, component, err)
@@ -83,7 +83,7 @@ func writeOpenAIRequestBodyReadError(h *OpenAIGatewayHandler, c *gin.Context, co
 
 func writeOpenAIAnthropicRequestBodyReadError(h *OpenAIGatewayHandler, c *gin.Context, component string, err error) { //nolint:unused // retained for Anthropic-compatible gateway variants
 	if maxErr, ok := extractMaxBytesError(err); ok {
-		h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		h.anthropicErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", pkghttputil.BodyTooLargeMessage(maxErr.Limit))
 		return
 	}
 	logRequestBodyReadError(c, component, err)
@@ -92,7 +92,7 @@ func writeOpenAIAnthropicRequestBodyReadError(h *OpenAIGatewayHandler, c *gin.Co
 
 func writeGatewayRequestBodyReadError(h *GatewayHandler, c *gin.Context, component string, err error) { //nolint:unused // retained for gateway variants
 	if maxErr, ok := extractMaxBytesError(err); ok {
-		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", pkghttputil.BodyTooLargeMessage(maxErr.Limit))
 		return
 	}
 	logRequestBodyReadError(c, component, err)
@@ -101,7 +101,7 @@ func writeGatewayRequestBodyReadError(h *GatewayHandler, c *gin.Context, compone
 
 func writeGatewayResponsesRequestBodyReadError(h *GatewayHandler, c *gin.Context, component string, err error) { //nolint:unused // retained for Responses gateway variants
 	if maxErr, ok := extractMaxBytesError(err); ok {
-		h.responsesErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		h.responsesErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", pkghttputil.BodyTooLargeMessage(maxErr.Limit))
 		return
 	}
 	logRequestBodyReadError(c, component, err)
@@ -110,7 +110,7 @@ func writeGatewayResponsesRequestBodyReadError(h *GatewayHandler, c *gin.Context
 
 func writeGatewayChatCompletionsRequestBodyReadError(h *GatewayHandler, c *gin.Context, component string, err error) { //nolint:unused // retained for chat-completions gateway variants
 	if maxErr, ok := extractMaxBytesError(err); ok {
-		h.chatCompletionsErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		h.chatCompletionsErrorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", pkghttputil.BodyTooLargeMessage(maxErr.Limit))
 		return
 	}
 	logRequestBodyReadError(c, component, err)

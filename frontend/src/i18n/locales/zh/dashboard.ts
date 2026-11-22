@@ -1068,7 +1068,8 @@ export default {
       "perRequest": "按次计费",
       "perImage": "按图片计费",
       "reasoningMultiplierBadge": "{effort} ×{multiplier}",
-      "reasoningMultiplierHint": "最终转发的思考等级为 {effort} 时，整次请求的计费与额度消耗乘以 {multiplier}；未配置的等级按 1 倍计费"
+      "reasoningMultiplierHint": "最终转发的思考等级为 {effort} 时，整次请求的计费与额度消耗乘以 {multiplier}；未配置的等级按 1 倍计费",
+      "copyModelId": "复制模型 ID {model}"
     },
     "nav": {
       "login": "登录",

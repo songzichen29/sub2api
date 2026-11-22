@@ -1962,6 +1962,8 @@ export default {
       "errorTooLarge": "The catalog exceeds the read limit",
       "errorPersistence": "The catalog could not be saved"
     },
-    "modelWildcardNotSupported": "Wildcards are not supported in the model whitelist. Enter an exact model name."
+    "modelWildcardNotSupported": "Wildcards are not supported in the model whitelist. Enter an exact model name.",
+    "refreshTokenHint": "Tokens are refreshed automatically in the background. Frequent manual refreshes can race the automatic refresh and invalidate the token, pausing the account.",
+    "refreshTokenFrequentWarning": "Less than a minute since the last manual refresh: frequent refreshes can race the background auto-refresh and invalidate the token. Only retry when necessary."
   }
 }
