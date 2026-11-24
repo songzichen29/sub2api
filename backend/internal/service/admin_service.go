@@ -457,7 +457,8 @@ type CreateAccountInput struct {
 	ProbeEnabled       *bool
 	RateSyncEnabled    *bool
 	// Tags 创建账号时附带的管理员标签，由 service 层统一规范化。
-	Tags []string
+	Tags             []string
+	GroupSyncEnabled *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -492,6 +493,7 @@ type UpdateAccountInput struct {
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
 	ProbeEnabled       *bool
+	GroupSyncEnabled   *bool
 	RateSyncEnabled    *bool
 	// Tags 用指针区分 "未提供（不改）" 与 "显式空数组（清空）"。
 	Tags                  *[]string

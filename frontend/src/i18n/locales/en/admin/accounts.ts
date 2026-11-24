@@ -202,6 +202,14 @@ export default {
       "hint": "Displayed as \"group / base score / sticky bonus\". The base score is computed within the current filtered candidate set and includes priority, load, queue depth, error rate, first-token latency, reset window, quota headroom, and related factors. The sticky bonus applies only when sticky weighting is enabled for previous_response_id or session_hash. Higher scores are preferred."
     },
     "upstreamBilling": {
+      "autoSyncGroup": "Auto-sync upstream group name and notes",
+      "autoSyncGroupHint": "A successful probe replaces the local name and notes with any text the upstream provides. Account rate sync is controlled separately.",
+      "syncGroup": "Sync upstream group name and notes",
+      "saveGroup": "Sync and save upstream group name and notes",
+      "groupCredentials": "Enter the upstream URL and API key. Re-enter the key after changing the URL or proxy.",
+      "groupUnavailable": "The upstream returned no group name or description to sync.",
+      "groupFailed": "Failed to sync upstream group details",
+      "groupSynced": "Account name and notes synced",
       "trustWarning": "This rate is declared by the upstream site for the current API key. Sub2API cannot verify that it matches actual charges. The upstream site or an intermediary may return forged, stale, or modified data. Verify it against bills, balance changes, and actual usage.",
       "autoProbe": "Automatically probe upstream declared rate",
       "autoProbeHint": "Probe this account's upstream declared rate on the global interval when global probing is enabled.",
@@ -695,6 +703,36 @@ export default {
     "interceptWarmupRequests": "Intercept Warmup Requests",
     "interceptWarmupRequestsDesc": "When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens",
     "headerOverride": {
+      "invalidVariable": "Invalid variable: pick one from \"Identity variables\" below; other variable names are not supported",
+      "variableNotAllowed": "OAuth accounts do not support identity variables. Remove this row or use a fixed value",
+      "removeRow": "Remove this header",
+      "previewLabel": "Sent as",
+      "variablesTitle": "Identity variables",
+      "variablesHint": "Report the gateway user behind each request to the upstream, so a request can be traced back layer by layer. Click a variable while editing a value to insert it at the cursor; otherwise a new row is added.",
+      "variablesUnavailable": "OAuth accounts do not support identity variables: subscription upstreams never receive gateway user identity. Only fixed values can be used here.",
+      "variables": {
+        "user_id": {
+          "label": "User ID",
+          "desc": "The gateway user who sent the request"
+        },
+        "api_key_id": {
+          "label": "API Key ID",
+          "desc": "The key used for this request; tells apart multiple keys of one user"
+        },
+        "group_id": {
+          "label": "Group ID",
+          "desc": "The group bound to the key; the header is not sent when no group is bound"
+        },
+        "request_id": {
+          "label": "Request ID",
+          "desc": "Same as the \"Request ID\" in error records, for direct cross-checking; characters other than letters, digits and . _ - become underscores"
+        }
+      },
+      "variableNotes": {
+        "unresolved": "When a value is unavailable (connection tests, model sync and other background requests without a user), the whole header is not sent, and a same-named header from the client is not passed through either.",
+        "apiKeyOnly": "Only applies to API key accounts. OAuth accounts never report identity.",
+        "websocket": "In OpenAI WebSocket mode handshake headers are per connection: headers containing the request ID are not sent, and requests with different reported identities never share an upstream connection."
+      },
       "title": "Header Override",
       "hint": "Override same-named request headers on forwarding (case-insensitive)",
       "info": "Applies to outbound requests of this account only: configured headers override client/gateway-generated headers of the same name before forwarding. Auth headers (authorization, x-api-key) and connection-control headers cannot be overridden.",

@@ -358,6 +358,12 @@ export default {
       "searchPlaceholder": "搜索 request_id / client_request_id / message"
     },
     "errorDetail": {
+      "reportedHeaders": {
+        "title": "身份上报请求头",
+        "hint": "本次请求转发时实际发给上游的身份请求头（由账号「请求头覆写」中的变量生成），可拿去与上游逐层对账。覆写值里混有固定文本时，固定文本以 … 代替、变量以「名称=值」显示，避免密钥进入日志。",
+        "copy": "复制",
+        "copied": "已复制"
+      },
       "title": "错误详情",
       "titleWithId": "错误 #{id}",
       "noErrorSelected": "未选择错误。",
