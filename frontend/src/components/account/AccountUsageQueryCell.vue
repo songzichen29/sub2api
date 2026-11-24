@@ -46,13 +46,14 @@ const requestVersion = ref(0)
 const isSub2API = computed(() => props.account.extra?.usage_query?.provider === 'sub2api')
 const displayUsage = computed(() => keyIndex.value > 0 ? selectedUsage.value : props.usage)
 
-watch(() => JSON.stringify([props.account.id, props.account.api_key_count, props.account.updated_at, props.account.extra?.usage_query, props.account.credentials?.base_url]), () => {
+watch(() => JSON.stringify([props.account.id, props.account.api_key_count, props.account.extra?.usage_query, props.account.credentials?.base_url]), () => {
   requestVersion.value++
   keyIndex.value = 0
   selectedUsage.value = null
   selectedError.value = null
   querying.value = false
 })
+watch(() => props.account.updated_at, () => { if (keyIndex.value > 0) void query() })
 watch(() => props.manualRefreshToken, () => { if (keyIndex.value > 0) void query() })
 onBeforeUnmount(() => { requestVersion.value++ })
 

@@ -157,11 +157,55 @@ describe('account usage layout with real provider components', () => {
     await flushPromises()
     expect(getUsage).toHaveBeenCalledWith(9601, 'active', true, 2)
     expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
-    await wrapper.setProps({ batchedUsage: { third_party_key: { index: 1 }, third_party_quota: { ...quota, remaining: 9 } } })
+    await wrapper.setProps({
+      account: { ...wrapper.props('account'), updated_at: '2026-11-24T12:00:10Z', last_used_at: '2026-11-24T12:00:10Z' },
+      batchedUsage: { third_party_key: { index: 1 }, third_party_quota: { ...quota, remaining: 0 } }
+    })
+    await flushPromises()
+    expect((wrapper.get('[data-testid="usage-query-key"]').element as HTMLSelectElement).value).toBe('2')
     expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
     await wrapper.get('[data-testid="usage-query-key"]').setValue('0')
     await flushPromises()
     expect(getUsage).toHaveBeenLastCalledWith(9601, 'active', true)
+  })
+
+  it.each(['openai', 'anthropic'] as const)('refreshes the automatic %s pool balance after account activity', async platform => {
+    const quota = { plan_name: 'balance', remaining: 0, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    getUsage.mockReset()
+      .mockResolvedValueOnce({ third_party_key: { index: 1 }, third_party_quota: quota })
+      .mockResolvedValueOnce({ third_party_key: { index: 2 }, third_party_quota: { ...quota, remaining: 22 } })
+    const wrapper = mount(AccountUsageCell, { props: {
+      account: account({ id: 9801, platform, api_key_count: 2, updated_at: '2026-11-24T12:00:00Z', extra: { usage_query: { enabled: true, provider: 'sub2api' } } })
+    } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$0.00')
+    await wrapper.setProps({ account: {
+      ...wrapper.props('account'), updated_at: '2026-11-24T12:00:10Z', last_used_at: '2026-11-24T12:00:10Z'
+    } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="third-party-key"]').text()).toBe('admin.accounts.usageQuery.primaryKey:2')
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
+  })
+
+  it('discards an old automatic balance response after account activity', async () => {
+    const quota = { plan_name: 'balance', remaining: 0, used: 0, total: 0, unit: 'USD', utilization: 0, total_known: false }
+    let completeFirst!: (value: AccountUsageInfo) => void
+    getUsage.mockReset()
+      .mockReturnValueOnce(new Promise<AccountUsageInfo>(resolve => { completeFirst = resolve }))
+      .mockResolvedValueOnce({ third_party_key: { index: 2 }, third_party_quota: { ...quota, remaining: 22 } })
+    const wrapper = mount(AccountUsageCell, { props: {
+      account: account({ id: 9802, api_key_count: 2, updated_at: '2026-11-24T12:00:00Z', extra: { usage_query: { enabled: true, provider: 'sub2api' } } })
+    } })
+    await flushPromises()
+    await wrapper.setProps({ account: {
+      ...wrapper.props('account'), updated_at: '2026-11-24T12:00:10Z', last_used_at: '2026-11-24T12:00:10Z'
+    } })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
+    completeFirst({ third_party_key: { index: 1 }, third_party_quota: quota })
+    await flushPromises()
+    expect(wrapper.get('[data-testid="third-party-remaining"]').text()).toContain('$22.00')
   })
 
   it('discards an old selected-key response after switching keys', async () => {

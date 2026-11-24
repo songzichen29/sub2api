@@ -97,6 +97,10 @@ func TestThirdPartyUsageFollowsSuccessfulPoolKey(t *testing.T) {
 	var rejectAll atomic.Bool
 	primaryStatus.Store(http.StatusPaymentRequired)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_, _ = fmt.Fprint(w, `{"data":[]}`)
+			return
+		}
 		if r.URL.Path == "/v1/usage" {
 			usageQueries.Add(1)
 			w.Header().Set("Content-Type", "application/json")
@@ -156,6 +160,22 @@ func TestThirdPartyUsageFollowsSuccessfulPoolKey(t *testing.T) {
 	require.Equal(t, 20.0, usage.ThirdPartyQuota.Remaining)
 	require.Equal(t, 2, usage.ThirdPartyKey.Index)
 	require.NotNil(t, usage.ThirdPartyKey.LastUsedAt)
+	require.Equal(t, int32(2), usageQueries.Load())
+
+	// 已耗尽的主 Key 仍能读取模型列表，辅助查询不能把余额面板切回主 Key。
+	lastUsedAt := usage.ThirdPartyKey.LastUsedAt
+	req, err := http.NewRequest(http.MethodGet, upstream.URL+"/v1/models", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer first")
+	resp, err := DoWithAccountAPIKeyFailover(WithAccountAPIKeysForQuery(req, account), upstream.Client().Do)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.NoError(t, resp.Body.Close())
+	usage, err = svc.getThirdPartyUsage(context.Background(), account, cfg, false)
+	require.NoError(t, err)
+	require.Equal(t, 2, usage.ThirdPartyKey.Index)
+	require.Equal(t, 20.0, usage.ThirdPartyQuota.Remaining)
+	require.Equal(t, lastUsedAt, usage.ThirdPartyKey.LastUsedAt)
 	require.Equal(t, int32(2), usageQueries.Load())
 
 	// 全部请求失败时保留最近一次成功 Key，同一 Key 继续复用自己的余额缓存。

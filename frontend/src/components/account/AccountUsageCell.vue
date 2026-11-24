@@ -1640,17 +1640,17 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
 			? adminAPI.accounts.getUsage(props.account.id, options.source, options.bypassCache === true)
 			: adminAPI.accounts.getUsage(props.account.id)
     const result = await enqueueUsageRequest(props.account, fetchFn)
-    if (!unmounted.value) {
+    if (!unmounted.value && refreshKey === usageRefreshKey.value) {
       usageInfo.value = result
       _usageCache.set(props.account.id, { data: result, ts: Date.now(), refreshKey })
     }
   } catch (e: any) {
-    if (!unmounted.value) {
+    if (!unmounted.value && refreshKey === usageRefreshKey.value) {
       error.value = t('common.error')
       console.error('Failed to load usage:', e)
     }
   } finally {
-    if (!unmounted.value) loading.value = false
+    if (!unmounted.value && refreshKey === usageRefreshKey.value) loading.value = false
   }
 }
 
@@ -1711,7 +1711,7 @@ const loadActiveUsage = async () => {
   error.value = null
   try {
     const result = await adminAPI.accounts.getUsage(accountID, 'active', true)
-    if (!unmounted.value && props.account.id === accountID) {
+    if (!unmounted.value && props.account.id === accountID && refreshKey === usageRefreshKey.value) {
       usageInfo.value = result
       _usageCache.set(accountID, { data: result, ts: Date.now(), refreshKey })
     }

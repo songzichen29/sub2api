@@ -17,6 +17,7 @@ type accountAPIKeysRequest struct {
 	accountID       int64
 	keys            []string
 	poolFingerprint [32]byte
+	queryOnly       bool
 }
 
 type accountAPIKeyUse struct {
@@ -25,7 +26,7 @@ type accountAPIKeyUse struct {
 	usedAt          time.Time
 }
 
-// 仅保存当前进程最近收到成功响应的 Key 序号，不保存 Key 明文。
+// 仅保存当前进程最近成功业务请求的 Key 序号，不保存 Key 明文。
 var recentAccountAPIKeyUses sync.Map // accountID -> accountAPIKeyUse
 
 func accountAPIKeyPoolFingerprint(baseURL string, keys []string) [32]byte {
@@ -35,18 +36,28 @@ func accountAPIKeyPoolFingerprint(baseURL string, keys []string) [32]byte {
 // WithAccountAPIKeys opts an account-authenticated request into ordered failover.
 // It does not change the account, header map, or request body shared by callers.
 func WithAccountAPIKeys(req *http.Request, account *Account) *http.Request {
+	return withAccountAPIKeysRequest(req, account, false)
+}
+
+// WithAccountAPIKeysForQuery 保留辅助查询的顺序切换，但不覆盖最近成功业务请求的 Key。
+func WithAccountAPIKeysForQuery(req *http.Request, account *Account) *http.Request {
+	return withAccountAPIKeysRequest(req, account, true)
+}
+
+func withAccountAPIKeysRequest(req *http.Request, account *Account, queryOnly bool) *http.Request {
 	if req == nil || account == nil || account.Type != AccountTypeAPIKey || account.Credentials["api_keys"] == nil {
 		return req
 	}
-	return req.WithContext(withAccountAPIKeysContext(req.Context(), account))
+	return req.WithContext(withAccountAPIKeysContext(req.Context(), account, queryOnly))
 }
 
-func withAccountAPIKeysContext(ctx context.Context, account *Account) context.Context {
+func withAccountAPIKeysContext(ctx context.Context, account *Account, queryOnly bool) context.Context {
 	if keys := account.OrderedAPIKeys(); len(keys) > 1 {
 		return context.WithValue(ctx, accountAPIKeysContextKey{}, accountAPIKeysRequest{
 			accountID:       account.ID,
 			keys:            keys,
 			poolFingerprint: accountAPIKeyPoolFingerprint(account.GetCredential("base_url"), keys),
+			queryOnly:       queryOnly,
 		})
 	}
 	return ctx
@@ -78,7 +89,7 @@ func DoWithAccountAPIKeyFailover(req *http.Request, send func(*http.Request) (*h
 		}
 		replaceRequestAPIKey(attempt, keys[0], key)
 		resp, err := send(attempt)
-		if err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if !pool.queryOnly && err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			recentAccountAPIKeyUses.Store(pool.accountID, accountAPIKeyUse{
 				poolFingerprint: pool.poolFingerprint,
 				index:           i,

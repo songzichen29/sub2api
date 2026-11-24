@@ -47,6 +47,23 @@ describe('DataTable', () => {
     localStorage.clear()
   })
 
+  it('uses the measured selection column width for the pinned name offset', async () => {
+    const columns = [{ key: 'select', label: '' }, { key: 'name', label: '名称' }, { key: 'id', label: 'ID' }]
+    const wrapper = mount(DataTable, { props: { columns, data: [{ id: 1, name: '账号' }] } })
+    await wrapper.vm.$nextTick()
+    const header = wrapper.get('.sticky-col-left-first').element
+    const measure = vi.spyOn(header, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 36, 24))
+    await wrapper.setProps({ data: [{ id: 1, name: '账号' }, { id: 2, name: '账号 2' }] })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.table-wrapper').attributes('style')).toContain('--select-col-width: 36px')
+    measure.mockReturnValue(new DOMRect(0, 0, 44, 24))
+    await wrapper.setProps({ columns: columns.slice(0, 2) })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.table-wrapper').attributes('style')).toContain('--select-col-width: 44px')
+    measure.mockRestore()
+    wrapper.unmount()
+  })
+
   it('renders paired sort arrows and highlights the active direction', async () => {
     const wrapper = mount(DataTable, {
       props: {

@@ -71,6 +71,16 @@ export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'ex
 }
 
 export const buildAccountUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'extra'>): string => {
+  if (account.type === 'apikey' && account.extra?.usage_query?.enabled) {
+    return serializeSnapshotRefreshValue([
+      account.id,
+      account.platform,
+      account.type,
+      account.updated_at ?? null,
+      account.last_used_at ?? null,
+      account.extra.usage_query
+    ])
+  }
   if (account.platform === 'openai') return buildOpenAIUsageRefreshKey(account)
 
   const isClaude = account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')

@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { buildAccountUsageRefreshKey, buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '../accountUsageRefresh'
+import { buildAccountUsageRefreshKey, buildOpenAIUsageRefreshKey } from '../accountUsageRefresh'
 
 describe('buildAccountUsageRefreshKey', () => {
+  it.each(['openai', 'anthropic', 'gemini', 'grok', 'antigravity', 'zhipu'] as const)('tracks activity and query configuration for %s API-key accounts', platform => {
+    const base = {
+      id: 42, platform, type: 'apikey' as const, updated_at: '2026-11-24T12:00:00Z', last_used_at: null,
+      extra: { usage_query: { enabled: true, provider: 'sub2api' as const } }
+    }
+    const initial = buildAccountUsageRefreshKey(base)
+    expect(initial).not.toBe('')
+    expect(buildAccountUsageRefreshKey({ ...base, last_used_at: '2026-11-24T12:00:10Z' })).not.toBe(initial)
+    expect(buildAccountUsageRefreshKey({ ...base, updated_at: '2026-11-24T12:00:10Z' })).not.toBe(initial)
+    expect(buildAccountUsageRefreshKey({ ...base, extra: { usage_query: { enabled: true, provider: 'newapi' } } })).not.toBe(initial)
+    expect(buildAccountUsageRefreshKey({ ...base, extra: { usage_query: { provider: 'sub2api', enabled: true } } })).toBe(initial)
+  })
+
   it.each(['oauth', 'setup-token'])('tracks every Claude %s passive snapshot input', (type) => {
     const base = { id: 1, platform: 'anthropic', type, extra: {} } as any
     for (const field of ['last_used_at', 'session_window_start', 'session_window_end', 'session_window_status']) {

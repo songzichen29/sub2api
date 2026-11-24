@@ -151,7 +151,7 @@ func retryableGeminiBatchKeyFailure(err error) bool {
 }
 
 func (p *GeminiAPIBatchImageProvider) Get(ctx context.Context, job *BatchImageJob, account *Account) (*BatchProviderStatus, error) {
-	ctx = withAccountAPIKeysContext(ctx, account)
+	ctx = withAccountAPIKeysContext(ctx, account, true)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return nil, ErrBatchImageProviderUnsupportedAccount
 	}
@@ -190,7 +190,7 @@ func (p *GeminiAPIBatchImageProvider) Get(ctx context.Context, job *BatchImageJo
 }
 
 func (p *GeminiAPIBatchImageProvider) Cancel(ctx context.Context, job *BatchImageJob, account *Account) error {
-	ctx = withAccountAPIKeysContext(ctx, account)
+	ctx = withAccountAPIKeysContext(ctx, account, true)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return ErrBatchImageProviderUnsupportedAccount
 	}
@@ -206,7 +206,7 @@ func (p *GeminiAPIBatchImageProvider) Cancel(ctx context.Context, job *BatchImag
 }
 
 func (p *GeminiAPIBatchImageProvider) OpenResult(ctx context.Context, job *BatchImageJob, account *Account) (io.ReadCloser, string, error) {
-	ctx = withAccountAPIKeysContext(ctx, account)
+	ctx = withAccountAPIKeysContext(ctx, account, true)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return nil, "", ErrBatchImageProviderUnsupportedAccount
 	}
@@ -223,7 +223,7 @@ func (p *GeminiAPIBatchImageProvider) OpenResult(ctx context.Context, job *Batch
 }
 
 func (p *GeminiAPIBatchImageProvider) Cleanup(ctx context.Context, job *BatchImageJob, account *Account, target CleanupTarget) error {
-	ctx = withAccountAPIKeysContext(ctx, account)
+	ctx = withAccountAPIKeysContext(ctx, account, true)
 	if account == nil || account.Platform != PlatformGemini || account.Type != AccountTypeAPIKey {
 		return ErrBatchImageProviderUnsupportedAccount
 	}

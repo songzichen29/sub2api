@@ -352,6 +352,10 @@ const observeElementRectNonZero = (
 const checkScrollable = () => {
   if (tableWrapperRef.value) {
     isScrollable.value = tableWrapperRef.value.scrollWidth > tableWrapperRef.value.clientWidth
+    const selectHeader = tableWrapperRef.value.querySelector<HTMLElement>('.sticky-col-left-first')
+    if (selectHeader) {
+      tableWrapperRef.value.style.setProperty('--select-col-width', `${selectHeader.getBoundingClientRect().width}px`)
+    }
   }
 }
 
@@ -425,11 +429,12 @@ const attachDesktopTableTracking = () => {
   checkScrollable()
   checkActionsColumnWidth()
   if (tableWrapperRef.value && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(() => {
+    resizeObserver = new ResizeObserver(entries => {
       checkScrollable()
-      checkActionsColumnWidth()
+      if (entries.some(entry => entry.target === tableWrapperRef.value)) checkActionsColumnWidth()
     })
     resizeObserver.observe(tableWrapperRef.value)
+    resizeObserver.observe(tableWrapperRef.value.querySelector('table')!)
   } else {
     // 降级方案：不支持 ResizeObserver 时使用 window resize
     resizeHandler = () => {
@@ -1008,7 +1013,7 @@ defineExpose({
 <style scoped>
 /* 表格横向滚动 */
 .table-wrapper {
-  --select-col-width: 52px; /* 勾选列宽度：px-6 (24px*2) + checkbox (16px) */
+  --select-col-width: 0px;
   position: relative;
   overflow-x: auto;
   overflow-y: auto;
