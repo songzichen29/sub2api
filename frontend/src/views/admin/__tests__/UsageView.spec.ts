@@ -377,6 +377,55 @@ describe('admin UsageView distribution metric toggles', () => {
     vi.useRealTimers()
   })
 
+  it('手动刷新绕过全部统计缓存，并在切换模型口径时取新数据', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+
+    for (const request of [getStats, getModelStats, getSnapshotV2]) {
+      expect(request).toHaveBeenCalledTimes(1)
+      expect(request.mock.calls[0][0]).not.toHaveProperty('nocache')
+    }
+
+    wrapper.findComponent(UsageFiltersStub).vm.$emit('refresh')
+    await flushPromises()
+    for (const request of [getStats, getModelStats, getSnapshotV2]) {
+      expect(request).toHaveBeenLastCalledWith(expect.objectContaining({ nocache: 1 }))
+    }
+
+    const chart = wrapper.findComponent({ name: 'ModelDistributionChart' })
+    for (const source of ['upstream', 'mapping']) {
+      chart.vm.$emit('update:source', source)
+      await flushPromises()
+      expect(getModelStats).toHaveBeenLastCalledWith(expect.objectContaining({
+        model_source: source,
+        nocache: 1,
+      }))
+    }
+    const modelCalls = getModelStats.mock.calls.length
+    chart.vm.$emit('update:source', 'requested')
+    await flushPromises()
+    expect(getModelStats).toHaveBeenCalledTimes(modelCalls)
+    wrapper.unmount()
+  })
+
+  it('修改筛选或图表粒度仍使用普通缓存查询', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+    wrapper.findComponent(UsageFiltersStub).vm.$emit('refresh')
+    await flushPromises()
+    wrapper.findComponent(UsageFiltersStub).vm.$emit('change')
+    await flushPromises()
+    for (const request of [getStats, getModelStats, getSnapshotV2]) {
+      expect(request.mock.lastCall?.[0]).not.toHaveProperty('nocache')
+    }
+    wrapper.findComponent({ name: 'Select' }).vm.$emit('change', 'day')
+    await flushPromises()
+    expect(getSnapshotV2.mock.lastCall?.[0]).not.toHaveProperty('nocache')
+    wrapper.unmount()
+  })
+
   it('keeps previous model stats visible during refresh until new data arrives', async () => {
     // 首次加载返回 A
     getModelStats.mockResolvedValueOnce({ models: [{ model: 'A', total_tokens: 10 }] })

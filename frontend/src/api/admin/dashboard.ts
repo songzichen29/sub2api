@@ -78,6 +78,7 @@ export async function getUsageTrend(params?: TrendParams): Promise<TrendResponse
 }
 
 export interface ModelStatsParams {
+  nocache?: number
   start_date?: string
   end_date?: string
   user_id?: number
@@ -130,6 +131,7 @@ export interface GroupStatsResponse {
 }
 
 export interface DashboardSnapshotV2Params extends TrendParams {
+  nocache?: number
   include_stats?: boolean
   include_trend?: boolean
   include_model_stats?: boolean

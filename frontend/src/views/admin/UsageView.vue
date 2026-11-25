@@ -17,7 +17,7 @@
             <div class="ml-auto flex items-center gap-2">
               <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.dashboard.granularity') }}:</span>
               <div class="w-28">
-                <Select v-model="granularity" :options="granularityOptions" @change="loadChartData" />
+                <Select v-model="granularity" :options="granularityOptions" @change="loadChartData()" />
               </div>
             </div>
           </div>
@@ -217,6 +217,7 @@ const usageStats = ref<AdminUsageStatsResponse | null>(null); const usageLogs = 
 const trendData = ref<TrendDataPoint[]>([]); const requestedModelStats = ref<ModelStat[]>([]); const upstreamModelStats = ref<ModelStat[]>([]); const mappingModelStats = ref<ModelStat[]>([]); const groupStats = ref<GroupStat[]>([]); const chartsLoading = ref(false); const modelStatsLoading = ref(false); const granularity = ref<'day' | 'hour'>('hour')
 const modelDistributionMetric = ref<DistributionMetric>('tokens')
 const modelDistributionSource = ref<ModelDistributionSource>('requested')
+const modelSourcesToRefresh = new Set<ModelDistributionSource>()
 const loadedModelSources = reactive<Record<ModelDistributionSource, boolean>>({
   requested: false,
   upstream: false,
@@ -422,14 +423,16 @@ const loadStats = async (force = false) => {
 }
 
 // 失效模型统计缓存:仅标记需要重取,保留旧数据直到新数据到达(避免刷新时图表闪空)。
-const invalidateModelStatsCache = () => {
-  loadedModelSources.requested = false
-  loadedModelSources.upstream = false
-  loadedModelSources.mapping = false
+const invalidateModelStatsCache = (bypassCache = false) => {
+  modelSourcesToRefresh.clear()
+  for (const source of ['requested', 'upstream', 'mapping'] as const) {
+    loadedModelSources[source] = false
+    if (bypassCache) modelSourcesToRefresh.add(source)
+  }
 }
 
-const loadModelStats = async (source: ModelDistributionSource, force = false) => {
-  if (!force && loadedModelSources[source]) {
+const loadModelStats = async (source: ModelDistributionSource) => {
+  if (loadedModelSources[source]) {
     return
   }
 
@@ -453,7 +456,11 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
 	  upstream_model_mismatch: filters.value.upstream_model_mismatch,
     }
 
-    const response = await adminAPI.dashboard.getModelStats({ ...baseParams, model_source: source })
+    const response = await adminAPI.dashboard.getModelStats({
+      ...baseParams,
+      model_source: source,
+      ...(modelSourcesToRefresh.has(source) ? { nocache: 1 } : {}),
+    })
 
     if (seq !== modelStatsReqSeq) return
 
@@ -466,6 +473,7 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       mappingModelStats.value = models
     }
     loadedModelSources[source] = true
+    modelSourcesToRefresh.delete(source)
   } catch (error) {
     if (seq !== modelStatsReqSeq) return
     console.error('Failed to load model stats:', error)
@@ -482,7 +490,7 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
   }
 }
 
-const loadChartData = async () => {
+const loadChartData = async (bypassCache = false) => {
   const seq = ++chartReqSeq
   chartsLoading.value = true
   try {
@@ -506,7 +514,8 @@ const loadChartData = async () => {
       include_trend: true,
       include_model_stats: false,
       include_group_stats: true,
-      include_users_trend: false
+      include_users_trend: false,
+      ...(bypassCache ? { nocache: 1 } : {}),
     })
     if (seq !== chartReqSeq) return
     trendData.value = snapshot.trend || []
@@ -518,7 +527,7 @@ const applyFilters = () => {
   invalidateModelStatsCache()
   loadLogs()
   loadStats()
-  loadModelStats(modelDistributionSource.value, true)
+  loadModelStats(modelDistributionSource.value)
   loadChartData()
   errPage.value = 1
   if (activeTab.value === 'errors') {
@@ -528,11 +537,11 @@ const applyFilters = () => {
   }
 }
 const refreshData = () => {
-  invalidateModelStatsCache()
+  invalidateModelStatsCache(true)
   loadLogs()
   loadStats(true)
-  loadModelStats(modelDistributionSource.value, true)
-  loadChartData()
+  loadModelStats(modelDistributionSource.value)
+  loadChartData(true)
   if (activeTab.value === 'errors') loadAdminErrors()
   if (rankingMounted.value) rankingRef.value?.reload()
 }
@@ -883,7 +892,7 @@ onMounted(() => {
   void loadRouteUserFilterLabel()
   loadLogs()
   loadStats()
-  loadModelStats(modelDistributionSource.value, true)
+  loadModelStats(modelDistributionSource.value)
   window.setTimeout(() => {
     void loadChartData()
   }, 120)

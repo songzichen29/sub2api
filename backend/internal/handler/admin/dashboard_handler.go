@@ -273,7 +273,7 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 		return
 	}
 
-	trend, hit, err := h.getUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch)
+	trend, hit, err := h.getUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch, false)
 	if err != nil {
 		response.Error(c, 500, "Failed to get usage trend")
 		return
@@ -365,12 +365,16 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 		return
 	}
 
-	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch)
+	bypassCache := parseBoolQueryWithDefault(c.Query("nocache"), false)
+	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch, bypassCache)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	if bypassCache {
+		c.Header("X-Snapshot-Cache", "bypass")
+	}
 
 	response.Success(c, gin.H{
 		"models":     stats,
@@ -447,7 +451,7 @@ func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
 		return
 	}
 
-	stats, hit, err := h.getGroupStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch)
+	stats, hit, err := h.getGroupStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, nativeCompactionV2, billingType, upstreamModelMismatch, false)
 	if err != nil {
 		response.Error(c, 500, "Failed to get group statistics")
 		return
@@ -504,7 +508,7 @@ func (h *DashboardHandler) GetUserUsageTrend(c *gin.Context) {
 	if metric != "tokens" && metric != "actual_cost" {
 		metric = "tokens"
 	}
-	trend, hit, err := h.getUserUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit, metric)
+	trend, hit, err := h.getUserUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit, metric, false)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user usage trend")
 		return

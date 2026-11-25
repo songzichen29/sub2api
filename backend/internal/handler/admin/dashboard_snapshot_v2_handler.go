@@ -117,7 +117,11 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 		IncludeUsersTrend:     includeUsersTrend,
 		UsersTrendLimit:       usersTrendLimit,
 	})
+	bypassCache := parseBoolQueryWithDefault(c.Query("nocache"), false)
 	cacheKey := string(keyRaw)
+	if bypassCache {
+		cacheKey = ""
+	}
 
 	cached, hit, err := dashboardSnapshotV2Cache.GetOrLoad(cacheKey, func() (any, error) {
 		return h.buildSnapshotV2Response(
@@ -132,6 +136,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 			includeGroups,
 			includeUsersTrend,
 			usersTrendLimit,
+			bypassCache,
 		)
 	})
 	if err != nil {
@@ -141,12 +146,15 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	if cached.ETag != "" {
 		c.Header("ETag", cached.ETag)
 		c.Header("Vary", "If-None-Match")
-		if ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
+		if !bypassCache && ifNoneMatchMatched(c.GetHeader("If-None-Match"), cached.ETag) {
 			c.Status(http.StatusNotModified)
 			return
 		}
 	}
 	c.Header("X-Snapshot-Cache", cacheStatusValue(hit))
+	if bypassCache {
+		c.Header("X-Snapshot-Cache", "bypass")
+	}
 	response.Success(c, cached.Payload)
 }
 
@@ -157,6 +165,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	filters *dashboardSnapshotV2Filters,
 	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
 	usersTrendLimit int,
+	bypassCache bool,
 ) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
@@ -192,6 +201,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.NativeCompactionV2,
 			filters.BillingType,
 			filters.UpstreamModelMismatch,
+			bypassCache,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get usage trend")
@@ -214,6 +224,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.NativeCompactionV2,
 			filters.BillingType,
 			filters.UpstreamModelMismatch,
+			bypassCache,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get model statistics")
@@ -235,6 +246,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.NativeCompactionV2,
 			filters.BillingType,
 			filters.UpstreamModelMismatch,
+			bypassCache,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get group statistics")
@@ -243,7 +255,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	}
 
 	if includeUsersTrend {
-		usersTrend, _, err := h.getUserUsageTrendCached(ctx, startTime, endTime, granularity, usersTrendLimit, "tokens")
+		usersTrend, _, err := h.getUserUsageTrendCached(ctx, startTime, endTime, granularity, usersTrendLimit, "tokens", bypassCache)
 		if err != nil {
 			return nil, errors.New("failed to get user usage trend")
 		}

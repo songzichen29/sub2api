@@ -91,6 +91,7 @@ func (h *DashboardHandler) getUsageTrendCached(
 	nativeCompactionV2 *bool,
 	billingType *int8,
 	upstreamModelMismatch *bool,
+	bypassCache bool,
 ) ([]usagestats.TrendDataPoint, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardTrendCacheKey{
 		StartTime:             startTime.UTC().Format(time.RFC3339),
@@ -107,6 +108,10 @@ func (h *DashboardHandler) getUsageTrendCached(
 		BillingType:           billingType,
 		UpstreamModelMismatch: upstreamModelMismatch,
 	})
+	// 空键沿用 GetOrLoad 的回源且不写缓存语义。
+	if bypassCache {
+		key = ""
+	}
 	entry, hit, err := dashboardTrendCache.GetOrLoad(key, func() (any, error) {
 		return h.dashboardService.GetUsageTrendWithUsageFilters(ctx, startTime, endTime, granularity, usagestats.UsageLogFilters{
 			UserID: userID, APIKeyID: apiKeyID, AccountID: accountID, GroupID: groupID,
@@ -131,6 +136,7 @@ func (h *DashboardHandler) getModelStatsCached(
 	nativeCompactionV2 *bool,
 	billingType *int8,
 	upstreamModelMismatch *bool,
+	bypassCache bool,
 ) ([]usagestats.ModelStat, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardModelGroupCacheKey{
 		StartTime:             startTime.UTC().Format(time.RFC3339),
@@ -146,6 +152,10 @@ func (h *DashboardHandler) getModelStatsCached(
 		BillingType:           billingType,
 		UpstreamModelMismatch: upstreamModelMismatch,
 	})
+	// 空键沿用 GetOrLoad 的回源且不写缓存语义。
+	if bypassCache {
+		key = ""
+	}
 	entry, hit, err := dashboardModelStatsCache.GetOrLoad(key, func() (any, error) {
 		return h.dashboardService.GetModelStatsWithUsageFiltersBySource(ctx, startTime, endTime, usagestats.UsageLogFilters{
 			UserID: userID, APIKeyID: apiKeyID, AccountID: accountID, GroupID: groupID,
@@ -169,6 +179,7 @@ func (h *DashboardHandler) getGroupStatsCached(
 	nativeCompactionV2 *bool,
 	billingType *int8,
 	upstreamModelMismatch *bool,
+	bypassCache bool,
 ) ([]usagestats.GroupStat, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardModelGroupCacheKey{
 		StartTime:             startTime.UTC().Format(time.RFC3339),
@@ -183,6 +194,10 @@ func (h *DashboardHandler) getGroupStatsCached(
 		BillingType:           billingType,
 		UpstreamModelMismatch: upstreamModelMismatch,
 	})
+	// 空键沿用 GetOrLoad 的回源且不写缓存语义。
+	if bypassCache {
+		key = ""
+	}
 	entry, hit, err := dashboardGroupStatsCache.GetOrLoad(key, func() (any, error) {
 		return h.dashboardService.GetGroupStatsWithUsageFilters(ctx, startTime, endTime, usagestats.UsageLogFilters{
 			UserID: userID, APIKeyID: apiKeyID, AccountID: accountID, GroupID: groupID,
@@ -214,7 +229,7 @@ func (h *DashboardHandler) getAPIKeyUsageTrendCached(ctx context.Context, startT
 	return trend, hit, err
 }
 
-func (h *DashboardHandler) getUserUsageTrendCached(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, metric string) ([]usagestats.UserUsageTrendPoint, bool, error) {
+func (h *DashboardHandler) getUserUsageTrendCached(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, metric string, bypassCache bool) ([]usagestats.UserUsageTrendPoint, bool, error) {
 	key := mustMarshalDashboardCacheKey(dashboardEntityTrendCacheKey{
 		StartTime:   startTime.UTC().Format(time.RFC3339),
 		EndTime:     endTime.UTC().Format(time.RFC3339),
@@ -222,6 +237,10 @@ func (h *DashboardHandler) getUserUsageTrendCached(ctx context.Context, startTim
 		Limit:       limit,
 		Metric:      metric,
 	})
+	// 空键沿用 GetOrLoad 的回源且不写缓存语义。
+	if bypassCache {
+		key = ""
+	}
 	entry, hit, err := dashboardUsersTrendCache.GetOrLoad(key, func() (any, error) {
 		return h.dashboardService.GetUserUsageTrend(ctx, startTime, endTime, granularity, limit, metric)
 	})
