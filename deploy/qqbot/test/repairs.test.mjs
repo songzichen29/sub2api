@@ -68,7 +68,7 @@ test('the model can select voice for semantic requests within the same turn, nev
   assert.equal(spoken.length,4);
   assert.ok(spoken.every(command=>command.text==='这是模型实际回答。' && command.referenceId==='fbe02f8306fc4d3d915e9871722a39d5'));
   assert.ok(f.calls.every(call=>call.context.quoted_message.text==='用语音回复我'));
-  assert.match(f.calls[3].context.response_mode,/引用后仅说“语音”也是当前用户的语音请求/u);
+  assert.match(f.calls[3].context.response_mode,/引用后仅说“语音”/u);
 });
 
 test('moderation blocks model execution and cancels delivery if recalled while generating',async t=>{
@@ -91,11 +91,11 @@ test('spoken answers synthesize model output, preserve receipt-confirmed memory 
   const spoken=[];
   const f=await fixture(t,({context})=>{
     if (context.text.includes('用语音')) {
-      assert.match(context.response_mode,/本条用户要求语音回答/u);
+      assert.equal(context.effective_reply.mode,'voice');
       assert.equal(context.quoted_message.text,'一起去爬山吧');
       return {finalResponse:'好呀，周末一起去爬山。'};
     }
-    assert.match(context.response_mode,/普通文字/u);
+    assert.equal(context.effective_reply.mode,'text');
     return {finalResponse:'那就周六出发。'};
   },{speech:async command=>{spoken.push(command);return [{mimeType:'audio/mpeg',data:'SUQzBAAAAAAAAA=='}];}});
   const request={...input,text:'用语音回复我，你觉得这个提议怎么样？',quote:{available:true,text:'一起去爬山吧',message_id:'previous'}};

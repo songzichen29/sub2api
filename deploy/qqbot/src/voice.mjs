@@ -1,33 +1,7 @@
-// 音色 ID 来自用户指定的 ApiPost 文档；多 ID 音色固定使用文档列出的第一个。
-const voices = {
-  可莉: 'a54b3b693c6a4218bcd758a5b8b1fceb',
-  塞恩: 'f5e0b2a2403a4ab7b561c38b8cccfe12',
-  猫咪: '8ef2535f81dd4820bc1118943d4f9db1',
-  妮蔻: '1aa39c8196a349cfb459ef6e0eb2c7bb',
-  Nico: '1aa39c8196a349cfb459ef6e0eb2c7bb',
-  盖伦: '91a4195171884c999579109828cf5664',
-  御姐: '8a88ef7d77d748e59879d8994e216e01',
-  刘亦菲: '88c129ca61fe4629b4ed8736e78eff42',
-  蒋介石: '918a8277663d476b95e2c4867da0f6a6',
-  军事: '2cb86560d1a541fa842a8571a5ffa70b',
-  曼波: '561fcedfdf0e4e1399d1bc4930d50c0e',
-  贝利亚: '99503144194c45ed8fb998ceac181dcc',
-  蔡徐坤: 'e4642e5edccd4d9ab61a69e82d4f8a14',
-  麦克阿瑟: '405736979e244634914add64e37290b0',
-  影视解说: 'b4bdf5dc66004241a21ff2df165bf442',
-  宣传片: 'dd43b30d04d9446a94ebe41f301229b5',
-  曹操: 'f6f293aabfe24e46aff0fc309c233d31',
-  乌萨奇: '8c66303b8bd14179a564974ceeb7f571',
-  卢本伟: '5a918b41b2034f9b81a8da9cb08883cf',
-  泽拉斯: '819d6051dc9b4cd6b0150b4e74d3f034',
-  派克: '25643b27e8694ebabdd309cb6735b59a',
-  雷军: 'aebaa2305aa2452fbdc8f41eec852a79',
-  爱莉希雅: 'f06ed9ea97004b45ae790daf61a7f4c0',
-  空之律者: '19553e11d45046d5ba09e232143e6549',
-  典韦: '2d929fdc119346cdb9e03f614b2fd9d4',
-  鳄鱼: '3b6f2ec364834090bb404cba87c19121',
-  李云龙: '2e576989a8f94e888bf218de90f8c19a'
-};
+import voices from './voice-catalog.json' with { type: 'json' };
+
+export const voiceCatalog = Object.entries(voices).map(([name, referenceId]) => ({ name, reference_id: referenceId }));
+
 const commandPattern = new RegExp(`^/?(${Object.keys(voices).join('|')})?语音合成(?=\\s|[:：]|$)\\s*[:：]?\\s*([\\s\\S]*)$`, 'u');
 const requestPrefix = '(?:(?:我想|我希望)(?:让你|听你|你)\\s*)?(?:(?:请|麻烦|劳驾)(?:你)?\\s*)?(?:你\\s*)?(?:(?:能不能|可不可以|可以|能)\\s*)?(?:(?:帮|给|替)我\\s*)?';
 const voiceNames = Object.keys(voices).join('|');
@@ -41,7 +15,7 @@ export function parseVoiceCommand(text) {
   const match = commandPattern.exec(text);
   if (!match) return;
   const voice = match[1];
-  return { voice: voice || '默认', referenceId: voice ? voices[voice] : 'fbe02f8306fc4d3d915e9871722a39d5', text: match[2].trim() };
+  return { voice: voice || '默认', referenceId: voices[voice || '默认'], text: match[2].trim() };
 }
 
 export function voiceReplyForbidden(text) {
@@ -66,7 +40,7 @@ export function parseVoiceRequest(text) {
     if (textReplyPattern.test(directive)) { request = undefined; continue; }
     const reply = replyPattern.exec(directive);
     if (reply && /^(?:是(?:什么|啥)|什么意思)/u.test(directive.slice(reply[0].length))) continue;
-    if (reply) request = { ...parseVoiceCommand((reply[1] || '') + '语音合成'), mode: 'reply' };
+    if (reply) request = { ...parseVoiceCommand((reply[1] || '') + '语音合成'), mode: 'reply', voiceSpecified: Boolean(reply[1]) };
   }
   return request;
 }

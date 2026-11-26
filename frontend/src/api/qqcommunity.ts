@@ -59,6 +59,17 @@ export interface QQGroupPolicy {
   group_id: string; label: string; disable_chat: boolean; disable_images: boolean
   disable_activities: boolean; disable_notifications: boolean; chat_daily_limit: number | null; image_daily_limit: number | null
 }
+export interface QQReplyRule {
+  mode?: 'text' | 'voice'
+  voice?: string
+  prompt?: string
+}
+export interface QQReplySettings {
+  revision?: number
+  group_defaults?: QQReplyRule
+  groups?: Record<string, QQReplyRule>
+  private_users?: Record<string, QQReplyRule>
+}
 export interface QQRuntimeChatConfig {
   private_chat_enabled: boolean; private_users: string[]
   enabled: boolean; names: string[]; ambient_enabled: boolean; ambient_groups: string[]
@@ -89,6 +100,7 @@ export interface QQChatRuntimeRecord {
 }
 export interface QQBotConfig {
 	runtime_chat?: QQRuntimeChatConfig
+  reply_settings?: QQReplySettings
 	command_reply_format?: 'image' | 'text'
   _version?: string
   notification_quiet_hours?: { enabled: boolean; start_hour: number; end_hour: number }

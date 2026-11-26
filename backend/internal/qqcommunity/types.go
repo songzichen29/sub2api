@@ -11,6 +11,7 @@ import (
 var ErrDisabled = errors.New("QQ 机器人尚未启用")
 
 type Config struct {
+	ReplySettings            ReplySettings            `json:"reply_settings"`
 	RuntimeChat              RuntimeChatConfig        `json:"runtime_chat"`
 	CommandReplyFormat       string                   `json:"command_reply_format"`
 	NotificationQuietHours   QuietHours               `json:"notification_quiet_hours"`

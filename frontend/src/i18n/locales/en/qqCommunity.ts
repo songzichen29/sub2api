@@ -4,7 +4,7 @@ export default { qqbot: {
   codeCampaignStates: { open: 'Open for claims', paused: 'Claims paused', scheduled: 'Not started', ended: 'Ended', exhausted: 'Fully claimed', unassigned: 'No groups assigned', botPaused: 'Bot disabled' },
   runtimeChat: {
     privateTitle: 'Private chat with the bot', privateEnabled: 'Allow listed users to chat privately', privateUsers: 'Allowed QQ IDs (separate with commas, spaces or newlines)',
-    privateHelp: 'Only listed users can chat privately; an empty list allows nobody. Chat, voice, web, memes, image generation and editing use their feature settings and quotas. This grants no group administration or account permissions. Disabling preserves the list and does not affect account binding.',
+    privateHelp: 'Only listed users can chat privately; an empty list allows nobody. In private chat, they can manage the voice, reply mode and persona of all enabled groups. Group messages do not grant this permission; account permissions remain unchanged. Feature settings and quotas still apply. Disabling preserves the list and does not affect account binding.',
     diagnostics: 'Live chat execution records', metricsPending: 'Chat metrics are missing or stale. Refresh to synchronize; unknown usage is not zero.', syncedAt: 'Last synchronized: {time}',
     metrics: { daily_calls: 'Chat calls today', daily_sent: 'Confirmed deliveries today', daily_failed: 'Failed or cancelled today', unconfirmed: 'Sending or unconfirmed today', queued: 'Queued', active: 'Running' },
     recentHelp: 'Latest 20 execution records including skip reasons. Conversation identifiers and status only, without message content. Records may be from the last synchronization.',

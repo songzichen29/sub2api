@@ -4,7 +4,7 @@ export default { qqbot: {
   codeCampaignStates: { open: '开放领取', paused: '暂停领取', scheduled: '未开始', ended: '已结束', exhausted: '已领完', unassigned: '未配置开放群', botPaused: '机器人已停用' },
   runtimeChat: {
     privateTitle: '与机器人私聊', privateEnabled: '允许指定用户私聊', privateUsers: '允许的 QQ 号（逗号、空格或换行分隔）',
-    privateHelp: '仅名单内用户可私聊，留空不开放。聊天、语音、联网、表情包、生图与改图沿用各功能开关和额度；不授予群管理或账户操作权限。关闭后保留名单，不影响绑定流程。',
+    privateHelp: '仅名单内用户可私聊，留空不开放。名单用户可在私聊中管理全部已开放群的音色、回复方式和人设，群内发言不授予此权限；账户权限不变。各功能仍受开关和额度限制。关闭后保留名单，不影响绑定流程。',
     diagnostics: '实际聊天运行记录', metricsPending: '聊天指标未同步或已过期，请刷新；此时不把未知用量显示为零。', syncedAt: '最后同步：{time}',
     metrics: { daily_calls: '今日聊天调用', daily_sent: '今日确认送达', daily_failed: '今日失败或取消', unconfirmed: '今日发送中或未确认', queued: '排队中', active: '处理中' },
     recentHelp: '最近20条运行记录，含跳过原因；仅展示会话标识和状态，不展示聊天正文。历史记录可能来自上次同步。',

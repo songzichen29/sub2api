@@ -19,3 +19,16 @@ test('every QQ tool registers with the pinned SDK and image formats stay optiona
     assert.notDeepEqual(validateArgs(definition.parameters, { ...args, output_format: 1 }), []);
   }
 });
+
+test('reply management schemas accept atomic group defaults and exceptions without identity fields', () => {
+  const definition = toolDefinitions.find(tool => tool.name === 'update_reply_settings');
+  const args = { version: 'current', updates: [
+    { scope: 'group_defaults', mode: 'voice', voice: '御姐' },
+    { scope: 'group', group_ids: ['456'], mode: 'text' },
+    { scope: 'private', prompt: '简短回答', prompt_action: 'append' }
+  ] };
+  assert.deepEqual(validateArgs(definition.parameters, args), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { ...args, updates: [{ scope: 'other' }] }), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { ...args, updates: [{ scope: 'private', member_id: '999' }] }), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { updates: args.updates }), []);
+});

@@ -60,9 +60,10 @@ test('live group activity, disabled policies and incoming messages cancel a mome
 test('bridge generates a moment with shared local-time context, real receipt and no member impersonation', async t => {
   const { root, store } = fixture(t), c = settings();
   let now = noon - 60000;
-  const model = [], options = [];
+  const model = [], options = [], spoken = [];
   store.observe('123:group:456', { event_id: 'old', sender: '789', text: '凌晨两点睡觉', at: '2026-11-05T18:00:00Z' });
   const bridge = createBridge({ config: { snapshot: () => c, policy: () => c }, token: 'test', store, root, clock: () => now,
+    speech: async command => { spoken.push(command); return [{ mimeType: 'audio/mpeg', data: 'SUQzBAAAAAAAAA==' }]; },
     makeHarness: async o => { options.push(o); return { start: async () => {}, close: async () => {}, session: () => ({ id: 'moment-session', run: async blocks => { model.push(JSON.parse(blocks[0].text)); return { finalResponse: '午饭都吃了啥？' }; } }) }; } });
   bridge.server.listen(0, '127.0.0.1'); await once(bridge.server, 'listening');
   t.after(() => bridge.close());
@@ -89,7 +90,11 @@ test('bridge generates a moment with shared local-time context, real receipt and
   assert.equal(store.history('123:group:456').at(-1).role, 'assistant');
   assert.equal((await post('/proactive/next', {})).body.skipped, 'no_due_slot');
   now = Date.parse('2026-11-06T18:00:02+08:00');
+  c.reply_settings = { group_defaults: { mode: 'voice', voice: '御姐' } };
   const second = (await post('/proactive/next', {})).body;
+  assert.equal(second.text, '');
+  assert.equal(second.media[0].mimeType, 'audio/mpeg');
+  assert.equal(spoken[0].voice, '御姐');
   await post('/observe', { self_id: 123, post_type: 'message', message_type: 'group', group_id: 456, user_id: 789, message_id: 'new', message: [{ type: 'text', data: { text: '余额' } }] });
   assert.equal((await post('/delivery/claim', { id: second.id })).body.claimed, false, 'even business messages cancel generated topics');
   const limits = quotaLimits({ chat: '456', sender: '123', group: true, proactive: true, ambient: true }, c, noon);

@@ -356,7 +356,7 @@ class DSHBridge(Star):
         if str(login.get("user_id")) != self.cfg["bot_id"]:
             return
         result = await self.call("/proactive/next", {})
-        if not result.get("text") or result["text"].strip() == "[跳过]":
+        if (not result.get("text") or result["text"].strip() == "[跳过]") and not result.get("media"):
             return
         chat = result["chat"]
         lock = self.locks.setdefault("group:" + chat, asyncio.Lock())

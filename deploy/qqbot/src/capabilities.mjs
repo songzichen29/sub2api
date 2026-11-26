@@ -1,7 +1,8 @@
 import { boundedText } from './policy.mjs';
 import { sensitiveText } from './memory.mjs';
 import { chatAllowed } from './chat-policy.mjs';
-import { replyVoice, voiceReplyForbidden } from './voice.mjs';
+import { replyVoice, voiceReplyForbidden, voiceCatalog } from './voice.mjs';
+import { effectiveReplySettings } from './reply-settings.mjs';
 
 // Capability descriptions come from the live configuration. A language model
 // must not turn an old "I have no tools" answer into the current product state.
@@ -46,13 +47,31 @@ export async function executeCapability({name,args}, context, {config,store,site
   if (input.proactive) throw Object.assign(new Error('主动热群没有用户授权，不执行账户或图片工具'), {code:'proactive_tool_denied'});
   if(!chatAllowed(c,input)) throw Object.assign(new Error('本会话已停用'), {code:'scope_denied'});
   context.signal?.throwIfAborted();
+  if (name === 'list_voices') return { voices: voiceCatalog };
   if (name === 'set_reply_mode') {
     if (!['text', 'voice'].includes(args.mode)) throw new Error('invalid_reply_mode');
     if (args.mode === 'voice' && voiceReplyForbidden(input.text)) throw new Error('voice_explicitly_declined');
-    context.replyVoice = args.mode === 'voice' ? replyVoice(args.voice) : undefined;
+    context.replyVoice = args.mode === 'voice' ? replyVoice(args.voice ?? context.replyVoice?.voice ?? context.replySettings?.voice) : undefined;
     return { status: 'selected', mode: args.mode, notice: '仅设置本条回答方式，尚未生成或发送语音；请继续输出实际答案。' };
   }
   const call=(body,options={})=>siteTool({...body,group_id:input.group?input.chat:'',member_id:input.sender,message_id:input.message_id},{signal:context.signal,...options});
+  if (['list_reply_groups', 'get_reply_settings', 'update_reply_settings'].includes(name)) {
+    if (input.group) throw new Error('请在已允许的私聊中管理回复设置，群内消息不能修改这些设置');
+    if (name !== 'update_reply_settings') return call({ tool: name });
+    if (context.replySettingsWriteAttempted) throw new Error('本条消息已提交过设置变更，请查询结果；继续修改请发送新的消息');
+    for (const update of args.updates) {
+      if (update.voice !== undefined) replyVoice(update.voice);
+      if (update.prompt !== undefined && sensitiveText(update.prompt)) throw new Error('人设中不能保存密钥或口令');
+    }
+    context.replySettingsWriteAttempted = true;
+    const saved = await call({ tool: name, version: args.version, updates: args.updates, operation_id: input.message_id + ':reply-settings' });
+    try {
+      await config.refresh();
+    } catch (error) {
+      throw new Error('回复设置已保存，但运行时同步失败；不要重复追加设置，请查询当前设置确认。', { cause: error });
+    }
+    return { ...saved, effective: effectiveReplySettings(config.snapshot(), input), notice: '设置已保存并同步，后续回合使用新设置；当前回答仍按本轮开始时的设置发送。' };
+  }
   const selectedImage=index=>{
     if(!Number.isInteger(index) || index<1 || index>4)throw new Error('请选择第1至4张实际加载的图片');
     let available=store.cachedImages(scope,input.message_id);

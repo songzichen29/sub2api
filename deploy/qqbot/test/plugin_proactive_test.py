@@ -61,6 +61,16 @@ class ProactiveTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot.api.call_action.await_count, 2)
         self.assertEqual(bridge.call.await_args_list[-1].args[1]['status'], 'unconfirmed')
 
+    async def test_voice_only_topic_is_delivered_with_receipt(self):
+        bridge, bot = self.bridge({'message_id': -4567})
+        bridge.call.side_effect = [
+            {'id': 'moment', 'chat': '456', 'text': '',
+             'media': [{'mimeType': 'audio/mpeg', 'data': 'SUQzBAAAAAAAAA=='}]},
+            {'claimed': True}, {'ok': True}, {'ok': True}]
+        await bridge.proactive_tick()
+        self.assertEqual(bot.api.call_action.await_args_list[-1].kwargs['message'][0]['type'], 'record')
+        self.assertEqual(bridge.call.await_args_list[-1].args[1]['status'], 'sent')
+
     async def test_wrong_logged_in_qq_never_generates_a_topic(self):
         bridge, bot = self.bridge()
         bot.api.call_action.side_effect = [{'user_id': 999}]

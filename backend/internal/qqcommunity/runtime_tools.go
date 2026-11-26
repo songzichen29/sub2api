@@ -14,16 +14,19 @@ import (
 
 // Identities are supplied by the authenticated bridge, never by model arguments.
 type runtimeToolRequest struct {
-	Tool         string              `json:"tool"`
-	GroupID      string              `json:"group_id"`
-	MemberID     string              `json:"member_id"`
-	MessageID    string              `json:"message_id"`
-	Prompt       string              `json:"prompt,omitempty"`
-	OutputFormat string              `json:"output_format,omitempty"`
-	Keyword      string              `json:"keyword,omitempty"`
-	Query        string              `json:"query,omitempty"`
-	URL          string              `json:"url,omitempty"`
-	SourceImage  *runtimeSourceImage `json:"source_image,omitempty"`
+	Version      string                `json:"version,omitempty"`
+	OperationID  string                `json:"operation_id,omitempty"`
+	Updates      []ReplySettingsUpdate `json:"updates,omitempty"`
+	Tool         string                `json:"tool"`
+	GroupID      string                `json:"group_id"`
+	MemberID     string                `json:"member_id"`
+	MessageID    string                `json:"message_id"`
+	Prompt       string                `json:"prompt,omitempty"`
+	OutputFormat string                `json:"output_format,omitempty"`
+	Keyword      string                `json:"keyword,omitempty"`
+	Query        string                `json:"query,omitempty"`
+	URL          string                `json:"url,omitempty"`
+	SourceImage  *runtimeSourceImage   `json:"source_image,omitempty"`
 }
 
 type runtimeSourceImage struct {
@@ -153,6 +156,35 @@ func (s *Service) ServeRuntimeTools(w http.ResponseWriter, req *http.Request) {
 	defer cancel()
 	var out any
 	switch in.Tool {
+	case "list_reply_groups", "get_reply_settings", "update_reply_settings":
+		if in.GroupID != "" || !c.allowsPrivateChat(in.MemberID) {
+			fail(403, "只有私聊名单内用户在私聊中可以管理回复设置")
+			return
+		}
+		if in.Tool == "list_reply_groups" {
+			out = struct {
+				Groups []replyGroup `json:"groups"`
+			}{replyGroups(c)}
+			break
+		}
+		if in.Tool == "get_reply_settings" {
+			out = struct {
+				Version    string            `json:"version"`
+				Settings   replySettingsView `json:"settings"`
+				BasePrompt string            `json:"base_prompt"`
+			}{sectionVersion(c, "reply-settings"), replySettingsForUser(c.ReplySettings, in.MemberID), c.SystemPrompt}
+			break
+		}
+		result, updateErr := s.updateReplySettings(ctx, c.AppID, in)
+		if updateErr != nil {
+			if errors.Is(updateErr, ErrConfigConflict) {
+				fail(409, "回复设置已被更新，请重新查询后核对本次修改")
+				return
+			}
+			fail(400, updateErr.Error())
+			return
+		}
+		out = result
 	case "generate_image", "edit_image":
 		if !c.ImageEnabled || (in.GroupID != "" && c.groupPolicy(in.GroupID).DisableImages) {
 			fail(400, "当前会话未启用生图")

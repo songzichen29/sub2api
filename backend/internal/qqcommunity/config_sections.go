@@ -14,13 +14,14 @@ var ErrConfigConflict = errors.New("此模块已被其他页面更新，请重�
 
 // A module owns exactly these keys. Never merge arbitrary client-supplied fields.
 var configSections = map[string][]string{
-	"connection":   {"enabled", "app_id", "app_secret", "sandbox", "clear_app_secret", "command_reply_format"},
-	"groups":       {"allowed_groups", "group_policies"},
-	"chat":         {"chat_disabled", "base_url", "api_key", "chat_model", "chat_protocol", "system_prompt", "max_output_tokens", "clear_api_key"},
-	"runtime-chat": {"runtime_chat"},
-	"knowledge":    {"site_knowledge"},
-	"images":       {"image_enabled", "image_base_url", "image_api_key", "image_model", "image_size", "image_output_format", "clear_image_api_key"},
-	"group-admins": {"group_admins"}, "moderation": {"moderation"}, "autonomous": {"autonomous"},
+	"reply-settings": {"reply_settings"},
+	"connection":     {"enabled", "app_id", "app_secret", "sandbox", "clear_app_secret", "command_reply_format"},
+	"groups":         {"allowed_groups", "group_policies"},
+	"chat":           {"chat_disabled", "base_url", "api_key", "chat_model", "chat_protocol", "system_prompt", "max_output_tokens", "clear_api_key"},
+	"runtime-chat":   {"runtime_chat"},
+	"knowledge":      {"site_knowledge"},
+	"images":         {"image_enabled", "image_base_url", "image_api_key", "image_model", "image_size", "image_output_format", "clear_image_api_key"},
+	"group-admins":   {"group_admins"}, "moderation": {"moderation"}, "autonomous": {"autonomous"},
 	"commands": {"custom_commands"}, "notifications": {"price_notifications", "health_notifications", "notification_quiet_hours"},
 	"limits": {"daily_chat_limit", "daily_image_limit", "total_daily_chat_limit", "total_daily_image_limit", "cooldown_seconds", "reward_alert_daily"},
 }
@@ -81,6 +82,9 @@ func mergeConfigSection(old, draft Config, section string) (Config, error) {
 	return out, err
 }
 func (s *Service) SaveConfigSection(ctx context.Context, section, version string, draft Config) (Config, error) {
+	if section == "reply-settings" {
+		return Config{}, errors.New("回复设置请由允许私聊的用户通过机器人私聊修改；通用配置接口不接受写入")
+	}
 	return s.saveConfigChecked(ctx, func(old Config) (Config, error) {
 		if section == "autonomous" && old.RuntimeChat.Enabled {
 			return old, errors.New("旧自主接话配置已停用，请使用群聊与记忆配置")
@@ -96,6 +100,7 @@ func (s *Service) SaveConfigSection(ctx context.Context, section, version string
 }
 
 type ConfigChange struct {
+	Actor   string                     `json:"actor,omitempty"`
 	At      time.Time                  `json:"at"`
 	Section string                     `json:"section"`
 	Before  map[string]json.RawMessage `json:"before"`

@@ -147,12 +147,12 @@ func runtimePolicy(c Config) map[string]any {
 			commands = append(commands, strings.TrimPrefix(command.Command, "/"))
 		}
 	}
-	persona := c.SystemPrompt
+	knowledgePrompt := ""
 	if c.SiteKnowledge.Enabled {
-		persona += "\n\n站点公开知识：\n" + c.SiteKnowledge.Content
+		knowledgePrompt += "\n\n站点公开知识：\n" + c.SiteKnowledge.Content
 		for _, entry := range c.SiteKnowledge.Entries {
 			if entry.Enabled {
-				persona += "\n" + entry.Title + "\n" + entry.Content + "\n" + entry.URL
+				knowledgePrompt += "\n" + entry.Title + "\n" + entry.Content + "\n" + entry.URL
 			}
 		}
 	}
@@ -167,7 +167,9 @@ func runtimePolicy(c Config) map[string]any {
 		"owners": []string{}, "group_admins": c.GroupAdmins, "private_users": privateUsers, "business_commands": commands, "business_observation": true,
 		"private_chat_enabled": r.PrivateChatEnabled,
 		"model":                c.ChatModel, "model_base_url": c.BaseURL, "model_api": api, "model_api_key": c.APIKey,
-		"persona": persona, "max_output_tokens": c.MaxOutputTokens, "context_window_tokens": r.ContextWindowTokens,
+		"persona": c.SystemPrompt + knowledgePrompt, "base_persona": c.SystemPrompt, "knowledge_prompt": knowledgePrompt,
+		"reply_settings": c.ReplySettings, "reply_settings_version": sectionVersion(c, "reply-settings"),
+		"max_output_tokens": c.MaxOutputTokens, "context_window_tokens": r.ContextWindowTokens,
 		"daily_chat_limit": c.DailyChatLimit, "total_daily_chat_limit": c.TotalDailyChatLimit,
 		"cooldown_seconds": c.CooldownSeconds, "user_hourly_limit": 60,
 		"names": r.Names, "ambient_enabled": r.AmbientEnabled, "ambient_groups": r.AmbientGroups,

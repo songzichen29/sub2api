@@ -119,6 +119,9 @@ func validateURL(raw string) error {
 	return nil
 }
 func validateConfig(c Config) error {
+	if err := validateReplySettings(c.ReplySettings); err != nil {
+		return err
+	}
 	if err := validateRuntimeChat(c); err != nil {
 		return err
 	}
@@ -246,6 +249,7 @@ func (s *Service) SaveBasicConfig(ctx context.Context, c Config) (Config, error)
 		// Knowledge has its own independently versioned module. Legacy clients
 		// saving the full basic configuration must not erase or overwrite it.
 		c.SiteKnowledge = old.SiteKnowledge
+		c.ReplySettings = old.ReplySettings
 		c.InviteReward = old.InviteReward
 		c.InviteDailyLimit = old.InviteDailyLimit
 		c.InviteMinRechargeTotal = old.InviteMinRechargeTotal
@@ -281,6 +285,9 @@ func (s *Service) saveConfigChecked(ctx context.Context, update func(Config) (Co
 	c, err = update(old)
 	if err != nil {
 		return c, err
+	}
+	if section == "reply-settings" {
+		c.ReplySettings.Revision = old.ReplySettings.Revision + 1
 	}
 	if old.RuntimeChat.Enabled && !c.RuntimeChat.Enabled {
 		c.RuntimeChat = old.RuntimeChat
@@ -370,7 +377,11 @@ func (s *Service) saveConfigChecked(ctx context.Context, update func(Config) (Co
 		if _, err = readActivityConfig(ctx, tx, configHistoryKey, &history); err != nil {
 			return c, err
 		}
-		history = append([]ConfigChange{{At: time.Now(), Section: section, Before: publicSection(old, section), After: publicSection(c, section)}}, history...)
+		change := ConfigChange{At: time.Now(), Section: section, Before: publicSection(old, section), After: publicSection(c, section)}
+		if section == "reply-settings" && c.ReplySettings.LastOperation != nil {
+			change.Actor = c.ReplySettings.LastOperation.Actor
+		}
+		history = append([]ConfigChange{change}, history...)
 		if len(history) > 30 {
 			history = history[:30]
 		}

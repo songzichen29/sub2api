@@ -11,7 +11,7 @@ export class RuntimeConfig {
     return this.value;
   }
   policy() {
-    const { model_api_key, persona, ...policy } = this.snapshot();
+    const { model_api_key, persona, base_persona, knowledge_prompt, reply_settings, ...policy } = this.snapshot();
     return policy;
   }
   async request(stage, url, options) {
@@ -21,7 +21,15 @@ export class RuntimeConfig {
       throw Object.assign(error, { stage });
     }
   }
-  async refresh() {
+  refresh() {
+    // 管理工具刷新必须排在已发出的轮询之后，避免旧响应覆盖刚保存的规则。
+    const refresh = this.refreshing
+      ? this.refreshing.then(() => this.load(), () => this.load())
+      : this.load();
+    this.refreshing = refresh;
+    return refresh;
+  }
+  async load() {
     if (!this.bootstrap.site_config_url) { this.updated = Date.now(); return; }
     const url = new URL(this.bootstrap.site_config_url);
     if (url.protocol !== 'https:' && !['127.0.0.1', 'localhost'].includes(url.hostname)) throw new Error('insecure_configuration_endpoint');
