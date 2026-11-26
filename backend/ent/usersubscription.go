@@ -31,6 +31,8 @@ type UserSubscription struct {
 	GroupID int64 `json:"group_id,omitempty"`
 	// 新购买的独立订阅来源订单；历史合并订阅为空
 	PurchaseOrderID *int64 `json:"purchase_order_id,omitempty"`
+	// 独立兑换订阅的来源码 ID；兑换码删除后仍保留
+	RedeemCodeID *int64 `json:"redeem_code_id,omitempty"`
 	// StartsAt holds the value of the "starts_at" field.
 	StartsAt time.Time `json:"starts_at,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
@@ -147,7 +149,7 @@ func (*UserSubscription) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case usersubscription.FieldDailyUsageUsd, usersubscription.FieldWeeklyUsageUsd, usersubscription.FieldMonthlyUsageUsd, usersubscription.FieldQuotaLimitUsd, usersubscription.FieldQuotaUsedUsd:
 			values[i] = new(sql.NullFloat64)
-		case usersubscription.FieldID, usersubscription.FieldUserID, usersubscription.FieldGroupID, usersubscription.FieldPurchaseOrderID, usersubscription.FieldWeekendSkipAdminUpdatedBy, usersubscription.FieldAssignedBy:
+		case usersubscription.FieldID, usersubscription.FieldUserID, usersubscription.FieldGroupID, usersubscription.FieldPurchaseOrderID, usersubscription.FieldRedeemCodeID, usersubscription.FieldWeekendSkipAdminUpdatedBy, usersubscription.FieldAssignedBy:
 			values[i] = new(sql.NullInt64)
 		case usersubscription.FieldStatus, usersubscription.FieldValidityUnit, usersubscription.FieldNotes, usersubscription.FieldSource:
 			values[i] = new(sql.NullString)
@@ -211,6 +213,13 @@ func (_m *UserSubscription) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.PurchaseOrderID = new(int64)
 				*_m.PurchaseOrderID = value.Int64
+			}
+		case usersubscription.FieldRedeemCodeID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field redeem_code_id", values[i])
+			} else if value.Valid {
+				_m.RedeemCodeID = new(int64)
+				*_m.RedeemCodeID = value.Int64
 			}
 		case usersubscription.FieldStartsAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -429,6 +438,11 @@ func (_m *UserSubscription) String() string {
 	builder.WriteString(", ")
 	if v := _m.PurchaseOrderID; v != nil {
 		builder.WriteString("purchase_order_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.RedeemCodeID; v != nil {
+		builder.WriteString("redeem_code_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

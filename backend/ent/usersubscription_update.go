@@ -112,6 +112,33 @@ func (_u *UserSubscriptionUpdate) ClearPurchaseOrderID() *UserSubscriptionUpdate
 	return _u
 }
 
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdate) SetRedeemCodeID(v int64) *UserSubscriptionUpdate {
+	_u.mutation.ResetRedeemCodeID()
+	_u.mutation.SetRedeemCodeID(v)
+	return _u
+}
+
+// SetNillableRedeemCodeID sets the "redeem_code_id" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillableRedeemCodeID(v *int64) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetRedeemCodeID(*v)
+	}
+	return _u
+}
+
+// AddRedeemCodeID adds value to the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdate) AddRedeemCodeID(v int64) *UserSubscriptionUpdate {
+	_u.mutation.AddRedeemCodeID(v)
+	return _u
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdate) ClearRedeemCodeID() *UserSubscriptionUpdate {
+	_u.mutation.ClearRedeemCodeID()
+	return _u
+}
+
 // SetStartsAt sets the "starts_at" field.
 func (_u *UserSubscriptionUpdate) SetStartsAt(v time.Time) *UserSubscriptionUpdate {
 	_u.mutation.SetStartsAt(v)
@@ -708,6 +735,15 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if _u.mutation.PurchaseOrderIDCleared() {
 		_spec.ClearField(usersubscription.FieldPurchaseOrderID, field.TypeInt64)
 	}
+	if value, ok := _u.mutation.RedeemCodeID(); ok {
+		_spec.SetField(usersubscription.FieldRedeemCodeID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRedeemCodeID(); ok {
+		_spec.AddField(usersubscription.FieldRedeemCodeID, field.TypeInt64, value)
+	}
+	if _u.mutation.RedeemCodeIDCleared() {
+		_spec.ClearField(usersubscription.FieldRedeemCodeID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
 	}
@@ -1046,6 +1082,33 @@ func (_u *UserSubscriptionUpdateOne) AddPurchaseOrderID(v int64) *UserSubscripti
 // ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
 func (_u *UserSubscriptionUpdateOne) ClearPurchaseOrderID() *UserSubscriptionUpdateOne {
 	_u.mutation.ClearPurchaseOrderID()
+	return _u
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdateOne) SetRedeemCodeID(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetRedeemCodeID()
+	_u.mutation.SetRedeemCodeID(v)
+	return _u
+}
+
+// SetNillableRedeemCodeID sets the "redeem_code_id" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillableRedeemCodeID(v *int64) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetRedeemCodeID(*v)
+	}
+	return _u
+}
+
+// AddRedeemCodeID adds value to the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdateOne) AddRedeemCodeID(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddRedeemCodeID(v)
+	return _u
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (_u *UserSubscriptionUpdateOne) ClearRedeemCodeID() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearRedeemCodeID()
 	return _u
 }
 
@@ -1674,6 +1737,15 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if _u.mutation.PurchaseOrderIDCleared() {
 		_spec.ClearField(usersubscription.FieldPurchaseOrderID, field.TypeInt64)
+	}
+	if value, ok := _u.mutation.RedeemCodeID(); ok {
+		_spec.SetField(usersubscription.FieldRedeemCodeID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedRedeemCodeID(); ok {
+		_spec.AddField(usersubscription.FieldRedeemCodeID, field.TypeInt64, value)
+	}
+	if _u.mutation.RedeemCodeIDCleared() {
+		_spec.ClearField(usersubscription.FieldRedeemCodeID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)

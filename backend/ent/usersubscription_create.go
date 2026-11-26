@@ -93,6 +93,20 @@ func (_c *UserSubscriptionCreate) SetNillablePurchaseOrderID(v *int64) *UserSubs
 	return _c
 }
 
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (_c *UserSubscriptionCreate) SetRedeemCodeID(v int64) *UserSubscriptionCreate {
+	_c.mutation.SetRedeemCodeID(v)
+	return _c
+}
+
+// SetNillableRedeemCodeID sets the "redeem_code_id" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillableRedeemCodeID(v *int64) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetRedeemCodeID(*v)
+	}
+	return _c
+}
+
 // SetStartsAt sets the "starts_at" field.
 func (_c *UserSubscriptionCreate) SetStartsAt(v time.Time) *UserSubscriptionCreate {
 	_c.mutation.SetStartsAt(v)
@@ -640,6 +654,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 		_spec.SetField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
 		_node.PurchaseOrderID = &value
 	}
+	if value, ok := _c.mutation.RedeemCodeID(); ok {
+		_spec.SetField(usersubscription.FieldRedeemCodeID, field.TypeInt64, value)
+		_node.RedeemCodeID = &value
+	}
 	if value, ok := _c.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
 		_node.StartsAt = value
@@ -918,6 +936,30 @@ func (u *UserSubscriptionUpsert) AddPurchaseOrderID(v int64) *UserSubscriptionUp
 // ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
 func (u *UserSubscriptionUpsert) ClearPurchaseOrderID() *UserSubscriptionUpsert {
 	u.SetNull(usersubscription.FieldPurchaseOrderID)
+	return u
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (u *UserSubscriptionUpsert) SetRedeemCodeID(v int64) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldRedeemCodeID, v)
+	return u
+}
+
+// UpdateRedeemCodeID sets the "redeem_code_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdateRedeemCodeID() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldRedeemCodeID)
+	return u
+}
+
+// AddRedeemCodeID adds v to the "redeem_code_id" field.
+func (u *UserSubscriptionUpsert) AddRedeemCodeID(v int64) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldRedeemCodeID, v)
+	return u
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (u *UserSubscriptionUpsert) ClearRedeemCodeID() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldRedeemCodeID)
 	return u
 }
 
@@ -1414,6 +1456,34 @@ func (u *UserSubscriptionUpsertOne) UpdatePurchaseOrderID() *UserSubscriptionUps
 func (u *UserSubscriptionUpsertOne) ClearPurchaseOrderID() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.ClearPurchaseOrderID()
+	})
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertOne) SetRedeemCodeID(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetRedeemCodeID(v)
+	})
+}
+
+// AddRedeemCodeID adds v to the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertOne) AddRedeemCodeID(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddRedeemCodeID(v)
+	})
+}
+
+// UpdateRedeemCodeID sets the "redeem_code_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdateRedeemCodeID() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateRedeemCodeID()
+	})
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertOne) ClearRedeemCodeID() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearRedeemCodeID()
 	})
 }
 
@@ -2136,6 +2206,34 @@ func (u *UserSubscriptionUpsertBulk) UpdatePurchaseOrderID() *UserSubscriptionUp
 func (u *UserSubscriptionUpsertBulk) ClearPurchaseOrderID() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.ClearPurchaseOrderID()
+	})
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertBulk) SetRedeemCodeID(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetRedeemCodeID(v)
+	})
+}
+
+// AddRedeemCodeID adds v to the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertBulk) AddRedeemCodeID(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddRedeemCodeID(v)
+	})
+}
+
+// UpdateRedeemCodeID sets the "redeem_code_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdateRedeemCodeID() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdateRedeemCodeID()
+	})
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (u *UserSubscriptionUpsertBulk) ClearRedeemCodeID() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearRedeemCodeID()
 	})
 }
 

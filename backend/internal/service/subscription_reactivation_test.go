@@ -29,6 +29,7 @@ func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription)
 	created, err := r.clientFromContext(ctx).UserSubscription.Create().
 		SetUserID(sub.UserID).
 		SetNillablePurchaseOrderID(sub.PurchaseOrderID).
+		SetNillableRedeemCodeID(sub.RedeemCodeID).
 		SetNillableQuotaLimitUsd(sub.QuotaLimitUSD).
 		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetGroupID(sub.GroupID).
@@ -77,7 +78,7 @@ func (r *subscriptionEntRepo) GetByIDIncludeDeleted(ctx context.Context, id int6
 
 func (r *subscriptionEntRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
 	m, err := r.clientFromContext(ctx).UserSubscription.Query().
-		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID), usersubscription.PurchaseOrderIDIsNil()).
+		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID), usersubscription.PurchaseOrderIDIsNil(), usersubscription.RedeemCodeIDIsNil()).
 		Only(ctx)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
@@ -174,8 +175,11 @@ func (r *subscriptionEntRepo) ExistsByUserIDAndGroupID(ctx context.Context, user
 	return err == nil, nil
 }
 func (r *subscriptionEntRepo) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
-	_, err := r.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
-	return err == nil, nil
+	return r.clientFromContext(ctx).UserSubscription.Query().Where(
+		usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID),
+		usersubscription.PurchaseOrderIDIsNil(), usersubscription.RedeemCodeIDIsNil(),
+		usersubscription.StatusEQ(SubscriptionStatusActive), usersubscription.ExpiresAtGT(time.Now()),
+	).Exist(ctx)
 }
 func (r *subscriptionEntRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
 	_, err := r.clientFromContext(ctx).UserSubscription.UpdateOneID(subscriptionID).SetExpiresAt(newExpiresAt).Save(ctx)
@@ -233,6 +237,7 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 	return &UserSubscription{
 		ID:                           m.ID,
 		PurchaseOrderID:              m.PurchaseOrderID,
+		RedeemCodeID:                 m.RedeemCodeID,
 		QuotaLimitUSD:                m.QuotaLimitUsd,
 		QuotaUsedUSD:                 m.QuotaUsedUsd,
 		UserID:                       m.UserID,

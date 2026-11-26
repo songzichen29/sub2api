@@ -252,6 +252,7 @@ func (s *SubscriptionService) invalidateSubscriptionCaches(userID, groupID int64
 // AssignSubscriptionInput 分配订阅输入
 type AssignSubscriptionInput struct {
 	PurchaseOrderID *int64
+	RedeemCodeID    *int64
 	UserID          int64
 	GroupID         int64
 	ValidityDays    int
@@ -305,7 +306,7 @@ func (s *SubscriptionService) RestoreSubscription(ctx context.Context, subscript
 	if sub.DeletedAt == nil {
 		return nil, ErrSubscriptionNotRevoked
 	}
-	if sub.PurchaseOrderID == nil {
+	if sub.PurchaseOrderID == nil && sub.RedeemCodeID == nil {
 		exists, err := s.userSubRepo.ExistsActiveByUserIDAndGroupID(ctx, sub.UserID, sub.GroupID)
 		if err != nil {
 			return nil, err
@@ -633,14 +634,14 @@ func (s *SubscriptionService) beginSubscriptionUpdateTx(ctx context.Context) (co
 	}, tx.Commit, nil
 }
 
-func (s *SubscriptionService) maybeInvalidateAssignmentCaches(userID, groupID int64, deferred bool) {
+func (s *SubscriptionService) maybeInvalidateAssignmentCaches(userID, groupID int64, deferred bool, subscriptionID ...int64) {
 	// When an outer transaction owns this assignment, it must invalidate after
 	// commit. Invalidating inside that transaction can reload pre-commit state
 	// into Redis/L1 and keep the renewed subscription stale.
 	if deferred {
 		return
 	}
-	if err := s.invalidateSubscriptionCaches(userID, groupID); err != nil {
+	if err := s.invalidateSubscriptionCaches(userID, groupID, subscriptionID...); err != nil {
 		log.Printf("Warning: invalidate subscription assignment cache failed user=%d group=%d: %v", userID, groupID, err)
 	}
 }
@@ -869,6 +870,7 @@ func (s *SubscriptionService) createSubscription(ctx context.Context, input *Ass
 	sub := &UserSubscription{
 		UserID:          input.UserID,
 		PurchaseOrderID: input.PurchaseOrderID,
+		RedeemCodeID:    input.RedeemCodeID,
 		GroupID:         input.GroupID,
 		StartsAt:        startsAt,
 		ExpiresAt:       expiresAt,

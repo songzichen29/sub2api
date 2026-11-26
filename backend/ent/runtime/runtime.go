@@ -2755,47 +2755,47 @@ func init() {
 	// usersubscription.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	usersubscription.UpdateDefaultUpdatedAt = usersubscriptionDescUpdatedAt.UpdateDefault.(func() time.Time)
 	// usersubscriptionDescStatus is the schema descriptor for status field.
-	usersubscriptionDescStatus := usersubscriptionFields[5].Descriptor()
+	usersubscriptionDescStatus := usersubscriptionFields[6].Descriptor()
 	// usersubscription.DefaultStatus holds the default value on creation for the status field.
 	usersubscription.DefaultStatus = usersubscriptionDescStatus.Default.(string)
 	// usersubscription.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	usersubscription.StatusValidator = usersubscriptionDescStatus.Validators[0].(func(string) error)
 	// usersubscriptionDescValidityUnit is the schema descriptor for validity_unit field.
-	usersubscriptionDescValidityUnit := usersubscriptionFields[6].Descriptor()
+	usersubscriptionDescValidityUnit := usersubscriptionFields[7].Descriptor()
 	// usersubscription.DefaultValidityUnit holds the default value on creation for the validity_unit field.
 	usersubscription.DefaultValidityUnit = usersubscriptionDescValidityUnit.Default.(string)
 	// usersubscription.ValidityUnitValidator is a validator for the "validity_unit" field. It is called by the builders before save.
 	usersubscription.ValidityUnitValidator = usersubscriptionDescValidityUnit.Validators[0].(func(string) error)
 	// usersubscriptionDescDailyUsageUsd is the schema descriptor for daily_usage_usd field.
-	usersubscriptionDescDailyUsageUsd := usersubscriptionFields[10].Descriptor()
+	usersubscriptionDescDailyUsageUsd := usersubscriptionFields[11].Descriptor()
 	// usersubscription.DefaultDailyUsageUsd holds the default value on creation for the daily_usage_usd field.
 	usersubscription.DefaultDailyUsageUsd = usersubscriptionDescDailyUsageUsd.Default.(float64)
 	// usersubscriptionDescWeeklyUsageUsd is the schema descriptor for weekly_usage_usd field.
-	usersubscriptionDescWeeklyUsageUsd := usersubscriptionFields[11].Descriptor()
+	usersubscriptionDescWeeklyUsageUsd := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultWeeklyUsageUsd holds the default value on creation for the weekly_usage_usd field.
 	usersubscription.DefaultWeeklyUsageUsd = usersubscriptionDescWeeklyUsageUsd.Default.(float64)
 	// usersubscriptionDescMonthlyUsageUsd is the schema descriptor for monthly_usage_usd field.
-	usersubscriptionDescMonthlyUsageUsd := usersubscriptionFields[12].Descriptor()
+	usersubscriptionDescMonthlyUsageUsd := usersubscriptionFields[13].Descriptor()
 	// usersubscription.DefaultMonthlyUsageUsd holds the default value on creation for the monthly_usage_usd field.
 	usersubscription.DefaultMonthlyUsageUsd = usersubscriptionDescMonthlyUsageUsd.Default.(float64)
 	// usersubscriptionDescQuotaUsedUsd is the schema descriptor for quota_used_usd field.
-	usersubscriptionDescQuotaUsedUsd := usersubscriptionFields[14].Descriptor()
+	usersubscriptionDescQuotaUsedUsd := usersubscriptionFields[15].Descriptor()
 	// usersubscription.DefaultQuotaUsedUsd holds the default value on creation for the quota_used_usd field.
 	usersubscription.DefaultQuotaUsedUsd = usersubscriptionDescQuotaUsedUsd.Default.(float64)
 	// usersubscriptionDescAllowDailyOverdraft is the schema descriptor for allow_daily_overdraft field.
-	usersubscriptionDescAllowDailyOverdraft := usersubscriptionFields[15].Descriptor()
+	usersubscriptionDescAllowDailyOverdraft := usersubscriptionFields[16].Descriptor()
 	// usersubscription.DefaultAllowDailyOverdraft holds the default value on creation for the allow_daily_overdraft field.
 	usersubscription.DefaultAllowDailyOverdraft = usersubscriptionDescAllowDailyOverdraft.Default.(bool)
 	// usersubscriptionDescSkipWeekends is the schema descriptor for skip_weekends field.
-	usersubscriptionDescSkipWeekends := usersubscriptionFields[16].Descriptor()
+	usersubscriptionDescSkipWeekends := usersubscriptionFields[17].Descriptor()
 	// usersubscription.DefaultSkipWeekends holds the default value on creation for the skip_weekends field.
 	usersubscription.DefaultSkipWeekends = usersubscriptionDescSkipWeekends.Default.(bool)
 	// usersubscriptionDescAssignedAt is the schema descriptor for assigned_at field.
-	usersubscriptionDescAssignedAt := usersubscriptionFields[22].Descriptor()
+	usersubscriptionDescAssignedAt := usersubscriptionFields[23].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
 	// usersubscriptionDescSource is the schema descriptor for source field.
-	usersubscriptionDescSource := usersubscriptionFields[24].Descriptor()
+	usersubscriptionDescSource := usersubscriptionFields[25].Descriptor()
 	// usersubscription.DefaultSource holds the default value on creation for the source field.
 	usersubscription.DefaultSource = usersubscriptionDescSource.Default.(string)
 	// usersubscription.SourceValidator is a validator for the "source" field. It is called by the builders before save.

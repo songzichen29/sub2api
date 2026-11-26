@@ -42,6 +42,11 @@ func (UserSubscription) Fields() []ent.Field {
 			Nillable().
 			Unique().
 			Comment("新购买的独立订阅来源订单；历史合并订阅为空"),
+		field.Int64("redeem_code_id").
+			Optional().
+			Nillable().
+			Unique().
+			Comment("独立兑换订阅的来源码 ID；兑换码删除后仍保留"),
 
 		field.Time("starts_at").
 			SchemaType(map[string]string{dialect.MySQL: "datetime(6)"}),

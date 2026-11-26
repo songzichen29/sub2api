@@ -85,6 +85,11 @@ func PurchaseOrderID(v int64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldPurchaseOrderID, v))
 }
 
+// RedeemCodeID applies equality check predicate on the "redeem_code_id" field. It's identical to RedeemCodeIDEQ.
+func RedeemCodeID(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldRedeemCodeID, v))
+}
+
 // StartsAt applies equality check predicate on the "starts_at" field. It's identical to StartsAtEQ.
 func StartsAt(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStartsAt, v))
@@ -413,6 +418,56 @@ func PurchaseOrderIDIsNil() predicate.UserSubscription {
 // PurchaseOrderIDNotNil applies the NotNil predicate on the "purchase_order_id" field.
 func PurchaseOrderIDNotNil() predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldNotNull(FieldPurchaseOrderID))
+}
+
+// RedeemCodeIDEQ applies the EQ predicate on the "redeem_code_id" field.
+func RedeemCodeIDEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDNEQ applies the NEQ predicate on the "redeem_code_id" field.
+func RedeemCodeIDNEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDIn applies the In predicate on the "redeem_code_id" field.
+func RedeemCodeIDIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldRedeemCodeID, vs...))
+}
+
+// RedeemCodeIDNotIn applies the NotIn predicate on the "redeem_code_id" field.
+func RedeemCodeIDNotIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldRedeemCodeID, vs...))
+}
+
+// RedeemCodeIDGT applies the GT predicate on the "redeem_code_id" field.
+func RedeemCodeIDGT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDGTE applies the GTE predicate on the "redeem_code_id" field.
+func RedeemCodeIDGTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDLT applies the LT predicate on the "redeem_code_id" field.
+func RedeemCodeIDLT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDLTE applies the LTE predicate on the "redeem_code_id" field.
+func RedeemCodeIDLTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldRedeemCodeID, v))
+}
+
+// RedeemCodeIDIsNil applies the IsNil predicate on the "redeem_code_id" field.
+func RedeemCodeIDIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldRedeemCodeID))
+}
+
+// RedeemCodeIDNotNil applies the NotNil predicate on the "redeem_code_id" field.
+func RedeemCodeIDNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldRedeemCodeID))
 }
 
 // StartsAtEQ applies the EQ predicate on the "starts_at" field.

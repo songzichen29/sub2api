@@ -63933,6 +63933,8 @@ type UserSubscriptionMutation struct {
 	deleted_at                       *time.Time
 	purchase_order_id                *int64
 	addpurchase_order_id             *int64
+	redeem_code_id                   *int64
+	addredeem_code_id                *int64
 	starts_at                        *time.Time
 	expires_at                       *time.Time
 	status                           *string
@@ -64334,6 +64336,76 @@ func (m *UserSubscriptionMutation) ResetPurchaseOrderID() {
 	m.purchase_order_id = nil
 	m.addpurchase_order_id = nil
 	delete(m.clearedFields, usersubscription.FieldPurchaseOrderID)
+}
+
+// SetRedeemCodeID sets the "redeem_code_id" field.
+func (m *UserSubscriptionMutation) SetRedeemCodeID(i int64) {
+	m.redeem_code_id = &i
+	m.addredeem_code_id = nil
+}
+
+// RedeemCodeID returns the value of the "redeem_code_id" field in the mutation.
+func (m *UserSubscriptionMutation) RedeemCodeID() (r int64, exists bool) {
+	v := m.redeem_code_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRedeemCodeID returns the old "redeem_code_id" field's value of the UserSubscription entity.
+// If the UserSubscription object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserSubscriptionMutation) OldRedeemCodeID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRedeemCodeID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRedeemCodeID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRedeemCodeID: %w", err)
+	}
+	return oldValue.RedeemCodeID, nil
+}
+
+// AddRedeemCodeID adds i to the "redeem_code_id" field.
+func (m *UserSubscriptionMutation) AddRedeemCodeID(i int64) {
+	if m.addredeem_code_id != nil {
+		*m.addredeem_code_id += i
+	} else {
+		m.addredeem_code_id = &i
+	}
+}
+
+// AddedRedeemCodeID returns the value that was added to the "redeem_code_id" field in this mutation.
+func (m *UserSubscriptionMutation) AddedRedeemCodeID() (r int64, exists bool) {
+	v := m.addredeem_code_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearRedeemCodeID clears the value of the "redeem_code_id" field.
+func (m *UserSubscriptionMutation) ClearRedeemCodeID() {
+	m.redeem_code_id = nil
+	m.addredeem_code_id = nil
+	m.clearedFields[usersubscription.FieldRedeemCodeID] = struct{}{}
+}
+
+// RedeemCodeIDCleared returns if the "redeem_code_id" field was cleared in this mutation.
+func (m *UserSubscriptionMutation) RedeemCodeIDCleared() bool {
+	_, ok := m.clearedFields[usersubscription.FieldRedeemCodeID]
+	return ok
+}
+
+// ResetRedeemCodeID resets all changes to the "redeem_code_id" field.
+func (m *UserSubscriptionMutation) ResetRedeemCodeID() {
+	m.redeem_code_id = nil
+	m.addredeem_code_id = nil
+	delete(m.clearedFields, usersubscription.FieldRedeemCodeID)
 }
 
 // SetStartsAt sets the "starts_at" field.
@@ -65562,7 +65634,7 @@ func (m *UserSubscriptionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserSubscriptionMutation) Fields() []string {
-	fields := make([]string, 0, 28)
+	fields := make([]string, 0, 29)
 	if m.created_at != nil {
 		fields = append(fields, usersubscription.FieldCreatedAt)
 	}
@@ -65580,6 +65652,9 @@ func (m *UserSubscriptionMutation) Fields() []string {
 	}
 	if m.purchase_order_id != nil {
 		fields = append(fields, usersubscription.FieldPurchaseOrderID)
+	}
+	if m.redeem_code_id != nil {
+		fields = append(fields, usersubscription.FieldRedeemCodeID)
 	}
 	if m.starts_at != nil {
 		fields = append(fields, usersubscription.FieldStartsAt)
@@ -65667,6 +65742,8 @@ func (m *UserSubscriptionMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case usersubscription.FieldPurchaseOrderID:
 		return m.PurchaseOrderID()
+	case usersubscription.FieldRedeemCodeID:
+		return m.RedeemCodeID()
 	case usersubscription.FieldStartsAt:
 		return m.StartsAt()
 	case usersubscription.FieldExpiresAt:
@@ -65732,6 +65809,8 @@ func (m *UserSubscriptionMutation) OldField(ctx context.Context, name string) (e
 		return m.OldGroupID(ctx)
 	case usersubscription.FieldPurchaseOrderID:
 		return m.OldPurchaseOrderID(ctx)
+	case usersubscription.FieldRedeemCodeID:
+		return m.OldRedeemCodeID(ctx)
 	case usersubscription.FieldStartsAt:
 		return m.OldStartsAt(ctx)
 	case usersubscription.FieldExpiresAt:
@@ -65826,6 +65905,13 @@ func (m *UserSubscriptionMutation) SetField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPurchaseOrderID(v)
+		return nil
+	case usersubscription.FieldRedeemCodeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRedeemCodeID(v)
 		return nil
 	case usersubscription.FieldStartsAt:
 		v, ok := value.(time.Time)
@@ -65992,6 +66078,9 @@ func (m *UserSubscriptionMutation) AddedFields() []string {
 	if m.addpurchase_order_id != nil {
 		fields = append(fields, usersubscription.FieldPurchaseOrderID)
 	}
+	if m.addredeem_code_id != nil {
+		fields = append(fields, usersubscription.FieldRedeemCodeID)
+	}
 	if m.adddaily_usage_usd != nil {
 		fields = append(fields, usersubscription.FieldDailyUsageUsd)
 	}
@@ -66020,6 +66109,8 @@ func (m *UserSubscriptionMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case usersubscription.FieldPurchaseOrderID:
 		return m.AddedPurchaseOrderID()
+	case usersubscription.FieldRedeemCodeID:
+		return m.AddedRedeemCodeID()
 	case usersubscription.FieldDailyUsageUsd:
 		return m.AddedDailyUsageUsd()
 	case usersubscription.FieldWeeklyUsageUsd:
@@ -66047,6 +66138,13 @@ func (m *UserSubscriptionMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddPurchaseOrderID(v)
+		return nil
+	case usersubscription.FieldRedeemCodeID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddRedeemCodeID(v)
 		return nil
 	case usersubscription.FieldDailyUsageUsd:
 		v, ok := value.(float64)
@@ -66104,6 +66202,9 @@ func (m *UserSubscriptionMutation) ClearedFields() []string {
 	if m.FieldCleared(usersubscription.FieldPurchaseOrderID) {
 		fields = append(fields, usersubscription.FieldPurchaseOrderID)
 	}
+	if m.FieldCleared(usersubscription.FieldRedeemCodeID) {
+		fields = append(fields, usersubscription.FieldRedeemCodeID)
+	}
 	if m.FieldCleared(usersubscription.FieldDailyWindowStart) {
 		fields = append(fields, usersubscription.FieldDailyWindowStart)
 	}
@@ -66153,6 +66254,9 @@ func (m *UserSubscriptionMutation) ClearField(name string) error {
 		return nil
 	case usersubscription.FieldPurchaseOrderID:
 		m.ClearPurchaseOrderID()
+		return nil
+	case usersubscription.FieldRedeemCodeID:
+		m.ClearRedeemCodeID()
 		return nil
 	case usersubscription.FieldDailyWindowStart:
 		m.ClearDailyWindowStart()
@@ -66209,6 +66313,9 @@ func (m *UserSubscriptionMutation) ResetField(name string) error {
 		return nil
 	case usersubscription.FieldPurchaseOrderID:
 		m.ResetPurchaseOrderID()
+		return nil
+	case usersubscription.FieldRedeemCodeID:
+		m.ResetRedeemCodeID()
 		return nil
 	case usersubscription.FieldStartsAt:
 		m.ResetStartsAt()

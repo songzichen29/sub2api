@@ -219,11 +219,13 @@ func TestRedeemService_ReduceOrCancelSubscriptionInvalidatesSharedSubscriptionCa
 	}
 	svc := &RedeemService{subscriptionService: subSvc}
 
-	require.NoError(t, svc.reduceOrCancelSubscription(ctx, sub.UserID, sub.GroupID, 1, "CODE-123"))
+	id, err := svc.reduceOrCancelSubscription(ctx, sub.UserID, sub.GroupID, 1, "CODE-123")
+	require.NoError(t, err)
+	require.Equal(t, sub.ID, id)
 	require.Equal(t, 1, repo.expiryCalls)
 	require.Equal(t, 0, repo.statusCalls)
 	require.Equal(t, 1, repo.notesCalls)
 	require.Equal(t, 1, cache.invalidateCalls)
-	require.Equal(t, 1, cache.publishCalls)
+	require.Equal(t, 2, cache.publishCalls)
 	require.Contains(t, repo.lastNotes, "CODE-123")
 }

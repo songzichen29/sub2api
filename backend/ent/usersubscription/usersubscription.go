@@ -27,6 +27,8 @@ const (
 	FieldGroupID = "group_id"
 	// FieldPurchaseOrderID holds the string denoting the purchase_order_id field in the database.
 	FieldPurchaseOrderID = "purchase_order_id"
+	// FieldRedeemCodeID holds the string denoting the redeem_code_id field in the database.
+	FieldRedeemCodeID = "redeem_code_id"
 	// FieldStartsAt holds the string denoting the starts_at field in the database.
 	FieldStartsAt = "starts_at"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
@@ -120,6 +122,7 @@ var Columns = []string{
 	FieldUserID,
 	FieldGroupID,
 	FieldPurchaseOrderID,
+	FieldRedeemCodeID,
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
@@ -232,6 +235,11 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByPurchaseOrderID orders the results by the purchase_order_id field.
 func ByPurchaseOrderID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldPurchaseOrderID, opts...).ToFunc()
+}
+
+// ByRedeemCodeID orders the results by the redeem_code_id field.
+func ByRedeemCodeID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRedeemCodeID, opts...).ToFunc()
 }
 
 // ByStartsAt orders the results by the starts_at field.

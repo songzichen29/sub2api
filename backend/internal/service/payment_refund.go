@@ -341,7 +341,7 @@ func (s *PaymentService) invalidateRefundBalanceCache(ctx context.Context, userI
 	if s.redeemService == nil {
 		return
 	}
-	s.redeemService.invalidateRedeemCaches(ctx, userID, &RedeemCode{Type: RedeemTypeBalance})
+	s.redeemService.invalidateRedeemCaches(ctx, userID, &RedeemCode{Type: RedeemTypeBalance}, 0)
 }
 
 func (s *PaymentService) ExecuteRefund(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
@@ -1176,6 +1176,7 @@ func (s *PaymentService) resolveRefundSubscription(ctx context.Context, o *dbent
 			usersubscription.GroupIDEQ(*o.SubscriptionGroupID),
 			usersubscription.SourceEQ(domain.SubscriptionSourcePayment),
 			usersubscription.PurchaseOrderIDIsNil(),
+			usersubscription.RedeemCodeIDIsNil(),
 		).
 		WithGroup().
 		All(ctx)

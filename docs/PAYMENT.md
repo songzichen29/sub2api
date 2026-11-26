@@ -265,7 +265,7 @@ User selects amount and payment method
 
 ## Subscription Purchases and API Key Selection
 
-New subscription purchases are fulfilled independently per order. Buying the same plan twice creates two subscriptions, each with its own usage and expiration, instead of extending one shared subscription.
+New subscription purchases are fulfilled independently per order, and codes that grant subscriptions are fulfilled independently per successful redemption. Buying or redeeming the same plan twice creates two subscriptions, each with its own usage and expiration, instead of extending one shared subscription.
 
 - Duration-based plans start when the subscription is issued. Fixed-expiry plans use the deadline recorded when the order was created. A subscription's validity continues to run even when no API key selects it.
 - Each subscription enforces its own total quota and applicable daily, weekly, and monthly limits. Usage indicators read the actual quota fields, not amounts mentioned in plan names or descriptions.
@@ -273,6 +273,8 @@ New subscription purchases are fulfilled independently per order. Buying the sam
 - Multiple API keys selecting the same subscription share its quota. Requests already in progress are charged to the subscription selected when they started.
 - If the selected subscription has insufficient quota or has expired, requests fail explicitly. They do not automatically switch to another subscription or account balance; the user can select another available subscription.
 - The active-subscription popover, user subscriptions page, and administrator subscription management all show individual subscriptions. Subscription IDs distinguish purchases with the same name.
+- Each code that grants a subscription can be used successfully only once. Redemption creates a new subscription whose validity starts at that redemption: three one-day codes produce three one-day subscriptions, not one three-day subscription. Previously issued but unused codes follow this rule too; already redeemed and merged subscriptions remain unchanged.
+- Codes that reduce subscription days continue to target the existing merged subscription; they do not choose an independent subscription to deduct from.
 
 Existing merged subscriptions retain their quota, accumulated usage, and expiration; they are not split or reissued. Orders created before the upgrade retain their original fulfillment rules, while new orders use independent subscriptions. Balance-billed groups are unchanged.
 
