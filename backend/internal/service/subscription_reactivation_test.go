@@ -28,6 +28,9 @@ func (r *subscriptionEntRepo) clientFromContext(ctx context.Context) *dbent.Clie
 func (r *subscriptionEntRepo) Create(ctx context.Context, sub *UserSubscription) error {
 	created, err := r.clientFromContext(ctx).UserSubscription.Create().
 		SetUserID(sub.UserID).
+		SetNillablePurchaseOrderID(sub.PurchaseOrderID).
+		SetNillableQuotaLimitUsd(sub.QuotaLimitUSD).
+		SetQuotaUsedUsd(sub.QuotaUsedUSD).
 		SetGroupID(sub.GroupID).
 		SetStartsAt(sub.StartsAt).
 		SetExpiresAt(sub.ExpiresAt).
@@ -74,7 +77,7 @@ func (r *subscriptionEntRepo) GetByIDIncludeDeleted(ctx context.Context, id int6
 
 func (r *subscriptionEntRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*UserSubscription, error) {
 	m, err := r.clientFromContext(ctx).UserSubscription.Query().
-		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
+		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID), usersubscription.PurchaseOrderIDIsNil()).
 		Only(ctx)
 	if err != nil {
 		return nil, ErrSubscriptionNotFound
@@ -149,8 +152,16 @@ func (r *subscriptionEntRepo) Restore(ctx context.Context, subscriptionID int64,
 func (r *subscriptionEntRepo) ListByUserID(context.Context, int64) ([]UserSubscription, error) {
 	panic("unexpected ListByUserID")
 }
-func (r *subscriptionEntRepo) ListActiveByUserID(context.Context, int64) ([]UserSubscription, error) {
-	panic("unexpected ListActiveByUserID")
+func (r *subscriptionEntRepo) ListActiveByUserID(ctx context.Context, userID int64) ([]UserSubscription, error) {
+	rows, err := r.clientFromContext(ctx).UserSubscription.Query().Where(usersubscription.UserIDEQ(userID), usersubscription.StatusEQ(SubscriptionStatusActive), usersubscription.StartsAtLTE(time.Now()), usersubscription.ExpiresAtGT(time.Now())).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]UserSubscription, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, *entUserSubscriptionToService(row))
+	}
+	return result, nil
 }
 func (r *subscriptionEntRepo) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]UserSubscription, *pagination.PaginationResult, error) {
 	panic("unexpected ListByGroupID")
@@ -221,6 +232,9 @@ func entUserSubscriptionToService(m *dbent.UserSubscription) *UserSubscription {
 	}
 	return &UserSubscription{
 		ID:                           m.ID,
+		PurchaseOrderID:              m.PurchaseOrderID,
+		QuotaLimitUSD:                m.QuotaLimitUsd,
+		QuotaUsedUSD:                 m.QuotaUsedUsd,
 		UserID:                       m.UserID,
 		GroupID:                      m.GroupID,
 		StartsAt:                     m.StartsAt,

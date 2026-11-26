@@ -13,6 +13,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 - [Provider Instance Management](#provider-instance-management)
 - [Webhook Configuration](#webhook-configuration)
 - [Payment Flow](#payment-flow)
+- [Subscription Purchases and API Key Selection](#subscription-purchases-and-api-key-selection)
 - [Migrating from Sub2ApiPay](#migrating-from-sub2apipay)
 
 ---
@@ -262,6 +263,23 @@ User selects amount and payment method
 
 ---
 
+## Subscription Purchases and API Key Selection
+
+New subscription purchases are fulfilled independently per order. Buying the same plan twice creates two subscriptions, each with its own usage and expiration, instead of extending one shared subscription.
+
+- Duration-based plans start when the subscription is issued. Fixed-expiry plans use the deadline recorded when the order was created. A subscription's validity continues to run even when no API key selects it.
+- Each subscription enforces its own total quota and applicable daily, weekly, and monthly limits. Usage indicators read the actual quota fields, not amounts mentioned in plan names or descriptions.
+- The API key group selector lists only active subscriptions that have started and have not expired, each with its ID, usage progress, and expiration. Selecting a different subscription changes the source charged for subsequent requests without changing the API key string. Inactive subscriptions remain visible in subscription management but are omitted from group choices.
+- Multiple API keys selecting the same subscription share its quota. Requests already in progress are charged to the subscription selected when they started.
+- If the selected subscription has insufficient quota or has expired, requests fail explicitly. They do not automatically switch to another subscription or account balance; the user can select another available subscription.
+- The active-subscription popover, user subscriptions page, and administrator subscription management all show individual subscriptions. Subscription IDs distinguish purchases with the same name.
+
+Existing merged subscriptions retain their quota, accumulated usage, and expiration; they are not split or reissued. Orders created before the upgrade retain their original fulfillment rules, while new orders use independent subscriptions. Balance-billed groups are unchanged.
+
+During the upgrade, the database migration binds existing keys to their original unambiguous subscription without changing subscription entitlements. Switch application instances together to a version that supports independent subscriptions. Once a user has multiple subscriptions in the same group, older versions' single-subscription queries no longer apply. Any rollback version must also support multiple subscriptions; reverting only the old image or deleting new subscriptions to restore the old constraint is not a valid rollback.
+
+---
+
 ## Migrating from Sub2ApiPay
 
 If you previously used [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) as an external payment system, you can migrate to the built-in payment system:
@@ -274,7 +292,7 @@ If you previously used [Sub2ApiPay](https://github.com/touwaeriol/sub2apipay) as
 | Payment Methods | EasyPay, Alipay, WeChat, Stripe | Same |
 | Configuration | Environment variables + separate admin UI | Unified in Sub2API admin dashboard |
 | Top-up Integration | Via Admin API callback | Internal processing, more reliable |
-| Subscription Plans | Supported | Not yet (planned) |
+| Subscription Plans | Supported | Supported; independent purchases selectable per API key |
 | Order Management | Separate admin interface | Integrated in Sub2API admin dashboard |
 
 ### Migration Steps

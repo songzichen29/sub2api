@@ -31,7 +31,7 @@ function mountView() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
-        DataTable: { name: 'DataTable', props: ['data', 'selectedKeys'], emits: ['update:selectedKeys', 'sort'], template: '<div />' },
+        DataTable: { name: 'DataTable', props: ['data', 'selectedKeys'], emits: ['update:selectedKeys', 'sort'], template: '<div><div v-for="row in data" :key="row.id"><slot name="cell-group" :row="row" /></div></div>' },
         BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
         Pagination: true, Select: true, ConfirmDialog: true, Icon: true,
         GroupBadge: true, GroupOptionItem: true, EmptyState: true, Teleport: true, RouterLink: true
@@ -80,6 +80,24 @@ describe('subscription bulk operations', () => {
     expect(wrapper.getComponent({ name: 'DataTable' }).props('selectedKeys')).toEqual([2, 3])
     expect(form.text()).toContain('Cannot adjust this subscription')
     expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows same-user same-group instances and operates on the chosen ID only', async () => {
+    wrapper.unmount()
+    list.mockResolvedValue({ items: [
+      { ...rows[0], id: 101, group: { name: 'Monthly' } },
+      { ...rows[0], id: 102, group: { name: 'Monthly' } }
+    ], total: 2, pages: 1 })
+    wrapper = mountView()
+    await flushPromises()
+    const badges = wrapper.findAllComponents({ name: 'GroupBadge' })
+    expect(badges.map((badge) => badge.props('name'))).toEqual(['Monthly · #101', 'Monthly · #102'])
+    bulkAction.mockResolvedValue({ success_count: 1, failed_count: 0, results: [{ subscription_id: 102, success: true }] })
+    await select([102])
+    await wrapper.get('[data-test="bulk-extend"]').trigger('click')
+    await wrapper.get('#bulk-subscription-action-form').trigger('submit')
+    await flushPromises()
+    expect(bulkAction).toHaveBeenCalledWith({ subscription_ids: [102], action: 'extend', days: 30 }, expect.any(String))
   })
 
   it('disables operations that do not apply to the selected status', async () => {

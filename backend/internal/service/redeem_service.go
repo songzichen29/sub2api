@@ -614,7 +614,14 @@ func (s *RedeemService) invalidateRedeemCaches(ctx context.Context, userID int64
 			go func() {
 				cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_ = s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID)
+				sub, err := s.billingCacheService.subRepo.GetByUserIDAndGroupID(cacheCtx, userID, groupID)
+				if err != nil {
+					logger.LegacyPrintf("service.redeem", "resolve redeemed subscription cache: user_id=%d group_id=%d err=%v", userID, groupID, err)
+					return
+				}
+				if err := s.billingCacheService.InvalidateSubscription(cacheCtx, userID, sub.ID); err != nil {
+					logger.LegacyPrintf("service.redeem", "invalidate redeemed subscription cache: subscription_id=%d err=%v", sub.ID, err)
+				}
 			}()
 		}
 	}

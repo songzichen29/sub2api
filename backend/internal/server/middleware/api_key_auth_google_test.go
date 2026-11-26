@@ -184,7 +184,7 @@ func (f fakeGoogleSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, i
 	return nil, errors.New("not implemented")
 }
 func (f fakeGoogleSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
-	return nil, errors.New("not implemented")
+	return f.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 }
 func (f fakeGoogleSubscriptionRepo) GetActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	if f.getActive != nil {

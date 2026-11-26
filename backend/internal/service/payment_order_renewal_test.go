@@ -11,116 +11,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateSubOrderRestartRequiresActiveSubscription(t *testing.T) {
+func TestValidateSubOrderNewPurchasesAreIndependent(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
-	configSvc := &PaymentConfigService{entClient: client}
-
 	user := createPaymentRenewalTestUser(t, ctx, client)
 	group := createPaymentRenewalTestGroup(t, ctx, client)
 	plan := createPaymentRenewalTestPlan(t, ctx, client, group.ID)
-
-	subscriptionSvc := NewSubscriptionService(
-		&subscriptionGroupRepoStub{
-			group: &Group{
-				ID:               group.ID,
-				Status:           group.Status,
-				SubscriptionType: group.SubscriptionType,
-			},
-		},
-		&subscriptionEntRepo{client: client},
-		nil,
-		client,
-		nil,
-	)
-	svc := &PaymentService{
-		entClient:       client,
-		configService:   configSvc,
-		groupRepo:       &subscriptionGroupRepoStub{group: &Group{ID: group.ID, Status: group.Status, SubscriptionType: group.SubscriptionType}},
-		subscriptionSvc: subscriptionSvc,
+	svc := &PaymentService{entClient: client, configService: &PaymentConfigService{entClient: client}, groupRepo: &subscriptionGroupRepoStub{group: &Group{ID: group.ID, Status: group.Status, SubscriptionType: group.SubscriptionType}}}
+	for _, status := range []string{SubscriptionStatusExpired, SubscriptionStatusActive, SubscriptionStatusQuotaExhausted} {
+		_, err := client.UserSubscription.Create().SetUserID(user.ID).SetGroupID(group.ID).SetStartsAt(time.Now().Add(-time.Hour)).SetExpiresAt(time.Now().Add(time.Hour)).SetStatus(status).SetSource(domain.SubscriptionSourcePayment).Save(ctx)
+		require.NoError(t, err)
+		for _, mode := range []string{SubscriptionRenewalModeExtend, SubscriptionRenewalModeRestart} {
+			_, err := svc.validateSubOrder(ctx, CreateOrderRequest{UserID: user.ID, PlanID: plan.ID, RenewalMode: mode})
+			require.Equal(t, "SUBSCRIPTION_RENEWAL_UNSUPPORTED", infraerrors.Reason(err))
+		}
+		got, err := svc.validateSubOrder(ctx, CreateOrderRequest{UserID: user.ID, PlanID: plan.ID})
+		require.NoError(t, err)
+		require.Equal(t, plan.ID, got.ID)
 	}
-
-	_, err := svc.validateSubOrder(ctx, CreateOrderRequest{
-		UserID:      user.ID,
-		PlanID:      plan.ID,
-		RenewalMode: SubscriptionRenewalModeRestart,
-	})
-	require.Error(t, err)
-	require.Equal(t, "RENEWAL_ACTIVE_SUBSCRIPTION_REQUIRED", infraerrors.Reason(err))
-
-	_, err = client.UserSubscription.Create().
-		SetUserID(user.ID).
-		SetGroupID(group.ID).
-		SetStartsAt(time.Now().Add(-2 * time.Hour)).
-		SetExpiresAt(time.Now().Add(-time.Hour)).
-		SetStatus(SubscriptionStatusExpired).
-		SetSource(domain.SubscriptionSourcePayment).
-		Save(ctx)
-	require.NoError(t, err)
-
-	_, err = svc.validateSubOrder(ctx, CreateOrderRequest{
-		UserID:      user.ID,
-		PlanID:      plan.ID,
-		RenewalMode: SubscriptionRenewalModeRestart,
-	})
-	require.Error(t, err)
-	require.Equal(t, "RENEWAL_ACTIVE_SUBSCRIPTION_REQUIRED", infraerrors.Reason(err))
-
-	_, err = client.UserSubscription.Update().
-		SetStatus(SubscriptionStatusActive).
-		SetStartsAt(time.Now().Add(-time.Hour)).
-		SetExpiresAt(time.Now().Add(24 * time.Hour)).
-		Save(ctx)
-	require.NoError(t, err)
-
-	got, err := svc.validateSubOrder(ctx, CreateOrderRequest{
-		UserID:      user.ID,
-		PlanID:      plan.ID,
-		RenewalMode: SubscriptionRenewalModeRestart,
-	})
-	require.NoError(t, err)
-	require.Equal(t, plan.ID, got.ID)
-}
-
-func TestValidateSubOrderExplicitExtendRequiresActiveSubscription(t *testing.T) {
-	ctx := context.Background()
-	client := newPaymentConfigServiceTestClient(t)
-
-	user := createPaymentRenewalTestUser(t, ctx, client)
-	group := createPaymentRenewalTestGroup(t, ctx, client)
-	plan := createPaymentRenewalTestPlan(t, ctx, client, group.ID)
-
-	svc := &PaymentService{
-		entClient:     client,
-		configService: &PaymentConfigService{entClient: client},
-		groupRepo:     &subscriptionGroupRepoStub{group: &Group{ID: group.ID, Status: group.Status, SubscriptionType: group.SubscriptionType}},
-	}
-
-	_, err := svc.validateSubOrder(ctx, CreateOrderRequest{
-		UserID:      user.ID,
-		PlanID:      plan.ID,
-		RenewalMode: SubscriptionRenewalModeExtend,
-	})
-	require.Error(t, err)
-	require.Equal(t, "RENEWAL_ACTIVE_SUBSCRIPTION_REQUIRED", infraerrors.Reason(err))
-
-	_, err = client.UserSubscription.Create().
-		SetUserID(user.ID).
-		SetGroupID(group.ID).
-		SetStartsAt(time.Now().Add(-time.Hour)).
-		SetExpiresAt(time.Now().Add(24 * time.Hour)).
-		SetStatus(SubscriptionStatusQuotaExhausted).
-		SetSource(domain.SubscriptionSourcePayment).
-		Save(ctx)
-	require.NoError(t, err)
-
-	got, err := svc.validateSubOrder(ctx, CreateOrderRequest{
-		UserID:      user.ID,
-		PlanID:      plan.ID,
-		RenewalMode: SubscriptionRenewalModeExtend,
-	})
-	require.NoError(t, err)
-	require.Equal(t, plan.ID, got.ID)
 }
 
 func createPaymentRenewalTestUser(t *testing.T, ctx context.Context, client *dbent.Client) *dbent.User {

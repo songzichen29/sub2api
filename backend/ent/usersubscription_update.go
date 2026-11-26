@@ -85,6 +85,33 @@ func (_u *UserSubscriptionUpdate) SetNillableGroupID(v *int64) *UserSubscription
 	return _u
 }
 
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdate) SetPurchaseOrderID(v int64) *UserSubscriptionUpdate {
+	_u.mutation.ResetPurchaseOrderID()
+	_u.mutation.SetPurchaseOrderID(v)
+	return _u
+}
+
+// SetNillablePurchaseOrderID sets the "purchase_order_id" field if the given value is not nil.
+func (_u *UserSubscriptionUpdate) SetNillablePurchaseOrderID(v *int64) *UserSubscriptionUpdate {
+	if v != nil {
+		_u.SetPurchaseOrderID(*v)
+	}
+	return _u
+}
+
+// AddPurchaseOrderID adds value to the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdate) AddPurchaseOrderID(v int64) *UserSubscriptionUpdate {
+	_u.mutation.AddPurchaseOrderID(v)
+	return _u
+}
+
+// ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdate) ClearPurchaseOrderID() *UserSubscriptionUpdate {
+	_u.mutation.ClearPurchaseOrderID()
+	return _u
+}
+
 // SetStartsAt sets the "starts_at" field.
 func (_u *UserSubscriptionUpdate) SetStartsAt(v time.Time) *UserSubscriptionUpdate {
 	_u.mutation.SetStartsAt(v)
@@ -672,6 +699,15 @@ func (_u *UserSubscriptionUpdate) sqlSave(ctx context.Context) (_node int, err e
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(usersubscription.FieldDeletedAt, field.TypeTime)
 	}
+	if value, ok := _u.mutation.PurchaseOrderID(); ok {
+		_spec.SetField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPurchaseOrderID(); ok {
+		_spec.AddField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
+	}
+	if _u.mutation.PurchaseOrderIDCleared() {
+		_spec.ClearField(usersubscription.FieldPurchaseOrderID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
 	}
@@ -983,6 +1019,33 @@ func (_u *UserSubscriptionUpdateOne) SetNillableGroupID(v *int64) *UserSubscript
 	if v != nil {
 		_u.SetGroupID(*v)
 	}
+	return _u
+}
+
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdateOne) SetPurchaseOrderID(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.ResetPurchaseOrderID()
+	_u.mutation.SetPurchaseOrderID(v)
+	return _u
+}
+
+// SetNillablePurchaseOrderID sets the "purchase_order_id" field if the given value is not nil.
+func (_u *UserSubscriptionUpdateOne) SetNillablePurchaseOrderID(v *int64) *UserSubscriptionUpdateOne {
+	if v != nil {
+		_u.SetPurchaseOrderID(*v)
+	}
+	return _u
+}
+
+// AddPurchaseOrderID adds value to the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdateOne) AddPurchaseOrderID(v int64) *UserSubscriptionUpdateOne {
+	_u.mutation.AddPurchaseOrderID(v)
+	return _u
+}
+
+// ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
+func (_u *UserSubscriptionUpdateOne) ClearPurchaseOrderID() *UserSubscriptionUpdateOne {
+	_u.mutation.ClearPurchaseOrderID()
 	return _u
 }
 
@@ -1602,6 +1665,15 @@ func (_u *UserSubscriptionUpdateOne) sqlSave(ctx context.Context) (_node *UserSu
 	}
 	if _u.mutation.DeletedAtCleared() {
 		_spec.ClearField(usersubscription.FieldDeletedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.PurchaseOrderID(); ok {
+		_spec.SetField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPurchaseOrderID(); ok {
+		_spec.AddField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
+	}
+	if _u.mutation.PurchaseOrderIDCleared() {
+		_spec.ClearField(usersubscription.FieldPurchaseOrderID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)

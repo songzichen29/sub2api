@@ -24,3 +24,21 @@ describe('subscription expiry calendar labels', () => {
     expect(w.text()).toContain('subscriptionProgress.' + label)
   })
 })
+
+
+describe('independent subscription entries', () => {
+  it('shows both same-group purchases with separate progress and identity', async () => {
+    store.activeSubscriptions = [
+      { id: 101, group_id: 7, expires_at: '2099-01-01T00:00:00Z', quota_limit_usd: 2000, quota_used_usd: 1500, group: { name: 'Monthly' } },
+      { id: 102, group_id: 7, expires_at: '2099-02-01T00:00:00Z', quota_limit_usd: 2000, quota_used_usd: 200, group: { name: 'Monthly' } }
+    ]
+    const wrapper = mount(SubscriptionProgressMini, { global: { stubs: { Icon: true, RouterLink: true } } })
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.text()).toContain('#101')
+    expect(wrapper.text()).toContain('#102')
+    expect(wrapper.text()).toContain('$1500.00/$2000.00')
+    expect(wrapper.text()).toContain('$200.00/$2000.00')
+    expect(wrapper.findAll('[style*="width: 75%"]')).toHaveLength(1)
+    expect(wrapper.findAll('[style*="width: 10%"]')).toHaveLength(1)
+  })
+})

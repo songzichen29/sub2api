@@ -33,6 +33,7 @@ func (r *userSubscriptionRepository) Create(ctx context.Context, sub *service.Us
 	client := clientFromContext(ctx, r.client)
 	builder := client.UserSubscription.Create().
 		SetUserID(sub.UserID).
+		SetNillablePurchaseOrderID(sub.PurchaseOrderID).
 		SetGroupID(sub.GroupID).
 		SetExpiresAt(sub.ExpiresAt).
 		SetValidityUnit(normalizeRepoSubscriptionValidityUnit(sub.ValidityUnit)).
@@ -125,7 +126,7 @@ func (r *userSubscriptionRepository) GetByIDIncludeDeleted(ctx context.Context, 
 func (r *userSubscriptionRepository) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	client := clientFromContext(ctx, r.client)
 	m, err := client.UserSubscription.Query().
-		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
+		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID), usersubscription.PurchaseOrderIDIsNil()).
 		WithGroup().
 		Only(ctx)
 	if err != nil {
@@ -147,6 +148,9 @@ func (r *userSubscriptionRepository) GetActiveByUserIDAndGroupID(ctx context.Con
 		).
 		WithGroup().
 		Only(ctx)
+	if dbent.IsNotSingular(err) {
+		return nil, service.ErrSubscriptionSelectionRequired
+	}
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrSubscriptionNotFound, nil)
 	}
@@ -473,7 +477,7 @@ func sortSubsByLastUsedAt(subs []service.UserSubscription, sortOrder string) {
 func (r *userSubscriptionRepository) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
 	client := clientFromContext(ctx, r.client)
 	return client.UserSubscription.Query().
-		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID)).
+		Where(usersubscription.UserIDEQ(userID), usersubscription.GroupIDEQ(groupID), usersubscription.PurchaseOrderIDIsNil()).
 		Exist(ctx)
 }
 
@@ -484,6 +488,7 @@ func (r *userSubscriptionRepository) ExistsActiveByUserIDAndGroupID(ctx context.
 		Where(
 			usersubscription.UserIDEQ(userID),
 			usersubscription.GroupIDEQ(groupID),
+			usersubscription.PurchaseOrderIDIsNil(),
 			usersubscription.StatusEQ(service.SubscriptionStatusActive),
 			usersubscription.StartsAtLTE(now),
 			usersubscription.ExpiresAtGT(now),
@@ -1056,6 +1061,7 @@ func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSub
 		status = service.SubscriptionStatusRevoked
 	}
 	out := &service.UserSubscription{
+		PurchaseOrderID:              m.PurchaseOrderID,
 		ID:                           m.ID,
 		UserID:                       m.UserID,
 		GroupID:                      m.GroupID,

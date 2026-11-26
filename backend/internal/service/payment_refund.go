@@ -1153,6 +1153,12 @@ func (s *PaymentService) resolveRefundSubscription(ctx context.Context, o *dbent
 	if s == nil || o == nil || s.entClient == nil {
 		return nil, ErrSubscriptionNotFound
 	}
+	if o.ProviderSnapshot["subscription_assignment_mode"] == "independent" {
+		if o.SubscriptionID == nil {
+			return nil, ErrSubscriptionNotFound
+		}
+		return s.subscriptionSvc.GetByID(ctx, *o.SubscriptionID)
+	}
 	if o.SubscriptionID != nil && *o.SubscriptionID > 0 && s.subscriptionSvc != nil {
 		sub, err := s.subscriptionSvc.GetByID(ctx, *o.SubscriptionID)
 		if err == nil && sub != nil {
@@ -1169,6 +1175,7 @@ func (s *PaymentService) resolveRefundSubscription(ctx context.Context, o *dbent
 			usersubscription.UserIDEQ(o.UserID),
 			usersubscription.GroupIDEQ(*o.SubscriptionGroupID),
 			usersubscription.SourceEQ(domain.SubscriptionSourcePayment),
+			usersubscription.PurchaseOrderIDIsNil(),
 		).
 		WithGroup().
 		All(ctx)

@@ -8,6 +8,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
 import type { CheckoutInfoResponse, MethodLimit, SubscriptionPlan } from '@/types/payment'
+import type { UserSubscription } from '@/types'
 
 const routeState = vi.hoisted(() => ({
   path: '/purchase',
@@ -20,6 +21,7 @@ const routerResolve = vi.hoisted(() => vi.fn(() => ({ href: '/payment/stripe?moc
 const createOrder = vi.hoisted(() => vi.fn())
 const refreshUser = vi.hoisted(() => vi.fn())
 const fetchActiveSubscriptions = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const subscriptionState = vi.hoisted(() => ({ activeSubscriptions: [] as UserSubscription[] }))
 const showError = vi.hoisted(() => vi.fn())
 const showInfo = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
@@ -73,7 +75,7 @@ vi.mock('@/stores/payment', () => ({
 
 vi.mock('@/stores/subscriptions', () => ({
   useSubscriptionStore: () => ({
-    activeSubscriptions: [],
+    get activeSubscriptions() { return subscriptionState.activeSubscriptions },
     fetchActiveSubscriptions,
   }),
 }))
@@ -298,6 +300,64 @@ async function mountSubscriptionPlanList(planCount: number) {
   await flushPromises()
   return wrapper
 }
+
+beforeEach(() => {
+  subscriptionState.activeSubscriptions = []
+})
+
+describe('PaymentView independent subscription purchases', () => {
+  it.each([1, 30])('buys another %i-day subscription without a renewal-mode prompt', async (validityDays) => {
+    subscriptionState.activeSubscriptions = [{
+      id: 101,
+      user_id: 1,
+      group_id: 3,
+      status: 'active',
+      starts_at: '2026-11-01T00:00:00Z',
+      expires_at: '2099-01-01T00:00:00Z',
+      created_at: '2026-11-01T00:00:00Z',
+      updated_at: '2026-11-01T00:00:00Z',
+      daily_usage_usd: 5,
+      weekly_usage_usd: 10,
+      monthly_usage_usd: 20,
+      quota_limit_usd: 2000,
+      quota_used_usd: 20,
+      allow_daily_overdraft: false,
+      skip_weekends: false,
+      daily_window_start: null,
+      weekly_window_start: null,
+      monthly_window_start: null,
+    }]
+    const originalSubscription = { ...subscriptionState.activeSubscriptions[0] }
+    const wrapper = await mountSubscriptionConfirm({
+      plan: { validity_days: validityDays, quota_limit_usd: 2000 },
+    })
+    createOrder.mockResolvedValue({
+      order_id: 779,
+      amount: 128,
+      pay_amount: 128,
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00Z',
+      payment_type: 'wxpay',
+      qr_code: 'weixin://wxpay/bizpayurl?pr=independent-subscription-test',
+      out_trade_no: 'independent-subscription-test',
+    })
+
+    expect(wrapper.text()).toContain('payment.independentSubscriptionNotice')
+    expect(wrapper.text()).toContain('$2000.00')
+    expect(wrapper.text()).not.toContain('payment.planCard.unlimited')
+    const button = wrapper.findAll('button').find(item => item.text().includes('payment.createOrder'))
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(createOrder).toHaveBeenCalledOnce()
+    expect(createOrder.mock.calls[0][0]).toMatchObject({ order_type: 'subscription', plan_id: 7 })
+    expect(createOrder.mock.calls[0][0]).not.toHaveProperty('renewal_mode')
+    expect(wrapper.text()).not.toContain('payment.renewalMode.title')
+    expect(subscriptionState.activeSubscriptions[0]).toEqual(originalSubscription)
+    wrapper.unmount()
+  })
+})
 
 describe('PaymentView help text', () => {
   beforeEach(() => {

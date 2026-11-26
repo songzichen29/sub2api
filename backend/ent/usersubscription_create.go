@@ -79,6 +79,20 @@ func (_c *UserSubscriptionCreate) SetGroupID(v int64) *UserSubscriptionCreate {
 	return _c
 }
 
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (_c *UserSubscriptionCreate) SetPurchaseOrderID(v int64) *UserSubscriptionCreate {
+	_c.mutation.SetPurchaseOrderID(v)
+	return _c
+}
+
+// SetNillablePurchaseOrderID sets the "purchase_order_id" field if the given value is not nil.
+func (_c *UserSubscriptionCreate) SetNillablePurchaseOrderID(v *int64) *UserSubscriptionCreate {
+	if v != nil {
+		_c.SetPurchaseOrderID(*v)
+	}
+	return _c
+}
+
 // SetStartsAt sets the "starts_at" field.
 func (_c *UserSubscriptionCreate) SetStartsAt(v time.Time) *UserSubscriptionCreate {
 	_c.mutation.SetStartsAt(v)
@@ -622,6 +636,10 @@ func (_c *UserSubscriptionCreate) createSpec() (*UserSubscription, *sqlgraph.Cre
 		_spec.SetField(usersubscription.FieldDeletedAt, field.TypeTime, value)
 		_node.DeletedAt = &value
 	}
+	if value, ok := _c.mutation.PurchaseOrderID(); ok {
+		_spec.SetField(usersubscription.FieldPurchaseOrderID, field.TypeInt64, value)
+		_node.PurchaseOrderID = &value
+	}
 	if value, ok := _c.mutation.StartsAt(); ok {
 		_spec.SetField(usersubscription.FieldStartsAt, field.TypeTime, value)
 		_node.StartsAt = value
@@ -876,6 +894,30 @@ func (u *UserSubscriptionUpsert) SetGroupID(v int64) *UserSubscriptionUpsert {
 // UpdateGroupID sets the "group_id" field to the value that was provided on create.
 func (u *UserSubscriptionUpsert) UpdateGroupID() *UserSubscriptionUpsert {
 	u.SetExcluded(usersubscription.FieldGroupID)
+	return u
+}
+
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (u *UserSubscriptionUpsert) SetPurchaseOrderID(v int64) *UserSubscriptionUpsert {
+	u.Set(usersubscription.FieldPurchaseOrderID, v)
+	return u
+}
+
+// UpdatePurchaseOrderID sets the "purchase_order_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsert) UpdatePurchaseOrderID() *UserSubscriptionUpsert {
+	u.SetExcluded(usersubscription.FieldPurchaseOrderID)
+	return u
+}
+
+// AddPurchaseOrderID adds v to the "purchase_order_id" field.
+func (u *UserSubscriptionUpsert) AddPurchaseOrderID(v int64) *UserSubscriptionUpsert {
+	u.Add(usersubscription.FieldPurchaseOrderID, v)
+	return u
+}
+
+// ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
+func (u *UserSubscriptionUpsert) ClearPurchaseOrderID() *UserSubscriptionUpsert {
+	u.SetNull(usersubscription.FieldPurchaseOrderID)
 	return u
 }
 
@@ -1344,6 +1386,34 @@ func (u *UserSubscriptionUpsertOne) SetGroupID(v int64) *UserSubscriptionUpsertO
 func (u *UserSubscriptionUpsertOne) UpdateGroupID() *UserSubscriptionUpsertOne {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertOne) SetPurchaseOrderID(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetPurchaseOrderID(v)
+	})
+}
+
+// AddPurchaseOrderID adds v to the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertOne) AddPurchaseOrderID(v int64) *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddPurchaseOrderID(v)
+	})
+}
+
+// UpdatePurchaseOrderID sets the "purchase_order_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertOne) UpdatePurchaseOrderID() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdatePurchaseOrderID()
+	})
+}
+
+// ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertOne) ClearPurchaseOrderID() *UserSubscriptionUpsertOne {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearPurchaseOrderID()
 	})
 }
 
@@ -2038,6 +2108,34 @@ func (u *UserSubscriptionUpsertBulk) SetGroupID(v int64) *UserSubscriptionUpsert
 func (u *UserSubscriptionUpsertBulk) UpdateGroupID() *UserSubscriptionUpsertBulk {
 	return u.Update(func(s *UserSubscriptionUpsert) {
 		s.UpdateGroupID()
+	})
+}
+
+// SetPurchaseOrderID sets the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertBulk) SetPurchaseOrderID(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.SetPurchaseOrderID(v)
+	})
+}
+
+// AddPurchaseOrderID adds v to the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertBulk) AddPurchaseOrderID(v int64) *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.AddPurchaseOrderID(v)
+	})
+}
+
+// UpdatePurchaseOrderID sets the "purchase_order_id" field to the value that was provided on create.
+func (u *UserSubscriptionUpsertBulk) UpdatePurchaseOrderID() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.UpdatePurchaseOrderID()
+	})
+}
+
+// ClearPurchaseOrderID clears the value of the "purchase_order_id" field.
+func (u *UserSubscriptionUpsertBulk) ClearPurchaseOrderID() *UserSubscriptionUpsertBulk {
+	return u.Update(func(s *UserSubscriptionUpsert) {
+		s.ClearPurchaseOrderID()
 	})
 }
 

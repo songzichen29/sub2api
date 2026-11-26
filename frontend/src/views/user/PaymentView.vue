@@ -160,6 +160,7 @@
                   <h3 class="text-lg font-bold text-gray-900 dark:text-white">
                     {{ selectedDailyResetSubscription.group?.name || t('payment.groupFallback', { id: selectedDailyResetSubscription.group_id }) }}
                   </h3>
+                  <span class="text-sm text-gray-500 dark:text-gray-400">#{{ selectedDailyResetSubscription.id }}</span>
                 </div>
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
@@ -231,10 +232,7 @@
                 <p v-if="selectedPlan.description" class="mt-2 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                   {{ selectedPlan.description }}
                 </p>
-                <div v-if="renewalNotice" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-                  <p class="font-medium">{{ renewalNoticeTitle }}</p>
-                  <p class="mt-1 leading-relaxed">{{ renewalNotice }}</p>
-                </div>
+                <p class="mt-3 text-sm leading-relaxed text-gray-600 dark:text-gray-300">{{ t('payment.independentSubscriptionNotice') }}</p>
                 <p v-if="discountRuleHint" class="mt-3 text-xs text-gray-500 dark:text-gray-400">{{ discountRuleHint }}</p>
                 <!-- Rate + Limits grid -->
                 <div class="mt-3 grid grid-cols-2 gap-3">
@@ -243,6 +241,10 @@
                     <div class="flex items-baseline">
                       <span :class="['text-lg font-bold', planTextClass]">×{{ selectedPlan.rate_multiplier ?? 1 }}</span>
                     </div>
+                  </div>
+                  <div v-if="selectedPlan.quota_limit_usd != null && selectedPlan.quota_limit_usd > 0">
+                    <div class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.totalQuota') }}</div>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.quota_limit_usd.toFixed(2) }}</div>
                   </div>
                   <div v-if="selectedPlan.daily_limit_usd != null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.dailyLimit') }}</span>
@@ -256,7 +258,7 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.monthlyLimit') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">${{ selectedPlan.monthly_limit_usd }}</div>
                   </div>
-                  <div v-if="selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
+                  <div v-if="!selectedPlan.quota_limit_usd && selectedPlan.daily_limit_usd == null && selectedPlan.weekly_limit_usd == null && selectedPlan.monthly_limit_usd == null">
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
@@ -323,11 +325,12 @@
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-1.5">
                         <span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || t('payment.groupFallback', { id: sub.group_id }) }}</span>
+                        <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">#{{ sub.id }}</span>
                         <span :class="['shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium', platformBadgeLightClass(sub.group?.platform || '')]">{{ platformLabel(sub.group?.platform || '') }}</span>
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
                         <span>{{ t('payment.planCard.rate') }}: ×{{ sub.group?.rate_multiplier ?? 1 }}</span>
-                        <span v-if="sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
+                        <span v-if="!sub.quota_limit_usd && sub.group?.daily_limit_usd == null && sub.group?.weekly_limit_usd == null && sub.group?.monthly_limit_usd == null">{{ t('payment.planCard.quota') }}: {{ t('payment.planCard.unlimited') }}</span>
                         <span v-if="sub.expires_at">{{ t('userSubscriptions.daysRemaining', { days: getDaysRemaining(sub.expires_at) }) }}</span>
                         <span v-else>{{ t('userSubscriptions.noExpiration') }}</span>
                       </div>
@@ -350,40 +353,14 @@
       </template>
     </div>
     <BaseDialog
-      :show="showRenewalModal"
+      :show="showGroupPlansModal"
       :title="t('payment.selectPlan')"
       close-on-click-outside
-      @close="closeRenewalModal"
+      @close="closeGroupPlansModal"
     >
       <div class="space-y-4">
-        <div v-if="renewalModalNotice" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          <p class="font-medium">{{ t('payment.renewalNoticeTitle') }}</p>
-          <p class="mt-1 leading-relaxed">{{ renewalModalNotice }}</p>
-        </div>
-        <SubscriptionPlanCard v-for="plan in renewalPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
+        <SubscriptionPlanCard v-for="plan in groupPlans" :key="plan.id" :plan="plan" :active-subscriptions="activeSubscriptions" @select="selectPlanFromModal" />
       </div>
-    </BaseDialog>
-    <BaseDialog
-      :show="!!renewalModeTarget"
-      :title="t('payment.renewalMode.title')"
-      width="narrow"
-      close-on-click-outside
-      @close="renewalModeTarget = null"
-    >
-      <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">{{ t('payment.renewalMode.message') }}</p>
-      <div class="mt-4 space-y-3">
-        <button type="button" class="w-full rounded-md border border-gray-200 px-4 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-600 dark:border-dark-700 dark:hover:bg-dark-800" @click="confirmRenewalMode('extend')">
-          <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('payment.renewalMode.extendTitle') }}</span>
-          <span class="mt-1 block text-sm text-gray-500 dark:text-gray-400">{{ t('payment.renewalMode.extendDesc') }}</span>
-        </button>
-        <button type="button" class="w-full rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-600 dark:border-amber-900/50 dark:bg-amber-950/30 dark:hover:bg-amber-950/50" @click="confirmRenewalMode('restart')">
-          <span class="block text-sm font-medium text-amber-900 dark:text-amber-100">{{ t('payment.renewalMode.restartTitle') }}</span>
-          <span class="mt-1 block text-sm text-amber-700 dark:text-amber-200">{{ t('payment.renewalMode.restartDesc') }}</span>
-        </button>
-      </div>
-      <template #footer>
-        <button type="button" class="btn btn-secondary" @click="renewalModeTarget = null">{{ t('common.cancel') }}</button>
-      </template>
     </BaseDialog>
     <BaseDialog
       :show="!!previewImage"
@@ -444,7 +421,6 @@ import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/paym
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
-import { buildRenewalNoticeText, getRenewalModeLabel } from './renewalNotice'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -480,7 +456,6 @@ const couponMessage = ref('')
 const couponMessageIsError = ref(false)
 const discountRules = ref<DiscountRule[]>([])
 const selectedDailyResetSubscriptionId = ref<number | null>(null)
-const renewalModeTarget = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -960,12 +935,12 @@ const canSubmitSubscription = computed(() =>
     && selectedLimit.value?.available !== false
 )
 
-// Renewal modal state
-const showRenewalModal = ref(false)
-const renewGroupId = ref<number | null>(null)
-const renewalPlans = computed(() => {
-  if (renewGroupId.value == null) return []
-  return checkout.value.plans.filter(p => p.group_id === renewGroupId.value)
+// 同组套餐选择
+const showGroupPlansModal = ref(false)
+const selectedPlanGroupId = ref<number | null>(null)
+const groupPlans = computed(() => {
+  if (selectedPlanGroupId.value == null) return []
+  return checkout.value.plans.filter(p => p.group_id === selectedPlanGroupId.value)
 })
 
 const selectedDailyResetSubscription = computed<UserSubscription | null>(() => {
@@ -1005,101 +980,6 @@ const canSubmitDailyReset = computed(() =>
     && dailyResetPrice.value > 0
     && amountFitsMethod(dailyResetTotalAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
-)
-
-function findActiveSubscriptionByGroup(groupId: number | null | undefined): UserSubscription | null {
-  if (!groupId) return null
-  return activeSubscriptions.value.find((sub) =>
-    sub.group_id === groupId
-      && (sub.status === 'active' || sub.status === 'quota_exhausted')
-      && (!sub.expires_at || new Date(sub.expires_at).getTime() > Date.now())
-  ) ?? null
-}
-
-function subscriptionHasTotalQuota(sub: UserSubscription | null | undefined): boolean {
-  return sub?.quota_limit_usd != null && sub.quota_limit_usd > 0
-}
-
-function getOverdraftLimit(sub: UserSubscription | null | undefined): number | null {
-  return sub?.allow_daily_overdraft && typeof sub.overdraft_limit_usd === 'number' && sub.overdraft_limit_usd > 0
-    ? sub.overdraft_limit_usd
-    : null
-}
-
-function getOverdraftUsed(sub: UserSubscription | null | undefined): number {
-  return sub?.overdraft_used_usd ?? 0
-}
-
-function subscriptionHasRemainingQuota(sub: UserSubscription): boolean {
-  if (subscriptionHasTotalQuota(sub)) {
-    return (sub.quota_remaining_usd ?? Math.max((sub.quota_limit_usd || 0) - (sub.quota_used_usd || 0), 0)) > 0
-  }
-  const group = sub.group
-  if (!group) return false
-  const overdraftLimit = getOverdraftLimit(sub)
-  if (overdraftLimit !== null) {
-    return getOverdraftUsed(sub) < overdraftLimit
-  }
-  const dailyRemaining = group.daily_limit_usd != null && group.daily_limit_usd > 0
-    ? Math.max(group.daily_limit_usd - (sub.daily_usage_usd || 0), 0)
-    : 0
-  const weeklyRemaining = group.weekly_limit_usd != null && group.weekly_limit_usd > 0
-    ? Math.max(group.weekly_limit_usd - (sub.weekly_usage_usd || 0), 0)
-    : 0
-  const monthlyRemaining = group.monthly_limit_usd != null && group.monthly_limit_usd > 0
-    ? Math.max(group.monthly_limit_usd - (sub.monthly_usage_usd || 0), 0)
-    : 0
-  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
-    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
-    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
-    && !subscriptionHasTotalQuota(sub)
-  return hasUnlimitedQuota || dailyRemaining > 0 || weeklyRemaining > 0 || monthlyRemaining > 0
-}
-
-function computePlanValidityDays(plan: SubscriptionPlan | null | undefined): number | null {
-  if (!plan) return null
-  if (plan.expires_at) {
-    const expiresAt = new Date(plan.expires_at)
-    const diffMs = expiresAt.getTime() - Date.now()
-    if (Number.isNaN(diffMs) || diffMs <= 0) return 0
-    return Math.max(1, Math.ceil(diffMs / (24 * 60 * 60 * 1000)))
-  }
-  const days = plan.validity_days || 0
-  switch (plan.validity_unit) {
-    case 'week':
-    case 'weeks':
-      return days * 7
-    case 'month':
-    case 'months':
-      return days * 30
-    case 'year':
-    case 'years':
-      return days * 365
-    default:
-      return days
-  }
-}
-
-function buildRenewalNoticeForSubscription(sub: UserSubscription | null): string {
-  if (!sub || !subscriptionHasRemainingQuota(sub)) return ''
-  const renewalDays = selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null
-  return buildRenewalNoticeText(sub, t, renewalDays)
-}
-
-const renewalNoticeTitle = computed(() =>
-  getRenewalModeLabel(selectedPlan.value ? computePlanValidityDays(selectedPlan.value) : null, t)
-)
-
-const selectedPlanActiveSubscription = computed(() =>
-  findActiveSubscriptionByGroup(selectedPlan.value?.group_id)
-)
-
-const renewalNotice = computed(() =>
-  buildRenewalNoticeForSubscription(selectedPlanActiveSubscription.value)
-)
-
-const renewalModalNotice = computed(() =>
-  buildRenewalNoticeForSubscription(findActiveSubscriptionByGroup(renewGroupId.value))
 )
 
 // Auto-switch to first available method when current selection can't handle the amount
@@ -1166,8 +1046,8 @@ function selectPlan(plan: SubscriptionPlan) {
 }
 
 function selectPlanFromModal(plan: SubscriptionPlan) {
-  showRenewalModal.value = false
-  renewGroupId.value = null
+  showGroupPlansModal.value = false
+  selectedPlanGroupId.value = null
   selectedPlan.value = plan
   couponCode.value = ''
   pricePreview.value = null
@@ -1175,9 +1055,9 @@ function selectPlanFromModal(plan: SubscriptionPlan) {
   errorMessage.value = ''
 }
 
-function closeRenewalModal() {
-  showRenewalModal.value = false
-  renewGroupId.value = null
+function closeGroupPlansModal() {
+  showGroupPlansModal.value = false
+  selectedPlanGroupId.value = null
 }
 
 async function refreshPricePreview() {
@@ -1225,29 +1105,7 @@ async function handleSubmitRecharge() {
 
 async function confirmSubscribe() {
   if (!selectedPlan.value || submitting.value) return
-  if (shouldAskRenewalMode(selectedPlan.value)) {
-    renewalModeTarget.value = selectedPlan.value
-    return
-  }
-  await submitSubscriptionOrder(
-    findActiveSubscriptionByGroup(selectedPlan.value.group_id) ? 'extend' : undefined,
-  )
-}
-
-function shouldAskRenewalMode(plan: SubscriptionPlan): boolean {
-  if (!findActiveSubscriptionByGroup(plan.group_id)) return false
-  const renewalDays = computePlanValidityDays(plan)
-  return renewalDays != null && renewalDays > 1
-}
-
-async function submitSubscriptionOrder(renewalMode?: 'extend' | 'restart') {
-  if (!selectedPlan.value || submitting.value) return
-  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id, { renewalMode })
-}
-
-async function confirmRenewalMode(mode: 'extend' | 'restart') {
-  renewalModeTarget.value = null
-  await submitSubscriptionOrder(mode)
+  await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
 async function confirmDailyLimitReset() {
@@ -1683,9 +1541,8 @@ onMounted(async () => {
         ? subscriptionId
         : null
     }
-    // Handle renewal navigation: ?tab=subscription&group=123
     // balance_disabled → the tabs watcher above moves activeTab to the subscription tab (when enabled).
-    // Handle renewal navigation: ?tab=subscription&group=123 (ignored when subscriptions are disabled)
+    // 从订阅页进入同组套餐购买：?tab=subscription&group=123
     if (route.query.tab === 'subscription' && subscriptionEnabled.value) {
       activeTab.value = 'subscription'
       if (typeof route.query.plan_id === 'string') {
@@ -1698,8 +1555,8 @@ onMounted(async () => {
         if (groupPlans.length === 1) {
           selectedPlan.value = groupPlans[0]
         } else if (groupPlans.length > 1) {
-          renewGroupId.value = groupId
-          showRenewalModal.value = true
+          selectedPlanGroupId.value = groupId
+          showGroupPlansModal.value = true
         }
       }
     }

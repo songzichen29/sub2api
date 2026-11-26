@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-import type { ApiKey } from '@/types'
+import type { ApiKey, Group, UserSubscription } from '@/types'
 import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
 
@@ -12,6 +12,7 @@ const {
   getPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
+  getMySubscriptions,
   getUserGroupRates,
   showError,
   showSuccess,
@@ -24,6 +25,7 @@ const {
   getPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
+  getMySubscriptions: vi.fn(),
   getUserGroupRates: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -57,6 +59,8 @@ const messages: Record<string, string> = {
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
 }
+
+vi.mock('@/api/subscriptions', () => ({ default: { getMySubscriptions } }))
 
 vi.mock('@/api', () => ({
   keysAPI: {
@@ -172,6 +176,7 @@ const DataTableStub = {
         >
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
+        <slot name="cell-group" :row="row" />
         <slot name="cell-name" :value="row.name" :row="row" />
         <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
@@ -279,6 +284,7 @@ describe('user KeysView column settings', () => {
     getPublicSettings.mockReset()
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
+    getMySubscriptions.mockReset()
     getUserGroupRates.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -296,8 +302,137 @@ describe('user KeysView column settings', () => {
     getPublicSettings.mockResolvedValue({})
     getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
     getAvailableGroups.mockResolvedValue([])
+    getMySubscriptions.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it('lists same-group subscriptions independently and switches the selected ID', async () => {
+    const group = { id: 7, name: 'Monthly plan', platform: 'openai', subscription_type: 'subscription', rate_multiplier: 2 } as Group
+    const first = { id: 101, user_id: 1, group_id: 7, status: 'active', expires_at: '2099-01-01T00:00:00Z', quota_limit_usd: 2000, quota_used_usd: 1500, group } as UserSubscription
+    const second = { ...first, id: 102, quota_used_usd: 200 }
+    getAvailableGroups.mockResolvedValue([group])
+    getMySubscriptions.mockResolvedValue([first, second])
+    listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 7, subscription_id: 101, group }], total: 1, pages: 1 })
+    const wrapper = await mountView()
+    await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+    await flushPromises()
+    const options = wrapper.findAll('[data-subscription-option]')
+    expect(options).toHaveLength(2)
+    expect(options[0].text()).toContain('1500.00 / $2000.00')
+    expect(options[1].text()).toContain('200.00 / $2000.00')
+    expect(options[0].classes()).toContain('bg-primary-50')
+    expect(options[1].classes()).not.toContain('bg-primary-50')
+    await options[1].trigger('click')
+    await flushPromises()
+    expect(updateKey).toHaveBeenCalledWith(1, { group_id: 7, subscription_id: 102 })
+    wrapper.unmount()
+  })
+
+  it('refreshes new purchases and quota usage through the existing refresh button', async () => {
+    const group = { id: 7, name: 'Monthly plan', platform: 'openai', subscription_type: 'subscription' } as Group
+    const first = { id: 101, group_id: 7, status: 'active', quota_limit_usd: 2000, quota_used_usd: 200, expires_at: '2099-01-01T00:00:00Z', group } as UserSubscription
+    getAvailableGroups.mockResolvedValue([group])
+    getMySubscriptions.mockResolvedValue([first])
+    listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 7, subscription_id: 101, group }], total: 1, pages: 1 })
+    const wrapper = await mountView()
+    getMySubscriptions.mockResolvedValue([{ ...first, quota_used_usd: 1500 }, { ...first, id: 102, quota_used_usd: 0 }])
+    await wrapper.get('button[title="Refresh"]').trigger('click')
+    await flushPromises()
+    expect(getAvailableGroups).toHaveBeenCalledTimes(2)
+    expect(getMySubscriptions).toHaveBeenCalledTimes(2)
+    await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-subscription-option]')).toHaveLength(2)
+    expect(wrapper.get('[data-subscription-option="101"]').text()).toContain('1500.00 / $2000.00')
+    expect(wrapper.get('[data-subscription-option="102"]').text()).toContain('0.00 / $2000.00')
+    wrapper.unmount()
+  })
+
+  it('hides invalid subscriptions without clearing or switching the existing binding', async () => {
+    const group = { id: 7, name: 'Monthly plan', platform: 'openai', subscription_type: 'subscription' } as Group
+    const active = { id: 101, group_id: 7, status: 'active', expires_at: '2099-01-01T00:00:00Z', quota_limit_usd: 2000, quota_used_usd: 200, group } as UserSubscription
+    getAvailableGroups.mockResolvedValue([group])
+    getMySubscriptions.mockResolvedValue([
+      { ...active, id: 90, status: 'expired', expires_at: '2020-01-01T00:00:00Z' },
+      active,
+      { ...active, id: 102, quota_used_usd: 500 },
+      { ...active, id: 103, status: 'quota_exhausted' }
+    ])
+    listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 7, subscription_id: 90, group }], total: 1, pages: 1 })
+    const wrapper = await mountView()
+    await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-subscription-option]').map((option) => option.attributes('data-subscription-option'))).toEqual(['101', '102'])
+    expect(wrapper.findComponent({ name: 'DataTable' }).props('data')[0].subscription_id).toBe(90)
+    expect(wrapper.get('button[title="keys.clickToChangeGroup"]').text()).toContain('#90')
+    expect(updateKey).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('refreshes on opening the selector and ignores a late older quota response', async () => {
+    const group = { id: 7, name: 'Monthly plan', platform: 'openai', subscription_type: 'subscription' } as Group
+    const first = { id: 101, group_id: 7, status: 'active', quota_limit_usd: 2000, quota_used_usd: 200, expires_at: '2099-01-01T00:00:00Z', group } as UserSubscription
+    getAvailableGroups.mockResolvedValue([group])
+    getMySubscriptions.mockResolvedValue([first])
+    listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 7, subscription_id: 101, group }], total: 1, pages: 1 })
+    const wrapper = await mountView()
+    let resolveOld!: (value: UserSubscription[]) => void
+    getMySubscriptions.mockReturnValueOnce(new Promise<UserSubscription[]>((resolve) => { resolveOld = resolve }))
+    await wrapper.get('button[title="Refresh"]').trigger('click')
+    await flushPromises()
+    getMySubscriptions.mockResolvedValue([{ ...first, quota_used_usd: 1900 }])
+    await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-subscription-option="101"]').text()).toContain('1900.00 / $2000.00')
+    resolveOld([{ ...first, quota_used_usd: 500 }])
+    await flushPromises()
+    expect(wrapper.get('[data-subscription-option="101"]').text()).toContain('1900.00 / $2000.00')
+    wrapper.unmount()
+  })
+
+  it('refreshes ordinary balance groups without querying subscriptions', async () => {
+    const group = { id: 8, name: 'Balance', platform: 'openai', subscription_type: 'standard' } as Group
+    getAvailableGroups.mockResolvedValue([group])
+    listKeys.mockResolvedValue({ items: [{ ...createApiKey(), group_id: 8, group }], total: 1, pages: 1 })
+    const wrapper = await mountView()
+    await wrapper.get('button[title="Refresh"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('button[title="keys.clickToChangeGroup"]').trigger('click')
+    await flushPromises()
+    expect(getAvailableGroups).toHaveBeenCalledTimes(3)
+    expect(getMySubscriptions).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('reports a failed subscription refresh instead of silently swallowing it', async () => {
+    const group = { id: 7, name: 'Monthly', platform: 'openai', subscription_type: 'subscription' } as Group
+    getAvailableGroups.mockResolvedValue([group])
+    const wrapper = await mountView()
+    getMySubscriptions.mockRejectedValueOnce(new Error('subscription request failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await wrapper.get('button[title="Refresh"]').trigger('click')
+    await flushPromises()
+    expect(showError).toHaveBeenCalledWith('keys.failedToLoad')
+    expect(consoleError).toHaveBeenCalledWith('Failed to load groups:', expect.any(Error))
+    consoleError.mockRestore()
+    wrapper.unmount()
+  })
+
+  it('submits the specific subscription from the create selector', async () => {
+    const group = { id: 7, name: 'Monthly plan', platform: 'openai', subscription_type: 'subscription' } as Group
+    getAvailableGroups.mockResolvedValue([group])
+    getMySubscriptions.mockResolvedValue([{ id: 102, group_id: 7, status: 'active', expires_at: '2099-01-01T00:00:00Z', group }])
+    const wrapper = await mountView()
+    await getButtonByText(wrapper, 'Create API Key').trigger('click')
+    await wrapper.get('[data-tour="key-form-name"]').setValue('Second subscription')
+    wrapper.getComponent('[data-tour="key-form-group"]').vm.$emit('update:modelValue', 'subscription:102')
+    await nextTick()
+    await wrapper.get('#key-form').trigger('submit')
+    await flushPromises()
+    expect(vi.mocked(keysAPI.create).mock.calls[0][1]).toBe(7)
+    expect(vi.mocked(keysAPI.create).mock.calls[0][8]).toBe(102)
+    wrapper.unmount()
   })
 
   it.each([

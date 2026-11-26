@@ -19,9 +19,10 @@ export interface UpdateApiKeyGroupResult {
  * @param groupId - Group ID (0 to unbind, positive to bind, null/undefined to skip)
  * @returns Updated API key with auto-grant info
  */
-export async function updateApiKeyGroup(id: number, groupId: number | null): Promise<UpdateApiKeyGroupResult> {
+export async function updateApiKeyGroup(id: number, groupId: number | null, subscriptionId?: number | null): Promise<UpdateApiKeyGroupResult> {
   const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, {
-    group_id: groupId === null ? 0 : groupId
+    group_id: groupId === null ? 0 : groupId,
+    ...(subscriptionId !== undefined ? { subscription_id: subscriptionId } : {})
   })
   return data
 }

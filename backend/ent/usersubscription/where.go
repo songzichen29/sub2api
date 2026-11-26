@@ -80,6 +80,11 @@ func GroupID(v int64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldGroupID, v))
 }
 
+// PurchaseOrderID applies equality check predicate on the "purchase_order_id" field. It's identical to PurchaseOrderIDEQ.
+func PurchaseOrderID(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldPurchaseOrderID, v))
+}
+
 // StartsAt applies equality check predicate on the "starts_at" field. It's identical to StartsAtEQ.
 func StartsAt(v time.Time) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldEQ(FieldStartsAt, v))
@@ -358,6 +363,56 @@ func GroupIDIn(vs ...int64) predicate.UserSubscription {
 // GroupIDNotIn applies the NotIn predicate on the "group_id" field.
 func GroupIDNotIn(vs ...int64) predicate.UserSubscription {
 	return predicate.UserSubscription(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// PurchaseOrderIDEQ applies the EQ predicate on the "purchase_order_id" field.
+func PurchaseOrderIDEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldEQ(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDNEQ applies the NEQ predicate on the "purchase_order_id" field.
+func PurchaseOrderIDNEQ(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNEQ(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDIn applies the In predicate on the "purchase_order_id" field.
+func PurchaseOrderIDIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIn(FieldPurchaseOrderID, vs...))
+}
+
+// PurchaseOrderIDNotIn applies the NotIn predicate on the "purchase_order_id" field.
+func PurchaseOrderIDNotIn(vs ...int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotIn(FieldPurchaseOrderID, vs...))
+}
+
+// PurchaseOrderIDGT applies the GT predicate on the "purchase_order_id" field.
+func PurchaseOrderIDGT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGT(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDGTE applies the GTE predicate on the "purchase_order_id" field.
+func PurchaseOrderIDGTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldGTE(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDLT applies the LT predicate on the "purchase_order_id" field.
+func PurchaseOrderIDLT(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLT(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDLTE applies the LTE predicate on the "purchase_order_id" field.
+func PurchaseOrderIDLTE(v int64) predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldLTE(FieldPurchaseOrderID, v))
+}
+
+// PurchaseOrderIDIsNil applies the IsNil predicate on the "purchase_order_id" field.
+func PurchaseOrderIDIsNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldIsNull(FieldPurchaseOrderID))
+}
+
+// PurchaseOrderIDNotNil applies the NotNil predicate on the "purchase_order_id" field.
+func PurchaseOrderIDNotNil() predicate.UserSubscription {
+	return predicate.UserSubscription(sql.FieldNotNull(FieldPurchaseOrderID))
 }
 
 // StartsAtEQ applies the EQ predicate on the "starts_at" field.

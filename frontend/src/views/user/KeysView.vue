@@ -50,12 +50,12 @@
       <template #actions>
         <div class="flex justify-end gap-3">
           <button
-            @click="loadApiKeys"
-            :disabled="loading"
+            @click="refreshPage"
+            :disabled="loading || groupsLoading"
             class="btn btn-secondary"
             :title="t('common.refresh')"
           >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            <Icon name="refresh" size="md" :class="loading || groupsLoading ? 'animate-spin' : ''" />
           </button>
           <div class="relative" ref="columnDropdownRef">
             <button
@@ -177,6 +177,7 @@
                 <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
                   t('keys.noGroup')
                 }}</span>
+                <span v-if="row.subscription_id" class="shrink-0 text-xs tabular-nums text-gray-600 dark:text-dark-300">#{{ row.subscription_id }}</span>
                 <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
                 <svg
                   class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
@@ -551,7 +552,7 @@
             :key="showEditModal ? 'edit' : createProvider"
             id="key-form-group"
             :aria-label="t('keys.groupLabel')"
-            v-model="formData.group_id"
+            v-model="formSelection"
             :options="formGroupOptions"
             :placeholder="t('keys.selectGroup')"
             :empty-text="t('common.noGroupsAvailable')"
@@ -560,34 +561,39 @@
             data-tour="key-form-group"
           >
             <template #selected="{ option }">
-              <GroupBadge
-                v-if="option"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-              />
+              <span v-if="option" class="flex min-w-0 items-center gap-2">
+                <GroupBadge
+                  :name="(option as unknown as GroupOption).group.name"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                />
+                <span v-if="(option as unknown as GroupOption).subscription" class="shrink-0 text-xs tabular-nums">#{{ (option as unknown as GroupOption).subscription!.id }}</span>
+              </span>
               <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
             </template>
             <template #option="{ option, selected }">
-              <GroupOptionItem
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                :description="(option as unknown as GroupOption).description"
-                :selected="selected"
-              />
+              <div class="w-full">
+                <GroupOptionItem
+                  :name="(option as unknown as GroupOption).label"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                  :description="(option as unknown as GroupOption).description"
+                  :selected="selected"
+                />
+                <SubscriptionQuotaSummary v-if="(option as unknown as GroupOption).subscription" :subscription="(option as unknown as GroupOption).subscription!" />
+              </div>
             </template>
           </Select>
         </div>
@@ -1041,6 +1047,7 @@
       :show="showBulkEditModal"
       :selected-keys="selectedApiKeys"
       :groups="groups"
+      :subscriptions="subscriptions"
       @close="showBulkEditModal = false"
       @updated="handleBulkUpdated"
     />
@@ -1169,15 +1176,17 @@
         </div>
         <!-- Group list -->
         <div class="max-h-80 overflow-y-auto p-1.5">
+          <p v-if="groupsLoading" class="px-3 py-2 text-sm text-gray-500 dark:text-dark-400">{{ t('common.loading') }}</p>
           <button
             v-for="option in filteredGroupOptions"
-            :key="option.value ?? 'null'"
-            @click="changeGroup(selectedKeyForGroup!, option.value)"
+            :key="option.value"
+            :disabled="option.disabled"
+            :data-subscription-option="option.subscription?.id"
+            @click="changeGroup(selectedKeyForGroup!, option)"
             :class="[
-              'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
+              'flex w-full flex-col items-stretch rounded-lg px-3 py-2.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60',
               'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              selectedKeyForGroup?.group_id === option.value ||
-              (!selectedKeyForGroup?.group_id && option.value === null)
+              isSelectedGroupOption(selectedKeyForGroup, option)
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
@@ -1195,10 +1204,10 @@
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
               :selected="
-                selectedKeyForGroup?.group_id === option.value ||
-                (!selectedKeyForGroup?.group_id && option.value === null)
+                isSelectedGroupOption(selectedKeyForGroup, option)
               "
             />
+            <SubscriptionQuotaSummary v-if="option.subscription" :subscription="option.subscription" />
           </button>
           <!-- Empty state when search has no results -->
           <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
@@ -1220,6 +1229,9 @@ import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import subscriptionsAPI from '@/api/subscriptions'
+import SubscriptionQuotaSummary from '@/components/common/SubscriptionQuotaSummary.vue'
+import { buildKeySubscriptionOptions } from '@/utils/keySubscriptionOptions'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
@@ -1235,7 +1247,7 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest, UserSubscription } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1257,7 +1269,11 @@ const formatDateTimeLocal = (isoDate: string): string => {
 }
 
 interface GroupOption {
-  value: number
+  value: number | string
+  groupId: number
+  group: Group
+  subscription: UserSubscription | null
+  disabled: boolean
   label: string
   description: string | null
   rate: number
@@ -1385,6 +1401,9 @@ const handleBulkUpdated = (succeededIds: number[]) => {
 }
 
 const groups = ref<Group[]>([])
+const subscriptions = ref<UserSubscription[]>([])
+const groupsLoading = ref(false)
+let groupRequestVersion = 0
 const loading = ref(false)
 const loadError = ref(false)
 const submitting = ref(false)
@@ -1454,6 +1473,7 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  subscription_id: null as number | null,
   status: 'active' as 'active' | 'disabled',
   use_custom_key: false,
   custom_key: '',
@@ -1535,20 +1555,32 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
 
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
-  groups.value.map((group) => ({
-    value: group.id,
-    label: group.name,
-    description: group.description,
-    rate: group.rate_multiplier,
-    userRate: userGroupRates.value[group.id] ?? null,
-    peakRateEnabled: group.peak_rate_enabled,
-    peakStart: group.peak_start,
-    peakEnd: group.peak_end,
-    peakRateMultiplier: group.peak_rate_multiplier,
-    subscriptionType: group.subscription_type,
-    platform: group.platform
+  buildKeySubscriptionOptions(groups.value, subscriptions.value, now.value.getTime()).map((option) => ({
+    ...option,
+    disabled: option.disabled || (!!option.subscription && groupsLoading.value),
+    description: option.subscription ? null : option.group.description,
+    rate: option.group.rate_multiplier,
+    userRate: userGroupRates.value[option.groupId] ?? null,
+    peakRateEnabled: option.group.peak_rate_enabled,
+    peakStart: option.group.peak_start,
+    peakEnd: option.group.peak_end,
+    peakRateMultiplier: option.group.peak_rate_multiplier,
+    subscriptionType: option.group.subscription_type,
+    platform: option.group.platform
   }))
 )
+
+const formSelection = computed({
+  get: () => formData.value.subscription_id ? `subscription:${formData.value.subscription_id}` : formData.value.group_id,
+  set: (value: string | number | boolean | null | undefined) => {
+    const option = groupOptions.value.find((entry) => entry.value === value)
+    formData.value.group_id = option?.groupId ?? null
+    formData.value.subscription_id = option?.subscription?.id ?? null
+  }
+})
+
+const isSelectedGroupOption = (key: ApiKey | null, option: GroupOption) =>
+  !!key && key.group_id === option.groupId && (key.subscription_id ?? null) === (option.subscription?.id ?? null)
 
 const createProvider = ref<KeyGroupProvider>('anthropic')
 const createProviderOptions = computed(() => KEY_GROUP_PROVIDERS.map((value) => ({
@@ -1565,7 +1597,7 @@ const formGroupOptions = computed(() => showEditModal.value
 const selectCreateProvider = (provider: KeyGroupProvider) => {
   if (createProvider.value === provider) return
   createProvider.value = provider
-  formData.value.group_id = null
+  formSelection.value = null
 }
 
 // Also handles groups arriving after the create dialog has already opened.
@@ -1574,8 +1606,8 @@ watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen])
   if (!wasOpen || !providers.some((provider) => provider.value === createProvider.value && provider.count > 0)) {
     selectCreateProvider(providers.find((provider) => provider.count > 0)?.value ?? 'anthropic')
   }
-  if (!formGroupOptions.value.some((group) => group.value === formData.value.group_id)) {
-    formData.value.group_id = null
+  if (!formGroupOptions.value.some((group) => group.value === formSelection.value)) {
+    formSelection.value = null
   }
 })
 
@@ -1674,12 +1706,32 @@ const loadUsageStats = async (keyIds: number[], signal: AbortSignal) => {
 }
 
 const loadGroups = async () => {
+  const version = ++groupRequestVersion
+  groupsLoading.value = true
   try {
-    groups.value = await userGroupsAPI.getAvailable()
+    const availableGroups = await userGroupsAPI.getAvailable()
+    if (version !== groupRequestVersion) return
+    groups.value = availableGroups
+    if (!groups.value.some((group) => group.subscription_type === 'subscription')) {
+      subscriptions.value = []
+      return
+    }
+    const instances = await subscriptionsAPI.getMySubscriptions()
+    if (version === groupRequestVersion) subscriptions.value = instances
   } catch (error) {
+    if (version !== groupRequestVersion) return
     console.error('Failed to load groups:', error)
+    appStore.showError(t('keys.failedToLoad'))
+  } finally {
+    if (version === groupRequestVersion) groupsLoading.value = false
   }
 }
+
+const refreshPage = () => Promise.all([loadApiKeys(), loadGroups()])
+
+watch([showCreateModal, showEditModal, showBulkEditModal], (open, previous) => {
+  if (open.some((isOpen, index) => isOpen && !previous[index])) void loadGroups()
+})
 
 const loadUserGroupRates = async () => {
   try {
@@ -1735,6 +1787,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    subscription_id: key.subscription_id ?? null,
     status: key.status === 'active' ? 'active' : 'disabled',
     use_custom_key: false,
     custom_key: '',
@@ -1798,16 +1851,18 @@ const openGroupSelector = (key: ApiKey) => {
     }
     groupSelectorKeyId.value = key.id
     groupSearchQuery.value = ''
+    void loadGroups()
   }
 }
 
-const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
+const changeGroup = async (key: ApiKey, option: GroupOption) => {
+  if (option.disabled) return
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
-  if (key.group_id === newGroupId) return
+  if (isSelectedGroupOption(key, option)) return
 
   try {
-    await keysAPI.update(key.id, { group_id: newGroupId })
+    await keysAPI.update(key.id, { group_id: option.groupId, subscription_id: option.subscription?.id ?? null })
     appStore.showSuccess(t('keys.groupChangedSuccess'))
     loadApiKeys()
   } catch (error) {
@@ -1892,6 +1947,7 @@ const handleSubmit = async () => {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        subscription_id: formData.value.subscription_id,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1915,7 +1971,8 @@ const handleSubmit = async () => {
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        formData.value.subscription_id
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -1961,6 +2018,7 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    subscription_id: null,
     status: 'active',
     use_custom_key: false,
     custom_key: '',

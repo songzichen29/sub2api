@@ -619,6 +619,10 @@ func (s *PaymentService) ensurePaymentSubscriptionAssigned(ctx context.Context, 
 		return nil, errors.New("missing subscription fulfillment input")
 	}
 
+	if o.ProviderSnapshot["subscription_assignment_mode"] == "independent" {
+		return s.assignIndependentPaymentSubscription(ctx, o, input)
+	}
+
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin subscription fulfillment tx: %w", err)

@@ -46,6 +46,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                   <h3 class="break-words font-semibold text-gray-900 dark:text-white">
                     {{ subscription.group?.name || `Group #${subscription.group_id}` }}
+                    <span class="ml-1 text-sm font-normal text-gray-500 dark:text-dark-400">#{{ subscription.id }}</span>
                   </h3>
                   <span :class="['rounded-md border px-2 py-0.5 text-[11px] font-medium', platformBadgeClass(subscription.group?.platform || '')]">
                     {{ platformLabel(subscription.group?.platform || '') }}
@@ -74,9 +75,9 @@
               <button
                 v-if="subscription.status === 'active' || subscription.status === 'quota_exhausted'"
                 :class="['rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition-colors', platformButtonClass(subscription.group?.platform || '')]"
-                @click="startRenewal(subscription)"
+                @click="goPurchase(subscription)"
               >
-                {{ t('payment.renewNow') }}
+                {{ t('payment.buyAnother') }}
               </button>
               <button
                 v-if="canResetDailyLimit(subscription)"
@@ -209,7 +210,7 @@
                 ></div>
               </div>
               <p
-                v-if="!getOverdraftLimit(subscription) && subscription.weekly_window_start"
+                v-if="canResetQuota(subscription) && !getOverdraftLimit(subscription) && subscription.weekly_window_start"
                 class="text-xs text-gray-500 dark:text-dark-400"
               >
                 {{
@@ -260,7 +261,7 @@
                 ></div>
               </div>
               <p
-                v-if="subscription.daily_window_start"
+                v-if="canResetQuota(subscription) && subscription.daily_window_start"
                 class="text-xs text-gray-500 dark:text-dark-400"
               >
                 {{
@@ -301,7 +302,7 @@
                 ></div>
               </div>
               <p
-                v-if="subscription.monthly_window_start"
+                v-if="canResetQuota(subscription) && subscription.monthly_window_start"
                 class="text-xs text-gray-500 dark:text-dark-400"
               >
                 {{
@@ -329,15 +330,7 @@
         </div>
       </div>
     </div>
-    <ConfirmDialog
-      :show="!!renewalTarget"
-      :title="t('payment.renewalNoticeTitle')"
-      :message="renewalTarget ? buildRenewalNotice(renewalTarget) : ''"
-      :confirm-text="t('payment.continueRenewal')"
-      :cancel-text="t('common.cancel')"
-      @confirm="confirmRenewal"
-      @cancel="renewalTarget = null"
-    />
+
   </AppLayout>
 </template>
 
@@ -349,11 +342,9 @@ import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateOnly, formatRemainingDuration } from '@/utils/format'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
-import { buildRenewalNoticeText } from './renewalNotice'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -374,7 +365,6 @@ const loading = ref(true)
 const loadError = ref(false)
 const overdraftUpdatingId = ref<number | null>(null)
 const weekendSkipUpdatingId = ref<number | null>(null)
-const renewalTarget = ref<UserSubscription | null>(null)
 
 async function loadSubscriptions() {
   try {
@@ -584,51 +574,14 @@ function resetDailyLimit(subscription: UserSubscription) {
   })
 }
 
-function getQuotaRemaining(subscription: UserSubscription, key: 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd', used: number): number | null {
-  const limit = subscription.group?.[key]
-  if (limit == null || limit <= 0) return null
-  return Math.max(limit - (used || 0), 0)
+function canResetQuota(subscription: UserSubscription): boolean {
+  return (subscription.status === 'active' || subscription.status === 'quota_exhausted')
+    && (!subscription.expires_at || Date.parse(subscription.expires_at) > Date.now())
+    && (!subscription.starts_at || Date.parse(subscription.starts_at) <= Date.now())
 }
 
-function subscriptionHasRenewalWarning(subscription: UserSubscription): boolean {
-  if (hasTotalQuota(subscription) && getTotalQuotaRemaining(subscription) > 0) return true
-  const group = subscription.group
-  if (!group) return true
-  const overdraftLimit = getOverdraftLimit(subscription)
-  if (overdraftLimit !== null) {
-    return (overdraftLimit - (getOverdraftDisplayUsed(subscription) ?? 0)) > 0
-  }
-  const hasUnlimitedQuota = (group.daily_limit_usd == null || group.daily_limit_usd <= 0)
-    && (group.weekly_limit_usd == null || group.weekly_limit_usd <= 0)
-    && (group.monthly_limit_usd == null || group.monthly_limit_usd <= 0)
-    && !hasTotalQuota(subscription)
-  if (hasUnlimitedQuota) return true
-  return (getQuotaRemaining(subscription, 'daily_limit_usd', subscription.daily_usage_usd) ?? 0) > 0
-    || (getQuotaRemaining(subscription, 'weekly_limit_usd', subscription.weekly_usage_usd) ?? 0) > 0
-    || (getQuotaRemaining(subscription, 'monthly_limit_usd', subscription.monthly_usage_usd) ?? 0) > 0
-}
-
-function buildRenewalNotice(subscription: UserSubscription): string {
-  return buildRenewalNoticeText(subscription, t, subscription.validity_days ?? null)
-}
-
-function goRenewal(subscription: UserSubscription) {
+function goPurchase(subscription: UserSubscription) {
   router.push({ path: '/purchase', query: { tab: 'subscription', group: String(subscription.group_id) } })
-}
-
-function startRenewal(subscription: UserSubscription) {
-  if (!subscriptionHasRenewalWarning(subscription)) {
-    goRenewal(subscription)
-    return
-  }
-  renewalTarget.value = subscription
-}
-
-function confirmRenewal() {
-  if (!renewalTarget.value) return
-  const target = renewalTarget.value
-  renewalTarget.value = null
-  goRenewal(target)
 }
 
 function formatExpirationDate(expiresAt: string): string {

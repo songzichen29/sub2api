@@ -30,7 +30,14 @@
             :aria-label="t('keys.groupLabel')"
             searchable
             data-test="group-input"
-          />
+          >
+            <template #option="{ option }">
+              <div class="w-full">
+                <span class="text-sm font-medium">{{ option.label }}</span>
+                <SubscriptionQuotaSummary v-if="option.subscription" :subscription="option.subscription as UserSubscription" />
+              </div>
+            </template>
+          </Select>
         </div>
 
         <div class="space-y-2">
@@ -155,18 +162,21 @@ import { keysAPI } from '@/api'
 import { useAppStore } from '@/stores/app'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
-import type { ApiKey, Group, UpdateApiKeyRequest } from '@/types'
+import SubscriptionQuotaSummary from '@/components/common/SubscriptionQuotaSummary.vue'
+import { buildKeySubscriptionOptions } from '@/utils/keySubscriptionOptions'
+import type { ApiKey, Group, UpdateApiKeyRequest, UserSubscription } from '@/types'
 
 type SelectedKey = Pick<ApiKey, 'id' | 'name'>
 type LimitField = 'quota' | 'rate_limit_5h' | 'rate_limit_1d' | 'rate_limit_7d'
 type IPField = 'ip_whitelist' | 'ip_blacklist'
 type EditableField = LimitField | IPField | 'group_id' | 'status' | 'expires_at'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   show: boolean
   selectedKeys: SelectedKey[]
   groups: Group[]
-}>()
+  subscriptions?: UserSubscription[]
+}>(), { subscriptions: () => [] })
 const emit = defineEmits<{
   close: []
   updated: [succeededIds: number[]]
@@ -188,7 +198,7 @@ const enabled = reactive<Record<EditableField, boolean>>({
   ip_whitelist: false,
   ip_blacklist: false
 })
-const groupId = ref<number | null>(null)
+const groupId = ref<number | string | null>(null)
 const status = ref<'active' | 'inactive'>('active')
 const limits = reactive<Record<LimitField, string | number>>({
   quota: '', rate_limit_5h: '', rate_limit_1d: '', rate_limit_7d: ''
@@ -206,14 +216,15 @@ const ipFields: Array<{ key: IPField; label: string }> = [
   { key: 'ip_whitelist', label: 'keys.ipWhitelist' },
   { key: 'ip_blacklist', label: 'keys.ipBlacklist' }
 ]
-const groupOptions = computed(() => props.groups.map((group) => ({ value: group.id, label: group.name })))
+const groupOptions = computed(() => buildKeySubscriptionOptions(props.groups, props.subscriptions))
+const selectedGroup = computed(() => groupOptions.value.find((option) => option.value === groupId.value))
 const statusOptions = computed(() => [
   { value: 'active', label: t('keys.enable') },
   { value: 'inactive', label: t('keys.disable') }
 ])
 
 const validationError = computed(() => {
-  if (enabled.group_id && !props.groups.some((group) => group.id === groupId.value)) {
+  if (enabled.group_id && (!selectedGroup.value || selectedGroup.value.disabled)) {
     return t('keys.groupRequired')
   }
   for (const { key } of limitFields) {
@@ -258,7 +269,10 @@ const errorMessage = (error: unknown): string => {
 const submit = async () => {
   if (!canSubmit.value) return
   const updates: UpdateApiKeyRequest = {}
-  if (enabled.group_id) updates.group_id = groupId.value
+  if (enabled.group_id && selectedGroup.value) {
+    updates.group_id = selectedGroup.value.groupId
+    if (selectedGroup.value.subscription) updates.subscription_id = selectedGroup.value.subscription.id
+  }
   if (enabled.status) updates.status = status.value
   for (const { key } of limitFields) {
     if (enabled[key]) updates[key] = Number(limits[key])

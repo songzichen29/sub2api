@@ -165,6 +165,14 @@ func (r *billingCacheSubscriptionRepoStub) GetActiveByUserIDAndGroupID(context.C
 	return &cp, nil
 }
 
+func (r *billingCacheSubscriptionRepoStub) GetByID(context.Context, int64) (*UserSubscription, error) {
+	if r.sub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	cp := *r.sub
+	return &cp, nil
+}
+
 func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPeriodPool(t *testing.T) {
 	daily := 80.0
 	now := time.Now()
@@ -181,15 +189,15 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftUsesPerio
 	t.Cleanup(svc.Stop)
 
 	strictGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily}
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, strictGroup, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, strictGroup, billingCacheTestSubscription(cache.data))
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 
 	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
-	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, billingCacheTestSubscription(cache.data))
 	require.NoError(t, err)
 
 	cache.data.WeeklyUsage = 400
-	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, billingCacheTestSubscription(cache.data))
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }
 
@@ -212,11 +220,11 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_WeekMonthOverdraftUsesA
 	t.Cleanup(svc.Stop)
 
 	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, billingCacheTestSubscription(cache.data))
 	require.NoError(t, err)
 
 	cache.data.WeeklyUsage = 2400
-	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, billingCacheTestSubscription(cache.data))
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }
 
@@ -303,7 +311,7 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DailyOverdraftBackfills
 	t.Cleanup(svc.Stop)
 
 	overdraftGroup := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, overdraftGroup, billingCacheTestSubscription(cache.data))
 	require.NoError(t, err)
 	require.Greater(t, atomic.LoadInt64(&cache.subscriptionUpdates), int64(0))
 	require.NotNil(t, cache.lastSetData)
@@ -328,12 +336,12 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_DisabledDayOverdraftRep
 	t.Cleanup(svc.Stop)
 
 	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily, AllowDailyOverdraft: true}
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, billingCacheTestSubscription(cache.data))
 	require.NoError(t, err)
 
 	cache.data.DailyUsage = 25
 	cache.data.WeeklyUsage = 1160 + 15 + 25
-	err = svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	err = svc.checkSubscriptionEligibility(context.Background(), 1, group, billingCacheTestSubscription(cache.data))
 	require.ErrorIs(t, err, ErrDailyLimitExceeded)
 }
 
@@ -364,7 +372,7 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_RejectsWeekendSkippedCa
 	t.Cleanup(svc.Stop)
 	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription}
 
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, billingCacheTestSubscription(cache.data))
 
 	require.ErrorIs(t, err, ErrSubscriptionWeekendDisabled)
 }
@@ -396,7 +404,7 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_AllowsWeekendWhenDisabl
 	t.Cleanup(svc.Stop)
 	group := &Group{ID: 1, SubscriptionType: SubscriptionTypeSubscription}
 
-	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 1, group, billingCacheTestSubscription(cache.data))
 
 	require.NoError(t, err)
 }
@@ -426,11 +434,15 @@ func TestBillingCacheServiceCheckSubscriptionEligibility_RechecksStaleDailyLimit
 	t.Cleanup(svc.Stop)
 	group := &Group{ID: 26, SubscriptionType: SubscriptionTypeSubscription, DailyLimitUSD: &daily}
 
-	err := svc.checkSubscriptionEligibility(context.Background(), 110, group, nil)
+	err := svc.checkSubscriptionEligibility(context.Background(), 110, group, billingCacheTestSubscription(cache.data))
 
 	require.NoError(t, err)
 	require.Equal(t, 1, cache.invalidateCalled)
 	require.NotNil(t, cache.lastSetData)
 	require.Equal(t, repo.sub.DailyUsageUSD, cache.lastSetData.DailyUsage)
 	require.Equal(t, repo.sub.WeeklyUsageUSD, cache.lastSetData.WeeklyUsage)
+}
+
+func billingCacheTestSubscription(data *SubscriptionCacheData) *UserSubscription {
+	return &UserSubscription{ID: 1, Status: data.Status, StartsAt: data.StartsAt, ExpiresAt: data.ExpiresAt, ValidityUnit: data.ValidityUnit, DailyWindowStart: data.DailyWindowStart, AllowDailyOverdraft: data.AllowDailyOverdraft, SkipWeekends: data.SkipWeekends, WeekendSkipUserChangedAt: data.WeekendSkipUserChangedAt, OverdraftValidityDaysOverride: data.OverdraftValidityDays, QuotaLimitUSD: data.QuotaLimitUSD, QuotaUsedUSD: data.QuotaUsedUSD}
 }

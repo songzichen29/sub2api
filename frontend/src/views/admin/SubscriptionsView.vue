@@ -236,7 +236,7 @@
           <template #cell-group="{ row }">
             <GroupBadge
               v-if="row.group"
-              :name="row.group.name"
+              :name="`${row.group.name} · #${row.id}`"
               :platform="row.group.platform"
               :subscription-type="row.group.subscription_type"
               :rate-multiplier="row.group.rate_multiplier"

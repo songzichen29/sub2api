@@ -199,6 +199,8 @@ export default {
       active: 'Active',
       expired: 'Expired',
       revoked: 'Revoked',
+      suspended: 'Suspended',
+      not_started: 'Not started',
       quota_exhausted: 'Quota Exhausted'
     },
     usage: 'Usage',
@@ -571,6 +573,8 @@ export default {
       qrFailed: 'Failed to get WeChat Pay QR code'
     },
     subscribeNow: 'Subscribe Now',
+    buyAnother: 'Buy Another',
+    independentSubscriptionNotice: 'Each purchase creates a separate subscription with its own quota and expiration.',
     renewNow: 'Renew',
     selectPlan: 'Select Plan',
     planFeatures: 'Features',

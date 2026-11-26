@@ -38,6 +38,7 @@
                   :peak-rate-multiplier="key.group.peak_rate_multiplier"
                 />
                 <span v-else class="text-gray-400 italic">{{ t('admin.users.none') }}</span>
+                <span v-if="key.subscription_id" class="shrink-0 tabular-nums">#{{ key.subscription_id }}</span>
                 <svg v-if="updatingKeyIds.has(key.id)" class="h-3 w-3 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 <svg v-else class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9" /></svg>
               </button>
@@ -54,7 +55,7 @@
     <div
       v-if="groupSelectorKeyId !== null && dropdownPosition"
       ref="dropdownRef"
-      class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-64 overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
+      class="animate-in fade-in slide-in-from-top-2 fixed z-[100000020] w-[380px] max-w-[calc(100vw-16px)] overflow-hidden rounded-xl bg-white shadow-lg ring-1 ring-black/5 duration-200 dark:bg-dark-800 dark:ring-white/10"
       :style="{ top: dropdownPosition.top + 'px', left: dropdownPosition.left + 'px' }"
     >
       <div class="max-h-64 overflow-y-auto p-1.5">
@@ -77,28 +78,31 @@
         </button>
         <!-- Group options -->
         <button
-          v-for="group in allGroups"
-          :key="group.id"
-          @click="changeGroup(selectedKeyForGroup!, group.id)"
+          v-for="option in groupOptions"
+          :key="option.value"
+          :disabled="option.disabled"
+          :data-subscription-option="option.subscription?.id"
+          @click="changeGroup(selectedKeyForGroup!, option)"
           :class="[
-            'flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors',
-            selectedKeyForGroup?.group_id === group.id
+            'flex w-full flex-col items-stretch rounded-lg px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+            isSelectedOption(selectedKeyForGroup, option)
               ? 'bg-primary-50 dark:bg-primary-900/20'
               : 'hover:bg-gray-100 dark:hover:bg-dark-700'
           ]"
         >
           <GroupOptionItem
-            :name="group.name"
-            :platform="group.platform"
-            :subscription-type="group.subscription_type"
-            :rate-multiplier="group.rate_multiplier"
-            :peak-rate-enabled="group.peak_rate_enabled"
-            :peak-start="group.peak_start"
-            :peak-end="group.peak_end"
-            :peak-rate-multiplier="group.peak_rate_multiplier"
-            :description="group.description"
-            :selected="selectedKeyForGroup?.group_id === group.id"
+            :name="option.label"
+            :platform="option.group.platform"
+            :subscription-type="option.group.subscription_type"
+            :rate-multiplier="option.group.rate_multiplier"
+            :peak-rate-enabled="option.group.peak_rate_enabled"
+            :peak-start="option.group.peak_start"
+            :peak-end="option.group.peak_end"
+            :peak-rate-multiplier="option.group.peak_rate_multiplier"
+            :description="option.subscription ? null : option.group.description"
+            :selected="isSelectedOption(selectedKeyForGroup, option)"
           />
+          <SubscriptionQuotaSummary v-if="option.subscription" :subscription="option.subscription" />
         </button>
       </div>
     </div>
@@ -111,7 +115,9 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
-import type { AdminUser, AdminGroup, ApiKey } from '@/types'
+import SubscriptionQuotaSummary from '@/components/common/SubscriptionQuotaSummary.vue'
+import { buildKeySubscriptionOptions } from '@/utils/keySubscriptionOptions'
+import type { AdminUser, AdminGroup, ApiKey, UserSubscription } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
@@ -123,6 +129,11 @@ const appStore = useAppStore()
 
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
+const subscriptions = ref<UserSubscription[]>([])
+const groupOptions = computed(() => buildKeySubscriptionOptions(allGroups.value, subscriptions.value))
+type GroupOption = ReturnType<typeof buildKeySubscriptionOptions>[number]
+const isSelectedOption = (key: ApiKey | null, option: GroupOption) =>
+  !!key && key.group_id === option.groupId && (key.subscription_id ?? null) === (option.subscription?.id ?? null)
 const loading = ref(false)
 let requestVersion = 0
 const updatingKeyIds = ref(new Set<number>())
@@ -172,11 +183,28 @@ const load = async () => {
 }
 
 const loadGroups = async () => {
+  if (!props.user) return
+  const userId = props.user.id
+  const version = requestVersion
+  subscriptions.value = []
   try {
     const groups = await adminAPI.groups.getAll()
+    if (version !== requestVersion) return
     allGroups.value = groups
+    if (!groups.some((group) => group.subscription_type === 'subscription')) return
+    const firstPage = await adminAPI.subscriptions.listByUser(userId)
+    const instances = [...firstPage.items]
+    for (let page = 2; page <= firstPage.pages; page++) {
+      if (version !== requestVersion) return
+      const result = await adminAPI.subscriptions.listByUser(userId, page)
+      instances.push(...result.items)
+    }
+    if (version !== requestVersion) return
+    subscriptions.value = instances
   } catch (error) {
-    console.error('Failed to load groups:', error)
+    if (version !== requestVersion) return
+    console.error('Failed to load groups and subscriptions:', error)
+    appStore.showError(t('userSubscriptions.failedToLoad'))
   }
 }
 
@@ -194,7 +222,7 @@ const openGroupSelector = (key: ApiKey) => {
       const openUpward = spaceBelow < DROPDOWN_HEIGHT && rect.top > spaceBelow
       dropdownPosition.value = {
         top: openUpward ? rect.top - DROPDOWN_HEIGHT - DROPDOWN_GAP : rect.bottom + DROPDOWN_GAP,
-        left: rect.left
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.min(380, window.innerWidth - 16) - 8))
       }
     }
     groupSelectorKeyId.value = key.id
@@ -206,13 +234,16 @@ const closeGroupSelector = () => {
   dropdownPosition.value = null
 }
 
-const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
+const changeGroup = async (key: ApiKey, option: GroupOption | null) => {
+  if (option?.disabled) return
   closeGroupSelector()
-  if (key.group_id === newGroupId || (!key.group_id && newGroupId === null)) return
+  if (option && isSelectedOption(key, option)) return
+  if (!option && !key.group_id) return
+  const newGroupId = option?.groupId ?? null
 
   updatingKeyIds.value.add(key.id)
   try {
-    const result = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId)
+    const result = await adminAPI.apiKeys.updateApiKeyGroup(key.id, newGroupId, option?.subscription?.id ?? null)
     // Update local data
     const idx = apiKeys.value.findIndex((k) => k.id === key.id)
     if (idx !== -1) {

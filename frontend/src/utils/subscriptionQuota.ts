@@ -2,6 +2,25 @@ import type { UserSubscription } from '@/types'
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
+export function getSubscriptionQuotaRows(subscription: UserSubscription) {
+  const rows: Array<{ key: 'totalQuota' | 'overdraftTotal' | 'daily' | 'weekly' | 'monthly'; used: number; limit: number }> = []
+  if (subscription.quota_limit_usd != null && subscription.quota_limit_usd > 0) {
+    rows.push({ key: 'totalQuota', used: subscription.quota_used_usd ?? 0, limit: subscription.quota_limit_usd })
+  }
+  const overdraft = getSubscriptionOverdraftLimit(subscription)
+  if (overdraft !== null) {
+    rows.push({ key: 'overdraftTotal', used: getSubscriptionOverdraftUsed(subscription), limit: overdraft })
+    return rows
+  }
+  for (const key of ['daily', 'weekly', 'monthly'] as const) {
+    const limit = subscription.group?.[`${key}_limit_usd`]
+    if (limit != null && limit > 0) {
+      rows.push({ key, used: subscription[`${key}_usage_usd`] ?? 0, limit })
+    }
+  }
+  return rows
+}
+
 export type ExpirationDateRelation = 'expired' | 'today' | 'tomorrow' | 'later'
 
 export type RemainingExpiryDuration =

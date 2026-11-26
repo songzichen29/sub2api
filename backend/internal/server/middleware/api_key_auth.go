@@ -208,19 +208,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// 倍率自省不需要订阅数据；/v1/usage 仍保留原有订阅读取行为。
 		if isSubscriptionType && subscriptionService != nil && !billingInfoRequest {
-			sub, subErr := subscriptionService.GetActiveSubscription(
-				c.Request.Context(),
-				apiKey.User.ID,
-				apiKey.Group.ID,
-			)
+			sub, subErr := subscriptionService.GetAPIKeySubscription(c.Request.Context(), apiKey)
 			if subErr != nil {
 				if !skipBilling {
 					// 通过宽松查询诊断真实错误原因：撤销/到期/暂停/未生效/不存在
-					resolved := subscriptionService.ResolveSubscriptionError(
-						c.Request.Context(),
-						apiKey.User.ID,
-						apiKey.Group.ID,
-					)
+					resolved := subscriptionService.ResolveAPIKeySubscriptionError(c.Request.Context(), apiKey)
 					code, msg := mapSubscriptionLookupError(resolved)
 					AbortWithError(c, 403, code, msg)
 					return

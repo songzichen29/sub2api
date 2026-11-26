@@ -119,7 +119,7 @@ func (s *AuthService) invalidateAssignedSubscriptionCaches(userID int64, groupID
 		return
 	}
 	invalidator, ok := s.defaultSubAssigner.(interface {
-		invalidateSubscriptionCaches(userID, groupID int64) error
+		invalidateSubscriptionCaches(userID, groupID int64, subscriptionID ...int64) error
 	})
 	if !ok {
 		return

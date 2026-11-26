@@ -275,12 +275,22 @@ func (s *groupRepoStubForGroupUpdate) UpdateSortOrders(context.Context, []GroupS
 }
 
 type userSubRepoStubForGroupUpdate struct {
+	byID map[int64]*UserSubscription
 	userSubRepoNoop
 	getActiveSub  *UserSubscription
 	getActiveErr  error
 	called        bool
 	calledUserID  int64
 	calledGroupID int64
+}
+
+func (s *userSubRepoStubForGroupUpdate) GetByID(_ context.Context, id int64) (*UserSubscription, error) {
+	sub, ok := s.byID[id]
+	if !ok {
+		return nil, ErrSubscriptionNotFound
+	}
+	clone := *sub
+	return &clone, nil
 }
 
 func (s *userSubRepoStubForGroupUpdate) GetActiveByUserIDAndGroupID(_ context.Context, userID, groupID int64) (*UserSubscription, error) {
@@ -564,4 +574,53 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_SelectIndependentSubscription(t *testing.T) {
+	now := time.Now()
+	first := &UserSubscription{ID: 101, UserID: 42, GroupID: 10, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(24 * time.Hour)}
+	second := *first
+	second.ID = 102
+	repo := &apiKeyRepoStubForGroupUpdate{key: &APIKey{ID: 1, UserID: 42, Key: "sk-independent", GroupID: int64Ptr(10), SubscriptionID: &first.ID}}
+	svc := &adminServiceImpl{apiKeyRepo: repo, groupRepo: &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription}}, userSubRepo: &userSubRepoStubForGroupUpdate{byID: map[int64]*UserSubscription{101: first, 102: &second}}}
+	selected, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10), &second.ID)
+	require.NoError(t, err)
+	require.Equal(t, &second.ID, selected.APIKey.SubscriptionID)
+	require.Equal(t, int64Ptr(10), repo.updated.GroupID)
+	require.Equal(t, &first.ID, repo.key.SubscriptionID)
+
+	selected, err = svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, nil, &second.ID)
+	require.NoError(t, err)
+	require.Equal(t, &second.ID, selected.APIKey.SubscriptionID)
+	selected, err = svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10))
+	require.NoError(t, err)
+	require.Equal(t, &first.ID, selected.APIKey.SubscriptionID)
+	selected, err = svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, nil)
+	require.NoError(t, err)
+	require.Equal(t, &first.ID, selected.APIKey.SubscriptionID)
+}
+
+func TestAdminService_AdminUpdateAPIKeyGroupID_RejectInvalidSubscription(t *testing.T) {
+	now := time.Now()
+	for _, test := range []struct {
+		name   string
+		change func(*UserSubscription)
+	}{
+		{"other-user", func(s *UserSubscription) { s.UserID = 99 }},
+		{"other-group", func(s *UserSubscription) { s.GroupID = 99 }},
+		{"expired", func(s *UserSubscription) { s.ExpiresAt = now.Add(-time.Minute) }},
+		{"not-started", func(s *UserSubscription) { s.StartsAt = now.Add(time.Hour) }},
+		{"suspended", func(s *UserSubscription) { s.Status = SubscriptionStatusSuspended }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sub := &UserSubscription{ID: 102, UserID: 42, GroupID: 10, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour)}
+			test.change(sub)
+			repo := &apiKeyRepoStubForGroupUpdate{key: &APIKey{ID: 1, UserID: 42, GroupID: int64Ptr(10), SubscriptionID: int64Ptr(101)}}
+			svc := &adminServiceImpl{apiKeyRepo: repo, groupRepo: &groupRepoStubForGroupUpdate{group: &Group{ID: 10, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription}}, userSubRepo: &userSubRepoStubForGroupUpdate{byID: map[int64]*UserSubscription{102: sub}}}
+			_, err := svc.AdminUpdateAPIKeyGroupID(context.Background(), 1, int64Ptr(10), &sub.ID)
+			require.Error(t, err)
+			require.Nil(t, repo.updated)
+			require.Equal(t, int64Ptr(101), repo.key.SubscriptionID)
+		})
+	}
 }

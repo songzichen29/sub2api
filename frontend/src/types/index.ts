@@ -763,6 +763,7 @@ export interface ApiKey {
   key: string
   name: string
   group_id: number | null
+  subscription_id?: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
   ip_whitelist: string[]
   ip_blacklist: string[]
@@ -792,6 +793,7 @@ export interface ApiKey {
 export interface CreateApiKeyRequest {
   name: string
   group_id?: number | null
+  subscription_id?: number | null
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -805,6 +807,7 @@ export interface CreateApiKeyRequest {
 export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
+  subscription_id?: number | null
   status?: 'active' | 'inactive' | 'disabled'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

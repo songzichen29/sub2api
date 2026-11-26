@@ -160,11 +160,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 		if isSubscriptionType && subscriptionService != nil {
-			subscription, err := subscriptionService.GetActiveSubscription(
-				c.Request.Context(),
-				apiKey.User.ID,
-				apiKey.Group.ID,
-			)
+			subscription, err := subscriptionService.GetAPIKeySubscription(c.Request.Context(), apiKey)
 			if err != nil {
 				abortWithGoogleError(c, 403, "该分组下未找到有效订阅")
 				return

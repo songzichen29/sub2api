@@ -25,6 +25,8 @@ const (
 	FieldUserID = "user_id"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldPurchaseOrderID holds the string denoting the purchase_order_id field in the database.
+	FieldPurchaseOrderID = "purchase_order_id"
 	// FieldStartsAt holds the string denoting the starts_at field in the database.
 	FieldStartsAt = "starts_at"
 	// FieldExpiresAt holds the string denoting the expires_at field in the database.
@@ -117,6 +119,7 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldUserID,
 	FieldGroupID,
+	FieldPurchaseOrderID,
 	FieldStartsAt,
 	FieldExpiresAt,
 	FieldStatus,
@@ -224,6 +227,11 @@ func ByUserID(opts ...sql.OrderTermOption) OrderOption {
 // ByGroupID orders the results by the group_id field.
 func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
+}
+
+// ByPurchaseOrderID orders the results by the purchase_order_id field.
+func ByPurchaseOrderID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPurchaseOrderID, opts...).ToFunc()
 }
 
 // ByStartsAt orders the results by the starts_at field.

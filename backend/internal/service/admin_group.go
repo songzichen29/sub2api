@@ -1287,27 +1287,41 @@ func (s *adminServiceImpl) deleteGroup(ctx context.Context, id int64, requireEmp
 		}
 	}
 
-	var affectedUserIDs []int64
+	var affectedSubscriptions []UserSubscription
+	if s.billingCacheService != nil {
+		for page := 1; ; page++ {
+			subs, result, err := s.userSubRepo.ListByGroupID(ctx, id, pagination.PaginationParams{Page: page, PageSize: 100})
+			if err != nil {
+				return fmt.Errorf("list subscriptions before group deletion: %w", err)
+			}
+			affectedSubscriptions = append(affectedSubscriptions, subs...)
+			if int64(len(affectedSubscriptions)) >= result.Total {
+				break
+			}
+		}
+	}
 	var err error
 	if requireEmpty {
-		affectedUserIDs, err = s.emptyGroupDeleteRepo.DeleteCascadeIfEmpty(ctx, id)
+		_, err = s.emptyGroupDeleteRepo.DeleteCascadeIfEmpty(ctx, id)
 	} else {
-		affectedUserIDs, err = s.groupRepo.DeleteCascade(ctx, id)
+		_, err = s.groupRepo.DeleteCascade(ctx, id)
 	}
 	if err != nil {
 		return err
 	}
-	// 注意：user_group_rate_multipliers 表通过外键 ON DELETE CASCADE 自动清理
-
-	// 事务成功后，异步失效受影响用户的订阅缓存
-	if len(affectedUserIDs) > 0 && s.billingCacheService != nil {
-		groupID := id
+	// 删除前保留实例 ID，事务成功后清理每份订阅缓存。
+	if len(affectedSubscriptions) > 0 && s.billingCacheService != nil {
 		go func() {
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			for _, userID := range affectedUserIDs {
-				if err := s.billingCacheService.InvalidateSubscription(cacheCtx, userID, groupID); err != nil {
-					logger.LegacyPrintf("service.admin", "invalidate subscription cache failed: user_id=%d group_id=%d err=%v", userID, groupID, err)
+			for _, sub := range affectedSubscriptions {
+				if err := s.billingCacheService.InvalidateSubscription(cacheCtx, sub.UserID, sub.ID); err != nil {
+					logger.LegacyPrintf("service.admin", "invalidate subscription cache failed: subscription_id=%d err=%v", sub.ID, err)
+				}
+				for _, key := range []string{subCacheKey(sub.UserID, sub.GroupID), subCacheKey(sub.UserID, sub.GroupID, sub.ID)} {
+					if err := s.billingCacheService.PublishSubscriptionCacheInvalidation(cacheCtx, key); err != nil {
+						logger.LegacyPrintf("service.admin", "publish subscription cache invalidation failed: subscription_id=%d err=%v", sub.ID, err)
+					}
 				}
 			}
 		}()
@@ -1413,15 +1427,33 @@ func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []
 
 // AdminUpdateAPIKeyGroupID 管理员修改 API Key 分组绑定
 // groupID: nil=不修改, 指向0=解绑, 指向正整数=绑定到目标分组
-func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
+func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID int64, groupID *int64, subscriptionIDs ...*int64) (*AdminUpdateAPIKeyGroupIDResult, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
 	if err != nil {
 		return nil, err
 	}
 
-	if groupID == nil {
-		// nil 表示不修改，直接返回
+	var selectedSubscriptionID *int64
+	if len(subscriptionIDs) > 0 {
+		selectedSubscriptionID = subscriptionIDs[0]
+	}
+	if selectedSubscriptionID != nil && *selectedSubscriptionID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_ID", "subscription_id must be positive")
+	}
+	if groupID == nil && selectedSubscriptionID == nil {
 		return &AdminUpdateAPIKeyGroupIDResult{APIKey: apiKey}, nil
+	}
+	if groupID == nil {
+		groupID = apiKey.GroupID
+		if groupID == nil {
+			return nil, infraerrors.BadRequest("SUBSCRIPTION_GROUP_REQUIRED", "选择订阅时需要绑定分组")
+		}
+	}
+	if selectedSubscriptionID == nil && apiKey.GroupID != nil && *groupID == *apiKey.GroupID {
+		selectedSubscriptionID = apiKey.SubscriptionID
+	}
+	if *groupID == 0 && selectedSubscriptionID != nil {
+		return nil, infraerrors.BadRequest("SUBSCRIPTION_GROUP_REQUIRED", "解绑分组时不能指定订阅")
 	}
 
 	if *groupID < 0 {
@@ -1433,6 +1465,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	if *groupID == 0 {
 		// 0 表示解绑分组（不修改 user_allowed_groups，避免影响用户其他 Key）
 		apiKey.GroupID = nil
+		apiKey.SubscriptionID = nil
 		apiKey.Group = nil
 	} else {
 		// 验证目标分组存在且状态为 active
@@ -1448,12 +1481,35 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if s.userSubRepo == nil {
 				return nil, infraerrors.InternalServer("SUBSCRIPTION_REPOSITORY_UNAVAILABLE", "subscription repository is not configured")
 			}
-			if _, err := s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, *groupID); err != nil {
+			var sub *UserSubscription
+			if selectedSubscriptionID != nil {
+				sub, err = s.userSubRepo.GetByID(ctx, *selectedSubscriptionID)
+			}
+			if selectedSubscriptionID == nil {
+				sub, err = s.userSubRepo.GetActiveByUserIDAndGroupID(ctx, apiKey.UserID, *groupID)
+			}
+			if err != nil {
 				if errors.Is(err, ErrSubscriptionNotFound) {
 					return nil, infraerrors.BadRequest("SUBSCRIPTION_REQUIRED", "user does not have an active subscription for this group")
 				}
 				return nil, err
 			}
+			if selectedSubscriptionID != nil {
+				if sub.UserID != apiKey.UserID || sub.GroupID != *groupID {
+					return nil, infraerrors.BadRequest("SUBSCRIPTION_NOT_ALLOWED", "订阅不属于该用户或目标分组")
+				}
+				if !sub.IsActive() {
+					return nil, infraerrors.BadRequest("SUBSCRIPTION_NOT_ACTIVE", "请选择有效订阅")
+				}
+			}
+			id := sub.ID
+			apiKey.SubscriptionID = &id
+		}
+		if !group.IsSubscriptionType() {
+			if selectedSubscriptionID != nil {
+				return nil, infraerrors.BadRequest("SUBSCRIPTION_NOT_ALLOWED", "普通分组不能绑定订阅")
+			}
+			apiKey.SubscriptionID = nil
 		}
 
 		gid := *groupID
@@ -1479,7 +1535,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 			if addErr := s.userRepo.AddGroupToAllowedGroups(opCtx, apiKey.UserID, gid); addErr != nil {
 				return nil, fmt.Errorf("add group to user allowed groups: %w", addErr)
 			}
-			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+			if err := s.apiKeyRepo.Update(opCtx, apiKey, APIKeyUpdateFields{GroupID: true, SubscriptionID: true}); err != nil {
 				return nil, fmt.Errorf("update api key: %w", err)
 			}
 			if tx != nil {
@@ -1503,7 +1559,7 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	}
 
 	// 非专属分组 / 解绑：无需事务，单步更新即可
-	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true}); err != nil {
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{GroupID: true, SubscriptionID: true}); err != nil {
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 

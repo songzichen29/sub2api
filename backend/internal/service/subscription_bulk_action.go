@@ -104,7 +104,7 @@ func (s *SubscriptionService) BulkSubscriptionAction(ctx context.Context, input 
 			if err == nil && changed != nil {
 				// Invalidate again after commit: concurrent readers could have filled
 				// a cache with the old row while the transaction was still open.
-				if cacheErr := s.invalidateSubscriptionCaches(changed.UserID, changed.GroupID); cacheErr != nil {
+				if cacheErr := s.invalidateSubscriptionCaches(changed.UserID, changed.GroupID, changed.ID); cacheErr != nil {
 					log.Printf("[SubscriptionBulkAction] committed action=%s subscription_id=%d cache_error=%s", input.Action, id, logredact.RedactText(cacheErr.Error()))
 				}
 			}
@@ -141,7 +141,7 @@ func (s *SubscriptionService) bulkResetQuota(ctx context.Context, id int64, dail
 		timezone.StartOfDay(now), now, now); err != nil {
 		return nil, err
 	}
-	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID); err != nil {
+	if err := s.invalidateSubscriptionCaches(sub.UserID, sub.GroupID, sub.ID); err != nil {
 		return nil, err
 	}
 	return s.userSubRepo.GetByID(ctx, id)

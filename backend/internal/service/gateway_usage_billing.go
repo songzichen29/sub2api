@@ -162,10 +162,10 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 				markDailyOverdraftPoolExhausted(billingCtx, p, deps, result)
 				if result.SubscriptionQuotaExhausted && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil && deps.billingCacheService != nil {
 					groupID := *p.APIKey.GroupID
-					if err := deps.billingCacheService.InvalidateSubscription(billingCtx, p.User.ID, groupID); err != nil {
+					if err := deps.billingCacheService.InvalidateSubscription(billingCtx, p.User.ID, p.Subscription.ID); err != nil {
 						slog.Warn("invalidate subscription cache after legacy quota exhaustion failed", "user_id", p.User.ID, "group_id", groupID, "error", err)
 					}
-					_ = deps.billingCacheService.PublishSubscriptionCacheInvalidation(billingCtx, subCacheKey(p.User.ID, groupID))
+					_ = deps.billingCacheService.PublishSubscriptionCacheInvalidation(billingCtx, subCacheKey(p.User.ID, groupID, p.Subscription.ID))
 				}
 			}
 		}
@@ -436,7 +436,7 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.IsSubscriptionBill {
 		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, p.Subscription.ID, p.Cost.ActualCost)
 		}
 	} else if p.ImageBalanceHold != nil && p.User != nil && deps.billingCacheService != nil {
 		// Reservation already reduced the available balance. Settlement returns

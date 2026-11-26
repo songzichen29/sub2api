@@ -4,6 +4,7 @@ import { createPinia } from "pinia";
 import { createI18n } from "vue-i18n";
 
 import SubscriptionPlanCard from "../SubscriptionPlanCard.vue";
+import type { SubscriptionPlan } from "@/types/payment";
 
 const i18n = createI18n({
   legacy: false,
@@ -24,6 +25,7 @@ const i18n = createI18n({
           unlimited: "Unlimited",
         },
         subscribeNow: "Subscribe now",
+        buyAnother: "Buy another",
       },
     },
   },
@@ -37,14 +39,15 @@ const mountPlanCard = (groupPlatform: string, overrides: Partial<SubscriptionPla
         group_id: 10,
         group_platform: groupPlatform,
         name: "Pro",
+        description: "",
         price: 10,
-        amount: 1000,
         features: [],
         rate_multiplier: 1,
         validity_days: 30,
         validity_unit: "day",
         supported_model_scopes: ["claude", "gemini_text", "gemini_image"],
-        is_active: true,
+        for_sale: true,
+        sort_order: 0,
         ...overrides,
       },
     },
@@ -52,6 +55,31 @@ const mountPlanCard = (groupPlatform: string, overrides: Partial<SubscriptionPla
   });
 
 describe("SubscriptionPlanCard", () => {
+  it("offers another independent purchase when the user already owns the same group", async () => {
+    const wrapper = mountPlanCard("openai");
+    await wrapper.setProps({ activeSubscriptions: [{
+      id: 101,
+      user_id: 1,
+      group_id: 10,
+      status: "active",
+      daily_usage_usd: 0,
+      weekly_usage_usd: 0,
+      monthly_usage_usd: 38.03,
+      allow_daily_overdraft: false,
+      skip_weekends: false,
+      daily_window_start: null,
+      weekly_window_start: null,
+      monthly_window_start: null,
+      expires_at: "2099-01-01T00:00:00Z",
+      created_at: "2026-11-01T00:00:00Z",
+      updated_at: "2026-11-01T00:00:00Z",
+    }] });
+
+    expect(wrapper.get("button").text()).toBe("Buy another");
+    await wrapper.get("button").trigger("click");
+    expect(wrapper.emitted("select")?.[0]).toEqual([wrapper.props("plan")]);
+  });
+
   it("does not show Antigravity model scopes for OpenAI plans", () => {
     const text = mountPlanCard("openai").text();
 

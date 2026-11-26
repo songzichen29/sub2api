@@ -173,9 +173,8 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if req.PlanID == 0 {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "subscription order requires a plan")
 	}
-	renewalMode := normalizeSubscriptionRenewalMode(req.RenewalMode)
-	if strings.TrimSpace(req.RenewalMode) != "" && renewalMode == "" {
-		return nil, infraerrors.BadRequest("INVALID_RENEWAL_MODE", "unsupported subscription renewal mode")
+	if strings.TrimSpace(req.RenewalMode) != "" {
+		return nil, infraerrors.BadRequest("SUBSCRIPTION_RENEWAL_UNSUPPORTED", "新购买会创建独立订阅，请刷新购买页面")
 	}
 	plan, err := s.configService.GetPlan(ctx, req.PlanID)
 	if err != nil || !plan.ForSale {
@@ -199,21 +198,6 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 		if bought >= *plan.MaxBuyCount {
 			return nil, infraerrors.BadRequest("PLAN_PURCHASE_LIMIT_REACHED",
 				fmt.Sprintf("you have reached the purchase limit (%d) for this plan", *plan.MaxBuyCount))
-		}
-	}
-	if renewalMode != "" {
-		hasActiveSub, err := s.hasRenewableSubscription(ctx, req.UserID, plan.GroupID)
-		if err != nil {
-			return nil, fmt.Errorf("check active subscription for renewal: %w", err)
-		}
-		if !hasActiveSub {
-			return nil, infraerrors.BadRequest("RENEWAL_ACTIVE_SUBSCRIPTION_REQUIRED", "subscription renewal requires an active subscription")
-		}
-	}
-	if renewalMode == SubscriptionRenewalModeRestart {
-		days := psPlanSubscriptionDays(plan, time.Now())
-		if days <= 1 {
-			return nil, infraerrors.BadRequest("RENEWAL_RESTART_NOT_AVAILABLE", "subscription restart is not available for this order")
 		}
 	}
 	return plan, nil
@@ -282,13 +266,12 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	}
 	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
 	if req.OrderType == payment.OrderTypeSubscription {
-		if mode := normalizeSubscriptionRenewalMode(req.RenewalMode); mode != "" {
-			if providerSnapshot == nil {
-				providerSnapshot = map[string]any{"schema_version": 2}
-			}
-			providerSnapshot["subscription_renewal_mode"] = mode
+		if providerSnapshot == nil {
+			providerSnapshot = map[string]any{"schema_version": 2}
 		}
+		providerSnapshot["subscription_assignment_mode"] = "independent"
 	}
+
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {

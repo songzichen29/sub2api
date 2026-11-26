@@ -15,6 +15,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -47,6 +49,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetName(key.Name).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
+		SetNillableSubscriptionID(key.SubscriptionID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -132,6 +135,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldID,
 			apikey.FieldUserID,
 			apikey.FieldGroupID,
+			apikey.FieldSubscriptionID,
 			apikey.FieldName,
 			apikey.FieldStatus,
 			apikey.FieldIPWhitelist,
@@ -310,6 +314,14 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 			builder.SetGroupID(*key.GroupID)
 		} else {
 			builder.ClearGroupID()
+		}
+	}
+	if fields.SubscriptionID {
+		if key.SubscriptionID == nil {
+			builder.ClearSubscriptionID()
+		}
+		if key.SubscriptionID != nil {
+			builder.SetSubscriptionID(*key.SubscriptionID)
 		}
 	}
 
@@ -724,6 +736,7 @@ func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID in
 	n, err := r.client.APIKey.Update().
 		Where(apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()).
 		ClearGroupID().
+		ClearSubscriptionID().
 		Save(ctx)
 	return int64(n), err
 }
@@ -731,10 +744,41 @@ func (r *apiKeyRepository) ClearGroupIDByGroupID(ctx context.Context, groupID in
 // UpdateGroupIDByUserAndGroup 将用户下绑定 oldGroupID 的所有 Key 迁移到 newGroupID
 func (r *apiKeyRepository) UpdateGroupIDByUserAndGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (int64, error) {
 	client := clientFromContext(ctx, r.client)
-	n, err := client.APIKey.Update().
+	target, err := client.Group.Query().Where(group.IDEQ(newGroupID)).Only(ctx)
+	if err != nil {
+		return 0, translatePersistenceError(err, service.ErrGroupNotFound, nil)
+	}
+	var subscriptionID *int64
+	if target.SubscriptionType == service.SubscriptionTypeSubscription {
+		now := time.Now()
+		subscriptions, err := client.UserSubscription.Query().Where(
+			usersubscription.UserIDEQ(userID),
+			usersubscription.GroupIDEQ(newGroupID),
+			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.StartsAtLTE(now),
+			usersubscription.ExpiresAtGT(now),
+		).IDs(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if len(subscriptions) == 0 {
+			return 0, service.ErrSubscriptionNotFound
+		}
+		if len(subscriptions) > 1 {
+			return 0, infraerrors.BadRequest("SUBSCRIPTION_SELECTION_REQUIRED", "目标分组有多份订阅，请逐个密钥选择具体订阅")
+		}
+		subscriptionID = &subscriptions[0]
+	}
+	builder := client.APIKey.Update().
 		Where(apikey.UserIDEQ(userID), apikey.GroupIDEQ(oldGroupID), apikey.DeletedAtIsNil()).
-		SetGroupID(newGroupID).
-		Save(ctx)
+		SetGroupID(newGroupID)
+	if subscriptionID == nil {
+		builder.ClearSubscriptionID()
+	}
+	if subscriptionID != nil {
+		builder.SetSubscriptionID(*subscriptionID)
+	}
+	n, err := builder.Save(ctx)
 	return int64(n), err
 }
 
@@ -890,29 +934,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:             m.ID,
+		UserID:         m.UserID,
+		Key:            m.Key,
+		Name:           m.Name,
+		Status:         m.Status,
+		IPWhitelist:    m.IPWhitelist,
+		IPBlacklist:    m.IPBlacklist,
+		LastUsedAt:     m.LastUsedAt,
+		CreatedAt:      m.CreatedAt,
+		UpdatedAt:      m.UpdatedAt,
+		GroupID:        m.GroupID,
+		SubscriptionID: m.SubscriptionID,
+		Quota:          m.Quota,
+		QuotaUsed:      m.QuotaUsed,
+		ExpiresAt:      m.ExpiresAt,
+		RateLimit5h:    m.RateLimit5h,
+		RateLimit1d:    m.RateLimit1d,
+		RateLimit7d:    m.RateLimit7d,
+		Usage5h:        m.Usage5h,
+		Usage1d:        m.Usage1d,
+		Usage7d:        m.Usage7d,
+		Window5hStart:  m.Window5hStart,
+		Window1dStart:  m.Window1dStart,
+		Window7dStart:  m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

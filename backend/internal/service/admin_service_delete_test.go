@@ -489,8 +489,8 @@ func (s *redeemRepoStub) SumPositiveBalanceByUser(ctx context.Context, userID in
 }
 
 type subscriptionInvalidateCall struct {
-	userID  int64
-	groupID int64
+	userID         int64
+	subscriptionID int64
 }
 
 type billingCacheStub struct {
@@ -530,7 +530,7 @@ func (s *billingCacheStub) UpdateSubscriptionUsage(ctx context.Context, userID, 
 }
 
 func (s *billingCacheStub) InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error {
-	s.invalidations <- subscriptionInvalidateCall{userID: userID, groupID: groupID}
+	s.invalidations <- subscriptionInvalidateCall{userID: userID, subscriptionID: groupID}
 	return nil
 }
 
@@ -657,10 +657,11 @@ func TestAdminService_DeleteUser_DeleteError(t *testing.T) {
 }
 
 func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {
-	cache := newBillingCacheStub(2)
+	cache := newBillingCacheStub(3)
 	repo := &groupRepoStub{affectedUserIDs: []int64{11, 12}}
 	svc := &adminServiceImpl{
 		groupRepo:           repo,
+		userSubRepo:         &deleteGroupSubscriptionsRepo{},
 		billingCacheService: &BillingCacheService{cache: cache},
 	}
 
@@ -668,10 +669,11 @@ func TestAdminService_DeleteGroup_Success_WithCacheInvalidation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []int64{5}, repo.deleteCalls)
 
-	calls := waitForInvalidations(t, cache.invalidations, 2)
+	calls := waitForInvalidations(t, cache.invalidations, 3)
 	require.ElementsMatch(t, []subscriptionInvalidateCall{
-		{userID: 11, groupID: 5},
-		{userID: 12, groupID: 5},
+		{userID: 11, subscriptionID: 101},
+		{userID: 11, subscriptionID: 102},
+		{userID: 12, subscriptionID: 103},
 	}, calls)
 }
 
@@ -811,4 +813,11 @@ func TestAdminService_BatchDeleteRedeemCodes_PartialFailures(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(2), deleted)
 	require.Equal(t, []int64{1, 2, 3}, repo.deletedIDs)
+}
+
+// 同一用户同一分组的多份订阅必须各自清理。
+type deleteGroupSubscriptionsRepo struct{ UserSubscriptionRepository }
+
+func (*deleteGroupSubscriptionsRepo) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]UserSubscription, *pagination.PaginationResult, error) {
+	return []UserSubscription{{ID: 101, UserID: 11, GroupID: 5}, {ID: 102, UserID: 11, GroupID: 5}, {ID: 103, UserID: 12, GroupID: 5}}, &pagination.PaginationResult{Total: 3}, nil
 }

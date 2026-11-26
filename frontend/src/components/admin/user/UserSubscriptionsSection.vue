@@ -57,7 +57,7 @@
           <div class="flex min-w-0 items-center gap-2">
             <GroupBadge
               v-if="sub.group"
-              :name="sub.group.name"
+              :name="`${sub.group.name} · #${sub.id}`"
               :platform="sub.group.platform"
               :subscription-type="sub.group.subscription_type"
               :rate-multiplier="sub.group.rate_multiplier"

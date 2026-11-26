@@ -11,8 +11,8 @@
         <!-- Combined progress indicator -->
         <div class="flex items-center gap-0.5">
           <div
-            v-for="(sub, index) in displaySubscriptions.slice(0, 3)"
-            :key="index"
+            v-for="sub in displaySubscriptions.slice(0, 3)"
+            :key="sub.id"
             class="h-2 w-2 rounded-full"
             :class="getProgressDotClass(sub)"
           ></div>
@@ -44,13 +44,14 @@
             :key="subscription.id"
             class="border-b border-gray-50 p-3 last:border-b-0 dark:border-dark-700/50"
           >
-            <div class="mb-2 flex items-center justify-between">
+            <div class="mb-2 flex items-start justify-between gap-3">
               <span class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ subscription.group?.name || `Group #${subscription.group_id}` }}
+                <span class="ml-1 text-xs font-normal text-gray-500 dark:text-dark-400">#{{ subscription.id }}</span>
               </span>
               <span
                 v-if="subscription.expires_at"
-                class="text-xs"
+                class="shrink-0 text-xs"
                 :class="getDaysRemainingClass(subscription.expires_at)"
               >
                 {{ formatDaysRemaining(subscription.expires_at) }}

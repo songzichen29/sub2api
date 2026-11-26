@@ -1,14 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import BulkEditKeysModal from '../BulkEditKeysModal.vue'
-import type { Group } from '@/types'
+import type { Group, UserSubscription } from '@/types'
 
 const { bulkUpdate, showSuccess, showError } = vi.hoisted(() => ({
   bulkUpdate: vi.fn(), showSuccess: vi.fn(), showError: vi.fn()
 }))
 vi.mock('@/api', () => ({ keysAPI: { bulkUpdate } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess, showError }) }))
-vi.mock('vue-i18n', () => ({
+vi.mock('vue-i18n', async () => ({
+  ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
   useI18n: () => ({ t: (key: string, params?: Record<string, unknown>) => `${key} ${JSON.stringify(params ?? {})}` })
 }))
 
@@ -85,6 +86,18 @@ describe('BulkEditKeysModal', () => {
     await wrapper.get('[data-test="group-input"]').setValue('7')
     await wrapper.get('form').trigger('submit')
     expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_id: 7 })
+  })
+
+  it('binds a selected same-group subscription when bulk editing', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({
+      groups: [{ id: 7, name: 'Monthly', subscription_type: 'subscription' }] as Group[],
+      subscriptions: [101, 102].map((id) => ({ id, group_id: 7, status: 'active', expires_at: '2099-01-01T00:00:00Z' })) as UserSubscription[]
+    })
+    await wrapper.get('[data-test="enable-group"]').setValue(true)
+    await wrapper.get('[data-test="group-input"]').setValue('subscription:102')
+    await wrapper.get('form').trigger('submit')
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_id: 7, subscription_id: 102 })
   })
 
   it('clears only an explicitly selected IP list and expiration', async () => {

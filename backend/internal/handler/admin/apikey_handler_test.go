@@ -237,6 +237,25 @@ type failingUpdateGroupService struct {
 	err error
 }
 
-func (f *failingUpdateGroupService) AdminUpdateAPIKeyGroupID(_ context.Context, _ int64, _ *int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
+func (f *failingUpdateGroupService) AdminUpdateAPIKeyGroupID(_ context.Context, _ int64, _ *int64, _ ...*int64) (*service.AdminUpdateAPIKeyGroupIDResult, error) {
 	return nil, f.err
+}
+
+func TestAdminAPIKeyHandler_UpdateGroup_ForwardsIndependentSubscription(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString(`{"subscription_id":102,"reset_rate_limit_usage":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Data struct {
+			APIKey struct {
+				SubscriptionID *int64 `json:"subscription_id"`
+			} `json:"api_key"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.NotNil(t, response.Data.APIKey.SubscriptionID)
+	require.EqualValues(t, 102, *response.Data.APIKey.SubscriptionID)
 }

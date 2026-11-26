@@ -199,6 +199,8 @@ export default {
       active: '有效',
       expired: '已过期',
       revoked: '已撤销',
+      suspended: '已暂停',
+      not_started: '未开始',
       quota_exhausted: '额度已用完'
     },
     usage: '用量',
@@ -571,6 +573,8 @@ export default {
       qrFailed: '未能获取微信支付二维码'
     },
     subscribeNow: '立即开通',
+    buyAnother: '再买一份',
+    independentSubscriptionNotice: '每次购买都会新增一份独立订阅，额度和到期时间分别计算。',
     renewNow: '续费',
     selectPlan: '选择套餐',
     planFeatures: '功能特性',
