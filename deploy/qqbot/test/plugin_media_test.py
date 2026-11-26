@@ -55,6 +55,39 @@ class PluginMediaTests(unittest.TestCase):
         self.assertTrue(media.should_load_images(True, True, []))
         self.assertFalse(media.should_load_images(False, False, [{'type': 'image'}]))
 
+    def test_spaced_and_unknown_voice_commands_reach_the_bridge_without_ambient_sampling(self):
+        for text in (
+            '御姐 语音合成 灰太狼来了', '/曼波\t语音合成：你好', '默认 语音合成 你好',
+            '喜羊羊 语音合成 灰太狼来了', '喜羊羊语音合成 灰太狼来了', '/大司马语音合成 你好',
+            'voice_2 语音合成 你好',
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(media.requests_tool(text))
+        for text in (
+            '语音合成是什么', '不要语音合成', '不要御姐语音合成 你好', '什么是语音合成',
+            '别用喜羊羊语音合成 你好', '介绍语音合成', '关于语音合成',
+            '去A群用喜羊羊语音合成 你好', '以后用喜羊羊语音合成 你好',
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(media.requests_tool(text))
+
+    def test_voice_command_shape_excludes_questions_and_target_conversations(self):
+        for text in (
+            '不能语音合成', '不能语音合成 你好', '没法语音合成 你好',
+            '有哪些音色可以用于语音合成', '有哪些音色可以用于语音合成 请列出',
+            '工作群语音合成 你好', '工作群里语音合成 你好', '工作群内语音合成 你好',
+            '工作群中语音合成 你好', '工作频道语音合成 你好', '当前私聊语音合成 你好',
+            '当前会话语音合成 你好', '喜羊羊语音合成',
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(media.requests_tool(text))
+        for text in (
+            '喜羊羊 语音合成 灰太狼来了', '喜羊羊语音合成 灰太狼来了',
+            '/大司马语音合成', '未知语音合成 你好', '御姐 语音合成',
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(media.requests_tool(text))
+
     def test_marketplace_stickers_converted_to_images_are_collected(self):
         for segment in (
             {'type': 'mface', 'data': {'url': 'https://qq.com/sticker.gif'}},

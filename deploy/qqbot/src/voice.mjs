@@ -2,7 +2,9 @@ import voices from './voice-catalog.json' with { type: 'json' };
 
 export const voiceCatalog = Object.entries(voices).map(([name, referenceId]) => ({ name, reference_id: referenceId }));
 
-const commandPattern = new RegExp(`^/?(${Object.keys(voices).join('|')})?语音合成(?=\\s|[:：]|$)\\s*[:：]?\\s*([\\s\\S]*)$`, 'u');
+const commandPattern = new RegExp(`^/?(?:(${Object.keys(voices).join('|')})\\s*)?语音合成(?=\\s|[:：]|$)\\s*[:：]?\\s*([\\s\\S]*)$`, 'u');
+const unknownCommandPattern = /^\/?([\p{L}\p{N}_-]+)\s*语音合成(?=\s|[:：]|$)\s*[:：]?\s*([\s\S]*)$/u;
+const conversationalVoiceName = /^(?:不|别|没|无|取消|停止|什么|如何|怎么|为何|为什么|请|你|我|他|她|它|给|去|在|把|将|用|帮|能否|能不能|可不可以|是否|以后|一直|默认|介绍|解释|讨论|关于)|(?:音色|声音|可以|用于)|(?:群(?:里|内|中)?|私聊|会话|频道)$/u;
 const requestPrefix = '(?:(?:我想|我希望)(?:让你|听你|你)\\s*)?(?:(?:请|麻烦|劳驾)(?:你)?\\s*)?(?:你\\s*)?(?:(?:能不能|可不可以|可以|能)\\s*)?(?:(?:帮|给|替)我\\s*)?';
 const voiceNames = Object.keys(voices).join('|');
 const readTarget = '(?:这段话|这句话|这段文字|这条消息|引用(?:的)?(?:消息|内容|文字)?|上面(?:的)?(?:消息|内容|文字))';
@@ -13,9 +15,23 @@ const textReplyPattern = new RegExp(`^${requestPrefix}(?:(?:不要|别|不用|�
 
 export function parseVoiceCommand(text) {
   const match = commandPattern.exec(text);
-  if (!match) return;
-  const voice = match[1];
-  return { voice: voice || '默认', referenceId: voices[voice || '默认'], text: match[2].trim() };
+  if (match) {
+    const voice = match[1] || '默认';
+    return { voice, referenceId: voices[voice], text: match[2].trim() };
+  }
+  const unknown = unknownCommandPattern.exec(text);
+  if (!unknown || (!text.startsWith('/') && !unknown[2].trim()) || conversationalVoiceName.test(unknown[1])) return;
+  return { voice: unknown[1], text: unknown[2].trim(), error: 'unknown_voice' };
+}
+
+export function isVoiceToolInstruction(answer, request) {
+  const technicalQuestion = request.split(/[，,。！!？?；;\n]/u).some(clause =>
+    !/(?:不要|别|不用|不需要|无需|不是|不想|禁止)/u.test(clause) &&
+    /(?:解释|介绍|说明|如何|怎么|怎样|什么是).*set[_\s]reply[_\s]mode|set[_\s]reply[_\s]mode.*(?:如何|怎么|怎样|是什么|什么意思|用法|参数|接口)/iu.test(clause));
+  if (technicalQuestion) return false;
+  const instruction = answer.replace(/[`*，,。.!！\s]/gu, '');
+  return /^(?:我)?(?:将|会|要|现在|需要|应该|请|先)*(?:调用|使用)set_reply_mode(?:工具)?(?:(?:将|把)?(?:mode|模式)?(?:选择|设置为|设为|切换为|改为|设置))?(?:voice|语音)(?:模式)?$/iu.test(instruction)
+    || /^set_reply_mode\(\{"mode":"voice"\}\)$/iu.test(instruction);
 }
 
 export function voiceReplyForbidden(text) {

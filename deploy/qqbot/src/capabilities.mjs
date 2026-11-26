@@ -42,11 +42,15 @@ export function validateImages(images=[]) {
   });
 }
 
-export async function executeCapability({name,args}, context, {config,store,siteTool}) {
+export async function executeCapability({name,args}, context, {config,store,siteTool,sendGroupMessage}) {
   const c=config.snapshot(), {input,id,scope}=context;
   if (input.proactive) throw Object.assign(new Error('主动热群没有用户授权，不执行账户或图片工具'), {code:'proactive_tool_denied'});
   if(!chatAllowed(c,input)) throw Object.assign(new Error('本会话已停用'), {code:'scope_denied'});
   context.signal?.throwIfAborted();
+  if (name === 'send_group_message') {
+    if (input.group) throw new Error('跨群发送仅允许白名单用户在私聊中操作');
+    return sendGroupMessage(args, context);
+  }
   if (name === 'list_voices') return { voices: voiceCatalog };
   if (name === 'set_reply_mode') {
     if (!['text', 'voice'].includes(args.mode)) throw new Error('invalid_reply_mode');

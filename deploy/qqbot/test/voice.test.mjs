@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { once } from 'node:events';
-import { parseVoiceCommand, parseVoiceRequest, synthesizeVoice, voiceReplyForbidden, replyVoice } from '../src/voice.mjs';
+import { parseVoiceCommand, parseVoiceRequest, synthesizeVoice, voiceReplyForbidden, replyVoice, isVoiceToolInstruction } from '../src/voice.mjs';
 
 test('current explicit output choice overrides earlier clauses and voices remain allowlisted',()=>{
   assert.equal(voiceReplyForbidden('用语音回答我，不要语音了'),true);
@@ -33,6 +33,8 @@ async function endpoint(t, handler) {
 test('documented voice commands select fixed model IDs and leave ordinary conversation alone', () => {
   for (const [command, voice, referenceId] of [
     ['御姐语音合成 你好', '御姐', '8a88ef7d77d748e59879d8994e216e01'],
+    ['御姐 语音合成 你好', '御姐', '8a88ef7d77d748e59879d8994e216e01'],
+    ['/御姐\t语音合成：你好', '御姐', '8a88ef7d77d748e59879d8994e216e01'],
     ['/曼波语音合成：你好', '曼波', '561fcedfdf0e4e1399d1bc4930d50c0e'],
     ['Nico语音合成 你好', 'Nico', '1aa39c8196a349cfb459ef6e0eb2c7bb'],
     ['可莉语音合成 你好', '可莉', 'a54b3b693c6a4218bcd758a5b8b1fceb'],
@@ -40,15 +42,39 @@ test('documented voice commands select fixed model IDs and leave ordinary conver
     ['/语音合成：你好', '默认', 'fbe02f8306fc4d3d915e9871722a39d5']
   ]) assert.deepEqual(parseVoiceCommand(command), { voice, referenceId, text: '你好' });
   assert.equal(parseVoiceCommand('/语音合成').text, '');
-  for (const text of ['什么是语音合成', '你能语音合成吗', '不要御姐语音合成 你好', '未知语音合成 你好', '你好']) {
+  for (const text of ['什么是语音合成', '语音合成是什么', '你能语音合成吗', '不要语音合成', '不要御姐语音合成 你好', '去工作群语音合成 你好', '以后御姐语音合成 你好', '你好']) {
     assert.equal(parseVoiceCommand(text), undefined, text);
+  }
+  for (const text of ['不能语音合成', '不能语音合成 你好', '有哪些音色可以用于语音合成', '有哪些音色可以用于语音合成 请列出', '工作群语音合成 你好', '工作群里语音合成 你好', '私人会话语音合成 你好']) {
+    assert.equal(parseVoiceCommand(text), undefined, text);
+    assert.equal(parseVoiceRequest(text), undefined, text);
+  }
+});
+
+test('unsupported named synthesis stays a recognizable command with an explicit error', () => {
+  for (const text of ['喜羊羊 语音合成 灰太狼来了', '喜羊羊语音合成 灰太狼来了', '/大司马语音合成', '/大司马语音合成 你好', '未知语音合成 你好']) {
+    assert.equal(parseVoiceCommand(text).error, 'unknown_voice');
+    assert.equal(parseVoiceRequest(text).error, 'unknown_voice');
+    assert.equal(parseVoiceCommand(text).referenceId, undefined);
+  }
+});
+
+test('tool-only voice instructions are rejected without confusing literal or technical answers', () => {
+  for (const answer of ['调用set_reply_mode选择voice。', '调用 `set_reply_mode`，选择 voice。', '我将调用set_reply_mode工具mode设置为voice。', '我需要先调用set_reply_mode选择voice。', 'set_reply_mode({"mode":"voice"})']) {
+    assert.equal(isVoiceToolInstruction(answer, '用语音给我讲个笑话'), true, answer);
+    assert.equal(isVoiceToolInstruction(answer, '不要再说 set_reply_mode，用语音回答我今天星期几'), true, answer);
+    assert.equal(isVoiceToolInstruction(answer, '不是问 set_reply_mode 怎么调用，告诉我今天星期几'), true, answer);
+    assert.equal(isVoiceToolInstruction(answer, '用语音解释 set_reply_mode 怎么调用'), false, answer);
+  }
+  for (const answer of ['你好，灰太狼来了。', '今天星期四。', '调用工具后，应该继续回答用户的问题。', '调用set_reply_mode选择voice。今天星期四。']) {
+    assert.equal(isVoiceToolInstruction(answer, '用语音回答我'), false, answer);
   }
 });
 
 test('voice commands route to chat while binding, account queries and group boundaries remain intact', () => {
   const config = { bot_id: '123', groups: ['456'], private_users: ['789'], business_commands: ['余额', '绑定'] };
   const event = text => ({ self_id: 123, user_id: 789, post_type: 'message', message_type: 'group', group_id: 456, message: [{ type: 'text', data: { text } }] });
-  for (const text of ['/御姐语音合成 你好', '语音合成 你好', '/语音合成']) {
+  for (const text of ['/御姐语音合成 你好', '御姐 语音合成 你好', '/喜羊羊 语音合成 你好', '语音合成 你好', '/语音合成']) {
     assert.equal(routeEvent(event(text), config), 'chat');
     assert.equal(routeEvent(event(text), { ...config, enabled: false }), 'drop');
     assert.equal(routeEvent(event(text), { ...config, chat_disabled: true }), 'drop');

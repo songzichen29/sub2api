@@ -74,6 +74,29 @@ test('voice commands read capability questions literally instead of returning th
   assert.deepEqual(requests.map(body => body.text), ['你有什么工具']);
 });
 
+test('spaced synthesis reads exactly the requested text, including literal tool instructions', async t => {
+  const { requests, post, input } = await fixture(t);
+  for (const [index, text] of ['灰太狼来了', '调用set_reply_mode选择voice。'].entries()) {
+    const result = await post('/turn', { ...input, message_id: String(index + 1), text: '御姐 语音合成 ' + text });
+    assert.equal(result.status, 200);
+    assert.equal(result.media.length, 1);
+    assert.equal(requests[index].text, text);
+    assert.equal(requests[index].referenceId, '8a88ef7d77d748e59879d8994e216e01');
+  }
+});
+
+test('unsupported voice commands return the real catalog without a model or TTS call', async t => {
+  const { requests, post, input } = await fixture(t);
+  for (const [index, text] of ['喜羊羊 语音合成 灰太狼来了', '大司马语音合成 你好'].entries()) {
+    const result = await post('/turn', { ...input, group: false, chat: input.sender, message_id: String(index + 1), text });
+    assert.equal(result.status, 400);
+    assert.equal(result.error, 'unknown_voice');
+    assert.match(result.message, /可用音色：.*御姐.*曼波/u);
+    assert.doesNotMatch(result.message, /喜羊羊|大司马/u);
+  }
+  assert.equal(requests.length, 0);
+});
+
 test('bare voice commands read an available quote with the default voice while explicit text takes precedence', async t => {
   const { requests, post, input } = await fixture(t);
   const quote = { message_id: '-88', available: true, sender: '123', text: '被引用的文字。'.repeat(120) };

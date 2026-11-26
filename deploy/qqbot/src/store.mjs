@@ -30,6 +30,8 @@ export class Store {
       CREATE TABLE IF NOT EXISTS memes(scope TEXT NOT NULL,hash TEXT NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,tags TEXT NOT NULL,at INTEGER NOT NULL,PRIMARY KEY(scope,hash));
       CREATE TABLE IF NOT EXISTS outgoing_media(id TEXT NOT NULL,ordinal INTEGER NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,label TEXT NOT NULL,PRIMARY KEY(id,ordinal));`);
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_receipts(id TEXT NOT NULL,message_id TEXT NOT NULL,PRIMARY KEY(id,message_id));');
+    this.db.exec(`CREATE TABLE IF NOT EXISTS group_dispatches(id TEXT PRIMARY KEY,parent_id TEXT NOT NULL,request TEXT NOT NULL,mode TEXT NOT NULL,voice TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS group_dispatches_parent ON group_dispatches(parent_id);`);
     this.db.exec(`CREATE TABLE IF NOT EXISTS group_activity(scope TEXT PRIMARY KEY,event_id TEXT NOT NULL,at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS proactive_slots(id TEXT PRIMARY KEY,scope TEXT NOT NULL,slot_at INTEGER NOT NULL,activity TEXT NOT NULL,status TEXT NOT NULL,turn_id TEXT,updated INTEGER NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS proactive_turn ON proactive_slots(turn_id);`);
@@ -226,6 +228,20 @@ export class Store {
       recent:this.db.prepare('SELECT id,scope,sender,message_id,status,reason,created,updated FROM diagnostics ORDER BY updated DESC,rowid DESC LIMIT 20').all()};
   }
   delivery(id) { return this.db.prepare('SELECT * FROM delivery WHERE id=?').get(id); }
+  groupDispatch(id) { return this.db.prepare('SELECT * FROM group_dispatches WHERE id=?').get(id); }
+  beginGroupDispatch(id, scope, request, mode, voice, parent) {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.begin(id, scope);
+      this.db.prepare('INSERT INTO group_dispatches VALUES(?,?,?,?,?)').run(id, parent, request, mode, voice);
+      this.db.exec('COMMIT');
+    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+  }
+  receipts(id) { return this.db.prepare('SELECT message_id FROM delivery_receipts WHERE id=? ORDER BY rowid').all(id).map(row => row.message_id); }
+  groupDispatches(parent) {
+    return this.db.prepare(`SELECT g.id,g.mode,t.scope,COALESCE(d.status,t.status) AS status FROM group_dispatches g
+      JOIN turns t ON t.id=g.id LEFT JOIN delivery d ON d.id=g.id WHERE g.parent_id=? ORDER BY g.rowid`).all(parent);
+  }
   referenceInScope(scope, message) {
     return Boolean(this.db.prepare('SELECT 1 FROM delivery_receipts r JOIN turns t ON t.id=r.id WHERE t.scope=? AND r.message_id=?').get(scope,message));
   }

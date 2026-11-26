@@ -3,7 +3,7 @@ import base64
 import types
 import time
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from plugin_proactive_test import Bridge
 from plugin_media_test import media
 
@@ -31,12 +31,43 @@ class ChatRepairTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_router_wait_counts_toward_existing_turn_deadline(self):
         bridge, event = self.fixture('你好', private=True)
+        bridge.call.return_value = {'found': False, 'message': ''}
         event.message_obj.raw_message['sub2api_received_at'] = (time.time() - 226) * 1000
         await bridge.on_message(event)
         bridge.policy.assert_not_awaited()
-        self.assertEqual(bridge.call.await_args.args[0], '/events')
-        self.assertEqual(bridge.call.await_args.args[1]['reason'], 'turn_expired')
+        self.assertEqual(bridge.call.await_args_list[0].args[0], '/events')
+        self.assertEqual(bridge.call.await_args_list[0].args[1]['reason'], 'turn_expired')
+        self.assertEqual(bridge.call.await_args.args[0], '/dispatch/status')
         event.send.assert_awaited_once()
+
+    async def test_private_timeout_reports_real_dispatch_status_without_reissuing_the_turn(self):
+        bridge, event = self.fixture('去 456 群发通知', private=True)
+        bridge.queued_message = AsyncMock(side_effect=asyncio.TimeoutError)
+        bridge.audit_failure = AsyncMock()
+        report = '本次私聊回复未完成，群 456：已全部发送；QQ 消息 ID：101。'
+        bridge.call.return_value = {'found': True, 'message': report}
+        with patch.dict(Bridge.on_message.__globals__, {'MessageChain': lambda: types.SimpleNamespace(message=lambda text: text)}):
+            await bridge.on_message(event)
+        bridge.call.assert_awaited_once_with('/dispatch/status', {'bot': '123', 'sender': '789', 'chat': '789', 'group': False, 'message_id': '1'})
+        event.send.assert_awaited_once_with(report)
+        event.bot.api.call_action.assert_not_awaited()
+
+    async def test_timeout_status_failure_warns_against_duplicate_sends_and_group_timeout_never_reads_private_status(self):
+        bridge, event = self.fixture('去 456 群发通知', private=True)
+        bridge.queued_message = AsyncMock(side_effect=asyncio.TimeoutError)
+        bridge.audit_failure = AsyncMock()
+        bridge.call.side_effect = RuntimeError('status_unavailable')
+        with patch.dict(Bridge.on_message.__globals__, {'MessageChain': lambda: types.SimpleNamespace(message=lambda text: text)}):
+            await bridge.on_message(event)
+        notice = event.send.await_args.args[0]
+        self.assertIn('暂时无法确认', notice)
+        self.assertIn('不要重复提交', notice)
+        self.assertNotIn('请重新发送', notice)
+        bridge.call.assert_awaited_once()
+        bridge.call.reset_mock()
+        group_notice = await bridge.timeout_reply({**event.message_obj.raw_message, 'message_type': 'group'})
+        self.assertIn('处理超时', group_notice)
+        bridge.call.assert_not_awaited()
 
     async def test_semantic_voice_requests_reach_model_when_ambient_is_disabled(self):
         for text in ('今天的天气用语音回答我', '今天星期几  用语音回答我', '我不方便看屏幕，能说给我听吗'):

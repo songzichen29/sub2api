@@ -173,11 +173,27 @@ class DSHBridge(Star):
             await asyncio.wait_for(self.queued_message(event, received_at, raw), timeout=max(0, received_at + 225 - time.time()))
         except asyncio.TimeoutError:
             await self.audit_failure(raw, "turn_expired")
-            await event.send(MessageChain().message("这条消息等待或处理超时，请重新发送。"))
+            await event.send(MessageChain().message(await self.timeout_reply(raw)))
         except BridgeError as error:
             if "排队消息已满" in str(error):
                 await self.audit_failure(raw, "queue_full")
             await event.send(MessageChain().message(str(error)))
+
+    async def timeout_reply(self, raw):
+        if raw.get("message_type") != "private":
+            return "这条消息等待或处理超时，请重新发送。"
+        sender = str(raw.get("user_id", ""))
+        try:
+            result = await asyncio.wait_for(self.call("/dispatch/status", {
+                "bot": str(raw.get("self_id", "")), "sender": sender, "chat": sender,
+                "group": False, "message_id": str(raw.get("message_id", "")),
+            }), timeout=3)
+            if result["found"]:
+                return result["message"]
+            return "这条消息等待或处理超时，请重新发送。"
+        except Exception as error:
+            logger.warning("QQ DSH dispatch status unavailable after timeout: %s", type(error).__name__)
+            return "这条消息处理超时，跨群操作结果暂时无法确认。请先查看目标群，不要重复提交发送指令。"
 
     @asynccontextmanager
     async def conversation_slot(self, key):

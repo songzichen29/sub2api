@@ -32,3 +32,15 @@ test('reply management schemas accept atomic group defaults and exceptions witho
   assert.notDeepEqual(validateArgs(definition.parameters, { ...args, updates: [{ scope: 'private', member_id: '999' }] }), []);
   assert.notDeepEqual(validateArgs(definition.parameters, { updates: args.updates }), []);
 });
+
+test('group sending requires an explicit target and body while format remains optional', () => {
+  const definition = toolDefinitions.find(tool => tool.name === 'send_group_message');
+  const args = { group_id: '456', text: '今晚八点开会。' };
+  assert.deepEqual(validateArgs(definition.parameters, args), []);
+  assert.deepEqual(validateArgs(definition.parameters, { ...args, mode: 'voice', voice: '御姐' }), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { text: args.text }), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { group_id: args.group_id }), []);
+  assert.notDeepEqual(validateArgs(definition.parameters, { ...args, mode: 'image' }), []);
+  assert.equal(Object.hasOwn(definition.parameters, 'member_id'), false);
+  assert.equal(Object.hasOwn(definition.parameters, 'call_id'), false);
+});

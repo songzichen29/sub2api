@@ -5,7 +5,7 @@ export const name='qqbot-capabilities';
 export const inject=['tools'];
 export function apply(ctx) {
   for (const definition of toolDefinitions) {
-    const timeoutMs=definition.name==='send_meme'?70000:35000;
+    const timeoutMs=definition.name==='send_group_message'?225000:definition.name==='send_meme'?70000:35000;
     ctx.tools.register(defineTool({
     ...definition, output:{schema:{type:'string'},render:(_args,value)=>[{type:'text',text:value}]},
     timeoutMs, isConcurrencySafe:()=>false,

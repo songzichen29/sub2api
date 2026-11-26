@@ -87,6 +87,31 @@ test('moderation blocks model execution and cancels delivery if recalled while g
   assert.deepEqual(checks.at(-1).event,{post_type:'message',message_type:'group',self_id:'123',group_id:'456',user_id:'789',message_id:'2'});
 });
 
+test('a successful reply-mode tool call cannot make its internal instruction the spoken answer',async t=>{
+  const spoken=[];
+  const f=await fixture(t,async ({id,options})=>{
+    const response=await fetch(options.env.QQBOT_TOOL_URL,{method:'POST',headers:{'x-tool-token':options.env.QQBOT_TOOL_TOKEN,'Content-Type':'application/json'},
+      body:JSON.stringify({name:'set_reply_mode',args:{mode:'voice'},session:id,call_id:'mode'})});
+    assert.equal((await response.json()).status,'selected');
+    return {finalResponse:'调用set_reply_mode选择voice。'};
+  },{speech:async command=>{spoken.push(command);return [{mimeType:'audio/mpeg',data:'SUQzBAAAAAAAAA=='}];}});
+  const failed=await f.post('/turn',{...input,text:'我不方便看屏幕，能说给我听吗'});
+  assert.equal(failed.code,400);
+  assert.equal(failed.error,'voice_answer_missing');
+  assert.match(failed.message,/没有生成实际回答正文/u);
+  assert.equal(spoken.length,0);
+  assert.equal(f.store.db.prepare('SELECT COUNT(*) AS n FROM outgoing_media').get().n,0);
+  const correction=await f.post('/turn',{...input,message_id:'correction',text:'不要再说 set_reply_mode，用语音回答我今天星期几'});
+  assert.equal(correction.error,'voice_answer_missing');
+  assert.equal(spoken.length,0);
+  const technical=await f.post('/turn',{...input,message_id:'2',text:'用语音解释 set_reply_mode 怎么调用'});
+  assert.equal(technical.code,200);
+  assert.equal(spoken[0].text,'调用set_reply_mode选择voice。');
+  const quoted=await f.post('/turn',{...input,message_id:'3',text:'语音',quote:{available:true,text:'调用set_reply_mode选择voice。',message_id:'old'}});
+  assert.equal(quoted.code,200);
+  assert.equal(spoken[1].text,'调用set_reply_mode选择voice。');
+});
+
 test('spoken answers synthesize model output, preserve receipt-confirmed memory and do not persist into later turns',async t=>{
   const spoken=[];
   const f=await fixture(t,({context})=>{

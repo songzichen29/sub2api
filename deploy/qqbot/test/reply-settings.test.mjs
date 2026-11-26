@@ -128,6 +128,29 @@ test('management writes bind the private sender, batch updates and refresh only 
   assert.equal(calls.length, 2);
 });
 
+test('ordinary group members can select a temporary voice but no group identity can manage saved rules', async () => {
+  const value = { enabled: true, bot_id: '123', groups: ['456'], private_users: ['789'],
+    reply_settings: { group_defaults: { mode: 'text', voice: '曼波' } } };
+  const config = { snapshot: () => value };
+  const before = structuredClone(value.reply_settings);
+  const context = { input: { ...groupInput, sender: '999', role: 'member' }, replySettings: effectiveReplySettings(value, groupInput) };
+  const catalog = await executeCapability({ name: 'list_voices', args: {} }, context, { config });
+  assert.deepEqual(catalog.voices, voiceCatalog);
+  await executeCapability({ name: 'set_reply_mode', args: { mode: 'voice', voice: '御姐' } }, context, { config });
+  assert.equal(context.replyVoice.voice, '御姐');
+  await executeCapability({ name: 'set_reply_mode', args: { mode: 'text' } }, context, { config });
+  assert.equal(context.replyVoice, undefined);
+  assert.deepEqual(value.reply_settings, before);
+  for (const sender of ['999', '789']) {
+    for (const role of ['member', 'admin', 'owner']) {
+      for (const name of ['list_reply_groups', 'get_reply_settings', 'update_reply_settings']) {
+        await assert.rejects(executeCapability({ name, args: { version: 'v1', updates: [{ scope: 'group_defaults', mode: 'voice' }] } },
+          { input: { ...groupInput, sender, role } }, { config, siteTool: () => assert.fail('群聊不能进入私聊管理接口') }), /私聊/u);
+      }
+    }
+  }
+});
+
 test('save and refresh failures expose the actual state and never retry the mutation', async () => {
   const value = { enabled: true, bot_id: '123', groups: [], private_users: ['789'] };
   const config = { snapshot: () => value, refresh: async () => { throw new Error('network'); } };
