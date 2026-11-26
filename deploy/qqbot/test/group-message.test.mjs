@@ -281,8 +281,8 @@ test('a failed private summary reports persisted dispatch results instead of sug
       return response.json();
     };
     const result = await post();
-    assert.match(result.text, /私聊回复未完成/u);
-    assert.match(result.text, /群 456：已全部发送；QQ 消息 ID：101/u);
+    assert.doesNotMatch(result.text, /私聊回复未完成/u);
+    assert.match(result.text, /群 456：已全部发送文字；QQ 消息 ID：101/u);
     assert.equal((await post()).text, result.text);
     // 还原进程在源回合完成前退出的状态，重放也只读持久回执。
     f.state.store.finish(result.id, 'interrupted');
@@ -313,7 +313,7 @@ test('the total deadline preserves dispatch receipts in errors and private statu
   };
   const result = await post('/turn', input);
   assert.equal(result.error, 'turn_expired');
-  assert.match(result.message, /群 456：已全部发送；QQ 消息 ID：101/u);
+  assert.match(result.message, /群 456：已全部发送文字；QQ 消息 ID：101/u);
   assert.doesNotMatch(result.message, /请重新发送/u);
   assert.deepEqual(await post('/dispatch/status', input), { status: 200, found: true, message: result.message });
   assert.equal((await post('/dispatch/status', input, 'wrong')).status, 401);

@@ -42,7 +42,7 @@ export function validateImages(images=[]) {
   });
 }
 
-export async function executeCapability({name,args}, context, {config,store,siteTool,sendGroupMessage}) {
+export async function executeCapability({name,args}, context, {config,store,siteTool,sendGroupMessage,recordAction}) {
   const c=config.snapshot(), {input,id,scope}=context;
   if (input.proactive) throw Object.assign(new Error('主动热群没有用户授权，不执行账户或图片工具'), {code:'proactive_tool_denied'});
   if(!chatAllowed(c,input)) throw Object.assign(new Error('本会话已停用'), {code:'scope_denied'});
@@ -68,13 +68,15 @@ export async function executeCapability({name,args}, context, {config,store,site
       if (update.prompt !== undefined && sensitiveText(update.prompt)) throw new Error('人设中不能保存密钥或口令');
     }
     context.replySettingsWriteAttempted = true;
+    recordAction?.('saving');
     const saved = await call({ tool: name, version: args.version, updates: args.updates, operation_id: input.message_id + ':reply-settings' });
+    recordAction?.('saved_sync_pending');
     try {
       await config.refresh();
     } catch (error) {
       throw new Error('回复设置已保存，但运行时同步失败；不要重复追加设置，请查询当前设置确认。', { cause: error });
     }
-    return { ...saved, effective: effectiveReplySettings(config.snapshot(), input), notice: '设置已保存并同步，后续回合使用新设置；当前回答仍按本轮开始时的设置发送。' };
+    return { ...saved, effective: effectiveReplySettings(config.snapshot(), input), notice: '设置已保存并同步，后续聊天使用新设置；本次操作确认由系统用文字报告，不表示已发送语音。' };
   }
   const selectedImage=index=>{
     if(!Number.isInteger(index) || index<1 || index>4)throw new Error('请选择第1至4张实际加载的图片');

@@ -14,7 +14,8 @@ import { chatAllowed, groupAdministrator, publicErrors } from './chat-policy.mjs
 import { parseVoiceRequest, replyVoice, synthesizeVoice, voiceReplyForbidden, isVoiceToolInstruction } from './voice.mjs';
 import { effectiveReplySettings } from './reply-settings.mjs';
 import { errorFields } from './diagnostics.mjs';
-import { sendGroupMessage, groupPacketClient, groupDispatchReport } from './group-message.mjs';
+import { sendGroupMessage, groupPacketClient } from './group-message.mjs';
+import { actionDetails, actionFailure, actionQueryDetails, actionReport } from './action-results.mjs';
 
 export function createBridge({ config, token, store, root, makeHarness, siteTool=(body,options)=>config.tool(body,options), checkEvent=body=>config.checkEvent(body), speech=synthesizeVoice, sendPacket=groupPacketClient(token), clock=Date.now, concurrency=4, turnTimeoutMs=225000 }) {
   const workspace = join(root, 'workspace');
@@ -133,13 +134,10 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       : replySettings.mode === 'voice' && !voiceReplyForbidden(text) ? replyVoice(replySettings.voice) : undefined;
     const id = opaqueKey(callerScope + ':' + input.message_id), prior = store.turn(id);
     if (prior) {
-      if (prior.status !== 'completed') {
-        const report = groupDispatchReport(store, id);
-        if (report) {
-          store.db.prepare('DELETE FROM outgoing_media WHERE id=?').run(id);
-          store.finish(id, 'completed', report);
-          return { id, text: report, duplicate: true };
-        }
+      const report = actionReport(store, id);
+      if (report) {
+        store.finish(id, 'completed', report);
+        return { id, text: report, media: store.media(id), duplicate: true };
       }
       if (prior.status !== 'completed') throw new Error('previous_execution_unconfirmed');
       const media = store.media(id);
@@ -236,9 +234,16 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       if (receivedImages || loadedImages || images.length) {
         console.info(JSON.stringify({event:'image_input',mode:input.ambient?'ambient':'direct',received:receivedImages,loaded:loadedImages,forwarded:images.length}));
       }
-      const toolState={input:{...input,text},id,scope,imageCutoff,signal,session:session.id,calls:new Map(),replySettings,replyVoice:initialVoice};
+      const toolState={input:{...input,text},id,scope,imageCutoff,signal,session:session.id,calls:new Map(),replySettings,replyVoice:initialVoice,secrets:[c.model_api_key,token]};
       toolContexts.set(worker.token,toolState);
       let answer = await runSession(session, blocks,signal,{allowEmpty:true});
+      const report = actionReport(store, id);
+      if (report) {
+        store.finish(id, 'completed', report);
+        store.dropConversation(scope);
+        await discardRuntime(scope);
+        return { id, text: report, media: store.media(id) };
+      }
       if (!answer && !store.media(id).length) throw new Error('empty_model_response');
       if(store.media(id).length && answer==='[跳过]') answer='来一张表情包。';
       if (toolState.replyVoice && answer && answer !== '[跳过]') {
@@ -268,7 +273,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       let message = String(error.message);
       for (const secret of [c.model_api_key, token]) if (secret) message = message.replaceAll(secret, '[redacted]');
       console.error(JSON.stringify({ event: 'turn_failed', id, code: error.name, message: message.slice(0, 500) }));
-      const report = groupDispatchReport(store, id);
+      const report = actionReport(store, id);
       if (report) {
         store.db.prepare('DELETE FROM outgoing_media WHERE id=?').run(id);
         store.finish(id, 'completed', report);
@@ -301,7 +306,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       return result;
     } catch(error) {
       if(!store.delivery(id))store.recordStatus(id,error.message==='turn_expired'?'expired':'failed',Object.hasOwn(publicErrors,error.message)?error.message:'model_unavailable');
-      const report = groupDispatchReport(store, id);
+      const report = actionReport(store, id);
       if (report) error.dispatchReport = report;
       throw error;
     } finally { clearTimeout(timer);res.off('close',abandoned);requests.delete(controller); }
@@ -334,7 +339,7 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
       const input = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (req.method === 'POST' && req.url === '/dispatch/status') {
         if (input.group !== false || !chatAllowed(config.snapshot(), input)) throw new Error('scope_denied');
-        const report = groupDispatchReport(store, opaqueKey(scopeKey(input) + ':' + input.message_id));
+        const report = actionReport(store, opaqueKey(scopeKey(input) + ':' + input.message_id));
         return respond(res, 200, { found: Boolean(report), message: report || '' });
       }
       if(toolRequest) {
@@ -342,11 +347,29 @@ export function createBridge({ config, token, store, root, makeHarness, siteTool
         state.signal?.throwIfAborted();
         if(!state || input.session!==state.session || typeof input.call_id!=='string' || !input.call_id || input.call_id.length>200) throw new Error('工具不属于当前用户回合');
         if(!state.calls.has(input.call_id)) {
-          if(state.calls.size>=6) throw new Error('本轮工具调用已达上限');
+          const action = ['send_group_message', 'update_reply_settings'].includes(input.name);
+          const query = ['list_voices', 'list_reply_groups', 'get_reply_settings'].includes(input.name);
+          if (action || query) store.beginAction(state.id, input.call_id, input.name, action ? actionDetails(input.name, input.args) : {});
+          const recordAction = status => store.finishAction(state.id, input.call_id, status);
           const job=(async()=>{
-            if (!await moderationAllowed(config.snapshot(),state.input)) throw new Error('moderation_blocked');
-            return executeCapability(input,state,{config,store,siteTool,
-              sendGroupMessage: (args, context) => sendGroupMessage(args, context, { config, store, speech, sendPacket })});
+            try {
+              if(state.calls.size>=6) throw new Error('本轮工具调用已达上限');
+              if (!await moderationAllowed(config.snapshot(),state.input)) throw new Error('moderation_blocked');
+              const result = await executeCapability(input,state,{config,store,siteTool,recordAction,
+                sendGroupMessage: (args, context) => sendGroupMessage(args, context, { config, store, speech, sendPacket })});
+              if (action) recordAction(input.name === 'update_reply_settings' ? 'saved' : result.status);
+              if (query) store.finishActionQuery(state.id, input.call_id, actionQueryDetails(input.name, result));
+              return result;
+            } catch (error) {
+              if (action || query) {
+                const current = store.actions(state.id).find(row => row.call_id === input.call_id);
+                const status = current.status === 'saved_sync_pending' ? current.status
+                  : current.status === 'saving' && !(error.status >= 400 && error.status < 500) ? 'unconfirmed'
+                  : current.status === 'pending' && input.name === 'update_reply_settings' && state.replySettingsWriteAttempted ? 'not_submitted' : 'failed';
+                store.finishAction(state.id, input.call_id, status, actionFailure(error, state.secrets));
+              }
+              throw error;
+            }
           })();state.calls.set(input.call_id,job);
         }
         try { const result=await state.calls.get(input.call_id);console.log(JSON.stringify({event:'tool_finished',id:state.id,tool:input.name,ok:true,status:result.status}));return respond(res,200,result); }

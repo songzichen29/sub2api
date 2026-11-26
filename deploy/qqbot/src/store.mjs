@@ -32,6 +32,7 @@ export class Store {
     this.db.exec('CREATE TABLE IF NOT EXISTS delivery_receipts(id TEXT NOT NULL,message_id TEXT NOT NULL,PRIMARY KEY(id,message_id));');
     this.db.exec(`CREATE TABLE IF NOT EXISTS group_dispatches(id TEXT PRIMARY KEY,parent_id TEXT NOT NULL,request TEXT NOT NULL,mode TEXT NOT NULL,voice TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS group_dispatches_parent ON group_dispatches(parent_id);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS action_results(parent_id TEXT NOT NULL,call_id TEXT NOT NULL,name TEXT NOT NULL,details TEXT NOT NULL,status TEXT NOT NULL,reason TEXT NOT NULL,PRIMARY KEY(parent_id,call_id));`);
     this.db.exec(`CREATE TABLE IF NOT EXISTS group_activity(scope TEXT PRIMARY KEY,event_id TEXT NOT NULL,at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS proactive_slots(id TEXT PRIMARY KEY,scope TEXT NOT NULL,slot_at INTEGER NOT NULL,activity TEXT NOT NULL,status TEXT NOT NULL,turn_id TEXT,updated INTEGER NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS proactive_turn ON proactive_slots(turn_id);`);
@@ -229,6 +230,18 @@ export class Store {
   }
   delivery(id) { return this.db.prepare('SELECT * FROM delivery WHERE id=?').get(id); }
   groupDispatch(id) { return this.db.prepare('SELECT * FROM group_dispatches WHERE id=?').get(id); }
+  beginAction(parent, call, name, details) {
+    this.db.prepare("INSERT INTO action_results VALUES(?,?,?,?,'pending','')").run(parent, call, name, JSON.stringify(details));
+  }
+  finishAction(parent, call, status, reason = '') {
+    this.db.prepare('UPDATE action_results SET status=?,reason=? WHERE parent_id=? AND call_id=?').run(status, reason, parent, call);
+  }
+  finishActionQuery(parent, call, details) {
+    this.db.prepare("UPDATE action_results SET status='read',details=? WHERE parent_id=? AND call_id=?").run(JSON.stringify(details), parent, call);
+  }
+  actions(parent) {
+    return this.db.prepare('SELECT * FROM action_results WHERE parent_id=? ORDER BY rowid').all(parent).map(row => ({ ...row, details: JSON.parse(row.details) }));
+  }
   beginGroupDispatch(id, scope, request, mode, voice, parent) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -239,7 +252,7 @@ export class Store {
   }
   receipts(id) { return this.db.prepare('SELECT message_id FROM delivery_receipts WHERE id=? ORDER BY rowid').all(id).map(row => row.message_id); }
   groupDispatches(parent) {
-    return this.db.prepare(`SELECT g.id,g.mode,t.scope,COALESCE(d.status,t.status) AS status FROM group_dispatches g
+    return this.db.prepare(`SELECT g.id,g.mode,g.voice,t.scope,COALESCE(d.status,t.status) AS status FROM group_dispatches g
       JOIN turns t ON t.id=g.id LEFT JOIN delivery d ON d.id=g.id WHERE g.parent_id=? ORDER BY g.rowid`).all(parent);
   }
   referenceInScope(scope, message) {

@@ -70,16 +70,6 @@ export async function sendGroupMessage(args, context, { config, store, speech, s
   }
 }
 
-export function groupDispatchReport(store, parent) {
-  const rows = store.groupDispatches(parent);
-  if (!rows.length) return;
-  return '本次私聊回复未完成，跨群操作的实际结果如下，请先核对目标群，不要重复提交：\n' + rows.map(row => {
-    const receipts = store.receipts(row.id);
-    const state = row.status === 'sent' ? '已全部发送' : row.status === 'partial' ? '仅部分内容取得回执，其余结果未确认' : row.status === 'failed' || row.status === 'interrupted' ? '未完成发送' : '发送结果未确认';
-    return `群 ${row.scope.split(':')[2]}：${state}${receipts.length ? '；QQ 消息 ID：' + receipts.join('、') : '；没有已确认回执'}。`;
-  }).join('\n');
-}
-
 export function groupPacketClient(token, base = 'http://router:6200') {
   return async (body, { signal } = {}) => {
     const response = await fetch(base + '/send-group', {

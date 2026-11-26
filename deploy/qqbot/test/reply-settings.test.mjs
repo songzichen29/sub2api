@@ -208,12 +208,12 @@ test('a management tool round saves group rules without redirecting the private 
     return '群默认已改成御姐语音，工作群保留文字。';
   }, { siteTool: async body => {
     siteCalls.push(body);
-    return body.tool === 'get_reply_settings' ? { version: 'v1', settings: {} } : { status: 'saved', version: 'v2', settings: saved };
+    return body.tool === 'get_reply_settings' ? { version: 'v1', settings: { group_defaults: {}, groups: {}, private_users: {} } } : { status: 'saved', version: 'v2', settings: saved };
   } });
   f.config.refresh = async () => { f.value.reply_settings = saved; f.value.reply_settings_version = 'v2'; };
   const result = await f.post('/turn', { ...privateInput, text: '所有群以后用御姐语音，工作群继续用文字' });
   assert.equal(result.status, 200);
-  assert.match(result.text, /已改成御姐/u);
+  assert.match(result.text, /回复设置已保存.*群共享默认（回复方式：语音；音色：御姐）/u);
   assert.equal(f.store.turn(result.id).scope, '123:private:789');
   assert.ok(siteCalls.every(call => call.group_id === '' && call.member_id === '789'));
   const group = await f.post('/turn', { ...groupInput, message_id: '2' });
