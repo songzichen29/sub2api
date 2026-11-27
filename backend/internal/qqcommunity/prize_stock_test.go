@@ -36,11 +36,11 @@ func TestLotteryLastPrizeBecomesThanksWithoutRedistribution(t *testing.T) {
 func TestLotteryStockSaveKeepsIdentityAndCounts(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mock.ExpectBegin()
 	raw, err := db.Begin()
 	require.NoError(t, err)
-	defer raw.Rollback()
+	defer func() { _ = raw.Rollback() }()
 	tx := &transaction{raw: raw}
 	ctx := context.Background()
 	current := LotteryConfig{Prizes: []LotteryPrize{{ID: "stable"}}}

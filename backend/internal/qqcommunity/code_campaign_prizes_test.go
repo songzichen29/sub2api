@@ -99,11 +99,11 @@ func TestCampaignSavePreservesStockAndRewardContract(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			require.NoError(t, err)
-			defer db.Close()
+			defer func() { _ = db.Close() }()
 			mock.ExpectBegin()
 			raw, err := db.Begin()
 			require.NoError(t, err)
-			defer raw.Rollback()
+			defer func() { _ = raw.Rollback() }()
 			old := probabilityCampaignFixture()
 			old.ID = "aaaaaaaaaaaaaaaaaaaaaaaa"
 			next := old
@@ -152,7 +152,7 @@ func TestCampaignUsageBeijingMidnightBothDialects(t *testing.T) {
 func TestCampaignNoneResultReplaysBeforeStockAndUsageChecks(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	s := New(db, fixtureEncryptor{}, true, nil)
 	cfg := Config{AppID: "bot", AllowedGroups: []string{"group"}}
 	rawConfig, err := json.Marshal(cfg)

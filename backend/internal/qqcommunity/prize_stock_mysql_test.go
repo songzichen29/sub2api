@@ -28,7 +28,7 @@ func TestPrizeStockMySQLTemporaryTables(t *testing.T) {
 	cfg.ParseTime, cfg.Loc = true, checkinZone
 	db, err := sql.Open("mysql", cfg.FormatDSN())
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
 	ctx := context.Background()
 	for _, statement := range []string{
@@ -112,7 +112,7 @@ func TestPrizeStockMySQLTemporaryTables(t *testing.T) {
 	}
 	rawTx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
-	defer rawTx.Rollback()
+	defer func() { _ = rawTx.Rollback() }()
 	tokens, err := campaignUsageTokens(ctx, &transaction{raw: rawTx, mysql: true}, 42, now)
 	require.NoError(t, err)
 	require.EqualValues(t, 1200, tokens)
