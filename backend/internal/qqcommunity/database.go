@@ -294,6 +294,7 @@ func rewriteStrpos(q string) string {
 func mysqlSQL(q string) string {
 	q = normalizeSQL(q)
 	q = mysqlRelations(q)
+	q = strings.ReplaceAll(q, "FROM groups ", "FROM `groups` ")
 	q = strings.ReplaceAll(q, "AS NOT MATERIALIZED", "AS")
 	q = regexp.MustCompile(`->>'(\w+)'`).ReplaceAllString(q, "->>'$$.$1'")
 	// MySQL DATETIME 已按配置时区保存，无需再加 8 小时。

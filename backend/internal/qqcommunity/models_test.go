@@ -77,3 +77,17 @@ func TestMySQLNestedSearch(t *testing.T) {
 	require.Equal(t, `SELECT NOW(6)-INTERVAL ? SECOND`, q)
 	require.Equal(t, []any{0}, args)
 }
+
+func TestSubscriptionGroupSQLDialects(t *testing.T) {
+	query := `SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND subscription_type='subscription' AND status='active' AND deleted_at IS NULL)`
+	for _, mysql := range []bool{false, true} {
+		q, args, err := bindSQL(mysql, query, []any{int64(78)})
+		require.NoError(t, err)
+		require.Equal(t, []any{int64(78)}, args)
+		if mysql {
+			require.Equal(t, "SELECT EXISTS(SELECT 1 FROM `groups` WHERE id=? AND subscription_type='subscription' AND status='active' AND deleted_at IS NULL)", q)
+			continue
+		}
+		require.Equal(t, query, q)
+	}
+}
