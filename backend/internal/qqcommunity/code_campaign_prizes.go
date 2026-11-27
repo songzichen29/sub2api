@@ -74,17 +74,17 @@ func validateCampaignPrizes(c CodeCampaign) error {
 			return err
 		}
 	}
-	return validateTokenTiers(c.TokenTiers, total)
+	return validateTokenTiers(c.TokenTiers)
 }
 
-func validateTokenTiers(tiers []CampaignTokenTier, base int) error {
+func validateTokenTiers(tiers []CampaignTokenTier) error {
 	if len(tiers) > 20 {
 		return CampaignRuleError("Token 加成最多20档")
 	}
 	threshold, bonus := int64(0), 0
 	for _, tier := range tiers {
-		if tier.Tokens <= threshold || tier.Tokens > 9007199254740991 || tier.BonusBPS <= bonus || base+tier.BonusBPS > 10000 {
-			return CampaignRuleError("Token门槛与加成须递增，主奖基础概率加最高档加成不能超过100%")
+		if tier.Tokens <= threshold || tier.Tokens > 9007199254740991 || tier.BonusBPS <= bonus || tier.BonusBPS > 10000 {
+			return CampaignRuleError("Token门槛与加成须递增，每项加成需为0.01～100个百分点")
 		}
 		threshold, bonus = tier.Tokens, tier.BonusBPS
 	}
@@ -184,24 +184,41 @@ func prepareCampaignPrizes(ctx context.Context, tx *transaction, old CodeCampaig
 	return nil
 }
 
-// 用累计边界按比例放大，避免逐奖四舍五入改变总概率。
-func campaignDistribution(c CodeCampaign, tokens int64) ([]int, int, int) {
-	base, bonus := 0, 0
-	for _, p := range c.Prizes {
-		base += p.ProbabilityBPS
+// 每个奖项分别加上百分点；超过100%时按完整奖池折算，再处理库存。
+func tokenPrizeWeights(base []int, bonus int) []int {
+	weights := make([]int, len(base))
+	total := 0
+	for i, probability := range base {
+		weights[i] = probability + bonus
+		total += weights[i]
 	}
+	if total <= 10000 {
+		return weights
+	}
+	cumulative, previous := 0, 0
+	for i, weight := range weights {
+		cumulative += weight
+		boundary := cumulative * 10000 / total
+		weights[i] = boundary - previous
+		previous = boundary
+	}
+	return weights
+}
+
+func campaignDistribution(c CodeCampaign, tokens int64) ([]int, int, int) {
+	base := make([]int, len(c.Prizes))
+	for i, p := range c.Prizes {
+		base[i] = p.ProbabilityBPS
+	}
+	bonus := 0
 	for _, tier := range c.TokenTiers {
 		if tokens >= tier.Tokens {
 			bonus = tier.BonusBPS
 		}
 	}
-	weights := make([]int, len(c.Prizes))
-	cumulative, previous, available := 0, 0, 0
+	weights := tokenPrizeWeights(base, bonus)
+	available := 0
 	for i, p := range c.Prizes {
-		cumulative += p.ProbabilityBPS
-		boundary := cumulative * (base + bonus) / base
-		weights[i] = boundary - previous
-		previous = boundary
 		if p.Allocated < p.StockLimit {
 			available += weights[i]
 		}

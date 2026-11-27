@@ -179,7 +179,7 @@ func validateLottery(c LotteryConfig) error {
 	if len(c.TokenTiers) > 0 && base == 0 {
 		return errors.New("Token 加成需要至少一个普通额度奖项")
 	}
-	if err := validateTokenTiers(c.TokenTiers, base); err != nil {
+	if err := validateTokenTiers(c.TokenTiers); err != nil {
 		return err
 	}
 	for _, p := range c.GuaranteePrizes {
@@ -337,12 +337,12 @@ func lotteryPrizeAt(prizes []LotteryPrize, roll int64) LotteryPrize {
 	panic("lottery roll outside validated distribution")
 }
 
-// Lifetime usage includes ordinary wins and survives rebindings and config changes.
-func (c LotteryConfig) drawsUntilGuarantee(used int64) int64 {
+// 连续未中奖达到周期的前一抽后，下一抽保底；普通中奖和保底中奖均重新计数。
+func (c LotteryConfig) drawsUntilGuarantee(misses int64) int64 {
 	if !c.GuaranteeEnabled || c.GuaranteeEvery <= 0 {
 		return 0
 	}
-	return c.GuaranteeEvery - used%c.GuaranteeEvery
+	return max(1, c.GuaranteeEvery-misses)
 }
 
 // TransferConfig holds the transfer feature's operator-configurable parameters.

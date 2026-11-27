@@ -96,7 +96,7 @@ func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID stri
 	if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
 		return out, err
 	}
-	guaranteed := cfg.drawsUntilGuarantee(state.Used) == 1
+	guaranteed := state.DrawsUntilGuarantee == 1
 	pool := cfg.GuaranteePrizes
 	var bonus *LotteryTokenBonus
 	if !guaranteed {

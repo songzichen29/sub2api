@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLotteryTokenBonusScalesNormalPoolAndPreservesTotal(t *testing.T) {
+func TestLotteryTokenBonusAddsToEachPrizeAndPreservesTotal(t *testing.T) {
 	c := LotteryConfig{
 		Prizes: []LotteryPrize{
 			{Name: "大礼", Amount: 1, ProbabilityBPS: 1000},
@@ -23,7 +23,7 @@ func TestLotteryTokenBonusScalesNormalPoolAndPreservesTotal(t *testing.T) {
 	}
 	pool, bonus := lotteryPoolForTokens(c, 1_000_000)
 	require.Equal(t, 500, bonus.BonusBPS)
-	require.Equal(t, []int{1166, 2334, 6500}, []int{pool[0].ProbabilityBPS, pool[1].ProbabilityBPS, pool[2].ProbabilityBPS})
+	require.Equal(t, []int{1500, 2500, 6000}, []int{pool[0].ProbabilityBPS, pool[1].ProbabilityBPS, pool[2].ProbabilityBPS})
 	require.Equal(t, 10000, pool[0].ProbabilityBPS+pool[1].ProbabilityBPS+pool[2].ProbabilityBPS)
 }
 
@@ -38,7 +38,8 @@ func TestLotteryTokenBonusOnlyCountsAvailableRewards(t *testing.T) {
 		TokenTiers: []CampaignTokenTier{{Tokens: 1_000_000, BonusBPS: 500}},
 	}
 	pool, bonus := lotteryPoolForTokens(c, 1_000_000)
-	require.Equal(t, 334, bonus.BonusBPS)
+	require.Equal(t, 500, bonus.BonusBPS)
+	require.Equal(t, 2500, pool[1].ProbabilityBPS)
 	require.Equal(t, "谢谢参与", pool[0].Name)
 	require.Equal(t, 0.0, pool[0].Amount)
 	require.Equal(t, 10000, pool[0].ProbabilityBPS+pool[1].ProbabilityBPS+pool[2].ProbabilityBPS)
@@ -49,7 +50,7 @@ func TestLotteryTokenTierValidationUsesOnlyNormalRewardProbability(t *testing.T)
 	c.TokenTiers = []CampaignTokenTier{{Tokens: 1_000_000, BonusBPS: 500}}
 	require.NoError(t, validateLottery(c))
 
-	c.TokenTiers = []CampaignTokenTier{{Tokens: 1_000_000, BonusBPS: 9001}}
+	c.TokenTiers = []CampaignTokenTier{{Tokens: 1_000_000, BonusBPS: 10001}}
 	require.Error(t, validateLottery(c))
 
 	c.TokenTiers = []CampaignTokenTier{{Tokens: 2_000_000, BonusBPS: 500}, {Tokens: 1_000_000, BonusBPS: 600}}
@@ -65,7 +66,51 @@ func TestLotteryTokenTierValidationUsesOnlyNormalRewardProbability(t *testing.T)
 	c.Prizes = []LotteryPrize{{Name: "谢谢参与", ProbabilityBPS: 10000}}
 	require.Error(t, validateLottery(c))
 	c.Prizes = []LotteryPrize{{Name: "已全中奖", Amount: 1, ProbabilityBPS: 10000}}
-	require.Error(t, validateLottery(c))
+	require.NoError(t, validateLottery(c))
+}
+
+func TestTokenNormalizationKeepsExhaustedSharesInBothPools(t *testing.T) {
+	limit := int64(1)
+	lottery := defaultLotteryConfig()
+	lottery.Prizes = []LotteryPrize{
+		{ID: "a", Name: "A", Amount: 1, ProbabilityBPS: 2000, StockLimit: &limit, Allocated: 1},
+		{ID: "b", Name: "B", Amount: 2, ProbabilityBPS: 3000, StockLimit: &limit, Allocated: 1},
+		{ID: "c", Name: "C", Amount: 3, ProbabilityBPS: 5000, StockLimit: &limit},
+	}
+	lottery.TokenTiers = []CampaignTokenTier{{Tokens: 1, BonusBPS: 500}}
+	require.NoError(t, validateLottery(lottery))
+	pool, info := lotteryPoolForTokens(lottery, 1)
+	require.Equal(t, 500, info.BonusBPS)
+	require.Equal(t, []int{2173, 3044, 4783}, []int{pool[0].ProbabilityBPS, pool[1].ProbabilityBPS, pool[2].ProbabilityBPS})
+	wins := 0
+	for roll := int64(0); roll < 10000; roll++ {
+		if lotteryPrizeAt(pool, roll).Amount > 0 {
+			wins++
+		}
+	}
+	require.Equal(t, 4783, wins)
+
+	campaign := probabilityCampaignFixture()
+	campaign.Prizes = []CampaignPrize{
+		{ID: "a", Name: "A", Type: "balance", Value: 1, ProbabilityBPS: 2000, StockLimit: 1, Allocated: 1},
+		{ID: "b", Name: "B", Type: "balance", Value: 2, ProbabilityBPS: 3000, StockLimit: 1, Allocated: 1},
+		{ID: "c", Name: "C", Type: "balance", Value: 3, ProbabilityBPS: 5000, StockLimit: 1},
+	}
+	campaign.TokenTiers = lottery.TokenTiers
+	require.NoError(t, validateCodeCampaign(campaign))
+	weights, available, bonus := campaignDistribution(campaign, 1)
+	require.Equal(t, []int{2173, 3044, 4783}, weights)
+	require.Equal(t, 4783, available)
+	require.Equal(t, 500, bonus)
+	counts := map[string]int{}
+	for roll := range 10000 {
+		_, outcome := campaignPrizeAt(campaign, weights, roll)
+		counts[outcome]++
+	}
+	require.Equal(t, map[string]int{"prize": 4783, "compensation": 5217}, counts)
+	campaign.Compensation = nil
+	_, outcome := campaignPrizeAt(campaign, weights, 0)
+	require.Equal(t, "none", outcome)
 }
 
 func TestLotteryTokenTierBoundariesAndExhaustion(t *testing.T) {
@@ -139,7 +184,7 @@ func TestWebLotteryUsesDailyTokenBonusAndLeavesGuaranteeIndependent(t *testing.T
 			}
 			expectWebStart(mock, mysql)
 			mock.ExpectQuery("SELECT result_text").WillReturnError(sql.ErrNoRows)
-			expectWebState(mock, c, used, "30", mysql)
+			expectWebState(mock, c, used, used, "30", mysql)
 			if !guaranteed {
 				mock.ExpectQuery(`SELECT COALESCE\(SUM\(input_tokens\)`).WithArgs(int64(42), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"tokens"}).AddRow(1000000))
 			}
@@ -175,7 +220,7 @@ func TestWebLotteryUsageFailureRollsBackBeforeSpending(t *testing.T) {
 	c.TokenTiers = []CampaignTokenTier{{Tokens: 1000000, BonusBPS: 500}}
 	expectWebStart(mock, false)
 	mock.ExpectQuery("SELECT result_text").WillReturnError(sql.ErrNoRows)
-	expectWebState(mock, c, 0, "30", false)
+	expectWebState(mock, c, 0, 0, "30", false)
 	mock.ExpectQuery(`SELECT COALESCE\(SUM\(input_tokens\)`).WillReturnError(errors.New("usage unavailable"))
 	mock.ExpectRollback()
 	_, err = s.UserLotterySpin(context.Background(), 42, webRequestID)
@@ -230,8 +275,8 @@ func TestQQLotteryTokenBonusBatchKeepsGuaranteeAndLastStock(t *testing.T) {
 			bonus      *LotteryTokenBonus
 		}{
 			{"普通奖", 2, "last", false, &LotteryTokenBonus{UsageTokens: 1000000, BonusBPS: 5000}},
-			{"保底奖励", 1, "", true, nil},
 			{"谢谢参与", 0, "", false, &LotteryTokenBonus{UsageTokens: 1000000, BonusBPS: 0}},
+			{"保底奖励", 1, "", true, nil},
 		} {
 			args := []driver.Value{sqlmock.AnyArg(), bot.AppID, job.MemberID, job.GroupID, int64(42), outcome.name, outcome.amount, lotteryBonusSnapshot{bonus: outcome.bonus, guaranteed: outcome.guaranteed}, float64(30), int64(3), int64(2 - i), sqlmock.AnyArg(), outcome.prizeID}
 			if mysql {

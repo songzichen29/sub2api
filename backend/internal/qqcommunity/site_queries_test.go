@@ -85,11 +85,15 @@ func TestSiteQueryRulesKeepRewardPrecisionAndDoNotPromiseExecution(t *testing.T)
 	require.NotContains(t, text, "已到账")
 	lottery := defaultLotteryConfig()
 	lottery.Enabled, lottery.GuaranteeEnabled = true, true
+	lottery.TokenTiers = []CampaignTokenTier{{Tokens: 1000000, BonusBPS: 500}}
 	text = siteLotteryRules(lottery)
 	require.Contains(t, text, "人民币 10.00 元")
 	require.NotContains(t, text, "每满 USD")
 	require.Contains(t, text, "保底奖池")
-	require.Contains(t, text, "普通中奖不重置保底进度")
+	require.Contains(t, text, "任何正额度中奖后重新计数")
+	require.NotContains(t, text, "（概率")
+	require.NotContains(t, text, "中奖率")
+	require.Contains(t, text, "每个普通奖项分别获得加成")
 	text = siteGrowthRules(GrowthConfig{Tasks: []GrowthTask{
 		{ID: "active", Name: "公开任务", Kind: "usage_tokens", Target: 1000, Chances: 1, Enabled: true},
 		{ID: "disabled", Name: "停用任务", Kind: "binding", Target: 1, Chances: 1},

@@ -13,14 +13,14 @@
             <div class="lottery-stage-heading">
               <span>{{ t('lotteryPortal.stageTitle') }}</span>
             </div>
-            <LotteryWheel :prizes="wheelPrizes" :rotation="rotation" :disabled="!canSpin" :spinning="spinning" :action-label="spinLabel" @spin="spin" @settled="finishSpin" />
+            <LotteryWheel :prizes="wheelPrizes" :rotation="rotation" :disabled="!canSpin" :spinning="spinning" :rolling="spinning && !!result && !result.is_guaranteed" :won="!!result && !spinning && result.prize.amount > 0" :action-label="spinLabel" @spin="spin" @settled="finishSpin" />
             <div class="lottery-outcome">
               <div v-if="result && !spinning" role="status" aria-live="polite" class="lottery-result" :class="{ 'is-win': result.prize.amount > 0 }" data-testid="lottery-result">
                 <span class="lottery-result-label">{{ t('lotteryPortal.result') }}<span v-if="result.is_guaranteed"> · {{ t('lotteryPortal.guaranteed') }}</span></span>
                 <strong>{{ result.prize.name }}</strong>
                 <span v-if="result.prize.amount > 0">+ USD {{ result.prize.amount }} · {{ t('lotteryPortal.credited') }}</span>
               </div>
-              <p v-else class="lottery-idle-hint" role="status">{{ t(spinning ? 'lotteryPortal.spinningHint' : 'lotteryPortal.tapWheel') }}</p>
+              <p v-else class="lottery-idle-hint" role="status">{{ stageHint }}</p>
               <p class="lottery-odds-note">{{ t('lotteryPortal.wheelHelp') }}</p>
             </div>
           </section>
@@ -36,13 +36,9 @@
               <RouterLink to="/purchase">{{ t('lotteryPortal.rechargeAction') }} <span aria-hidden="true">→</span></RouterLink>
             </div>
             <p v-if="data.pending_recharge" role="status" class="mt-3 text-sm text-amber-700 dark:text-amber-300">{{ t(pollAttempts >= 12 ? 'lotteryPortal.pendingLater' : 'lotteryPortal.pending') }}</p>
-            <div v-if="data.state.guarantee_every" class="lottery-guarantee">
-              <p>{{ t('lotteryPortal.guaranteeShort', { count: data.state.draws_until_guarantee }) }}</p>
-              <progress class="guarantee-progress" :max="data.state.guarantee_every" :value="data.state.guarantee_every - data.state.draws_until_guarantee" :aria-label="t('lotteryPortal.guaranteeShort', { count: data.state.draws_until_guarantee })" />
-            </div>
             <div class="lottery-prizes">
-              <h2>{{ t(isGuaranteePool ? 'lotteryPortal.guaranteePool' : 'lotteryPortal.normalPool') }}</h2>
-              <p v-if="data.token_bonus && data.token_bonus.bonus_bps > 0 && !isGuaranteePool" class="lottery-token-bonus" data-testid="lottery-token-bonus">{{ t('lotteryPortal.tokenBonus', { bonus: (data.token_bonus.bonus_bps / 100).toLocaleString(locale, { maximumFractionDigits: 2 }) }) }}</p>
+              <h2>{{ t('lotteryPortal.availablePrizes') }}</h2>
+              <p v-if="data.token_bonus && data.token_bonus.bonus_bps > 0 && !isGuaranteeNext" class="lottery-token-bonus" data-testid="lottery-token-bonus">{{ t('lotteryPortal.tokenBonus', { bonus: (data.token_bonus.bonus_bps / 100).toLocaleString(locale, { maximumFractionDigits: 2 }) }) }}</p>
               <ul>
                 <li v-for="(prize, index) in listedPrizes" :key="index">
                   <span class="lottery-prize-name"><span class="lottery-prize-dot" :class="{ 'is-top': prize.amount > 0 && prize.amount === nextTopPrize }" aria-hidden="true"></span>{{ prize.name }}</span>
@@ -94,7 +90,6 @@
           <p class="text-sm">{{ t('lotteryPortal.sharedChances') }}</p>
           <p v-if="data.token_bonus" class="text-sm">{{ t('lotteryPortal.tokenBonusRule') }}</p>
           <p v-if="data.prizes.some(prize => prize.stock_limit != null)" class="text-sm">{{ t('lotteryPortal.stockRule') }}</p>
-          <p v-if="data.state.guarantee_every" class="text-sm">{{ t('lotteryPortal.guarantee', { count: data.state.draws_until_guarantee, every: data.state.guarantee_every }) }}</p>
           <p class="text-sm">{{ t('lotteryPortal.period', { time: date(data.period_start) }) }}</p>
           <p class="text-sm text-gray-500">{{ t('lotteryPortal.accounting') }}</p>
         </details>
@@ -139,14 +134,13 @@ const membership = ref<LotteryMembershipStatus>('unknown')
 const qr = ref<{ id: string; url: string } | null>(null)
 const spinning = ref(false), spinError = ref(''), requestID = ref(''), rotation = ref(0)
 const result = ref<UserLotterySpin | null>(null)
-const isGuaranteePool = computed(() => data.value?.state.draws_until_guarantee === 1 && !!data.value.guarantee_prizes.length)
-const nextPool = computed(() => (isGuaranteePool.value ? data.value?.guarantee_prizes : data.value?.prizes) || [])
+const isGuaranteeNext = computed(() => data.value?.state.draws_until_guarantee === 1 && !!data.value.guarantee_prizes.length)
 const listedPrizes = computed(() => {
   const prizes: { name: string; amount: number; remaining: number | null }[] = []
-  for (const prize of nextPool.value) {
-    if (!isGuaranteePool.value && prize.amount <= 0) continue
+  for (const prize of data.value?.prizes || []) {
+    if (prize.amount <= 0) continue
     const remaining = prize.stock_limit == null ? null : Math.max(prize.stock_limit - (prize.allocated || 0), 0)
-    const existing = isGuaranteePool.value ? undefined : prizes.find(item => item.name === prize.name && item.amount === prize.amount)
+    const existing = prizes.find(item => item.name === prize.name && item.amount === prize.amount)
     if (existing) {
       existing.remaining = existing.remaining == null || remaining == null ? null : existing.remaining + remaining
       continue
@@ -155,10 +149,15 @@ const listedPrizes = computed(() => {
   }
   return prizes
 })
-const wheelPrizes = computed(() => spinning.value && result.value ? result.value.prizes : nextPool.value)
-const nextTopPrize = computed(() => Math.max(0, ...nextPool.value.map(prize => prize.amount)))
+const wheelPrizes = computed(() => spinning.value && result.value && !result.value.is_guaranteed ? result.value.prizes : data.value?.prizes || [])
+const nextTopPrize = computed(() => Math.max(0, ...(data.value?.prizes || []).map(prize => prize.amount)))
 const spinLabel = computed(() => t(spinning.value ? 'lotteryPortal.spinning' : requestID.value ? 'lotteryPortal.retrySpin' : data.value?.state.remaining ? 'lotteryPortal.spin' : 'lotteryPortal.noChances'))
-const canSpin = computed(() => !spinning.value && !loading.value && !!data.value && (!!requestID.value || (data.value.enabled && data.value.state.remaining > 0 && nextPool.value.length > 0)))
+const canSpin = computed(() => !spinning.value && !loading.value && !!data.value && (!!requestID.value || (data.value.enabled && data.value.state.remaining > 0 && data.value.prizes.length > 0)))
+const stageHint = computed(() => {
+  if (spinning.value) return t('lotteryPortal.spinningHint')
+  if (!data.value?.state.remaining) return t('lotteryPortal.noChances')
+  return t('lotteryPortal.tapWheel')
+})
 let spinTimer: ReturnType<typeof setTimeout> | undefined
 let version = 0, historyVersion = 0, verificationVersion = 0, stopped = false
 let refreshPending = false
@@ -180,6 +179,10 @@ async function spin() {
     const outcome = await lotteryAPI.spin(requestID.value)
     if (stopped) return
     result.value = outcome
+    if (outcome.is_guaranteed) {
+      finishSpin()
+      return
+    }
     await nextTick()
     const target = (360 - outcome.prize_index * 360 / outcome.prizes.length) % 360
     rotation.value += 360 * 5 + (target - rotation.value % 360 + 360) % 360
@@ -246,13 +249,13 @@ onMounted(() => { refresh(); window.addEventListener('focus', refresh) })
 onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificationVersion++; clearTimeout(poll); clearTimeout(spinTimer); window.removeEventListener('focus', refresh) })
 </script>
 <style scoped>
-.lottery-main { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(340px, 1fr); gap: 32px; align-items: start; }
-.lottery-play { min-width: 0; padding: 20px 24px 24px; border: 1px solid #e4e8df; border-radius: 8px; background: #f8f8f1; text-align: center; }
-.lottery-stage-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: #536557; font-size: 14px; text-align: left; }
-.lottery-outcome { min-height: 76px; margin-top: 8px; }
-.lottery-idle-hint { color: #34533d; font-size: 14px; }
-.lottery-odds-note { margin-top: 8px; color: #738071; font-size: 12px; }
-.lottery-result { display: flex; flex-direction: column; gap: 3px; color: #536557; font-size: 13px; animation: result-reveal 180ms ease-out; }
+.lottery-main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(340px, 1fr); gap: 24px; align-items: start; }
+.lottery-play { min-width: 0; padding: 24px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; text-align: center; }
+.lottery-stage-heading { margin-bottom: 16px; color: #374151; font-size: 15px; font-weight: 600; text-align: left; }
+.lottery-outcome { min-height: 88px; margin-top: 16px; }
+.lottery-idle-hint { color: #374151; font-size: 14px; }
+.lottery-odds-note { margin-top: 8px; color: #6b7280; font-size: 13px; }
+.lottery-result { display: flex; flex-direction: column; gap: 3px; color: #536557; font-size: 13px; animation: result-reveal 280ms ease-out; }
 .lottery-result.is-win { color: #176349; }
 .lottery-result-label { font-size: 12px; }
 .lottery-result strong { font-size: 24px; font-weight: 600; }
@@ -265,8 +268,6 @@ onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificatio
 .lottery-page .lottery-spin { width: 100%; min-height: 46px; margin-top: 20px; font-size: 16px; }
 .lottery-recharge { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-top: 12px; color: #6b7280; font-size: 12px; }
 .lottery-recharge a { flex-shrink: 0; color: #0f766e; font-size: 13px; font-weight: 500; }
-.lottery-guarantee { margin-top: 20px; padding: 14px 16px; border-radius: 6px; background: #f0f7f3; color: #21634d; font-size: 13px; }
-.lottery-guarantee p { margin-bottom: 9px; }
 .lottery-prizes { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
 .lottery-prizes ul { margin-top: 8px; }
 .lottery-token-bonus { margin-top: 10px; color: #0f766e; font-size: 14px; line-height: 1.6; }
@@ -279,19 +280,14 @@ onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificatio
 .lottery-account-stats { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e5e7eb; font-size: 12px; }
 .lottery-account-stats dt { color: #6b7280; }
 .lottery-account-stats dd { margin-top: 5px; font-size: 14px; font-variant-numeric: tabular-nums; }
-.guarantee-progress { display: block; width: 100%; height: 6px; border: 0; border-radius: 3px; overflow: hidden; background: #e5e7eb; }
-.guarantee-progress::-webkit-progress-bar { background: #e5e7eb; }
-.guarantee-progress::-webkit-progress-value { background: #0d9488; }
-.guarantee-progress::-moz-progress-bar { background: #0d9488; }
-.dark .lottery-play { background: #17251f; border-color: #34463a; }
+.dark .lottery-play { background: #0f172a; border-color: #334155; }
 .dark .lottery-stage-heading, .dark .lottery-idle-hint { color: #dae7da; }
 .dark .lottery-odds-note, .dark .lottery-chances p, .dark .lottery-recharge, .dark .lottery-account-stats dt, .dark .lottery-prize-stock { color: #a0b0ab; }
 .dark .lottery-token-bonus { color: #8bd3b6; }
 .dark .lottery-recharge a, .dark .lottery-chances-count, .dark .lottery-result.is-win { color: #8bd3b6; }
 .dark .lottery-result { color: #d5e2da; }
-.dark .lottery-guarantee { background: #183c31; color: #a9d6be; }
 .dark .lottery-prizes, .dark .lottery-account-stats, .dark .lottery-prizes li { border-color: #334155; }
-@keyframes result-reveal { from { opacity: 0; } to { opacity: 1; } }
+@keyframes result-reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 1023px) { .lottery-main { grid-template-columns: minmax(0, 1fr); gap: 20px; } .lottery-play { padding: 18px 16px; } }
 @media (max-width: 480px) { .lottery-stage-heading { font-size: 13px; } .lottery-outcome { min-height: 60px; } .lottery-chances-count strong { font-size: 40px; } }
 @media (prefers-reduced-motion: reduce) { .lottery-result { animation: none; } }

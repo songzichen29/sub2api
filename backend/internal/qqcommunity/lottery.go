@@ -31,6 +31,7 @@ type LotteryState struct {
 	NextRecharge        float64 `json:"next_recharge"`
 	GuaranteeEvery      int64   `json:"guarantee_every"`
 	DrawsUntilGuarantee int64   `json:"draws_until_guarantee"`
+	ConsecutiveMisses   int64   `json:"-"`
 }
 type LotteryDraw struct {
 	ID           int64     `json:"id"`
@@ -112,7 +113,17 @@ func lotteryResult(cfg LotteryConfig, state LotteryState, draws []lotteryOutcome
 		}
 	}
 	if cfg.GuaranteeEnabled {
-		fmt.Fprintf(&b, "\n距保底 %d 次", cfg.drawsUntilGuarantee(state.Used+int64(len(draws))))
+		misses := state.ConsecutiveMisses
+		for _, draw := range draws {
+			misses = lotteryMissesAfter(misses, draw.prize)
+		}
+		fmt.Fprintf(&b, "\n距保底 %d 次", cfg.drawsUntilGuarantee(misses))
+	}
+	for _, draw := range draws {
+		if draw.tokenBonus != nil && draw.tokenBonus.BonusBPS > 0 {
+			fmt.Fprintf(&b, "\n今日用量：%s Token\nToken用量加成：每项 +%.2f 个百分点", formatUsageTokens(draw.tokenBonus.UsageTokens), float64(draw.tokenBonus.BonusBPS)/100)
+			break
+		}
 	}
 	return b.String()
 }
@@ -140,12 +151,49 @@ func lotteryState(ctx context.Context, db lotteryQuerier, c LotteryConfig, uid i
 		}
 		sourceUsage = usage[uid]
 	}
-	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances, sourceUsage)
+	misses := int64(0)
+	if c.GuaranteeEnabled && out.Used > 0 {
+		streaks, err := lotteryMissStreaks(ctx, db, uid)
+		if err != nil {
+			return out, err
+		}
+		misses = streaks[uid]
+	}
+	return calculateLotteryState(c, uid, total, out.Used, out.BonusChances, misses, sourceUsage)
 }
 
-func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus int64, usage lotterySourceUsage) (LotteryState, error) {
-	out := LotteryState{UserID: uid, Used: used, BonusChances: bonus}
-	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(out.Used)
+func lotteryMissStreaks(ctx context.Context, db lotteryQuerier, uid int64) (map[int64]int64, error) {
+	rows, err := db.QueryContext(ctx, `SELECT d.user_id,COUNT(*) FROM qqc_lottery_draws d LEFT JOIN (
+		SELECT user_id,MAX(id) AS last_win FROM qqc_lottery_draws
+		WHERE created_at >= $1 AND amount>0 AND ($2=0 OR user_id=$2) GROUP BY user_id
+	) wins ON wins.user_id=d.user_id
+	WHERE d.created_at >= $1 AND ($2=0 OR d.user_id=$2) AND d.id>COALESCE(wins.last_win,0)
+	GROUP BY d.user_id`, lotteryPeriodStart, uid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	streaks := map[int64]int64{}
+	for rows.Next() {
+		var userID, misses int64
+		if err := rows.Scan(&userID, &misses); err != nil {
+			return nil, err
+		}
+		streaks[userID] = misses
+	}
+	return streaks, rows.Err()
+}
+
+func lotteryMissesAfter(misses int64, prize LotteryPrize) int64 {
+	if prize.Amount > 0 {
+		return 0
+	}
+	return misses + 1
+}
+
+func calculateLotteryState(c LotteryConfig, uid int64, total decimal.Decimal, used, bonus, misses int64, usage lotterySourceUsage) (LotteryState, error) {
+	out := LotteryState{UserID: uid, Used: used, BonusChances: bonus, ConsecutiveMisses: misses}
+	out.DrawsUntilGuarantee = c.drawsUntilGuarantee(misses)
 	if out.DrawsUntilGuarantee > 0 {
 		out.GuaranteeEvery = c.GuaranteeEvery
 	}
@@ -261,15 +309,15 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 		}
 		pool, bonus := lotteryPoolForTokens(cfg, tokens)
 		if bonus != nil {
-			fmt.Fprintf(&b, "\n今日用量：%d Token · 普通中奖概率加成 +%.2f 个百分点", bonus.UsageTokens, float64(bonus.BonusBPS)/100)
+			fmt.Fprintf(&b, "\n今日用量：%s Token · 每个普通奖项加成 +%.2f 个百分点", formatUsageTokens(bonus.UsageTokens), float64(bonus.BonusBPS)/100)
 		}
 		for _, p := range pool {
-			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
+			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f", replyPlainLabel(p.Name), p.Amount)
 		}
 		if cfg.GuaranteeEnabled {
-			fmt.Fprintf(&b, "\n\n**保底奖池**\n本期累计每抽 %d 次触发\n普通中奖不重置保底进度", cfg.GuaranteeEvery)
+			fmt.Fprintf(&b, "\n\n**保底奖励**\n连续未中奖时，最晚第 %d 抽触发保底；任意中奖重新计数", cfg.GuaranteeEvery)
 			for _, p := range cfg.GuaranteePrizes {
-				fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
+				fmt.Fprintf(&b, "\n\n%s\nUSD %.2f", replyPlainLabel(p.Name), p.Amount)
 			}
 		}
 		return b.String(), tx.Commit()
@@ -379,24 +427,26 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 		return "", err
 	}
 	tokens := int64(0)
-	if cfg.drawsUntilGuarantee(state.Used) != 1 || (count > 1 && cfg.GuaranteeEvery > 1) {
+	if state.DrawsUntilGuarantee != 1 || (count > 1 && cfg.GuaranteeEvery > 1) {
 		tokens, err = lotteryUsageTokens(ctx, tx, cfg, uid)
 		if err != nil {
 			return "", err
 		}
 	}
+	misses := state.ConsecutiveMisses
 	for i := range draws {
 		n, err := rand.Int(rand.Reader, big.NewInt(10000))
 		if err != nil {
 			return "", err
 		}
-		guaranteed := cfg.drawsUntilGuarantee(state.Used+int64(i)) == 1
+		guaranteed := cfg.drawsUntilGuarantee(misses) == 1
 		pool := cfg.GuaranteePrizes
 		var bonus *LotteryTokenBonus
 		if !guaranteed {
 			pool, bonus = lotteryPoolForTokens(cfg, tokens)
 		}
 		draws[i] = lotteryOutcome{prize: lotteryPrizeAt(pool, n.Int64()), guaranteed: guaranteed, tokenBonus: bonus}
+		misses = lotteryMissesAfter(misses, draws[i].prize)
 		if !guaranteed {
 			cfg.reservePrize(draws[i].prize)
 		}
@@ -434,7 +484,8 @@ func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, u
 			RechargeCurrency string             `json:"recharge_currency"`
 			ChanceSource     string             `json:"chance_source"`
 			TokenBonus       *LotteryTokenBonus `json:"token_bonus,omitempty"`
-		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY", source, draw.tokenBonus})
+			GuaranteeMode    string             `json:"guarantee_mode"`
+		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY", source, draw.tokenBonus, "consecutive_misses"})
 		if err != nil {
 			return err
 		}

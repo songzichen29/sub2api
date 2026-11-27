@@ -182,7 +182,7 @@ describe('user lottery journey', () => {
     expect(api.spin).toHaveBeenCalledTimes(1)
     const request = api.spin.mock.calls[0]![0]
     expect(request).toMatch(/^[a-zA-Z0-9-]{16,64}$/)
-    resolve({ request_id: request, prize: { name: '奖励', amount: 1, probability_bps: 10000 }, prize_index: 0, prizes: [{ name: '奖励', amount: 1, probability_bps: 10000 }], is_guaranteed: true, remaining: 1 })
+    resolve({ request_id: request, prize: { name: '奖励', amount: 1, probability_bps: 10000 }, prize_index: 0, prizes: [{ name: '奖励', amount: 1, probability_bps: 10000 }], is_guaranteed: false, remaining: 1 })
     await flushPromises()
     expect(w.find('[data-testid="lottery-result"]').exists()).toBe(false)
     api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 1 } })
@@ -236,7 +236,7 @@ describe('user lottery journey', () => {
     expect(pool.text()).toContain('剩余 46 份')
     expect(pool.text()).toContain('不限量')
     expect(pool.text()).not.toContain('谢谢参与')
-    expect(w.get('[data-testid="lottery-token-bonus"]').text()).toBe('Token 加成 +5%')
+    expect(w.get('[data-testid="lottery-token-bonus"]').text()).toBe('Token 每项 +5%')
     expect(pool.text()).not.toContain('588,300,000')
     expect(pool.text()).not.toMatch(/USD|12\.34|15\.00%|10\.00%|75\.00%/)
     expect(w.get('.wheel-art').text()).toBe('大礼小礼谢谢参与')
@@ -245,18 +245,69 @@ describe('user lottery journey', () => {
     const rules = w.findAll('details').find(item => item.get('summary').text() === '抽奖规则')!
     expect(rules.find('table').exists()).toBe(false)
   })
-  it('keeps Token bonuses out of the guaranteed pool and supports configurations without tiers', async () => {
+  it.each([0, 2])('keeps normal prizes visible before a guarantee with %s chances remaining', async remaining => {
     const plain = render(LotteryView); await flushPromises()
     expect(plain.find('[data-testid="lottery-token-bonus"]').exists()).toBe(false)
     api.overview.mockResolvedValue({
-      ...fixture(), token_bonus: { usage_tokens: 1000000, bonus_bps: 500 },
+      ...fixture(),
+      prizes: [{ name: '日常奖励', amount: 1, probability_bps: 5000, stock_limit: 20, allocated: 2 }, { name: '谢谢参与', amount: 0, probability_bps: 5000 }],
+      token_bonus: { usage_tokens: 1000000, bonus_bps: 500 },
       guarantee_prizes: [{ name: '保底礼物', amount: 2, probability_bps: 10000 }],
-      state: { ...fixture().state, draws_until_guarantee: 1 },
+      state: { ...fixture().state, draws_until_guarantee: 1, remaining },
     })
     const guaranteed = render(LotteryView); await flushPromises()
-    expect(guaranteed.get('.lottery-prizes').text()).toContain('保底奖池')
+    expect(guaranteed.get('.lottery-prizes').text()).toContain('日常奖励剩余 18 份')
+    expect(guaranteed.get('.lottery-prizes').text()).not.toMatch(/普通奖池|保底奖池|保底礼物/)
     expect(guaranteed.find('[data-testid="lottery-token-bonus"]').exists()).toBe(false)
-    expect(guaranteed.get('.wheel-art').text()).toBe('保底礼物')
+    expect(guaranteed.get('.wheel-art').text()).toBe('日常奖励谢谢参与')
+    expect(guaranteed.find('.lottery-guarantee').exists()).toBe(false)
+    expect(guaranteed.text()).not.toMatch(/再抽 1 次触发保底|距保底|每 10 抽/)
+    expect(guaranteed.get('[data-testid="lottery-spin"]').attributes('disabled') !== undefined).toBe(remaining === 0)
+  })
+  it('reveals an actual guaranteed reward without substituting or rotating normal slices', async () => {
+    const value = {
+      ...fixture(),
+      guarantee_prizes: [{ name: '保底礼物', amount: 2, probability_bps: 10000 }],
+      state: { ...fixture().state, draws_until_guarantee: 1 },
+    }
+    api.overview.mockResolvedValue(value)
+    const w = render(LotteryView); await flushPromises()
+    api.spin.mockResolvedValue({
+      request_id: 'guaranteed-request', prize: value.guarantee_prizes[0], prize_index: 0,
+      prizes: value.guarantee_prizes, is_guaranteed: true, remaining: 1,
+    })
+    api.overview.mockResolvedValue({ ...value, state: { ...value.state, remaining: 1, draws_until_guarantee: 10 } })
+    await w.get('.wheel-trigger').trigger('click'); await flushPromises()
+    expect(w.get('.wheel-art').text()).toBe('谢谢参与')
+    expect(w.get('.wheel-rotor').attributes('style')).toContain('rotate(0deg)')
+    expect(w.get('[data-testid="lottery-result"]').text()).toContain('保底礼物')
+    expect(w.get('[data-testid="lottery-result"]').text()).toContain('保底')
+    expect(w.get('[data-testid="lottery-remaining"]').text()).toBe('1')
+    expect(w.get('.lottery-prizes').text()).not.toContain('保底礼物')
+    expect(sessionStorage.getItem('lottery-pending:42')).toBeNull()
+  })
+  it('keeps the ordinary winning slice when settlement reaches the guarantee threshold', async () => {
+    vi.useFakeTimers()
+    const value = {
+      ...fixture(),
+      prizes: [{ name: '谢谢参与', amount: 0, probability_bps: 5000 }, { name: '普通奖励', amount: 1, probability_bps: 5000 }],
+      guarantee_prizes: [{ name: '保底礼物', amount: 2, probability_bps: 10000 }],
+      state: { ...fixture().state, draws_until_guarantee: 2 },
+    }
+    api.overview.mockResolvedValue(value)
+    const w = render(LotteryView); await flushPromises()
+    api.spin.mockResolvedValue({
+      request_id: 'normal-request', prize: value.prizes[1], prize_index: 1,
+      prizes: value.prizes, is_guaranteed: false, remaining: 1,
+    })
+    await w.get('.wheel-trigger').trigger('click'); await flushPromises()
+    expect(w.get('.wheel-rotor').attributes('style')).toContain('rotate(1980deg)')
+    api.overview.mockResolvedValue({ ...value, state: { ...value.state, remaining: 1, draws_until_guarantee: 1 } })
+    await vi.advanceTimersByTimeAsync(4100); await flushPromises()
+    expect(w.get('.wheel-art').text()).toBe('谢谢参与普通奖励')
+    expect(w.get('.wheel-rotor').attributes('style')).toContain('rotate(1980deg)')
+    expect(w.get('[data-testid="lottery-result"]').text()).toContain('普通奖励')
+    expect(w.get('.lottery-prizes').text()).toContain('普通奖励')
   })
   it('does not show a zero Token bonus before the first tier is reached', async () => {
     api.overview.mockResolvedValue({ ...fixture(), token_bonus: { usage_tokens: 999999, bonus_bps: 0 } })

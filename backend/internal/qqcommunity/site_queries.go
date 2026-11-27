@@ -251,12 +251,15 @@ func siteLotteryRules(c LotteryConfig) string {
 	}
 	text := fmt.Sprintf("🎉 **%s**\n统计起点：%s\n起点后累计实付充值本金每满人民币 %.2f 元送 %d 次（不含手续费）\n每次抽奖消耗 1 次；可发送 抽奖 1～10 连抽\n需绑定网站账号。\n\n**普通奖池**", replyPlainLabel(c.Title), lotteryPeriodStartLabel, c.RechargeStep, c.ChancesPerStep)
 	for _, p := range c.Prizes {
-		text += fmt.Sprintf("\n\n%s\n%s（概率 %.2f%%）", replyPlainLabel(p.Name), siteRuleMoney(p.Amount), float64(p.ProbabilityBPS)/100)
+		text += fmt.Sprintf("\n\n%s\n%s", replyPlainLabel(p.Name), siteRuleMoney(p.Amount))
+	}
+	if len(c.TokenTiers) > 0 {
+		text += "\n\n按北京时间今日 Token 用量取最高档，每个普通奖项分别获得加成；超出100%按完整奖池折算，耗尽份额不分给剩余奖项。"
 	}
 	if c.GuaranteeEnabled {
-		text += fmt.Sprintf("\n\n**保底奖池**\n本期累计每抽 %d 次触发；普通中奖不重置保底进度。", c.GuaranteeEvery)
+		text += fmt.Sprintf("\n\n**保底奖池**\n连续未中奖时最晚第 %d 抽触发；任何正额度中奖后重新计数。", c.GuaranteeEvery)
 		for _, p := range c.GuaranteePrizes {
-			text += fmt.Sprintf("\n\n%s\n%s（概率 %.2f%%）", replyPlainLabel(p.Name), siteRuleMoney(p.Amount), float64(p.ProbabilityBPS)/100)
+			text += fmt.Sprintf("\n\n%s\n%s", replyPlainLabel(p.Name), siteRuleMoney(p.Amount))
 		}
 	}
 	return text

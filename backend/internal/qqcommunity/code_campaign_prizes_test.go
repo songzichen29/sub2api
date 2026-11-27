@@ -33,7 +33,7 @@ func TestCampaignTokenTiersAndExhaustedPrizeDistribution(t *testing.T) {
 		tokens int64
 		total  int
 		bonus  int
-	}{{99999, 3000, 0}, {100000, 3500, 500}, {499999, 3500, 500}, {500000, 4000, 1000}, {2000000, 4500, 1500}} {
+	}{{99999, 3000, 0}, {100000, 4000, 500}, {499999, 4000, 500}, {500000, 5000, 1000}, {2000000, 6000, 1500}} {
 		weights, total, bonus := campaignDistribution(c, scenario.tokens)
 		require.Equal(t, scenario.total, total)
 		require.Equal(t, scenario.bonus, bonus)
@@ -48,12 +48,12 @@ func TestCampaignTokenTiersAndExhaustedPrizeDistribution(t *testing.T) {
 	}
 	c.Prizes[0].Allocated = 1
 	weights, total, _ := campaignDistribution(c, 2000000)
-	require.Equal(t, []int{1500, 3000}, weights)
-	require.Equal(t, 3000, total)
+	require.Equal(t, []int{2500, 3500}, weights)
+	require.Equal(t, 3500, total)
 	prize, outcome := campaignPrizeAt(c, weights, 1499)
 	require.Equal(t, "compensation", outcome)
 	require.Equal(t, "c", prize.ID)
-	prize, outcome = campaignPrizeAt(c, weights, 1500)
+	prize, outcome = campaignPrizeAt(c, weights, 2500)
 	require.Equal(t, "prize", outcome)
 	require.Equal(t, "b", prize.ID)
 	c.Compensation.Allocated = 100
@@ -67,7 +67,7 @@ func TestCampaignProbabilityValidation(t *testing.T) {
 		func(c *CodeCampaign) { c.Prizes = nil },
 		func(c *CodeCampaign) { c.Prizes[0].ProbabilityBPS = 0 },
 		func(c *CodeCampaign) { c.Prizes[0].ProbabilityBPS = 9000 },
-		func(c *CodeCampaign) { c.TokenTiers[0].BonusBPS = 8000 },
+		func(c *CodeCampaign) { c.TokenTiers[2].BonusBPS = 10001 },
 		func(c *CodeCampaign) { c.TokenTiers[1].Tokens = 100000 },
 		func(c *CodeCampaign) { c.TokenTiers[1].BonusBPS = 100 },
 		func(c *CodeCampaign) { c.CompensationRequired, c.Compensation = true, nil },
@@ -77,6 +77,22 @@ func TestCampaignProbabilityValidation(t *testing.T) {
 		c := probabilityCampaignFixture()
 		mutate(&c)
 		require.Error(t, validateCodeCampaign(c))
+	}
+}
+
+func TestCampaignReplyShowsTokenBonusWithoutWinningRates(t *testing.T) {
+	for _, outcome := range []string{"prize", "compensation", "none"} {
+		claim := CodeClaim{Outcome: outcome, UsageTokens: 104340000, ProbabilityBPS: 9300, BonusBPS: 500, TokenBonusPerPrize: true}
+		text := campaignProbabilityText(claim)
+		require.Contains(t, text, "104.34M Token")
+		require.Contains(t, text, "每项 +5.00 个百分点")
+		require.NotContains(t, text, "93.00")
+		require.NotContains(t, text, "中奖率")
+		require.NotContains(t, text, "%")
+		claim.TokenBonusPerPrize = false
+		text = campaignProbabilityText(claim)
+		require.Contains(t, text, "Token用量加成：+5.00 个百分点")
+		require.NotContains(t, text, "每项")
 	}
 }
 
@@ -199,6 +215,8 @@ func TestCampaignProbabilityAllocationBothDialects(t *testing.T) {
 			c.CompensationRequired = true
 			rawCampaign, err := json.Marshal(c)
 			require.NoError(t, err)
+			snapshot, err := json.Marshal(campaignRewardSnapshot{CampaignPrize: c.Prizes[0], TokenBonusPerPrize: true})
+			require.NoError(t, err)
 			now := time.Date(2026, 11, 27, 12, 0, 0, 0, checkinZone)
 			mock.ExpectBegin()
 			lock := "SELECT pg_advisory_xact_lock"
@@ -235,7 +253,7 @@ func TestCampaignProbabilityAllocationBothDialects(t *testing.T) {
 			} else {
 				mock.ExpectQuery("INSERT INTO redeem_codes").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
 			}
-			insert := mock.ExpectExec("INSERT INTO qqc_code_claims").WithArgs(sqlmock.AnyArg(), "campaign", "bot", "group", "member", int64(42), "2026-11-27", int64(7), "a", "prize", sqlmock.AnyArg(), int64(123456), 10000, 0, "pending")
+			insert := mock.ExpectExec("INSERT INTO qqc_code_claims").WithArgs(sqlmock.AnyArg(), "campaign", "bot", "group", "member", int64(42), "2026-11-27", int64(7), "a", "prize", string(snapshot), int64(123456), 10000, 0, "pending")
 			if scenario == "claim_failure" {
 				insert.WillReturnError(sql.ErrConnDone)
 				mock.ExpectRollback()
@@ -246,13 +264,12 @@ func TestCampaignProbabilityAllocationBothDialects(t *testing.T) {
 				continue
 			}
 			insert.WillReturnResult(sqlmock.NewResult(0, 1))
-			snapshot, err := json.Marshal(c.Prizes[0])
-			require.NoError(t, err)
 			mock.ExpectQuery("SELECT q.id").WillReturnRows(sqlmock.NewRows(strings.Split(campaignClaimColumns, ",")).AddRow("claim", "campaign", 42, "", "member", "group", 7, "original-code", "balance", 1, 0, "unused", "pending", 0, now, now.Add(24*time.Hour), nil, nil, string(rawCampaign), "prize", string(snapshot), 123456, 10000, 0))
 			mock.ExpectCommit()
 			result, err := s.allocateCampaignCode(context.Background(), cfg, Job{MemberID: "member", GroupID: "group"}, now)
 			require.NoError(t, err)
 			require.Equal(t, "A", result.PrizeName)
+			require.True(t, result.TokenBonusPerPrize)
 			require.Equal(t, "original-code", result.Code)
 			require.EqualValues(t, 123456, result.UsageTokens)
 			require.NoError(t, mock.ExpectationsWereMet())

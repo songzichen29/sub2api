@@ -259,32 +259,38 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 }
 
 type CodeClaim struct {
-	RewardMode     string     `json:"reward_mode,omitempty"`
-	Outcome        string     `json:"outcome"`
-	PrizeName      string     `json:"prize_name"`
-	UsageTokens    int64      `json:"usage_tokens"`
-	ProbabilityBPS int        `json:"probability_bps"`
-	BonusBPS       int        `json:"bonus_bps"`
-	ID             string     `json:"id"`
-	CampaignID     string     `json:"campaign_id"`
-	CampaignName   string     `json:"campaign_name"`
-	UserID         int64      `json:"user_id"`
-	Email          string     `json:"email"`
-	MemberID       string     `json:"member_id"`
-	GroupID        string     `json:"group_id"`
-	CodeID         int64      `json:"code_id"`
-	Code           string     `json:"-"`
-	CodeHint       string     `json:"code_hint"`
-	Type           string     `json:"type"`
-	Value          float64    `json:"value"`
-	ValidityDays   int        `json:"validity_days"`
-	Status         string     `json:"status"`
-	DeliveryStatus string     `json:"delivery_status"`
-	Attempts       int        `json:"attempts"`
-	CreatedAt      time.Time  `json:"created_at"`
-	ExpiresAt      *time.Time `json:"expires_at"`
-	UsedAt         *time.Time `json:"used_at"`
-	SentAt         *time.Time `json:"sent_at"`
+	TokenBonusPerPrize bool       `json:"-"`
+	RewardMode         string     `json:"reward_mode,omitempty"`
+	Outcome            string     `json:"outcome"`
+	PrizeName          string     `json:"prize_name"`
+	UsageTokens        int64      `json:"usage_tokens"`
+	ProbabilityBPS     int        `json:"probability_bps"`
+	BonusBPS           int        `json:"bonus_bps"`
+	ID                 string     `json:"id"`
+	CampaignID         string     `json:"campaign_id"`
+	CampaignName       string     `json:"campaign_name"`
+	UserID             int64      `json:"user_id"`
+	Email              string     `json:"email"`
+	MemberID           string     `json:"member_id"`
+	GroupID            string     `json:"group_id"`
+	CodeID             int64      `json:"code_id"`
+	Code               string     `json:"-"`
+	CodeHint           string     `json:"code_hint"`
+	Type               string     `json:"type"`
+	Value              float64    `json:"value"`
+	ValidityDays       int        `json:"validity_days"`
+	Status             string     `json:"status"`
+	DeliveryStatus     string     `json:"delivery_status"`
+	Attempts           int        `json:"attempts"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ExpiresAt          *time.Time `json:"expires_at"`
+	UsedAt             *time.Time `json:"used_at"`
+	SentAt             *time.Time `json:"sent_at"`
+}
+
+type campaignRewardSnapshot struct {
+	CampaignPrize
+	TokenBonusPerPrize bool `json:"token_bonus_per_prize,omitempty"`
 }
 type CodeClaimsPage struct {
 	Items    []CodeClaim `json:"items"`
@@ -314,11 +320,12 @@ func scanCodeClaim(scan func(...any) error) (CodeClaim, error) {
 		c.ValidityDays = campaign.ValidityDays
 	}
 	if rewardRaw != "" {
-		var prize CampaignPrize
+		var prize campaignRewardSnapshot
 		if err = json.Unmarshal([]byte(rewardRaw), &prize); err != nil {
 			return c, err
 		}
 		c.PrizeName, c.Type, c.Value, c.ValidityDays = prize.Name, prize.Type, prize.Value, prize.ValidityDays
+		c.TokenBonusPerPrize = prize.TokenBonusPerPrize
 	}
 	if c.Outcome == "none" {
 		c.Status = "none"
@@ -499,7 +506,13 @@ func (s *Service) allocateCampaignCode(ctx context.Context, c Config, j Job, now
 			return out, err
 		}
 		codeID, prizeID, deliveryStatus = &allocatedID, prize.ID, "pending"
-		rewardRaw, e := json.Marshal(prize)
+	}
+	if prize != nil || campaign.probabilityMode() {
+		reward := campaignRewardSnapshot{TokenBonusPerPrize: campaign.probabilityMode()}
+		if prize != nil {
+			reward.CampaignPrize = *prize
+		}
+		rewardRaw, e := json.Marshal(reward)
 		if e != nil {
 			return out, e
 		}
@@ -516,6 +529,15 @@ func (s *Service) allocateCampaignCode(ctx context.Context, c Config, j Job, now
 		return out, err
 	}
 	return out, tx.Commit()
+}
+
+func campaignProbabilityText(claim CodeClaim) string {
+	content := fmt.Sprintf("参与时今日用量：%s Token\n", formatUsageTokens(claim.UsageTokens))
+	label := ""
+	if claim.TokenBonusPerPrize {
+		label = "每项 "
+	}
+	return content + fmt.Sprintf("Token用量加成：%s+%.2f 个百分点\n", label, float64(claim.BonusBPS)/100)
 }
 
 func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID string) (string, error) {
@@ -547,7 +569,7 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 		return "", CampaignRuleError("机器人或来源群未开放")
 	}
 	if claim.Outcome == "none" {
-		return fmt.Sprintf("本期已参与：谢谢参与。参与时今日用量 %s Token，主奖中奖率 %.2f%%（Token加成 +%.2f 个百分点）；本期结果已保存。", formatUsageTokens(claim.UsageTokens), float64(claim.ProbabilityBPS)/100, float64(claim.BonusBPS)/100), nil
+		return "本期已参与：谢谢参与。\n" + campaignProbabilityText(claim) + "本期结果已保存。", nil
 	}
 	if claim.Status != "unused" {
 		return "该活动本期已领取；兑换码已使用、过期或停用，不再分配新码。", nil
@@ -572,7 +594,7 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 		content += "奖项：" + replyPlainLabel(claim.PrizeName) + "\n"
 	}
 	if claim.RewardMode == "probability" {
-		content += fmt.Sprintf("参与时今日用量：%s Token\n主奖中奖率：%.2f%%（Token加成 +%.2f 个百分点）\n", formatUsageTokens(claim.UsageTokens), float64(claim.ProbabilityBPS)/100, float64(claim.BonusBPS)/100)
+		content += campaignProbabilityText(claim)
 	}
 	switch claim.Type {
 	case "balance":
@@ -610,6 +632,13 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 	}
 	if deliveryErr != nil {
 		return "兑换码已保留，但私聊未确认发送。请添加机器人好友或开启临时会话，30秒后再发 /领码 补发原码。", nil
+	}
+	if claim.PrizeName != "" {
+		label := "抽中奖项："
+		if claim.Outcome == "compensation" {
+			label = "参与补偿："
+		}
+		return label + replyPlainLabel(claim.PrizeName) + "\n兑换码已私聊发送，请使用绑定账号到站点自行兑换。", nil
 	}
 	return "兑换码已私聊发送，请使用绑定账号到站点自行兑换。", nil
 }

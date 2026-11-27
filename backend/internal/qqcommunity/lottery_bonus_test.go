@@ -30,11 +30,11 @@ func TestLotteryBonusCannotPayForEarlierDraws(t *testing.T) {
 			require.Equal(t, tc.spent, b.used)
 		})
 	}
-	state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 1, 1, lotterySourceUsage{})
+	state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 1, 1, 0, lotterySourceUsage{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, state.Remaining)
 	require.EqualValues(t, 1, state.Used)
-	state, err = calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 2, 1, lotterySourceUsage{bonusUsed: 1})
+	state, err = calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 2, 1, 0, lotterySourceUsage{bonusUsed: 1})
 	require.NoError(t, err)
 	require.Zero(t, state.Remaining)
 }
@@ -61,7 +61,7 @@ func TestLotteryChanceSourcesStaySeparate(t *testing.T) {
 	require.NoError(t, b.draw(legacy, true))
 	b.apply(1)
 	require.NoError(t, b.draw(activity, false))
-	state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 2, 1, lotterySourceUsage{b.used, b.legacy})
+	state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 2, 1, 0, lotterySourceUsage{b.used, b.legacy})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, state.BonusUsed)
 	require.EqualValues(t, 1, state.LegacyUsed)
@@ -69,7 +69,7 @@ func TestLotteryChanceSourcesStaySeparate(t *testing.T) {
 	require.Zero(t, state.Remaining)
 	require.Equal(t, float64(10), state.NextRecharge)
 	// A real payment now creates a spendable chance, not a display-only promise.
-	state, err = calculateLotteryState(defaultLotteryConfig(), 42, decimal.NewFromInt(10), 2, 1, lotterySourceUsage{b.used, b.legacy})
+	state, err = calculateLotteryState(defaultLotteryConfig(), 42, decimal.NewFromInt(10), 2, 1, 0, lotterySourceUsage{b.used, b.legacy})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, state.RechargeRemaining)
 	require.EqualValues(t, 1, state.Remaining)
@@ -93,7 +93,7 @@ func TestLotteryLegacyCompatibilityDoesNotForgivePaidDraws(t *testing.T) {
 		var b lotteryBonusBalance
 		require.NoError(t, b.draw([]byte(tc.snapshot), tc.noPaidOrder))
 		require.Zero(t, b.legacy)
-		state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 1, 0, lotterySourceUsage{b.used, b.legacy})
+		state, err := calculateLotteryState(defaultLotteryConfig(), 42, decimal.Zero, 1, 0, 0, lotterySourceUsage{b.used, b.legacy})
 		require.NoError(t, err)
 		require.Equal(t, float64(20), state.NextRecharge, "a refunded paid draw must still be covered")
 	}

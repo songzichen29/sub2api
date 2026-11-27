@@ -17,14 +17,14 @@ func lotteryUsageTokens(ctx context.Context, tx *transaction, c LotteryConfig, u
 	return campaignUsageTokens(ctx, tx, uid, time.Now())
 }
 
-// 普通奖励按原比例增加概率，从未中奖份额扣除；耗尽奖项的份额仍落入谢谢参与。
+// 每个普通奖励独立加上百分点；先按完整奖池折算，再将耗尽奖项转为谢谢参与。
 func lotteryPoolForTokens(c LotteryConfig, tokens int64) ([]LotteryPrize, *LotteryTokenBonus) {
 	pool := append([]LotteryPrize(nil), c.Prizes...)
 	if len(c.TokenTiers) == 0 {
 		return availableLotteryPool(pool), nil
 	}
 	info := &LotteryTokenBonus{UsageTokens: tokens}
-	bonus, base := 0, 0
+	bonus := 0
 	for _, tier := range c.TokenTiers {
 		if tokens >= tier.Tokens {
 			bonus = tier.BonusBPS
@@ -33,25 +33,32 @@ func lotteryPoolForTokens(c LotteryConfig, tokens int64) ([]LotteryPrize, *Lotte
 	if bonus == 0 {
 		return availableLotteryPool(pool), info
 	}
+	base := make([]int, 0, len(pool))
+	missBase := 0
 	for _, p := range pool {
 		if p.Amount > 0 {
-			base += p.ProbabilityBPS
+			base = append(base, p.ProbabilityBPS)
+			continue
 		}
+		missBase += p.ProbabilityBPS
 	}
-	winTotal, winPrevious, missTotal, missPrevious := 0, 0, 0, 0
+	weights := tokenPrizeWeights(base, bonus)
+	rewardTotal := 0
+	for _, weight := range weights {
+		rewardTotal += weight
+	}
+	rewardIndex, missTotal, missPrevious := 0, 0, 0
 	for i, p := range pool {
 		if p.Amount > 0 {
-			winTotal += p.ProbabilityBPS
-			boundary := winTotal * (base + bonus) / base
-			pool[i].ProbabilityBPS = boundary - winPrevious
-			winPrevious = boundary
+			pool[i].ProbabilityBPS = weights[rewardIndex]
+			rewardIndex++
 			if p.StockLimit == nil || p.Allocated < *p.StockLimit {
-				info.BonusBPS += pool[i].ProbabilityBPS - p.ProbabilityBPS
+				info.BonusBPS = bonus
 			}
 			continue
 		}
 		missTotal += p.ProbabilityBPS
-		boundary := missTotal * (10000 - base - bonus) / (10000 - base)
+		boundary := missTotal * (10000 - rewardTotal) / missBase
 		pool[i].ProbabilityBPS = boundary - missPrevious
 		missPrevious = boundary
 	}

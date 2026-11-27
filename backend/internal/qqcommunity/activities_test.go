@@ -74,7 +74,7 @@ func TestLotteryGuaranteeProgressAndIndependentDistribution(t *testing.T) {
 		{Name: "large guarantee", Amount: 1000, ProbabilityBPS: 8766},
 	}
 	require.NoError(t, validateLottery(c))
-	for used, want := range []int64{3, 2, 1, 3, 2, 1, 3} {
+	for used, want := range []int64{3, 2, 1, 1, 1, 1, 1} {
 		require.Equal(t, want, c.drawsUntilGuarantee(int64(used)))
 	}
 	counts := map[string]int{}
@@ -84,6 +84,29 @@ func TestLotteryGuaranteeProgressAndIndependentDistribution(t *testing.T) {
 	require.Equal(t, map[string]int{"small guarantee": 1234, "large guarantee": 8766}, counts)
 	c.GuaranteeEnabled = false
 	require.Zero(t, c.drawsUntilGuarantee(2))
+}
+
+func TestLotteryGuaranteeResetsAfterEveryPositiveReward(t *testing.T) {
+	c := defaultLotteryConfig()
+	c.GuaranteeEnabled, c.GuaranteeEvery = true, 3
+	misses := int64(0)
+	for _, step := range []struct {
+		amount     float64
+		beforeDraw int64
+		afterDraw  int64
+	}{
+		{0, 3, 2},
+		{1, 2, 3},
+		{0, 3, 2},
+		{0, 2, 1},
+		{1, 1, 3},
+		{.00000001, 3, 3},
+		{0, 3, 2},
+	} {
+		require.Equal(t, step.beforeDraw, c.drawsUntilGuarantee(misses))
+		misses = lotteryMissesAfter(misses, LotteryPrize{Amount: step.amount})
+		require.Equal(t, step.afterDraw, c.drawsUntilGuarantee(misses))
+	}
 }
 func TestLotteryProbabilityDistributionAndValidation(t *testing.T) {
 	c := defaultLotteryConfig()
