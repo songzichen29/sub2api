@@ -39,13 +39,7 @@
             <label class="flex items-center gap-2 text-sm"><input v-model="form.compensation_required" type="checkbox" :disabled="form.claimed > 0" />{{ t('qqbot.codeCampaigns.compensationRequired') }}</label>
             <p class="text-sm text-gray-500">{{ t('qqbot.codeCampaigns.compensationHelp') }}</p>
           </template>
-          <h3 class="font-semibold">{{ t('qqbot.codeCampaigns.tokenBonus') }}</h3>
-          <div v-for="(tier, index) in form.token_tiers" :key="index" class="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <label class="text-sm">{{ t('qqbot.codeCampaigns.tokenThreshold') }}<input v-model.number="tier.tokens" class="input mt-1" type="number" min="1" max="9007199254740991" step="1" required /></label>
-            <label class="text-sm">{{ t('qqbot.codeCampaigns.bonusPoints') }}<input :value="tier.bonus_bps / 100" class="input mt-1" type="number" min="0.01" max="100" step="0.01" required @input="tier.bonus_bps = Math.round(Number(($event.target as HTMLInputElement).value) * 100)" /></label>
-            <button type="button" class="btn btn-secondary" @click="form.token_tiers.splice(index, 1)">{{ t('common.delete') }}</button>
-          </div>
-          <button type="button" class="btn btn-secondary" :disabled="form.token_tiers.length >= 20" @click="form.token_tiers.push({ tokens: 0, bonus_bps: 0 })">{{ t('qqbot.codeCampaigns.addTier') }}</button>
+          <QQTokenTiersEditor v-model="form.token_tiers" />
           <p class="text-sm text-gray-500">{{ t('qqbot.codeCampaigns.tokenHelp') }}</p>
         </fieldset>
         <p class="text-sm text-gray-500">{{ t('qqbot.codeCampaigns.formHelp') }}</p>
@@ -78,6 +72,7 @@ import { getAll } from '@/api/admin/groups'
 import type { AdminGroup } from '@/types'
 import QQGroupPicker from './QQGroupPicker.vue'
 import QQCampaignPrizeEditor from './QQCampaignPrizeEditor.vue'
+import QQTokenTiersEditor from './QQTokenTiersEditor.vue'
 import { useQQDraft } from './useQQDraft'
 const { t } = useI18n()
 const campaigns = ref<QQCodeCampaign[]>([]), config = ref<QQBotConfig>(), subscriptionGroups = ref<AdminGroup[]>([])

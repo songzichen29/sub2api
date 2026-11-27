@@ -59,6 +59,7 @@ type UserLottery struct {
 	BoundQQ         string               `json:"bound_qq"`
 	PublicGroups    []LotteryPublicGroup `json:"public_groups"`
 	PendingRecharge bool                 `json:"pending_recharge"`
+	TokenBonus      *LotteryTokenBonus   `json:"token_bonus,omitempty"`
 }
 
 // No QQ binding is required to see an account's entitlement. Use the exact
@@ -90,7 +91,11 @@ func (s *Service) UserLottery(ctx context.Context, uid int64) (UserLottery, erro
 	if err = loadLotteryStock(ctx, tx, l.Prizes); err != nil {
 		return out, err
 	}
-	out.Prizes = availableLotteryPool(l.Prizes)
+	tokens, err := lotteryUsageTokens(ctx, tx, l, uid)
+	if err != nil {
+		return out, err
+	}
+	out.Prizes, out.TokenBonus = lotteryPoolForTokens(l, tokens)
 	if l.GuaranteeEnabled {
 		out.GuaranteePrizes = l.GuaranteePrizes
 	}

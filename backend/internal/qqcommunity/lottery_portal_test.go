@@ -36,6 +36,7 @@ func TestUserLotteryIncludesUnboundEntitlementAndOnlyPublishedEnabledGroups(t *t
 	l := defaultLotteryConfig()
 	l.Enabled = true
 	l.GuaranteeEnabled = true
+	l.TokenTiers = []CampaignTokenTier{{Tokens: 1000000, BonusBPS: 500}}
 	l.PublicGroups = []LotteryPublicGroup{{"10001", "visible", "https://qun.qq.com/abc"}, {"10002", "disabled", ""}, {"10003", "removed", ""}}
 	m.ExpectBegin()
 	expectPortalConfig(t, m, c, l)
@@ -43,6 +44,7 @@ func TestUserLotteryIncludesUnboundEntitlementAndOnlyPublishedEnabledGroups(t *t
 	m.ExpectQuery(`SELECT COUNT\(\*\) FROM qqc_lottery_draws`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(1))
 	m.ExpectQuery(`SELECT COALESCE\(SUM\(chances\)`).WithArgs(int64(42), lotteryPeriodStart).WillReturnRows(sqlmock.NewRows([]string{"grants"}).AddRow(3))
 	m.ExpectQuery("SELECT user_id,chance_delta,config_snapshot,legacy_credit_only FROM").WithArgs(lotteryPeriodStart, int64(42)).WillReturnRows(lotteryUsageRows().AddRow(42, 3, nil, false).AddRow(42, -1, `{}`, false))
+	m.ExpectQuery(`SELECT COALESCE\(SUM\(input_tokens\)`).WithArgs(int64(42), sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"tokens"}).AddRow(1000000))
 	m.ExpectQuery(`SELECT member_id FROM qqc_bindings`).WithArgs(c.AppID, int64(42)).WillReturnError(sql.ErrNoRows)
 	m.ExpectQuery(`SELECT EXISTS\(SELECT 1 FROM payment_orders`).WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"pending"}).AddRow(true))
 	m.ExpectCommit()
@@ -57,6 +59,8 @@ func TestUserLotteryIncludesUnboundEntitlementAndOnlyPublishedEnabledGroups(t *t
 	require.EqualValues(t, 9, out.State.DrawsUntilGuarantee)
 	require.Equal(t, lotteryPeriodStart, out.PeriodStart)
 	require.Equal(t, l.PublicGroups[:1], out.PublicGroups)
+	require.Equal(t, &LotteryTokenBonus{UsageTokens: 1000000, BonusBPS: 500}, out.TokenBonus)
+	require.Equal(t, 1500, out.Prizes[0].ProbabilityBPS)
 	require.NoError(t, m.ExpectationsWereMet())
 }
 

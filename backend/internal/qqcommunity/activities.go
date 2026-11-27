@@ -44,6 +44,7 @@ type LotteryPrize struct {
 }
 type LotteryConfig struct {
 	PublicGroups     []LotteryPublicGroup `json:"public_groups,omitempty"`
+	TokenTiers       []CampaignTokenTier  `json:"token_tiers,omitempty"`
 	Enabled          bool                 `json:"enabled"`
 	Title            string               `json:"title"`
 	RechargeStep     float64              `json:"recharge_step"`
@@ -168,6 +169,18 @@ func validateLottery(c LotteryConfig) error {
 		if p.StockLimit != nil && (*p.StockLimit < 0 || *p.StockLimit > 1000000 || p.Amount <= 0) {
 			return errors.New("仅额度奖项可限量，数量需在 0 到 1000000 之间；留空表示不限量")
 		}
+	}
+	base := 0
+	for _, p := range c.Prizes {
+		if p.Amount > 0 {
+			base += p.ProbabilityBPS
+		}
+	}
+	if len(c.TokenTiers) > 0 && base == 0 {
+		return errors.New("Token 加成需要至少一个普通额度奖项")
+	}
+	if err := validateTokenTiers(c.TokenTiers, base); err != nil {
+		return err
 	}
 	for _, p := range c.GuaranteePrizes {
 		if p.StockLimit != nil {

@@ -12,7 +12,6 @@
           <section class="lottery-play" :aria-busy="spinning">
             <div class="lottery-stage-heading">
               <span>{{ t('lotteryPortal.stageTitle') }}</span>
-              <span v-if="topPrize > 0" class="lottery-top-prize">{{ t('lotteryPortal.topPrize') }} <strong>USD {{ topPrize }}</strong></span>
             </div>
             <LotteryWheel :prizes="wheelPrizes" :rotation="rotation" :disabled="!canSpin" :spinning="spinning" :action-label="spinLabel" @spin="spin" @settled="finishSpin" />
             <div class="lottery-outcome">
@@ -42,13 +41,16 @@
               <progress class="guarantee-progress" :max="data.state.guarantee_every" :value="data.state.guarantee_every - data.state.draws_until_guarantee" :aria-label="t('lotteryPortal.guaranteeShort', { count: data.state.draws_until_guarantee })" />
             </div>
             <div class="lottery-prizes">
-              <div class="flex items-center justify-between gap-3"><h2>{{ t(isGuaranteePool ? 'lotteryPortal.guaranteePool' : 'lotteryPortal.normalPool') }}</h2><span class="text-xs text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.probability') }}</span></div>
+              <h2>{{ t(isGuaranteePool ? 'lotteryPortal.guaranteePool' : 'lotteryPortal.normalPool') }}</h2>
+              <p v-if="data.token_bonus && data.token_bonus.bonus_bps > 0 && !isGuaranteePool" class="lottery-token-bonus" data-testid="lottery-token-bonus">{{ t('lotteryPortal.tokenBonus', { bonus: (data.token_bonus.bonus_bps / 100).toLocaleString(locale, { maximumFractionDigits: 2 }) }) }}</p>
               <ul>
-                <li v-for="(prize, index) in nextPool" :key="index">
-                  <span class="lottery-prize-name"><span class="lottery-prize-dot" :class="{ 'is-top': prize.amount > 0 && prize.amount === nextTopPrize }" aria-hidden="true"></span>{{ prize.name }}<span v-if="prize.stock_limit != null" class="mt-1 block text-sm font-normal text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.stockRemaining', { count: Math.max(prize.stock_limit - (prize.allocated || 0), 0), total: prize.stock_limit }) }}</span></span>
-                  <span class="lottery-prize-value"><strong>{{ prize.amount > 0 ? `USD ${prize.amount}` : '—' }}</strong><small>{{ (prize.probability_bps / 100).toFixed(2) }}%</small></span>
+                <li v-for="(prize, index) in listedPrizes" :key="index">
+                  <span class="lottery-prize-name"><span class="lottery-prize-dot" :class="{ 'is-top': prize.amount > 0 && prize.amount === nextTopPrize }" aria-hidden="true"></span>{{ prize.name }}</span>
+                  <span v-if="prize.remaining != null" class="lottery-prize-stock">{{ t('lotteryPortal.stockRemaining', { count: prize.remaining }) }}</span>
+                  <span v-else-if="prize.amount > 0" class="lottery-prize-stock">{{ t('lotteryPortal.stockUnlimited') }}</span>
                 </li>
               </ul>
+              <p v-if="!listedPrizes.length" class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.noAvailablePrizes') }}</p>
             </div>
             <dl class="lottery-account-stats">
               <div><dt>{{ t('lotteryPortal.recharge') }}</dt><dd>CNY {{ data.state.recharge_total.toFixed(2) }}</dd></div>
@@ -90,17 +92,11 @@
           <summary class="cursor-pointer">{{ t('lotteryPortal.rules') }}</summary>
           <p class="text-sm">{{ t('lotteryPortal.rule', { amount: data.recharge_step.toFixed(2), count: data.chances_per_step }) }}</p>
           <p class="text-sm">{{ t('lotteryPortal.sharedChances') }}</p>
+          <p v-if="data.token_bonus" class="text-sm">{{ t('lotteryPortal.tokenBonusRule') }}</p>
           <p v-if="data.prizes.some(prize => prize.stock_limit != null)" class="text-sm">{{ t('lotteryPortal.stockRule') }}</p>
           <p v-if="data.state.guarantee_every" class="text-sm">{{ t('lotteryPortal.guarantee', { count: data.state.draws_until_guarantee, every: data.state.guarantee_every }) }}</p>
           <p class="text-sm">{{ t('lotteryPortal.period', { time: date(data.period_start) }) }}</p>
           <p class="text-sm text-gray-500">{{ t('lotteryPortal.accounting') }}</p>
-          <div v-for="pool in pools" :key="pool.name" class="overflow-x-auto">
-            <table class="w-full text-left text-sm">
-              <caption class="py-3 text-left font-medium">{{ t(pool.name) }}</caption>
-              <thead><tr class="border-b dark:border-dark-700"><th class="py-2 font-medium">{{ t('lotteryPortal.prize') }}</th><th class="font-medium">{{ t('lotteryPortal.amount') }}</th><th class="font-medium">{{ t('lotteryPortal.probability') }}</th></tr></thead>
-              <tbody><tr v-for="(prize, i) in pool.prizes" :key="i" class="border-b dark:border-dark-700"><td class="py-2">{{ prize.name }}</td><td>{{ prize.amount }}</td><td>{{ (prize.probability_bps / 100).toFixed(2) }}%</td></tr></tbody>
-            </table>
-          </div>
         </details>
       </template>
       <section class="card space-y-4 p-6">
@@ -145,8 +141,21 @@ const spinning = ref(false), spinError = ref(''), requestID = ref(''), rotation 
 const result = ref<UserLotterySpin | null>(null)
 const isGuaranteePool = computed(() => data.value?.state.draws_until_guarantee === 1 && !!data.value.guarantee_prizes.length)
 const nextPool = computed(() => (isGuaranteePool.value ? data.value?.guarantee_prizes : data.value?.prizes) || [])
+const listedPrizes = computed(() => {
+  const prizes: { name: string; amount: number; remaining: number | null }[] = []
+  for (const prize of nextPool.value) {
+    if (!isGuaranteePool.value && prize.amount <= 0) continue
+    const remaining = prize.stock_limit == null ? null : Math.max(prize.stock_limit - (prize.allocated || 0), 0)
+    const existing = isGuaranteePool.value ? undefined : prizes.find(item => item.name === prize.name && item.amount === prize.amount)
+    if (existing) {
+      existing.remaining = existing.remaining == null || remaining == null ? null : existing.remaining + remaining
+      continue
+    }
+    prizes.push({ name: prize.name, amount: prize.amount, remaining })
+  }
+  return prizes
+})
 const wheelPrizes = computed(() => spinning.value && result.value ? result.value.prizes : nextPool.value)
-const topPrize = computed(() => Math.max(0, ...wheelPrizes.value.map(prize => prize.amount)))
 const nextTopPrize = computed(() => Math.max(0, ...nextPool.value.map(prize => prize.amount)))
 const spinLabel = computed(() => t(spinning.value ? 'lotteryPortal.spinning' : requestID.value ? 'lotteryPortal.retrySpin' : data.value?.state.remaining ? 'lotteryPortal.spin' : 'lotteryPortal.noChances'))
 const canSpin = computed(() => !spinning.value && !loading.value && !!data.value && (!!requestID.value || (data.value.enabled && data.value.state.remaining > 0 && nextPool.value.length > 0)))
@@ -157,10 +166,6 @@ let poll: ReturnType<typeof setTimeout> | undefined
 const pollAttempts = ref(0)
 const membershipText = computed(() => checking.value ? t('lotteryPortal.checking') :
   t('lotteryPortal.' + (data.value?.bound_qq ? membership.value : 'unbound'), { qq: data.value?.bound_qq, count: data.value?.state.remaining }))
-const pools = computed(() => [
-  { name: 'lotteryPortal.normalPool', prizes: data.value?.prizes || [] },
-  { name: 'lotteryPortal.guaranteePool', prizes: data.value?.guarantee_prizes || [] },
-].filter(pool => pool.prizes.length))
 const storageKey = () => `lottery-pending:${data.value?.state.user_id}`
 function persistRequest(value: string) {
   requestID.value = value
@@ -244,8 +249,6 @@ onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificatio
 .lottery-main { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(340px, 1fr); gap: 32px; align-items: start; }
 .lottery-play { min-width: 0; padding: 20px 24px 24px; border: 1px solid #e4e8df; border-radius: 8px; background: #f8f8f1; text-align: center; }
 .lottery-stage-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: #536557; font-size: 14px; text-align: left; }
-.lottery-top-prize { font-size: 12px; }
-.lottery-top-prize strong { margin-left: 6px; color: #34533d; font-size: 16px; font-weight: 600; }
 .lottery-outcome { min-height: 76px; margin-top: 8px; }
 .lottery-idle-hint { color: #34533d; font-size: 14px; }
 .lottery-odds-note { margin-top: 8px; color: #738071; font-size: 12px; }
@@ -266,14 +269,13 @@ onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificatio
 .lottery-guarantee p { margin-bottom: 9px; }
 .lottery-prizes { margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
 .lottery-prizes ul { margin-top: 8px; }
+.lottery-token-bonus { margin-top: 10px; color: #0f766e; font-size: 14px; line-height: 1.6; }
 .lottery-prizes li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid #f1f3f1; }
 .lottery-prizes li:last-child { border-bottom: 0; }
 .lottery-prize-name { display: flex; align-items: center; gap: 10px; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
 .lottery-prize-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 2px; background: #aac9b9; }
 .lottery-prize-dot.is-top { background: #c29a4e; }
-.lottery-prize-value { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.lottery-prize-value strong { font-size: 15px; font-weight: 500; }
-.lottery-prize-value small { color: #6b7280; font-size: 12px; }
+.lottery-prize-stock { flex-shrink: 0; color: #6b7280; font-size: 14px; font-variant-numeric: tabular-nums; }
 .lottery-account-stats { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e5e7eb; font-size: 12px; }
 .lottery-account-stats dt { color: #6b7280; }
 .lottery-account-stats dd { margin-top: 5px; font-size: 14px; font-variant-numeric: tabular-nums; }
@@ -282,14 +284,15 @@ onBeforeUnmount(() => { stopped = true; version++; historyVersion++; verificatio
 .guarantee-progress::-webkit-progress-value { background: #0d9488; }
 .guarantee-progress::-moz-progress-bar { background: #0d9488; }
 .dark .lottery-play { background: #17251f; border-color: #34463a; }
-.dark .lottery-stage-heading, .dark .lottery-idle-hint, .dark .lottery-top-prize strong { color: #dae7da; }
-.dark .lottery-odds-note, .dark .lottery-chances p, .dark .lottery-recharge, .dark .lottery-account-stats dt, .dark .lottery-prize-value small { color: #a0b0ab; }
+.dark .lottery-stage-heading, .dark .lottery-idle-hint { color: #dae7da; }
+.dark .lottery-odds-note, .dark .lottery-chances p, .dark .lottery-recharge, .dark .lottery-account-stats dt, .dark .lottery-prize-stock { color: #a0b0ab; }
+.dark .lottery-token-bonus { color: #8bd3b6; }
 .dark .lottery-recharge a, .dark .lottery-chances-count, .dark .lottery-result.is-win { color: #8bd3b6; }
 .dark .lottery-result { color: #d5e2da; }
 .dark .lottery-guarantee { background: #183c31; color: #a9d6be; }
 .dark .lottery-prizes, .dark .lottery-account-stats, .dark .lottery-prizes li { border-color: #334155; }
 @keyframes result-reveal { from { opacity: 0; } to { opacity: 1; } }
 @media (max-width: 1023px) { .lottery-main { grid-template-columns: minmax(0, 1fr); gap: 20px; } .lottery-play { padding: 18px 16px; } }
-@media (max-width: 480px) { .lottery-stage-heading { font-size: 13px; } .lottery-top-prize strong { font-size: 14px; } .lottery-outcome { min-height: 60px; } .lottery-chances-count strong { font-size: 40px; } }
+@media (max-width: 480px) { .lottery-stage-heading { font-size: 13px; } .lottery-outcome { min-height: 60px; } .lottery-chances-count strong { font-size: 40px; } }
 @media (prefers-reduced-motion: reduce) { .lottery-result { animation: none; } }
 </style>

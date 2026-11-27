@@ -12,11 +12,7 @@
           <circle v-if="prizes.length === 1" cx="300" cy="300" r="251" :fill="sectorColor(prize, index)" />
           <path v-else :d="sector(index)" :fill="sectorColor(prize, index)" stroke="#fcf7eb" stroke-width="2" />
           <g :transform="`translate(300 300) rotate(${index * step})`" fill="#244e40" text-anchor="middle">
-            <template v-if="prize.amount > 0">
-              <text :y="dense ? -186 : -169" :font-size="dense ? 22 : 42" :textLength="amountWidth(prize.amount)" lengthAdjust="spacingAndGlyphs" font-weight="600" class="wheel-amount">{{ money(prize.amount) }}</text>
-              <text :y="dense ? -162 : -138" :font-size="dense ? 13 : 17">{{ shortName(prize.name) }}</text>
-            </template>
-            <text v-else :y="dense ? -181 : -159" :font-size="dense ? 15 : 24" font-weight="500">{{ shortName(prize.name) }}</text>
+            <text :y="dense ? -182 : -165" :font-size="dense ? 22 : 32" :textLength="nameWidth(prize.name)" lengthAdjust="spacingAndGlyphs" font-weight="600">{{ shortName(prize.name) }}</text>
           </g>
         </g>
         <circle v-if="!prizes.length" cx="300" cy="300" r="251" fill="#e6e8df" />
@@ -61,12 +57,9 @@ function sectorColor(prize: QQLotteryPrize, index: number) {
   if (prize.amount === maxAmount.value) return '#f4dfad'
   return index % 2 ? '#faf3e2' : '#d8e8dd'
 }
-function money(amount: number) {
-  return '$' + new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 }).format(amount)
-}
-function amountWidth(amount: number) {
+function nameWidth(name: string) {
   const available = Math.max(32, 2 * 165 * Math.sin(Math.PI / Math.max(props.prizes.length, 2)) - 12)
-  const natural = money(amount).length * (dense.value ? 13 : 24)
+  const natural = Array.from(shortName(name)).length * (dense.value ? 22 : 32)
   return natural > available ? available : undefined
 }
 function shortName(name: string) {
@@ -79,7 +72,6 @@ function shortName(name: string) {
 .lottery-wheel { position: relative; width: min(100%, 540px); margin-inline: auto; }
 .wheel-art { display: block; width: 100%; height: auto; overflow: hidden; font-family: inherit; }
 .wheel-rotor { transform-origin: 300px 300px; transition: transform 3.6s cubic-bezier(.12,.72,.12,1); }
-.wheel-amount { font-variant-numeric: tabular-nums; letter-spacing: -1px; }
 .wheel-trigger { position: absolute; inset: 38.5%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 50%; background: transparent; color: #345243; font-family: inherit; font-size: clamp(12px, 1.15vw, 15px); font-weight: 600; cursor: pointer; transition: background-color 150ms; }
 .wheel-trigger svg { width: 30%; height: 30%; }
 .wheel-trigger:hover:enabled { background: #fff9e76b; }

@@ -53,6 +53,8 @@ describe('QQ code campaigns and activity statistics', () => {
   await probability.findAll('button').find(b => b.text() === translation('qqbot.codeCampaigns.addTier'))!.trigger('click')
   const threshold = probability.get('input[max="9007199254740991"]')
   await threshold.setValue('100000')
+  expect(probability.get('[data-testid="token-equivalent"]').text()).toContain('0.1M')
+  expect(probability.get('[data-testid="token-equivalent"]').text()).toContain('10')
   await probability.findAll('input[type="number"]').at(-1)!.setValue('5')
   api.saveCodeCampaign.mockRejectedValueOnce(new Error('review payload'))
   await w.findAll('form')[0]!.trigger('submit'); await flushPromises()

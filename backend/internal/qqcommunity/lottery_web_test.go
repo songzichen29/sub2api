@@ -140,7 +140,7 @@ func TestWebLotteryRetryReplaysWithoutNewDebit(t *testing.T) {
 	defer db.Close()
 	s := New(db, nil, false, nil)
 	expectWebStart(m, false)
-	saved := UserLotterySpin{RequestID: webRequestID, Prize: LotteryPrize{Name: "Saved", Amount: 1}, Remaining: 0}
+	saved := UserLotterySpin{RequestID: webRequestID, Prize: LotteryPrize{Name: "Saved", Amount: 1}, Remaining: 0, TokenBonus: &LotteryTokenBonus{UsageTokens: 1000000, BonusBPS: 500}}
 	raw, _ := json.Marshal(saved)
 	m.ExpectQuery("SELECT result_text FROM qqc_lottery_draws").WithArgs("web:lottery:42:"+webRequestID, int64(42)).WillReturnRows(sqlmock.NewRows([]string{"result_text"}).AddRow(string(raw)))
 	m.ExpectCommit()

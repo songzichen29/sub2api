@@ -24,6 +24,10 @@
       <button type="button" class="btn btn-secondary" :disabled="form.prizes.length >= 20" @click="addPrize">{{ t('qqbot.addPrize') }}</button>
       <p class="text-sm text-gray-500">{{ t('qqbot.prizeHelp') }}</p>
       <p class="text-sm text-gray-500">{{ t('qqbot.prizeStockHelp') }}</p>
+      <section class="space-y-3 border-t pt-4 dark:border-dark-700">
+        <QQTokenTiersEditor v-model="form.token_tiers" />
+        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.tokenBonusRule') }}</p>
+      </section>
       <section class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-700" data-testid="guarantee-settings">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="font-semibold">{{ t('qqbot.guaranteeTitle') }}</h2>
@@ -48,6 +52,7 @@
       </section>
       <p class="text-sm text-gray-500">{{ t('qqbot.lotteryCommand') }}</p>
       <p class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{{ t(hasLimitedPrizes ? 'qqbot.workspace.lotteryStockCost' : 'qqbot.workspace.lotteryCost', { amount: expectedCost.toFixed(6), draws: 1000, cost: (expectedCost * 1000).toFixed(2) }) }}</p>
+      <p v-if="form.token_tiers.length" class="text-sm text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.tokenCostHelp') }}</p>
       <button type="submit" class="btn btn-primary" :disabled="saving || probabilityTotal !== 10000 || (form.guarantee_enabled && guaranteeProbabilityTotal !== 10000)">{{ t('common.save') }}</button>
     </form>
     <p v-else-if="!error">{{ t('common.loading') }}</p>
@@ -70,12 +75,13 @@
 <script setup lang="ts">
 import { useQQDraft } from './useQQDraft'
 import QQLotteryGroupsEditor from './QQLotteryGroupsEditor.vue'
+import QQTokenTiersEditor from './QQTokenTiersEditor.vue'
 import LotteryChanceBreakdown from '@/components/user/LotteryChanceBreakdown.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { qqbotAPI, type QQLotteryConfig, type QQLotteryState } from '@/api/qqcommunity'
 const { t } = useI18n()
-const form = ref<QQLotteryConfig | null>(null)
+const form = ref<(QQLotteryConfig & { token_tiers: NonNullable<QQLotteryConfig['token_tiers']> }) | null>(null)
 const { dirty, markSaved } = useQQDraft(form)
 const saving = ref(false)
 const error = ref('')
@@ -106,10 +112,11 @@ function setGuaranteeProbability(index: number, event: Event) {
   if (form.value) form.value.guarantee_prizes[index]!.probability_bps = Math.round(Number((event.target as HTMLInputElement).value) * 100)
 }
 function addGuaranteePrize() { form.value?.guarantee_prizes.push({ name: '', amount: 1, probability_bps: 100 }) }
-function normalizeConfig(config: QQLotteryConfig): QQLotteryConfig {
+function normalizeConfig(config: QQLotteryConfig) {
   return {
     ...config,
     public_groups: config.public_groups || [],
+    token_tiers: config.token_tiers || [],
     guarantee_enabled: config.guarantee_enabled ?? false,
     guarantee_every: config.guarantee_every || 10,
     guarantee_prizes: config.guarantee_prizes?.length ? config.guarantee_prizes : [{ name: t('qqbot.defaultGuaranteePrize'), amount: 1, probability_bps: 10000 }]

@@ -1,6 +1,7 @@
 import apiClient from './client'
 import type { QQLotteryPrize, QQLotteryState, QQLotteryPublicGroup } from './qqcommunity'
 
+export interface LotteryTokenBonus { usage_tokens: number; bonus_bps: number }
 export interface UserLottery {
   enabled: boolean
   title: string
@@ -13,12 +14,13 @@ export interface UserLottery {
   bound_qq: string
   public_groups: QQLotteryPublicGroup[]
   pending_recharge: boolean
+  token_bonus?: LotteryTokenBonus
 }
 export type LotteryMembershipStatus = 'unbound' | 'member' | 'not_member' | 'unknown' | 'disabled'
 export interface LotteryMembership { status: LotteryMembershipStatus; checked_at: string }
 export interface UserLotteryDraw { id: number; prize_name: string; amount: number; is_guaranteed: boolean; created_at: string }
 export interface UserLotteryDraws { items: UserLotteryDraw[]; total: number; page: number; page_size: number }
-export interface UserLotterySpin { request_id: string; prize: QQLotteryPrize; prize_index: number; prizes: QQLotteryPrize[]; is_guaranteed: boolean; remaining: number }
+export interface UserLotterySpin { request_id: string; prize: QQLotteryPrize; prize_index: number; prizes: QQLotteryPrize[]; is_guaranteed: boolean; remaining: number; token_bonus?: LotteryTokenBonus }
 export const lotteryAPI = {
   spin: async (requestID: string) => (await apiClient.post<UserLotterySpin>('/user/qqbot/lottery/spin', { request_id: requestID }, { timeout: 20000 })).data,
   overview: async () => (await apiClient.get<UserLottery>('/user/qqbot/lottery')).data,

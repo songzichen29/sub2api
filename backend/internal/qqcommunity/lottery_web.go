@@ -22,12 +22,13 @@ var (
 // Prizes and PrizeIndex describe the actual pool at settlement, even if an
 // administrator changes it while the wheel is open. Never select prizes in JS.
 type UserLotterySpin struct {
-	RequestID    string         `json:"request_id"`
-	Prize        LotteryPrize   `json:"prize"`
-	PrizeIndex   int            `json:"prize_index"`
-	Prizes       []LotteryPrize `json:"prizes"`
-	IsGuaranteed bool           `json:"is_guaranteed"`
-	Remaining    int64          `json:"remaining"`
+	RequestID    string             `json:"request_id"`
+	Prize        LotteryPrize       `json:"prize"`
+	PrizeIndex   int                `json:"prize_index"`
+	Prizes       []LotteryPrize     `json:"prizes"`
+	IsGuaranteed bool               `json:"is_guaranteed"`
+	Remaining    int64              `json:"remaining"`
+	TokenBonus   *LotteryTokenBonus `json:"token_bonus,omitempty"`
 }
 
 func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID string) (UserLotterySpin, error) {
@@ -95,10 +96,15 @@ func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID stri
 	if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
 		return out, err
 	}
-	pool := availableLotteryPool(cfg.Prizes)
 	guaranteed := cfg.drawsUntilGuarantee(state.Used) == 1
-	if guaranteed {
-		pool = cfg.GuaranteePrizes
+	pool := cfg.GuaranteePrizes
+	var bonus *LotteryTokenBonus
+	if !guaranteed {
+		tokens, err := lotteryUsageTokens(ctx, tx, cfg, uid)
+		if err != nil {
+			return out, err
+		}
+		pool, bonus = lotteryPoolForTokens(cfg, tokens)
 	}
 	n, err := rand.Int(rand.Reader, big.NewInt(10000))
 	if err != nil {
@@ -112,14 +118,14 @@ func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID stri
 			break
 		}
 	}
-	out = UserLotterySpin{RequestID: requestID, Prize: pool[index], PrizeIndex: index, Prizes: pool, IsGuaranteed: guaranteed, Remaining: state.Remaining - 1}
+	out = UserLotterySpin{RequestID: requestID, Prize: pool[index], PrizeIndex: index, Prizes: pool, IsGuaranteed: guaranteed, Remaining: state.Remaining - 1, TokenBonus: bonus}
 	raw, err := json.Marshal(out)
 	if err != nil {
 		return out, err
 	}
 	// A distinct app namespace records the website origin without inventing QQ
 	// identities or sending group messages. Entitlement is always user-scoped.
-	err = settleLotteryDraws(ctx, tx, Config{AppID: "website"}, Job{}, uid, cfg, state, []lotteryOutcome{{prize: out.Prize, guaranteed: guaranteed}}, requestKey, string(raw))
+	err = settleLotteryDraws(ctx, tx, Config{AppID: "website"}, Job{}, uid, cfg, state, []lotteryOutcome{{prize: out.Prize, guaranteed: guaranteed, tokenBonus: bonus}}, requestKey, string(raw))
 	if err != nil {
 		return out, err
 	}

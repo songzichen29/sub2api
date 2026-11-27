@@ -76,6 +76,7 @@ func lotteryDrawCount(arg string) (int, bool) {
 type lotteryOutcome struct {
 	prize      LotteryPrize
 	guaranteed bool
+	tokenBonus *LotteryTokenBonus
 }
 
 func lotteryResult(cfg LotteryConfig, state LotteryState, draws []lotteryOutcome) string {
@@ -254,7 +255,15 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "🎉 **%s**\n统计起点：%s\n起点后累计实付充值本金每满人民币 %.2f 元送 %d 次（不含手续费）\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), lotteryPeriodStartLabel, cfg.RechargeStep, cfg.ChancesPerStep)
-		for _, p := range availableLotteryPool(cfg.Prizes) {
+		tokens, err := lotteryUsageTokens(ctx, tx, cfg, uid)
+		if err != nil {
+			return "", err
+		}
+		pool, bonus := lotteryPoolForTokens(cfg, tokens)
+		if bonus != nil {
+			fmt.Fprintf(&b, "\n今日用量：%d Token · 普通中奖概率加成 +%.2f 个百分点", bonus.UsageTokens, float64(bonus.BonusBPS)/100)
+		}
+		for _, p := range pool {
 			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
 		}
 		if cfg.GuaranteeEnabled {
@@ -369,17 +378,25 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 	if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
 		return "", err
 	}
+	tokens := int64(0)
+	if cfg.drawsUntilGuarantee(state.Used) != 1 || (count > 1 && cfg.GuaranteeEvery > 1) {
+		tokens, err = lotteryUsageTokens(ctx, tx, cfg, uid)
+		if err != nil {
+			return "", err
+		}
+	}
 	for i := range draws {
 		n, err := rand.Int(rand.Reader, big.NewInt(10000))
 		if err != nil {
 			return "", err
 		}
 		guaranteed := cfg.drawsUntilGuarantee(state.Used+int64(i)) == 1
-		pool := availableLotteryPool(cfg.Prizes)
-		if guaranteed {
-			pool = cfg.GuaranteePrizes
+		pool := cfg.GuaranteePrizes
+		var bonus *LotteryTokenBonus
+		if !guaranteed {
+			pool, bonus = lotteryPoolForTokens(cfg, tokens)
 		}
-		draws[i] = lotteryOutcome{prize: lotteryPrizeAt(pool, n.Int64()), guaranteed: guaranteed}
+		draws[i] = lotteryOutcome{prize: lotteryPrizeAt(pool, n.Int64()), guaranteed: guaranteed, tokenBonus: bonus}
 		if !guaranteed {
 			cfg.reservePrize(draws[i].prize)
 		}
@@ -412,11 +429,12 @@ func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, u
 		// records are read compatibly; their rewards and snapshots stay untouched.
 		snapshot, err := json.Marshal(struct {
 			LotteryConfig
-			IsGuaranteed     bool   `json:"is_guaranteed"`
-			DrawNumber       int64  `json:"draw_number"`
-			RechargeCurrency string `json:"recharge_currency"`
-			ChanceSource     string `json:"chance_source"`
-		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY", source})
+			IsGuaranteed     bool               `json:"is_guaranteed"`
+			DrawNumber       int64              `json:"draw_number"`
+			RechargeCurrency string             `json:"recharge_currency"`
+			ChanceSource     string             `json:"chance_source"`
+			TokenBonus       *LotteryTokenBonus `json:"token_bonus,omitempty"`
+		}{cfg, guaranteed, state.Used + int64(i) + 1, "CNY", source, draw.tokenBonus})
 		if err != nil {
 			return err
 		}

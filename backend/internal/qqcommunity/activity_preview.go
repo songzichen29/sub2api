@@ -84,6 +84,14 @@ func (s *Service) PreviewActivities(ctx context.Context, uid int64) (ActivityPre
 	if err != nil {
 		return out, err
 	}
+	if err = loadLotteryStock(ctx, tx, lottery.Prizes); err != nil {
+		return out, err
+	}
+	tokens, err := lotteryUsageTokens(ctx, tx, lottery, uid)
+	if err != nil {
+		return out, err
+	}
+	lottery.Prizes, _ = lotteryPoolForTokens(lottery, tokens)
 	eligible, err := checkin.eligibility(ctx, tx, uid, false)
 	if err != nil {
 		return out, err

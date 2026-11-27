@@ -60,13 +60,14 @@ describe('user lottery journey', () => {
     const w = render(LotteryView); await flushPromises()
     expect(w.find('[data-testid="lottery-chance-breakdown"]').exists()).toBe(false)
   })
-  it('shows recharge principal in CNY while prize credit stays in USD', async () => {
+  it('shows recharge principal in CNY', async () => {
     api.overview.mockResolvedValue({ ...fixture(), prizes: [{ name: '余额奖', amount: 2, probability_bps: 10000 }] })
     const w = render(LotteryView); await flushPromises()
     expect(w.text()).toContain('CNY 35.00')
     expect(w.text()).toContain('人民币 10.00 元')
     expect(w.text()).toContain('人民币 5.00 元')
-    expect(w.text()).toContain('USD 2')
+    expect(w.get('.lottery-prizes').text()).toContain('余额奖')
+    expect(w.get('.lottery-prizes').text()).not.toContain('USD')
     expect(w.text()).not.toContain('USD 35.00')
   })
   it('shows earned chances and join/binding instructions without QQ binding', async () => {
@@ -208,7 +209,7 @@ describe('user lottery journey', () => {
     const prize = { id: 'limited', name: '最后一份奖励', amount: 2, probability_bps: 10000, stock_limit: 1, allocated: 0 }
     api.overview.mockResolvedValue({ ...fixture(), prizes: [prize] })
     const w = render(LotteryView); await flushPromises()
-    expect(w.text()).toContain('剩余 1 / 1 份')
+    expect(w.text()).toContain('剩余 1 份')
     api.spin.mockResolvedValue({ request_id: 'last-prize-request', prize, prize_index: 0, prizes: [prize], is_guaranteed: false, remaining: 1 })
     await w.get('[data-testid="lottery-spin"]').trigger('click'); await flushPromises()
     expect(w.get('.wheel-art').text()).toContain('最后一份奖励')
@@ -217,7 +218,89 @@ describe('user lottery journey', () => {
     expect(w.get('[data-testid="lottery-result"]').text()).toContain('最后一份奖励')
     expect(w.get('.wheel-art').text()).toContain('谢谢参与')
     expect(w.get('.wheel-art').text()).not.toContain('最后一份奖励')
-    expect(w.text()).toContain('剩余 0 / 1 份')
+    expect(w.get('.lottery-prizes').text()).toContain('暂无可用奖励')
+  })
+  it('shows only prize names, remaining stock and the actual Token bonus beside the wheel', async () => {
+    api.overview.mockResolvedValue({
+      ...fixture(),
+      token_bonus: { usage_tokens: 588300000, bonus_bps: 500 },
+      prizes: [
+        { name: '大礼', amount: 12.34, probability_bps: 1500, stock_limit: 50, allocated: 4 },
+        { name: '小礼', amount: 0.5, probability_bps: 1000 },
+        { name: '谢谢参与', amount: 0, probability_bps: 7500 },
+      ],
+    })
+    const w = render(LotteryView); await flushPromises()
+    const pool = w.get('.lottery-prizes')
+    expect(pool.text()).toContain('大礼')
+    expect(pool.text()).toContain('剩余 46 份')
+    expect(pool.text()).toContain('不限量')
+    expect(pool.text()).not.toContain('谢谢参与')
+    expect(w.get('[data-testid="lottery-token-bonus"]').text()).toBe('Token 加成 +5%')
+    expect(pool.text()).not.toContain('588,300,000')
+    expect(pool.text()).not.toMatch(/USD|12\.34|15\.00%|10\.00%|75\.00%/)
+    expect(w.get('.wheel-art').text()).toBe('大礼小礼谢谢参与')
+    expect(w.get('.wheel-art text').attributes('font-size')).toBe('32')
+    expect(w.get('.lottery-stage-heading').text()).not.toContain('USD')
+    const rules = w.findAll('details').find(item => item.get('summary').text() === '抽奖规则')!
+    expect(rules.find('table').exists()).toBe(false)
+  })
+  it('keeps Token bonuses out of the guaranteed pool and supports configurations without tiers', async () => {
+    const plain = render(LotteryView); await flushPromises()
+    expect(plain.find('[data-testid="lottery-token-bonus"]').exists()).toBe(false)
+    api.overview.mockResolvedValue({
+      ...fixture(), token_bonus: { usage_tokens: 1000000, bonus_bps: 500 },
+      guarantee_prizes: [{ name: '保底礼物', amount: 2, probability_bps: 10000 }],
+      state: { ...fixture().state, draws_until_guarantee: 1 },
+    })
+    const guaranteed = render(LotteryView); await flushPromises()
+    expect(guaranteed.get('.lottery-prizes').text()).toContain('保底奖池')
+    expect(guaranteed.find('[data-testid="lottery-token-bonus"]').exists()).toBe(false)
+    expect(guaranteed.get('.wheel-art').text()).toBe('保底礼物')
+  })
+  it('does not show a zero Token bonus before the first tier is reached', async () => {
+    api.overview.mockResolvedValue({ ...fixture(), token_bonus: { usage_tokens: 999999, bonus_bps: 0 } })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.find('[data-testid="lottery-token-bonus"]').exists()).toBe(false)
+  })
+  it('combines duplicate normal prizes and sums their remaining stock', async () => {
+    api.overview.mockResolvedValue({
+      ...fixture(), prizes: [
+        { id: 'a', name: '1 刀', amount: 1, probability_bps: 800, stock_limit: 50, allocated: 2 },
+        { name: '谢谢参与', amount: 0, probability_bps: 3000 },
+        { id: 'b', name: '0.5 刀', amount: .5, probability_bps: 1200, stock_limit: 50, allocated: 3 },
+        { id: 'c', name: '1 刀', amount: 1, probability_bps: 800, stock_limit: 50, allocated: 8 },
+        { name: '谢谢参与', amount: 0, probability_bps: 3000 },
+        { id: 'd', name: '0.5 刀', amount: .5, probability_bps: 1200, stock_limit: 50, allocated: 1 },
+      ],
+    })
+    const w = render(LotteryView); await flushPromises()
+    const rows = w.findAll('.lottery-prizes li')
+    expect(rows.map(row => row.text())).toEqual(['1 刀剩余 90 份', '0.5 刀剩余 96 份'])
+    expect(w.findAll('.wheel-art text')).toHaveLength(6)
+  })
+  it('hides no-prize entries and shows an empty state when normal rewards are exhausted', async () => {
+    api.overview.mockResolvedValue({
+      ...fixture(), prizes: [
+        { name: '谢谢惠顾', amount: 0, probability_bps: 5000 },
+        { name: '谢谢参与', amount: 0, probability_bps: 5000, stock_limit: 50, allocated: 50 },
+      ],
+    })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.get('.lottery-prizes').text()).toContain('暂无可用奖励')
+    expect(w.get('.lottery-prizes').text()).not.toMatch(/谢谢惠顾|谢谢参与/)
+    expect(w.findAll('.lottery-prizes li')).toHaveLength(0)
+    expect(w.get('.wheel-art').text()).toBe('谢谢惠顾谢谢参与')
+  })
+  it('shows unlimited when any duplicate prize has no stock limit', async () => {
+    api.overview.mockResolvedValue({
+      ...fixture(), prizes: [
+        { name: '奖励', amount: 1, probability_bps: 5000, stock_limit: 50, allocated: 3 },
+        { name: '奖励', amount: 1, probability_bps: 5000 },
+      ],
+    })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.findAll('.lottery-prizes li').map(row => row.text())).toEqual(['奖励不限量'])
   })
   it('disables a fresh draw with no remaining chances', async () => {
     api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 0 } })

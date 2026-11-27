@@ -217,6 +217,7 @@ export interface QQTransferPreview {
 export interface QQLotteryPrize { id?: string; name: string; amount: number; probability_bps: number; stock_limit?: number | null; allocated?: number }
 export interface QQLotteryConfig {
   public_groups?: QQLotteryPublicGroup[]
+  token_tiers?: QQCampaignTokenTier[]
   _version?: string
   enabled: boolean; title: string; recharge_step: number; chances_per_step: number; prizes: QQLotteryPrize[]
   guarantee_enabled: boolean; guarantee_every: number; guarantee_prizes: QQLotteryPrize[]

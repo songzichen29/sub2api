@@ -398,6 +398,22 @@ describe('QQ activity pages with real translations', () => {
     expect((w.get('[data-testid="guarantee-every"]').element as HTMLInputElement).value).toBe('5')
     w.unmount()
   })
+  it.each(['zh', 'en'] as const)('%s saves raw Token thresholds for the shared normal draw pool', async locale => {
+    const translation = i18n(locale)
+    const w = mount(QQBotLotterySettings, { global: { plugins: [translation] } })
+    await flushPromises()
+    const tiers = w.get('[data-testid="token-tiers"]')
+    await tiers.findAll('button').find(b => b.text() === translation.global.t('qqbot.codeCampaigns.addTier'))!.trigger('click')
+    await tiers.get('input[max="9007199254740991"]').setValue('588300000')
+    await tiers.get('input[max="100"]').setValue('5')
+    expect(tiers.get('[data-testid="token-equivalent"]').text()).toContain('588.3M')
+    expect(tiers.get('[data-testid="token-equivalent"]').text()).toContain('58,830')
+    expect(w.text()).not.toContain('lotteryPortal.token')
+    expect(tiers.text()).not.toContain('qqbot.codeCampaigns.')
+    await w.findAll('form')[0]!.trigger('submit'); await flushPromises()
+    expect(api.saveLottery.mock.lastCall![0]).toMatchObject({ token_tiers: [{ tokens: 588300000, bonus_bps: 500 }], guarantee_enabled: false })
+    w.unmount()
+  })
   it('saves normal prize stock with stable IDs and keeps guarantee prizes unlimited', async () => {
     api.lotteryConfig.mockResolvedValue({
       enabled: true, title: 'Stock', recharge_step: 10, chances_per_step: 1,

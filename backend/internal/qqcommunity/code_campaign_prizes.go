@@ -74,9 +74,16 @@ func validateCampaignPrizes(c CodeCampaign) error {
 			return err
 		}
 	}
+	return validateTokenTiers(c.TokenTiers, total)
+}
+
+func validateTokenTiers(tiers []CampaignTokenTier, base int) error {
+	if len(tiers) > 20 {
+		return CampaignRuleError("Token 加成最多20档")
+	}
 	threshold, bonus := int64(0), 0
-	for _, tier := range c.TokenTiers {
-		if tier.Tokens <= threshold || tier.Tokens > 9007199254740991 || tier.BonusBPS <= bonus || total+tier.BonusBPS > 10000 {
+	for _, tier := range tiers {
+		if tier.Tokens <= threshold || tier.Tokens > 9007199254740991 || tier.BonusBPS <= bonus || base+tier.BonusBPS > 10000 {
 			return CampaignRuleError("Token门槛与加成须递增，主奖基础概率加最高档加成不能超过100%")
 		}
 		threshold, bonus = tier.Tokens, tier.BonusBPS
