@@ -79,7 +79,8 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-order_type="{ row }">
-            {{ row.order_type === 'subscription' ? t('admin.affiliates.records.subscriptionOrder') : t('admin.affiliates.records.balanceOrder') }}
+            <template v-if="row.order_type">{{ row.order_type === 'subscription' ? t('admin.affiliates.records.subscriptionOrder') : t('admin.affiliates.records.balanceOrder') }}</template>
+            <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-order_status="{ row }">
             <OrderStatusBadge v-if="row.order_status" :status="row.order_status" />

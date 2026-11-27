@@ -95,6 +95,7 @@ describe('AdminAffiliateRecordsTable', () => {
         order_amount: null,
         pay_amount: null,
         rebate_amount: 2,
+        order_type: '',
         payment_type: '',
         order_status: '',
         created_at: '2026-09-17T08:00:00Z',
@@ -108,6 +109,7 @@ describe('AdminAffiliateRecordsTable', () => {
     expect(row.get('[data-test="cell-order"]').text()).toBe('-')
     expect(row.get('[data-test="cell-order_amount"]').text()).toBe('-')
     expect(row.get('[data-test="cell-pay_amount"]').text()).toBe('-')
+    expect(row.get('[data-test="cell-order_type"]').text()).toBe('-')
     expect(row.get('[data-test="cell-payment_type"]').text()).toBe('-')
     expect(row.get('[data-test="cell-order_status"]').text()).toBe('-')
     expect(row.get('[data-test="cell-rebate_amount"]').text()).toBe('$2.00')
