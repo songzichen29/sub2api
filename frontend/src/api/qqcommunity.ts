@@ -214,7 +214,7 @@ export interface QQTransferPreview {
   from_email: string; to_email: string; amount: string; fee: string
   net_amount: string; expires_at: string
 }
-export interface QQLotteryPrize { name: string; amount: number; probability_bps: number }
+export interface QQLotteryPrize { id?: string; name: string; amount: number; probability_bps: number; stock_limit?: number | null; allocated?: number }
 export interface QQLotteryConfig {
   public_groups?: QQLotteryPublicGroup[]
   _version?: string
@@ -345,12 +345,21 @@ export interface QQActivityStatsPage {
  summary: { checkin_users: number; chance_users: number; remaining_chances: number; draw_users: number; draw_count: number; checkin_amount: number; draw_amount: number }
 }
 export interface QQCodeCampaign {
+ reward_mode?: 'fixed' | 'probability'; prizes?: QQCampaignPrize[]; compensation?: QQCampaignPrize | null
+ compensation_required?: boolean; token_tiers?: QQCampaignTokenTier[]
  id: string; name: string; type: 'balance' | 'lottery_chances' | 'subscription' | 'concurrency'; value: number
  subscription_group_id: number | null; validity_days: number; enabled: boolean; groups: string[]; claim_mode: 'once' | 'daily'
  stock_limit: number; code_valid_hours: number; starts_at: string | null; ends_at: string | null; version: number
  claimed: number; sent: number; redeemed: number
 }
+export interface QQCampaignPrize {
+ id: string; name: string; type: QQCodeCampaign['type']; value: number
+ subscription_group_id: number | null; validity_days: number; probability_bps: number; stock_limit: number; allocated: number
+}
+export interface QQCampaignTokenTier { tokens: number; bonus_bps: number }
 export interface QQCodeClaim {
+ reward_mode?: 'fixed' | 'probability'
+ outcome?: 'prize' | 'compensation' | 'none'; prize_name?: string; usage_tokens?: number; probability_bps?: number; bonus_bps?: number
  id: string; campaign_id: string; campaign_name: string; user_id: number; email: string; member_id: string; group_id: string
  code_id: number; code_hint: string; type: string; value: number; validity_days: number; status: string; delivery_status: string
  attempts: number; created_at: string; expires_at: string | null; used_at: string | null; sent_at: string | null

@@ -398,6 +398,25 @@ describe('QQ activity pages with real translations', () => {
     expect((w.get('[data-testid="guarantee-every"]').element as HTMLInputElement).value).toBe('5')
     w.unmount()
   })
+  it('saves normal prize stock with stable IDs and keeps guarantee prizes unlimited', async () => {
+    api.lotteryConfig.mockResolvedValue({
+      enabled: true, title: 'Stock', recharge_step: 10, chances_per_step: 1,
+      prizes: [{ id: 'stable', name: 'Limited', amount: 1, probability_bps: 10000, stock_limit: 10, allocated: 4 }],
+      guarantee_enabled: true, guarantee_every: 10, guarantee_prizes: [{ name: 'Guarantee', amount: 1, probability_bps: 10000 }]
+    })
+    const w = mount(QQBotLotterySettings, { global: { plugins: [i18n('zh')] } })
+    await flushPromises()
+    expect(w.get('[data-testid="prize-stock-0"]').attributes('min')).toBe('4')
+    expect(w.text()).toContain('已发 4')
+    expect(w.get('[data-testid="guarantee-settings"]').find('[data-testid^="prize-stock"]').exists()).toBe(false)
+    await w.get('[data-testid="prize-stock-0"]').setValue('6')
+    await w.findAll('form')[0]!.trigger('submit'); await flushPromises()
+    expect(api.saveLottery.mock.lastCall![0].prizes[0]).toMatchObject({ id: 'stable', stock_limit: 6, allocated: 4 })
+    await w.get('[data-testid="prize-stock-0"]').setValue('')
+    await w.findAll('form')[0]!.trigger('submit'); await flushPromises()
+    expect(api.saveLottery.mock.lastCall![0].prizes[0]).toMatchObject({ id: 'stable', stock_limit: null })
+    w.unmount()
+  })
   it.each(['zh', 'en'] as const)('%s removes invitation and ranking tabs while keeping check-in drafts', async locale => {
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/admin/qqbot/activities', component: QQBotActivitiesView }] })
     await router.push('/admin/qqbot/activities')

@@ -45,7 +45,7 @@
               <div class="flex items-center justify-between gap-3"><h2>{{ t(isGuaranteePool ? 'lotteryPortal.guaranteePool' : 'lotteryPortal.normalPool') }}</h2><span class="text-xs text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.probability') }}</span></div>
               <ul>
                 <li v-for="(prize, index) in nextPool" :key="index">
-                  <span class="lottery-prize-name"><span class="lottery-prize-dot" :class="{ 'is-top': prize.amount > 0 && prize.amount === nextTopPrize }" aria-hidden="true"></span>{{ prize.name }}</span>
+                  <span class="lottery-prize-name"><span class="lottery-prize-dot" :class="{ 'is-top': prize.amount > 0 && prize.amount === nextTopPrize }" aria-hidden="true"></span>{{ prize.name }}<span v-if="prize.stock_limit != null" class="mt-1 block text-sm font-normal text-gray-500 dark:text-gray-400">{{ t('lotteryPortal.stockRemaining', { count: Math.max(prize.stock_limit - (prize.allocated || 0), 0), total: prize.stock_limit }) }}</span></span>
                   <span class="lottery-prize-value"><strong>{{ prize.amount > 0 ? `USD ${prize.amount}` : '—' }}</strong><small>{{ (prize.probability_bps / 100).toFixed(2) }}%</small></span>
                 </li>
               </ul>
@@ -90,6 +90,7 @@
           <summary class="cursor-pointer">{{ t('lotteryPortal.rules') }}</summary>
           <p class="text-sm">{{ t('lotteryPortal.rule', { amount: data.recharge_step.toFixed(2), count: data.chances_per_step }) }}</p>
           <p class="text-sm">{{ t('lotteryPortal.sharedChances') }}</p>
+          <p v-if="data.prizes.some(prize => prize.stock_limit != null)" class="text-sm">{{ t('lotteryPortal.stockRule') }}</p>
           <p v-if="data.state.guarantee_every" class="text-sm">{{ t('lotteryPortal.guarantee', { count: data.state.draws_until_guarantee, every: data.state.guarantee_every }) }}</p>
           <p class="text-sm">{{ t('lotteryPortal.period', { time: date(data.period_start) }) }}</p>
           <p class="text-sm text-gray-500">{{ t('lotteryPortal.accounting') }}</p>
@@ -144,7 +145,7 @@ const spinning = ref(false), spinError = ref(''), requestID = ref(''), rotation 
 const result = ref<UserLotterySpin | null>(null)
 const isGuaranteePool = computed(() => data.value?.state.draws_until_guarantee === 1 && !!data.value.guarantee_prizes.length)
 const nextPool = computed(() => (isGuaranteePool.value ? data.value?.guarantee_prizes : data.value?.prizes) || [])
-const wheelPrizes = computed(() => result.value?.prizes || nextPool.value)
+const wheelPrizes = computed(() => spinning.value && result.value ? result.value.prizes : nextPool.value)
 const topPrize = computed(() => Math.max(0, ...wheelPrizes.value.map(prize => prize.amount)))
 const nextTopPrize = computed(() => Math.max(0, ...nextPool.value.map(prize => prize.amount)))
 const spinLabel = computed(() => t(spinning.value ? 'lotteryPortal.spinning' : requestID.value ? 'lotteryPortal.retrySpin' : data.value?.state.remaining ? 'lotteryPortal.spin' : 'lotteryPortal.noChances'))

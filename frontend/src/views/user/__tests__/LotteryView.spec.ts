@@ -203,6 +203,22 @@ describe('user lottery journey', () => {
     await restored.get('[data-testid="lottery-spin"]').trigger('click'); await flushPromises()
     expect(api.spin).toHaveBeenLastCalledWith(request)
   })
+  it('shows the last prize while spinning and replaces its slice after settlement', async () => {
+    vi.useFakeTimers()
+    const prize = { id: 'limited', name: '最后一份奖励', amount: 2, probability_bps: 10000, stock_limit: 1, allocated: 0 }
+    api.overview.mockResolvedValue({ ...fixture(), prizes: [prize] })
+    const w = render(LotteryView); await flushPromises()
+    expect(w.text()).toContain('剩余 1 / 1 份')
+    api.spin.mockResolvedValue({ request_id: 'last-prize-request', prize, prize_index: 0, prizes: [prize], is_guaranteed: false, remaining: 1 })
+    await w.get('[data-testid="lottery-spin"]').trigger('click'); await flushPromises()
+    expect(w.get('.wheel-art').text()).toContain('最后一份奖励')
+    api.overview.mockResolvedValue({ ...fixture(), prizes: [{ ...prize, name: '谢谢参与', amount: 0, allocated: 1 }] })
+    await vi.advanceTimersByTimeAsync(4100); await flushPromises()
+    expect(w.get('[data-testid="lottery-result"]').text()).toContain('最后一份奖励')
+    expect(w.get('.wheel-art').text()).toContain('谢谢参与')
+    expect(w.get('.wheel-art').text()).not.toContain('最后一份奖励')
+    expect(w.text()).toContain('剩余 0 / 1 份')
+  })
   it('disables a fresh draw with no remaining chances', async () => {
     api.overview.mockResolvedValue({ ...fixture(), state: { ...fixture().state, remaining: 0 } })
     const w = render(LotteryView); await flushPromises()

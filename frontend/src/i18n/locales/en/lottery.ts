@@ -5,6 +5,8 @@ export default {
     tapWheel: 'Tap the center to spin the wheel', spinningHint: 'The wheel is spinning. Your result is on its way…',
     spin: 'Spin the wheel', spinning: 'Drawing…', spinCost: 'Uses 1 chance per spin', noChances: 'No chances remaining',
     sharedChances: 'Website and QQ share chances, prizes and guarantee progress.', openWheel: 'Open website wheel',
+    stockRemaining: '{count} / {total} remaining',
+    stockRule: 'Normal prizes have limited quantities. Exhausted slices keep their position and probability as no prize and still use one chance. Guaranteed prizes remain available.',
     siteSource: 'Website wheel',
     credited: 'Reward credited', noWin: 'Thanks for playing', result: 'Your result', rechargeAction: 'Recharge',
     spinFailed: 'Result not confirmed. Retry to retrieve this draw without spending another chance.', retrySpin: 'Retrieve this result',

@@ -25,6 +25,13 @@ func WithConfigVersion(ctx context.Context, version string) context.Context {
 	return context.WithValue(ctx, configVersionContextKey{}, version)
 }
 func ConfigVersion(value any) string {
+	if c, ok := value.(LotteryConfig); ok {
+		c.Prizes = append([]LotteryPrize(nil), c.Prizes...)
+		for i := range c.Prizes {
+			c.Prizes[i].Allocated = 0
+		}
+		value = c
+	}
 	raw, _ := json.Marshal(value)
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:])

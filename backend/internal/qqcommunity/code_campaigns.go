@@ -2,12 +2,13 @@ package qqcommunity
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"math/big"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -25,23 +26,28 @@ func campaignErrorMessage(err error) string {
 }
 
 type CodeCampaign struct {
-	ID                  string     `json:"id"`
-	Name                string     `json:"name"`
-	Type                string     `json:"type"`
-	Value               float64    `json:"value"`
-	SubscriptionGroupID *int64     `json:"subscription_group_id"`
-	ValidityDays        int        `json:"validity_days"`
-	Enabled             bool       `json:"enabled"`
-	Groups              []string   `json:"groups"`
-	ClaimMode           string     `json:"claim_mode"`
-	StockLimit          int        `json:"stock_limit"`
-	CodeValidHours      int        `json:"code_valid_hours"`
-	StartsAt            *time.Time `json:"starts_at"`
-	EndsAt              *time.Time `json:"ends_at"`
-	Version             int64      `json:"version"`
-	Claimed             int64      `json:"claimed"`
-	Sent                int64      `json:"sent"`
-	Redeemed            int64      `json:"redeemed"`
+	RewardMode           string              `json:"reward_mode,omitempty"`
+	Prizes               []CampaignPrize     `json:"prizes,omitempty"`
+	Compensation         *CampaignPrize      `json:"compensation,omitempty"`
+	CompensationRequired bool                `json:"compensation_required"`
+	TokenTiers           []CampaignTokenTier `json:"token_tiers,omitempty"`
+	ID                   string              `json:"id"`
+	Name                 string              `json:"name"`
+	Type                 string              `json:"type"`
+	Value                float64             `json:"value"`
+	SubscriptionGroupID  *int64              `json:"subscription_group_id"`
+	ValidityDays         int                 `json:"validity_days"`
+	Enabled              bool                `json:"enabled"`
+	Groups               []string            `json:"groups"`
+	ClaimMode            string              `json:"claim_mode"`
+	StockLimit           int                 `json:"stock_limit"`
+	CodeValidHours       int                 `json:"code_valid_hours"`
+	StartsAt             *time.Time          `json:"starts_at"`
+	EndsAt               *time.Time          `json:"ends_at"`
+	Version              int64               `json:"version"`
+	Claimed              int64               `json:"claimed"`
+	Sent                 int64               `json:"sent"`
+	Redeemed             int64               `json:"redeemed"`
 }
 
 func validateCodeCampaign(c CodeCampaign) error {
@@ -50,7 +56,7 @@ func validateCodeCampaign(c CodeCampaign) error {
 			return CampaignRuleError("活动标识不正确")
 		}
 	}
-	if strings.TrimSpace(c.Name) == "" || utf8.RuneCountInString(c.Name) > 60 || c.StockLimit < 1 || c.StockLimit > 100000 || c.CodeValidHours < 1 || c.CodeValidHours > 8760 || len(c.Groups) > 100 {
+	if strings.TrimSpace(c.Name) == "" || utf8.RuneCountInString(c.Name) > 60 || (!c.probabilityMode() && (c.StockLimit < 1 || c.StockLimit > 100000)) || c.CodeValidHours < 1 || c.CodeValidHours > 8760 || len(c.Groups) > 100 {
 		return CampaignRuleError("活动名称、库存（1～100000）或兑换有效期（1～8760小时）不正确")
 	}
 	if c.ClaimMode != "once" && c.ClaimMode != "daily" {
@@ -59,23 +65,13 @@ func validateCodeCampaign(c CodeCampaign) error {
 	if c.StartsAt != nil && c.EndsAt != nil && !c.EndsAt.After(*c.StartsAt) {
 		return CampaignRuleError("活动结束时间必须晚于开始时间")
 	}
-	switch c.Type {
-	case "balance":
-		if !validRewardAmount(c.Value) || c.Value <= 0 {
-			return CampaignRuleError("每码余额需大于0且不超过1000 USD，最多8位小数")
-		}
-	case "lottery_chances", "concurrency":
-		if math.IsNaN(c.Value) || c.Value < 1 || c.Value > 1000 || math.Trunc(c.Value) != c.Value {
-			return CampaignRuleError("每码次数或并发数必须是1～1000的整数")
-		}
-	case "subscription":
-		if c.SubscriptionGroupID == nil || *c.SubscriptionGroupID <= 0 || c.ValidityDays < 1 || c.ValidityDays > 3650 {
-			return CampaignRuleError("请选择订阅分组，并设置1～3650天")
-		}
-	default:
-		return CampaignRuleError("不支持的兑换类型")
+	if c.probabilityMode() {
+		return validateCampaignPrizes(c)
 	}
-	return nil
+	if c.RewardMode != "" && c.RewardMode != "fixed" {
+		return CampaignRuleError("领码模式不正确")
+	}
+	return validateCampaignReward(c.Type, c.Value, c.SubscriptionGroupID, c.ValidityDays)
 }
 
 func (s *Service) CodeCampaigns(ctx context.Context) ([]CodeCampaign, error) {
@@ -139,6 +135,11 @@ func (s *Service) CodeCampaigns(ctx context.Context) ([]CodeCampaign, error) {
 		if err != nil {
 			return nil, err
 		}
+		if c.probabilityMode() {
+			if err = loadCampaignStock(ctx, tx, c); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return items, tx.Commit()
 }
@@ -173,7 +174,7 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(71427320)`); err != nil {
 		return c, err
 	}
-	if c.Type == "subscription" {
+	if !c.probabilityMode() && c.Type == "subscription" {
 		var valid bool
 		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND subscription_type='subscription' AND status='active' AND deleted_at IS NULL)`, *c.SubscriptionGroupID).Scan(&valid)
 		if err != nil {
@@ -186,6 +187,8 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 	if c.ID == "" {
 		c.ID = randomID()
 	}
+	var old CodeCampaign
+	var issued int64
 	if c.Version == 0 {
 		var exists bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM qqc_code_campaigns WHERE id=$1)`, c.ID).Scan(&exists); err != nil {
@@ -208,11 +211,9 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 		if version != c.Version {
 			return c, ErrConfigConflict
 		}
-		var old CodeCampaign
 		if err = json.Unmarshal([]byte(raw), &old); err != nil {
 			return c, err
 		}
-		var issued int64
 		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_code_claims WHERE campaign_id=$1`, c.ID).Scan(&issued); err != nil {
 			return c, err
 		}
@@ -223,13 +224,16 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 		if c.SubscriptionGroupID != nil {
 			newGroup = *c.SubscriptionGroupID
 		}
-		if issued > 0 && (old.Type != c.Type || old.Value != c.Value || old.ClaimMode != c.ClaimMode || oldGroup != newGroup || old.ValidityDays != c.ValidityDays) {
+		if issued > 0 && (old.probabilityMode() != c.probabilityMode() || old.ClaimMode != c.ClaimMode || (!c.probabilityMode() && (old.Type != c.Type || old.Value != c.Value || oldGroup != newGroup || old.ValidityDays != c.ValidityDays))) {
 			return c, CampaignRuleError("已有领取记录，兑换内容和领取频率不可变更；请新建活动")
 		}
-		if int64(c.StockLimit) < issued {
+		if !c.probabilityMode() && int64(c.StockLimit) < issued {
 			return c, CampaignRuleError("库存上限不能小于已分配数量")
 		}
 		c.Version++
+	}
+	if err = prepareCampaignPrizes(ctx, tx, old, &c, issued); err != nil {
+		return c, err
 	}
 	c.Claimed = 0
 	c.Sent = 0
@@ -255,6 +259,12 @@ func (s *Service) SaveCodeCampaign(ctx context.Context, c CodeCampaign) (CodeCam
 }
 
 type CodeClaim struct {
+	RewardMode     string     `json:"reward_mode,omitempty"`
+	Outcome        string     `json:"outcome"`
+	PrizeName      string     `json:"prize_name"`
+	UsageTokens    int64      `json:"usage_tokens"`
+	ProbabilityBPS int        `json:"probability_bps"`
+	BonusBPS       int        `json:"bonus_bps"`
 	ID             string     `json:"id"`
 	CampaignID     string     `json:"campaign_id"`
 	CampaignName   string     `json:"campaign_name"`
@@ -283,12 +293,12 @@ type CodeClaimsPage struct {
 	PageSize int         `json:"page_size"`
 }
 
-const claimSelect = `SELECT q.id,q.campaign_id,q.user_id,COALESCE(u.email,''),q.member_id,q.group_id,q.redeem_code_id,COALESCE(r.code,''),COALESCE(r.type,''),COALESCE(r.value,0),COALESCE(r.validity_days,0),COALESCE(r.status,'deleted'),q.delivery_status,q.attempts,q.created_at,r.expires_at,r.used_at,q.sent_at,c.config_json FROM qqc_code_claims q JOIN qqc_code_campaigns c ON c.id=q.campaign_id LEFT JOIN redeem_codes r ON r.id=q.redeem_code_id LEFT JOIN users u ON u.id=q.user_id`
+const claimSelect = `SELECT q.id,q.campaign_id,q.user_id,COALESCE(u.email,''),q.member_id,q.group_id,COALESCE(q.redeem_code_id,0),COALESCE(r.code,''),COALESCE(r.type,''),COALESCE(r.value,0),COALESCE(r.validity_days,0),COALESCE(r.status,'deleted'),q.delivery_status,q.attempts,q.created_at,r.expires_at,r.used_at,q.sent_at,c.config_json,q.outcome,COALESCE(q.reward_snapshot,''),q.usage_tokens,q.probability_bps,q.bonus_bps FROM qqc_code_claims q JOIN qqc_code_campaigns c ON c.id=q.campaign_id LEFT JOIN redeem_codes r ON r.id=q.redeem_code_id LEFT JOIN users u ON u.id=q.user_id`
 
 func scanCodeClaim(scan func(...any) error) (CodeClaim, error) {
 	var c CodeClaim
-	var raw string
-	err := scan(&c.ID, &c.CampaignID, &c.UserID, &c.Email, &c.MemberID, &c.GroupID, &c.CodeID, &c.Code, &c.Type, &c.Value, &c.ValidityDays, &c.Status, &c.DeliveryStatus, &c.Attempts, &c.CreatedAt, &c.ExpiresAt, &c.UsedAt, &c.SentAt, &raw)
+	var raw, rewardRaw string
+	err := scan(&c.ID, &c.CampaignID, &c.UserID, &c.Email, &c.MemberID, &c.GroupID, &c.CodeID, &c.Code, &c.Type, &c.Value, &c.ValidityDays, &c.Status, &c.DeliveryStatus, &c.Attempts, &c.CreatedAt, &c.ExpiresAt, &c.UsedAt, &c.SentAt, &raw, &c.Outcome, &rewardRaw, &c.UsageTokens, &c.ProbabilityBPS, &c.BonusBPS)
 	if err != nil {
 		return c, err
 	}
@@ -297,10 +307,21 @@ func scanCodeClaim(scan func(...any) error) (CodeClaim, error) {
 		return c, err
 	}
 	c.CampaignName = campaign.Name
-	if c.Status == "deleted" {
+	c.RewardMode = campaign.RewardMode
+	if c.Status == "deleted" && c.Outcome != "none" && rewardRaw == "" {
 		c.Type = campaign.Type
 		c.Value = campaign.Value
 		c.ValidityDays = campaign.ValidityDays
+	}
+	if rewardRaw != "" {
+		var prize CampaignPrize
+		if err = json.Unmarshal([]byte(rewardRaw), &prize); err != nil {
+			return c, err
+		}
+		c.PrizeName, c.Type, c.Value, c.ValidityDays = prize.Name, prize.Type, prize.Value, prize.ValidityDays
+	}
+	if c.Outcome == "none" {
+		c.Status = "none"
 	}
 	if len(c.Code) > 4 {
 		c.CodeHint = "****" + c.Code[len(c.Code)-4:]
@@ -417,31 +438,76 @@ func (s *Service) allocateCampaignCode(ctx context.Context, c Config, j Job, now
 	if err = validateCodeCampaign(campaign); err != nil {
 		return out, err
 	}
-	if campaign.Type == "subscription" {
-		var valid bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND subscription_type='subscription' AND status='active' AND deleted_at IS NULL)`, *campaign.SubscriptionGroupID).Scan(&valid); err != nil {
+	prize := &CampaignPrize{Type: campaign.Type, Value: campaign.Value, SubscriptionGroupID: campaign.SubscriptionGroupID, ValidityDays: campaign.ValidityDays}
+	outcome, usage, probability, bonus := "prize", int64(0), 10000, 0
+	if campaign.probabilityMode() {
+		campaign.ID = id
+		if err = loadCampaignStock(ctx, tx, &campaign); err != nil {
 			return out, err
 		}
-		if !valid {
-			return out, CampaignRuleError("活动订阅分组已停用，请联系管理员")
+		available := false
+		for _, p := range campaign.Prizes {
+			if p.Allocated < p.StockLimit {
+				available = true
+			}
+		}
+		if !available {
+			return out, CampaignRuleError("本次活动主奖已领完，活动结束")
+		}
+		if campaign.CompensationRequired && campaign.Compensation.Allocated >= campaign.Compensation.StockLimit {
+			return out, CampaignRuleError("补偿兑换码已领完，活动暂停，请联系管理员")
+		}
+		usage, err = campaignUsageTokens(ctx, tx, uid, now)
+		if err != nil {
+			return out, err
+		}
+		weights, actualProbability, selectedBonus := campaignDistribution(campaign, usage)
+		probability, bonus = actualProbability, selectedBonus
+		roll, e := rand.Int(rand.Reader, big.NewInt(10000))
+		if e != nil {
+			return out, e
+		}
+		prize, outcome = campaignPrizeAt(campaign, weights, int(roll.Int64()))
+	}
+	if !campaign.probabilityMode() {
+		var claimed int
+		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_code_claims WHERE campaign_id=$1`, id).Scan(&claimed); err != nil {
+			return out, err
+		}
+		if claimed >= campaign.StockLimit {
+			return out, CampaignRuleError("本次活动兑换码已领完")
 		}
 	}
-	var claimed int
-	if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM qqc_code_claims WHERE campaign_id=$1`, id).Scan(&claimed); err != nil {
-		return out, err
-	}
-	if claimed >= campaign.StockLimit {
-		return out, CampaignRuleError("本次活动兑换码已领完")
-	}
-	code := (randomID() + randomID())[:32]
-	expires := now.Add(time.Duration(campaign.CodeValidHours) * time.Hour)
-	var codeID int64
-	err = tx.QueryRowContext(ctx, `INSERT INTO redeem_codes(code,type,value,status,group_id,validity_days,expires_at,notes,created_at) VALUES($1,$2,$3,'unused',$4,$5,$6,$7,$8) RETURNING id`, code, campaign.Type, campaign.Value, campaign.SubscriptionGroupID, campaign.ValidityDays, expires, "QQ campaign "+id, now).Scan(&codeID)
-	if err != nil {
-		return out, err
+	var codeID *int64
+	var snapshot *string
+	prizeID, deliveryStatus := "", "not_required"
+	if prize != nil {
+		if prize.Type == "subscription" {
+			var valid bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM groups WHERE id=$1 AND subscription_type='subscription' AND status='active' AND deleted_at IS NULL)`, *prize.SubscriptionGroupID).Scan(&valid); err != nil {
+				return out, err
+			}
+			if !valid {
+				return out, CampaignRuleError("活动订阅分组已停用，请联系管理员")
+			}
+		}
+		code := (randomID() + randomID())[:32]
+		expires := now.Add(time.Duration(campaign.CodeValidHours) * time.Hour)
+		var allocatedID int64
+		err = tx.QueryRowContext(ctx, `INSERT INTO redeem_codes(code,type,value,status,group_id,validity_days,expires_at,notes,created_at) VALUES($1,$2,$3,'unused',$4,$5,$6,$7,$8) RETURNING id`, code, prize.Type, prize.Value, prize.SubscriptionGroupID, prize.ValidityDays, expires, "QQ campaign "+id, now).Scan(&allocatedID)
+		if err != nil {
+			return out, err
+		}
+		codeID, prizeID, deliveryStatus = &allocatedID, prize.ID, "pending"
+		rewardRaw, e := json.Marshal(prize)
+		if e != nil {
+			return out, e
+		}
+		text := string(rewardRaw)
+		snapshot = &text
 	}
 	claimID := randomID()
-	_, err = tx.ExecContext(ctx, `INSERT INTO qqc_code_claims(id,campaign_id,app_id,group_id,member_id,user_id,period_key,redeem_code_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, claimID, id, c.AppID, j.GroupID, j.MemberID, uid, period, codeID)
+	_, err = tx.ExecContext(ctx, `INSERT INTO qqc_code_claims(id,campaign_id,app_id,group_id,member_id,user_id,period_key,redeem_code_id,prize_id,outcome,reward_snapshot,usage_tokens,probability_bps,bonus_bps,delivery_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, claimID, id, c.AppID, j.GroupID, j.MemberID, uid, period, codeID, prizeID, outcome, snapshot, usage, probability, bonus, deliveryStatus)
 	if err != nil {
 		return out, err
 	}
@@ -480,6 +546,9 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 	if !c.Enabled || !c.allows(claim.GroupID) {
 		return "", CampaignRuleError("机器人或来源群未开放")
 	}
+	if claim.Outcome == "none" {
+		return fmt.Sprintf("本期已参与：谢谢参与。参与时今日用量 %s Token，主奖中奖率 %.2f%%（Token加成 +%.2f 个百分点）；本期结果已保存。", formatUsageTokens(claim.UsageTokens), float64(claim.ProbabilityBPS)/100, float64(claim.BonusBPS)/100), nil
+	}
 	if claim.Status != "unused" {
 		return "该活动本期已领取；兑换码已使用、过期或停用，不再分配新码。", nil
 	}
@@ -499,6 +568,12 @@ func (s *Service) sendCampaignClaim(ctx context.Context, c Config, claimID strin
 		return "", err
 	}
 	content := fmt.Sprintf("%s\n兑换码：%s\n", replyPlainLabel(claim.CampaignName), claim.Code)
+	if claim.PrizeName != "" {
+		content += "奖项：" + replyPlainLabel(claim.PrizeName) + "\n"
+	}
+	if claim.RewardMode == "probability" {
+		content += fmt.Sprintf("参与时今日用量：%s Token\n主奖中奖率：%.2f%%（Token加成 +%.2f 个百分点）\n", formatUsageTokens(claim.UsageTokens), float64(claim.ProbabilityBPS)/100, float64(claim.BonusBPS)/100)
+	}
 	switch claim.Type {
 	case "balance":
 		content += fmt.Sprintf("内容：USD %.8g 余额\n", claim.Value)

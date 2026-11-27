@@ -45,7 +45,7 @@ func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID stri
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared(71427101)`); err != nil {
 		return out, err
 	}
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, lotteryConfigLock); err != nil {
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lotteryConfigLock); err != nil {
 		return out, err
 	}
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,274))`, strconv.FormatInt(uid, 10)); err != nil {
@@ -92,7 +92,10 @@ func (s *Service) UserLotterySpin(ctx context.Context, uid int64, requestID stri
 	if state.Remaining < 1 {
 		return out, ErrLotteryNoChances
 	}
-	pool := cfg.Prizes
+	if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
+		return out, err
+	}
+	pool := availableLotteryPool(cfg.Prizes)
 	guaranteed := cfg.drawsUntilGuarantee(state.Used) == 1
 	if guaranteed {
 		pool = cfg.GuaranteePrizes

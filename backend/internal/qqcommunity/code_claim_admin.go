@@ -19,12 +19,15 @@ func (s *Service) DisableCampaignCode(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var codeID int64
-	err = tx.QueryRowContext(ctx, `SELECT redeem_code_id FROM qqc_code_claims WHERE id=$1 AND app_id=$2`, id, c.AppID).Scan(&codeID)
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(redeem_code_id,0) FROM qqc_code_claims WHERE id=$1 AND app_id=$2`, id, c.AppID).Scan(&codeID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return CampaignRuleError("发放记录不存在")
 	}
 	if err != nil {
 		return err
+	}
+	if codeID == 0 {
+		return CampaignRuleError("本次参与未中奖，没有可停用的兑换码")
 	}
 	res, err := tx.ExecContext(ctx, `UPDATE redeem_codes SET status='disabled' WHERE id=$1 AND status='unused'`, codeID)
 	if err != nil {

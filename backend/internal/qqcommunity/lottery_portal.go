@@ -87,6 +87,10 @@ func (s *Service) UserLottery(ctx context.Context, uid int64) (UserLottery, erro
 	}
 	out.Enabled, out.Title, out.PeriodStart = l.Enabled, l.Title, lotteryPeriodStart
 	out.RechargeStep, out.ChancesPerStep, out.Prizes = l.RechargeStep, l.ChancesPerStep, l.Prizes
+	if err = loadLotteryStock(ctx, tx, l.Prizes); err != nil {
+		return out, err
+	}
+	out.Prizes = availableLotteryPool(l.Prizes)
 	if l.GuaranteeEnabled {
 		out.GuaranteePrizes = l.GuaranteePrizes
 	}

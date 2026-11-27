@@ -80,9 +80,9 @@ func (h *QQCommunityHandler) ListCodeClaims(c *gin.Context) {
 		response.Success(c, out)
 		return
 	}
-	records := [][]string{{"活动", "账号ID", "邮箱", "QQ", "来源群", "码尾号", "兑换类型", "面值", "订阅天数", "发送状态", "兑换状态", "领取时间", "发送时间", "兑换时间"}}
+	records := [][]string{{"活动", "账号ID", "邮箱", "QQ", "来源群", "码尾号", "兑换类型", "面值", "订阅天数", "发送状态", "兑换状态", "领取时间", "发送时间", "兑换时间", "参与结果", "奖项", "当日Token", "实际主奖概率BPS", "Token加成BPS"}}
 	for _, r := range out.Items {
-		records = append(records, []string{r.CampaignName, strconv.FormatInt(r.UserID, 10), r.Email, r.MemberID, r.GroupID, r.CodeHint, r.Type, strconv.FormatFloat(r.Value, 'f', -1, 64), strconv.Itoa(r.ValidityDays), r.DeliveryStatus, r.Status, r.CreatedAt.Format(time.RFC3339), campaignCSVTime(r.SentAt), campaignCSVTime(r.UsedAt)})
+		records = append(records, []string{r.CampaignName, strconv.FormatInt(r.UserID, 10), r.Email, r.MemberID, r.GroupID, r.CodeHint, r.Type, strconv.FormatFloat(r.Value, 'f', -1, 64), strconv.Itoa(r.ValidityDays), r.DeliveryStatus, r.Status, r.CreatedAt.Format(time.RFC3339), campaignCSVTime(r.SentAt), campaignCSVTime(r.UsedAt), r.Outcome, r.PrizeName, strconv.FormatInt(r.UsageTokens, 10), strconv.Itoa(r.ProbabilityBPS), strconv.Itoa(r.BonusBPS)})
 	}
 	writeCampaignCSV(c, "code-claims.csv", records)
 }

@@ -38,6 +38,52 @@ describe('QQ code campaigns and activity statistics', () => {
   expect(api.saveCodeCampaign.mock.calls[1]![0].id).toBe(first.id)
   expect(w.text()).toContain('/领码'); w.unmount()
  })
+ it.each(['zh', 'en'])('%s configures probability prizes, compensation and Token bonus tiers', async locale => {
+  const w = mount(QQBotCodeCampaigns, { global: globalOptions(locale) }); await flushPromises()
+  const translation = createI18n({ legacy: false, locale, messages: { zh, en } }).global.t
+  await w.findAll('button').find(b => b.text() === translation('qqbot.codeCampaigns.create'))!.trigger('click')
+  await w.get('[data-testid="campaign-mode"]').setValue('probability')
+  const probability = w.get('[data-testid="campaign-probability"]')
+  const editor = probability.findAll('input')
+  await editor[0]!.setValue('主奖')
+  await editor[2]!.setValue('30')
+  await editor[3]!.setValue('7')
+  await w.get('[data-testid="campaign-compensation"]').setValue(true)
+  await probability.findAll('input[maxlength="60"]')[1]!.setValue('补偿')
+  await probability.findAll('button').find(b => b.text() === translation('qqbot.codeCampaigns.addTier'))!.trigger('click')
+  const threshold = probability.get('input[max="9007199254740991"]')
+  await threshold.setValue('100000')
+  await probability.findAll('input[type="number"]').at(-1)!.setValue('5')
+  api.saveCodeCampaign.mockRejectedValueOnce(new Error('review payload'))
+  await w.findAll('form')[0]!.trigger('submit'); await flushPromises()
+  expect(api.saveCodeCampaign.mock.lastCall![0]).toMatchObject({
+   reward_mode: 'probability', compensation_required: true,
+   prizes: [expect.objectContaining({ name: '主奖', stock_limit: 7, probability_bps: 3000 })],
+   compensation: expect.objectContaining({ stock_limit: 100 }),
+   token_tiers: [{ tokens: 100000, bonus_bps: 500 }]
+  })
+  expect(w.text()).not.toContain('qqbot.codeCampaigns.')
+  w.unmount()
+ })
+ it.each(['zh', 'en'])('%s shows the saved reward and disables code actions for no-prize outcomes', async locale => {
+  const claim = { id: 'claim', campaign_id: campaign.id, campaign_name: campaign.name, reward_mode: 'probability',
+   user_id: 42, email: 'user@example.test', member_id: '12345', group_id: '123', code_id: 7, code_hint: '****1234',
+   type: 'lottery_chances', value: 3, validity_days: 0, outcome: 'compensation', prize_name: '补偿抽奖次数',
+   usage_tokens: 100001, probability_bps: 3500, bonus_bps: 500, status: 'unused', delivery_status: 'pending', attempts: 0,
+   created_at: '2026-11-27T12:00:00Z', expires_at: null, sent_at: null, used_at: null }
+  api.codeClaims.mockResolvedValue({ items: [claim, { ...claim, id: 'none', code_id: 0, outcome: 'none', type: '', value: 0, prize_name: '', code_hint: '', status: 'none', delivery_status: 'not_required' }], total: 2, page: 1, page_size: 20 })
+  const w = mount(QQBotCodeCampaigns, { global: globalOptions(locale) }); await flushPromises()
+  const rows = w.findAll('table')[1]!.findAll('tbody tr')
+  const translation = createI18n({ legacy: false, locale, messages: { zh, en } }).global.t
+  expect(rows[0]!.text()).toContain('补偿抽奖次数')
+  expect(rows[0]!.text()).toContain(`${translation('qqbot.codeCampaigns.types.lottery_chances')} · 3`)
+  expect(rows[0]!.text()).toContain('35.00%')
+  expect(rows[0]!.text()).toContain('5.00')
+  expect(rows[1]!.text()).toContain(translation('qqbot.codeCampaigns.outcomes.none'))
+  expect(rows[1]!.findAll('button').every(b => b.attributes('disabled') !== undefined)).toBe(true)
+  expect(w.text()).not.toContain('qqbot.codeCampaigns.')
+  w.unmount()
+ })
  it.each([
   [{ starts_at: '2099-01-01T00:00:00Z' }, '未开始'],
   [{ ends_at: '2000-01-01T00:00:00Z' }, '已结束'],

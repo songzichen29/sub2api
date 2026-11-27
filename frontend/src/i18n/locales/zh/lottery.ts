@@ -5,6 +5,8 @@ export default {
     tapWheel: '点击转盘中心，开启本次抽奖', spinningHint: '转盘转动中，等待你的幸运落点…',
     spin: '开始抽奖', spinning: '抽奖中…', spinCost: '每次消耗 1 次机会', noChances: '暂无抽奖机会',
     sharedChances: '站内与 QQ 群共用次数、奖池和保底进度。', openWheel: '打开站内转盘',
+    stockRemaining: '剩余 {count} / {total} 份',
+    stockRule: '普通奖项数量有限，发完后原位置及概率变为“谢谢参与”，仍消耗一次机会。保底奖池继续保证有奖。',
     siteSource: '站内转盘',
     credited: '奖励已到账', noWin: '谢谢参与', result: '本次结果', rechargeAction: '去充值',
     spinFailed: '结果暂未确认，请重试查询本次结果，不会重复扣除次数。', retrySpin: '查询本次结果',

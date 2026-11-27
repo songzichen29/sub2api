@@ -14,14 +14,16 @@
       </div>
       <div class="space-y-2 rounded-lg bg-gray-50 p-4 text-sm dark:bg-dark-800"><p>{{ t('qqbot.historicalRechargeHelp') }}</p><p>{{ t('qqbot.lotteryRuleChangeHelp') }}</p></div>
       <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="font-semibold">{{ t('qqbot.prizePool') }}</h2><span :class="probabilityTotal === 10000 ? 'text-green-600' : 'text-red-600'">{{ t('qqbot.probabilityTotal', { total: (probabilityTotal / 100).toFixed(2) }) }}</span></div>
-      <div v-for="(prize, index) in form.prizes" :key="index" class="grid items-end gap-3 rounded-lg border p-4 dark:border-dark-700 sm:grid-cols-2 md:grid-cols-[2fr_1fr_1fr_auto]">
+      <div v-for="(prize, index) in form.prizes" :key="prize.id || index" class="grid items-start gap-3 rounded-lg border p-4 dark:border-dark-700 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto]">
         <label class="space-y-1">{{ t('qqbot.prizeName') }}<input v-model.trim="prize.name" class="input" required maxlength="60" /></label>
         <label class="space-y-1">{{ t('qqbot.prizeAmount') }}<input v-model.number="prize.amount" class="input" type="number" min="0" max="1000" step="0.00000001" required /></label>
         <label class="space-y-1">{{ t('qqbot.probability') }}<input :value="prize.probability_bps / 100" :data-testid="`probability-${index}`" class="input" type="number" min="0.01" max="100" step="0.01" required @input="setProbability(index, $event)" /></label>
-        <button type="button" class="btn btn-secondary" :disabled="form.prizes.length <= 1" @click="form.prizes.splice(index, 1)">{{ t('common.delete') }}</button>
+        <label class="space-y-1">{{ t('qqbot.prizeQuantity') }}<input :value="prize.stock_limit ?? ''" :data-testid="`prize-stock-${index}`" class="input" type="number" :min="prize.allocated || 0" max="1000000" step="1" :placeholder="t('qqbot.unlimitedStock')" :disabled="prize.amount <= 0" @input="setStock(index, $event)" /><span class="block text-sm text-gray-500">{{ t('qqbot.prizeAllocated', { count: prize.allocated || 0 }) }}</span></label>
+        <button type="button" class="btn btn-secondary mt-6" :disabled="form.prizes.length <= 1" @click="form.prizes.splice(index, 1)">{{ t('common.delete') }}</button>
       </div>
       <button type="button" class="btn btn-secondary" :disabled="form.prizes.length >= 20" @click="addPrize">{{ t('qqbot.addPrize') }}</button>
       <p class="text-sm text-gray-500">{{ t('qqbot.prizeHelp') }}</p>
+      <p class="text-sm text-gray-500">{{ t('qqbot.prizeStockHelp') }}</p>
       <section class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-700" data-testid="guarantee-settings">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="font-semibold">{{ t('qqbot.guaranteeTitle') }}</h2>
@@ -45,7 +47,7 @@
         </template>
       </section>
       <p class="text-sm text-gray-500">{{ t('qqbot.lotteryCommand') }}</p>
-      <p class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{{ t('qqbot.workspace.lotteryCost', { amount: expectedCost.toFixed(6), draws: 1000, cost: (expectedCost * 1000).toFixed(2) }) }}</p>
+      <p class="rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950 dark:text-blue-200">{{ t(hasLimitedPrizes ? 'qqbot.workspace.lotteryStockCost' : 'qqbot.workspace.lotteryCost', { amount: expectedCost.toFixed(6), draws: 1000, cost: (expectedCost * 1000).toFixed(2) }) }}</p>
       <button type="submit" class="btn btn-primary" :disabled="saving || probabilityTotal !== 10000 || (form.guarantee_enabled && guaranteeProbabilityTotal !== 10000)">{{ t('common.save') }}</button>
     </form>
     <p v-else-if="!error">{{ t('common.loading') }}</p>
@@ -78,10 +80,11 @@ const { dirty, markSaved } = useQQDraft(form)
 const saving = ref(false)
 const error = ref('')
 const notice = ref('')
+const hasLimitedPrizes = computed(() => form.value?.prizes.some(p => p.stock_limit != null))
 const expectedCost = computed(() => {
   if (!form.value) return 0
   const mean = (pool: QQLotteryConfig['prizes']) => pool.reduce((sum, p) => sum + p.amount * p.probability_bps / 10000, 0)
-  const normal = mean(form.value.prizes)
+  const normal = mean(form.value.prizes.filter(p => p.stock_limit == null || (p.allocated || 0) < p.stock_limit))
   return form.value.guarantee_enabled && form.value.guarantee_every > 0 ? (normal * (form.value.guarantee_every - 1) + mean(form.value.guarantee_prizes)) / form.value.guarantee_every : normal
 })
 const probabilityTotal = computed(() => form.value?.prizes.reduce((sum, p) => sum + p.probability_bps, 0) ?? 0)
@@ -95,6 +98,10 @@ function setProbability(index: number, event: Event) {
   if (form.value) form.value.prizes[index]!.probability_bps = Math.round(Number((event.target as HTMLInputElement).value) * 100)
 }
 function addPrize() { form.value?.prizes.push({ name: '', amount: 0, probability_bps: 100 }) }
+function setStock(index: number, event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  if (form.value) form.value.prizes[index]!.stock_limit = value === '' ? null : Number(value)
+}
 function setGuaranteeProbability(index: number, event: Event) {
   if (form.value) form.value.guarantee_prizes[index]!.probability_bps = Math.round(Number((event.target as HTMLInputElement).value) * 100)
 }
@@ -126,7 +133,11 @@ async function save() {
     const config = await qqbotAPI.saveLottery({
       ...form.value,
       guarantee_every: Number.isInteger(form.value.guarantee_every) && form.value.guarantee_every >= 1 && form.value.guarantee_every <= 1000000 ? form.value.guarantee_every : 0,
-      prizes: form.value.prizes.map(p => ({ ...p })),
+      prizes: form.value.prizes.map(p => {
+        const prize = { ...p }
+        if (prize.amount <= 0) delete prize.stock_limit
+        return prize
+      }),
       guarantee_prizes: form.value.guarantee_prizes.map(p => ({ ...p }))
     })
     form.value = normalizeConfig(config); markSaved(); notice.value = t('common.saved'); state.value = null

@@ -249,9 +249,12 @@ func (s *Service) lotteryInfo(ctx context.Context, c Config, j Job, showRules bo
 		return "", err
 	}
 	if showRules {
+		if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
+			return "", err
+		}
 		var b strings.Builder
 		fmt.Fprintf(&b, "🎉 **%s**\n统计起点：%s\n起点后累计实付充值本金每满人民币 %.2f 元送 %d 次（不含手续费）\n每次抽奖消耗 1 次\n\n**普通奖池**", replyPlainLabel(cfg.Title), lotteryPeriodStartLabel, cfg.RechargeStep, cfg.ChancesPerStep)
-		for _, p := range cfg.Prizes {
+		for _, p := range availableLotteryPool(cfg.Prizes) {
 			fmt.Fprintf(&b, "\n\n%s\nUSD %.2f（概率 %.2f%%）", replyPlainLabel(p.Name), p.Amount, float64(p.ProbabilityBPS)/100)
 		}
 		if cfg.GuaranteeEnabled {
@@ -302,7 +305,7 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,272))`, c.AppID); err != nil {
 		return "", err
 	}
-	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, lotteryConfigLock); err != nil {
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lotteryConfigLock); err != nil {
 		return "", err
 	}
 	current, err := s.loadConfig(ctx, tx)
@@ -363,17 +366,23 @@ func (s *Service) drawLotteryCount(ctx context.Context, c Config, j Job, count i
 		return fmt.Sprintf("抽奖次数不足\n再充值人民币 %.2f 元获赠", state.NextRecharge), nil
 	}
 	draws := make([]lotteryOutcome, count)
+	if err = loadLotteryStock(ctx, tx, cfg.Prizes); err != nil {
+		return "", err
+	}
 	for i := range draws {
 		n, err := rand.Int(rand.Reader, big.NewInt(10000))
 		if err != nil {
 			return "", err
 		}
 		guaranteed := cfg.drawsUntilGuarantee(state.Used+int64(i)) == 1
-		pool := cfg.Prizes
+		pool := availableLotteryPool(cfg.Prizes)
 		if guaranteed {
 			pool = cfg.GuaranteePrizes
 		}
 		draws[i] = lotteryOutcome{prize: lotteryPrizeAt(pool, n.Int64()), guaranteed: guaranteed}
+		if !guaranteed {
+			cfg.reservePrize(draws[i].prize)
+		}
 	}
 	result = lotteryResult(cfg, state, draws)
 	if err = settleLotteryDraws(ctx, tx, c, j, uid, cfg, state, draws, requestKey, result); err != nil {
@@ -418,7 +427,11 @@ func settleLotteryDraws(ctx context.Context, tx *transaction, c Config, j Job, u
 		if i > 0 {
 			drawKey = fmt.Sprintf("%s:lottery-batch:%s:%d", c.AppID, codeHash(requestKey), i+1)
 		}
-		err = tx.QueryRowContext(ctx, `INSERT INTO qqc_lottery_draws(request_key,app_id,member_id,group_id,user_id,prize_name,amount,config_snapshot,recharge_total,earned,remaining,result_text) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`, drawKey, c.AppID, j.MemberID, j.GroupID, uid, prize.Name, prize.Amount, string(snapshot), state.RechargeTotal, state.Earned, state.Remaining-int64(i)-1, result).Scan(&drawID)
+		prizeID := ""
+		if !guaranteed && prize.Amount > 0 {
+			prizeID = prize.ID
+		}
+		err = tx.QueryRowContext(ctx, `INSERT INTO qqc_lottery_draws(request_key,app_id,member_id,group_id,user_id,prize_name,amount,config_snapshot,recharge_total,earned,remaining,result_text,prize_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`, drawKey, c.AppID, j.MemberID, j.GroupID, uid, prize.Name, prize.Amount, string(snapshot), state.RechargeTotal, state.Earned, state.Remaining-int64(i)-1, result, prizeID).Scan(&drawID)
 		if err != nil {
 			return err
 		}

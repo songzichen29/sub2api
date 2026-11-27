@@ -35,6 +35,9 @@ type InviteConfig struct {
 	RechargeRequirement
 }
 type LotteryPrize struct {
+	ID             string  `json:"id,omitempty"`
+	StockLimit     *int64  `json:"stock_limit,omitempty"`
+	Allocated      int64   `json:"allocated,omitempty"`
 	Name           string  `json:"name"`
 	Amount         float64 `json:"amount"`
 	ProbabilityBPS int     `json:"probability_bps"`
@@ -95,7 +98,11 @@ func loadLotteryConfig(ctx context.Context, db queryRower) (LotteryConfig, error
 	return c, err
 }
 func (s *Service) LotteryConfig(ctx context.Context) (LotteryConfig, error) {
-	return loadLotteryConfig(ctx, s.db)
+	c, err := loadLotteryConfig(ctx, s.db)
+	if err != nil {
+		return c, err
+	}
+	return c, loadLotteryStock(ctx, s.db, c.Prizes)
 }
 func validRewardAmount(n float64) bool {
 	return !math.IsNaN(n) && !math.IsInf(n, 0) && n >= 0 && n <= 1000 && math.Abs(n*1e8-math.Round(n*1e8)) <= .001
@@ -156,6 +163,16 @@ func validateLottery(c LotteryConfig) error {
 	}
 	if err := validateLotteryPrizes(c.Prizes); err != nil {
 		return err
+	}
+	for _, p := range c.Prizes {
+		if p.StockLimit != nil && (*p.StockLimit < 0 || *p.StockLimit > 1000000 || p.Amount <= 0) {
+			return errors.New("仅额度奖项可限量，数量需在 0 到 1000000 之间；留空表示不限量")
+		}
+	}
+	for _, p := range c.GuaranteePrizes {
+		if p.StockLimit != nil {
+			return errors.New("保底奖池不限量，请移除保底奖项数量")
+		}
 	}
 	if c.GuaranteeEvery < 0 || c.GuaranteeEvery > 1000000 || (c.GuaranteeEnabled && c.GuaranteeEvery == 0) {
 		return errors.New("保底周期需为 1 到 1000000 次")
@@ -244,6 +261,10 @@ func (s *Service) saveActivityConfig(ctx context.Context, key string, lock int64
 		if !ok {
 			return errors.New("invalid lottery configuration")
 		}
+		if e = prepareLotteryStock(ctx, tx, current, &next); e != nil {
+			return e
+		}
+		c = next
 		if len(next.PublicGroups) > 0 {
 			bot, e := s.loadConfig(ctx, tx)
 			if e != nil {

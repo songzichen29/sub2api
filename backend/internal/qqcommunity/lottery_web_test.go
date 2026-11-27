@@ -37,7 +37,7 @@ func expectWebStart(m sqlmock.Sqlmock, mysql bool) {
 		}
 	} else {
 		m.ExpectExec(`SELECT pg_advisory_xact_lock_shared\(71427101\)`).WillReturnResult(sqlmock.NewResult(0, 1))
-		m.ExpectExec(`SELECT pg_advisory_xact_lock_shared`).WithArgs(lotteryConfigLock).WillReturnResult(sqlmock.NewResult(0, 1))
+		m.ExpectExec(`SELECT pg_advisory_xact_lock\(`).WithArgs(lotteryConfigLock).WillReturnResult(sqlmock.NewResult(0, 1))
 		m.ExpectExec(`SELECT pg_advisory_xact_lock\(hashtextextended`).WithArgs("42").WillReturnResult(sqlmock.NewResult(0, 1))
 	}
 	m.ExpectQuery("SELECT id FROM users").WithArgs(int64(42)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(42))
@@ -87,9 +87,9 @@ func TestWebLotterySettlementBothDialects(t *testing.T) {
 				m.ExpectQuery("SELECT result_text FROM qqc_lottery_draws").WithArgs("web:lottery:42:"+webRequestID, int64(42)).WillReturnError(sql.ErrNoRows)
 				expectWebState(m, cfg, used, "30", mysql)
 				if mysql {
-					m.ExpectExec("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "website", "", "", int64(42), sqlmock.AnyArg(), sqlmock.AnyArg(), lotterySourceSnapshot("recharge"), float64(30), int64(3), int64(2)-used, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(7, 1))
+					m.ExpectExec("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "website", "", "", int64(42), sqlmock.AnyArg(), sqlmock.AnyArg(), lotterySourceSnapshot("recharge"), float64(30), int64(3), int64(2)-used, sqlmock.AnyArg(), "").WillReturnResult(sqlmock.NewResult(7, 1))
 				} else {
-					m.ExpectQuery("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "website", "", "", int64(42), sqlmock.AnyArg(), sqlmock.AnyArg(), lotterySourceSnapshot("recharge"), float64(30), int64(3), int64(2)-used, sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
+					m.ExpectQuery("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "website", "", "", int64(42), sqlmock.AnyArg(), sqlmock.AnyArg(), lotterySourceSnapshot("recharge"), float64(30), int64(3), int64(2)-used, sqlmock.AnyArg(), "").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
 				}
 				amount := float64(0)
 				if guaranteed {
@@ -123,7 +123,7 @@ func TestLotteryBatchPersistsActivityThenRechargeSources(t *testing.T) {
 	tx := &transaction{raw: raw}
 	defer tx.Rollback()
 	for i, source := range []string{"activity", "activity", "recharge"} {
-		m.ExpectQuery("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "qq", "member", "group", int64(42), "Thanks", float64(0), lotterySourceSnapshot(source), float64(10), int64(3), int64(2-i), "result").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(i + 1))
+		m.ExpectQuery("INSERT INTO qqc_lottery_draws").WithArgs(sqlmock.AnyArg(), "qq", "member", "group", int64(42), "Thanks", float64(0), lotterySourceSnapshot(source), float64(10), int64(3), int64(2-i), "result", "").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(i + 1))
 		m.ExpectExec("INSERT INTO qqc_rewards").WillReturnResult(sqlmock.NewResult(int64(i+1), 1))
 	}
 	draw := lotteryOutcome{prize: LotteryPrize{Name: "Thanks"}}
@@ -148,6 +148,49 @@ func TestWebLotteryRetryReplaysWithoutNewDebit(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, saved, out)
 	require.NoError(t, m.ExpectationsWereMet())
+}
+
+func TestWebLotteryLastStockAndExhaustedSliceBothDialects(t *testing.T) {
+	for _, mysql := range []bool{false, true} {
+		for _, allocated := range []int64{0, 1} {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			s := New(db, nil, false, nil)
+			s.db.mysql = mysql
+			limit := int64(1)
+			cfg := defaultLotteryConfig()
+			cfg.Enabled = true
+			cfg.Prizes = []LotteryPrize{{ID: "limited", Name: "Last", Amount: 2, ProbabilityBPS: 10000, StockLimit: &limit}}
+			expectWebStart(mock, mysql)
+			mock.ExpectQuery("SELECT result_text").WillReturnError(sql.ErrNoRows)
+			expectWebState(mock, cfg, 0, "30", mysql)
+			mock.ExpectQuery("SELECT COUNT").WithArgs("limited").WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(allocated))
+			amount, name, prizeID := float64(2), "Last", "limited"
+			if allocated == 1 {
+				amount, name, prizeID = 0, "谢谢参与", ""
+			}
+			args := []driver.Value{sqlmock.AnyArg(), "website", "", "", int64(42), name, amount, sqlmock.AnyArg(), float64(30), int64(3), int64(2), sqlmock.AnyArg(), prizeID}
+			if mysql {
+				mock.ExpectExec("INSERT INTO qqc_lottery_draws").WithArgs(args...).WillReturnResult(sqlmock.NewResult(7, 1))
+			} else {
+				mock.ExpectQuery("INSERT INTO qqc_lottery_draws").WithArgs(args...).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
+			}
+			mock.ExpectExec("INSERT INTO qqc_rewards").WithArgs("lottery:7", "website", "", "", int64(42), amount).WillReturnResult(sqlmock.NewResult(8, 1))
+			if amount > 0 {
+				mock.ExpectExec("UPDATE users").WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec("INSERT INTO redeem_codes").WillReturnResult(sqlmock.NewResult(9, 1))
+			}
+			mock.ExpectCommit()
+			out, err := s.UserLotterySpin(context.Background(), 42, webRequestID)
+			require.NoError(t, err)
+			require.Equal(t, name, out.Prize.Name)
+			require.Equal(t, amount, out.Prize.Amount)
+			require.Equal(t, out.Prize, out.Prizes[out.PrizeIndex])
+			require.EqualValues(t, 2, out.Remaining)
+			require.NoError(t, mock.ExpectationsWereMet())
+			_ = db.Close()
+		}
+	}
 }
 
 func TestWebLotteryRejectsWithoutSpending(t *testing.T) {
