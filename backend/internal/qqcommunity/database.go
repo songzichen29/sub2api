@@ -296,7 +296,8 @@ func mysqlSQL(q string) string {
 	q = mysqlRelations(q)
 	q = strings.ReplaceAll(q, "AS NOT MATERIALIZED", "AS")
 	q = regexp.MustCompile(`->>'(\w+)'`).ReplaceAllString(q, "->>'$$.$1'")
-	q = zoneRE.ReplaceAllString(q, "DATE(DATE_ADD($1,INTERVAL 8 HOUR))")
+	// MySQL DATETIME 已按配置时区保存，无需再加 8 小时。
+	q = zoneRE.ReplaceAllString(q, "DATE($1)")
 	q = strings.ReplaceAll(q, "::text[]", "")
 	q = dateTextRE.ReplaceAllString(q, "DATE_FORMAT($1,'%Y-%m-%d')")
 	// VARCHAR casts preserve date-only results and numeric textual APIs.
